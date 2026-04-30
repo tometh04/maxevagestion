@@ -25,13 +25,13 @@ interface Alert {
 }
 
 const alertTypeConfig: Record<string, { icon: any; color: string; label: string }> = {
-  PAYMENT_DUE: { icon: DollarSign, color: "bg-amber-500", label: "Pago" },
-  UPCOMING_TRIP: { icon: Calendar, color: "bg-blue-500", label: "Viaje" },
-  MISSING_DOCUMENT: { icon: FileText, color: "bg-orange-500", label: "Doc" },
-  LOW_MARGIN: { icon: AlertTriangle, color: "bg-red-500", label: "Margen" },
-  QUOTATION_EXPIRING: { icon: Bell, color: "bg-purple-500", label: "Cotiz" },
-  RECURRING_PAYMENT: { icon: DollarSign, color: "bg-emerald-500", label: "Recurrente" },
-  MISSING_INVOICE: { icon: FileText, color: "bg-red-500", label: "Sin Factura" },
+  PAYMENT_DUE: { icon: DollarSign, color: "bg-accent-coral", label: "Pago" },
+  UPCOMING_TRIP: { icon: Calendar, color: "bg-primary", label: "Viaje" },
+  MISSING_DOCUMENT: { icon: FileText, color: "bg-accent-coral", label: "Doc" },
+  LOW_MARGIN: { icon: AlertTriangle, color: "bg-destructive", label: "Margen" },
+  QUOTATION_EXPIRING: { icon: Bell, color: "bg-accent-violet", label: "Cotiz" },
+  RECURRING_PAYMENT: { icon: DollarSign, color: "bg-success", label: "Recurrente" },
+  MISSING_INVOICE: { icon: FileText, color: "bg-destructive", label: "Sin Factura" },
 }
 
 interface PendingAlertsCardProps {
@@ -75,7 +75,7 @@ export function PendingAlertsCard({ agencyId, sellerId }: PendingAlertsCardProps
   }, [fetchAlerts])
 
   const getAlertConfig = (type: string) => {
-    return alertTypeConfig[type] || { icon: Bell, color: "bg-gray-500", label: type }
+    return alertTypeConfig[type] || { icon: Bell, color: "bg-muted-foreground", label: type }
   }
 
   const isOverdue = (dateStr: string) => {
@@ -184,7 +184,7 @@ export function PendingAlertsCard({ agencyId, sellerId }: PendingAlertsCardProps
                 return (
                   <Link key={alert.id} href={getAlertLink()} prefetch={false}>
                     <div
-                      className="p-2 rounded border border-amber-500/50 bg-amber-500/5 dark:border-amber-500/30 dark:bg-amber-500/10 hover:bg-amber-500/10 dark:hover:bg-amber-500/20 transition-colors cursor-pointer group"
+                      className="p-2 rounded border border-accent-coral/50 bg-accent-coral/5 dark:border-accent-coral/30 dark:bg-accent-coral/10 hover:bg-accent-coral/10 dark:hover:bg-accent-coral/20 transition-colors cursor-pointer group"
                     >
                       <div className="flex items-start gap-2">
                         <div className={`p-1 rounded ${config.color} text-white shrink-0 mt-0.5`}>
@@ -195,7 +195,7 @@ export function PendingAlertsCard({ agencyId, sellerId }: PendingAlertsCardProps
                             <span className="text-[10px] font-medium text-foreground">
                               {alertTypeInfo}
                             </span>
-                            <Badge className="text-[9px] px-1 py-0 h-3.5 bg-amber-500 hover:bg-amber-600">
+                            <Badge className="text-[9px] px-1 py-0 h-3.5 bg-accent-coral hover:bg-accent-coral">
                               Vencida
                             </Badge>
                           </div>

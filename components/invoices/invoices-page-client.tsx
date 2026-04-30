@@ -422,7 +422,7 @@ export function InvoicesPageClient() {
                         {statusLabels[invoice.status]?.label || invoice.status}
                       </Badge>
                       {invoice.verification_status === 'verified' && (
-                        <Badge variant="outline" className="text-green-600 border-green-600">
+                        <Badge variant="outline" className="text-success border-success">
                           ✓ Verificada AFIP
                         </Badge>
                       )}
@@ -437,7 +437,7 @@ export function InvoicesPageClient() {
                         </Badge>
                       )}
                       {invoice.status === 'authorized' && (!invoice.verification_status || invoice.verification_status === 'unverified') && (
-                        <Badge variant="secondary" className="text-amber-600">
+                        <Badge variant="secondary" className="text-accent-coral">
                           Sin verificar
                         </Badge>
                       )}
@@ -529,8 +529,8 @@ export function InvoicesPageClient() {
               {/* Datos del Receptor */}
               <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <div className="flex items-center justify-center h-6 w-6 rounded-md bg-blue-500/10">
-                    <User className="h-3.5 w-3.5 text-blue-500" />
+                  <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                    <User className="h-3.5 w-3.5 text-primary" />
                   </div>
                   <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Receptor</h4>
                 </div>
@@ -554,31 +554,31 @@ export function InvoicesPageClient() {
 
               {/* AFIP / CAE */}
               {selectedInvoice.cae ? (
-                <div className="rounded-xl border border-green-200 dark:border-green-800/40 bg-green-50/50 dark:bg-green-950/20 p-4 space-y-4">
+                <div className="rounded-xl border border-success/15 dark:border-success/40 bg-success/50 dark:bg-success/20 p-4 space-y-4">
                   <div className="flex items-center gap-2 mb-3">
-                    <div className="flex items-center justify-center h-6 w-6 rounded-md bg-green-500/10">
-                      <ShieldCheck className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />
+                    <div className="flex items-center justify-center h-6 w-6 rounded-md bg-success/10">
+                      <ShieldCheck className="h-3.5 w-3.5 text-success dark:text-success" />
                     </div>
-                    <h4 className="text-[11px] font-semibold uppercase tracking-widest text-green-700 dark:text-green-400">Autorización AFIP</h4>
+                    <h4 className="text-[11px] font-semibold uppercase tracking-widest text-success dark:text-success">Autorización AFIP</h4>
                   </div>
                   <div className="grid grid-cols-2 gap-x-5 gap-y-3">
                     <div>
-                      <p className="text-[11px] text-green-600/70 dark:text-green-500/70 mb-0.5">CAE</p>
-                      <p className="text-sm font-mono font-medium text-green-800 dark:text-green-300">{selectedInvoice.cae}</p>
+                      <p className="text-[11px] text-success/70 dark:text-success/70 mb-0.5">CAE</p>
+                      <p className="text-sm font-mono font-medium text-success dark:text-success">{selectedInvoice.cae}</p>
                     </div>
                     <div>
-                      <p className="text-[11px] text-green-600/70 dark:text-green-500/70 mb-0.5">Vencimiento CAE</p>
-                      <p className="text-sm text-green-800 dark:text-green-300">{selectedInvoice.cae_fch_vto}</p>
+                      <p className="text-[11px] text-success/70 dark:text-success/70 mb-0.5">Vencimiento CAE</p>
+                      <p className="text-sm text-success dark:text-success">{selectedInvoice.cae_fch_vto}</p>
                     </div>
                     <div>
-                      <p className="text-[11px] text-green-600/70 dark:text-green-500/70 mb-0.5">Comprobante N°</p>
-                      <p className="text-sm font-mono text-green-800 dark:text-green-300">
+                      <p className="text-[11px] text-success/70 dark:text-success/70 mb-0.5">Comprobante N°</p>
+                      <p className="text-sm font-mono text-success dark:text-success">
                         {String(selectedInvoice.pto_vta).padStart(4, '0')}-{String(selectedInvoice.cbte_nro).padStart(8, '0')}
                       </p>
                     </div>
                     <div>
-                      <p className="text-[11px] text-green-600/70 dark:text-green-500/70 mb-0.5">Fecha de Emisión</p>
-                      <p className="text-sm text-green-800 dark:text-green-300">
+                      <p className="text-[11px] text-success/70 dark:text-success/70 mb-0.5">Fecha de Emisión</p>
+                      <p className="text-sm text-success dark:text-success">
                         {selectedInvoice.fecha_emision
                           ? format(new Date(selectedInvoice.fecha_emision), "dd/MM/yyyy", { locale: es })
                           : format(new Date(selectedInvoice.created_at), "dd/MM/yyyy", { locale: es })
@@ -591,23 +591,23 @@ export function InvoicesPageClient() {
                   selectedInvoice.status === 'rejected' ||
                   (selectedInvoice.status === 'draft' && selectedInvoice.afip_response?.error)
                 ) ? (
-                <div className="rounded-xl border border-red-200 dark:border-red-800/40 bg-red-50/50 dark:bg-red-950/20 p-4 space-y-3">
+                <div className="rounded-xl border border-destructive/15 dark:border-destructive/40 bg-destructive/50 dark:bg-destructive/20 p-4 space-y-3">
                   <div className="flex items-center gap-2">
-                    <div className="flex items-center justify-center h-6 w-6 rounded-md bg-red-500/10">
-                      <AlertCircle className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
+                    <div className="flex items-center justify-center h-6 w-6 rounded-md bg-destructive/10">
+                      <AlertCircle className="h-3.5 w-3.5 text-destructive dark:text-destructive" />
                     </div>
-                    <h4 className="text-[11px] font-semibold uppercase tracking-widest text-red-700 dark:text-red-400">
+                    <h4 className="text-[11px] font-semibold uppercase tracking-widest text-destructive dark:text-destructive">
                       {selectedInvoice.status === 'draft' ? 'AFIP rechazó la autorización' : 'Rechazada por AFIP'}
                     </h4>
                   </div>
-                  <p className="text-xs text-red-700 dark:text-red-300 whitespace-pre-wrap break-words">
+                  <p className="text-xs text-destructive dark:text-destructive whitespace-pre-wrap break-words">
                     {selectedInvoice.afip_response?.error ||
                       (selectedInvoice.status === 'draft'
                         ? 'La factura no pudo autorizarse en AFIP.'
                         : 'Esta factura no fue autorizada. Creá una nueva con los datos corregidos.')}
                   </p>
                   {selectedInvoice.status === 'draft' && (
-                    <p className="text-[11px] text-red-700/80 dark:text-red-400/80">
+                    <p className="text-[11px] text-destructive/80 dark:text-destructive/80">
                       La factura quedó como borrador. Podés reintentar la autorización con el botón al pie del diálogo.
                     </p>
                   )}
@@ -617,8 +617,8 @@ export function InvoicesPageClient() {
               {/* Items */}
               <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <div className="flex items-center justify-center h-6 w-6 rounded-md bg-emerald-500/10">
-                    <DollarSign className="h-3.5 w-3.5 text-emerald-500" />
+                  <div className="flex items-center justify-center h-6 w-6 rounded-md bg-success/10">
+                    <DollarSign className="h-3.5 w-3.5 text-success" />
                   </div>
                   <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Detalle</h4>
                 </div>

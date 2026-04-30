@@ -25,8 +25,8 @@ export function AfipNotConfiguredBanner({ orgId }: AfipNotConfiguredBannerProps)
   if (!show) return null
 
   return (
-    <Alert className="bg-amber-500/10 border-amber-500/30 mb-4">
-      <FileText className="h-4 w-4 text-amber-600" />
+    <Alert className="bg-accent-coral/10 border-accent-coral/30 mb-4">
+      <FileText className="h-4 w-4 text-accent-coral" />
       <AlertDescription className="flex items-center justify-between gap-4">
         <span>
           <strong>AFIP no configurado</strong> — para emitir facturas con CAE

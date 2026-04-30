@@ -70,13 +70,13 @@ export function MrrOverrideCard({ orgId, currentOverride, hasCustomPlan }: Props
       </CardHeader>
       <CardContent>
         {hasCustomPlan && (
-          <div className="mb-4 rounded border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-300">
+          <div className="mb-4 rounded border border-accent-coral/40 bg-accent-coral/10 p-3 text-xs text-accent-coral">
             ⚠️ Esta org tiene un custom plan registrado. El override tiene prioridad sobre el custom plan en el cálculo del MRR. Usar solo si necesitás saltear el custom plan deliberadamente.
           </div>
         )}
         <form onSubmit={handleSave} className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="flex-1 space-y-1.5">
-            <Label htmlFor="mrr-override" className="text-xs text-slate-400">
+            <Label htmlFor="mrr-override" className="text-xs text-muted-foreground">
               Monto en ARS por mes
             </Label>
             <Input
@@ -106,12 +106,12 @@ export function MrrOverrideCard({ orgId, currentOverride, hasCustomPlan }: Props
           </div>
         </form>
         {currentOverride != null && (
-          <p className="mt-3 text-xs text-slate-500">
-            Override actual: <span className="text-slate-300 font-medium">{formatArs(Number(currentOverride))}</span>
+          <p className="mt-3 text-xs text-muted-foreground">
+            Override actual: <span className="text-muted-foreground font-medium">{formatArs(Number(currentOverride))}</span>
           </p>
         )}
         {error && (
-          <div className="mt-3 rounded border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300">
+          <div className="mt-3 rounded border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
             {error}
           </div>
         )}

@@ -236,8 +236,8 @@ export function TemplatesDialog({ open, onOpenChange, templates, onRefresh }: Te
         {/* Variables disponibles */}
         <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
           <div className="flex items-center gap-2 mb-3">
-            <div className="flex items-center justify-center h-6 w-6 rounded-md bg-blue-500/10">
-              <Info className="h-3.5 w-3.5 text-blue-500" />
+            <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+              <Info className="h-3.5 w-3.5 text-primary" />
             </div>
             <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Variables disponibles</h4>
           </div>
@@ -277,8 +277,8 @@ export function TemplatesDialog({ open, onOpenChange, templates, onRefresh }: Te
         {showNewForm && (
           <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
             <div className="flex items-center gap-2 mb-3">
-              <div className="flex items-center justify-center h-6 w-6 rounded-md bg-emerald-500/10">
-                <FileText className="h-3.5 w-3.5 text-emerald-500" />
+              <div className="flex items-center justify-center h-6 w-6 rounded-md bg-success/10">
+                <FileText className="h-3.5 w-3.5 text-success" />
               </div>
               <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Crear nuevo template</h4>
             </div>
@@ -358,8 +358,8 @@ export function TemplatesDialog({ open, onOpenChange, templates, onRefresh }: Te
         {hasTemplates ? (
           <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
             <div className="flex items-center gap-2 mb-3">
-              <div className="flex items-center justify-center h-6 w-6 rounded-md bg-violet-500/10">
-                <LayoutList className="h-3.5 w-3.5 text-violet-500" />
+              <div className="flex items-center justify-center h-6 w-6 rounded-md bg-accent-violet/10">
+                <LayoutList className="h-3.5 w-3.5 text-accent-violet" />
               </div>
               <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Templates por categoria</h4>
             </div>
@@ -474,7 +474,7 @@ export function TemplatesDialog({ open, onOpenChange, templates, onRefresh }: Te
                                   </Button>
                                 </div>
                               </div>
-                              <div className="bg-muted/50 rounded-lg p-3 border-l-4 border-green-500">
+                              <div className="bg-muted/50 rounded-lg p-3 border-l-4 border-success">
                                 <pre className="whitespace-pre-wrap text-sm font-sans">
                                   {template.template}
                                 </pre>

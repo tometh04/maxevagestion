@@ -33,7 +33,7 @@ export default function OnboardingBillingReturnPage() {
 function SpinnerCard() {
   return (
     <div className="min-h-screen flex items-center justify-center p-6">
-      <div className="mx-auto w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+      <div className="mx-auto w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
     </div>
   )
 }
@@ -96,7 +96,7 @@ function ReturnClient() {
       <div className="max-w-md w-full text-center space-y-4">
         {!timedOut ? (
           <>
-            <div className="mx-auto w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+            <div className="mx-auto w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
             <h1 className="text-xl font-semibold">Procesando tu suscripción…</h1>
             <p className="text-sm text-muted-foreground">
               Mercado Pago está confirmando tu pago. Esto suele tardar unos segundos.
@@ -111,7 +111,7 @@ function ReturnClient() {
             </p>
             <button
               onClick={() => router.replace("/dashboard")}
-              className="text-sm text-blue-600 hover:underline"
+              className="text-sm text-primary hover:underline"
             >
               Ir al dashboard →
             </button>

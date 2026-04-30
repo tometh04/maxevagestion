@@ -39,7 +39,7 @@ export async function GET(request: Request) {
           title: `Check-in: ${op.destination}`,
           date: op.checkin_date,
           description: op.file_code || undefined,
-          color: "#3b82f6",
+          color: "#4F5BD5",
           operationId: op.id, // Para poder enlazar a la operación
         })
       }
@@ -60,7 +60,7 @@ export async function GET(request: Request) {
           title: `Salida: ${op.destination}`,
           date: op.departure_date,
           description: op.file_code || undefined,
-          color: "#10b981",
+          color: "#2CA77F",
           operationId: op.id, // Para poder enlazar a la operación
         })
       }
@@ -88,7 +88,7 @@ export async function GET(request: Request) {
               title: `Pago ${payment.payer_type === "CUSTOMER" ? "de cliente" : "a operador"}: ${Number(payment.amount).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${payment.currency}`,
               date: payment.date_due,
               description: payment.operations?.destination || undefined,
-              color: "#f59e0b",
+              color: "#EC7B5F",
               operationId: payment.operation_id, // Para poder enlazar a la operación
             })
           }
@@ -108,7 +108,7 @@ export async function GET(request: Request) {
             title: `Pago ${payment.payer_type === "CUSTOMER" ? "de cliente" : "a operador"}: ${Number(payment.amount).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${payment.currency}`,
             date: payment.date_due,
             description: payment.operations?.destination || undefined,
-            color: "#f59e0b",
+            color: "#EC7B5F",
             operationId: payment.operation_id, // Para poder enlazar a la operación
           })
         }
@@ -136,7 +136,7 @@ export async function GET(request: Request) {
           title: `Seguimiento: ${lead.contact_name}`,
           date: lead.follow_up_date,
           description: lead.destination || undefined,
-          color: "#8b5cf6",
+          color: "#8B82E8",
           leadId: lead.id, // Para poder enlazar al lead
         })
       }
@@ -162,7 +162,7 @@ export async function GET(request: Request) {
               type: "REMINDER",
               title: alert.description,
               date: alert.date_due.split("T")[0],
-              color: "#6366f1",
+              color: "#4F5BD5",
               operationId: alert.operation_id || undefined,
             })
           }
@@ -181,7 +181,7 @@ export async function GET(request: Request) {
             type: "REMINDER",
             title: alert.description,
             date: alert.date_due.split("T")[0],
-            color: "#6366f1",
+            color: "#4F5BD5",
             operationId: alert.operation_id || undefined,
           })
         }

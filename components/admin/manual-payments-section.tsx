@@ -62,7 +62,7 @@ export function ManualPaymentsSection({
         {!creating && (
           <button
             onClick={() => setCreating(true)}
-            className="text-xs px-2 py-1 rounded bg-blue-600 text-white"
+            className="text-xs px-2 py-1 rounded bg-primary text-white"
           >
             Registrar pago
           </button>
@@ -130,7 +130,7 @@ export function ManualPaymentsSection({
             <button
               onClick={submit}
               disabled={busy}
-              className="text-xs px-3 py-1 rounded bg-blue-600 text-white disabled:opacity-50"
+              className="text-xs px-3 py-1 rounded bg-primary text-white disabled:opacity-50"
             >
               {busy ? "..." : "Registrar"}
             </button>

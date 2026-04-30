@@ -457,23 +457,23 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
         />
       ) : afipStatus?.configured && !showReconfigureForm ? (
         <div className={`rounded-xl border p-4 space-y-4 ${needsRecert
-          ? "border-warning bg-warning/10"
-          : "border-green-200 bg-green-50/50 dark:border-green-900 dark:bg-green-950/20"
+          ? "border-accent-coral bg-accent-coral/10"
+          : "border-success/15 bg-success/50 dark:border-success dark:bg-success/20"
         }`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               {needsRecert
-                ? <AlertCircle className="h-5 w-5 text-warning" />
-                : <CheckCircle2 className="h-5 w-5 text-green-600" />
+                ? <AlertCircle className="h-5 w-5 text-accent-coral" />
+                : <CheckCircle2 className="h-5 w-5 text-success" />
               }
-              <h4 className={`text-sm font-semibold ${needsRecert ? "text-warning" : "text-success"}`}>
+              <h4 className={`text-sm font-semibold ${needsRecert ? "text-accent-coral" : "text-success"}`}>
                 {needsRecert ? "AFIP: Certificado pendiente" : "AFIP Configurado"}
               </h4>
             </div>
             <Badge
               variant="outline"
               className={needsRecert
-                ? "border-warning text-warning"
+                ? "border-accent-coral text-accent-coral"
                 : "border-success text-success"
               }
             >
@@ -481,9 +481,9 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
             </Badge>
           </div>
             {needsRecert && (
-              <Alert className="border-warning bg-warning/10">
-                <AlertCircle className="h-4 w-4 text-warning" />
-                <AlertDescription className="text-warning text-sm">
+              <Alert className="border-accent-coral bg-accent-coral/10">
+                <AlertCircle className="h-4 w-4 text-accent-coral" />
+                <AlertDescription className="text-accent-coral text-sm">
                   Falta el certificado digital. Hacé clic en <strong>Reconfigurar</strong> para crear el certificado e ingresar tu Clave Fiscal.
                 </AlertDescription>
               </Alert>
@@ -568,9 +568,9 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
           <p className="text-sm text-muted-foreground">
             Ingresá los datos de AFIP. La Clave Fiscal se usa solo para crear el certificado y no se almacena.
           </p>
-            <Alert className="mb-6 border-info bg-info/10">
-              <Info className="h-4 w-4 text-info" />
-              <AlertDescription className="text-info text-sm">
+            <Alert className="mb-6 border-accent-teal bg-accent-teal/10">
+              <Info className="h-4 w-4 text-accent-teal" />
+              <AlertDescription className="text-accent-teal text-sm">
                 El proceso crea automáticamente un certificado digital y autoriza el Web Service de
                 Facturación (WSFE) en AFIP. Puede tardar hasta 2 minutos.
               </AlertDescription>
@@ -583,13 +583,13 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
                 <div className="space-y-2 text-sm">
                   <div className="flex items-center gap-2">
                     {certStepDone ? (
-                      <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+                      <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
                     ) : setupStep === "creating_cert" || setupStep === "waiting_cert" ? (
                       <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
                     ) : (
                       <Circle className="h-4 w-4 text-muted-foreground shrink-0" />
                     )}
-                    <span className={certStepDone ? "text-green-700 line-through" : ""}>
+                    <span className={certStepDone ? "text-success line-through" : ""}>
                       Crear certificado digital
                     </span>
                   </div>
@@ -617,7 +617,7 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
                   </p>
                   {certStepDone && (
                     <div className="flex gap-3 mt-2 text-xs">
-                      <span className="text-green-600">✓ Certificado creado</span>
+                      <span className="text-success">✓ Certificado creado</span>
                       <span className="text-destructive">✗ Web Service</span>
                     </div>
                   )}
@@ -786,15 +786,15 @@ function WsfePendingBanner({
   onReconfigure,
 }: WsfePendingBannerProps) {
   return (
-    <div className="rounded-xl border border-warning bg-warning/10 p-5 space-y-4">
+    <div className="rounded-xl border border-accent-coral bg-accent-coral/10 p-5 space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <AlertCircle className="h-5 w-5 text-warning" />
-          <h4 className="text-sm font-semibold text-warning">
+          <AlertCircle className="h-5 w-5 text-accent-coral" />
+          <h4 className="text-sm font-semibold text-accent-coral">
             Falta habilitar WSFE en AFIP
           </h4>
         </div>
-        <Badge variant="outline" className="border-warning text-warning">
+        <Badge variant="outline" className="border-accent-coral text-accent-coral">
           Paso 2 de 2
         </Badge>
       </div>
@@ -812,7 +812,7 @@ function WsfePendingBanner({
         </div>
       )}
 
-      <ol className="space-y-3 text-sm list-decimal ml-5 marker:text-warning marker:font-semibold">
+      <ol className="space-y-3 text-sm list-decimal ml-5 marker:text-accent-coral marker:font-semibold">
         <li>
           Entrá a{" "}
           <a

@@ -36,13 +36,13 @@ import { toast } from "sonner"
 import { getQuotationOptionPricing } from "@/lib/quotations/presentation"
 
 const regionColors: Record<string, string> = {
-  ARGENTINA: "bg-warning/80",
-  CARIBE: "bg-warning/70",
-  BRASIL: "bg-warning/60",
-  EUROPA: "bg-warning/50",
-  EEUU: "bg-warning/40",
-  OTROS: "bg-warning/90",
-  CRUCEROS: "bg-warning/30",
+  ARGENTINA: "bg-accent-coral/80",
+  CARIBE: "bg-accent-coral/70",
+  BRASIL: "bg-accent-coral/60",
+  EUROPA: "bg-accent-coral/50",
+  EEUU: "bg-accent-coral/40",
+  OTROS: "bg-accent-coral/90",
+  CRUCEROS: "bg-accent-coral/30",
 }
 
 const statusLabels: Record<string, string> = {
@@ -476,7 +476,7 @@ export function LeadDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col overflow-hidden p-0">
+      <DialogContent className="max-w-2xl p-0">
         {/* Header con nombre y badges */}
         <div className="px-6 pt-6 pb-4 border-b">
           <DialogHeader>
@@ -557,8 +557,8 @@ export function LeadDetailDialog({
             {/* Información del viaje */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-2 mb-3">
-                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-blue-500/10">
-                  <MapPin className="h-3.5 w-3.5 text-blue-500" />
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                  <MapPin className="h-3.5 w-3.5 text-primary" />
                 </div>
                 <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Viaje</h4>
               </div>
@@ -588,8 +588,8 @@ export function LeadDetailDialog({
           {lead.users && (
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-2 mb-3">
-                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-violet-500/10">
-                  <User className="h-3.5 w-3.5 text-violet-500" />
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-accent-violet/10">
+                  <User className="h-3.5 w-3.5 text-accent-violet" />
                 </div>
                 <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Responsable</h4>
               </div>
@@ -616,15 +616,15 @@ export function LeadDetailDialog({
           {lead.status === "WON" && (lead.operations?.length || lead.customers?.length) ? (
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-2 mb-3">
-                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-emerald-500/10">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-success/10">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-success" />
                 </div>
                 <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Lead Convertido</h4>
               </div>
               <div className="space-y-2">
                 {lead.operations && lead.operations.length > 0 && (
                   <Link href={`/operations/${lead.operations[0].id}`}>
-                    <div className="flex items-center justify-between p-3 rounded-lg bg-white/80 dark:bg-gray-900/80 hover:bg-white transition-colors cursor-pointer">
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-white/80 dark:bg-card/80 hover:bg-white transition-colors cursor-pointer">
                       <div className="flex items-center gap-2">
                         <Briefcase className="h-4 w-4 text-success" />
                         <div>
@@ -640,7 +640,7 @@ export function LeadDetailDialog({
                 )}
                 {lead.customers && lead.customers.length > 0 && (
                   <Link href={`/customers/${lead.customers[0].id}`}>
-                    <div className="flex items-center gap-3 p-2 rounded-lg bg-white/80 dark:bg-gray-900/80 hover:bg-white transition-colors cursor-pointer">
+                    <div className="flex items-center gap-3 p-2 rounded-lg bg-white/80 dark:bg-card/80 hover:bg-white transition-colors cursor-pointer">
                       <User className="h-4 w-4 text-primary" />
                       <span className="text-sm flex-1">
                         {lead.customers[0].first_name} {lead.customers[0].last_name}
@@ -658,8 +658,8 @@ export function LeadDetailDialog({
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="flex items-center justify-center h-6 w-6 rounded-md bg-orange-500/10">
-                    <ClipboardList className="h-3.5 w-3.5 text-orange-500" />
+                  <div className="flex items-center justify-center h-6 w-6 rounded-md bg-accent-coral/10">
+                    <ClipboardList className="h-3.5 w-3.5 text-accent-coral" />
                   </div>
                   <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Cotizaciones ({quotations.length})</h4>
                 </div>
@@ -688,10 +688,10 @@ export function LeadDetailDialog({
                   {quotations.map((q) => {
                     const statusConfig: Record<string, { label: string; color: string }> = {
                       DRAFT: { label: "Borrador", color: "bg-muted text-muted-foreground" },
-                      SENT: { label: "Enviada", color: "bg-info/10 text-info" },
+                      SENT: { label: "Enviada", color: "bg-accent-teal/10 text-accent-teal" },
                       APPROVED: { label: "Aprobada", color: "bg-success/10 text-success" },
                       REJECTED: { label: "Rechazada", color: "bg-destructive/10 text-destructive" },
-                      EXPIRED: { label: "Vencida", color: "bg-warning/10 text-warning" },
+                      EXPIRED: { label: "Vencida", color: "bg-accent-coral/10 text-accent-coral" },
                       CONVERTED: { label: "Convertida", color: "bg-primary/10 text-primary" },
                     }
                     const sc = statusConfig[q.status] || statusConfig.DRAFT
@@ -700,7 +700,7 @@ export function LeadDetailDialog({
                     return (
                       <div
                         key={q.id}
-                        className="flex items-center justify-between p-3 rounded-lg bg-white/80 dark:bg-gray-900/80 hover:bg-white dark:hover:bg-gray-900 transition-colors"
+                        className="flex items-center justify-between p-3 rounded-lg bg-white/80 dark:bg-card/80 hover:bg-white dark:hover:bg-card transition-colors"
                       >
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
@@ -835,8 +835,8 @@ export function LeadDetailDialog({
           {/* Comentarios */}
           <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
             <div className="flex items-center gap-2 mb-3">
-              <div className="flex items-center justify-center h-6 w-6 rounded-md bg-blue-500/10">
-                <MessageSquare className="h-3.5 w-3.5 text-blue-500" />
+              <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                <MessageSquare className="h-3.5 w-3.5 text-primary" />
               </div>
               <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Comentarios</h4>
             </div>
@@ -908,8 +908,8 @@ export function LeadDetailDialog({
           {/* Documentos Escaneados */}
           <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
             <div className="flex items-center gap-2 mb-3">
-              <div className="flex items-center justify-center h-6 w-6 rounded-md bg-emerald-500/10">
-                <Download className="h-3.5 w-3.5 text-emerald-500" />
+              <div className="flex items-center justify-center h-6 w-6 rounded-md bg-success/10">
+                <Download className="h-3.5 w-3.5 text-success" />
               </div>
               <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Documentos</h4>
             </div>
@@ -995,7 +995,7 @@ export function LeadDetailDialog({
               <Button
                 variant="ghost"
                 size="sm"
-                className="shrink-0 text-warning hover:text-warning hover:bg-warning/10"
+                className="shrink-0 text-accent-coral hover:text-accent-coral hover:bg-accent-coral/10"
                 onClick={handleArchive}
                 disabled={archiving}
               >

@@ -93,11 +93,11 @@ const roleLabels: Record<string, string> = {
 }
 
 const roleColors: Record<string, string> = {
-  SUPER_ADMIN: "bg-purple-500",
-  ADMIN: "bg-info",
-  CONTABLE: "bg-green-500",
-  SELLER: "bg-warning",
-  VIEWER: "bg-gray-500",
+  SUPER_ADMIN: "bg-accent-violet",
+  ADMIN: "bg-accent-teal",
+  CONTABLE: "bg-success",
+  SELLER: "bg-accent-coral",
+  VIEWER: "bg-muted-foreground",
 }
 
 const roleDescriptions: Record<string, string> = {
@@ -451,8 +451,8 @@ export function UsersSettings() {
                 {/* Rol y Permisos */}
                 <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
                   <div className="flex items-center gap-2 mb-3">
-                    <div className="flex items-center justify-center h-6 w-6 rounded-md bg-blue-500/10">
-                      <Shield className="h-3.5 w-3.5 text-blue-500" />
+                    <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                      <Shield className="h-3.5 w-3.5 text-primary" />
                     </div>
                     <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Rol y Permisos</h4>
                   </div>
@@ -628,7 +628,7 @@ export function UsersSettings() {
                   </TableCell>
                   <TableCell>
                     {user.is_active ? (
-                      <Badge variant="outline" className="text-green-600 border-green-600">
+                      <Badge variant="outline" className="text-success border-success">
                         <CheckCircle2 className="mr-1 h-3 w-3" />
                         Activo
                       </Badge>
@@ -890,16 +890,16 @@ export function UsersSettings() {
                 </Button>
               </div>
               <div className="text-xs text-muted-foreground space-y-1">
-                <p className={newPassword.length >= 8 ? "text-green-500" : ""}>
+                <p className={newPassword.length >= 8 ? "text-success" : ""}>
                   • Mínimo 8 caracteres
                 </p>
-                <p className={/[A-Z]/.test(newPassword) ? "text-green-500" : ""}>
+                <p className={/[A-Z]/.test(newPassword) ? "text-success" : ""}>
                   • Al menos una mayúscula
                 </p>
-                <p className={/[a-z]/.test(newPassword) ? "text-green-500" : ""}>
+                <p className={/[a-z]/.test(newPassword) ? "text-success" : ""}>
                   • Al menos una minúscula
                 </p>
-                <p className={/\d/.test(newPassword) ? "text-green-500" : ""}>
+                <p className={/\d/.test(newPassword) ? "text-success" : ""}>
                   • Al menos un número
                 </p>
               </div>

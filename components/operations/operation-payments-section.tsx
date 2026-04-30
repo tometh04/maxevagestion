@@ -809,7 +809,7 @@ export function OperationPaymentsSection({
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8 text-info hover:text-info/80 hover:bg-info/10"
+                              className="h-8 w-8 text-accent-teal hover:text-accent-teal/80 hover:bg-accent-teal/10"
                               onClick={() => handleDownloadReceipt(payment.id)}
                               disabled={downloadingReceiptId === payment.id}
                               title="Descargar recibo PDF"
@@ -841,7 +841,7 @@ export function OperationPaymentsSection({
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 text-warning hover:text-warning/80 hover:bg-warning/10"
+                            className="h-8 w-8 text-accent-coral hover:text-accent-coral/80 hover:bg-accent-coral/10"
                             onClick={() => handleOpenEditDialog(payment)}
                             disabled={payment.source === "OPERATOR_BULK"}
                             title={payment.source === "OPERATOR_BULK" ? "Pago generado desde Pago Masivo" : "Editar pago"}
@@ -991,7 +991,7 @@ export function OperationPaymentsSection({
               {/* Sub-card: Fecha y Cuenta */}
               <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
                 <div className="flex items-center gap-1.5">
-                  <Landmark className="h-3.5 w-3.5 text-emerald-500" />
+                  <Landmark className="h-3.5 w-3.5 text-success" />
                   <span className="text-xs font-medium text-foreground/70">Destino del cobro</span>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -1078,9 +1078,9 @@ export function OperationPaymentsSection({
                 const watchedCurrency = incomeForm.watch("currency")
                 const isCash = watchedMethod === "Efectivo"
                 return (
-                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 space-y-3">
+                  <div className="rounded-xl border border-accent-coral/30 bg-accent-coral/5 p-4 space-y-3">
                     <div className="flex items-center gap-1.5">
-                      <Receipt className="h-3.5 w-3.5 text-amber-500" />
+                      <Receipt className="h-3.5 w-3.5 text-accent-coral" />
                       <span className="text-xs font-medium text-foreground/70">Percepciones Impositivas</span>
                     </div>
                     <p className="text-xs text-muted-foreground">
@@ -1291,7 +1291,7 @@ export function OperationPaymentsSection({
                 {/* Sub-card: Fecha y Estado */}
                 <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
                   <div className="flex items-center gap-1.5">
-                    <Landmark className="h-3.5 w-3.5 text-emerald-500" />
+                    <Landmark className="h-3.5 w-3.5 text-success" />
                     <span className="text-xs font-medium text-foreground/70">Fecha y Cuenta</span>
                   </div>
                   <FormField
@@ -1472,7 +1472,7 @@ export function OperationPaymentsSection({
                 {/* Sub-card: Método y Monto */}
                 <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
                   <div className="flex items-center gap-1.5">
-                    <Banknote className="h-3.5 w-3.5 text-warning" />
+                    <Banknote className="h-3.5 w-3.5 text-accent-coral" />
                     <span className="text-xs font-medium text-foreground/70">Pago al Operador</span>
                   </div>
                   <FormField
@@ -1571,7 +1571,7 @@ export function OperationPaymentsSection({
                 {/* Sub-card: Fecha y Cuenta */}
                 <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
                   <div className="flex items-center gap-1.5">
-                    <Landmark className="h-3.5 w-3.5 text-emerald-500" />
+                    <Landmark className="h-3.5 w-3.5 text-success" />
                     <span className="text-xs font-medium text-foreground/70">Destino del pago</span>
                   </div>
                   <div className="grid grid-cols-2 gap-4">

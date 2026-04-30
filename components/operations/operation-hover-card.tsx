@@ -47,11 +47,11 @@ const statusLabels: Record<string, string> = {
 }
 
 const statusColors: Record<string, string> = {
-  RESERVED: "bg-info",
+  RESERVED: "bg-accent-teal",
   CONFIRMED: "bg-success",
   CANCELLED: "bg-destructive",
-  TRAVELLING: "bg-warning",
-  TRAVELLED: "bg-purple-500",
+  TRAVELLING: "bg-accent-coral",
+  TRAVELLED: "bg-accent-violet",
 }
 
 export function OperationHoverCard({ operationId, children }: OperationHoverCardProps) {

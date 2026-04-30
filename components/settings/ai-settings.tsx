@@ -59,7 +59,7 @@ export function AISettings() {
               <div className="flex items-center gap-2">
                 {apiKeyConfigured ? (
                   <>
-                    <CheckCircle2 className="h-4 w-4 text-warning" />
+                    <CheckCircle2 className="h-4 w-4 text-accent-coral" />
                     <span>OpenAI API Key configurada. El AI Copilot está disponible.</span>
                   </>
                 ) : (

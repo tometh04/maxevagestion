@@ -74,10 +74,10 @@ export function BirthdaysTodayCard() {
   }
 
   return (
-    <Card className="border-pink-200 bg-pink-50/50 dark:bg-pink-950/20">
+    <Card className="border-accent-coral/15 bg-accent-coral/50 dark:bg-accent-coral/20">
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium flex items-center gap-2">
-          <Cake className="h-4 w-4 text-pink-500" />
+          <Cake className="h-4 w-4 text-accent-coral" />
           🎂 Cumpleaños Hoy
         </CardTitle>
       </CardHeader>
@@ -90,7 +90,7 @@ export function BirthdaysTodayCard() {
             >
               <div className="flex items-center gap-3">
                 <Avatar className="h-8 w-8">
-                  <AvatarFallback className="bg-pink-100 text-pink-600 text-xs">
+                  <AvatarFallback className="bg-accent-coral/10 text-accent-coral text-xs">
                     {getInitials(customer.first_name, customer.last_name)}
                   </AvatarFallback>
                 </Avatar>
@@ -109,7 +109,7 @@ export function BirthdaysTodayCard() {
                   size="sm"
                   variant="outline"
                   onClick={() => openWhatsApp(customer)}
-                  className="gap-1 text-green-600 hover:text-green-700 hover:bg-green-50"
+                  className="gap-1 text-success hover:text-success hover:bg-success/5"
                 >
                   <MessageSquare className="h-3 w-3" />
                   Saludar

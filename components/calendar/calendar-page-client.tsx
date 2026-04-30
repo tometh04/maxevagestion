@@ -52,12 +52,12 @@ interface CalendarEvent {
 }
 
 const typeConfig: Record<string, { label: string; icon: typeof Plane; className: string }> = {
-  CHECKIN: { label: "Check-in", icon: Hotel, className: "bg-blue-500/15 text-blue-600 border-blue-500/20" },
-  DEPARTURE: { label: "Salida", icon: Plane, className: "bg-emerald-500/15 text-emerald-600 border-emerald-500/20" },
-  PAYMENT_DUE: { label: "Pago", icon: DollarSign, className: "bg-amber-500/15 text-amber-600 border-amber-500/20" },
-  QUOTATION_EXPIRY: { label: "Cotización", icon: CalendarDays, className: "bg-orange-500/15 text-orange-600 border-orange-500/20" },
-  FOLLOW_UP: { label: "Seguimiento", icon: Users, className: "bg-violet-500/15 text-violet-600 border-violet-500/20" },
-  REMINDER: { label: "Recordatorio", icon: Bell, className: "bg-indigo-500/15 text-indigo-600 border-indigo-500/20" },
+  CHECKIN: { label: "Check-in", icon: Hotel, className: "bg-primary/15 text-primary border-primary/20" },
+  DEPARTURE: { label: "Salida", icon: Plane, className: "bg-success/15 text-success border-success/20" },
+  PAYMENT_DUE: { label: "Pago", icon: DollarSign, className: "bg-accent-coral/15 text-accent-coral border-accent-coral/20" },
+  QUOTATION_EXPIRY: { label: "Cotización", icon: CalendarDays, className: "bg-accent-coral/15 text-accent-coral border-accent-coral/20" },
+  FOLLOW_UP: { label: "Seguimiento", icon: Users, className: "bg-accent-violet/15 text-accent-violet border-accent-violet/20" },
+  REMINDER: { label: "Recordatorio", icon: Bell, className: "bg-primary/15 text-primary border-primary/20" },
 }
 
 const DAY_NAMES = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
@@ -163,28 +163,28 @@ export function CalendarPageClient() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="rounded-xl border border-border/40 p-4">
           <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-            <Plane className="h-3.5 w-3.5 text-emerald-500" />
+            <Plane className="h-3.5 w-3.5 text-success" />
             Salidas
           </div>
           <div className="text-2xl font-semibold tabular-nums mt-1">{monthStats.departures}</div>
         </div>
         <div className="rounded-xl border border-border/40 p-4">
           <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-            <Bell className="h-3.5 w-3.5 text-indigo-500" />
+            <Bell className="h-3.5 w-3.5 text-primary" />
             Recordatorios
           </div>
           <div className="text-2xl font-semibold tabular-nums mt-1">{monthStats.reminders}</div>
         </div>
         <div className="rounded-xl border border-border/40 p-4">
           <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-            <DollarSign className="h-3.5 w-3.5 text-amber-500" />
+            <DollarSign className="h-3.5 w-3.5 text-accent-coral" />
             Pagos
           </div>
           <div className="text-2xl font-semibold tabular-nums mt-1">{monthStats.payments}</div>
         </div>
         <div className="rounded-xl border border-border/40 p-4">
           <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-            <Users className="h-3.5 w-3.5 text-violet-500" />
+            <Users className="h-3.5 w-3.5 text-accent-violet" />
             Seguimientos
           </div>
           <div className="text-2xl font-semibold tabular-nums mt-1">{monthStats.followups}</div>

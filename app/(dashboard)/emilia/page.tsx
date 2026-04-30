@@ -31,7 +31,7 @@ export default async function EmiliaPage() {
       </Breadcrumb>
 
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center shadow-lg shadow-amber-200 dark:shadow-amber-900/30">
+        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-accent-coral to-accent-coral flex items-center justify-center shadow-lg shadow-amber-200 dark:shadow-amber-900/30">
           <Sparkles className="h-5 w-5 text-white" />
         </div>
         <div>

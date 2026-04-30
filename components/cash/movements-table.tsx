@@ -232,7 +232,7 @@ export function MovementsTable({
                   {movement.reversed_at ? (
                     <Badge variant="secondary">REVERSADO</Badge>
                   ) : movement.reverses_movement_id ? (
-                    <Badge variant="outline" className="border-blue-300 text-blue-700">
+                    <Badge variant="outline" className="border-primary/20 text-primary">
                       <Undo2 className="h-2.5 w-2.5 mr-1" /> Reverso
                     </Badge>
                   ) : (

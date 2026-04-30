@@ -328,7 +328,7 @@ export function NewCashMovementDialog({
             {/* Monto */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
-                <DollarSign className="h-3.5 w-3.5 text-emerald-500" />
+                <DollarSign className="h-3.5 w-3.5 text-success" />
                 <span className="text-xs font-medium text-foreground/70">Monto</span>
               </div>
               <div className="grid gap-4 md:grid-cols-2">
@@ -432,7 +432,7 @@ export function NewCashMovementDialog({
             {/* Detalles */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
-                <CalendarIcon className="h-3.5 w-3.5 text-sky-500" />
+                <CalendarIcon className="h-3.5 w-3.5 text-accent-teal" />
                 <span className="text-xs font-medium text-foreground/70">Detalles</span>
               </div>
 

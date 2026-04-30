@@ -117,8 +117,8 @@ export function ExpenseReceiptDialog({
           <div className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-2 mb-3">
-                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-emerald-500/10">
-                  <ReceiptIcon className="h-3.5 w-3.5 text-emerald-500" />
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-success/10">
+                  <ReceiptIcon className="h-3.5 w-3.5 text-success" />
                 </div>
                 <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Comprobantes Cargados</h4>
               </div>
@@ -165,8 +165,8 @@ export function ExpenseReceiptDialog({
 
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-2 mb-3">
-                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-orange-500/10">
-                  <Upload className="h-3.5 w-3.5 text-orange-500" />
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-accent-coral/10">
+                  <Upload className="h-3.5 w-3.5 text-accent-coral" />
                 </div>
                 <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Subir Comprobante</h4>
               </div>

@@ -31,15 +31,15 @@ export default function GlobalError({
             gap: "1rem",
             padding: "2rem",
             fontFamily: "system-ui, sans-serif",
-            backgroundColor: "#0a0a0a",
-            color: "#fafafa",
+            backgroundColor: "hsl(230 38% 10%)",
+            color: "hsl(0 0% 100%)",
           }}
         >
           <div style={{ fontSize: "3rem" }}>⚠️</div>
           <h1 style={{ fontSize: "1.5rem", fontWeight: 600, margin: 0 }}>
             Error crítico
           </h1>
-          <p style={{ maxWidth: "30rem", textAlign: "center", color: "#a1a1a1" }}>
+          <p style={{ maxWidth: "30rem", textAlign: "center", color: "hsl(226 12% 48%)" }}>
             La aplicación no pudo cargar correctamente. Por favor recargá la página.
             Si el problema persiste, contactá soporte.
           </p>
@@ -48,8 +48,8 @@ export default function GlobalError({
               style={{
                 maxWidth: "40rem",
                 overflow: "auto",
-                backgroundColor: "#2a0a0a",
-                color: "#fca5a5",
+                backgroundColor: "hsl(0 84% 60% / 0.15)",
+                color: "hsl(0 84% 60%)",
                 padding: "0.75rem",
                 borderRadius: "0.375rem",
                 fontSize: "0.75rem",
@@ -65,8 +65,8 @@ export default function GlobalError({
               style={{
                 padding: "0.5rem 1rem",
                 background: "transparent",
-                color: "#fafafa",
-                border: "1px solid #3f3f46",
+                color: "hsl(0 0% 100%)",
+                border: "1px solid hsl(224 18% 92% / 0.25)",
                 borderRadius: "0.375rem",
                 cursor: "pointer",
               }}
@@ -78,8 +78,8 @@ export default function GlobalError({
               onClick={() => window.location.reload()}
               style={{
                 padding: "0.5rem 1rem",
-                background: "#fafafa",
-                color: "#0a0a0a",
+                background: "hsl(0 0% 100%)",
+                color: "hsl(230 38% 10%)",
                 border: "none",
                 borderRadius: "0.375rem",
                 cursor: "pointer",

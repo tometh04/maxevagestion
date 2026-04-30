@@ -55,7 +55,7 @@ export function CustomPlanOwnerView({
           <div className="flex items-start justify-between gap-3">
             <div>
               {isPendingMp && (
-                <div className="text-xs font-semibold uppercase tracking-wide text-blue-600 mb-1">
+                <div className="text-xs font-semibold uppercase tracking-wide text-primary mb-1">
                   Tu plan personalizado está listo
                 </div>
               )}
@@ -82,7 +82,7 @@ export function CustomPlanOwnerView({
                   <span className="text-muted-foreground">A partir de ahí</span>{" "}
                   <strong>{formatArs(plan.base_price_ars)} / mes</strong>
                 </div>
-                <div className="text-xs text-green-700 dark:text-green-400">
+                <div className="text-xs text-success dark:text-success">
                   Descuento promocional: {plan.discount_percent}% off
                 </div>
               </>
@@ -121,7 +121,7 @@ export function CustomPlanOwnerView({
           {isPendingMp && checkoutUrl && (
             <a
               href={checkoutUrl}
-              className="block text-center text-sm font-semibold px-4 py-3 rounded bg-blue-600 text-white hover:bg-blue-700 transition"
+              className="block text-center text-sm font-semibold px-4 py-3 rounded bg-primary text-white hover:bg-primary transition"
             >
               Suscribirme y pagar con MercadoPago →
             </a>

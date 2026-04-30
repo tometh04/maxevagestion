@@ -64,13 +64,13 @@ interface MessageCardProps {
 }
 
 const categoryColors: Record<string, string> = {
-  PAYMENT: "bg-warning/10 text-warning",
-  TRIP: "bg-info/10 text-info",
-  QUOTATION: "bg-purple-100 text-purple-800",
-  BIRTHDAY: "bg-pink-100 text-pink-800",
-  ANNIVERSARY: "bg-rose-100 text-rose-800",
-  MARKETING: "bg-green-100 text-green-800",
-  CUSTOM: "bg-gray-100 text-gray-800",
+  PAYMENT: "bg-accent-coral/10 text-accent-coral",
+  TRIP: "bg-accent-teal/10 text-accent-teal",
+  QUOTATION: "bg-accent-violet/10 text-accent-violet",
+  BIRTHDAY: "bg-accent-coral/10 text-accent-coral",
+  ANNIVERSARY: "bg-destructive/10 text-destructive",
+  MARKETING: "bg-success/10 text-success",
+  CUSTOM: "bg-muted text-foreground",
 }
 
 export function MessageCard({ message, onMarkSent, onSkip }: MessageCardProps) {
@@ -289,7 +289,7 @@ export function MessageCard({ message, onMarkSent, onSkip }: MessageCardProps) {
           )}
           {isSent && message.sent_at && (
             <>
-              <CheckCircle className="h-3 w-3 text-green-600" />
+              <CheckCircle className="h-3 w-3 text-success" />
               <span>
                 {isInternalReceipt ? "Revisado" : "Enviado"}: {format(new Date(message.sent_at), "dd/MM/yyyy HH:mm", { locale: es })}
               </span>
@@ -344,7 +344,7 @@ export function MessageCard({ message, onMarkSent, onSkip }: MessageCardProps) {
                   <Button
                     onClick={handleSend}
                     variant="outline"
-                    className="h-8 text-xs border-green-600/40 text-green-700 hover:bg-green-50 hover:text-green-800"
+                    className="h-8 text-xs border-success/40 text-success hover:bg-success/5 hover:text-success"
                   >
                     <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
                     Enviar vía WA

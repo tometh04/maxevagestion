@@ -403,20 +403,20 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
               <p className="text-xs text-muted-foreground mt-1">Lo que debemos</p>
             </div>
 
-            <div className="rounded-xl border border-border/40 p-5 border-l-4 border-l-info">
+            <div className="rounded-xl border border-border/40 p-5 border-l-4 border-l-accent-teal">
               <p className="text-xs font-medium text-muted-foreground flex items-center gap-2">
-                <Wallet className="h-4 w-4 text-info" />
+                <Wallet className="h-4 w-4 text-accent-teal" />
                 Patrimonio Neto
               </p>
-              <div className={cn("text-2xl font-semibold tabular-nums tracking-tight mt-1", data.patrimonioNeto.total >= 0 ? "text-info" : "text-destructive")}>
+              <div className={cn("text-2xl font-semibold tabular-nums tracking-tight mt-1", data.patrimonioNeto.total >= 0 ? "text-accent-teal" : "text-destructive")}>
                 {formatMoney(data.patrimonioNeto.total)}
               </div>
               <p className="text-xs text-muted-foreground mt-1">Activo - Pasivo</p>
             </div>
 
-            <div className="rounded-xl border border-border/40 p-5 border-l-4 border-l-purple-500">
+            <div className="rounded-xl border border-border/40 p-5 border-l-4 border-l-accent-violet">
               <p className="text-xs font-medium text-muted-foreground flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 text-purple-500" />
+                <TrendingUp className="h-4 w-4 text-accent-violet" />
                 Resultado del Mes
               </p>
               <div className={cn("text-2xl font-semibold tabular-nums tracking-tight mt-1", data.resultadoDelMes.resultado >= 0 ? "text-success" : "text-destructive")}>
@@ -491,13 +491,13 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
 
                         <div className="flex justify-between items-center pt-2">
                           <div className="flex items-center gap-2">
-                            <Users className="h-4 w-4 text-yellow-600" />
+                            <Users className="h-4 w-4 text-accent-coral" />
                             <span>Cuentas por Cobrar</span>
                             <Badge variant="secondary" className="text-xs">
                               {data.activo.corriente.cuentasPorCobrar.cantidadDeudores} deudores
                             </Badge>
                           </div>
-                          <span className="font-medium text-yellow-600">
+                          <span className="font-medium text-accent-coral">
                             {formatMoney(data.activo.corriente.cuentasPorCobrar.totalUSD)}
                           </span>
                         </div>
@@ -531,13 +531,13 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
                       <div className="space-y-2 pl-4 border-l-2 border-destructive/30">
                         <div className="flex justify-between items-center">
                           <div className="flex items-center gap-2">
-                            <Truck className="h-4 w-4 text-warning" />
+                            <Truck className="h-4 w-4 text-accent-coral" />
                             <span>Cuentas por Pagar</span>
                             <Badge variant="secondary" className="text-xs">
                               {data.pasivo.corriente.cuentasPorPagar.cantidadAcreedores} acreedores
                             </Badge>
                           </div>
-                          <span className="font-medium text-warning">
+                          <span className="font-medium text-accent-coral">
                             {formatMoney(data.pasivo.corriente.cuentasPorPagar.totalUSD)}
                           </span>
                         </div>
@@ -566,7 +566,7 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
                       <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
                         Patrimonio Neto
                       </h4>
-                      <div className="space-y-2 pl-4 border-l-2 border-info/30">
+                      <div className="space-y-2 pl-4 border-l-2 border-accent-teal/30">
                         <div className="flex justify-between items-center">
                           <span>Resultado del Ejercicio</span>
                           <span className={cn("font-medium", data.patrimonioNeto.resultadoEjercicio >= 0 ? "text-success" : "text-destructive")}>
@@ -576,11 +576,11 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
                       </div>
                       <div className="flex justify-between items-center pt-2 border-t">
                         <span className="font-medium">Total Patrimonio Neto</span>
-                        <span className="font-bold text-info">{formatMoney(data.patrimonioNeto.total)}</span>
+                        <span className="font-bold text-accent-teal">{formatMoney(data.patrimonioNeto.total)}</span>
                       </div>
                     </div>
 
-                    <div className="flex justify-between items-center pt-4 border-t-2 border-info">
+                    <div className="flex justify-between items-center pt-4 border-t-2 border-accent-teal">
                       <span className="text-lg font-bold">TOTAL PASIVO + PN</span>
                       <span className="text-lg font-bold">{formatMoney(data.pasivo.total + data.patrimonioNeto.total)}</span>
                     </div>
@@ -617,7 +617,7 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
                           USD {formatMoney(data.resultadoDelMes.costos.usd)} | ARS {formatARS(data.resultadoDelMes.costos.ars)}
                         </p>
                       </div>
-                      <span className="text-xl font-bold text-warning">
+                      <span className="text-xl font-bold text-accent-coral">
                         ({formatMoney(data.resultadoDelMes.costos.total)})
                       </span>
                     </div>
@@ -668,7 +668,7 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
                 <div className="rounded-xl border border-border/40 overflow-hidden">
                   <div className="px-5 py-4 border-b border-border/40 bg-muted/20">
                     <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
-                      <Users className="h-4 w-4 text-yellow-600" />
+                      <Users className="h-4 w-4 text-accent-coral" />
                       Cuentas por Cobrar (Deudores)
                     </h3>
                     <p className="text-xs text-muted-foreground mt-0.5">
@@ -690,7 +690,7 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
                             <TableRow key={i}>
                               <TableCell className="font-medium">{d.operacion}</TableCell>
                               <TableCell>{d.cliente}</TableCell>
-                              <TableCell className="text-right text-yellow-600 font-medium">
+                              <TableCell className="text-right text-accent-coral font-medium">
                                 {formatMoney(d.deuda)}
                               </TableCell>
                             </TableRow>
@@ -707,7 +707,7 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
                 <div className="rounded-xl border border-border/40 overflow-hidden">
                   <div className="px-5 py-4 border-b border-border/40 bg-muted/20">
                     <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
-                      <Truck className="h-4 w-4 text-warning" />
+                      <Truck className="h-4 w-4 text-accent-coral" />
                       Cuentas por Pagar (Acreedores)
                     </h3>
                     <p className="text-xs text-muted-foreground mt-0.5">
@@ -729,7 +729,7 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
                             <TableRow key={i}>
                               <TableCell className="font-medium">{d.operacion}</TableCell>
                               <TableCell>{d.operador}</TableCell>
-                              <TableCell className="text-right text-warning font-medium">
+                              <TableCell className="text-right text-accent-coral font-medium">
                                 {formatMoney(d.montoUSD)}
                               </TableCell>
                             </TableRow>

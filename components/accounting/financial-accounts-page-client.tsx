@@ -436,7 +436,7 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
                         ) : deleteStep === "confirm" ? (
                           <p>
                             La cuenta <strong>{accountToDelete.displayName}</strong> tiene{" "}
-                            <strong className={accountToDelete.balance >= 0 ? "text-warning" : "text-destructive"}>
+                            <strong className={accountToDelete.balance >= 0 ? "text-accent-coral" : "text-destructive"}>
                               {formatCurrency(accountToDelete.balance, accountToDelete.currency)}
                             </strong>{" "}
                             de saldo. ¿Quieres transferirlo a otra cuenta?
@@ -445,7 +445,7 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
                           <>
                             <p>
                               Transferir{" "}
-                              <strong className={accountToDelete.balance >= 0 ? "text-warning" : "text-destructive"}>
+                              <strong className={accountToDelete.balance >= 0 ? "text-accent-coral" : "text-destructive"}>
                                 {formatCurrency(Math.abs(accountToDelete.balance), accountToDelete.currency)}
                               </strong>{" "}
                               a:
@@ -475,7 +475,7 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
                                 a.currency === accountToDelete.currency &&
                                 a.is_active !== false
                             ).length === 0 && (
-                              <p className="text-sm text-warning">
+                              <p className="text-sm text-accent-coral">
                                 No hay otras cuentas en {accountToDelete.currency} para transferir.
                               </p>
                             )}
@@ -534,7 +534,7 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
                 Nueva Cuenta
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogContent className="max-w-2xl">
               <DialogHeader>
                 <DialogTitle>Nueva Cuenta Financiera</DialogTitle>
                 <DialogDescription>
@@ -880,7 +880,7 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
                           <TableCell className="text-right">
                             <span
                               className={`font-bold ${
-                                (account.current_balance ?? 0) >= 0 ? "text-warning" : "text-destructive"
+                                (account.current_balance ?? 0) >= 0 ? "text-accent-coral" : "text-destructive"
                               }`}
                             >
                               {formatCurrency(account.current_balance ?? 0, account.currency)}

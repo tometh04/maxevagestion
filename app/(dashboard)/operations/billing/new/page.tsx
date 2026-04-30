@@ -967,17 +967,17 @@ export default function NewInvoicePage() {
                   <Label>Punto de Venta / Agencia *</Label>
                   {pointsOfSale.length > 0 && !pointsOfSale.some(a => a.has_ws_points) ? (
                     // Ninguna agencia tiene puntos de venta para web services
-                    <div className="rounded-md border border-amber-200 bg-amber-50 p-3 space-y-2">
+                    <div className="rounded-md border border-accent-coral/15 bg-accent-coral/5 p-3 space-y-2">
                       <div className="flex items-start gap-2">
-                        <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
-                        <div className="text-sm text-amber-800">
+                        <AlertTriangle className="h-4 w-4 text-accent-coral mt-0.5 shrink-0" />
+                        <div className="text-sm text-accent-coral">
                           <p className="font-medium">No tenés puntos de venta habilitados para Web Services</p>
                           <p className="mt-1 text-xs">
                             Para emitir facturas electrónicas necesitás crear un punto de venta de tipo <strong>CAE</strong> en el portal de ARCA.
                           </p>
                         </div>
                       </div>
-                      <ol className="text-xs text-amber-700 space-y-1 ml-6 list-decimal">
+                      <ol className="text-xs text-accent-coral space-y-1 ml-6 list-decimal">
                         <li>Ingresá a <strong>ARCA (afip.gob.ar)</strong> con Clave Fiscal</li>
                         <li>Ir a <strong>Administración de puntos de venta y domicilios → A/B/M de puntos de venta</strong></li>
                         <li>Crear un nuevo PV seleccionando:
@@ -992,7 +992,7 @@ export default function NewInvoicePage() {
                         href="https://auth.afip.gob.ar/contribuyente_/login.xhtml"
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-xs text-amber-700 underline hover:text-amber-900 ml-6"
+                        className="inline-flex items-center gap-1 text-xs text-accent-coral underline hover:text-accent-coral ml-6"
                       >
                         Ir al portal de ARCA <ExternalLink className="h-3 w-3" />
                       </a>
@@ -1189,12 +1189,12 @@ export default function NewInvoicePage() {
                 </div>
                 <div className="flex items-end">
                   {formData.receptor_condicion_iva === 1 && (!formData.receptor_doc_nro || formData.receptor_doc_nro === '0') ? (
-                    <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 w-full">
-                      <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                    <div className="flex items-start gap-2 rounded-md border border-accent-coral/15 bg-accent-coral/5 p-3 text-xs text-accent-coral w-full">
+                      <AlertTriangle className="h-4 w-4 text-accent-coral mt-0.5 shrink-0" />
                       <span>Factura A requiere CUIT del receptor. Ingresá el CUIT en el campo de arriba.</span>
                     </div>
                   ) : (
-                    <div className="rounded-md border border-green-200 bg-green-50 p-3 text-xs text-green-800 w-full">
+                    <div className="rounded-md border border-success/15 bg-success/5 p-3 text-xs text-success w-full">
                       ✓ Tipo de comprobante determinado automáticamente por la condición IVA
                     </div>
                   )}
@@ -1222,9 +1222,9 @@ export default function NewInvoicePage() {
               
               {/* Moneda y Tipo de Cambio - Solo si hay operación en USD */}
               {selectedOperation?.sale_currency === 'USD' && (
-                <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800 space-y-4">
+                <div className="p-4 bg-primary/5 dark:bg-primary rounded-lg border border-primary/15 dark:border-primary space-y-4">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                    <span className="text-sm font-medium text-primary dark:text-primary">
                       ⚠️ Operación en USD - Configuración de Facturación
                     </span>
                   </div>
@@ -1279,7 +1279,7 @@ export default function NewInvoicePage() {
                           </p>
                         )}
                         {cotizacionAfip && Math.abs(exchangeRate - cotizacionAfip) / cotizacionAfip > 0.02 && (
-                          <p className="text-xs text-orange-500 mt-1">
+                          <p className="text-xs text-accent-coral mt-1">
                             ⚠️ Tu cotización difiere más del 2% del oficial. AFIP va a rechazar (error 10119).
                           </p>
                         )}
@@ -1465,7 +1465,7 @@ export default function NewInvoicePage() {
               <div className="p-3 bg-muted rounded-lg space-y-1">
                 <p className="text-xs text-muted-foreground">
                   <strong>Tipo:</strong>{" "}
-                  <span className={formData.cbte_tipo === 1 ? "text-blue-700 font-semibold" : "text-green-700 font-semibold"}>
+                  <span className={formData.cbte_tipo === 1 ? "text-primary font-semibold" : "text-success font-semibold"}>
                     {COMPROBANTE_LABELS[formData.cbte_tipo as keyof typeof COMPROBANTE_LABELS]}
                   </span>
                 </p>

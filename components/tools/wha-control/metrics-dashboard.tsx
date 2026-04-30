@@ -130,15 +130,15 @@ export function MetricsDashboard({ agencies }: MetricsDashboardProps) {
 
   const kpis = summary
     ? [
-        { label: "Mensajes Recibidos", value: summary.inbound_count, icon: MessageCircle, color: "text-blue-600" },
-        { label: "Mensajes Enviados", value: summary.outbound_count, icon: MessageSquareText, color: "text-green-600" },
-        { label: "Conversaciones Iniciadas", value: summary.initiated_count, icon: Send, color: "text-cyan-600" },
-        { label: "PDFs Enviados (cotizaciones)", value: summary.pdfs_sent_count, icon: FileText, color: "text-rose-600", subtitle: summary.pdfs_sent_pending_classification > 0 ? `+${summary.pdfs_sent_pending_classification} pendientes` : undefined },
-        { label: "PDFs Recibidos", value: summary.pdfs_received_count, icon: FileText, color: "text-amber-600" },
-        { label: "Tiempo Resp. Promedio", value: formatResponseTime(summary.avg_first_response_seconds), icon: Clock, color: "text-orange-600" },
-        { label: "Chats Activos", value: summary.active_chats_count, icon: Users, color: "text-purple-600" },
-        { label: "Sin Responder", value: summary.unanswered_chats_count, icon: AlertCircle, color: "text-red-600" },
-        { label: "Chats Nuevos", value: summary.new_chats_count, icon: UserPlus, color: "text-indigo-600" },
+        { label: "Mensajes Recibidos", value: summary.inbound_count, icon: MessageCircle, color: "text-primary" },
+        { label: "Mensajes Enviados", value: summary.outbound_count, icon: MessageSquareText, color: "text-success" },
+        { label: "Conversaciones Iniciadas", value: summary.initiated_count, icon: Send, color: "text-accent-teal" },
+        { label: "PDFs Enviados (cotizaciones)", value: summary.pdfs_sent_count, icon: FileText, color: "text-destructive", subtitle: summary.pdfs_sent_pending_classification > 0 ? `+${summary.pdfs_sent_pending_classification} pendientes` : undefined },
+        { label: "PDFs Recibidos", value: summary.pdfs_received_count, icon: FileText, color: "text-accent-coral" },
+        { label: "Tiempo Resp. Promedio", value: formatResponseTime(summary.avg_first_response_seconds), icon: Clock, color: "text-accent-coral" },
+        { label: "Chats Activos", value: summary.active_chats_count, icon: Users, color: "text-accent-violet" },
+        { label: "Sin Responder", value: summary.unanswered_chats_count, icon: AlertCircle, color: "text-destructive" },
+        { label: "Chats Nuevos", value: summary.new_chats_count, icon: UserPlus, color: "text-primary" },
       ]
     : []
 

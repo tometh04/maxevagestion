@@ -2,6 +2,10 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 
 const PLANS = [
   { id: "STARTER", title: "Starter", users: 3, agencies: 1, ops: 50, desc: "Para agencias recién empezando." },
@@ -50,119 +54,130 @@ export default function OnboardingPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-muted/30 p-6">
-      <div className="w-full max-w-xl bg-background border rounded-lg p-6 space-y-6">
-        <header className="space-y-1">
-          <h1 className="text-2xl font-semibold">Bienvenido a Vibook</h1>
-          <p className="text-sm text-muted-foreground">
-            Paso {step} de 2 — configuramos tu agencia en un minuto.
+    <div className="relative min-h-screen flex items-center justify-center bg-background p-6 section-aura">
+      <Card className="w-full max-w-xl relative z-10 rounded-2xl shadow-card border-border/50">
+        <CardHeader className="space-y-3 text-center">
+          <span className="text-[11px] font-semibold uppercase tracking-eyebrow text-primary">
+            Paso {step} de 2
+          </span>
+          <h1 className="text-3xl font-bold tracking-tighter-h2 leading-[1.1]">
+            <span className="text-gradient-signature">Bienvenido a Vibook</span>
+          </h1>
+          <p className="text-sm text-muted-foreground text-balance">
+            Configuramos tu agencia en un minuto.
           </p>
-        </header>
+        </CardHeader>
+        <CardContent className="space-y-6">
 
-        {step === 1 && (
-          <div className="space-y-4">
-            <label className="block text-sm">
-              <span className="font-medium">Nombre de la agencia</span>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full mt-1 border rounded px-3 py-2 bg-background"
-                placeholder="p.ej. Turismo ABC"
-                autoFocus
-              />
-            </label>
-
-            <label className="block text-sm">
-              <span className="font-medium">Email de facturación</span>
-              <input
-                type="email"
-                value={billingEmail}
-                onChange={(e) => setBillingEmail(e.target.value)}
-                className="w-full mt-1 border rounded px-3 py-2 bg-background"
-                placeholder="admin@tuagencia.com (opcional)"
-              />
-            </label>
-
-            <label className="block text-sm">
-              <span className="font-medium">CUIT</span>
-              <input
-                type="text"
-                value={cuit}
-                onChange={(e) => setCuit(e.target.value)}
-                className="w-full mt-1 border rounded px-3 py-2 bg-background"
-                placeholder="30-12345678-9 (opcional)"
-              />
-            </label>
-          </div>
-        )}
-
-        {step === 2 && (
-          <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Elegí un plan. Arrancás con 14 días de trial sin cargo en cualquiera.
-            </p>
-            {PLANS.map((p) => (
-              <label
-                key={p.id}
-                className={`block border rounded p-3 cursor-pointer ${
-                  plan === p.id ? "border-blue-500 bg-blue-50/50" : ""
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="plan"
-                  value={p.id}
-                  checked={plan === p.id}
-                  onChange={() => setPlan(p.id)}
-                  className="mr-2"
+          {step === 1 && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="agency-name">Nombre de la agencia</Label>
+                <Input
+                  id="agency-name"
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="p.ej. Turismo ABC"
+                  autoFocus
                 />
-                <span className="font-semibold">{p.title}</span>
-                <div className="text-xs text-muted-foreground mt-1">{p.desc}</div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  {p.users} users · {p.agencies} agencias · {p.ops} operaciones/mes
-                </div>
-              </label>
-            ))}
-          </div>
-        )}
+              </div>
 
-        {error && (
-          <div className="border border-red-200 bg-red-50 text-red-700 text-sm rounded p-3">
-            {error}
-          </div>
-        )}
+              <div className="space-y-2">
+                <Label htmlFor="billing-email">Email de facturación</Label>
+                <Input
+                  id="billing-email"
+                  type="email"
+                  value={billingEmail}
+                  onChange={(e) => setBillingEmail(e.target.value)}
+                  placeholder="admin@tuagencia.com (opcional)"
+                />
+              </div>
 
-        <footer className="flex items-center justify-between">
-          {step > 1 ? (
-            <button
-              onClick={() => setStep(1)}
-              className="text-sm text-muted-foreground hover:underline"
-              disabled={submitting}
-            >
-              ← Atrás
-            </button>
-          ) : <span />}
-
-          {step === 1 ? (
-            <button
-              onClick={() => setStep(2)}
-              disabled={!canAdvance}
-              className="text-sm px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50"
-            >
-              Siguiente →
-            </button>
-          ) : (
-            <button
-              onClick={submit}
-              disabled={submitting}
-              className="text-sm px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50"
-            >
-              {submitting ? "Creando…" : "Crear agencia"}
-            </button>
+              <div className="space-y-2">
+                <Label htmlFor="cuit">CUIT</Label>
+                <Input
+                  id="cuit"
+                  type="text"
+                  value={cuit}
+                  onChange={(e) => setCuit(e.target.value)}
+                  placeholder="30-12345678-9 (opcional)"
+                />
+              </div>
+            </div>
           )}
-        </footer>
-      </div>
+
+          {step === 2 && (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground text-balance">
+                Elegí un plan. Arrancás con 14 días de trial sin cargo en cualquiera.
+              </p>
+              {PLANS.map((p) => (
+                <label
+                  key={p.id}
+                  className={`block border rounded-2xl p-4 cursor-pointer transition-all duration-300 ${
+                    plan === p.id
+                      ? "border-primary bg-primary/5 shadow-glow"
+                      : "border-border/50 hover:border-primary/30 hover:-translate-y-0.5 hover:shadow-card"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="plan"
+                    value={p.id}
+                    checked={plan === p.id}
+                    onChange={() => setPlan(p.id)}
+                    className="mr-2 accent-primary"
+                  />
+                  <span className="font-semibold">{p.title}</span>
+                  <div className="text-xs text-muted-foreground mt-1">{p.desc}</div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    {p.users} users · {p.agencies} agencias · {p.ops} operaciones/mes
+                  </div>
+                </label>
+              ))}
+            </div>
+          )}
+
+          {error && (
+            <div className="border border-destructive/15 bg-destructive/5 text-destructive text-sm rounded-md p-3">
+              {error}
+            </div>
+          )}
+
+          <footer className="flex items-center justify-between">
+            {step > 1 ? (
+              <Button
+                variant="ghost"
+                onClick={() => setStep(1)}
+                disabled={submitting}
+              >
+                ← Atrás
+              </Button>
+            ) : <span />}
+
+            {step === 1 ? (
+              <Button
+                variant="cta"
+                size="lg"
+                onClick={() => setStep(2)}
+                disabled={!canAdvance}
+              >
+                Siguiente →
+              </Button>
+            ) : (
+              <Button
+                variant="cta"
+                size="lg"
+                onClick={submit}
+                disabled={submitting}
+              >
+                {submitting ? "Creando…" : "Crear agencia"}
+              </Button>
+            )}
+          </footer>
+        </CardContent>
+      </Card>
     </div>
   )
 }

@@ -97,10 +97,10 @@ export function UpcomingTripsCard({ agencyId, sellerId }: UpcomingTripsCardProps
   }
 
   const getUrgencyColor = (days: number) => {
-    if (days <= 3) return "bg-red-500"
-    if (days <= 7) return "bg-amber-500"
-    if (days <= 14) return "bg-amber-400"
-    return "bg-green-500"
+    if (days <= 3) return "bg-destructive"
+    if (days <= 7) return "bg-accent-coral"
+    if (days <= 14) return "bg-accent-coral/30"
+    return "bg-success"
   }
 
   return (

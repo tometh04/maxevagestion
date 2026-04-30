@@ -18,15 +18,15 @@ import {
 export const dynamic = "force-dynamic"
 
 const EVENT_COLORS: Record<string, string> = {
-  PAYMENT_APPROVED: "bg-emerald-500/15 text-emerald-300",
-  SUBSCRIPTION_AUTHORIZED: "bg-emerald-500/15 text-emerald-300",
-  PAYMENT_REJECTED: "bg-red-500/15 text-red-300",
-  SUBSCRIPTION_PAUSED: "bg-red-500/15 text-red-300",
-  SUBSCRIPTION_CANCELLED: "bg-red-500/15 text-red-300",
-  CHECKOUT_INITIATED: "bg-blue-500/15 text-blue-300",
-  MP_WEBHOOK: "bg-blue-500/15 text-blue-300",
-  SUBSCRIPTION_CREATED: "bg-blue-500/15 text-blue-300",
-  MANUAL_ADMIN_ADJUSTMENT: "bg-amber-500/15 text-amber-300",
+  PAYMENT_APPROVED: "bg-success/15 text-success",
+  SUBSCRIPTION_AUTHORIZED: "bg-success/15 text-success",
+  PAYMENT_REJECTED: "bg-destructive/15 text-destructive",
+  SUBSCRIPTION_PAUSED: "bg-destructive/15 text-destructive",
+  SUBSCRIPTION_CANCELLED: "bg-destructive/15 text-destructive",
+  CHECKOUT_INITIATED: "bg-primary/15 text-primary",
+  MP_WEBHOOK: "bg-primary/15 text-primary",
+  SUBSCRIPTION_CREATED: "bg-primary/15 text-primary",
+  MANUAL_ADMIN_ADJUSTMENT: "bg-accent-coral/15 text-accent-coral",
 }
 
 export default async function AdminBillingPage() {
@@ -91,7 +91,7 @@ function PendingSection({ rows }: { rows: any[] }) {
     <Card>
       <CardHeader>
         <CardTitle className="text-base">
-          Cobranzas pendientes <span className="text-slate-500 text-sm">({rows.length})</span>
+          Cobranzas pendientes <span className="text-muted-foreground text-sm">({rows.length})</span>
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -116,7 +116,7 @@ function PendingSection({ rows }: { rows: any[] }) {
               {rows.map((r) => (
                 <DataTableRow key={r.id}>
                   <DataTableTd>
-                    <Link href={`/admin/orgs/${r.id}`} className="text-blue-300 hover:underline">
+                    <Link href={`/admin/orgs/${r.id}`} className="text-primary hover:underline">
                       {r.name}
                     </Link>
                   </DataTableTd>
@@ -126,12 +126,12 @@ function PendingSection({ rows }: { rows: any[] }) {
                     </span>
                   </DataTableTd>
                   <DataTableTd>{r.plan}</DataTableTd>
-                  <DataTableTd className="text-slate-400">
+                  <DataTableTd className="text-muted-foreground">
                     {r.current_period_ends_at
                       ? new Date(r.current_period_ends_at).toLocaleDateString("es-AR")
                       : "—"}
                   </DataTableTd>
-                  <DataTableTd className="text-xs text-slate-500 font-mono truncate max-w-[200px]">
+                  <DataTableTd className="text-xs text-muted-foreground font-mono truncate max-w-[200px]">
                     {r.mp_preapproval_id ?? "—"}
                   </DataTableTd>
                 </DataTableRow>
@@ -149,7 +149,7 @@ function UpcomingSection({ rows }: { rows: any[] }) {
     <Card>
       <CardHeader>
         <CardTitle className="text-base">
-          Próximos vencimientos (7 días) <span className="text-slate-500 text-sm">({rows.length})</span>
+          Próximos vencimientos (7 días) <span className="text-muted-foreground text-sm">({rows.length})</span>
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -173,7 +173,7 @@ function UpcomingSection({ rows }: { rows: any[] }) {
               {rows.map((r) => (
                 <DataTableRow key={r.id}>
                   <DataTableTd>
-                    <Link href={`/admin/orgs/${r.id}`} className="text-blue-300 hover:underline">
+                    <Link href={`/admin/orgs/${r.id}`} className="text-primary hover:underline">
                       {r.name}
                     </Link>
                   </DataTableTd>
@@ -183,7 +183,7 @@ function UpcomingSection({ rows }: { rows: any[] }) {
                     </span>
                   </DataTableTd>
                   <DataTableTd>{r.plan}</DataTableTd>
-                  <DataTableTd className="text-slate-400">{relativeTime(r.current_period_ends_at)}</DataTableTd>
+                  <DataTableTd className="text-muted-foreground">{relativeTime(r.current_period_ends_at)}</DataTableTd>
                 </DataTableRow>
               ))}
             </DataTableBody>
@@ -200,7 +200,7 @@ function CustomPlansSection({ rows, orgNameMap }: { rows: any[]; orgNameMap: Map
     <Card>
       <CardHeader>
         <CardTitle className="text-base">
-          Custom plans <span className="text-slate-500 text-sm">({rows.length})</span>
+          Custom plans <span className="text-muted-foreground text-sm">({rows.length})</span>
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -228,7 +228,7 @@ function CustomPlansSection({ rows, orgNameMap }: { rows: any[]; orgNameMap: Map
                 return (
                   <DataTableRow key={r.id}>
                     <DataTableTd>
-                      <Link href={`/admin/orgs/${r.org_id}`} className="text-blue-300 hover:underline">
+                      <Link href={`/admin/orgs/${r.org_id}`} className="text-primary hover:underline">
                         {orgNameMap.get(r.org_id) ?? r.org_id}
                       </Link>
                     </DataTableTd>
@@ -236,17 +236,17 @@ function CustomPlansSection({ rows, orgNameMap }: { rows: any[]; orgNameMap: Map
                     <DataTableTd>{formatArs(Number(r.base_price_ars))}</DataTableTd>
                     <DataTableTd>
                       {r.discount_percent > 0 ? (
-                        <span className={discountActive ? "text-amber-300" : "text-slate-500"}>
+                        <span className={discountActive ? "text-accent-coral" : "text-muted-foreground"}>
                           {r.discount_percent}% {discountActive ? "vigente" : "expirado"}
                         </span>
                       ) : (
-                        <span className="text-slate-500">—</span>
+                        <span className="text-muted-foreground">—</span>
                       )}
                     </DataTableTd>
                     <DataTableTd>
-                      <span className="rounded bg-slate-800 px-2 py-0.5 text-xs">{r.billing_method}</span>
+                      <span className="rounded bg-ink px-2 py-0.5 text-xs">{r.billing_method}</span>
                     </DataTableTd>
-                    <DataTableTd className="text-slate-400">{relativeTime(r.created_at)}</DataTableTd>
+                    <DataTableTd className="text-muted-foreground">{relativeTime(r.created_at)}</DataTableTd>
                   </DataTableRow>
                 )
               })}
@@ -263,7 +263,7 @@ function EventsSection({ rows, orgNameMap }: { rows: any[]; orgNameMap: Map<stri
     <Card>
       <CardHeader>
         <CardTitle className="text-base">
-          Eventos recientes <span className="text-slate-500 text-sm">({rows.length})</span>
+          Eventos recientes <span className="text-muted-foreground text-sm">({rows.length})</span>
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -287,12 +287,12 @@ function EventsSection({ rows, orgNameMap }: { rows: any[]; orgNameMap: Map<stri
             <DataTableBody>
               {rows.map((r) => (
                 <DataTableRow key={r.id}>
-                  <DataTableTd className="text-slate-400">{relativeTime(r.created_at)}</DataTableTd>
+                  <DataTableTd className="text-muted-foreground">{relativeTime(r.created_at)}</DataTableTd>
                   <DataTableTd>
                     <span
                       className={cn(
                         "rounded px-2 py-0.5 text-xs font-medium",
-                        EVENT_COLORS[r.event_type] ?? "bg-slate-700 text-slate-300"
+                        EVENT_COLORS[r.event_type] ?? "bg-ink text-muted-foreground"
                       )}
                     >
                       {r.event_type}
@@ -300,21 +300,21 @@ function EventsSection({ rows, orgNameMap }: { rows: any[]; orgNameMap: Map<stri
                   </DataTableTd>
                   <DataTableTd>
                     {r.org_id ? (
-                      <Link href={`/admin/orgs/${r.org_id}`} className="text-blue-300 hover:underline">
+                      <Link href={`/admin/orgs/${r.org_id}`} className="text-primary hover:underline">
                         {orgNameMap.get(r.org_id) ?? r.org_id}
                       </Link>
                     ) : (
-                      <span className="text-slate-500">—</span>
+                      <span className="text-muted-foreground">—</span>
                     )}
                   </DataTableTd>
                   <DataTableTd>
                     {r.amount_cents != null ? (
                       formatArs(Number(r.amount_cents) / 100)
                     ) : (
-                      <span className="text-slate-500">—</span>
+                      <span className="text-muted-foreground">—</span>
                     )}
                   </DataTableTd>
-                  <DataTableTd className="text-xs text-slate-500">{r.status ?? "—"}</DataTableTd>
+                  <DataTableTd className="text-xs text-muted-foreground">{r.status ?? "—"}</DataTableTd>
                 </DataTableRow>
               ))}
             </DataTableBody>
@@ -326,11 +326,11 @@ function EventsSection({ rows, orgNameMap }: { rows: any[]; orgNameMap: Map<stri
 }
 
 function statusColor(s: string): string {
-  if (s === "ACTIVE") return "bg-emerald-500/15 text-emerald-300"
-  if (s === "PAST_DUE" || s === "PENDING_PAYMENT") return "bg-amber-500/15 text-amber-300"
-  if (s === "SUSPENDED" || s === "CANCELLED") return "bg-red-500/15 text-red-300"
-  if (s === "TRIAL" || s === "TRIALING") return "bg-blue-500/15 text-blue-300"
-  return "bg-slate-700 text-slate-300"
+  if (s === "ACTIVE") return "bg-success/15 text-success"
+  if (s === "PAST_DUE" || s === "PENDING_PAYMENT") return "bg-accent-coral/15 text-accent-coral"
+  if (s === "SUSPENDED" || s === "CANCELLED") return "bg-destructive/15 text-destructive"
+  if (s === "TRIAL" || s === "TRIALING") return "bg-primary/15 text-primary"
+  return "bg-ink text-muted-foreground"
 }
 
 function relativeTime(iso: string | null): string {

@@ -17,10 +17,12 @@ const badgeVariants = cva(
         outline: "text-foreground",
         success:
           "border-transparent bg-success/10 text-success",
-        warning:
-          "border-transparent bg-warning/10 text-warning",
-        info:
-          "border-transparent bg-info/10 text-info",
+        coral:
+          "border-transparent bg-accent-coral/10 text-accent-coral",
+        teal:
+          "border-transparent bg-accent-teal/10 text-accent-teal",
+        violet:
+          "border-transparent bg-accent-violet/10 text-accent-violet",
       },
     },
     defaultVariants: {

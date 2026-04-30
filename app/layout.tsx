@@ -73,7 +73,21 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           {children}
-          <Toaster />
+          <Toaster
+            theme="system"
+            toastOptions={{
+              classNames: {
+                toast: "rounded-lg border bg-background text-foreground shadow-card",
+                description: "text-muted-foreground",
+                actionButton: "bg-primary text-primary-foreground",
+                cancelButton: "bg-muted text-muted-foreground",
+                success: "border-success/30",
+                error: "border-destructive/30",
+                warning: "border-accent-coral/30",
+                info: "border-accent-teal/30",
+              },
+            }}
+          />
           <ShadcnToaster />
         </ThemeProvider>
       </body>

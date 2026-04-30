@@ -382,12 +382,12 @@ export function TemplatesPageClient() {
                   return (
                     <>
                       {typesWithoutDefault.length === 0 ? (
-                        <Badge variant="secondary" className="text-xs font-normal bg-emerald-500/10 text-emerald-600 border-emerald-500/20">
+                        <Badge variant="secondary" className="text-xs font-normal bg-success/10 text-success border-success/20">
                           Todos configurados
                         </Badge>
                       ) : (
                         typesWithoutDefault.map(type => (
-                          <Badge key={type} variant="secondary" className="text-xs font-normal bg-amber-500/10 text-amber-600 border-amber-500/20">
+                          <Badge key={type} variant="secondary" className="text-xs font-normal bg-accent-coral/10 text-accent-coral border-accent-coral/20">
                             {templateTypeLabels[type] || type}: Sin default
                           </Badge>
                         ))
@@ -454,7 +454,7 @@ export function TemplatesPageClient() {
                     {templateTypeLabels[template.template_type]}
                   </Badge>
                   {template.is_default && (
-                    <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/20">
+                    <Badge className="bg-accent-coral/15 text-accent-coral border-accent-coral/20">
                       <Star className="h-3 w-3 mr-1" />
                       Default
                     </Badge>
@@ -532,7 +532,7 @@ export function TemplatesPageClient() {
 
       {/* Dialog crear template */}
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto px-6 py-5">
+        <DialogContent className="max-w-4xl px-6 py-5">
           <DialogHeader>
             <DialogTitle>Nuevo Template PDF</DialogTitle>
             <DialogDescription>
@@ -736,7 +736,7 @@ export function TemplatesPageClient() {
 
       {/* Dialog ver template */}
       <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl">
           {selectedTemplate && (
             <>
               <DialogHeader>
@@ -746,7 +746,7 @@ export function TemplatesPageClient() {
                     {templateTypeLabels[selectedTemplate.template_type]}
                   </Badge>
                   {selectedTemplate.is_default && (
-                    <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/20">
+                    <Badge className="bg-accent-coral/15 text-accent-coral border-accent-coral/20">
                       <Star className="h-3 w-3 mr-1" />
                       Default
                     </Badge>

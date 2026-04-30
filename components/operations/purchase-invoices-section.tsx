@@ -491,9 +491,9 @@ export function PurchaseInvoicesSection({
                 <p className="text-xs text-success">IVA Crédito Fiscal</p>
                 <p className="text-lg font-bold text-success">{formatMoney(totalIva)}</p>
               </div>
-              <div className="rounded-xl border border-border/40 bg-blue-50 p-4">
-                <p className="text-xs text-blue-600">Percepciones a Favor</p>
-                <p className="text-lg font-bold text-blue-700">{formatMoney(totalPercepciones)}</p>
+              <div className="rounded-xl border border-border/40 bg-primary/5 p-4">
+                <p className="text-xs text-primary">Percepciones a Favor</p>
+                <p className="text-lg font-bold text-primary">{formatMoney(totalPercepciones)}</p>
               </div>
             </div>
 
@@ -530,7 +530,7 @@ export function PurchaseInvoicesSection({
                       <div className="text-xs text-muted-foreground">{inv.emitter_cuit}</div>
                     </TableCell>
                     <TableCell className="text-right text-sm">{formatMoney(inv.net_amount, inv.currency)}</TableCell>
-                    <TableCell className="text-right text-sm text-green-600">{formatMoney(inv.iva_amount, inv.currency)}</TableCell>
+                    <TableCell className="text-right text-sm text-success">{formatMoney(inv.iva_amount, inv.currency)}</TableCell>
                     <TableCell className="text-right text-sm font-medium">{formatMoney(inv.total_amount, inv.currency)}</TableCell>
                     <TableCell>
                       <Badge variant={inv.status === "VERIFIED" ? "default" : "secondary"} className="text-xs">
@@ -549,7 +549,7 @@ export function PurchaseInvoicesSection({
                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEdit(inv)}>
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => handleDelete(inv.id)}>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDelete(inv.id)}>
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
@@ -728,8 +728,8 @@ export function PurchaseInvoicesSection({
                 masterToggleOff
                   ? "bg-muted/40 border-muted text-muted-foreground"
                   : autoPerceptions
-                    ? "bg-blue-50 border-blue-200 text-blue-900 dark:bg-blue-950/30 dark:border-blue-800 dark:text-blue-100"
-                    : "bg-amber-50 border-amber-200 text-amber-900 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-100"
+                    ? "bg-primary/5 border-primary/15 text-primary dark:bg-primary/30 dark:border-primary dark:text-primary"
+                    : "bg-accent-coral/5 border-accent-coral/15 text-accent-coral dark:bg-accent-coral/30 dark:border-accent-coral dark:text-accent-coral"
               }`}>
                 <div className="flex items-center gap-2">
                   {calculatingPerceptions && <Loader2 className="h-3 w-3 animate-spin" />}

@@ -297,8 +297,8 @@ export function CustomersStatisticsPageClient() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card className="p-3">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded bg-info/10">
-              <Users className="h-3.5 w-3.5 text-info" />
+            <div className="p-1.5 rounded bg-accent-teal/10">
+              <Users className="h-3.5 w-3.5 text-accent-teal" />
             </div>
             <div>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Total</p>
@@ -341,12 +341,12 @@ export function CustomersStatisticsPageClient() {
 
         <Card className="p-3">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded bg-purple-100 dark:bg-purple-900/30">
-              <Users className="h-3.5 w-3.5 text-purple-600" />
+            <div className="p-1.5 rounded bg-accent-violet/10 dark:bg-accent-violet/30">
+              <Users className="h-3.5 w-3.5 text-accent-violet" />
             </div>
             <div>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Ops Prom.</p>
-              <p className="text-base font-semibold text-purple-600">{(stats.overview.avgOperationsPerCustomer ?? 0).toFixed(1)}</p>
+              <p className="text-base font-semibold text-accent-violet">{(stats.overview.avgOperationsPerCustomer ?? 0).toFixed(1)}</p>
               <p className="text-[10px] text-muted-foreground">viajes por cliente</p>
             </div>
           </div>

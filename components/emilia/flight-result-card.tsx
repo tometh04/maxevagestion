@@ -261,7 +261,7 @@ function FlightLegCard({ leg, airlineCode, departureDate }: FlightLegCardProps) 
             <div className="text-base font-medium flex items-center justify-center gap-1">
               {leg.arrival?.time || "--:--"}
               {leg.arrival_next_day && (
-                <Badge variant="outline" className="text-[10px] h-4 px-1 bg-warning/10 text-warning border-warning">
+                <Badge variant="outline" className="text-[10px] h-4 px-1 bg-accent-coral/10 text-accent-coral border-accent-coral">
                   +1
                 </Badge>
               )}
@@ -279,11 +279,11 @@ function FlightLegCard({ leg, airlineCode, departureDate }: FlightLegCardProps) 
             {leg.layovers.map((layover, idx) => (
               <div
                 key={idx}
-                className="bg-warning/10 border border-warning rounded-md p-2 text-center"
+                className="bg-accent-coral/10 border border-accent-coral rounded-md p-2 text-center"
               >
                 <div className="flex items-center justify-center gap-2 text-sm">
-                  <Clock className="h-3 w-3 text-warning" />
-                  <span className="font-medium text-warning">
+                  <Clock className="h-3 w-3 text-accent-coral" />
+                  <span className="font-medium text-accent-coral">
                     CONEXIÓN
                   </span>
                 </div>

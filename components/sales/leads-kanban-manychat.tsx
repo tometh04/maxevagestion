@@ -44,22 +44,22 @@ import { CSS } from "@dnd-kit/utilities"
 
 // Colores de borde izquierdo por región
 const regionBorderColors: Record<string, string> = {
-  ARGENTINA: "border-l-info",
-  CARIBE: "border-l-cyan-500",
+  ARGENTINA: "border-l-accent-teal",
+  CARIBE: "border-l-accent-teal",
   BRASIL: "border-l-success",
-  EUROPA: "border-l-purple-500",
+  EUROPA: "border-l-accent-violet",
   EEUU: "border-l-destructive",
-  OTROS: "border-l-gray-400",
+  OTROS: "border-l-border",
   CRUCEROS: "border-l-primary",
 }
 
 const regionDotColors: Record<string, string> = {
-  ARGENTINA: "bg-info",
-  CARIBE: "bg-cyan-500",
+  ARGENTINA: "bg-accent-teal",
+  CARIBE: "bg-accent-teal",
   BRASIL: "bg-success",
-  EUROPA: "bg-purple-500",
+  EUROPA: "bg-accent-violet",
   EEUU: "bg-destructive",
-  OTROS: "bg-gray-400",
+  OTROS: "bg-muted-foreground/30",
   CRUCEROS: "bg-primary",
 }
 
@@ -569,7 +569,7 @@ export function LeadsKanbanManychat({
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
             viewMode === "activos"
               ? "bg-primary text-primary-foreground shadow-sm"
-              : "bg-white/60 dark:bg-gray-900/60 text-muted-foreground hover:bg-white/80 dark:hover:bg-gray-800/80"
+              : "bg-white/60 dark:bg-card/60 text-muted-foreground hover:bg-white/80 dark:hover:bg-card/80"
           }`}
         >
           <Inbox className="h-4 w-4" />
@@ -582,8 +582,8 @@ export function LeadsKanbanManychat({
           onClick={() => setViewMode("archivados")}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
             viewMode === "archivados"
-              ? "bg-warning text-white shadow-sm"
-              : "bg-white/60 dark:bg-gray-900/60 text-muted-foreground hover:bg-white/80 dark:hover:bg-gray-800/80"
+              ? "bg-accent-coral text-white shadow-sm"
+              : "bg-white/60 dark:bg-card/60 text-muted-foreground hover:bg-white/80 dark:hover:bg-card/80"
           }`}
         >
           <Archive className="h-4 w-4" />
@@ -597,13 +597,13 @@ export function LeadsKanbanManychat({
       </div>
 
       {/* ── Barra de filtros ── */}
-      <div className="flex items-center justify-between gap-4 bg-white/60 dark:bg-gray-900/60 backdrop-blur-sm rounded-xl p-4 shadow-sm">
+      <div className="flex items-center justify-between gap-4 bg-white/60 dark:bg-card/60 backdrop-blur-sm rounded-xl p-4 shadow-sm">
         <div className="flex items-center gap-3">
           <Label htmlFor="list-select" className="text-sm font-medium text-muted-foreground">
             Filtrar:
           </Label>
           <Select value={selectedListName} onValueChange={setSelectedListName}>
-            <SelectTrigger id="list-select" className="w-[220px] bg-white/80 dark:bg-gray-800/80">
+            <SelectTrigger id="list-select" className="w-[220px] bg-white/80 dark:bg-card/80">
               <SelectValue placeholder="Todas las listas" />
             </SelectTrigger>
             <SelectContent>
@@ -621,7 +621,7 @@ export function LeadsKanbanManychat({
             <Button
               variant="outline"
               size="sm"
-              className="bg-white/80 dark:bg-gray-800/80 hover:bg-white dark:hover:bg-gray-800"
+              className="bg-white/80 dark:bg-card/80 hover:bg-white dark:hover:bg-card"
               onClick={() => {
                 setNewListName("")
                 setNewListSellerId(isSeller && currentUserId ? currentUserId : "none")
@@ -653,15 +653,15 @@ export function LeadsKanbanManychat({
                 const listLeads = archivedLeadsByListName[listName]
                 return (
                   <div key={listName} className="flex-shrink-0 w-80">
-                    <div className="rounded-xl bg-warning/10 backdrop-blur-sm shadow-sm border border-warning/30">
+                    <div className="rounded-xl bg-accent-coral/10 backdrop-blur-sm shadow-sm border border-accent-coral/30">
                       {/* Header columna archivada */}
-                      <div className="p-3 border-b border-warning/30">
+                      <div className="p-3 border-b border-accent-coral/30">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2 min-w-0">
-                            <Archive className="h-4 w-4 text-warning shrink-0" />
+                            <Archive className="h-4 w-4 text-accent-coral shrink-0" />
                             <span className="font-semibold text-sm text-foreground truncate">{listName}</span>
                           </div>
-                          <span className="text-xs text-warning bg-warning/15 px-2 py-0.5 rounded-full font-medium shrink-0 ml-2">
+                          <span className="text-xs text-accent-coral bg-accent-coral/15 px-2 py-0.5 rounded-full font-medium shrink-0 ml-2">
                             {listLeads.length}
                           </span>
                         </div>
@@ -671,12 +671,12 @@ export function LeadsKanbanManychat({
                         {listLeads.map((lead) => (
                           <div
                             key={lead.id}
-                            className="bg-white/70 dark:bg-gray-900/70 rounded-lg p-3 shadow-sm cursor-pointer hover:shadow-md transition-all opacity-75 hover:opacity-100"
+                            className="bg-white/70 dark:bg-card/70 rounded-lg p-3 shadow-sm cursor-pointer hover:shadow-md transition-all opacity-75 hover:opacity-100"
                             onClick={() => { setSelectedLead(lead); setDialogOpen(true) }}
                           >
                             <div className="flex items-start justify-between gap-2 mb-1">
                               <p className="font-medium text-sm leading-tight truncate">{lead.contact_name}</p>
-                              <Archive className="h-3 w-3 text-warning shrink-0 mt-0.5" />
+                              <Archive className="h-3 w-3 text-accent-coral shrink-0 mt-0.5" />
                             </div>
                             {lead.destination && (
                               <p className="text-xs text-muted-foreground truncate flex items-center gap-1">
@@ -716,8 +716,8 @@ export function LeadsKanbanManychat({
                   {(handleProps: any) => (
                     <div className={`
                       group rounded-xl transition-all duration-200
-                      bg-white/55 dark:bg-gray-900/55 backdrop-blur-sm
-                      ${isDragOver ? 'ring-2 ring-primary/50 bg-white/70 dark:bg-gray-900/70 shadow-lg' : 'shadow-sm hover:shadow-md'}
+                      bg-white/55 dark:bg-card/55 backdrop-blur-sm
+                      ${isDragOver ? 'ring-2 ring-primary/50 bg-white/70 dark:bg-card/70 shadow-lg' : 'shadow-sm hover:shadow-md'}
                     `}>
                       {/* ── Header de columna ── */}
                       <div className="p-4 pb-3">
@@ -732,7 +732,7 @@ export function LeadsKanbanManychat({
                                 if (e.key === "Enter") handleSaveListName(listName)
                                 else if (e.key === "Escape") { setEditingListName(null); setNewListNameValue("") }
                               }}
-                              className="flex-1 px-3 py-1.5 text-sm bg-white/90 dark:bg-gray-800/90 border border-primary/30 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20"
+                              className="flex-1 px-3 py-1.5 text-sm bg-white/90 dark:bg-card/90 border border-primary/30 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20"
                               autoFocus
                             />
                             <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-success hover:text-success hover:bg-success/10" onClick={() => handleSaveListName(listName)}>
@@ -840,8 +840,8 @@ export function LeadsKanbanManychat({
                                 onClick={() => { if (!draggedLead) { setSelectedLead(lead); setDialogOpen(true) } }}
                                 className={`
                                   cursor-grab active:cursor-grabbing rounded-xl border-l-4
-                                  ${regionBorderColors[lead.region] || "border-l-gray-300"}
-                                  bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm
+                                  ${regionBorderColors[lead.region] || "border-l-border"}
+                                  bg-white/90 dark:bg-card/90 backdrop-blur-sm
                                   shadow-sm hover:shadow-lg hover:-translate-y-0.5
                                   transition-all duration-200 p-3.5
                                   ${draggedLead === lead.id ? "opacity-40 scale-95 shadow-none" : ""}
@@ -895,7 +895,7 @@ export function LeadsKanbanManychat({
                                   <div className="flex items-center gap-2">
                                     {lead.region && (
                                       <div className="flex items-center gap-1">
-                                        <div className={`w-1.5 h-1.5 rounded-full ${regionDotColors[lead.region] || "bg-gray-400"}`} />
+                                        <div className={`w-1.5 h-1.5 rounded-full ${regionDotColors[lead.region] || "bg-muted-foreground/30"}`} />
                                         <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{lead.region}</span>
                                       </div>
                                     )}

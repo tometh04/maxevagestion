@@ -63,11 +63,11 @@ interface Requirement {
 
 const typeConfig: Record<string, { icon: any; label: string; color: string }> = {
   VACCINE: { icon: Syringe, label: "Vacuna", color: "bg-destructive" },
-  FORM: { icon: FileText, label: "Formulario", color: "bg-info" },
-  VISA: { icon: CreditCard, label: "Visa", color: "bg-purple-500" },
-  INSURANCE: { icon: Shield, label: "Seguro", color: "bg-green-500" },
-  DOCUMENT: { icon: File, label: "Documento", color: "bg-warning" },
-  OTHER: { icon: Info, label: "Otro", color: "bg-gray-500" },
+  FORM: { icon: FileText, label: "Formulario", color: "bg-accent-teal" },
+  VISA: { icon: CreditCard, label: "Visa", color: "bg-accent-violet" },
+  INSURANCE: { icon: Shield, label: "Seguro", color: "bg-success" },
+  DOCUMENT: { icon: File, label: "Documento", color: "bg-accent-coral" },
+  OTHER: { icon: Info, label: "Otro", color: "bg-muted-foreground" },
 }
 
 const emptyRequirement = {
@@ -284,8 +284,8 @@ export function DestinationRequirementsClient() {
               {/* Requisito */}
               <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <div className="flex items-center justify-center h-6 w-6 rounded-md bg-blue-500/10">
-                    <FileText className="h-3.5 w-3.5 text-blue-500" />
+                  <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                    <FileText className="h-3.5 w-3.5 text-primary" />
                   </div>
                   <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Requisito</h4>
                 </div>

@@ -287,10 +287,10 @@ export function TaskWeekView({
                 <Badge variant="secondary" className="text-xs">
                   {totalTasks} {totalTasks === 1 ? "tarea" : "tareas"}
                 </Badge>
-                <Badge variant="secondary" className="text-xs bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20">
+                <Badge variant="secondary" className="text-xs bg-success/10 text-success dark:text-success border-success/20">
                   {completedTasks} {completedTasks === 1 ? "completada" : "completadas"}
                 </Badge>
-                <Badge variant="secondary" className="text-xs bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">
+                <Badge variant="secondary" className="text-xs bg-accent-coral/10 text-accent-coral dark:text-accent-coral border-accent-coral/20">
                   {pendingTasks} {pendingTasks === 1 ? "pendiente" : "pendientes"}
                 </Badge>
               </div>

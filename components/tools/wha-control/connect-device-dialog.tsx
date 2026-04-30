@@ -220,8 +220,8 @@ export function ConnectDeviceDialog({ open, onOpenChange, onDeviceCreated, agenc
               <DialogTitle>Vinculado exitosamente</DialogTitle>
             </DialogHeader>
             <div className="px-6 py-8 flex flex-col items-center space-y-4">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
-                <CheckCircle2 className="h-8 w-8 text-green-600 dark:text-green-400" />
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-success/10 dark:bg-success/30">
+                <CheckCircle2 className="h-8 w-8 text-success dark:text-success" />
               </div>
               <p className="text-center text-sm text-muted-foreground">
                 <strong>{name}</strong> se vinculó correctamente. Los mensajes se empezarán a sincronizar automáticamente.

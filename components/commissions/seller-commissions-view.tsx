@@ -304,12 +304,12 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
             {/* Pending */}
             <div className="rounded-xl border border-border/40 p-5 space-y-1">
               <div className="flex items-center gap-2">
-                <Clock className="h-4 w-4 text-warning" />
+                <Clock className="h-4 w-4 text-accent-coral" />
                 <p className="text-xs font-medium text-muted-foreground">
                   Balance Pendiente
                 </p>
               </div>
-              <p className="text-2xl font-semibold tabular-nums tracking-tight text-warning">
+              <p className="text-2xl font-semibold tabular-nums tracking-tight text-accent-coral">
                 {fmtCurrency(pendingTotal, dominantCurrency)}
               </p>
             </div>
@@ -457,7 +457,7 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
                         {c.status === "PAID" ? (
                           <Badge variant="success">Pagada</Badge>
                         ) : (
-                          <Badge variant="warning">Pendiente</Badge>
+                          <Badge variant="coral">Pendiente</Badge>
                         )}
                       </TableCell>
                     </TableRow>

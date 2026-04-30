@@ -556,7 +556,7 @@ export function OperationsTable({
             const total = row.original.sale_amount_total || 0
             const pendingCalc = pending ?? Math.max(0, total - (row.original.paid_amount || 0))
             return (
-              <div className="text-xs text-warning font-medium text-right">
+              <div className="text-xs text-accent-coral font-medium text-right">
                 {row.original.currency} {Math.round(pendingCalc).toLocaleString("es-AR")}
               </div>
             )
@@ -570,7 +570,7 @@ export function OperationsTable({
           cell: ({ row }) => {
             const operatorPaid = row.original.operator_paid_amount || 0
             return (
-              <div className="text-xs text-info font-medium text-right">
+              <div className="text-xs text-accent-teal font-medium text-right">
                 {row.original.currency} {Math.round(operatorPaid).toLocaleString("es-AR")}
               </div>
             )
@@ -681,9 +681,9 @@ export function OperationsTable({
               <span className="font-semibold text-muted-foreground mr-1">Totales página:</span>
               {Object.entries(totals).map(([currency, t]) => (
                 <div key={currency} className="flex flex-wrap gap-x-3 gap-y-1">
-                  <span className="font-semibold text-warning">Venta: {currency} {Math.round(t.sale).toLocaleString("es-AR")}</span>
+                  <span className="font-semibold text-accent-coral">Venta: {currency} {Math.round(t.sale).toLocaleString("es-AR")}</span>
                   <span className="text-success">Cobrado: {currency} {Math.round(t.paid).toLocaleString("es-AR")}</span>
-                  <span className="text-warning">A cobrar: {currency} {Math.round(t.pending).toLocaleString("es-AR")}</span>
+                  <span className="text-accent-coral">A cobrar: {currency} {Math.round(t.pending).toLocaleString("es-AR")}</span>
                   <span className="text-success font-medium">Margen: {currency} {Math.round(t.margin).toLocaleString("es-AR")}</span>
                   {Object.keys(totals).length > 1 && <span className="text-muted-foreground">|</span>}
                 </div>
@@ -751,7 +751,7 @@ export function OperationsTable({
                 <li>Alertas y documentos</li>
                 <li>Comisiones calculadas</li>
               </ul>
-              <p className="text-sm font-medium text-warning mt-2">
+              <p className="text-sm font-medium text-accent-coral mt-2">
                 ⚠️ El cliente asociado NO se eliminará.
               </p>
               <p className="text-sm font-medium text-destructive">

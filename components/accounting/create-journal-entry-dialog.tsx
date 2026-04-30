@@ -361,9 +361,9 @@ export function CreateJournalEntryDialog({
             <div
               className={`flex items-center gap-2 text-sm px-3 py-2 rounded-md ${
                 isBalanced
-                  ? "bg-green-50 text-green-700 border border-green-200"
+                  ? "bg-success/5 text-success border border-success/15"
                   : totalDebit > 0 || totalCredit > 0
-                    ? "bg-red-50 text-red-700 border border-red-200"
+                    ? "bg-destructive/5 text-destructive border border-destructive/15"
                     : "bg-muted text-muted-foreground"
               }`}
             >

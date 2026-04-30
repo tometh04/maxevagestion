@@ -14,7 +14,7 @@ export default function NewOrgPage() {
         actions={
           <Link
             href="/admin/orgs"
-            className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-slate-200"
+            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-muted-foreground"
           >
             <ArrowLeft className="h-4 w-4" /> Volver
           </Link>

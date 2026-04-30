@@ -118,8 +118,8 @@ export default function ResetPasswordClient() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800">
-        <Card className="w-full max-w-md">
+      <div className="relative min-h-screen flex items-center justify-center bg-background section-aura">
+        <Card className="w-full max-w-md relative z-10 rounded-2xl shadow-card border-border/50">
           <CardContent className="pt-6 flex flex-col items-center">
             <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
             <p className="text-muted-foreground">Verificando enlace...</p>
@@ -131,10 +131,10 @@ export default function ResetPasswordClient() {
 
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800">
-        <Card className="w-full max-w-md">
+      <div className="relative min-h-screen flex items-center justify-center bg-background section-aura">
+        <Card className="w-full max-w-md relative z-10 rounded-2xl shadow-card border-border/50">
           <CardContent className="pt-6 flex flex-col items-center">
-            <CheckCircle2 className="h-16 w-16 text-green-500 mb-4" />
+            <CheckCircle2 className="h-16 w-16 text-success mb-4" />
             <h2 className="text-xl font-semibold mb-2">¡Contraseña actualizada!</h2>
             <p className="text-muted-foreground text-center">Redirigiendo al login...</p>
           </CardContent>
@@ -145,10 +145,10 @@ export default function ResetPasswordClient() {
 
   if (!validSession) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800">
-        <Card className="w-full max-w-md">
+      <div className="relative min-h-screen flex items-center justify-center bg-background section-aura">
+        <Card className="w-full max-w-md relative z-10 rounded-2xl shadow-card border-border/50">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-red-500">
+            <CardTitle className="flex items-center gap-2 text-destructive">
               <AlertCircle className="h-5 w-5" />
               Enlace Inválido
             </CardTitle>
@@ -172,14 +172,16 @@ export default function ResetPasswordClient() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 p-4">
-      <Card className="w-full max-w-md">
+    <div className="relative min-h-screen flex items-center justify-center bg-background section-aura p-4">
+      <Card className="w-full max-w-md relative z-10 rounded-2xl shadow-card border-border/50">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-4 h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
-            <KeyRound className="h-6 w-6 text-primary" />
+          <div className="mx-auto mb-4 h-14 w-14 rounded-2xl bg-cta-gradient flex items-center justify-center shadow-glow">
+            <KeyRound className="h-6 w-6 text-white" />
           </div>
-          <CardTitle className="text-2xl">Nueva Contraseña</CardTitle>
-          <CardDescription>Ingresá tu nueva contraseña</CardDescription>
+          <CardTitle className="text-2xl tracking-tighter-h2">
+            <span className="text-gradient-signature">Nueva Contraseña</span>
+          </CardTitle>
+          <CardDescription className="text-balance">Ingresá tu nueva contraseña</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -221,10 +223,10 @@ export default function ResetPasswordClient() {
             </div>
 
             <div className="text-xs text-muted-foreground space-y-1">
-              <p className={password.length >= 8 ? "text-green-500" : ""}>✓ Mínimo 8 caracteres</p>
-              <p className={/[A-Z]/.test(password) ? "text-green-500" : ""}>✓ Al menos una mayúscula</p>
-              <p className={/[a-z]/.test(password) ? "text-green-500" : ""}>✓ Al menos una minúscula</p>
-              <p className={/\d/.test(password) ? "text-green-500" : ""}>✓ Al menos un número</p>
+              <p className={password.length >= 8 ? "text-success" : ""}>✓ Mínimo 8 caracteres</p>
+              <p className={/[A-Z]/.test(password) ? "text-success" : ""}>✓ Al menos una mayúscula</p>
+              <p className={/[a-z]/.test(password) ? "text-success" : ""}>✓ Al menos una minúscula</p>
+              <p className={/\d/.test(password) ? "text-success" : ""}>✓ Al menos un número</p>
             </div>
 
             {error && (
@@ -233,7 +235,7 @@ export default function ResetPasswordClient() {
               </Alert>
             )}
 
-            <Button type="submit" className="w-full" disabled={submitting}>
+            <Button type="submit" variant="cta" size="lg" className="w-full" disabled={submitting}>
               {submitting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

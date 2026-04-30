@@ -31,13 +31,13 @@ export async function TrialBanner({ orgId }: { orgId: string | null }) {
 
     if (daysLeft <= 0) {
       return (
-        <div className="bg-red-600 text-white text-center text-xs py-1.5 px-4 font-medium">
+        <div className="bg-destructive text-white text-center text-xs py-1.5 px-4 font-medium">
           Tu prueba gratuita expiró. <a href="/settings/subscription" className="underline">Elegí un plan para continuar</a>
         </div>
       )
     }
 
-    const tone = daysLeft <= 2 ? "bg-orange-500" : "bg-blue-600"
+    const tone = daysLeft <= 2 ? "bg-accent-coral" : "bg-primary"
     return (
       <div className={`${tone} text-white text-center text-xs py-1.5 px-4 font-medium`}>
         Te quedan <strong>{daysLeft}</strong> {daysLeft === 1 ? "día" : "días"} de prueba gratuita.{" "}
@@ -48,7 +48,7 @@ export async function TrialBanner({ orgId }: { orgId: string | null }) {
 
   if (org.subscription_status === "PAST_DUE") {
     return (
-      <div className="bg-orange-500 text-white text-center text-xs py-1.5 px-4 font-medium">
+      <div className="bg-accent-coral text-white text-center text-xs py-1.5 px-4 font-medium">
         Hay un problema con tu pago. <a href="/settings/subscription" className="underline">Actualizá tu método de pago</a>
       </div>
     )
@@ -56,7 +56,7 @@ export async function TrialBanner({ orgId }: { orgId: string | null }) {
 
   if (org.subscription_status === "SUSPENDED") {
     return (
-      <div className="bg-red-600 text-white text-center text-xs py-1.5 px-4 font-medium">
+      <div className="bg-destructive text-white text-center text-xs py-1.5 px-4 font-medium">
         Tu cuenta está suspendida. <a href="/settings/subscription" className="underline">Reactivá tu suscripción</a>
       </div>
     )

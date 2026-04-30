@@ -190,7 +190,7 @@ export default async function AdminOrgsPage({
       </div>
 
       {error && (
-        <div className="rounded border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300">
+        <div className="rounded border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
           Error: {error.message}
         </div>
       )}

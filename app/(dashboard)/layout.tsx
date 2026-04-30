@@ -73,7 +73,7 @@ export default async function DashboardLayout({
           {orgBanner && <SubscriptionBanner {...orgBanner} />}
           <TrialBanner orgId={user.org_id ?? null} />
           {process.env.DISABLE_AUTH === "true" && (
-            <div className="bg-yellow-500 text-yellow-950 text-center text-xs py-1 px-4 font-medium">
+            <div className="bg-accent-coral text-accent-coral-foreground text-center text-xs py-1 px-4 font-medium">
               ⚠️ Modo desarrollo — Autenticación deshabilitada (DISABLE_AUTH=true)
             </div>
           )}

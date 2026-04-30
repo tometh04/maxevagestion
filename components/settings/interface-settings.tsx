@@ -374,8 +374,8 @@ export function InterfaceSettings() {
       {/* ----------------------------------------------------------------- */}
       <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
         <div className="flex items-center gap-2">
-          <div className="flex h-6 w-6 items-center justify-center rounded-md bg-violet-500/10">
-            <Building2 className="h-3.5 w-3.5 text-violet-500" />
+          <div className="flex h-6 w-6 items-center justify-center rounded-md bg-accent-violet/10">
+            <Building2 className="h-3.5 w-3.5 text-accent-violet" />
           </div>
           <span className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">
             Datos de la Empresa
@@ -717,8 +717,8 @@ export function InterfaceSettings() {
         {/* Logo de la Empresa */}
         <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
           <div className="flex items-center gap-2">
-            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-emerald-500/10">
-              <Image className="h-3.5 w-3.5 text-emerald-500" />
+            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-success/10">
+              <Image className="h-3.5 w-3.5 text-success" />
             </div>
             <span className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">
               Logo de la Empresa
@@ -728,7 +728,7 @@ export function InterfaceSettings() {
           {/* Logo area: upload placeholder OR logo preview */}
           {logoUrl ? (
             <div
-              className="relative flex items-center justify-center rounded-lg bg-zinc-900/80 p-6 min-h-[160px]"
+              className="relative flex items-center justify-center rounded-lg bg-ink/80 p-6 min-h-[160px]"
               onMouseEnter={() => setLogoHover(true)}
               onMouseLeave={() => setLogoHover(false)}
             >
@@ -743,7 +743,7 @@ export function InterfaceSettings() {
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="flex items-center gap-1.5 rounded-md bg-white/90 px-3 py-1.5 text-xs font-medium text-zinc-900 hover:bg-white transition-colors"
+                    className="flex items-center gap-1.5 rounded-md bg-white/90 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-white transition-colors"
                   >
                     <Pencil className="h-3.5 w-3.5" />
                     Cambiar

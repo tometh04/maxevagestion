@@ -93,7 +93,7 @@ export function EntityPanel<T extends Record<string, unknown>>({
             <CardDescription>{description}</CardDescription>
             {deps && deps.length > 0 && (
               <div className="flex gap-1 mt-2">
-                <span className="text-xs text-slate-500">Requiere:</span>
+                <span className="text-xs text-muted-foreground">Requiere:</span>
                 {deps.map((d) => <Badge key={d} variant="outline" className="text-xs">{d}</Badge>)}
               </div>
             )}
@@ -131,7 +131,7 @@ export function EntityPanel<T extends Record<string, unknown>>({
           <>
             <div className="text-sm flex gap-4">
               <span>Total: <strong>{rows.length}</strong></span>
-              <span className="text-green-600">OK: <strong>{validCount}</strong></span>
+              <span className="text-success">OK: <strong>{validCount}</strong></span>
               {errorCount > 0 && <span className="text-destructive">Errores: <strong>{errorCount}</strong></span>}
             </div>
             <PreviewTable rows={rows} headers={headers} />
@@ -150,7 +150,7 @@ export function EntityPanel<T extends Record<string, unknown>>({
             {progress && (
               <div>
                 <Progress value={(progress.current / progress.total) * 100} />
-                <p className="text-xs text-slate-500 mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   Chunk {progress.current} de {progress.total}
                 </p>
               </div>

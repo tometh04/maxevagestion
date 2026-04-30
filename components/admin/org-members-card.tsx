@@ -32,7 +32,7 @@ export async function OrgMembersCard({ orgId }: Props) {
   }>
 
   return (
-    <Card className="bg-slate-900/60 border-slate-800">
+    <Card className="bg-ink/60 border-muted-foreground">
       <CardHeader>
         <CardTitle className="text-white text-base">
           Miembros ({rows.length})
@@ -40,11 +40,11 @@ export async function OrgMembersCard({ orgId }: Props) {
       </CardHeader>
       <CardContent>
         {rows.length === 0 ? (
-          <p className="text-sm text-slate-400">Sin miembros.</p>
+          <p className="text-sm text-muted-foreground">Sin miembros.</p>
         ) : (
-          <div className="overflow-x-auto rounded border border-slate-800">
+          <div className="overflow-x-auto rounded border border-muted-foreground">
             <table className="min-w-full text-sm">
-              <thead className="bg-slate-900/60 text-xs uppercase tracking-wide text-slate-400">
+              <thead className="bg-ink/60 text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
                   <Th>Email</Th>
                   <Th>Nombre</Th>
@@ -61,28 +61,28 @@ export async function OrgMembersCard({ orgId }: Props) {
                     <tr
                       key={m.id}
                       className={cn(
-                        "border-t border-slate-800",
-                        !m.is_active && "bg-slate-700/15",
+                        "border-t border-muted-foreground",
+                        !m.is_active && "bg-ink/15",
                       )}
                     >
-                      <Td className="font-medium text-slate-200">{m.email}</Td>
+                      <Td className="font-medium text-muted-foreground">{m.email}</Td>
                       <Td>{m.name ?? "—"}</Td>
                       <Td>
-                        <span className="rounded bg-slate-800 px-2 py-0.5 text-xs">
+                        <span className="rounded bg-ink px-2 py-0.5 text-xs">
                           {m.role}
                         </span>
                       </Td>
                       <Td>
                         {m.is_active ? (
-                          <span className="text-emerald-400">✓</span>
+                          <span className="text-success">✓</span>
                         ) : (
-                          <span className="rounded bg-red-500/15 px-2 py-0.5 text-xs text-red-400">
+                          <span className="rounded bg-destructive/15 px-2 py-0.5 text-xs text-destructive">
                             Inactivo
                           </span>
                         )}
                       </Td>
-                      <Td className="text-slate-400">{relativeTime(lastSignIn)}</Td>
-                      <Td className="text-slate-400">{relativeTime(m.created_at)}</Td>
+                      <Td className="text-muted-foreground">{relativeTime(lastSignIn)}</Td>
+                      <Td className="text-muted-foreground">{relativeTime(m.created_at)}</Td>
                     </tr>
                   )
                 })}

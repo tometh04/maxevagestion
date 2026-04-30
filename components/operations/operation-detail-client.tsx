@@ -272,7 +272,7 @@ export function OperationDetailClient({
         </div>
         <div className="flex items-center gap-2">
           {isSupportMode && (
-            <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-700">
+            <Badge variant="outline" className="border-primary/15 bg-primary/5 text-primary">
               Postventa
             </Badge>
           )}
@@ -591,27 +591,27 @@ export function OperationDetailClient({
               <CardContent className="space-y-4">
                 {/* KPIs principales */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200/50 dark:border-blue-800/50 p-4">
-                    <p className="text-xs font-medium text-blue-600 dark:text-blue-400 uppercase tracking-wide">💵 Venta Total</p>
-                    <p className="text-xl font-bold text-blue-700 dark:text-blue-300 mt-1">
+                  <div className="rounded-xl bg-primary/5 dark:bg-primary/30 border border-primary/50 dark:border-primary/50 p-4">
+                    <p className="text-xs font-medium text-primary dark:text-primary uppercase tracking-wide">💵 Venta Total</p>
+                    <p className="text-xl font-bold text-primary dark:text-primary mt-1">
                       {operationCurrency} {totalSale.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
                     </p>
                   </div>
-                  <div className="rounded-xl bg-orange-50 dark:bg-orange-950/30 border border-orange-200/50 dark:border-orange-800/50 p-4">
-                    <p className="text-xs font-medium text-orange-600 dark:text-orange-400 uppercase tracking-wide">📦 Costo Total</p>
-                    <p className="text-xl font-bold text-orange-700 dark:text-orange-300 mt-1">
+                  <div className="rounded-xl bg-accent-coral/5 dark:bg-accent-coral/30 border border-accent-coral/50 dark:border-accent-coral/50 p-4">
+                    <p className="text-xs font-medium text-accent-coral dark:text-accent-coral uppercase tracking-wide">📦 Costo Total</p>
+                    <p className="text-xl font-bold text-accent-coral dark:text-accent-coral mt-1">
                       {operationCostCurrency} {totalCost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
                     </p>
                   </div>
-                  <div className="rounded-xl bg-green-50 dark:bg-green-950/30 border border-green-200/50 dark:border-green-800/50 p-4">
-                    <p className="text-xs font-medium text-green-600 dark:text-green-400 uppercase tracking-wide">📊 Margen</p>
-                    <p className="text-xl font-bold text-green-700 dark:text-green-300 mt-1">
+                  <div className="rounded-xl bg-success/5 dark:bg-success/30 border border-success/50 dark:border-success/50 p-4">
+                    <p className="text-xs font-medium text-success dark:text-success uppercase tracking-wide">📊 Margen</p>
+                    <p className="text-xl font-bold text-success dark:text-success mt-1">
                       {operationCurrency} {totalMargin.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
                     </p>
                   </div>
-                  <div className="rounded-xl bg-purple-50 dark:bg-purple-950/30 border border-purple-200/50 dark:border-purple-800/50 p-4">
-                    <p className="text-xs font-medium text-purple-600 dark:text-purple-400 uppercase tracking-wide">📈 Margen %</p>
-                    <p className="text-xl font-bold text-purple-700 dark:text-purple-300 mt-1">
+                  <div className="rounded-xl bg-accent-violet/5 dark:bg-accent-violet/30 border border-accent-violet/50 dark:border-accent-violet/50 p-4">
+                    <p className="text-xs font-medium text-accent-violet dark:text-accent-violet uppercase tracking-wide">📈 Margen %</p>
+                    <p className="text-xl font-bold text-accent-violet dark:text-accent-violet mt-1">
                       {totalMarginPct.toFixed(1)}%
                     </p>
                   </div>
@@ -634,7 +634,7 @@ export function OperationDetailClient({
                       </div>
                       <div className="text-right">
                         <span className="text-xs text-muted-foreground">Margen</span>
-                        <p className="font-semibold text-green-600">{operationCurrency} {operation.margin_amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</p>
+                        <p className="font-semibold text-success">{operationCurrency} {operation.margin_amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</p>
                       </div>
                     </div>
                   </div>
@@ -666,7 +666,7 @@ export function OperationDetailClient({
                               {margin !== null && (
                                 <div className="text-right">
                                   <span className="text-xs text-muted-foreground">Margen</span>
-                                  <p className={`font-medium ${margin >= 0 ? "text-green-600" : "text-red-600"}`}>
+                                  <p className={`font-medium ${margin >= 0 ? "text-success" : "text-destructive"}`}>
                                     {svc.sale_currency} {margin.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
                                   </p>
                                 </div>
@@ -777,7 +777,7 @@ export function OperationDetailClient({
                     <Button 
                       variant="outline" 
                       size="sm"
-                      className="text-red-600 hover:text-red-700"
+                      className="text-destructive hover:text-destructive"
                       onClick={handleDeleteAlerts}
                       disabled={isDeletingAlerts}
                     >

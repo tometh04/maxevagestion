@@ -51,9 +51,9 @@ import { ExpenseReceiptDialog } from "./expense-receipt-dialog"
 import { CCPaymentDialog } from "./cc-payment-dialog"
 
 const CLASSIFICATION_BADGES: Record<string, { label: string; className: string }> = {
-  GASTOS_AGENCIA: { label: "Agencia", className: "border-blue-400 text-blue-600 dark:text-blue-400" },
-  VENTAS: { label: "Ventas", className: "border-green-400 text-green-600 dark:text-green-400" },
-  RETIRO_PERSONAL: { label: "Retiro", className: "border-orange-400 text-orange-600 dark:text-orange-400" },
+  GASTOS_AGENCIA: { label: "Agencia", className: "border-primary/30 text-primary dark:text-primary" },
+  VENTAS: { label: "Ventas", className: "border-success/30 text-success dark:text-success" },
+  RETIRO_PERSONAL: { label: "Retiro", className: "border-accent-coral/30 text-accent-coral dark:text-accent-coral" },
 }
 
 interface Category {
@@ -225,14 +225,14 @@ export function VariableExpensesTab() {
       <div className="grid gap-4 md:grid-cols-2">
         <div className="rounded-xl border border-border/40 p-5">
             <div className="flex items-center gap-2 mb-2">
-              <DollarSign className="h-4 w-4 text-blue-600" />
+              <DollarSign className="h-4 w-4 text-primary" />
               <span className="text-xs font-medium text-muted-foreground">Total ARS</span>
             </div>
             <p className="text-2xl font-semibold tabular-nums tracking-tight">{formatCurrency(totals.ars, "ARS")}</p>
         </div>
         <div className="rounded-xl border border-border/40 p-5">
             <div className="flex items-center gap-2 mb-2">
-              <DollarSign className="h-4 w-4 text-green-600" />
+              <DollarSign className="h-4 w-4 text-success" />
               <span className="text-xs font-medium text-muted-foreground">Total USD</span>
             </div>
             <p className="text-2xl font-semibold tabular-nums tracking-tight">{formatCurrency(totals.usd, "USD")}</p>
@@ -412,7 +412,7 @@ export function VariableExpensesTab() {
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           onClick={() => setDeleteDialog({ open: true, expense })}
-                          className="text-red-600"
+                          className="text-destructive"
                         >
                           <Trash2 className="h-4 w-4 mr-2" />
                           Eliminar
@@ -521,7 +521,7 @@ export function VariableExpensesTab() {
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-destructive hover:bg-destructive"
               disabled={saving}
             >
               {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}

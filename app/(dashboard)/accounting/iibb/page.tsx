@@ -94,7 +94,7 @@ export default function IIBBPage() {
             <Card>
               <CardContent className="pt-6">
                 <div className="flex items-center gap-2 mb-1">
-                  <Building2 className="h-4 w-4 text-gray-500" />
+                  <Building2 className="h-4 w-4 text-muted-foreground" />
                   <span className="text-xs text-muted-foreground">Base Imponible</span>
                 </div>
                 <p className="text-xl font-bold">{formatMoney(data.base_imponible)}</p>
@@ -104,32 +104,32 @@ export default function IIBBPage() {
             <Card>
               <CardContent className="pt-6">
                 <div className="flex items-center gap-2 mb-1">
-                  <TrendingDown className="h-4 w-4 text-red-500" />
+                  <TrendingDown className="h-4 w-4 text-destructive" />
                   <span className="text-xs text-muted-foreground">IIBB Bruto</span>
                 </div>
-                <p className="text-xl font-bold text-red-600">{formatMoney(data.iibb_bruto)}</p>
+                <p className="text-xl font-bold text-destructive">{formatMoney(data.iibb_bruto)}</p>
                 <p className="text-xs text-muted-foreground">{data.iibb_rate}% de base</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="pt-6">
                 <div className="flex items-center gap-2 mb-1">
-                  <TrendingUp className="h-4 w-4 text-green-500" />
+                  <TrendingUp className="h-4 w-4 text-success" />
                   <span className="text-xs text-muted-foreground">Créditos a Favor</span>
                 </div>
-                <p className="text-xl font-bold text-green-600">{formatMoney(data.creditos.total)}</p>
+                <p className="text-xl font-bold text-success">{formatMoney(data.creditos.total)}</p>
                 <p className="text-xs text-muted-foreground">
                   Perc: {formatMoney(data.creditos.percepciones_iibb)} + Ret: {formatMoney(data.creditos.retenciones_iibb)}
                 </p>
               </CardContent>
             </Card>
-            <Card className={data.iibb_neto > 0 ? "border-red-200 bg-red-50" : "border-green-200 bg-green-50"}>
+            <Card className={data.iibb_neto > 0 ? "border-destructive/15 bg-destructive/5" : "border-success/15 bg-success/5"}>
               <CardContent className="pt-6">
                 <div className="flex items-center gap-2 mb-1">
                   <Calculator className="h-4 w-4" />
                   <span className="text-xs text-muted-foreground">IIBB Neto a Pagar</span>
                 </div>
-                <p className={`text-xl font-bold ${data.iibb_neto > 0 ? "text-red-700" : "text-green-700"}`}>
+                <p className={`text-xl font-bold ${data.iibb_neto > 0 ? "text-destructive" : "text-success"}`}>
                   {formatMoney(data.iibb_neto)}
                 </p>
                 <p className="text-xs text-muted-foreground">Bruto - Créditos</p>
@@ -150,19 +150,19 @@ export default function IIBBPage() {
                 </div>
                 <div className="flex justify-between py-2 border-b">
                   <span className="text-sm">× Alícuota IIBB ({data.iibb_rate}%)</span>
-                  <span className="font-medium text-red-600">= {formatMoney(data.iibb_bruto)}</span>
+                  <span className="font-medium text-destructive">= {formatMoney(data.iibb_bruto)}</span>
                 </div>
                 <div className="flex justify-between py-2 border-b">
                   <span className="text-sm">- Percepciones IIBB sufridas</span>
-                  <span className="font-medium text-green-600">- {formatMoney(data.creditos.percepciones_iibb)}</span>
+                  <span className="font-medium text-success">- {formatMoney(data.creditos.percepciones_iibb)}</span>
                 </div>
                 <div className="flex justify-between py-2 border-b">
                   <span className="text-sm">- Retenciones IIBB sufridas</span>
-                  <span className="font-medium text-green-600">- {formatMoney(data.creditos.retenciones_iibb)}</span>
+                  <span className="font-medium text-success">- {formatMoney(data.creditos.retenciones_iibb)}</span>
                 </div>
                 <div className="flex justify-between py-2 font-bold text-lg">
                   <span>= IIBB Neto a Pagar</span>
-                  <span className={data.iibb_neto > 0 ? "text-red-700" : "text-green-700"}>
+                  <span className={data.iibb_neto > 0 ? "text-destructive" : "text-success"}>
                     {formatMoney(data.iibb_neto)}
                   </span>
                 </div>

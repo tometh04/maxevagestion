@@ -106,7 +106,7 @@ export function OCRResultsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[95vw] sm:max-w-[600px] max-h-[95vh] overflow-y-auto">
+      <DialogContent className="max-w-[95vw] sm:max-w-[600px] max-h-[95vh]">
         <DialogHeader>
           <DialogTitle>Resultados del OCR</DialogTitle>
           <DialogDescription>
@@ -130,7 +130,7 @@ export function OCRResultsDialog({
         )}
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleConfirm)} className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
+          <form onSubmit={form.handleSubmit(handleConfirm)} className="flex-1 overflow-y-auto min-h-0 px-6 py-5 space-y-5">
             {/* Personal Info Section */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-2 mb-3">
@@ -173,8 +173,8 @@ export function OCRResultsDialog({
             {/* Document Info Section */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-2 mb-3">
-                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-blue-500/10">
-                  <CreditCard className="h-3.5 w-3.5 text-blue-500" />
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                  <CreditCard className="h-3.5 w-3.5 text-primary" />
                 </div>
                 <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Documento</h4>
               </div>
@@ -212,8 +212,8 @@ export function OCRResultsDialog({
             {/* Dates Section */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-2 mb-3">
-                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-violet-500/10">
-                  <CalendarDays className="h-3.5 w-3.5 text-violet-500" />
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-accent-violet/10">
+                  <CalendarDays className="h-3.5 w-3.5 text-accent-violet" />
                 </div>
                 <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Fechas</h4>
               </div>
@@ -259,8 +259,8 @@ export function OCRResultsDialog({
             {/* Nationality Section */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-2 mb-3">
-                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-emerald-500/10">
-                  <Globe className="h-3.5 w-3.5 text-emerald-500" />
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-success/10">
+                  <Globe className="h-3.5 w-3.5 text-success" />
                 </div>
                 <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Nacionalidad</h4>
               </div>

@@ -101,12 +101,12 @@ const MONTH_NAMES: Record<string, string> = {
 }
 
 const REGION_COLORS: Record<string, string> = {
-  ARGENTINA: "bg-info",
-  CARIBE: "bg-cyan-500",
+  ARGENTINA: "bg-accent-teal",
+  CARIBE: "bg-accent-teal",
   BRASIL: "bg-success",
-  EUROPA: "bg-purple-500",
+  EUROPA: "bg-accent-violet",
   EEUU: "bg-destructive",
-  OTROS: "bg-gray-400",
+  OTROS: "bg-muted-foreground/30",
   CRUCEROS: "bg-primary",
 }
 
@@ -325,7 +325,7 @@ export function QuotationsDashboard({ sellers, agencies, currentUserRole, curren
 
             <Card className="p-5">
               <div className="flex items-center gap-1 mb-3">
-                <AlertTriangle className="h-4 w-4 text-warning" />
+                <AlertTriangle className="h-4 w-4 text-accent-coral" />
                 <p className="text-sm font-medium text-muted-foreground">Perdidas</p>
               </div>
               <p className="text-2xl font-semibold tabular-nums">{summary.rejected + summary.expired}</p>
@@ -344,10 +344,10 @@ export function QuotationsDashboard({ sellers, agencies, currentUserRole, curren
           <div className="flex items-center gap-2 flex-wrap">
             {[
               { label: "Borrador", count: summary.drafts, color: "bg-muted text-muted-foreground", icon: FileText },
-              { label: "Enviadas", count: summary.sent, color: "bg-info/10 text-info", icon: Send },
+              { label: "Enviadas", count: summary.sent, color: "bg-accent-teal/10 text-accent-teal", icon: Send },
               { label: "Aprobadas", count: summary.approved, color: "bg-success/10 text-success", icon: CheckCircle2 },
               { label: "Rechazadas", count: summary.rejected, color: "bg-destructive/10 text-destructive", icon: XCircle },
-              { label: "Vencidas", count: summary.expired, color: "bg-warning/10 text-warning", icon: Clock },
+              { label: "Vencidas", count: summary.expired, color: "bg-accent-coral/10 text-accent-coral", icon: Clock },
             ].map((s) => (
               <div key={s.label} className="flex items-center gap-2 flex-1 min-w-[140px]">
                 <div className={`flex items-center justify-center w-10 h-10 rounded-lg ${s.color}`}>
@@ -454,7 +454,7 @@ export function QuotationsDashboard({ sellers, agencies, currentUserRole, curren
                     </div>
                     <Badge
                       variant="secondary"
-                      className={`text-xs ${rate >= 50 ? "bg-success/10 text-success" : rate >= 25 ? "bg-warning/10 text-warning" : "bg-muted"}`}
+                      className={`text-xs ${rate >= 50 ? "bg-success/10 text-success" : rate >= 25 ? "bg-accent-coral/10 text-accent-coral" : "bg-muted"}`}
                     >
                       {rate}%
                     </Badge>
@@ -525,7 +525,7 @@ export function QuotationsDashboard({ sellers, agencies, currentUserRole, curren
               {regionStats.map((r) => {
                 const total = regionStats.reduce((sum, x) => sum + x.count, 0)
                 const pct = total > 0 ? Math.round((r.count / total) * 100) : 0
-                const colorClass = REGION_COLORS[r.region] || "bg-gray-400"
+                const colorClass = REGION_COLORS[r.region] || "bg-muted-foreground/30"
                 return (
                   <div key={r.region} className="flex items-center gap-3">
                     <div className={`w-3 h-3 rounded-full flex-shrink-0 ${colorClass}`} />
@@ -583,10 +583,10 @@ export function QuotationsDashboard({ sellers, agencies, currentUserRole, curren
                   {quotationsList.map((q) => {
                     const statusConfig: Record<string, { label: string; color: string }> = {
                       DRAFT: { label: "Borrador", color: "bg-muted text-muted-foreground" },
-                      SENT: { label: "Enviada", color: "bg-info/10 text-info" },
+                      SENT: { label: "Enviada", color: "bg-accent-teal/10 text-accent-teal" },
                       APPROVED: { label: "Aprobada", color: "bg-success/10 text-success" },
                       REJECTED: { label: "Rechazada", color: "bg-destructive/10 text-destructive" },
-                      EXPIRED: { label: "Vencida", color: "bg-warning/10 text-warning" },
+                      EXPIRED: { label: "Vencida", color: "bg-accent-coral/10 text-accent-coral" },
                       CONVERTED: { label: "Convertida", color: "bg-primary/10 text-primary" },
                     }
                     const sc = statusConfig[q.status] || statusConfig.DRAFT
