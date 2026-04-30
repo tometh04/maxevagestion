@@ -49,11 +49,12 @@ export async function POST(
       )
     }
 
-    // SP-2: Re-check margin cap (race-safe: otro POST podría haber completado
-    // mientras esta factura estaba en draft/pending)
+    // Re-check total sold cap (race-safe: otro POST podría haber completado
+    // mientras esta factura estaba en draft/pending). La facturación de
+    // operaciones debe cubrir el total vendido, no solo el margen.
     if (invoice.operation_id) {
       const { data: operation } = await (supabase.from("operations") as any)
-        .select("margin_amount")
+        .select("sale_amount_total")
         .eq("id", invoice.operation_id)
         .single()
 
@@ -68,17 +69,17 @@ export async function POST(
           (acc: number, i: any) => acc + Number(i.imp_total),
           0
         )
-        const margin = Number(operation.margin_amount)
+        const saleTotal = Number(operation.sale_amount_total)
         const projected = already + Number(invoice.imp_total)
 
-        if (projected > margin + 0.01) {
+        if (projected > saleTotal + 0.01) {
           await (supabase.from("invoices") as any)
-            .update({ status: "rejected" })
+            .update({ status: "draft" })
             .eq("id", invoice.id)
           return NextResponse.json(
             {
-              error: `No se puede autorizar: otra factura completó el margen mientras este draft esperaba. Restante actual: $${(margin - already).toFixed(2)}`,
-              max_remaining: margin - already,
+              error: `No se puede autorizar: otra factura completó el total vendido mientras este draft esperaba. Restante actual: $${(saleTotal - already).toFixed(2)}`,
+              max_remaining: saleTotal - already,
             },
             { status: 400 }
           )
