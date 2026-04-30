@@ -218,27 +218,36 @@ export function NewOperationDialog({
   const [loadingCustomers, setLoadingCustomers] = useState(false)
   const [showNewCustomerDialog, setShowNewCustomerDialog] = useState(false)
 
+  const upsertCustomers = React.useCallback((incoming: Array<{ id: string; first_name: string; last_name: string }>) => {
+    setCustomers((prev) => {
+      const byId = new Map(prev.map((customer) => [customer.id, customer]))
+      for (const customer of incoming) {
+        byId.set(customer.id, customer)
+      }
+      return Array.from(byId.values())
+    })
+  }, [])
+
+  const toCustomerOptions = React.useCallback((items: Array<{ id: string; first_name: string; last_name: string }>) => {
+    return items.slice(0, 50).map((customer) => ({
+      value: customer.id,
+      label: `${customer.first_name} ${customer.last_name}`.trim(),
+    }))
+  }, [])
+
   // Sincronizar operadores cuando cambian
   useEffect(() => {
     setLocalOperators(operators)
   }, [operators])
 
-  // Cargar configuración de operaciones
-  useEffect(() => {
-    if (open) {
-      loadSettings()
-      loadCustomers()
-    }
-  }, [open])
-
   // Cargar lista de clientes
-  const loadCustomers = async () => {
+  const loadCustomers = React.useCallback(async () => {
     setLoadingCustomers(true)
     try {
       const response = await fetch('/api/customers?limit=200&context=selector')
       if (response.ok) {
         const data = await response.json()
-        setCustomers((data.customers || []).map((c: any) => ({
+        upsertCustomers((data.customers || []).map((c: any) => ({
           id: c.id,
           first_name: c.first_name,
           last_name: c.last_name,
@@ -254,9 +263,41 @@ export function NewOperationDialog({
     } finally {
       setLoadingCustomers(false)
     }
-  }
+  }, [toast, upsertCustomers])
 
-  const loadSettings = async () => {
+  const searchCustomers = React.useCallback(async (query: string): Promise<ComboboxOption[]> => {
+    const trimmedQuery = query.trim()
+
+    if (!trimmedQuery) {
+      return toCustomerOptions(customers)
+    }
+
+    const params = new URLSearchParams({
+      limit: "50",
+      context: "selector",
+      search: trimmedQuery,
+    })
+
+    try {
+      const response = await fetch(`/api/customers?${params.toString()}`)
+      if (!response.ok) return []
+
+      const data = await response.json()
+      const remoteCustomers = (data.customers || []).map((customer: any) => ({
+        id: customer.id,
+        first_name: customer.first_name,
+        last_name: customer.last_name,
+      }))
+
+      upsertCustomers(remoteCustomers)
+      return toCustomerOptions(remoteCustomers)
+    } catch (error) {
+      console.error("Error searching customers:", error)
+      return []
+    }
+  }, [customers, toCustomerOptions, upsertCustomers])
+
+  const loadSettings = React.useCallback(async () => {
     try {
       const response = await fetch('/api/operations/settings')
       if (response.ok) {
@@ -271,7 +312,15 @@ export function NewOperationDialog({
         variant: "destructive",
       })
     }
-  }
+  }, [toast])
+
+  // Cargar configuración de operaciones
+  useEffect(() => {
+    if (open) {
+      loadSettings()
+      loadCustomers()
+    }
+  }, [open, loadSettings, loadCustomers])
 
   // Estados disponibles (estándar + personalizados)
   const availableStatuses = React.useMemo(() => {
@@ -728,17 +777,7 @@ export function NewOperationDialog({
                                   : ""
                                 : ""
                             }
-                            searchFn={async (query) => {
-                              const filtered = query
-                                ? customers.filter(c =>
-                                    `${c.first_name} ${c.last_name}`.toLowerCase().includes(query.toLowerCase())
-                                  )
-                                : customers
-                              return filtered.slice(0, 50).map(c => ({
-                                value: c.id,
-                                label: `${c.first_name} ${c.last_name}`,
-                              }))
-                            }}
+                            searchFn={searchCustomers}
                           />
                         </div>
                         <Button
