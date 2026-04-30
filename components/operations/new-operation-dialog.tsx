@@ -215,16 +215,32 @@ export function NewOperationDialog({
   
   // Estado para clientes
   const [customers, setCustomers] = useState<Array<{ id: string; first_name: string; last_name: string }>>([])
+  const customersRef = React.useRef(customers)
   const [loadingCustomers, setLoadingCustomers] = useState(false)
   const [showNewCustomerDialog, setShowNewCustomerDialog] = useState(false)
 
+  useEffect(() => {
+    customersRef.current = customers
+  }, [customers])
+
   const upsertCustomers = React.useCallback((incoming: Array<{ id: string; first_name: string; last_name: string }>) => {
     setCustomers((prev) => {
+      let changed = false
       const byId = new Map(prev.map((customer) => [customer.id, customer]))
+
       for (const customer of incoming) {
-        byId.set(customer.id, customer)
+        const existing = byId.get(customer.id)
+        if (
+          !existing ||
+          existing.first_name !== customer.first_name ||
+          existing.last_name !== customer.last_name
+        ) {
+          changed = true
+          byId.set(customer.id, customer)
+        }
       }
-      return Array.from(byId.values())
+
+      return changed ? Array.from(byId.values()) : prev
     })
   }, [])
 
@@ -269,7 +285,7 @@ export function NewOperationDialog({
     const trimmedQuery = query.trim()
 
     if (!trimmedQuery) {
-      return toCustomerOptions(customers)
+      return toCustomerOptions(customersRef.current)
     }
 
     const params = new URLSearchParams({
@@ -295,7 +311,7 @@ export function NewOperationDialog({
       console.error("Error searching customers:", error)
       return []
     }
-  }, [customers, toCustomerOptions, upsertCustomers])
+  }, [toCustomerOptions, upsertCustomers])
 
   const loadSettings = React.useCallback(async () => {
     try {
