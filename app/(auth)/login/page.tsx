@@ -23,6 +23,9 @@ export default function LoginPage() {
             />
           </div>
           <div className="space-y-3">
+            <span className="text-[11px] font-semibold uppercase tracking-eyebrow text-white/70">
+              Sistema de Gestión de Agencia
+            </span>
             <p className="text-2xl font-semibold tracking-tight-h2 text-white text-balance max-w-md mx-auto leading-tight">
               Toda tu agencia en un solo lugar
             </p>
