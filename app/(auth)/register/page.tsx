@@ -1,7 +1,6 @@
 import { Suspense } from "react"
 import { Globe, MapPin, GalleryVerticalEnd } from "lucide-react"
 import Image from "next/image"
-import Link from "next/link"
 
 import { RegisterForm } from "@/components/register-form"
 
@@ -15,12 +14,12 @@ export default function RegisterPage() {
         <div className="relative z-10 text-center text-white space-y-10">
           <div className="flex justify-center">
             <Image
-              src="/vibook-logo-Photoroom.png"
+              src="/vibook-logo-white.png"
               alt="Vibook"
-              width={600}
-              height={280}
+              width={480}
+              height={144}
               priority
-              className="h-auto w-auto max-h-56 object-contain"
+              className="h-auto w-auto max-h-52 object-contain"
             />
           </div>
           <div className="space-y-3">
@@ -55,18 +54,6 @@ export default function RegisterPage() {
       </div>
       <div className="relative flex flex-1 items-center justify-center p-6 md:p-10 section-aura">
         <div className="w-full max-w-md relative z-10">
-          <div className="flex justify-center mb-8">
-            <Link href="/" className="inline-flex items-center">
-              <Image
-                src="/vibook-logo.jpeg"
-                alt="Vibook"
-                width={180}
-                height={54}
-                priority
-                className="h-auto w-auto max-h-12 object-contain"
-              />
-            </Link>
-          </div>
           {/* Suspense requerido por useSearchParams en el form (Next 15+). */}
           <Suspense fallback={null}>
             <RegisterForm />

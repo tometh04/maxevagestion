@@ -1,6 +1,5 @@
 import { Globe, MapPin, GalleryVerticalEnd } from "lucide-react"
 import Image from "next/image"
-import Link from "next/link"
 
 import { LoginForm } from "@/components/login-form"
 
@@ -15,18 +14,15 @@ export default function LoginPage() {
         <div className="relative z-10 text-center text-white space-y-10">
           <div className="flex justify-center">
             <Image
-              src="/vibook-logo-Photoroom.png"
+              src="/vibook-logo-white.png"
               alt="Vibook"
-              width={600}
-              height={280}
+              width={480}
+              height={144}
               priority
-              className="h-auto w-auto max-h-56 object-contain"
+              className="h-auto w-auto max-h-52 object-contain"
             />
           </div>
           <div className="space-y-3">
-            <span className="text-[11px] font-semibold uppercase tracking-eyebrow text-white/70">
-              Plataforma
-            </span>
             <p className="text-2xl font-semibold tracking-tight-h2 text-white text-balance max-w-md mx-auto leading-tight">
               Toda tu agencia en un solo lugar
             </p>
@@ -56,18 +52,6 @@ export default function LoginPage() {
       {/* Login centrado a la derecha */}
       <div className="relative flex flex-1 items-center justify-center p-6 md:p-10 section-aura">
         <div className="w-full max-w-md relative z-10">
-          <div className="flex justify-center mb-8">
-            <Link href="/" className="inline-flex items-center">
-              <Image
-                src="/vibook-logo.jpeg"
-                alt="Vibook"
-                width={180}
-                height={54}
-                priority
-                className="h-auto w-auto max-h-12 object-contain"
-              />
-            </Link>
-          </div>
           <LoginForm />
         </div>
       </div>
