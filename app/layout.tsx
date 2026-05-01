@@ -8,7 +8,7 @@ import "./globals.css"
 
 const inter = Inter({ subsets: ["latin"] })
 
-const DEFAULT_TITLE = "Vibook - Gestión de Agencia de Viajes"
+const DEFAULT_TITLE = "Vibook - Sistema de Gestión"
 const DEFAULT_DESCRIPTION = "Sistema de gestión integral para agencias de viajes"
 
 // Título dinámico por tenant con cadena de fallbacks:

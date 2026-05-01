@@ -15,12 +15,12 @@ export default function RegisterPage() {
         <div className="relative z-10 text-center text-white space-y-10">
           <div className="flex justify-center">
             <Image
-              src="/vibook-logo-white.png"
+              src="/vibook-logo-Photoroom.png"
               alt="Vibook"
-              width={240}
-              height={72}
+              width={600}
+              height={280}
               priority
-              className="h-auto w-auto max-h-20 object-contain"
+              className="h-auto w-auto max-h-56 object-contain"
             />
           </div>
           <div className="space-y-3">
