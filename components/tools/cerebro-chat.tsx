@@ -184,7 +184,7 @@ export function CerebroChat({ userId, userName }: CerebroChatProps) {
             Hola, {firstName}
           </h1>
           <p className="text-muted-foreground text-center mb-10 max-w-md">
-            Soy Cerebro, tu asistente de MAXEVA. Puedo ayudarte con información sobre ventas, clientes, operaciones y más.
+            Soy Cerebro, tu asistente de Vibook. Puedo ayudarte con información sobre ventas, clientes, operaciones y más.
           </p>
 
           {/* Quick Actions Grid */}
