@@ -751,7 +751,12 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Entorno</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      {/* Bug #13b: tenía defaultValue={field.value} que hacía
+                          al Select uncontrolled — el valor visual cambiaba
+                          pero form.state seguía en "production", así que al
+                          submit se mandaba siempre Producción aunque el user
+                          hubiera elegido Sandbox. Cambiado a controlled. */}
+                      <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue />
