@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { revalidatePath } from "next/cache"
 import { getCurrentUser } from "@/lib/auth"
 import { createServerClient, createAdminClient } from "@/lib/supabase/server"
 import { isPlatformAdmin } from "@/lib/auth/platform"
@@ -61,6 +62,10 @@ export async function POST(
     targetEntityId: orgId,
     details: { days, before: org.trial_ends_at, after: newTrialEnds },
   })
+
+  // Bug #7: invalidar caché de la página de detalle para que router.refresh() del cliente
+  // traiga el trial_ends_at recién actualizado (sin esto el RSC puede servir el valor viejo).
+  revalidatePath(`/admin/orgs/${orgId}`)
 
   return NextResponse.json({ ok: true, trial_ends_at: newTrialEnds })
 }
