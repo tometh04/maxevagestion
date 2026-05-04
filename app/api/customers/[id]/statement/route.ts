@@ -113,7 +113,7 @@ export async function GET(
       font-family: 'Segoe UI', Arial, sans-serif;
       font-size: 12px;
       line-height: 1.5;
-      color: #333;
+      color: hsl(222 47% 11%);
       padding: 40px;
     }
     .header {
@@ -122,32 +122,32 @@ export async function GET(
       align-items: flex-start;
       margin-bottom: 40px;
       padding-bottom: 20px;
-      border-bottom: 3px solid #667eea;
+      border-bottom: 3px solid hsl(232 76% 58%);
     }
     .logo { max-width: 150px; height: auto; }
-    .agency-info { text-align: right; font-size: 11px; color: #666; }
-    .agency-name { font-size: 18px; font-weight: bold; color: #333; margin-bottom: 5px; }
-    
+    .agency-info { text-align: right; font-size: 11px; color: hsl(226 12% 48%); }
+    .agency-name { font-size: 18px; font-weight: bold; color: hsl(222 47% 11%); margin-bottom: 5px; }
+
     .document-title {
       text-align: center;
       margin-bottom: 30px;
     }
     .document-title h1 {
       font-size: 24px;
-      color: #667eea;
+      color: hsl(232 76% 58%);
       margin-bottom: 5px;
     }
-    .document-title p { color: #666; }
-    
+    .document-title p { color: hsl(226 12% 48%); }
+
     .customer-info {
-      background: #f8f9fa;
+      background: hsl(224 28% 97%);
       padding: 20px;
       border-radius: 8px;
       margin-bottom: 30px;
     }
     .customer-info h2 {
       font-size: 14px;
-      color: #667eea;
+      color: hsl(232 76% 58%);
       margin-bottom: 10px;
       text-transform: uppercase;
       letter-spacing: 1px;
@@ -158,9 +158,9 @@ export async function GET(
       gap: 10px;
     }
     .info-item { font-size: 12px; }
-    .info-label { color: #666; }
+    .info-label { color: hsl(226 12% 48%); }
     .info-value { font-weight: 600; }
-    
+
     .summary-cards {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
@@ -172,9 +172,9 @@ export async function GET(
       border-radius: 8px;
       text-align: center;
     }
-    .summary-card.total { background: #e3e7fd; }
-    .summary-card.paid { background: #d4edda; }
-    .summary-card.pending { background: #fff3cd; }
+    .summary-card.total { background: hsl(232 76% 58% / 0.10); }
+    .summary-card.paid { background: hsl(160 58% 42% / 0.15); }
+    .summary-card.pending { background: hsl(10 78% 66% / 0.15); }
     .summary-card h3 {
       font-size: 11px;
       text-transform: uppercase;
@@ -185,20 +185,20 @@ export async function GET(
       font-size: 20px;
       font-weight: bold;
     }
-    .summary-card.total h3 { color: #667eea; }
-    .summary-card.total .amount { color: #667eea; }
-    .summary-card.paid h3 { color: #28a745; }
-    .summary-card.paid .amount { color: #28a745; }
-    .summary-card.pending h3 { color: #856404; }
-    .summary-card.pending .amount { color: #856404; }
-    
+    .summary-card.total h3 { color: hsl(232 76% 58%); }
+    .summary-card.total .amount { color: hsl(232 76% 58%); }
+    .summary-card.paid h3 { color: hsl(160 58% 42%); }
+    .summary-card.paid .amount { color: hsl(160 58% 42%); }
+    .summary-card.pending h3 { color: hsl(10 78% 50%); }
+    .summary-card.pending .amount { color: hsl(10 78% 50%); }
+
     table {
       width: 100%;
       border-collapse: collapse;
       margin-bottom: 30px;
     }
     th {
-      background: #667eea;
+      background: hsl(232 76% 58%);
       color: white;
       padding: 12px 10px;
       text-align: left;
@@ -210,9 +210,9 @@ export async function GET(
     th:last-child { border-radius: 0 8px 0 0; }
     td {
       padding: 12px 10px;
-      border-bottom: 1px solid #eee;
+      border-bottom: 1px solid hsl(224 18% 92%);
     }
-    tr:hover { background: #f8f9fa; }
+    tr:hover { background: hsl(224 28% 97%); }
     .status-badge {
       display: inline-block;
       padding: 4px 8px;
@@ -220,16 +220,16 @@ export async function GET(
       font-size: 10px;
       font-weight: 600;
     }
-    .status-paid { background: #d4edda; color: #28a745; }
-    .status-pending { background: #fff3cd; color: #856404; }
-    .status-overdue { background: #f8d7da; color: #dc3545; }
-    
+    .status-paid { background: hsl(160 58% 42% / 0.15); color: hsl(160 58% 42%); }
+    .status-pending { background: hsl(10 78% 66% / 0.15); color: hsl(10 78% 50%); }
+    .status-overdue { background: hsl(0 84% 60% / 0.15); color: hsl(0 84% 60%); }
+
     .footer {
       margin-top: 40px;
       padding-top: 20px;
-      border-top: 1px solid #eee;
+      border-top: 1px solid hsl(224 18% 92%);
       text-align: center;
-      color: #666;
+      color: hsl(226 12% 48%);
       font-size: 10px;
     }
   </style>
@@ -238,7 +238,7 @@ export async function GET(
   <div class="header">
     <div>
       <div class="agency-name">${escapeHtml(customer.agencies?.name) || "Agencia"}</div>
-      ${customer.agencies?.address ? `<div style="font-size: 11px; color: #666;">${escapeHtml(customer.agencies.address)}</div>` : ""}
+      ${customer.agencies?.address ? `<div style="font-size: 11px; color: hsl(226 12% 48%);">${escapeHtml(customer.agencies.address)}</div>` : ""}
     </div>
     <div class="agency-info">
       ${customer.agencies?.phone ? `<div>Tel: ${escapeHtml(customer.agencies.phone)}</div>` : ""}
@@ -288,7 +288,7 @@ export async function GET(
     </div>
   </div>
   
-  <h2 style="margin-bottom: 15px; font-size: 14px; color: #667eea;">Detalle de Movimientos</h2>
+  <h2 style="margin-bottom: 15px; font-size: 14px; color: hsl(232 76% 58%);">Detalle de Movimientos</h2>
   
   <table>
     <thead>
@@ -302,7 +302,7 @@ export async function GET(
     </thead>
     <tbody>
       ${payments.length === 0 
-        ? `<tr><td colspan="5" style="text-align: center; color: #666;">No hay movimientos registrados</td></tr>`
+        ? `<tr><td colspan="5" style="text-align: center; color: hsl(226 12% 48%);">No hay movimientos registrados</td></tr>`
         : payments.map(p => {
             const isOverdue = p.status === "PENDING" && new Date(p.date_due) < new Date()
             const statusClass = p.status === "PAID" ? "status-paid" : (isOverdue ? "status-overdue" : "status-pending")

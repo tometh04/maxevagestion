@@ -438,8 +438,8 @@ export function CommissionsSettings() {
               {/* Vigencia */}
               <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <div className="flex items-center justify-center h-6 w-6 rounded-md bg-blue-500/10">
-                    <Calendar className="h-3.5 w-3.5 text-blue-500" />
+                  <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                    <Calendar className="h-3.5 w-3.5 text-primary" />
                   </div>
                   <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Vigencia</h4>
                 </div>

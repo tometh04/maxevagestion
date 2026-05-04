@@ -11,9 +11,9 @@ type Props = {
 }
 
 const STYLES: Record<ReturnType<typeof profileBadgeLevel>, string> = {
-  empty:    "bg-red-500/15 text-red-300 border-red-500/30",
-  partial:  "bg-amber-500/15 text-amber-300 border-amber-500/30",
-  complete: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
+  empty:    "bg-destructive/15 text-destructive border-destructive/30",
+  partial:  "bg-accent-coral/15 text-accent-coral border-accent-coral/30",
+  complete: "bg-success/15 text-success border-success/30",
 }
 
 const ICONS: Record<ReturnType<typeof profileBadgeLevel>, string> = {

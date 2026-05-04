@@ -96,7 +96,7 @@ export function LoginForm() {
       <CardContent>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           {error && (
-            <Alert className="text-red-600">
+            <Alert className="text-destructive">
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}

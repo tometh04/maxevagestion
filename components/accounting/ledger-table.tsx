@@ -70,12 +70,12 @@ const typeLabels: Record<string, string> = {
 }
 
 const typeColors: Record<string, string> = {
-  INCOME: "bg-warning",
+  INCOME: "bg-accent-coral",
   EXPENSE: "bg-destructive",
-  FX_GAIN: "bg-warning",
+  FX_GAIN: "bg-accent-coral",
   FX_LOSS: "bg-primary",
-  COMMISSION: "bg-info",
-  OPERATOR_PAYMENT: "bg-purple-500",
+  COMMISSION: "bg-accent-teal",
+  OPERATOR_PAYMENT: "bg-accent-violet",
 }
 
 export function LedgerTable({ filters, userRole }: LedgerTableProps) {
@@ -171,7 +171,7 @@ export function LedgerTable({ filters, userRole }: LedgerTableProps) {
                 {format(new Date(movement.created_at), "dd/MM/yyyy", { locale: es })}
               </TableCell>
               <TableCell>
-                <Badge className={typeColors[movement.type] || "bg-gray-500"}>
+                <Badge className={typeColors[movement.type] || "bg-muted-foreground"}>
                   {typeLabels[movement.type] || movement.type}
                 </Badge>
               </TableCell>
@@ -212,7 +212,7 @@ export function LedgerTable({ filters, userRole }: LedgerTableProps) {
                 {movement.reversed_at ? (
                   <Badge variant="secondary">REVERSADO</Badge>
                 ) : movement.reverses_movement_id ? (
-                  <Badge variant="outline" className="border-blue-300 text-blue-700">
+                  <Badge variant="outline" className="border-primary/20 text-primary">
                     <Undo2 className="h-2.5 w-2.5 mr-1" /> Reverso
                   </Badge>
                 ) : (

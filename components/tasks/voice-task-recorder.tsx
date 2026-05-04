@@ -189,12 +189,12 @@ export function VoiceTaskRecorder({
               className={cn(
                 "h-24 w-24 rounded-full flex items-center justify-center transition-colors",
                 state === "listening" && "bg-destructive/10",
-                state === "processing" && "bg-info/10",
+                state === "processing" && "bg-accent-teal/10",
                 state === "idle" && "bg-muted"
               )}
             >
               {state === "processing" ? (
-                <Loader2 className="h-10 w-10 text-info animate-spin" />
+                <Loader2 className="h-10 w-10 text-accent-teal animate-spin" />
               ) : state === "listening" ? (
                 <Mic className="h-10 w-10 text-destructive" />
               ) : (

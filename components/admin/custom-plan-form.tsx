@@ -162,13 +162,13 @@ export function CustomPlanForm({
               />
               <button
                 onClick={() => removeExtra(i)}
-                className="text-xs text-red-600 hover:underline"
+                className="text-xs text-destructive hover:underline"
               >
                 Borrar
               </button>
             </div>
           ))}
-          <button onClick={addExtra} className="text-xs text-blue-600 hover:underline">
+          <button onClick={addExtra} className="text-xs text-primary hover:underline">
             + Agregar feature extra
           </button>
         </div>
@@ -189,15 +189,15 @@ export function CustomPlanForm({
         <button
           onClick={submit}
           disabled={submitting}
-          className="text-sm px-3 py-1 rounded bg-blue-600 text-white disabled:opacity-50"
+          className="text-sm px-3 py-1 rounded bg-primary text-white disabled:opacity-50"
         >
           {submitting ? "Guardando..." : isEdit ? "Guardar cambios" : "Crear plan + generar checkout"}
         </button>
-        {result?.error && <span className="text-xs text-red-600">{result.error}</span>}
+        {result?.error && <span className="text-xs text-destructive">{result.error}</span>}
       </div>
 
       {result?.checkout_url && (
-        <div className="border border-green-500 bg-green-50 dark:bg-green-900/10 rounded p-3 text-sm">
+        <div className="border border-success bg-success/5 dark:bg-success/10 rounded p-3 text-sm">
           <div className="font-semibold mb-1">Checkout URL generado:</div>
           <code className="block break-all text-xs bg-background px-2 py-1 rounded">
             {result.checkout_url}

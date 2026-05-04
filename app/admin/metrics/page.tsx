@@ -158,7 +158,7 @@ export default async function AdminMetricsPage() {
           <StatCard label="CANCELLED" value={cancelledOrgs ?? 0} icon={Ban} />
         </div>
         {(trialLegacyOrgs ?? 0) > 0 && (
-          <p className="mt-2 text-xs text-slate-500">
+          <p className="mt-2 text-xs text-muted-foreground">
             Legacy TRIAL: {trialLegacyOrgs} (deberían migrarse a TRIALING o PENDING_PAYMENT)
           </p>
         )}
@@ -237,10 +237,10 @@ export default async function AdminMetricsPage() {
               <DataTableBody>
                 {breakdown.map((b) => (
                   <DataTableRow key={b.label}>
-                    <DataTableTd className="font-medium text-slate-200">{b.label}</DataTableTd>
+                    <DataTableTd className="font-medium text-muted-foreground">{b.label}</DataTableTd>
                     <DataTableTd>{b.count}</DataTableTd>
                     <DataTableTd>{formatArs(b.mrr)}</DataTableTd>
-                    <DataTableTd className="text-slate-400">{b.pct.toFixed(1)}%</DataTableTd>
+                    <DataTableTd className="text-muted-foreground">{b.pct.toFixed(1)}%</DataTableTd>
                   </DataTableRow>
                 ))}
               </DataTableBody>

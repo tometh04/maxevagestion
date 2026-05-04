@@ -125,7 +125,7 @@ export function OperatorsReport({ filters }: OperatorsReportProps) {
             <CardTitle className="text-sm font-medium">Total Pagado</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-warning">{formatCurrency(totalPaid, "ARS")}</div>
+            <div className="text-2xl font-bold text-accent-coral">{formatCurrency(totalPaid, "ARS")}</div>
           </CardContent>
         </Card>
 
@@ -174,7 +174,7 @@ export function OperatorsReport({ filters }: OperatorsReportProps) {
                     <TableCell className="font-medium">{operator.name}</TableCell>
                     <TableCell className="text-right">{operator.operationsCount}</TableCell>
                     <TableCell className="text-right">{formatCurrency(operator.totalCost, "ARS")}</TableCell>
-                    <TableCell className="text-right text-warning">
+                    <TableCell className="text-right text-accent-coral">
                       {formatCurrency(operator.totalPaid, "ARS")}
                     </TableCell>
                     <TableCell className="text-right">

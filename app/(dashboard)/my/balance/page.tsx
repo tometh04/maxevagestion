@@ -151,10 +151,10 @@ export default async function MyBalancePage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Pagadas</CardTitle>
-            <TrendingUp className="h-4 w-4 text-green-600" />
+            <TrendingUp className="h-4 w-4 text-success" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">
+            <div className="text-2xl font-bold text-success">
               {paidCommissionsUSD > 0
                 ? `${formatCurrency(paidCommissionsARS, "ARS")} + ${formatCurrency(paidCommissionsUSD, "USD")}`
                 : formatCurrency(paidCommissions, "ARS")
@@ -169,10 +169,10 @@ export default async function MyBalancePage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Pendientes</CardTitle>
-            <Calendar className="h-4 w-4 text-yellow-600" />
+            <Calendar className="h-4 w-4 text-accent-coral" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-yellow-600">
+            <div className="text-2xl font-bold text-accent-coral">
               {formatCurrency(pendingCommissions, "ARS")}
             </div>
             <p className="text-xs text-muted-foreground">

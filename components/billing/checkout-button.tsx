@@ -49,7 +49,7 @@ export function CheckoutButton({ plan }: { plan: PlanId }) {
       <Button onClick={go} disabled={loading} className="w-full">
         {loading ? "Cargando…" : "Elegir este plan"}
       </Button>
-      {error && <p className="text-xs text-red-600">{error}</p>}
+      {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   )
 }

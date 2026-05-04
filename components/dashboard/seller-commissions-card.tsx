@@ -92,8 +92,8 @@ export function SellerCommissionsCard({ sellerId, className }: SellerCommissions
       <CardContent>
         {/* Resumen de totales */}
         <div className="grid grid-cols-2 gap-3 mb-4">
-          <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 p-3">
-            <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+          <div className="rounded-lg bg-accent-coral/5 dark:bg-accent-coral/30 p-3">
+            <div className="flex items-center gap-2 text-accent-coral dark:text-accent-coral">
               <Clock className="h-4 w-4" />
               <span className="text-xs font-medium">Pendientes</span>
             </div>
@@ -101,8 +101,8 @@ export function SellerCommissionsCard({ sellerId, className }: SellerCommissions
               ${totals.pending.toLocaleString("es-AR")}
             </p>
           </div>
-          <div className="rounded-lg bg-green-50 dark:bg-green-950/30 p-3">
-            <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+          <div className="rounded-lg bg-success/5 dark:bg-success/30 p-3">
+            <div className="flex items-center gap-2 text-success dark:text-success">
               <CheckCircle className="h-4 w-4" />
               <span className="text-xs font-medium">Cobradas</span>
             </div>

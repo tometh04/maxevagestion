@@ -24,10 +24,10 @@ import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 
 const PRIORITY_COLORS = {
-  URGENT: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
-  HIGH: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
-  MEDIUM: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-  LOW: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400",
+  URGENT: "bg-destructive/10 text-destructive dark:bg-destructive/30 dark:text-destructive",
+  HIGH: "bg-accent-coral/10 text-accent-coral dark:bg-accent-coral/30 dark:text-accent-coral",
+  MEDIUM: "bg-primary/10 text-primary dark:bg-primary/30 dark:text-primary",
+  LOW: "bg-muted text-muted-foreground dark:bg-card dark:text-muted-foreground",
 } as const
 
 interface PendingTasksCardProps {
@@ -133,7 +133,7 @@ export function PendingTasksCard({ className }: PendingTasksCardProps) {
                 <div key={task.id} className="flex items-start gap-2">
                   <button
                     onClick={() => toggleDone(task.id)}
-                    className="mt-0.5 text-muted-foreground hover:text-green-600 transition-colors shrink-0"
+                    className="mt-0.5 text-muted-foreground hover:text-success transition-colors shrink-0"
                   >
                     <Circle className="h-4 w-4" />
                   </button>
@@ -148,7 +148,7 @@ export function PendingTasksCard({ className }: PendingTasksCardProps) {
                       <span
                         className={cn(
                           "text-xs flex items-center gap-1 mt-0.5",
-                          isOverdue ? "text-red-600" : isDueToday ? "text-orange-600" : "text-muted-foreground"
+                          isOverdue ? "text-destructive" : isDueToday ? "text-accent-coral" : "text-muted-foreground"
                         )}
                       >
                         <Clock className="h-3 w-3" />

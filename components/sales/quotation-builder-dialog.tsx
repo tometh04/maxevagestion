@@ -1083,7 +1083,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[95vh] flex flex-col p-0">
+      <DialogContent className="max-w-4xl max-h-[95vh] p-0">
         {/* Header — editable lead name */}
         <div className="px-6 pt-5 pb-2 shrink-0">
           <div className="flex items-center gap-2">
@@ -1103,8 +1103,8 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
           {/* Datos generales */}
           <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
             <div className="flex items-center gap-2 mb-3">
-              <div className="flex items-center justify-center h-6 w-6 rounded-md bg-blue-500/10">
-                <Globe className="h-3.5 w-3.5 text-blue-500" />
+              <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                <Globe className="h-3.5 w-3.5 text-primary" />
               </div>
               <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Datos del viaje</h4>
             </div>
@@ -1220,34 +1220,34 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                 })
 
                 return (
-                  <div className="flex items-start justify-between gap-3 rounded-lg border border-orange-200 bg-orange-50/70 px-3 py-2">
+                  <div className="flex items-start justify-between gap-3 rounded-lg border border-accent-coral/15 bg-accent-coral/70 px-3 py-2">
                     <div>
-                      <p className="text-[10px] font-semibold uppercase tracking-widest text-orange-700">Se mostrara al cliente</p>
-                      <p className="text-sm font-semibold text-orange-950">
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-accent-coral">Se mostrara al cliente</p>
+                      <p className="text-sm font-semibold text-accent-coral">
                         {pricing.primaryLabel}: {formatQuotationCurrency(pricing.primaryAmount, currency)}
                       </p>
                       {pricing.secondaryAmount != null && pricing.secondaryLabel && (
-                        <p className="text-xs text-orange-800/80 mt-0.5">
+                        <p className="text-xs text-accent-coral/80 mt-0.5">
                           {pricing.secondaryLabel}: {formatQuotationCurrency(pricing.secondaryAmount, currency)}
                         </p>
                       )}
                     </div>
-                    <Badge variant="secondary" className="shrink-0 border-orange-200 bg-white/80 text-orange-700">
+                    <Badge variant="secondary" className="shrink-0 border-accent-coral/15 bg-white/80 text-accent-coral">
                       {pricingMode === "PER_PERSON" ? "Por persona" : "Grupo"}
                     </Badge>
                   </div>
                 )
               })()}
 
-              <div className={`rounded-lg border px-3 py-3 space-y-3 ${totalBelowCost ? "border-red-300 bg-red-50/80" : "border-slate-200 bg-white/70"}`}>
+              <div className={`rounded-lg border px-3 py-3 space-y-3 ${totalBelowCost ? "border-destructive/20 bg-destructive/80" : "border-border bg-white/70"}`}>
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Precio final de la opción</p>
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Precio final de la opción</p>
                     <p className="text-xs text-muted-foreground">
                       Podés redondear el total final sin tocar los precios de los servicios.
                     </p>
                   </div>
-                  <Badge variant="secondary" className={hasManualTotal ? "border-blue-200 bg-blue-50 text-blue-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}>
+                  <Badge variant="secondary" className={hasManualTotal ? "border-primary/15 bg-primary/5 text-primary" : "border-success/15 bg-success/5 text-success"}>
                     {hasManualTotal ? "Manual" : "Automatico"}
                   </Badge>
                 </div>
@@ -1266,7 +1266,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                     </div>
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs text-blue-700">Precio final a mostrar</Label>
+                    <Label className="text-xs text-primary">Precio final a mostrar</Label>
                     <Input
                       type="number"
                       min={optionCostTotal}
@@ -1299,27 +1299,27 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                 </div>
 
                 {totalBelowCost && (
-                  <p className="text-xs text-red-700">
+                  <p className="text-xs text-destructive">
                     El precio final no puede quedar por debajo del costo total de la opción.
                   </p>
                 )}
               </div>
 
               {optIndex > 0 && options[0]?.items.some((item) => item.item_type === "FLIGHT") && (
-                <div className="rounded-lg border border-blue-200 bg-blue-50/70 px-3 py-2 text-xs text-blue-900">
+                <div className="rounded-lg border border-primary/15 bg-primary/70 px-3 py-2 text-xs text-primary">
                   Los vuelos de esta opcion estan vinculados a la opcion 1. Itinerario, precio y screenshot se editan solo ahi.
                 </div>
               )}
 
               <div className="flex items-center gap-2 mb-1">
-                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-orange-500/10">
-                  <ListChecks className="h-3.5 w-3.5 text-orange-500" />
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-accent-coral/10">
+                  <ListChecks className="h-3.5 w-3.5 text-accent-coral" />
                 </div>
                 <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Opcion {optIndex + 1}</h4>
               </div>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="bg-warning/10 text-warning border-warning/30">
+                  <Badge variant="outline" className="bg-accent-coral/10 text-accent-coral border-accent-coral/30">
                     Opcion {optIndex + 1}
                   </Badge>
                   <Input
@@ -1356,7 +1356,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                   const isLinkedFlightReadonly = optIndex > 0 && item.item_type === "FLIGHT"
 
                   return (
-                    <div key={item.id} className={`border rounded-lg p-3 space-y-3 ${isNegativeMargin ? "border-red-400 bg-red-50/60 dark:bg-red-950/20" : "bg-muted/30"}`}>
+                    <div key={item.id} className={`border rounded-lg p-3 space-y-3 ${isNegativeMargin ? "border-destructive/30 bg-destructive/60 dark:bg-destructive/20" : "bg-muted/30"}`}>
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <TypeIcon className="h-3.5 w-3.5 text-muted-foreground" />
@@ -1378,7 +1378,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                           </Select>
                           <span className="text-xs text-muted-foreground">#{itemIndex + 1}</span>
                           {isLinkedFlightReadonly && (
-                            <Badge variant="outline" className="h-6 border-blue-200 bg-blue-50 text-blue-700">
+                            <Badge variant="outline" className="h-6 border-primary/15 bg-primary/5 text-primary">
                               Vinculado
                             </Badge>
                           )}
@@ -1447,7 +1447,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                       {/* Pricing row */}
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                         <div className="space-y-1">
-                          <Label className="text-xs text-blue-600">Precio venta</Label>
+                          <Label className="text-xs text-primary">Precio venta</Label>
                           <div className="relative">
                             <DollarSign className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
                             <Input
@@ -1463,7 +1463,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                           </div>
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs text-orange-600">Costo operador</Label>
+                          <Label className="text-xs text-accent-coral">Costo operador</Label>
                           <div className="relative">
                             <DollarSign className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
                             <Input
@@ -1492,7 +1492,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                             />
                             <span className="text-[10px] text-muted-foreground">%</span>
                             {adminFeePct > 0 && (
-                              <span className="text-[10px] font-mono text-orange-600 ml-auto">
+                              <span className="text-[10px] font-mono text-accent-coral ml-auto">
                                 = {currency} {totalCost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
                               </span>
                             )}
@@ -1514,14 +1514,14 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                         </div>
                         <div className="flex items-end pb-1.5">
                           {item.unit_price > 0 && (
-                            <div className={`rounded-md px-2 py-1 text-xs flex items-center gap-1.5 ${isNegativeMargin ? "bg-red-100 dark:bg-red-900/40 ring-1 ring-red-400" : "bg-muted/50"}`}>
-                              {isNegativeMargin && <AlertTriangle className="h-3 w-3 text-red-600" />}
+                            <div className={`rounded-md px-2 py-1 text-xs flex items-center gap-1.5 ${isNegativeMargin ? "bg-destructive/10 dark:bg-destructive/40 ring-1 ring-destructive/30" : "bg-muted/50"}`}>
+                              {isNegativeMargin && <AlertTriangle className="h-3 w-3 text-destructive" />}
                               <span className="text-muted-foreground">Margen:</span>
-                              <span className={`font-mono font-semibold ${itemMargin >= 0 ? "text-green-600" : "text-red-600"}`}>
+                              <span className={`font-mono font-semibold ${itemMargin >= 0 ? "text-success" : "text-destructive"}`}>
                                 {currency} {itemMargin.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
                               </span>
                               {(item.cost_amount || 0) > 0 && (
-                                <span className={`font-mono font-semibold ${itemMargin >= 0 ? "text-green-600" : "text-red-600"}`}>
+                                <span className={`font-mono font-semibold ${itemMargin >= 0 ? "text-success" : "text-destructive"}`}>
                                   ({itemMarginPct.toFixed(1)}%)
                                 </span>
                               )}
@@ -1900,8 +1900,8 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
           {/* Notes */}
           <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
             <div className="flex items-center gap-2 mb-3">
-              <div className="flex items-center justify-center h-6 w-6 rounded-md bg-violet-500/10">
-                <StickyNote className="h-3.5 w-3.5 text-violet-500" />
+              <div className="flex items-center justify-center h-6 w-6 rounded-md bg-accent-violet/10">
+                <StickyNote className="h-3.5 w-3.5 text-accent-violet" />
               </div>
               <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Notas internas</h4>
             </div>
@@ -1919,8 +1919,8 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
           {/* Payment methods (mostradas al cliente en el presupuesto público) */}
           <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-3">
             <div className="flex items-center gap-2">
-              <div className="flex items-center justify-center h-6 w-6 rounded-md bg-emerald-500/10">
-                <DollarSign className="h-3.5 w-3.5 text-emerald-500" />
+              <div className="flex items-center justify-center h-6 w-6 rounded-md bg-success/10">
+                <DollarSign className="h-3.5 w-3.5 text-success" />
               </div>
               <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Formas de pago aceptadas</h4>
               <span className="text-[10px] text-muted-foreground">(visible al cliente)</span>
@@ -1932,7 +1932,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                   <label
                     key={pm.value}
                     className={`flex items-center gap-2 rounded-md border px-3 py-2 cursor-pointer text-sm transition ${
-                      checked ? "border-emerald-400 bg-emerald-50 dark:bg-emerald-950/30" : "border-border/40 hover:bg-muted/40"
+                      checked ? "border-success/30 bg-success/5 dark:bg-success/30" : "border-border/40 hover:bg-muted/40"
                     }`}
                   >
                     <input
@@ -1995,7 +1995,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                     : 0
                   const isNegative = globalTotals.totalMargin < 0
                   return (
-                    <Badge variant="secondary" className={`text-xs font-mono flex items-center gap-1 ${isNegative ? "bg-red-500/15 text-red-700 ring-1 ring-red-400" : "bg-green-500/10 text-green-700"}`}>
+                    <Badge variant="secondary" className={`text-xs font-mono flex items-center gap-1 ${isNegative ? "bg-destructive/15 text-destructive ring-1 ring-destructive/30" : "bg-success/10 text-success"}`}>
                       {isNegative && <AlertTriangle className="h-3 w-3" />}
                       Margen: {currency} {globalTotals.totalMargin.toLocaleString("es-AR", { minimumFractionDigits: 2 })} ({totalMarginPct.toFixed(1)}%)
                     </Badge>
@@ -2020,7 +2020,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                 Ver cotizacion
               </Button>
             )}
-            <Button size="sm" onClick={() => handleSave(true)} disabled={saving || hasPendingFlightScreenshotUploads} className="bg-green-600 hover:bg-green-700">
+            <Button size="sm" onClick={() => handleSave(true)} disabled={saving || hasPendingFlightScreenshotUploads} className="bg-success hover:bg-success">
               {sending ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Send className="h-4 w-4 mr-1.5" />}
               Guardar y enviar por WhatsApp
             </Button>

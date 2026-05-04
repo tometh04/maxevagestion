@@ -78,11 +78,11 @@ const operationTypeOptions = [
 ]
 
 const standardStatusOptions = [
-  { value: "RESERVED", label: "Reservado", color: "bg-info" },
+  { value: "RESERVED", label: "Reservado", color: "bg-accent-teal" },
   { value: "CONFIRMED", label: "Confirmado", color: "bg-success" },
   { value: "CANCELLED", label: "Cancelado", color: "bg-destructive" },
-  { value: "TRAVELLING", label: "En viaje", color: "bg-warning" },
-  { value: "TRAVELLED", label: "Viajado", color: "bg-purple-500" },
+  { value: "TRAVELLING", label: "En viaje", color: "bg-accent-coral" },
+  { value: "TRAVELLED", label: "Viajado", color: "bg-accent-violet" },
 ]
 
 interface Operation {
@@ -176,7 +176,7 @@ export function EditOperationDialog({
 
   // Combinar estados estándar con personalizados
   const statusOptions = useMemo(() => {
-    return [...standardStatusOptions, ...customStatuses.map(s => ({ value: s.value, label: s.label, color: s.color || "bg-gray-500" }))]
+    return [...standardStatusOptions, ...customStatuses.map(s => ({ value: s.value, label: s.label, color: s.color || "bg-muted-foreground" }))]
   }, [customStatuses])
 
   // Sincronizar operadores cuando cambian
@@ -431,7 +431,7 @@ export function EditOperationDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[95vh] overflow-hidden">
+      <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[95vh]">
         <DialogHeader>
           <DialogTitle>Editar Operación</DialogTitle>
           <DialogDescription>
@@ -471,7 +471,7 @@ export function EditOperationDialog({
         </Card>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex-1 overflow-y-auto min-h-0 px-6 py-5 space-y-5">
             {/* General */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
@@ -552,7 +552,7 @@ export function EditOperationDialog({
                 return (
                   <div className="space-y-3 mt-4">
                     {isLegacy && canEdit && primaryVal == null && secondaryVal == null && (
-                      <p className="text-xs text-amber-600">
+                      <p className="text-xs text-accent-coral">
                         Esta operación usa el sistema legacy de split. Editá los valores absolutos
                         a continuación para migrarla al nuevo modelo (suma ≤ {principalPct}% del principal).
                       </p>
@@ -840,7 +840,7 @@ export function EditOperationDialog({
             {/* Ruta y Fechas */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
-                <MapPin className="h-3.5 w-3.5 text-emerald-500" />
+                <MapPin className="h-3.5 w-3.5 text-success" />
                 <span className="text-xs font-medium text-foreground/70">Ruta y Fechas</span>
               </div>
             <div className="grid gap-4 md:grid-cols-2">
@@ -974,7 +974,7 @@ export function EditOperationDialog({
             {/* Pasajeros */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
-                <Users className="h-3.5 w-3.5 text-blue-500" />
+                <Users className="h-3.5 w-3.5 text-primary" />
                 <span className="text-xs font-medium text-foreground/70">Pasajeros</span>
               </div>
             <div className="grid gap-4 md:grid-cols-4">
@@ -1065,7 +1065,7 @@ export function EditOperationDialog({
             {/* Financiero */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
-                <DollarSign className="h-3.5 w-3.5 text-warning" />
+                <DollarSign className="h-3.5 w-3.5 text-accent-coral" />
                 <span className="text-xs font-medium text-foreground/70">Financiero</span>
               </div>
             <div className="grid gap-4 md:grid-cols-3">
@@ -1161,7 +1161,7 @@ export function EditOperationDialog({
             {/* Codigos */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
-                <Ticket className="h-3.5 w-3.5 text-violet-500" />
+                <Ticket className="h-3.5 w-3.5 text-accent-violet" />
                 <span className="text-xs font-medium text-foreground/70">Codigos de Reserva</span>
               </div>
               <div className="grid gap-4 md:grid-cols-2">

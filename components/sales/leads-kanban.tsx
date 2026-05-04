@@ -13,28 +13,28 @@ import { toast } from "sonner"
 const statusColumns = [
   { id: "NEW", label: "Nuevo", color: "bg-primary/10" },
   { id: "IN_PROGRESS", label: "En Progreso", color: "bg-primary/15" },
-  { id: "QUOTED", label: "Cotizado", color: "bg-warning/10" },
+  { id: "QUOTED", label: "Cotizado", color: "bg-accent-coral/10" },
   { id: "WON", label: "Ganado", color: "bg-success/10" },
   { id: "LOST", label: "Perdido", color: "bg-destructive/10" },
 ]
 
 const regionBorderColors: Record<string, string> = {
-  ARGENTINA: "border-l-info",
-  CARIBE: "border-l-cyan-500",
+  ARGENTINA: "border-l-accent-teal",
+  CARIBE: "border-l-accent-teal",
   BRASIL: "border-l-success",
-  EUROPA: "border-l-purple-500",
+  EUROPA: "border-l-accent-violet",
   EEUU: "border-l-destructive",
-  OTROS: "border-l-gray-400",
+  OTROS: "border-l-border",
   CRUCEROS: "border-l-primary",
 }
 
 const regionDotColors: Record<string, string> = {
-  ARGENTINA: "bg-info",
-  CARIBE: "bg-cyan-500",
+  ARGENTINA: "bg-accent-teal",
+  CARIBE: "bg-accent-teal",
   BRASIL: "bg-success",
-  EUROPA: "bg-purple-500",
+  EUROPA: "bg-accent-violet",
   EEUU: "bg-destructive",
-  OTROS: "bg-gray-400",
+  OTROS: "bg-muted-foreground/30",
   CRUCEROS: "bg-primary",
 }
 
@@ -219,7 +219,7 @@ export function LeadsKanban({ leads, agencies = [], sellers = [], operators = []
     >
       {statusColumns.map((column) => (
         <div key={column.id} className="flex-shrink-0 w-80">
-          <div className="rounded-xl bg-white/55 dark:bg-gray-900/55 backdrop-blur-sm shadow-sm hover:shadow-md transition-all">
+          <div className="rounded-xl bg-white/55 dark:bg-card/55 backdrop-blur-sm shadow-sm hover:shadow-md transition-all">
             {/* Header */}
             <div className="p-4 pb-3">
               <div className="flex items-center justify-between">
@@ -258,8 +258,8 @@ export function LeadsKanban({ leads, agencies = [], sellers = [], operators = []
                       }}
                       className={`
                         cursor-grab active:cursor-grabbing rounded-xl border-l-4
-                        ${regionBorderColors[lead.region] || "border-l-gray-300"}
-                        bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm
+                        ${regionBorderColors[lead.region] || "border-l-border"}
+                        bg-white/90 dark:bg-card/90 backdrop-blur-sm
                         shadow-sm hover:shadow-lg hover:-translate-y-0.5
                         transition-all duration-200 p-3.5
                         ${draggedLead === lead.id ? "opacity-40 scale-95 shadow-none" : ""}
@@ -324,7 +324,7 @@ export function LeadsKanban({ leads, agencies = [], sellers = [], operators = []
                         <div className="flex items-center gap-2">
                           {lead.region && (
                             <div className="flex items-center gap-1">
-                              <div className={`w-1.5 h-1.5 rounded-full ${regionDotColors[lead.region] || "bg-gray-400"}`} />
+                              <div className={`w-1.5 h-1.5 rounded-full ${regionDotColors[lead.region] || "bg-muted-foreground/30"}`} />
                               <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{lead.region}</span>
                             </div>
                           )}

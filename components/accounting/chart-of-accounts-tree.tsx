@@ -77,10 +77,10 @@ function getTreeBalance(
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
-  ACTIVO: "bg-blue-100 text-blue-800",
-  PASIVO: "bg-red-100 text-red-800",
-  PATRIMONIO_NETO: "bg-purple-100 text-purple-800",
-  RESULTADO: "bg-green-100 text-green-800",
+  ACTIVO: "bg-primary/10 text-primary",
+  PASIVO: "bg-destructive/10 text-destructive",
+  PATRIMONIO_NETO: "bg-accent-violet/10 text-accent-violet",
+  RESULTADO: "bg-success/10 text-success",
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -166,7 +166,7 @@ function AccountNode({
         {account.is_movement_account ? (
           <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
         ) : (
-          <FolderOpen className="h-4 w-4 text-amber-500 shrink-0" />
+          <FolderOpen className="h-4 w-4 text-accent-coral shrink-0" />
         )}
 
         {/* Code + Name */}
@@ -180,7 +180,7 @@ function AccountNode({
         {/* Category badge */}
         <span
           className={`text-xs px-1.5 py-0.5 rounded ${
-            CATEGORY_COLORS[account.category] || "bg-gray-100 text-gray-800"
+            CATEGORY_COLORS[account.category] || "bg-muted text-foreground"
           }`}
         >
           {CATEGORY_LABELS[account.category] || account.category}
@@ -203,13 +203,13 @@ function AccountNode({
           return (
             <span className="text-xs font-mono text-right min-w-[120px] shrink-0">
               {bal.ars !== 0 && (
-                <span className={bal.ars >= 0 ? "text-emerald-600" : "text-red-600"}>
+                <span className={bal.ars >= 0 ? "text-success" : "text-destructive"}>
                   {formatBalance(bal.ars, "ARS")}
                 </span>
               )}
               {bal.ars !== 0 && bal.usd !== 0 && <span className="text-muted-foreground mx-1">|</span>}
               {bal.usd !== 0 && (
-                <span className={bal.usd >= 0 ? "text-blue-600" : "text-red-600"}>
+                <span className={bal.usd >= 0 ? "text-primary" : "text-destructive"}>
                   {formatBalance(bal.usd, "USD")}
                 </span>
               )}
@@ -516,7 +516,7 @@ export function ChartOfAccountsTree() {
                 id="is-movement"
                 checked={newIsMovement}
                 onChange={(e) => setNewIsMovement(e.target.checked)}
-                className="rounded border-gray-300"
+                className="rounded border-border"
               />
               <Label htmlFor="is-movement" className="text-sm font-normal cursor-pointer">
                 Cuenta de movimiento (registra transacciones)

@@ -20,12 +20,12 @@ import { LeadDetailDialog } from "@/components/sales/lead-detail-dialog"
 import { toast } from "sonner"
 
 const regionColors: Record<string, string> = {
-  ARGENTINA: "bg-info",
-  CARIBE: "bg-cyan-500",
+  ARGENTINA: "bg-accent-teal",
+  CARIBE: "bg-accent-teal",
   BRASIL: "bg-success",
-  EUROPA: "bg-purple-500",
+  EUROPA: "bg-accent-violet",
   EEUU: "bg-destructive",
-  OTROS: "bg-gray-500",
+  OTROS: "bg-muted-foreground",
   CRUCEROS: "bg-primary",
 }
 
@@ -348,7 +348,7 @@ export function LeadsKanbanTrello({ leads, agencyId, agencies = [], sellers = []
                               {lead.region}
                             </Badge>
                             {lead.has_deposit && lead.deposit_amount && (
-                              <Badge variant="outline" className="bg-warning/20 text-warning border-warning/50">
+                              <Badge variant="outline" className="bg-accent-coral/20 text-accent-coral border-accent-coral/50">
                                 <DollarSign className="h-3 w-3 mr-1" />
                                 {lead.deposit_amount} {lead.deposit_currency || "ARS"}
                               </Badge>

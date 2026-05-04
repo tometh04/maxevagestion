@@ -239,10 +239,10 @@ export function MarkPaidDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md max-h-[90vh] flex flex-col overflow-hidden">
+      <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <CheckCircle className="h-5 w-5 text-green-500" />
+            <CheckCircle className="h-5 w-5 text-success" />
             Marcar como Pagado
           </DialogTitle>
           <DialogDescription>
@@ -364,10 +364,10 @@ export function MarkPaidDialog({
 
             {/* Percepciones opcionales */}
             {(showRg5617 || showRg3819) && (
-              <div className="rounded-xl border border-border/40 bg-amber-500/5 p-4 space-y-3">
+              <div className="rounded-xl border border-border/40 bg-accent-coral/5 p-4 space-y-3">
                 <div className="flex items-center gap-2 mb-1">
-                  <div className="flex items-center justify-center h-6 w-6 rounded-md bg-amber-500/10">
-                    <Receipt className="h-3.5 w-3.5 text-amber-500" />
+                  <div className="flex items-center justify-center h-6 w-6 rounded-md bg-accent-coral/10">
+                    <Receipt className="h-3.5 w-3.5 text-accent-coral" />
                   </div>
                   <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Percepciones Impositivas</h4>
                 </div>
@@ -420,8 +420,8 @@ export function MarkPaidDialog({
             {/* Cuenta Financiera */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-2 mb-3">
-                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-emerald-500/10">
-                  <Wallet className="h-3.5 w-3.5 text-emerald-500" />
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-success/10">
+                  <Wallet className="h-3.5 w-3.5 text-success" />
                 </div>
                 <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Cuenta</h4>
               </div>

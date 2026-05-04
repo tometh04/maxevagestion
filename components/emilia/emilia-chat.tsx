@@ -459,7 +459,7 @@ export function EmiliaChat({ conversationId, userId, userName, onConversationUpd
                             ))}
                             {isLoading && (
                                 <div className="flex items-start gap-3">
-                                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center shrink-0">
+                                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-accent-coral to-accent-coral flex items-center justify-center shrink-0">
                                         <Sparkles className="h-4 w-4 text-white" />
                                     </div>
                                     <div className="bg-muted rounded-2xl rounded-tl-sm px-4 py-3">
@@ -491,7 +491,7 @@ export function EmiliaChat({ conversationId, userId, userName, onConversationUpd
                                 size="icon"
                                 onClick={() => sendMessage(input)}
                                 disabled={!input.trim() || isLoading || !conversationId}
-                                className="absolute right-1.5 top-1.5 h-9 w-9 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600"
+                                className="absolute right-1.5 top-1.5 h-9 w-9 rounded-lg bg-gradient-to-r from-accent-coral to-accent-coral hover:from-accent-coral hover:to-accent-coral"
                             >
                                 {isLoading ? (
                                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -515,7 +515,7 @@ interface WelcomeScreenProps {
 function WelcomeScreen({ userName, onSuggestionClick }: WelcomeScreenProps) {
     return (
         <div className="flex flex-col items-center justify-center h-full py-8 px-4 text-center">
-            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center mb-4 shadow-lg shadow-amber-200 dark:shadow-amber-900/30">
+            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-accent-coral to-accent-coral flex items-center justify-center mb-4 shadow-lg shadow-amber-200 dark:shadow-amber-900/30">
                 <Sparkles className="h-8 w-8 text-white" />
             </div>
 
@@ -572,7 +572,7 @@ function MessageBubble({ message, onFollowupClick }: MessageBubbleProps) {
                     "w-8 h-8 rounded-full flex items-center justify-center shrink-0",
                     isUser
                         ? "bg-primary text-primary-foreground"
-                        : "bg-gradient-to-br from-amber-500 to-orange-500"
+                        : "bg-gradient-to-br from-accent-coral to-accent-coral"
                 )}
             >
                 {isUser ? (

@@ -41,7 +41,7 @@ export function CriticalActions({
               post(`/api/admin/orgs/${orgId}/suspend`, { reason: "Admin action" }, orgName)
             }
             disabled={busy}
-            className="text-xs px-3 py-1 rounded border text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 disabled:opacity-50"
+            className="text-xs px-3 py-1 rounded border text-destructive hover:bg-destructive/5 dark:hover:bg-destructive/10 disabled:opacity-50"
           >
             Suspender acceso
           </button>
@@ -65,7 +65,7 @@ export function CriticalActions({
               )
             }
             disabled={busy}
-            className="text-xs px-3 py-1 rounded border text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 disabled:opacity-50"
+            className="text-xs px-3 py-1 rounded border text-destructive hover:bg-destructive/5 dark:hover:bg-destructive/10 disabled:opacity-50"
           >
             Cancelar suscripción
           </button>

@@ -131,9 +131,9 @@ function getUrgency(dateDue: string): UrgencyLevel {
 }
 
 const urgencyConfig: Record<UrgencyLevel, { border: string; bg: string; label: string }> = {
-  overdue: { border: "border-l-red-500", bg: "bg-red-500/5", label: "Vencidas" },
-  today: { border: "border-l-amber-500", bg: "bg-amber-500/5", label: "Hoy" },
-  this_week: { border: "border-l-blue-500", bg: "bg-blue-500/5", label: "Esta semana" },
+  overdue: { border: "border-l-destructive", bg: "bg-destructive/5", label: "Vencidas" },
+  today: { border: "border-l-accent-coral", bg: "bg-accent-coral/5", label: "Hoy" },
+  this_week: { border: "border-l-primary", bg: "bg-primary/5", label: "Esta semana" },
   upcoming: { border: "border-l-border", bg: "", label: "Proximas" },
 }
 
@@ -155,9 +155,9 @@ function getRelativeDateColor(dateDue: string): string {
   const now = new Date()
   const diff = differenceInDays(startOfDay(due), startOfDay(now))
 
-  if (diff < 0) return "text-red-600 font-medium"
-  if (diff === 0) return "text-amber-600 font-medium"
-  if (diff <= 3) return "text-blue-600"
+  if (diff < 0) return "text-destructive font-medium"
+  if (diff === 0) return "text-accent-coral font-medium"
+  if (diff <= 3) return "text-primary"
   return "text-muted-foreground"
 }
 
@@ -315,7 +315,7 @@ export function AlertsTable({
                                 key={msg.id}
                                 className="flex items-center gap-2 text-xs bg-muted/50 rounded-lg px-3 py-2"
                               >
-                                <MessageSquare className="h-3 w-3 text-green-600 shrink-0" />
+                                <MessageSquare className="h-3 w-3 text-success shrink-0" />
                                 <span className="truncate">{msg.message.substring(0, 80)}...</span>
                                 <a
                                   href={msg.whatsapp_link}
@@ -359,7 +359,7 @@ export function AlertsTable({
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                            className="h-8 w-8 text-success hover:text-success hover:bg-success/5"
                             onClick={() => onMarkDone?.(alert.id)}
                             title="Resolver"
                           >

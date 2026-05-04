@@ -288,7 +288,7 @@ export function CRMManychatPageClient({
               className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs ${
                 realtimeConnected 
                   ? 'bg-success/10 text-success'
-                  : 'bg-warning/10 text-warning'
+                  : 'bg-accent-coral/10 text-accent-coral'
               }`}
               title={realtimeConnected ? "Conectado - Los cambios se actualizan automáticamente" : "Conectando..."}
             >

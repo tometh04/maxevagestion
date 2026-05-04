@@ -278,8 +278,8 @@ export function PaymentPlanGenerator({
           {payments.length > 0 && (
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-2 mb-3">
-                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-emerald-500/10">
-                  <Calendar className="h-3.5 w-3.5 text-emerald-500" />
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-success/10">
+                  <Calendar className="h-3.5 w-3.5 text-success" />
                 </div>
                 <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Plan de Cuotas</h4>
               </div>
@@ -336,7 +336,7 @@ export function PaymentPlanGenerator({
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Diferencia:</span>
-                  <span className={`font-semibold ${Math.abs(difference) > 1 ? "text-destructive" : "text-green-600"}`}>
+                  <span className={`font-semibold ${Math.abs(difference) > 1 ? "text-destructive" : "text-success"}`}>
                     {currency} {difference.toLocaleString("es-AR")}
                   </span>
                 </div>

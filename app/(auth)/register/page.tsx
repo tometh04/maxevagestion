@@ -1,61 +1,59 @@
 import { Suspense } from "react"
 import { Globe, MapPin, GalleryVerticalEnd } from "lucide-react"
 import Image from "next/image"
-import Link from "next/link"
 
 import { RegisterForm } from "@/components/register-form"
 
 export default function RegisterPage() {
   return (
     <div className="grid min-h-svh lg:grid-cols-2">
-      <div className="bg-gradient-to-br from-blue-900 via-blue-800 to-indigo-900 relative hidden lg:flex lg:flex-col lg:items-center lg:justify-center p-12">
-        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC4wNCI+PHBhdGggZD0iTTM2IDM0djItSDI0di0yaDEyek0zNiAyNHYySDI0di0yaDEyeiIvPjwvZz48L2c+PC9zdmc+')] opacity-30" />
-        <div className="relative z-10 text-center text-white space-y-8">
+      <div className="bg-signature-gradient relative hidden lg:flex lg:flex-col lg:items-center lg:justify-center p-12 overflow-hidden">
+        {/* Vignette para legibilidad del texto blanco sobre los stops más claros */}
+        <div className="absolute inset-0 bg-gradient-to-br from-ink/30 via-ink/10 to-transparent" />
+        <div className="absolute inset-0 noise opacity-[0.06]" />
+        <div className="relative z-10 text-center text-white space-y-10">
           <div className="flex justify-center">
             <Image
               src="/vibook-logo-white.png"
               alt="Vibook"
-              width={240}
-              height={72}
+              width={480}
+              height={144}
               priority
-              className="h-auto w-auto max-h-20 object-contain"
+              className="h-auto w-auto max-h-52 object-contain"
             />
           </div>
-          <div>
-            <p className="text-lg text-blue-200">
+          <div className="space-y-3">
+            <span className="text-[11px] font-semibold uppercase tracking-eyebrow text-white/70">
+              Bienvenido
+            </span>
+            <p className="text-2xl font-semibold tracking-tight-h2 text-white text-balance max-w-md mx-auto leading-tight">
               Tu ERP de agencia de viajes, listo en 1 minuto
             </p>
           </div>
-          <div className="flex justify-center gap-8 text-blue-300">
+          <div className="flex justify-center gap-10 text-white/85">
             <div className="flex flex-col items-center gap-2">
-              <Globe className="size-8" />
+              <div className="h-12 w-12 rounded-2xl bg-white/10 backdrop-blur-sm flex items-center justify-center shadow-elegant">
+                <Globe className="size-6" />
+              </div>
               <span className="text-sm">Operaciones</span>
             </div>
             <div className="flex flex-col items-center gap-2">
-              <MapPin className="size-8" />
+              <div className="h-12 w-12 rounded-2xl bg-white/10 backdrop-blur-sm flex items-center justify-center shadow-elegant">
+                <MapPin className="size-6" />
+              </div>
               <span className="text-sm">Destinos</span>
             </div>
             <div className="flex flex-col items-center gap-2">
-              <GalleryVerticalEnd className="size-8" />
+              <div className="h-12 w-12 rounded-2xl bg-white/10 backdrop-blur-sm flex items-center justify-center shadow-elegant">
+                <GalleryVerticalEnd className="size-6" />
+              </div>
               <span className="text-sm">Reportes</span>
             </div>
           </div>
         </div>
       </div>
-      <div className="flex flex-1 items-center justify-center p-6 md:p-10">
-        <div className="w-full max-w-md">
-          <div className="flex justify-center mb-8">
-            <Link href="/" className="inline-flex items-center">
-              <Image
-                src="/vibook-logo.jpeg"
-                alt="Vibook"
-                width={180}
-                height={54}
-                priority
-                className="h-auto w-auto max-h-12 object-contain"
-              />
-            </Link>
-          </div>
+      <div className="relative flex flex-1 items-center justify-center p-6 md:p-10 section-aura">
+        <div className="w-full max-w-md relative z-10">
           {/* Suspense requerido por useSearchParams en el form (Next 15+). */}
           <Suspense fallback={null}>
             <RegisterForm />

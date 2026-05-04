@@ -147,7 +147,7 @@ export function OperationSaleInvoicesSection({ operationId }: Props) {
                     <TableCell className="text-right text-sm">
                       {hideTaxBreakdown ? "No discrimina" : formatMoney(inv.imp_neto, inv.moneda)}
                     </TableCell>
-                    <TableCell className="text-right text-sm text-orange-600">
+                    <TableCell className="text-right text-sm text-accent-coral">
                       {hideTaxBreakdown ? "-" : formatMoney(inv.imp_iva, inv.moneda)}
                     </TableCell>
                     <TableCell className="text-right text-sm font-medium">{formatMoney(inv.imp_total, inv.moneda)}</TableCell>

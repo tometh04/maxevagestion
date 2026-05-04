@@ -195,10 +195,10 @@ export const DEFAULT_INVOICE_TEMPLATE = `
     .logo { max-height: 60px; }
     .invoice-info { text-align: right; }
     .invoice-type { font-size: 24px; font-weight: bold; }
-    .customer-info { margin-bottom: 20px; padding: 10px; background: #f5f5f5; }
+    .customer-info { margin-bottom: 20px; padding: 10px; background: hsl(224 28% 97%); }
     table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-    th { background: #f0f0f0; }
+    th, td { border: 1px solid hsl(224 18% 92%); padding: 8px; text-align: left; }
+    th { background: hsl(224 22% 96%); }
     .totals { text-align: right; }
     .total-row { font-weight: bold; font-size: 14px; }
     .footer { margin-top: 20px; text-align: center; font-size: 10px; }
@@ -275,16 +275,16 @@ export const DEFAULT_BUDGET_TEMPLATE = `
     body { font-family: Arial, sans-serif; font-size: 12px; margin: 0; padding: 20px; }
     .header { text-align: center; margin-bottom: 30px; }
     .logo { max-height: 60px; }
-    h1 { color: #333; margin-bottom: 5px; }
-    .subtitle { color: #666; }
-    .info-box { background: #f9f9f9; padding: 15px; margin-bottom: 20px; border-radius: 5px; }
-    .section-title { font-size: 14px; font-weight: bold; margin-bottom: 10px; color: #333; }
+    h1 { color: hsl(222 47% 11%); margin-bottom: 5px; }
+    .subtitle { color: hsl(226 12% 48%); }
+    .info-box { background: hsl(224 28% 97%); padding: 15px; margin-bottom: 20px; border-radius: 5px; }
+    .section-title { font-size: 14px; font-weight: bold; margin-bottom: 10px; color: hsl(222 47% 11%); }
     table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-    th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
-    th { background: #4a90d9; color: white; }
+    th, td { border: 1px solid hsl(224 18% 92%); padding: 10px; text-align: left; }
+    th { background: hsl(232 76% 58%); color: white; }
     .total { text-align: right; font-size: 18px; font-weight: bold; }
-    .notes { background: #fff3cd; padding: 10px; border-radius: 5px; margin-top: 20px; }
-    .footer { margin-top: 30px; text-align: center; font-size: 10px; color: #666; }
+    .notes { background: hsl(10 78% 66% / 0.15); padding: 10px; border-radius: 5px; margin-top: 20px; }
+    .footer { margin-top: 30px; text-align: center; font-size: 10px; color: hsl(226 12% 48%); }
   </style>
 </head>
 <body>

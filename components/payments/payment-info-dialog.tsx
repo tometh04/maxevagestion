@@ -254,7 +254,7 @@ export function PaymentInfoDialog({
                   <p className="text-xs text-muted-foreground mt-0.5">
                     Pagado: {formatCurrency(paidAmount, currency)}
                     {pendingAmount !== null && pendingAmount > 0 && (
-                      <span className="text-red-500 ml-1">
+                      <span className="text-destructive ml-1">
                         | Resta: {formatCurrency(pendingAmount, currency)}
                       </span>
                     )}
@@ -296,12 +296,12 @@ export function PaymentInfoDialog({
                       </div>
                       <div className="flex flex-col items-center shrink-0 px-2">
                         {(balanceAfter as number) < (balanceBefore as number) ? (
-                          <TrendingDown className="h-4 w-4 text-red-500" />
+                          <TrendingDown className="h-4 w-4 text-destructive" />
                         ) : (
-                          <TrendingUp className="h-4 w-4 text-green-500" />
+                          <TrendingUp className="h-4 w-4 text-success" />
                         )}
                         <span className={`text-xs font-bold tabular-nums ${
-                          (balanceAfter as number) < (balanceBefore as number) ? "text-red-500" : "text-green-500"
+                          (balanceAfter as number) < (balanceBefore as number) ? "text-destructive" : "text-success"
                         }`}>
                           {(balanceAfter as number) < (balanceBefore as number) ? "-" : "+"}
                           {formatCurrency(

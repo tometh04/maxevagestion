@@ -504,7 +504,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo, cu
               <div className="space-y-6">
                 <div>
                   <div className="flex items-center gap-1.5 mb-3">
-                    <DollarSign className="h-3.5 w-3.5 text-emerald-500" />
+                    <DollarSign className="h-3.5 w-3.5 text-success" />
                     <span className="text-xs font-medium text-foreground/70">Cuentas USD</span>
                   </div>
                   <div className="space-y-2">
@@ -521,7 +521,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo, cu
                 </div>
                 <div>
                   <div className="flex items-center gap-1.5 mb-3">
-                    <DollarSign className="h-3.5 w-3.5 text-blue-500" />
+                    <DollarSign className="h-3.5 w-3.5 text-primary" />
                     <span className="text-xs font-medium text-foreground/70">Cuentas ARS</span>
                   </div>
                   <div className="space-y-2">

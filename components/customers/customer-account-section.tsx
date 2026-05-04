@@ -178,11 +178,11 @@ export function CustomerAccountSection({ customerId }: CustomerAccountSectionPro
 
           <div className={`p-4 rounded-lg border ${
             hasOwed
-              ? "bg-yellow-50 dark:bg-yellow-950/20 border-yellow-200 dark:border-yellow-800"
-              : "bg-gray-50 dark:bg-gray-900/50 border-gray-200 dark:border-gray-700"
+              ? "bg-accent-coral/5 dark:bg-accent-coral/20 border-accent-coral/15 dark:border-accent-coral"
+              : "bg-muted dark:bg-card/50 border-border dark:border-muted-foreground"
           }`}>
             <div className={`flex items-center gap-2 ${
-              hasOwed ? "text-yellow-600 dark:text-yellow-400" : "text-gray-600"
+              hasOwed ? "text-accent-coral dark:text-accent-coral" : "text-muted-foreground"
             }`}>
               <TrendingDown className="h-4 w-4" />
               <span className="text-sm font-medium">Saldo Pendiente</span>
@@ -239,12 +239,12 @@ export function CustomerAccountSection({ customerId }: CustomerAccountSectionPro
                       <div className={`p-2 rounded-full ${
                         payment.status === "PAID" 
                           ? "bg-success/10"
-                          : "bg-yellow-100 dark:bg-yellow-900/30"
+                          : "bg-accent-coral/10 dark:bg-accent-coral/30"
                       }`}>
                         {payment.status === "PAID" ? (
                           <CheckCircle className="h-4 w-4 text-success" />
                         ) : (
-                          <Clock className="h-4 w-4 text-yellow-600" />
+                          <Clock className="h-4 w-4 text-accent-coral" />
                         )}
                       </div>
                       <div>

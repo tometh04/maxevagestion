@@ -702,7 +702,7 @@ export function TrelloSettings({ agencies, defaultAgencyId }: TrelloSettingsProp
                           <TableRow key={webhook.id}>
                             <TableCell className="font-mono text-xs">{webhook.callbackURL}</TableCell>
                             <TableCell>
-                              <span className={webhook.active ? "text-warning" : "text-destructive"}>
+                              <span className={webhook.active ? "text-accent-coral" : "text-destructive"}>
                                 {webhook.active ? "✅ Activo" : "❌ Inactivo"}
                               </span>
                             </TableCell>
@@ -752,7 +752,7 @@ export function TrelloSettings({ agencies, defaultAgencyId }: TrelloSettingsProp
                   id="forceFullSync"
                   checked={forceFullSync}
                   onChange={(e) => setForceFullSync(e.target.checked)}
-                  className="h-4 w-4 rounded border-gray-300"
+                  className="h-4 w-4 rounded border-border"
                 />
                 <label htmlFor="forceFullSync" className="text-sm font-medium">
                   Forzar sincronización completa (ignorar checkpoint)

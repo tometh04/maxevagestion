@@ -423,7 +423,7 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[95vw] sm:max-w-lg max-h-[95vh] overflow-y-auto">
+      <DialogContent className="max-w-[95vw] sm:max-w-lg max-h-[95vh]">
         <DialogHeader>
           <DialogTitle>Nuevo Pago</DialogTitle>
           <DialogDescription>Crear un pago para una operación</DialogDescription>
@@ -579,7 +579,7 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
             {/* Monto */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
-                <DollarSign className="h-3.5 w-3.5 text-emerald-500" />
+                <DollarSign className="h-3.5 w-3.5 text-success" />
                 <span className="text-xs font-medium text-foreground/70">Monto</span>
               </div>
               <div className="grid gap-4 grid-cols-2">
@@ -631,7 +631,7 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
             {/* Fecha de vencimiento */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
-                <CalendarIcon className="h-3.5 w-3.5 text-blue-500" />
+                <CalendarIcon className="h-3.5 w-3.5 text-primary" />
                 <span className="text-xs font-medium text-foreground/70">Vencimiento</span>
               </div>
 
@@ -683,7 +683,7 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
                       />
                     </FormControl>
                     <div className="flex items-center gap-1.5">
-                      <CheckCircle className="h-3.5 w-3.5 text-emerald-500" />
+                      <CheckCircle className="h-3.5 w-3.5 text-success" />
                       <FormLabel className="!mt-0 cursor-pointer">Marcar como pagado ahora</FormLabel>
                     </div>
                   </FormItem>
@@ -693,7 +693,7 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
               {watchMarkAsPaid && (
                 <div className="space-y-4 pt-2 border-t border-border/30">
                   <div className="flex items-center gap-1.5">
-                    <Wallet className="h-3.5 w-3.5 text-emerald-500" />
+                    <Wallet className="h-3.5 w-3.5 text-success" />
                     <span className="text-xs font-medium text-foreground/70">Cuenta y pago</span>
                   </div>
 
@@ -765,9 +765,9 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
 
                   {/* Percepciones opcionales */}
                   {(showRg5617 || showRg3819) && (
-                    <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 space-y-3">
+                    <div className="rounded-lg border border-accent-coral/30 bg-accent-coral/5 p-3 space-y-3">
                       <div className="flex items-center gap-1.5">
-                        <Receipt className="h-3.5 w-3.5 text-amber-500" />
+                        <Receipt className="h-3.5 w-3.5 text-accent-coral" />
                         <span className="text-xs font-medium text-foreground/70">Percepciones Impositivas</span>
                       </div>
                       <p className="text-xs text-muted-foreground">

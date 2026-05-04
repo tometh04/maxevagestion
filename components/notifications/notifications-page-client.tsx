@@ -53,8 +53,8 @@ interface NotificationsPageClientProps {
 
 const severityConfig: Record<string, { icon: any; color: string; bg: string }> = {
   CRITICAL: { icon: AlertCircle, color: "text-destructive", bg: "bg-destructive/10" },
-  WARNING: { icon: AlertTriangle, color: "text-warning", bg: "bg-warning/10" },
-  INFO: { icon: Info, color: "text-info", bg: "bg-info/10" },
+  WARNING: { icon: AlertTriangle, color: "text-accent-coral", bg: "bg-accent-coral/10" },
+  INFO: { icon: Info, color: "text-accent-teal", bg: "bg-accent-teal/10" },
   SUCCESS: { icon: CheckCircle, color: "text-success", bg: "bg-success/10" },
 }
 
@@ -156,7 +156,7 @@ export function NotificationsPageClient({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-warning">
+            <div className="text-2xl font-bold text-accent-coral">
               {alerts.filter((a) => a.severity === "WARNING" && !a.is_resolved).length}
             </div>
           </CardContent>
@@ -251,7 +251,7 @@ export function NotificationsPageClient({
                               {typeLabels[alert.alert_type] || alert.alert_type}
                             </Badge>
                             {!alert.is_resolved && (
-                              <span className="h-2 w-2 rounded-full bg-info" />
+                              <span className="h-2 w-2 rounded-full bg-accent-teal" />
                             )}
                           </div>
                           <p className="text-sm text-muted-foreground mt-1">

@@ -33,12 +33,12 @@ type Props = {
 }
 
 const STATUS_COLOR: Record<string, string> = {
-  TRIAL:   "bg-blue-500/15 text-blue-300",
-  ACTIVE:  "bg-emerald-500/15 text-emerald-300",
-  PAST_DUE: "bg-amber-500/15 text-amber-300",
-  PENDING_PAYMENT: "bg-amber-500/15 text-amber-300",
-  CANCELLED: "bg-slate-500/15 text-slate-300",
-  SUSPENDED: "bg-red-500/15 text-red-300",
+  TRIAL:   "bg-primary/15 text-primary",
+  ACTIVE:  "bg-success/15 text-success",
+  PAST_DUE: "bg-accent-coral/15 text-accent-coral",
+  PENDING_PAYMENT: "bg-accent-coral/15 text-accent-coral",
+  CANCELLED: "bg-muted-foreground/15 text-muted-foreground",
+  SUSPENDED: "bg-destructive/15 text-destructive",
 }
 
 export function OrgsTable({ orgs, sort, dir, buildSortHref }: Props) {
@@ -61,8 +61,8 @@ export function OrgsTable({ orgs, sort, dir, buildSortHref }: Props) {
             <Link
               href={buildSortHref("name")}
               className={cn(
-                "inline-flex items-center gap-1 hover:text-slate-200",
-                sort === "name" && "text-blue-300",
+                "inline-flex items-center gap-1 hover:text-muted-foreground",
+                sort === "name" && "text-primary",
               )}
             >
               Org
@@ -74,8 +74,8 @@ export function OrgsTable({ orgs, sort, dir, buildSortHref }: Props) {
             <Link
               href={buildSortHref("plan")}
               className={cn(
-                "inline-flex items-center gap-1 hover:text-slate-200",
-                sort === "plan" && "text-blue-300",
+                "inline-flex items-center gap-1 hover:text-muted-foreground",
+                sort === "plan" && "text-primary",
               )}
             >
               Plan
@@ -87,8 +87,8 @@ export function OrgsTable({ orgs, sort, dir, buildSortHref }: Props) {
             <Link
               href={buildSortHref("created_at")}
               className={cn(
-                "inline-flex items-center gap-1 hover:text-slate-200",
-                sort === "created_at" && "text-blue-300",
+                "inline-flex items-center gap-1 hover:text-muted-foreground",
+                sort === "created_at" && "text-primary",
               )}
             >
               Creada
@@ -106,17 +106,17 @@ export function OrgsTable({ orgs, sort, dir, buildSortHref }: Props) {
             <DataTableTd>
               <Link
                 href={`/admin/orgs/${o.id}`}
-                className="font-medium text-slate-100 hover:text-blue-300"
+                className="font-medium text-muted-foreground hover:text-primary"
               >
                 {o.name}
               </Link>
-              <div className="text-xs text-slate-500">{o.slug}</div>
+              <div className="text-xs text-muted-foreground">{o.slug}</div>
             </DataTableTd>
             <DataTableTd>
               <span
                 className={cn(
                   "rounded px-2 py-0.5 text-xs",
-                  STATUS_COLOR[o.subscription_status] ?? "bg-slate-700 text-slate-300",
+                  STATUS_COLOR[o.subscription_status] ?? "bg-ink text-muted-foreground",
                 )}
               >
                 {o.subscription_status}
@@ -124,19 +124,19 @@ export function OrgsTable({ orgs, sort, dir, buildSortHref }: Props) {
             </DataTableTd>
             <DataTableTd>
               {o.plan}
-              {o.custom_plan_id && <span className="ml-1 text-amber-300" title="Custom plan">✦</span>}
+              {o.custom_plan_id && <span className="ml-1 text-accent-coral" title="Custom plan">✦</span>}
             </DataTableTd>
             <DataTableTd>
               {o.contact_name || o.contact_phone ? (
                 <>
-                  <div className="text-slate-200">{o.contact_name ?? "—"}</div>
-                  <div className="text-xs text-slate-500">{o.contact_phone ?? ""}</div>
+                  <div className="text-muted-foreground">{o.contact_name ?? "—"}</div>
+                  <div className="text-xs text-muted-foreground">{o.contact_phone ?? ""}</div>
                 </>
               ) : (
-                <span className="text-slate-500">—</span>
+                <span className="text-muted-foreground">—</span>
               )}
             </DataTableTd>
-            <DataTableTd className="text-slate-400">{relativeTime(o.created_at)}</DataTableTd>
+            <DataTableTd className="text-muted-foreground">{relativeTime(o.created_at)}</DataTableTd>
           </DataTableRow>
         ))}
       </DataTableBody>

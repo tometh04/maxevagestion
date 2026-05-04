@@ -132,7 +132,7 @@ export function VencimientosReport({ agencies }: Props) {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
-              <ArrowDownToLine className="h-4 w-4 text-emerald-600" />
+              <ArrowDownToLine className="h-4 w-4 text-success" />
               A cobrar (clientes)
             </CardTitle>
             <CardDescription>
@@ -166,7 +166,7 @@ export function VencimientosReport({ agencies }: Props) {
                     return (
                       <TableRow key={p.id}>
                         <TableCell className="text-xs">
-                          <span className={p.isOverdue ? "text-red-600 font-semibold flex items-center gap-1" : ""}>
+                          <span className={p.isOverdue ? "text-destructive font-semibold flex items-center gap-1" : ""}>
                             {p.isOverdue && <AlertCircle className="h-3 w-3" />}
                             {formatDate(p.date_due)}
                           </span>
@@ -198,7 +198,7 @@ export function VencimientosReport({ agencies }: Props) {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
-              <ArrowUpFromLine className="h-4 w-4 text-orange-600" />
+              <ArrowUpFromLine className="h-4 w-4 text-accent-coral" />
               A pagar (operadores)
             </CardTitle>
             <CardDescription>
@@ -227,7 +227,7 @@ export function VencimientosReport({ agencies }: Props) {
                   {(data?.operator_payments || []).map((p) => (
                     <TableRow key={p.id}>
                       <TableCell className="text-xs">
-                        <span className={p.isOverdue ? "text-red-600 font-semibold flex items-center gap-1" : ""}>
+                        <span className={p.isOverdue ? "text-destructive font-semibold flex items-center gap-1" : ""}>
                           {p.isOverdue && <AlertCircle className="h-3 w-3" />}
                           {formatDate(p.due_date)}
                         </span>

@@ -344,7 +344,7 @@ export function ManualPaymentDialog({
 
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
-                <Landmark className="h-3.5 w-3.5 text-emerald-500" />
+                <Landmark className="h-3.5 w-3.5 text-success" />
                 <span className="text-xs font-medium text-foreground/70">Destino</span>
               </div>
 

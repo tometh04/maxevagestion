@@ -113,7 +113,7 @@ export function OperatorAccountSection({ operatorId, creditLimit }: OperatorAcco
     const isOverdue = status === "PENDING" && new Date(dateDue) < new Date()
     
     if (status === "PAID") {
-      return <Badge variant="default" className="bg-green-500">Pagado</Badge>
+      return <Badge variant="default" className="bg-success">Pagado</Badge>
     }
     if (isOverdue) {
       return <Badge variant="destructive">Vencido</Badge>
@@ -179,8 +179,8 @@ export function OperatorAccountSection({ operatorId, creditLimit }: OperatorAcco
 
         {/* Resumen */}
         <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-          <div className="p-4 rounded-lg border bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800">
-            <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+          <div className="p-4 rounded-lg border bg-success/5 dark:bg-success/20 border-success/15 dark:border-success">
+            <div className="flex items-center gap-2 text-success dark:text-success">
               <TrendingUp className="h-4 w-4" />
               <span className="text-sm font-medium">Total Pagado</span>
             </div>
@@ -193,15 +193,15 @@ export function OperatorAccountSection({ operatorId, creditLimit }: OperatorAcco
             exceedsCreditLimit
               ? "bg-destructive/10 border-destructive"
               : hasOwed
-                ? "bg-warning/10 border-warning"
-                : "bg-gray-50 dark:bg-gray-900/50 border-gray-200 dark:border-gray-700"
+                ? "bg-accent-coral/10 border-accent-coral"
+                : "bg-muted dark:bg-card/50 border-border dark:border-muted-foreground"
           }`}>
             <div className={`flex items-center gap-2 ${
               exceedsCreditLimit
                 ? "text-destructive"
                 : hasOwed
-                  ? "text-warning"
-                  : "text-gray-600"
+                  ? "text-accent-coral"
+                  : "text-muted-foreground"
             }`}>
               <TrendingDown className="h-4 w-4" />
               <span className="text-sm font-medium">Saldo Adeudado</span>
@@ -262,13 +262,13 @@ export function OperatorAccountSection({ operatorId, creditLimit }: OperatorAcco
                     <div className="flex items-center gap-3">
                       <div className={`p-2 rounded-full ${
                         payment.status === "PAID" 
-                          ? "bg-green-100 dark:bg-green-900/30" 
-                          : "bg-yellow-100 dark:bg-yellow-900/30"
+                          ? "bg-success/10 dark:bg-success/30" 
+                          : "bg-accent-coral/10 dark:bg-accent-coral/30"
                       }`}>
                         {payment.status === "PAID" ? (
-                          <CheckCircle className="h-4 w-4 text-green-600" />
+                          <CheckCircle className="h-4 w-4 text-success" />
                         ) : (
-                          <Clock className="h-4 w-4 text-yellow-600" />
+                          <Clock className="h-4 w-4 text-accent-coral" />
                         )}
                       </div>
                       <div>

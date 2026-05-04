@@ -18,14 +18,14 @@ export async function EnterpriseWithoutPriceAlert() {
   if (list.length === 0) return null
 
   return (
-    <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-amber-100">
+    <div className="rounded-lg border border-accent-coral/40 bg-accent-coral/10 p-4 text-accent-coral">
       <div className="flex items-start gap-3">
-        <AlertTriangle className="h-5 w-5 mt-0.5 shrink-0 text-amber-300" />
+        <AlertTriangle className="h-5 w-5 mt-0.5 shrink-0 text-accent-coral" />
         <div className="flex-1 space-y-2">
-          <div className="text-sm font-medium text-amber-200">
+          <div className="text-sm font-medium text-accent-coral">
             {list.length} org{list.length === 1 ? "" : "s"} Enterprise sin precio configurado
           </div>
-          <p className="text-xs text-amber-300/80">
+          <p className="text-xs text-accent-coral/80">
             Estos clientes están en estado pagador pero no aparecen en el MRR. Cargá un MRR override o un custom plan en cada org.
           </p>
           <ul className="space-y-1 text-sm">
@@ -33,15 +33,15 @@ export async function EnterpriseWithoutPriceAlert() {
               <li key={o.id}>
                 <Link
                   href={`/admin/orgs/${o.id}`}
-                  className="text-amber-200 underline hover:text-amber-100"
+                  className="text-accent-coral underline hover:text-accent-coral"
                 >
                   {o.name}
                 </Link>
-                <span className="text-amber-300/60"> — Configurar →</span>
+                <span className="text-accent-coral/60"> — Configurar →</span>
               </li>
             ))}
             {list.length > 8 && (
-              <li className="text-xs text-amber-300/60 italic">
+              <li className="text-xs text-accent-coral/60 italic">
                 + {list.length - 8} más
               </li>
             )}

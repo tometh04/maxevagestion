@@ -32,7 +32,7 @@ export function PreviewTable<T extends Record<string, unknown>>({ rows, headers,
                 {r.errors.length > 0 ? (
                   <Badge variant="destructive">Error</Badge>
                 ) : (
-                  <Badge variant="outline" className="text-green-600">OK</Badge>
+                  <Badge variant="outline" className="text-success">OK</Badge>
                 )}
               </TableCell>
               {headers.slice(0, 5).map((h) => (
@@ -45,7 +45,7 @@ export function PreviewTable<T extends Record<string, unknown>>({ rows, headers,
         </TableBody>
       </Table>
       {rows.length > maxRows && (
-        <p className="text-xs text-slate-500 p-2">Mostrando {maxRows} de {rows.length} filas</p>
+        <p className="text-xs text-muted-foreground p-2">Mostrando {maxRows} de {rows.length} filas</p>
       )}
     </div>
   )

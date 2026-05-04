@@ -41,31 +41,44 @@ export default async function PaywallPage() {
       : "Elegí un plan para seguir usando Vibook sin interrupciones."
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-muted/30 p-6">
-      <div className="w-full max-w-3xl space-y-6">
-        <header className="text-center space-y-2">
-          <h1 className="text-3xl font-semibold">{title}</h1>
-          <p className="text-muted-foreground">{subtitle}</p>
+    <div className="relative min-h-screen flex items-center justify-center bg-background p-6 section-aura">
+      <div className="w-full max-w-3xl space-y-8 relative z-10">
+        <header className="text-center space-y-3">
+          <span className="inline-block text-[11px] font-semibold uppercase tracking-eyebrow text-primary">
+            Activar suscripción
+          </span>
+          <h1 className="text-4xl md:text-5xl font-bold tracking-tighter-hero leading-[1.1]">
+            <span className="text-gradient-signature">{title}</span>
+          </h1>
+          <p className="text-muted-foreground text-balance text-lg">{subtitle}</p>
           {org?.name && (
             <p className="text-xs text-muted-foreground">{org.name} · {user.email}</p>
           )}
         </header>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {PLAN_ORDER.map((planId) => {
+          {PLAN_ORDER.map((planId, idx) => {
             const plan = PLANS[planId]
+            const isFeatured = idx === 1
             return (
-              <div key={plan.id} className="border rounded-lg p-4 bg-background space-y-3">
+              <div
+                key={plan.id}
+                className={`rounded-2xl p-6 bg-background space-y-4 transition-all duration-300 ${
+                  isFeatured
+                    ? "border-2 border-primary shadow-glow"
+                    : "border border-border/50 shadow-card hover:-translate-y-0.5 hover:shadow-elegant"
+                }`}
+              >
                 <div>
-                  <h3 className="text-lg font-semibold">{plan.name}</h3>
-                  <div className="text-2xl font-bold mt-1">
+                  <h3 className="text-lg font-semibold tracking-tight-h2">{plan.name}</h3>
+                  <div className="text-3xl font-bold mt-1 tracking-tighter-h2">
                     {plan.priceArsMonthly !== null
                       ? <>{formatArs(plan.priceArsMonthly)}<span className="text-sm font-normal text-muted-foreground"> / mes</span></>
                       : plan.priceLabel || "Consultar"}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">{plan.description}</p>
                 </div>
-                <ul className="text-sm space-y-1 list-disc list-inside">
+                <ul className="text-sm space-y-1 list-disc list-inside text-muted-foreground">
                   {plan.features.map((f, i) => <li key={i}>{f}</li>)}
                 </ul>
                 <CheckoutButton plan={plan.id} />
@@ -77,10 +90,10 @@ export default async function PaywallPage() {
         <div className="text-center text-sm text-muted-foreground space-y-1">
           <p>
             ¿Necesitás otra opción?{" "}
-            <Link href="mailto:hola@vibook.ai" className="underline">Escribinos</Link>
+            <Link href="mailto:hola@vibook.ai" className="text-primary underline-offset-4 hover:underline">Escribinos</Link>
           </p>
           <p>
-            <Link href="/logout" className="underline">Cerrar sesión</Link>
+            <Link href="/logout" className="underline-offset-4 hover:underline">Cerrar sesión</Link>
           </p>
         </div>
       </div>

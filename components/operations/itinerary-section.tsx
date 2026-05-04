@@ -301,7 +301,7 @@ export function ItinerarySection({ operationId, operation }: ItinerarySectionPro
         </p>
         <div className="flex gap-2">
           {items.length > 0 && (
-            <Button size="sm" onClick={handleGeneratePdf} disabled={generatingPdf} className="bg-amber-600 hover:bg-amber-700">
+            <Button size="sm" onClick={handleGeneratePdf} disabled={generatingPdf} className="bg-accent-coral hover:bg-accent-coral">
               {generatingPdf ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileDown className="h-4 w-4 mr-2" />}
               Descargar PDF
             </Button>
@@ -326,11 +326,11 @@ export function ItinerarySection({ operationId, operation }: ItinerarySectionPro
         {/* Header */}
         <div className="px-8 pt-6 pb-4 border-b flex items-start justify-between">
           <div>
-            <h2 className="text-lg font-bold text-gray-800 tracking-wide">
+            <h2 className="text-lg font-bold text-foreground tracking-wide">
               DETALLE DE COMPRA {(operation?.destination || "").toUpperCase()}
             </h2>
             {operation?.departure_date && (
-              <p className="text-sm text-gray-500 mt-0.5">
+              <p className="text-sm text-muted-foreground mt-0.5">
                 Salida {fmtDate(operation.departure_date).toUpperCase()}
                 {operation.return_date && ` — Regreso ${fmtDate(operation.return_date).toUpperCase()}`}
               </p>
@@ -345,7 +345,7 @@ export function ItinerarySection({ operationId, operation }: ItinerarySectionPro
         {/* Items */}
         <div className="px-8 py-4 space-y-1">
           {items.length === 0 && (
-            <div className="py-16 text-center text-gray-300">
+            <div className="py-16 text-center text-muted-foreground">
               <FileText className="h-16 w-16 mx-auto mb-4" />
               <p className="text-lg font-medium">El itinerario está vacío</p>
               <p className="text-sm mt-1">Usá el botón &quot;Agregar&quot; para sumar vuelos, hoteles, traslados...</p>
@@ -359,16 +359,16 @@ export function ItinerarySection({ operationId, operation }: ItinerarySectionPro
                 <Button variant="ghost" size="icon" className="h-7 w-7" disabled={idx === 0} onClick={() => handleMove(item, "up")}><ChevronUp className="h-3 w-3" /></Button>
                 <Button variant="ghost" size="icon" className="h-7 w-7" disabled={idx === items.length - 1} onClick={() => handleMove(item, "down")}><ChevronDown className="h-3 w-3" /></Button>
                 <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditDialog(item)}><Pencil className="h-3 w-3" /></Button>
-                <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => setDeleteItem(item)}><Trash2 className="h-3 w-3" /></Button>
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => setDeleteItem(item)}><Trash2 className="h-3 w-3" /></Button>
               </div>
 
               {/* FLIGHT block */}
               {item.item_type === "FLIGHT" && (
-                <div className="py-2 group-hover:bg-sky-50/50 rounded-lg px-2 -mx-2 transition-colors">
-                  <p className="text-sm font-medium text-gray-700">
+                <div className="py-2 group-hover:bg-accent-teal/50 rounded-lg px-2 -mx-2 transition-colors">
+                  <p className="text-sm font-medium text-foreground">
                     ✈️ {(item.flight_route || "VUELO").toUpperCase()}
-                    {item.airline && <span className="text-amber-700"> CON {item.airline.toUpperCase()}</span>}
-                    {item.flight_date && <span className="text-gray-500"> ({fmtDateShort(item.flight_date)})</span>}
+                    {item.airline && <span className="text-accent-coral"> CON {item.airline.toUpperCase()}</span>}
+                    {item.flight_date && <span className="text-muted-foreground"> ({fmtDateShort(item.flight_date)})</span>}
                   </p>
                   {item.image_url && (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -379,8 +379,8 @@ export function ItinerarySection({ operationId, operation }: ItinerarySectionPro
 
               {/* TRANSFER block */}
               {item.item_type === "TRANSFER" && (
-                <div className="py-1.5 group-hover:bg-green-50/50 rounded-lg px-2 -mx-2 transition-colors">
-                  <p className="text-sm text-gray-600">→ {item.transfer_description || "Traslado"}</p>
+                <div className="py-1.5 group-hover:bg-success/50 rounded-lg px-2 -mx-2 transition-colors">
+                  <p className="text-sm text-muted-foreground">→ {item.transfer_description || "Traslado"}</p>
                   {item.image_url && (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={item.image_url} alt="" className="mt-2 max-h-24 rounded border" />
@@ -390,12 +390,12 @@ export function ItinerarySection({ operationId, operation }: ItinerarySectionPro
 
               {/* HOTEL block */}
               {item.item_type === "HOTEL" && (
-                <div className="py-3 group-hover:bg-blue-50/30 rounded-lg px-2 -mx-2 transition-colors">
+                <div className="py-3 group-hover:bg-primary/30 rounded-lg px-2 -mx-2 transition-colors">
                   {/* City header */}
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="text-amber-700 font-bold text-sm">📍 {(item.destination_city || "").toUpperCase()}</span>
+                    <span className="text-accent-coral font-bold text-sm">📍 {(item.destination_city || "").toUpperCase()}</span>
                     {item.date_from && item.date_to && (
-                      <span className="text-amber-600 text-xs font-semibold">
+                      <span className="text-accent-coral text-xs font-semibold">
                         ({fmtDateShort(item.date_from)} AL {fmtDateShort(item.date_to)})
                       </span>
                     )}
@@ -407,26 +407,26 @@ export function ItinerarySection({ operationId, operation }: ItinerarySectionPro
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={item.image_url} alt="" className="w-28 h-20 object-cover rounded-lg border flex-shrink-0" />
                     ) : (
-                      <div className="w-28 h-20 bg-gray-100 rounded-lg border flex items-center justify-center flex-shrink-0">
-                        <ImageIcon className="h-6 w-6 text-gray-300" />
+                      <div className="w-28 h-20 bg-muted rounded-lg border flex items-center justify-center flex-shrink-0">
+                        <ImageIcon className="h-6 w-6 text-muted-foreground" />
                       </div>
                     )}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">
-                        {item.hotel_stars && <span className="text-amber-500 text-xs">{"★".repeat(item.hotel_stars)}</span>}
-                        <h4 className="font-bold text-sm text-gray-800">{item.hotel_name || "Hotel"}</h4>
+                        {item.hotel_stars && <span className="text-accent-coral text-xs">{"★".repeat(item.hotel_stars)}</span>}
+                        <h4 className="font-bold text-sm text-foreground">{item.hotel_name || "Hotel"}</h4>
                       </div>
-                      {item.hotel_address && <p className="text-xs text-gray-500 truncate">{item.hotel_address}</p>}
-                      {item.hotel_phone && <p className="text-xs text-amber-600">Tel: {item.hotel_phone}</p>}
+                      {item.hotel_address && <p className="text-xs text-muted-foreground truncate">{item.hotel_address}</p>}
+                      {item.hotel_phone && <p className="text-xs text-accent-coral">Tel: {item.hotel_phone}</p>}
                     </div>
                   </div>
 
                   {/* Details */}
-                  <div className="ml-2 mt-2 text-xs text-gray-600 space-y-0.5">
-                    {item.checkin_date && <p><span className="text-gray-400 w-16 inline-block">Entrada:</span> {fmtDate(item.checkin_date)}</p>}
-                    {item.checkout_date && <p><span className="text-gray-400 w-16 inline-block">Salida:</span> {fmtDate(item.checkout_date)}</p>}
+                  <div className="ml-2 mt-2 text-xs text-muted-foreground space-y-0.5">
+                    {item.checkin_date && <p><span className="text-muted-foreground w-16 inline-block">Entrada:</span> {fmtDate(item.checkin_date)}</p>}
+                    {item.checkout_date && <p><span className="text-muted-foreground w-16 inline-block">Salida:</span> {fmtDate(item.checkout_date)}</p>}
                     {(item.rooms || item.nights) && (
-                      <p><span className="text-gray-400 w-16 inline-block">Reserva:</span> {item.rooms || 1} Hab. / {item.nights || "-"} Noches</p>
+                      <p><span className="text-muted-foreground w-16 inline-block">Reserva:</span> {item.rooms || 1} Hab. / {item.nights || "-"} Noches</p>
                     )}
                     {item.room_type && <p className="font-semibold mt-1">{item.room_type}{item.meal_plan && ` — ${item.meal_plan}`}</p>}
                   </div>
@@ -434,8 +434,8 @@ export function ItinerarySection({ operationId, operation }: ItinerarySectionPro
                   {/* Passengers */}
                   {passengers.length > 0 && (
                     <div className="ml-2 mt-2 text-xs">
-                      <p className="font-semibold text-gray-700">Huéspedes:</p>
-                      {passengers.map((p, i) => <p key={i} className="text-gray-600">{p}</p>)}
+                      <p className="font-semibold text-foreground">Huéspedes:</p>
+                      {passengers.map((p, i) => <p key={i} className="text-muted-foreground">{p}</p>)}
                     </div>
                   )}
                 </div>
@@ -443,15 +443,15 @@ export function ItinerarySection({ operationId, operation }: ItinerarySectionPro
 
               {/* CAR block */}
               {item.item_type === "CAR" && (
-                <div className="py-3 group-hover:bg-purple-50/30 rounded-lg px-2 -mx-2 transition-colors">
-                  <p className="text-amber-700 font-bold text-sm mb-1">🚗 Auto</p>
+                <div className="py-3 group-hover:bg-accent-violet/30 rounded-lg px-2 -mx-2 transition-colors">
+                  <p className="text-accent-coral font-bold text-sm mb-1">🚗 Auto</p>
                   <div className="flex gap-3 ml-2">
                     {item.image_url && (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={item.image_url} alt="" className="w-28 h-20 object-cover rounded-lg border flex-shrink-0" />
                     )}
-                    <div className="text-xs text-gray-600 space-y-0.5">
-                      {item.car_company && <p className="font-semibold text-gray-800">{item.car_company}</p>}
+                    <div className="text-xs text-muted-foreground space-y-0.5">
+                      {item.car_company && <p className="font-semibold text-foreground">{item.car_company}</p>}
                       {item.car_details && <p>{item.car_details}</p>}
                       {item.car_pickup_date && <p>Retiro: {fmtDate(item.car_pickup_date)} {item.car_pickup_location && `— ${item.car_pickup_location}`}</p>}
                       {item.car_return_date && <p>Devolución: {fmtDate(item.car_return_date)} {item.car_return_location && `— ${item.car_return_location}`}</p>}
@@ -462,8 +462,8 @@ export function ItinerarySection({ operationId, operation }: ItinerarySectionPro
 
               {/* NOTE block */}
               {item.item_type === "NOTE" && (
-                <div className="py-2 group-hover:bg-gray-50 rounded-lg px-2 -mx-2 transition-colors">
-                  <p className="text-sm text-gray-600 whitespace-pre-wrap">{item.notes}</p>
+                <div className="py-2 group-hover:bg-muted rounded-lg px-2 -mx-2 transition-colors">
+                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{item.notes}</p>
                 </div>
               )}
             </div>
@@ -473,7 +473,7 @@ export function ItinerarySection({ operationId, operation }: ItinerarySectionPro
         {/* Footer: Price + Passengers */}
         {items.length > 0 && (
           <div className="px-8 py-4 border-t">
-            <p className="text-center font-bold text-amber-700 text-lg">
+            <p className="text-center font-bold text-accent-coral text-lg">
               TOTAL POR PASAJERO {currency} {pricePerPerson.toLocaleString("es-AR")}
             </p>
           </div>
@@ -481,7 +481,7 @@ export function ItinerarySection({ operationId, operation }: ItinerarySectionPro
 
         {/* Brand footer */}
         {items.length > 0 && (
-          <div className="bg-amber-600 text-white px-8 py-3 text-xs flex justify-between">
+          <div className="bg-accent-coral text-white px-8 py-3 text-xs flex justify-between">
             <span>Nro de Legajo: 18181</span>
             <span>📍 Corrientes 631 - Piso 1 Oficina F</span>
             <span>🌐 lozadaviajes.rosario</span>

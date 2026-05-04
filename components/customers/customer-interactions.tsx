@@ -65,19 +65,19 @@ interface CustomerInteractionsProps {
 }
 
 const interactionTypes = [
-  { value: 'call', label: 'Llamada', icon: Phone, color: 'bg-info' },
-  { value: 'email', label: 'Email', icon: Mail, color: 'bg-warning' },
+  { value: 'call', label: 'Llamada', icon: Phone, color: 'bg-accent-teal' },
+  { value: 'email', label: 'Email', icon: Mail, color: 'bg-accent-coral' },
   { value: 'whatsapp', label: 'WhatsApp', icon: MessageSquare, color: 'bg-success' },
-  { value: 'meeting', label: 'Reunión', icon: Users, color: 'bg-purple-500' },
-  { value: 'video_call', label: 'Videollamada', icon: Video, color: 'bg-indigo-500' },
-  { value: 'note', label: 'Nota', icon: FileText, color: 'bg-gray-500' },
-  { value: 'task', label: 'Tarea', icon: CheckCircle2, color: 'bg-cyan-500' },
+  { value: 'meeting', label: 'Reunión', icon: Users, color: 'bg-accent-violet' },
+  { value: 'video_call', label: 'Videollamada', icon: Video, color: 'bg-primary' },
+  { value: 'note', label: 'Nota', icon: FileText, color: 'bg-muted-foreground' },
+  { value: 'task', label: 'Tarea', icon: CheckCircle2, color: 'bg-accent-teal' },
   { value: 'quote_sent', label: 'Cotización enviada', icon: FileText, color: 'bg-primary' },
   { value: 'quote_approved', label: 'Cotización aprobada', icon: CheckCircle2, color: 'bg-success' },
   { value: 'payment', label: 'Pago', icon: FileText, color: 'bg-success' },
   { value: 'complaint', label: 'Reclamo', icon: AlertCircle, color: 'bg-destructive' },
-  { value: 'feedback', label: 'Feedback', icon: MessageSquare, color: 'bg-pink-500' },
-  { value: 'other', label: 'Otro', icon: MoreHorizontal, color: 'bg-slate-500' },
+  { value: 'feedback', label: 'Feedback', icon: MessageSquare, color: 'bg-accent-coral' },
+  { value: 'other', label: 'Otro', icon: MoreHorizontal, color: 'bg-muted-foreground' },
 ]
 
 const outcomeLabels: Record<string, { label: string; variant: "default" | "secondary" | "outline" | "destructive" }> = {
@@ -321,8 +321,8 @@ export function CustomerInteractions({ customerId, customerName }: CustomerInter
                         </div>
 
                         {interaction.follow_up_date && !interaction.is_follow_up_completed && (
-                          <div className="mt-2 p-2 bg-warning/10 rounded text-sm">
-                            <div className="flex items-center gap-2 text-warning">
+                          <div className="mt-2 p-2 bg-accent-coral/10 rounded text-sm">
+                            <div className="flex items-center gap-2 text-accent-coral">
                               <Calendar className="h-4 w-4" />
                               <span>Seguimiento: {format(new Date(interaction.follow_up_date), "dd/MM/yyyy HH:mm", { locale: es })}</span>
                             </div>

@@ -177,7 +177,7 @@ export default function NewInvoicePage() {
   const [loadingExchangeRate, setLoadingExchangeRate] = useState(false)
   const [cotizacionAfip, setCotizacionAfip] = useState<number | null>(null)
   const [cotizacionLoading, setCotizacionLoading] = useState(false)
-  const [marginRemaining, setMarginRemaining] = useState<number | null>(null)
+  const [invoiceRemaining, setInvoiceRemaining] = useState<number | null>(null)
   const amountEntryMode = getRecommendedAmountEntryMode(formData.cbte_tipo, formData.receptor_condicion_iva)
   const calculatedInvoice = calculateInvoice(items, amountEntryMode)
   const shouldHideTaxBreakdown = shouldHideInvoiceTaxBreakdown({
@@ -188,6 +188,7 @@ export default function NewInvoicePage() {
   const activeCurrency = invoiceCurrency === 'DOL' ? 'DOL' : 'PES'
   const formatMoney = (value: number) => formatInvoiceMoney(value, activeCurrency)
   const getDefaultTaxTreatment = (cbteTipo: number): ItemTaxTreatment => cbteTipo === 19 ? 'EXENTO' : 'GRAVADO'
+  const roundMoney = (value: number) => Math.round(value * 100) / 100
   const createDefaultItem = (cbteTipo: number): InvoiceItem => {
     const taxTreatment = getDefaultTaxTreatment(cbteTipo)
     return {
@@ -197,6 +198,39 @@ export default function NewInvoicePage() {
       iva_porcentaje: taxTreatment === 'GRAVADO' ? 21 : 0,
       tax_treatment: taxTreatment,
     }
+  }
+  const buildOperationInvoiceItems = (summary: any, cbteTipo: number): InvoiceItem[] => {
+    const operation = summary.operation || {}
+    const saleTotal = Number(operation.sale_amount_total || 0)
+    const operatorCost = Number(operation.operator_cost || 0)
+    const taxableDifference = roundMoney(Math.max(0, saleTotal - operatorCost))
+    const destinationLabel = operation.destination || selectedOperation?.destination || 'Operacion'
+    const fileCode = operation.file_code || selectedOperation?.file_code || ''
+    const suffix = fileCode ? ` - ${destinationLabel} (${fileCode})` : ` - ${destinationLabel}`
+
+    const nextItems: InvoiceItem[] = []
+
+    if (operatorCost > 0) {
+      nextItems.push({
+        descripcion: `Costo de venta no gravado${suffix}`,
+        cantidad: 1,
+        precio_unitario: roundMoney(Math.min(operatorCost, saleTotal || operatorCost)),
+        iva_porcentaje: 0,
+        tax_treatment: 'NO_GRAVADO',
+      })
+    }
+
+    if (taxableDifference > 0) {
+      nextItems.push({
+        descripcion: `Diferencia gravada 10.5%${suffix}`,
+        cantidad: 1,
+        precio_unitario: taxableDifference,
+        iva_porcentaje: 10.5,
+        tax_treatment: 'GRAVADO',
+      })
+    }
+
+    return nextItems.length > 0 ? nextItems : [createDefaultItem(cbteTipo)]
   }
 
   useEffect(() => {
@@ -425,6 +459,7 @@ export default function NewInvoicePage() {
         operation_id: '',
       }))
       setSelectedOperation(null)
+      setInvoiceRemaining(null)
       setItems([createDefaultItem(formData.cbte_tipo)])
       return
     }
@@ -498,11 +533,11 @@ export default function NewInvoicePage() {
             }))
           }
 
-          // SP-2: fetch margin summary y precargar 1 ítem único con margen restante
-          // (reemplaza la precarga vieja de 2 items: venta + costo operador)
+          // Traer datos de facturación de la operación y precargar venta total:
+          // costo como no gravado + diferencia gravada al 10.5%.
           const summaryRes = await fetch(`/api/operations/${operationId}/margin-summary`)
           if (!summaryRes.ok) {
-            const err = await summaryRes.json().catch(() => ({ error: "Error al cargar margen" }))
+            const err = await summaryRes.json().catch(() => ({ error: "Error al cargar operación" }))
             toast({
               title: "No se puede facturar esta operación",
               description: err.error || "Error al cargar",
@@ -512,12 +547,10 @@ export default function NewInvoicePage() {
           }
           const summary = await summaryRes.json()
 
-          if (!summary.summary.can_invoice) {
+          if (summary.summary.reason_disabled === 'no_customer' || summary.summary.reason_disabled === 'no_afip') {
             const reasonText: Record<string, string> = {
-              no_margin: "La operación no tiene margen facturable",
               no_customer: "La operación no tiene cliente asignado",
               no_afip: "AFIP no está configurado para esta organización",
-              already_fully_invoiced: "La operación ya está facturada completa",
             }
             toast({
               title: "No se puede facturar",
@@ -527,21 +560,23 @@ export default function NewInvoicePage() {
             return
           }
 
-          // Guardar max permitido para validación UI
-          setMarginRemaining(summary.summary.remaining)
+          const authorizedTotal = (summary.invoices || [])
+            .filter((invoice: any) => invoice.status === 'authorized')
+            .reduce((sum: number, invoice: any) => sum + Number(invoice.imp_total || 0), 0)
+          const operationSaleTotal = Number(summary.operation?.sale_amount_total || 0)
+          const remainingToInvoice = roundMoney(Math.max(0, operationSaleTotal - authorizedTotal))
 
-          // Precargar UN solo item con el margen restante
-          const taxTreatment = getDefaultTaxTreatment(formData.cbte_tipo)
-          const newItems: InvoiceItem[] = [
-            {
-              descripcion: `Comisión por intermediación turística - ${summary.operation.destination} (${summary.operation.file_code})`,
-              cantidad: 1,
-              precio_unitario: summary.summary.remaining,
-              iva_porcentaje: taxTreatment === "GRAVADO" ? 21 : 0,
-              tax_treatment: taxTreatment,
-            },
-          ]
-          setItems(newItems)
+          if (remainingToInvoice <= 0) {
+            toast({
+              title: "No se puede facturar",
+              description: "La operación ya está facturada completa",
+              variant: "destructive",
+            })
+            return
+          }
+
+          setInvoiceRemaining(remainingToInvoice)
+          setItems(buildOperationInvoiceItems(summary, formData.cbte_tipo))
         }
       } catch (error) {
         console.error('Error loading operation details:', error)
@@ -553,6 +588,7 @@ export default function NewInvoicePage() {
       }
     } else {
       setSelectedOperation(null)
+      setInvoiceRemaining(null)
       setFormData(prev => ({
         ...prev,
         operation_id: '',
@@ -765,16 +801,13 @@ export default function NewInvoicePage() {
         return
       }
 
-      // SP-2: validación cliente-side del cap de margen
-      if (marginRemaining !== null) {
-        const totalFinal = items.reduce((acc, i) => acc + i.precio_unitario * i.cantidad, 0)
-        if (totalFinal > marginRemaining + 0.01) {
+      // Validación cliente-side: no facturar por encima de la venta restante de la operación.
+      if (invoiceRemaining !== null) {
+        const totalFinal = calculatedInvoice.totals.imp_total
+        if (totalFinal > invoiceRemaining + 0.01) {
           toast({
             title: "No se puede facturar",
-            description: `Excede el margen restante (${new Intl.NumberFormat("es-AR", {
-              style: "currency",
-              currency: "ARS",
-            }).format(marginRemaining)})`,
+            description: `Excede el total vendido restante (${formatMoney(invoiceRemaining)})`,
             variant: "destructive",
           })
           setSaving(false)
@@ -793,9 +826,11 @@ export default function NewInvoicePage() {
           pto_vta: formData.pto_vta, // Requerido: punto de venta seleccionado
           amount_entry_mode: amountEntryMode,
           moneda: invoiceCurrency === 'PES' ? 'PES' : 'DOL',
-          cotizacion: invoiceCurrency === 'PES' && selectedOperation?.sale_currency === 'USD'
-            ? exchangeRate
-            : 1,
+          cotizacion: invoiceCurrency === 'DOL'
+            ? (cotizacionAfip || exchangeRate || 1)
+            : selectedOperation?.sale_currency === 'USD'
+              ? exchangeRate
+              : 1,
           fch_serv_desde: formData.fecha_servicio_desde,
           fch_serv_hasta: formData.fecha_servicio_hasta,
           items,
@@ -932,17 +967,17 @@ export default function NewInvoicePage() {
                   <Label>Punto de Venta / Agencia *</Label>
                   {pointsOfSale.length > 0 && !pointsOfSale.some(a => a.has_ws_points) ? (
                     // Ninguna agencia tiene puntos de venta para web services
-                    <div className="rounded-md border border-amber-200 bg-amber-50 p-3 space-y-2">
+                    <div className="rounded-md border border-accent-coral/15 bg-accent-coral/5 p-3 space-y-2">
                       <div className="flex items-start gap-2">
-                        <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
-                        <div className="text-sm text-amber-800">
+                        <AlertTriangle className="h-4 w-4 text-accent-coral mt-0.5 shrink-0" />
+                        <div className="text-sm text-accent-coral">
                           <p className="font-medium">No tenés puntos de venta habilitados para Web Services</p>
                           <p className="mt-1 text-xs">
                             Para emitir facturas electrónicas necesitás crear un punto de venta de tipo <strong>CAE</strong> en el portal de ARCA.
                           </p>
                         </div>
                       </div>
-                      <ol className="text-xs text-amber-700 space-y-1 ml-6 list-decimal">
+                      <ol className="text-xs text-accent-coral space-y-1 ml-6 list-decimal">
                         <li>Ingresá a <strong>ARCA (afip.gob.ar)</strong> con Clave Fiscal</li>
                         <li>Ir a <strong>Administración de puntos de venta y domicilios → A/B/M de puntos de venta</strong></li>
                         <li>Crear un nuevo PV seleccionando:
@@ -957,7 +992,7 @@ export default function NewInvoicePage() {
                         href="https://auth.afip.gob.ar/contribuyente_/login.xhtml"
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-xs text-amber-700 underline hover:text-amber-900 ml-6"
+                        className="inline-flex items-center gap-1 text-xs text-accent-coral underline hover:text-accent-coral ml-6"
                       >
                         Ir al portal de ARCA <ExternalLink className="h-3 w-3" />
                       </a>
@@ -1154,12 +1189,12 @@ export default function NewInvoicePage() {
                 </div>
                 <div className="flex items-end">
                   {formData.receptor_condicion_iva === 1 && (!formData.receptor_doc_nro || formData.receptor_doc_nro === '0') ? (
-                    <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 w-full">
-                      <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                    <div className="flex items-start gap-2 rounded-md border border-accent-coral/15 bg-accent-coral/5 p-3 text-xs text-accent-coral w-full">
+                      <AlertTriangle className="h-4 w-4 text-accent-coral mt-0.5 shrink-0" />
                       <span>Factura A requiere CUIT del receptor. Ingresá el CUIT en el campo de arriba.</span>
                     </div>
                   ) : (
-                    <div className="rounded-md border border-green-200 bg-green-50 p-3 text-xs text-green-800 w-full">
+                    <div className="rounded-md border border-success/15 bg-success/5 p-3 text-xs text-success w-full">
                       ✓ Tipo de comprobante determinado automáticamente por la condición IVA
                     </div>
                   )}
@@ -1187,9 +1222,9 @@ export default function NewInvoicePage() {
               
               {/* Moneda y Tipo de Cambio - Solo si hay operación en USD */}
               {selectedOperation?.sale_currency === 'USD' && (
-                <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800 space-y-4">
+                <div className="p-4 bg-primary/5 dark:bg-primary rounded-lg border border-primary/15 dark:border-primary space-y-4">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                    <span className="text-sm font-medium text-primary dark:text-primary">
                       ⚠️ Operación en USD - Configuración de Facturación
                     </span>
                   </div>
@@ -1244,7 +1279,7 @@ export default function NewInvoicePage() {
                           </p>
                         )}
                         {cotizacionAfip && Math.abs(exchangeRate - cotizacionAfip) / cotizacionAfip > 0.02 && (
-                          <p className="text-xs text-orange-500 mt-1">
+                          <p className="text-xs text-accent-coral mt-1">
                             ⚠️ Tu cotización difiere más del 2% del oficial. AFIP va a rechazar (error 10119).
                           </p>
                         )}
@@ -1430,7 +1465,7 @@ export default function NewInvoicePage() {
               <div className="p-3 bg-muted rounded-lg space-y-1">
                 <p className="text-xs text-muted-foreground">
                   <strong>Tipo:</strong>{" "}
-                  <span className={formData.cbte_tipo === 1 ? "text-blue-700 font-semibold" : "text-green-700 font-semibold"}>
+                  <span className={formData.cbte_tipo === 1 ? "text-primary font-semibold" : "text-success font-semibold"}>
                     {COMPROBANTE_LABELS[formData.cbte_tipo as keyof typeof COMPROBANTE_LABELS]}
                   </span>
                 </p>

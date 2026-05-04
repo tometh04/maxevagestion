@@ -8,19 +8,28 @@ import "./globals.css"
 
 const inter = Inter({ subsets: ["latin"] })
 
-const DEFAULT_TITLE = "Vibook - Gestión de Agencia de Viajes"
+const DEFAULT_TITLE = "Vibook - Sistema de Gestión"
 const DEFAULT_DESCRIPTION = "Sistema de gestión integral para agencias de viajes"
 
 // Título dinámico por tenant con cadena de fallbacks:
+//   0) Si no hay user autenticado → DEFAULT_TITLE (rutas públicas como login/register)
 //   1) organization_settings.company_name  (lo que el owner seteó en Mi Empresa)
 //   2) primera agencies.name del org       (captura tenants que no completaron
 //                                           Mi Empresa pero ya cargaron agencias)
-//   3) DEFAULT_TITLE neutro                (rutas públicas sin user, o tenant
-//                                           sin ninguno de los anteriores)
-// Todas las queries pasan por RLS → en rutas públicas devuelven vacío → fallback.
+//   3) DEFAULT_TITLE neutro                (tenant sin ninguno de los anteriores)
+//
+// El check de auth es explícito porque las RLS policies sobre agencies/
+// organization_settings no necesariamente filtran requests anónimos
+// (depende de la configuración del proyecto Supabase).
 export async function generateMetadata(): Promise<Metadata> {
   try {
     const supabase: any = await createServerClient()
+
+    // Fallback 0: rutas públicas sin user → marca neutra.
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      return { title: DEFAULT_TITLE, description: DEFAULT_DESCRIPTION }
+    }
 
     // Fallback 1: company_name custom.
     const { data: settingRow } = await supabase
@@ -36,8 +45,7 @@ export async function generateMetadata(): Promise<Metadata> {
       }
     }
 
-    // Fallback 2: primera agency del org. RLS limita al org del user; si no hay
-    // user (login/register), devuelve [] y caemos al neutro.
+    // Fallback 2: primera agency del org.
     const { data: agencyRow } = await supabase
       .from("agencies")
       .select("name")
@@ -73,7 +81,21 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           {children}
-          <Toaster />
+          <Toaster
+            theme="system"
+            toastOptions={{
+              classNames: {
+                toast: "rounded-lg border bg-background text-foreground shadow-card",
+                description: "text-muted-foreground",
+                actionButton: "bg-primary text-primary-foreground",
+                cancelButton: "bg-muted text-muted-foreground",
+                success: "border-success/30",
+                error: "border-destructive/30",
+                warning: "border-accent-coral/30",
+                info: "border-accent-teal/30",
+              },
+            }}
+          />
           <ShadcnToaster />
         </ThemeProvider>
       </body>

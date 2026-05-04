@@ -27,11 +27,11 @@ function daysUntil(iso: string | null): number | null {
 export function SubscriptionBanner({ subscription_status, current_period_ends_at, trial_ends_at }: Props) {
   if (subscription_status === "PAST_DUE") {
     return (
-      <div className="bg-red-50 border-b border-red-200 px-6 py-3 text-sm flex flex-wrap items-center justify-between gap-2">
-        <span className="text-red-900">
+      <div className="bg-destructive/5 border-b border-destructive/15 px-6 py-3 text-sm flex flex-wrap items-center justify-between gap-2">
+        <span className="text-destructive">
           ⚠️ No pudimos cobrar tu última cuota. Actualizá tu medio de pago para no perder el acceso.
         </span>
-        <Link href="/settings/subscription" className="text-red-700 underline font-medium whitespace-nowrap">
+        <Link href="/settings/subscription" className="text-destructive underline font-medium whitespace-nowrap">
           Actualizar tarjeta
         </Link>
       </div>
@@ -44,11 +44,11 @@ export function SubscriptionBanner({ subscription_status, current_period_ends_at
     new Date(current_period_ends_at).getTime() > Date.now()
   ) {
     return (
-      <div className="bg-blue-50 border-b border-blue-200 px-6 py-3 text-sm flex flex-wrap items-center justify-between gap-2">
-        <span className="text-blue-900">
+      <div className="bg-primary/5 border-b border-primary/15 px-6 py-3 text-sm flex flex-wrap items-center justify-between gap-2">
+        <span className="text-primary">
           Tu suscripción está cancelada. Mantenés acceso hasta el {fmt(current_period_ends_at)}.
         </span>
-        <Link href="/settings/subscription" className="text-blue-700 underline font-medium whitespace-nowrap">
+        <Link href="/settings/subscription" className="text-primary underline font-medium whitespace-nowrap">
           Reactivar
         </Link>
       </div>
@@ -59,13 +59,13 @@ export function SubscriptionBanner({ subscription_status, current_period_ends_at
     const days = daysUntil(trial_ends_at)
     if (days !== null && days <= 2) {
       return (
-        <div className="bg-yellow-50 border-b border-yellow-200 px-6 py-3 text-sm">
+        <div className="bg-accent-coral/5 border-b border-accent-coral/15 px-6 py-3 text-sm">
           Primer cobro el {fmt(trial_ends_at)} — {days === 0 ? "¡hoy!" : `quedan ${days} ${days === 1 ? "día" : "días"}`}.
         </div>
       )
     }
     return (
-      <div className="bg-green-50 border-b border-green-200 px-6 py-3 text-sm text-green-900">
+      <div className="bg-success/5 border-b border-success/15 px-6 py-3 text-sm text-success">
         Estás en período de prueba durante 7 días hasta el {fmt(trial_ends_at)}.
       </div>
     )

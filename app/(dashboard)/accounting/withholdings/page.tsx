@@ -232,19 +232,19 @@ export default function WithholdingsPage() {
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-2 mb-1">
-                <TrendingUp className="h-4 w-4 text-green-600" />
+                <TrendingUp className="h-4 w-4 text-success" />
                 <span className="text-xs text-muted-foreground">Total a Favor (sufridas)</span>
               </div>
-              <p className="text-xl font-bold text-green-600">{formatMoney(totals.total_a_favor.ars)}</p>
+              <p className="text-xl font-bold text-success">{formatMoney(totals.total_a_favor.ars)}</p>
               {totals.total_a_favor.usd > 0 && (
-                <p className="text-sm font-medium text-green-600/80 mt-0.5">{formatMoney(totals.total_a_favor.usd, "USD")}</p>
+                <p className="text-sm font-medium text-success/80 mt-0.5">{formatMoney(totals.total_a_favor.usd, "USD")}</p>
               )}
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-2 mb-1">
-                <ShieldCheck className="h-4 w-4 text-blue-600" />
+                <ShieldCheck className="h-4 w-4 text-primary" />
                 <span className="text-xs text-muted-foreground">Percepción IVA</span>
               </div>
               <p className="text-xl font-bold">{formatMoney(totals.percepcion_iva.ars)}</p>
@@ -256,7 +256,7 @@ export default function WithholdingsPage() {
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-2 mb-1">
-                <Receipt className="h-4 w-4 text-purple-600" />
+                <Receipt className="h-4 w-4 text-accent-violet" />
                 <span className="text-xs text-muted-foreground">Percepción IIBB</span>
               </div>
               <p className="text-xl font-bold">{formatMoney(totals.percepcion_iibb.ars)}</p>
@@ -268,7 +268,7 @@ export default function WithholdingsPage() {
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-2 mb-1">
-                <TrendingDown className="h-4 w-4 text-orange-600" />
+                <TrendingDown className="h-4 w-4 text-accent-coral" />
                 <span className="text-xs text-muted-foreground">Retenciones Practicadas</span>
               </div>
               <p className="text-xl font-bold">{formatMoney(totals.total_practicadas.ars)}</p>
@@ -336,7 +336,7 @@ export default function WithholdingsPage() {
                       {w.operations?.file_code || "-"}
                     </TableCell>
                     <TableCell className="text-right font-medium text-sm">
-                      <span className={w.direction === "SUFFERED" ? "text-green-600" : "text-orange-600"}>
+                      <span className={w.direction === "SUFFERED" ? "text-success" : "text-accent-coral"}>
                         {formatMoney(w.amount, w.currency)}
                       </span>
                     </TableCell>

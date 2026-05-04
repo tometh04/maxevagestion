@@ -334,7 +334,7 @@ export function EditLeadDialog({
           <DialogTitle>Editar Lead</DialogTitle>
           <DialogDescription>
             {isSyncedWithTrello && (
-              <span className="text-warning">
+              <span className="text-accent-coral">
                 ⚠️ Este lead está sincronizado con Trello. Solo puedes editar ciertos campos.
               </span>
             )}
@@ -411,7 +411,7 @@ export function EditLeadDialog({
             {/* Viaje */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
-                <MapPin className="h-3.5 w-3.5 text-emerald-500" />
+                <MapPin className="h-3.5 w-3.5 text-success" />
                 <span className="text-xs font-medium text-foreground/70">Viaje</span>
               </div>
               <div className="grid gap-4 md:grid-cols-2">
@@ -466,7 +466,7 @@ export function EditLeadDialog({
             {/* Asignación */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
-                <UserCheck className="h-3.5 w-3.5 text-violet-500" />
+                <UserCheck className="h-3.5 w-3.5 text-accent-violet" />
                 <span className="text-xs font-medium text-foreground/70">Asignación</span>
               </div>
               <div className="grid gap-4 md:grid-cols-2">
@@ -553,7 +553,7 @@ export function EditLeadDialog({
             {/* Detalles */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
-                <StickyNote className="h-3.5 w-3.5 text-sky-500" />
+                <StickyNote className="h-3.5 w-3.5 text-accent-teal" />
                 <span className="text-xs font-medium text-foreground/70">Detalles</span>
               </div>
               <FormField

@@ -83,16 +83,16 @@ function ReadView({
         <Row label="Dirección" value={settings.address} colSpan={2} />
       </section>
 
-      <section className="rounded border border-amber-500/30 bg-amber-500/5 p-4">
-        <h4 className="text-xs font-semibold uppercase text-amber-300 mb-2">
+      <section className="rounded border border-accent-coral/30 bg-accent-coral/5 p-4">
+        <h4 className="text-xs font-semibold uppercase text-accent-coral mb-2">
           Notas internas · solo admin
         </h4>
-        <p className="text-sm text-slate-300 whitespace-pre-wrap">
-          {internalNotes ?? <span className="text-slate-500">Sin notas</span>}
+        <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+          {internalNotes ?? <span className="text-muted-foreground">Sin notas</span>}
         </p>
       </section>
 
-      <div className="text-xs text-slate-500">
+      <div className="text-xs text-muted-foreground">
         Completitud: {completion}/{PROFILE_FIELD_COUNT}
       </div>
     </div>
@@ -110,9 +110,9 @@ function Row({
 }) {
   return (
     <div className={colSpan === 2 ? "md:col-span-2" : undefined}>
-      <div className="text-xs text-slate-400">{label}</div>
-      <div className="text-sm text-slate-200">
-        {value ?? <span className="text-slate-500">—</span>}
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="text-sm text-muted-foreground">
+        {value ?? <span className="text-muted-foreground">—</span>}
       </div>
     </div>
   )

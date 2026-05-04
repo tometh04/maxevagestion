@@ -50,7 +50,7 @@ export function ReactivateDialog({
       <Button onClick={handleReactivate} disabled={loading}>
         {loading ? "Procesando…" : "Reactivar suscripción"}
       </Button>
-      {error && <p className="text-xs text-red-600">{error}</p>}
+      {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   )
 }

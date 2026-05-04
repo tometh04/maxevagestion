@@ -71,7 +71,7 @@ export function EmiliaSidebar({
         <Button
           onClick={onNew}
           disabled={isLoading}
-          className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600"
+          className="w-full bg-gradient-to-r from-accent-coral to-accent-coral hover:from-accent-coral hover:to-accent-coral"
         >
           {isLoading ? (
             <Loader2 className="h-4 w-4 mr-2 animate-spin" />

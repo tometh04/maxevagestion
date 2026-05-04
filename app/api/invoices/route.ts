@@ -8,6 +8,13 @@ import { z } from "zod"
 
 export const dynamic = 'force-dynamic'
 
+function formatLocalDate(date = new Date()): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
+
 // Schema de validación para crear factura
 const createInvoiceSchema = z.object({
   operation_id: z.string().uuid().optional().nullable(),
@@ -162,11 +169,11 @@ export async function POST(request: Request) {
       )
     }
 
-    // SP-2: Si la factura está atada a una operación, validar que no se exceda
-    // el margen restante (suma de authorized + new <= margin_amount).
+    // Si la factura está atada a una operación, validar que no se exceda
+    // el total vendido restante (suma de authorized + new <= sale_amount_total).
     if (validatedData.operation_id) {
       const { data: operation, error: opErr } = await (supabase.from("operations") as any)
-        .select("id, org_id, margin_amount")
+        .select("id, org_id, sale_amount_total")
         .eq("id", validatedData.operation_id)
         .single()
 
@@ -195,15 +202,15 @@ export async function POST(request: Request) {
         (acc: number, i: any) => acc + Number(i.imp_total),
         0
       )
-      const margin = Number(operation.margin_amount)
-      const remaining = Math.round((margin - alreadyInvoiced) * 100) / 100
+      const saleTotal = Number(operation.sale_amount_total)
+      const remaining = Math.round((saleTotal - alreadyInvoiced) * 100) / 100
       const newTotal = Number(calculatedInvoice.totals.imp_total)
 
       // Tolerancia 1 cent para float precision
       if (newTotal > remaining + 0.01) {
         return NextResponse.json(
           {
-            error: `No se puede facturar $${newTotal.toFixed(2)}: el margen restante de la operación es $${remaining.toFixed(2)}`,
+            error: `No se puede facturar $${newTotal.toFixed(2)}: el total vendido restante de la operación es $${remaining.toFixed(2)}`,
             max_remaining: remaining,
           },
           { status: 400 }
@@ -212,6 +219,11 @@ export async function POST(request: Request) {
     }
 
     // Crear factura
+    const fechaEmision = formatLocalDate()
+    const fchServDesde = validatedData.fch_serv_desde || (validatedData.concepto === 2 || validatedData.concepto === 3 ? fechaEmision : undefined)
+    const fchServHasta = validatedData.fch_serv_hasta || fchServDesde
+    const fechaVtoPago = validatedData.fecha_vto_pago || fchServHasta
+
     const { data: invoice, error: invoiceError } = await (supabase.from("invoices") as any)
       .insert({
         agency_id: validatedData.agency_id, // Usar la agencia del punto de venta
@@ -236,9 +248,10 @@ export async function POST(request: Request) {
         imp_trib: calculatedInvoice.totals.imp_trib,
         moneda: validatedData.moneda,
         cotizacion: validatedData.cotizacion,
-        fch_serv_desde: validatedData.fch_serv_desde,
-        fch_serv_hasta: validatedData.fch_serv_hasta,
-        fecha_vto_pago: validatedData.fecha_vto_pago,
+        fecha_emision: fechaEmision,
+        fch_serv_desde: fchServDesde,
+        fch_serv_hasta: fchServHasta,
+        fecha_vto_pago: fechaVtoPago,
         notes: validatedData.notes,
         status: 'draft',
         created_by: user.id,

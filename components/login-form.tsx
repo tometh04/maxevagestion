@@ -115,14 +115,16 @@ export function LoginForm({
   return (
     <form className={cn("flex flex-col gap-6", className)} onSubmit={form.handleSubmit(onSubmit)} {...props}>
       <FieldGroup>
-        <div className="flex flex-col items-center gap-1 text-center">
-          <h1 className="text-2xl font-bold">Iniciar Sesión</h1>
+        <div className="flex flex-col items-center gap-2 text-center">
+          <h1 className="text-3xl font-bold tracking-tighter-h2 leading-[1.1]">
+            <span className="text-gradient-signature">Iniciar Sesión</span>
+          </h1>
           <p className="text-muted-foreground text-sm text-balance">
             Ingresa tus credenciales para acceder al sistema
           </p>
         </div>
         {error && (
-          <Alert className="text-red-600">
+          <Alert className="text-destructive">
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
@@ -164,7 +166,7 @@ export function LoginForm({
           )}
         </Field>
         <Field>
-          <Button type="submit" disabled={loading} className="w-full">
+          <Button type="submit" variant="cta" size="lg" disabled={loading} className="w-full">
             {loading ? "Iniciando sesión..." : "Iniciar Sesión"}
           </Button>
         </Field>

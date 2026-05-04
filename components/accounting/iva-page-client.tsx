@@ -177,14 +177,14 @@ export function IVAPageClient({ agencies }: IVAPageClientProps) {
         <div className="grid gap-4 md:grid-cols-3">
           <div className="rounded-xl border border-border/40 p-5">
             <p className="text-xs font-medium text-muted-foreground">Débito Fiscal (Ventas)</p>
-            <div className="text-2xl font-semibold tabular-nums tracking-tight text-warning mt-1">
+            <div className="text-2xl font-semibold tabular-nums tracking-tight text-accent-coral mt-1">
               {formatCurrency(data.summary.ars.total_sales_iva)}
             </div>
             <p className="text-xs text-muted-foreground mt-1">{data.summary.ars.count_sales} operaciones</p>
           </div>
           <div className="rounded-xl border border-border/40 p-5">
             <p className="text-xs font-medium text-muted-foreground">Crédito Fiscal (Compras)</p>
-            <div className="text-2xl font-semibold tabular-nums tracking-tight text-info mt-1">
+            <div className="text-2xl font-semibold tabular-nums tracking-tight text-accent-teal mt-1">
               {formatCurrency(data.summary.ars.total_purchases_iva)}
             </div>
             <p className="text-xs text-muted-foreground mt-1">{data.summary.ars.count_purchases} compras</p>
@@ -210,14 +210,14 @@ export function IVAPageClient({ agencies }: IVAPageClientProps) {
           <div className="grid gap-4 md:grid-cols-3">
             <div className="rounded-xl border border-border/40 p-5">
               <p className="text-xs font-medium text-muted-foreground">Débito Fiscal (Ventas)</p>
-              <div className="text-2xl font-semibold tabular-nums tracking-tight text-warning mt-1">
+              <div className="text-2xl font-semibold tabular-nums tracking-tight text-accent-coral mt-1">
                 {formatCurrency(data.summary.usd.total_sales_iva, "USD")}
               </div>
               <p className="text-xs text-muted-foreground mt-1">{data.summary.usd.count_sales} operaciones</p>
             </div>
             <div className="rounded-xl border border-border/40 p-5">
               <p className="text-xs font-medium text-muted-foreground">Crédito Fiscal (Compras)</p>
-              <div className="text-2xl font-semibold tabular-nums tracking-tight text-info mt-1">
+              <div className="text-2xl font-semibold tabular-nums tracking-tight text-accent-teal mt-1">
                 {formatCurrency(data.summary.usd.total_purchases_iva, "USD")}
               </div>
               <p className="text-xs text-muted-foreground mt-1">{data.summary.usd.count_purchases} compras</p>
@@ -275,7 +275,7 @@ export function IVAPageClient({ agencies }: IVAPageClientProps) {
                       </TableCell>
                       <TableCell>{formatCurrency(sale.sale_amount_total, sale.currency)}</TableCell>
                       <TableCell>{formatCurrency(sale.net_amount, sale.currency)}</TableCell>
-                      <TableCell className="font-medium text-warning">
+                      <TableCell className="font-medium text-accent-coral">
                         {formatCurrency(sale.iva_amount, sale.currency)}
                       </TableCell>
                     </TableRow>
@@ -329,7 +329,7 @@ export function IVAPageClient({ agencies }: IVAPageClientProps) {
                         {formatCurrency(purchase.operator_cost_total, purchase.currency)}
                       </TableCell>
                       <TableCell>{formatCurrency(purchase.net_amount, purchase.currency)}</TableCell>
-                      <TableCell className="font-medium text-info">
+                      <TableCell className="font-medium text-accent-teal">
                         {formatCurrency(purchase.iva_amount, purchase.currency)}
                       </TableCell>
                     </TableRow>

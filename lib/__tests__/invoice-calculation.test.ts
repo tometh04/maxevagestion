@@ -83,6 +83,37 @@ describe("invoice calculation", () => {
     })
   })
 
+  it("supports operation sale split as non-taxed cost plus 10.5% taxable difference", () => {
+    const result = calculateInvoice(
+      [
+        {
+          descripcion: "Costo no gravado",
+          cantidad: 1,
+          precio_unitario: 7544.26,
+          iva_porcentaje: 0,
+          tax_treatment: "NO_GRAVADO",
+        },
+        {
+          descripcion: "Diferencia gravada",
+          cantidad: 1,
+          precio_unitario: 855.74,
+          iva_porcentaje: 10.5,
+          tax_treatment: "GRAVADO",
+        },
+      ],
+      "FINAL"
+    )
+
+    expect(result.totals).toEqual({
+      imp_neto: 774.43,
+      imp_iva: 81.31,
+      imp_total: 8400,
+      imp_tot_conc: 7544.26,
+      imp_op_ex: 0,
+      imp_trib: 0,
+    })
+  })
+
   it("uses explicit treatment when provided and falls back to exento for legacy 0%", () => {
     expect(normalizeTaxTreatment("NO_GRAVADO", 0)).toBe("NO_GRAVADO")
     expect(normalizeTaxTreatment(undefined, 0)).toBe("EXENTO")

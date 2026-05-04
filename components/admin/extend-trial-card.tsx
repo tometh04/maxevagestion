@@ -55,7 +55,7 @@ export function ExtendTrialCard({
         <button
           onClick={submit}
           disabled={submitting}
-          className="text-sm px-3 py-1 rounded bg-blue-600 text-white disabled:opacity-50"
+          className="text-sm px-3 py-1 rounded bg-primary text-white disabled:opacity-50"
         >
           {submitting ? "..." : "Extender"}
         </button>

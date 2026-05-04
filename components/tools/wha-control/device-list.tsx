@@ -38,12 +38,12 @@ const STATUS_CONFIG: Record<string, { label: string; variant: "default" | "secon
 
 // Colores fijos por agencia para consistencia visual
 const AGENCY_COLORS = [
-  "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-  "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
-  "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
-  "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
-  "bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400",
-  "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400",
+  "bg-primary/10 text-primary dark:bg-primary/30 dark:text-primary",
+  "bg-success/10 text-success dark:bg-success/30 dark:text-success",
+  "bg-accent-violet/10 text-accent-violet dark:bg-accent-violet/30 dark:text-accent-violet",
+  "bg-accent-coral/10 text-accent-coral dark:bg-accent-coral/30 dark:text-accent-coral",
+  "bg-accent-coral/10 text-accent-coral dark:bg-accent-coral/30 dark:text-accent-coral",
+  "bg-accent-teal/10 text-accent-teal dark:bg-accent-teal/30 dark:text-accent-teal",
 ]
 
 function getAgencyColor(agencyId: string, agencies: Agency[]): string {

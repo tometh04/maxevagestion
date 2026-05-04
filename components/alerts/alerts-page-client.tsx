@@ -209,21 +209,21 @@ export function AlertsPageClient({ agencies, defaultFilters }: AlertsPageClientP
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="rounded-xl border border-border/40 p-4">
           <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-            <AlertTriangle className="h-3.5 w-3.5 text-red-500" />
+            <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
             Vencidas
           </div>
           <div className="text-2xl font-semibold tabular-nums mt-1">{kpis.overdue}</div>
         </div>
         <div className="rounded-xl border border-border/40 p-4">
           <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-            <Clock className="h-3.5 w-3.5 text-amber-500" />
+            <Clock className="h-3.5 w-3.5 text-accent-coral" />
             Hoy
           </div>
           <div className="text-2xl font-semibold tabular-nums mt-1">{kpis.today}</div>
         </div>
         <div className="rounded-xl border border-border/40 p-4">
           <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-            <CalendarDays className="h-3.5 w-3.5 text-blue-500" />
+            <CalendarDays className="h-3.5 w-3.5 text-primary" />
             Esta semana
           </div>
           <div className="text-2xl font-semibold tabular-nums mt-1">{kpis.thisWeek}</div>

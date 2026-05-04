@@ -149,7 +149,7 @@ export function OperationFacturacionSection({ operationId }: { operationId: stri
           </div>
           <div>
             <div className="text-muted-foreground text-xs">Restante</div>
-            <div className="font-semibold text-emerald-600">{fmtARS(summary.remaining)}</div>
+            <div className="font-semibold text-success">{fmtARS(summary.remaining)}</div>
           </div>
         </div>
 
@@ -240,7 +240,7 @@ export function OperationFacturacionSection({ operationId }: { operationId: stri
                       <Badge variant="secondary" className="text-xs">{inv.status}</Badge>
                     )}
                     {isAuthorized && inv.verification_status === "verified" && (
-                      <Badge variant="outline" className="text-xs text-green-600 border-green-600">
+                      <Badge variant="outline" className="text-xs text-success border-success">
                         <CheckCircle2 className="h-3 w-3 mr-1" />
                         Verificada
                       </Badge>

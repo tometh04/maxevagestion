@@ -52,9 +52,9 @@ function formatDate(iso: string) {
 
 function ageBadge(days: number) {
   if (days < 30) return { variant: "secondary" as const, label: `${days}d`, className: "" }
-  if (days < 60) return { variant: "secondary" as const, label: `${days}d`, className: "bg-yellow-500/15 text-yellow-700" }
-  if (days < 90) return { variant: "secondary" as const, label: `${days}d`, className: "bg-orange-500/15 text-orange-700" }
-  return { variant: "secondary" as const, label: `${days}d`, className: "bg-red-500/15 text-red-700" }
+  if (days < 60) return { variant: "secondary" as const, label: `${days}d`, className: "bg-accent-coral/15 text-accent-coral" }
+  if (days < 90) return { variant: "secondary" as const, label: `${days}d`, className: "bg-accent-coral/15 text-accent-coral" }
+  return { variant: "secondary" as const, label: `${days}d`, className: "bg-destructive/15 text-destructive" }
 }
 
 export function ConciliacionReport({ agencies }: Props) {

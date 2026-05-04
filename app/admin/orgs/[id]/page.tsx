@@ -20,13 +20,13 @@ import { MrrOverrideCard } from "@/components/admin/mrr-override-card"
 export const dynamic = "force-dynamic"
 
 const STATUS_META: Record<string, { label: string; className: string }> = {
-  ACTIVE: { label: "Activa", className: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" },
-  TRIAL: { label: "En prueba", className: "bg-blue-500/15 text-blue-400 border-blue-500/30" },
-  TRIALING: { label: "En prueba", className: "bg-blue-500/15 text-blue-400 border-blue-500/30" },
-  PENDING_PAYMENT: { label: "Pendiente de pago", className: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
-  PAST_DUE: { label: "Cobro pendiente", className: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
-  SUSPENDED: { label: "Suspendida", className: "bg-red-500/15 text-red-400 border-red-500/30" },
-  CANCELLED: { label: "Cancelada", className: "bg-slate-500/15 text-slate-400 border-slate-500/30" },
+  ACTIVE: { label: "Activa", className: "bg-success/15 text-success border-success/30" },
+  TRIAL: { label: "En prueba", className: "bg-primary/15 text-primary border-primary/30" },
+  TRIALING: { label: "En prueba", className: "bg-primary/15 text-primary border-primary/30" },
+  PENDING_PAYMENT: { label: "Pendiente de pago", className: "bg-accent-coral/15 text-accent-coral border-accent-coral/30" },
+  PAST_DUE: { label: "Cobro pendiente", className: "bg-accent-coral/15 text-accent-coral border-accent-coral/30" },
+  SUSPENDED: { label: "Suspendida", className: "bg-destructive/15 text-destructive border-destructive/30" },
+  CANCELLED: { label: "Cancelada", className: "bg-muted-foreground/15 text-muted-foreground border-muted-foreground/30" },
 }
 
 export default async function AdminOrgDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -85,7 +85,7 @@ export default async function AdminOrgDetailPage({ params }: { params: Promise<{
 
   const status = STATUS_META[org.subscription_status ?? ""] ?? {
     label: org.subscription_status ?? "—",
-    className: "bg-slate-500/15 text-slate-400 border-slate-500/30",
+    className: "bg-muted-foreground/15 text-muted-foreground border-muted-foreground/30",
   }
 
   return (
@@ -102,7 +102,7 @@ export default async function AdminOrgDetailPage({ params }: { params: Promise<{
             </span>
             <Link
               href="/admin/orgs"
-              className="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-slate-200 transition"
+              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-muted-foreground transition"
             >
               <ArrowLeft className="h-4 w-4" />
               Volver al listado
@@ -113,10 +113,10 @@ export default async function AdminOrgDetailPage({ params }: { params: Promise<{
 
       <TenantMetrics orgId={id} />
 
-      <Card className="bg-slate-900/60 border-slate-800">
+      <Card className="bg-ink/60 border-muted-foreground">
         <CardHeader>
           <CardTitle className="text-white text-base">Billing</CardTitle>
-          <CardDescription className="text-slate-400">
+          <CardDescription className="text-muted-foreground">
             Datos de facturación y estado de la suscripción.
           </CardDescription>
         </CardHeader>
@@ -174,10 +174,10 @@ export default async function AdminOrgDetailPage({ params }: { params: Promise<{
 
       <MpSnapshot orgId={id} />
 
-      <Card className="bg-slate-900/60 border-slate-800">
+      <Card className="bg-ink/60 border-muted-foreground">
         <CardHeader>
           <CardTitle className="text-white text-base">Audit log</CardTitle>
-          <CardDescription className="text-slate-400">Últimos 10 eventos registrados.</CardDescription>
+          <CardDescription className="text-muted-foreground">Últimos 10 eventos registrados.</CardDescription>
         </CardHeader>
         <CardContent>
           <AuditLogInline orgId={id} />
@@ -190,8 +190,8 @@ export default async function AdminOrgDetailPage({ params }: { params: Promise<{
 function BillingField({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-xs uppercase tracking-wider text-slate-500">{label}</dt>
-      <dd className="mt-0.5 text-slate-100">{value}</dd>
+      <dt className="text-xs uppercase tracking-wider text-muted-foreground">{label}</dt>
+      <dd className="mt-0.5 text-muted-foreground">{value}</dd>
     </div>
   )
 }

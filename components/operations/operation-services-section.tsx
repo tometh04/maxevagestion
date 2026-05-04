@@ -789,7 +789,7 @@ export function OperationServicesSection({
                           </TableCell>
                           <TableCell className="text-right">
                             {s.margin_amount !== null ? (
-                              <span className={s.margin_amount >= 0 ? "text-green-600" : "text-red-600"}>
+                              <span className={s.margin_amount >= 0 ? "text-success" : "text-destructive"}>
                                 {formatCurrency(s.margin_amount, s.sale_currency)}
                               </span>
                             ) : (
@@ -800,7 +800,7 @@ export function OperationServicesSection({
                       )}
                       <TableCell>
                         {s.generates_commission ? (
-                          <Badge variant="secondary" className="text-xs bg-green-500/10 text-green-600 border-0">Sí</Badge>
+                          <Badge variant="secondary" className="text-xs bg-success/10 text-success border-0">Sí</Badge>
                         ) : (
                           <span className="text-xs text-muted-foreground">No</span>
                         )}
@@ -872,7 +872,7 @@ export function OperationServicesSection({
                     {Object.entries(serviceTotals.margin).map(([currency, amount]) => (
                       <p
                         key={currency}
-                        className={`font-semibold ${amount >= 0 ? "text-green-600" : "text-red-600"}`}
+                        className={`font-semibold ${amount >= 0 ? "text-success" : "text-destructive"}`}
                       >
                         {formatCurrency(amount, currency as Currency)}
                       </p>
@@ -948,7 +948,7 @@ export function OperationServicesSection({
                           {p.operation_service_id ? getServiceLabel(p.operation_service_id) : "—"}
                         </TableCell>
                         <TableCell>
-                          <Badge variant={p.direction === "INCOME" ? "default" : "destructive"} className={p.direction === "INCOME" ? "bg-green-500/10 text-green-600 border-0" : "bg-red-500/10 text-red-600 border-0"}>
+                          <Badge variant={p.direction === "INCOME" ? "default" : "destructive"} className={p.direction === "INCOME" ? "bg-success/10 text-success border-0" : "bg-destructive/10 text-destructive border-0"}>
                             {p.direction === "INCOME" ? "Cobro" : "Pago"}
                           </Badge>
                         </TableCell>
@@ -962,7 +962,7 @@ export function OperationServicesSection({
                             : "-"}
                         </TableCell>
                         <TableCell>
-                          <Badge variant={p.status === "PAID" ? "default" : "secondary"} className={p.status === "PAID" ? "bg-green-500/10 text-green-600 border-0" : "bg-yellow-500/10 text-yellow-600 border-0"}>
+                          <Badge variant={p.status === "PAID" ? "default" : "secondary"} className={p.status === "PAID" ? "bg-success/10 text-success border-0" : "bg-accent-coral/10 text-accent-coral border-0"}>
                             {p.status === "PAID" ? "Pagado" : "Pendiente"}
                           </Badge>
                         </TableCell>
@@ -972,7 +972,7 @@ export function OperationServicesSection({
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="h-7 w-7 text-info hover:text-info/80 hover:bg-info/10"
+                                className="h-7 w-7 text-accent-teal hover:text-accent-teal/80 hover:bg-accent-teal/10"
                                 onClick={() => handleDownloadReceipt(p.id)}
                                 disabled={downloadingReceiptId === p.id}
                                 title="Descargar recibo PDF"
@@ -1030,7 +1030,7 @@ export function OperationServicesSection({
 
       {/* ─── Dialog: Agregar servicio ─────────────────────────────────────── */}
       <Dialog open={dialogOpen} onOpenChange={(open) => !open && closeDialog()}>
-        <DialogContent className="sm:max-w-[560px] max-h-[85vh] flex flex-col overflow-hidden">
+        <DialogContent className="sm:max-w-[560px] max-h-[85vh]">
           <DialogHeader>
             <DialogTitle>{editingServiceId ? "Editar servicio" : "Agregar servicio"}</DialogTitle>
             <DialogDescription>
@@ -1166,8 +1166,8 @@ export function OperationServicesSection({
 
             {/* Hotel-specific fields */}
             {form.service_type === "HOTEL" && (
-              <div className="space-y-3 rounded-xl border border-border/40 p-3 bg-blue-50/30">
-                <p className="text-xs font-semibold text-blue-700">Datos del Hotel</p>
+              <div className="space-y-3 rounded-xl border border-border/40 p-3 bg-primary/30">
+                <p className="text-xs font-semibold text-primary">Datos del Hotel</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label className="text-xs">Nombre del Hotel *</Label>
@@ -1237,8 +1237,8 @@ export function OperationServicesSection({
 
             {/* Flight-specific fields */}
             {form.service_type === "FLIGHT" && (
-              <div className="space-y-3 rounded-xl border border-border/40 p-3 bg-orange-50/30">
-                <p className="text-xs font-semibold text-orange-700">Datos del Vuelo</p>
+              <div className="space-y-3 rounded-xl border border-border/40 p-3 bg-accent-coral/30">
+                <p className="text-xs font-semibold text-accent-coral">Datos del Vuelo</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label className="text-xs">Aerolínea *</Label>

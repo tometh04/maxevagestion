@@ -234,7 +234,7 @@ export function PassengerBalancesSection({
       <Card className="rounded-xl border-border/40">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
-            <Users className="h-4 w-4 text-orange-500" />
+            <Users className="h-4 w-4 text-accent-coral" />
             Saldos por Pasajero
           </CardTitle>
         </CardHeader>
@@ -279,19 +279,19 @@ export function PassengerBalancesSection({
                         <TableCell className="text-xs text-right font-mono">
                           {formatMoney(amountPerPassenger)}
                         </TableCell>
-                        <TableCell className="text-xs text-right font-mono font-medium text-green-600">
+                        <TableCell className="text-xs text-right font-mono font-medium text-success">
                           {formatMoney(paid)}
                         </TableCell>
                         <TableCell
                           className={`text-xs text-right font-mono font-medium ${
-                            isFullyPaid ? "text-green-600" : "text-destructive"
+                            isFullyPaid ? "text-success" : "text-destructive"
                           }`}
                         >
                           {isFullyPaid ? formatMoney(0) : `-${formatMoney(balance)}`}
                         </TableCell>
                         <TableCell className="text-center">
                           {isFullyPaid ? (
-                            <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[10px]">
+                            <Badge className="bg-success/10 text-success dark:bg-success/30 dark:text-success text-[10px]">
                               <CheckCircle2 className="h-3 w-3 mr-1" />
                               Pagado
                             </Badge>
@@ -310,9 +310,9 @@ export function PassengerBalancesSection({
 
               {/* Unallocated notice */}
               {unallocated > 0.01 && (
-                <div className="mt-3 rounded-lg border border-orange-200 bg-orange-50 dark:bg-orange-950/20 dark:border-orange-800/30 p-3 flex items-center gap-2">
-                  <DollarSign className="h-4 w-4 text-orange-500" />
-                  <span className="text-xs text-orange-700 dark:text-orange-400">
+                <div className="mt-3 rounded-lg border border-accent-coral/15 bg-accent-coral/5 dark:bg-accent-coral/20 dark:border-accent-coral/30 p-3 flex items-center gap-2">
+                  <DollarSign className="h-4 w-4 text-accent-coral" />
+                  <span className="text-xs text-accent-coral dark:text-accent-coral">
                     {formatMoney(unallocated)} sin asignar a pasajeros — asigná los pagos para llevar control individual.
                   </span>
                 </div>
@@ -327,7 +327,7 @@ export function PassengerBalancesSection({
         <Card className="rounded-xl border-border/40">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
-              <SplitSquareHorizontal className="h-4 w-4 text-orange-500" />
+              <SplitSquareHorizontal className="h-4 w-4 text-accent-coral" />
               Asignar Pagos a Pasajeros
             </CardTitle>
           </CardHeader>
@@ -493,7 +493,7 @@ export function PassengerBalancesSection({
                 <span
                   className={`font-mono font-medium ${
                     allocatingPayment && Math.abs(dialogTotal - Number(allocatingPayment.amount)) < 0.01
-                      ? "text-green-600"
+                      ? "text-success"
                       : dialogTotal > Number(allocatingPayment?.amount || 0)
                       ? "text-destructive"
                       : ""
@@ -504,8 +504,8 @@ export function PassengerBalancesSection({
               </div>
               {allocatingPayment && dialogTotal < Number(allocatingPayment.amount) - 0.01 && (
                 <div className="flex justify-between text-xs">
-                  <span className="text-orange-500">Sin asignar:</span>
-                  <span className="font-mono text-orange-500">
+                  <span className="text-accent-coral">Sin asignar:</span>
+                  <span className="font-mono text-accent-coral">
                     {formatMoney(Number(allocatingPayment.amount) - dialogTotal)}
                   </span>
                 </div>

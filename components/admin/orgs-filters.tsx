@@ -111,7 +111,7 @@ function FilterSelect({
 }) {
   return (
     <div className="flex items-center gap-2">
-      <Label className="text-xs text-slate-400">{label}</Label>
+      <Label className="text-xs text-muted-foreground">{label}</Label>
       <Select value={value} onValueChange={onChange}>
         <SelectTrigger className="h-8 w-[160px] text-xs">
           <SelectValue />
@@ -142,7 +142,7 @@ function CheckRow({
   return (
     <div className="flex items-center gap-2">
       <Checkbox id={id} checked={checked} onCheckedChange={(c) => onChange(Boolean(c))} />
-      <Label htmlFor={id} className="text-xs text-slate-300 cursor-pointer">
+      <Label htmlFor={id} className="text-xs text-muted-foreground cursor-pointer">
         {label}
       </Label>
     </div>

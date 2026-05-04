@@ -15,9 +15,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   if (!isAdmin) redirect("/dashboard")
 
   return (
-    <div className="flex min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-100">
-      <aside className="w-64 shrink-0 border-r border-slate-800/60 bg-slate-950/80 backdrop-blur flex flex-col">
-        <div className="px-5 py-6 border-b border-slate-800/60">
+    <div className="flex min-h-screen bg-gradient-to-br from-foreground via-foreground to-foreground text-muted-foreground">
+      <aside className="w-64 shrink-0 border-r border-muted-foreground/60 bg-ink/80 backdrop-blur flex flex-col">
+        <div className="px-5 py-6 border-b border-muted-foreground/60">
           <Link href="/admin/orgs" className="flex items-center gap-2">
             <Image
               src="/vibook-logo-white.png"
@@ -28,7 +28,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
               className="h-8 w-auto object-contain"
             />
           </Link>
-          <div className="mt-3 text-[10px] font-semibold uppercase tracking-widest text-blue-400/80">
+          <div className="mt-3 text-[10px] font-semibold uppercase tracking-widest text-primary/80">
             Platform Admin
           </div>
         </div>
@@ -40,19 +40,19 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <SidebarLink href="/admin/audit" icon={ScrollText} label="Audit log" />
         </nav>
 
-        <div className="px-3 py-4 border-t border-slate-800/60 space-y-1">
+        <div className="px-3 py-4 border-t border-muted-foreground/60 space-y-1">
           <Link
             href="/logout"
-            className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-slate-400 hover:bg-slate-800/40 hover:text-slate-100 transition"
+            className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-ink/40 hover:text-muted-foreground transition"
           >
             <LogOut className="h-4 w-4" />
             Cerrar sesión
           </Link>
         </div>
 
-        <div className="px-5 py-4 border-t border-slate-800/60">
-          <div className="text-xs text-slate-500">Conectado como</div>
-          <div className="text-sm font-medium text-slate-200 truncate">{user.email}</div>
+        <div className="px-5 py-4 border-t border-muted-foreground/60">
+          <div className="text-xs text-muted-foreground">Conectado como</div>
+          <div className="text-sm font-medium text-muted-foreground truncate">{user.email}</div>
         </div>
       </aside>
 
@@ -75,7 +75,7 @@ function SidebarLink({
   return (
     <Link
       href={href}
-      className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-slate-300 hover:bg-slate-800/60 hover:text-white transition"
+      className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-ink/60 hover:text-white transition"
     >
       <Icon className="h-4 w-4" />
       {label}

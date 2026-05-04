@@ -36,23 +36,23 @@ interface Summary {
 const statusConfig = {
   ok: {
     icon: CheckCircle2,
-    color: "text-green-600 dark:text-green-400",
-    bg: "bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800",
-    badge: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+    color: "text-success dark:text-success",
+    bg: "bg-success/5 dark:bg-success/30 border-success/15 dark:border-success",
+    badge: "bg-success/10 text-success dark:bg-success dark:text-success",
     label: "OK",
   },
   warning: {
     icon: AlertTriangle,
-    color: "text-yellow-600 dark:text-yellow-400",
-    bg: "bg-yellow-50 dark:bg-yellow-950/30 border-yellow-200 dark:border-yellow-800",
-    badge: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
+    color: "text-accent-coral dark:text-accent-coral",
+    bg: "bg-accent-coral/5 dark:bg-accent-coral/30 border-accent-coral/15 dark:border-accent-coral",
+    badge: "bg-accent-coral/10 text-accent-coral dark:bg-accent-coral dark:text-accent-coral",
     label: "Atención",
   },
   error: {
     icon: XCircle,
-    color: "text-red-600 dark:text-red-400",
-    bg: "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800",
-    badge: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+    color: "text-destructive dark:text-destructive",
+    bg: "bg-destructive/5 dark:bg-destructive/30 border-destructive/15 dark:border-destructive",
+    badge: "bg-destructive/10 text-destructive dark:bg-destructive dark:text-destructive",
     label: "Error",
   },
 }
@@ -126,29 +126,29 @@ export function ReconciliationSettings() {
       {/* Resumen */}
       {summary && (
         <div className="grid grid-cols-3 gap-3">
-          <Card className="border-green-200 dark:border-green-800">
+          <Card className="border-success/15 dark:border-success">
             <CardContent className="flex items-center gap-3 py-3 px-4">
-              <CheckCircle2 className="h-5 w-5 text-green-600" />
+              <CheckCircle2 className="h-5 w-5 text-success" />
               <div>
-                <p className="text-2xl font-bold text-green-600">{summary.ok}</p>
+                <p className="text-2xl font-bold text-success">{summary.ok}</p>
                 <p className="text-xs text-muted-foreground">Correctos</p>
               </div>
             </CardContent>
           </Card>
-          <Card className="border-yellow-200 dark:border-yellow-800">
+          <Card className="border-accent-coral/15 dark:border-accent-coral">
             <CardContent className="flex items-center gap-3 py-3 px-4">
-              <AlertTriangle className="h-5 w-5 text-yellow-600" />
+              <AlertTriangle className="h-5 w-5 text-accent-coral" />
               <div>
-                <p className="text-2xl font-bold text-yellow-600">{summary.warnings}</p>
+                <p className="text-2xl font-bold text-accent-coral">{summary.warnings}</p>
                 <p className="text-xs text-muted-foreground">Advertencias</p>
               </div>
             </CardContent>
           </Card>
-          <Card className="border-red-200 dark:border-red-800">
+          <Card className="border-destructive/15 dark:border-destructive">
             <CardContent className="flex items-center gap-3 py-3 px-4">
-              <XCircle className="h-5 w-5 text-red-600" />
+              <XCircle className="h-5 w-5 text-destructive" />
               <div>
-                <p className="text-2xl font-bold text-red-600">{summary.errors}</p>
+                <p className="text-2xl font-bold text-destructive">{summary.errors}</p>
                 <p className="text-xs text-muted-foreground">Errores</p>
               </div>
             </CardContent>
