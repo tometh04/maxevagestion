@@ -663,7 +663,7 @@ export function NewOperationDialog({
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent
-          className="max-w-[95vw] sm:max-w-4xl max-h-[95vh] flex flex-col overflow-hidden"
+          className="max-w-[95vw] sm:max-w-4xl max-h-[95vh]"
           onEscapeKeyDown={(e) => e.preventDefault()}
           onPointerDownOutside={(e) => e.preventDefault()}
         >
@@ -677,8 +677,8 @@ export function NewOperationDialog({
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col flex-1 overflow-hidden min-h-0">
-        <div className="px-6 py-6 space-y-7 overflow-y-auto min-h-0 flex-1">
+          <form onSubmit={form.handleSubmit(onSubmit)}>
+        <div className="flex-1 overflow-y-auto min-h-0 px-6 py-6 space-y-7">
 
         {/* Mostrar error del API */}
         {apiError && (
