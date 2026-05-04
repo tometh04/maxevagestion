@@ -10,6 +10,7 @@ import {
 } from "@/components/admin/data-table-shell"
 import { EmptyState } from "@/components/admin/empty-state"
 import { EnterpriseWithoutPriceAlert } from "@/components/admin/enterprise-without-price-alert"
+import { MpSandboxBanner } from "@/components/admin/mp-sandbox-banner"
 import { MrrBarChart } from "@/components/admin/mrr-bar-chart"
 import { formatArs, PLANS } from "@/lib/billing/plans"
 import {
@@ -150,6 +151,7 @@ export default async function AdminMetricsPage() {
         description="Vista global del SaaS — orgs por estado, MRR/ARR, breakdown por plan."
       />
 
+      <MpSandboxBanner />
       <EnterpriseWithoutPriceAlert />
 
       <section>

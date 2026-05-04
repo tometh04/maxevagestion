@@ -10,6 +10,7 @@ import { CancelDialog } from "@/components/billing/cancel-dialog"
 import { ReactivateDialog } from "@/components/billing/reactivate-dialog"
 import { CustomPlanOwnerView } from "@/components/subscription/custom-plan-owner-view"
 import { fetchPreapproval } from "@/lib/billing/mercadopago"
+import { MpSandboxBanner } from "@/components/admin/mp-sandbox-banner"
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING_PAYMENT: "Pendiente de pago",
@@ -135,6 +136,8 @@ export default async function SubscriptionPage({
           Gestioná tu plan, método de pago y estado de la cuenta
         </p>
       </div>
+
+      <MpSandboxBanner />
 
       {checkoutFailed && (
         <Card className="border-destructive/15 bg-destructive/5">
