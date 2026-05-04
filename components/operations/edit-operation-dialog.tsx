@@ -639,9 +639,15 @@ export function EditOperationDialog({
                         )}
                       />
                     </div>
+                    {/* Bug #12: idem new-operation-dialog — renombrado a "Cap del
+                        vendedor principal" y ocultado cuando = 0 para que no se vea
+                        un confuso "0.00%" cuando el seller no tiene default. */}
                     <div className={`text-xs ${exceedsPrincipal ? "text-destructive font-medium" : "text-muted-foreground"}`}>
-                      Suma: {sum.toFixed(2)}% · Comisión vendedor principal: {principalPct.toFixed(2)}%
-                      {exceedsPrincipal && " — la suma no puede superar la comisión del principal"}
+                      Suma: {sum.toFixed(2)}%
+                      {principalPct > 0 && (
+                        <> · Cap del vendedor principal: {principalPct.toFixed(2)}%</>
+                      )}
+                      {exceedsPrincipal && " — la suma no puede superar el cap del principal"}
                     </div>
                   </div>
                 )

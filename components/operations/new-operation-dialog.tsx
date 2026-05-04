@@ -904,9 +904,17 @@ export function NewOperationDialog({
                         )}
                       />
                     </div>
+                    {/* Bug #12: el label decía "Comisión vendedor principal: X%" pero
+                        X era el default_commission_percentage del seller (el CAP del
+                        split), no el input live del primario. Cuando el seller no tenía
+                        default cargado, mostraba "0.00%" y confundía. Renombrado a
+                        "Cap del vendedor principal" y ocultado cuando = 0. */}
                     <div className={`text-xs ${exceedsPrincipal ? "text-destructive font-medium" : "text-muted-foreground"}`}>
-                      Suma: {sum.toFixed(2)}% · Comisión vendedor principal: {principalPct.toFixed(2)}%
-                      {exceedsPrincipal && " — la suma no puede superar la comisión del principal"}
+                      Suma: {sum.toFixed(2)}%
+                      {principalPct > 0 && (
+                        <> · Cap del vendedor principal: {principalPct.toFixed(2)}%</>
+                      )}
+                      {exceedsPrincipal && " — la suma no puede superar el cap del principal"}
                     </div>
                   </div>
                 )
