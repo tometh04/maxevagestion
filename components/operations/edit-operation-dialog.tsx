@@ -529,6 +529,42 @@ export function EditOperationDialog({
                 )}
               />
 
+              {/* Bug #15: Editar Op no exponía Vendedor Secundario, lo que obligaba
+                  a borrar y re-crear la operación para convertirla en shared sale.
+                  El backend YA acepta seller_secondary_id en el submit (línea ~377)
+                  y los campos de commission % aparecen abajo cuando hay secundario.
+                  Solo faltaba el selector. */}
+              <FormField
+                control={form.control}
+                name="seller_secondary_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Vendedor Secundario</FormLabel>
+                    <Select
+                      onValueChange={(v) => field.onChange(v === "none" ? null : v)}
+                      value={field.value ?? "none"}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Sin vendedor secundario" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="none">Sin vendedor secundario</SelectItem>
+                        {sellers
+                          .filter((s) => s.id !== form.watch("seller_id"))
+                          .map((seller) => (
+                            <SelectItem key={seller.id} value={seller.id}>
+                              {seller.name}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
               {/* Comisión compartida - dos inputs absolutos (29/04 — Tomi opción B).
                   Solo visible con vendedor secundario. ADMIN/SUPER_ADMIN/CONTABLE pueden
                   editar; resto ve readonly. Validación reactiva: suma ≤ pct del principal.
