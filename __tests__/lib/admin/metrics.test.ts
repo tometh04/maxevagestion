@@ -1,5 +1,6 @@
 import {
   computeMrrArs,
+  computeMrrArsDetailed,
   computeTrialPipelineMrrArs,
   computePotentialMrrArs,
 } from "@/lib/admin/metrics"
@@ -35,13 +36,15 @@ describe("computeMrrArs", () => {
     ).toBe(119000)
   })
 
-  it("ACTIVE ENTERPRISE without custom_plan and without override → 0", () => {
+  it("ACTIVE ENTERPRISE without custom_plan and without override → fallback PRO price (Bug #4)", () => {
+    // Cambiado por Bug #4: orgs ACTIVE sin precio configurado se estiman con PRO,
+    // en vez de tirar 0 (falsamente sugería que no contribuían al MRR).
     expect(
       computeMrrArs(
         { plan: "ENTERPRISE", subscription_status: "ACTIVE", custom_plan_id: null, manual_mrr_override_ars: null },
         null,
       ),
-    ).toBe(0)
+    ).toBe(119000)
   })
 
   it("ACTIVE custom_plan no discount → base_price", () => {
@@ -114,6 +117,53 @@ describe("computeMrrArs", () => {
         null,
       ),
     ).toBe(0)
+  })
+})
+
+describe("computeMrrArsDetailed (Bug #4)", () => {
+  it("ENTERPRISE Active sin config → estimated:true con monto PRO", () => {
+    expect(
+      computeMrrArsDetailed(
+        { plan: "ENTERPRISE", subscription_status: "ACTIVE", custom_plan_id: null, manual_mrr_override_ars: null },
+        null,
+      ),
+    ).toEqual({ amount: 119000, estimated: true })
+  })
+
+  it("ENTERPRISE Active con override → estimated:false con valor real", () => {
+    expect(
+      computeMrrArsDetailed(
+        { plan: "ENTERPRISE", subscription_status: "ACTIVE", custom_plan_id: null, manual_mrr_override_ars: 719000 },
+        null,
+      ),
+    ).toEqual({ amount: 719000, estimated: false })
+  })
+
+  it("ENTERPRISE Active con custom_plan → estimated:false con valor real", () => {
+    expect(
+      computeMrrArsDetailed(
+        { plan: "ENTERPRISE", subscription_status: "ACTIVE", custom_plan_id: "cp1", manual_mrr_override_ars: null },
+        { base_price_ars: 500000, discount_percent: 0, discount_ends_at: null },
+      ),
+    ).toEqual({ amount: 500000, estimated: false })
+  })
+
+  it("PRO Active → estimated:false (no fallback)", () => {
+    expect(
+      computeMrrArsDetailed(
+        { plan: "PRO", subscription_status: "ACTIVE", custom_plan_id: null, manual_mrr_override_ars: null },
+        null,
+      ),
+    ).toEqual({ amount: 119000, estimated: false })
+  })
+
+  it("ENTERPRISE en TRIALING → 0 (no aplica fallback porque no está pagando)", () => {
+    expect(
+      computeMrrArsDetailed(
+        { plan: "ENTERPRISE", subscription_status: "TRIALING", custom_plan_id: null, manual_mrr_override_ars: null },
+        null,
+      ),
+    ).toEqual({ amount: 0, estimated: false })
   })
 })
 
