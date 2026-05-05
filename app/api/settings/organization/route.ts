@@ -6,25 +6,50 @@ export const dynamic = 'force-dynamic'
 
 export async function GET(req: NextRequest) {
   try {
+    const tStart = Date.now()
     const { user } = await getCurrentUser()
+    const tAfterAuth = Date.now()
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
     const supabase = await createServerClient()
     const key = req.nextUrl.searchParams.get('key')
 
-    let query = supabase.from('organization_settings').select('*')
+    // Pendientes 2.3 — antes select('*') traía cert/key y otros campos pesados
+    // que el caller ignora. Limitamos las columnas al mínimo necesario.
+    let query = supabase.from('organization_settings').select('key, value, org_id, updated_at')
     // Multi-tenant: scope por org_id (post-migration 135)
     if (user.org_id) query = query.eq('org_id', user.org_id)
     if (key) query = query.eq('key', key)
 
     const { data, error } = await query
+    const tEnd = Date.now()
+
+    // Pendientes 2.3 — observed 5s para SELECT simple. Logueamos breakdown
+    // auth/query para identificar dónde se va el tiempo en el próximo slow.
+    const totalMs = tEnd - tStart
+    if (totalMs > 1500) {
+      console.warn(
+        `[settings/organization] SLOW: total=${totalMs}ms ` +
+          `(auth=${tAfterAuth - tStart}ms, query=${tEnd - tAfterAuth}ms, ` +
+          `org_id=${user.org_id ? 'set' : 'null'}, key=${key || 'all'})`
+      )
+    }
 
     if (error) {
       console.error('Error fetching organization_settings:', error.message)
       return Response.json({ data: [] })
     }
 
-    return Response.json({ data: data || [] })
+    // Cache en cliente: settings cambian raras veces (Mi Empresa save manual).
+    // 60s + SWR 300s reduce llamadas seguidas en navegación normal de la app.
+    return Response.json(
+      { data: data || [] },
+      {
+        headers: {
+          'Cache-Control': 'private, max-age=60, stale-while-revalidate=300',
+        },
+      }
+    )
   } catch (error: any) {
     if (error?.digest?.startsWith('NEXT_REDIRECT')) throw error
     console.error('Error in GET /api/settings/organization:', error)
