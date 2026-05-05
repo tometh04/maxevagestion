@@ -128,8 +128,11 @@ export const paymentsSueltoPipeline: PipelineFn = async (
       rollbackLog
     )
 
-    if (inserted) successRows++
-    else errors.push({ rowNumber, message: "Falló insert payment (DB)" })
+    if (inserted?.id) successRows++
+    else errors.push({
+      rowNumber,
+      message: `Falló insert payment (DB): ${inserted?.error ?? "sin detalle"}`,
+    })
   }
 
   return {

@@ -90,8 +90,11 @@ export const operatorsPipeline: PipelineFn = async (
       rollbackLog
     )
 
-    if (inserted) successRows++
-    else errors.push({ rowNumber, message: "Falló insert (DB)" })
+    if (inserted?.id) successRows++
+    else errors.push({
+      rowNumber,
+      message: `Falló insert (DB): ${inserted?.error ?? "sin detalle"}`,
+    })
   }
 
   return {
