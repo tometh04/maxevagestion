@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     const { user } = await getCurrentUser()
 
     // Solo ADMIN, SUPER_ADMIN y CONTABLE pueden marcar pagos como cobrados
-    if (!canAccessModule(user.role, "cash")) {
+    if (!canAccessModule(user.role as any, "cash")) {
       return NextResponse.json({ error: "No tiene permisos para marcar pagos como cobrados" }, { status: 403 })
     }
 

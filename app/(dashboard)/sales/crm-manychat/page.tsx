@@ -40,8 +40,9 @@ export default async function CRMManychatPage() {
   const { data: sellers } = await sellersQuery
 
   // Get operators for conversion dialog
-  const { data: operators } = await supabase
-    .from("operators")
+  // Cast a any: types.ts está stale; admin_fee_percentage agregada en migration
+  // 20260427000002 pero los tipos no fueron regenerados (npm run db:generate).
+  const { data: operators } = await (supabase.from("operators") as any)
     .select("id, name, admin_fee_percentage")
     .order("name")
 

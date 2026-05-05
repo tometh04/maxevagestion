@@ -596,7 +596,7 @@ async function generateRG4597Zip(
     month,
   })
 
-  return new Response(bundle.zipBuffer, {
+  return new Response(new Uint8Array(bundle.zipBuffer) as unknown as BodyInit, {
     headers: {
       "Content-Type": "application/zip",
       "Content-Disposition": `attachment; filename="${bundle.filename}"`,

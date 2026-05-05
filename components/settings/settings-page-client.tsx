@@ -14,7 +14,6 @@ import { DestinationRequirementsClient } from "@/components/settings/destination
 import { AfipSettings } from "@/components/settings/afip-settings"
 import { InterfaceSettings } from "@/components/settings/interface-settings"
 import { AuditSettings } from "@/components/settings/audit-settings"
-import { BulkImportTab } from "@/components/settings/bulk-import-tab"
 import { AgencyApprovalRulesForm } from "@/components/settings/agency-approval-rules-form"
 import { OperatorsTable, Operator } from "@/components/operators/operators-table"
 import { NewOperatorDialog } from "@/components/operators/new-operator-dialog"
@@ -107,7 +106,6 @@ export function SettingsPageClient({ defaultTab, agencies, firstAgencyId, userRo
         */}
         <TabsTrigger value="requirements">Requisitos Destino</TabsTrigger>
         <TabsTrigger value="afip">Facturación AFIP</TabsTrigger>
-        <TabsTrigger value="import">Importación</TabsTrigger>
         <TabsTrigger value="auditoria">Auditoría</TabsTrigger>
       </TabsList>
       <TabsContent value="interface" className="mt-6">
@@ -152,9 +150,6 @@ export function SettingsPageClient({ defaultTab, agencies, firstAgencyId, userRo
       </TabsContent>
       <TabsContent value="afip" className="mt-6">
         <AfipSettings agencies={agencies} defaultAgencyId={firstAgencyId} />
-      </TabsContent>
-      <TabsContent value="import" className="mt-6">
-        <BulkImportTab />
       </TabsContent>
       <TabsContent value="auditoria" className="mt-6">
         <AuditSettings />

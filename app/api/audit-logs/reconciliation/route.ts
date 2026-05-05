@@ -6,24 +6,14 @@ import { getCurrentUser } from "@/lib/auth"
  * GET /api/audit-logs/reconciliation
  * Verificaciones de integridad contable del sistema.
  *
- * Cutoff per-tenant para distinguir data importada vs data nativa:
- *   - Lozada (org pre-Vibook) hizo importación masiva 12-18/02/2026 que
- *     creó pagos PAID sin ledger por diseño → cutoff hardcoded 19/02/2026
- *   - Tenants creados post-Vibook usan org.created_at como cutoff → cualquier
- *     pago insertado antes que la org existiera no tiene sentido validar
- *
- * Bug #19 (parcial): el cutoff global hacía que Test V7 (creado 27/04)
- * mostrara los pagos del seed como huérfanos. Al usar max(GLOBAL, org.created_at)
- * el cutoff efectivo para Test V7 es ~27/04 — los seeds quedan tras esa fecha
- * pero ya estamos diciendo que "esto es por diseño porque no hubo flow real".
- *
- * NOTA: el fix completo requiere migration agregando organizations.legacy_import_until
- * para distinguir explícitamente seed/import vs producción. Mientras tanto,
- * esto baja el ruido de tenants nuevos sin perder la cobertura para Lozada.
+ * Cutoff per-tenant explícito vía organizations.legacy_import_until
+ * (migration 20260505000001):
+ *   - Si la columna está seteada (Lozada = 2026-02-19) → excluye movimientos
+ *     anteriores de los chequeos.
+ *   - Si null (tenants nuevos default) → fallback a org.created_at: cualquier
+ *     pago/movimiento creado antes que la org existiera es ruido del seed
+ *     y no rompe los checks de integridad real.
  */
-
-// Fecha de corte global (Lozada legacy): post-reimportación masiva
-const LOZADA_POST_IMPORT_DATE = "2026-02-19T00:00:00Z"
 
 export async function GET() {
   try {
@@ -35,18 +25,18 @@ export async function GET() {
 
     const supabase = await createServerClient()
 
-    // Resolver cutoff per-tenant: max(LOZADA_POST_IMPORT_DATE, org.created_at).
-    // Por RLS, esta query sólo devuelve la org del user actual.
+    // Resolver cutoff per-tenant: legacy_import_until (si seteado) o
+    // org.created_at (fallback). Por RLS, sólo devuelve la org del user.
     const { data: org } = await (supabase.from("organizations") as any)
-      .select("id, created_at")
+      .select("id, created_at, legacy_import_until")
       .eq("id", user.org_id)
       .maybeSingle()
 
+    const legacyUntil = org?.legacy_import_until as string | null | undefined
     const orgCreated = org?.created_at as string | undefined
+    // Prioridad: 1) legacy_import_until explícito, 2) org.created_at, 3) epoch.
     const POST_IMPORT_DATE =
-      orgCreated && new Date(orgCreated).getTime() > new Date(LOZADA_POST_IMPORT_DATE).getTime()
-        ? orgCreated
-        : LOZADA_POST_IMPORT_DATE
+      legacyUntil || orgCreated || "1970-01-01T00:00:00Z"
     const checks: Array<{
       id: string
       name: string
@@ -88,7 +78,7 @@ export async function GET() {
           : `${recentOrphan} pagos sin asiento`,
         details: recentOrphan === 0
           ? `OK.${importedOrphan > 0 ? ` (${importedOrphan} pagos de la importación inicial sin asiento — esperado por diseño)` : ""}`
-          : `${recentOrphan} pago(s) creados después del 19/02/2026 sin movimiento contable.${importedOrphan > 0 ? ` (${importedOrphan} adicionales de la importación, esperados)` : ""}`,
+          : `${recentOrphan} pago(s) creados post-cutoff de importación sin movimiento contable.${importedOrphan > 0 ? ` (${importedOrphan} adicionales de la importación legacy, esperados)` : ""}`,
       })
     } catch (err) {
       checks.push({

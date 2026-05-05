@@ -115,7 +115,7 @@ export async function POST(request: Request) {
     const supabase = await createServerClient()
 
     // Verificar acceso al módulo de caja
-    if (!canAccessModule(user.role, "cash")) {
+    if (!canAccessModule(user.role as any, "cash")) {
       return NextResponse.json({ error: "No tiene permisos para acceder a este módulo" }, { status: 403 })
     }
 

@@ -404,7 +404,7 @@ export function ImportV2Client({ agencies }: Props) {
               <Stat
                 label="Advertencias"
                 value={result.warningRows}
-                variant="coral"
+                variant="warning"
               />
               <Stat
                 label="Errores"

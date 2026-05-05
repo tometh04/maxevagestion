@@ -35,7 +35,37 @@ export function CustomPlanForm({
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState<{ checkout_url?: string; error?: string } | null>(null)
 
+  // Validación client-side espejo del backend para evitar 400 opacos.
+  // El POST en /api/admin/orgs/[id]/custom-plan exige:
+  //   - display_name truthy (no espacios)
+  //   - base_price_ars > 0
+  //   - discount_percent ∈ [0, 100]
+  //   - si discount > 0 → discount_duration_months > 0
+  function validate(): string | null {
+    const dn = displayName.trim()
+    if (!dn) return "Display name requerido"
+    const price = Number(basePrice)
+    if (!Number.isFinite(price) || price <= 0) return "Precio base ARS debe ser > 0"
+    const disc = Number(discountPct)
+    if (!Number.isFinite(disc) || disc < 0 || disc > 100)
+      return "Descuento % debe estar entre 0 y 100"
+    if (disc > 0) {
+      const months = Number(discountMonths)
+      if (!Number.isFinite(months) || months <= 0)
+        return "Si hay descuento, la duración (meses) debe ser > 0"
+      if (months > 24) return "Duración máxima 24 meses"
+    }
+    return null
+  }
+
+  const clientValidationError = !isEdit ? validate() : null
+
   async function submit() {
+    const err = validate()
+    if (err) {
+      setResult({ error: err })
+      return
+    }
     setSubmitting(true)
     setResult(null)
     try {
@@ -44,7 +74,7 @@ export function CustomPlanForm({
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          display_name: displayName,
+          display_name: displayName.trim(),
           base_price_ars: Number(basePrice),
           discount_percent: Number(discountPct),
           discount_duration_months: Number(discountMonths),
@@ -188,11 +218,15 @@ export function CustomPlanForm({
       <div className="flex items-center gap-3 pt-2">
         <button
           onClick={submit}
-          disabled={submitting}
+          disabled={submitting || !!clientValidationError}
+          title={clientValidationError ?? ""}
           className="text-sm px-3 py-1 rounded bg-primary text-white disabled:opacity-50"
         >
           {submitting ? "Guardando..." : isEdit ? "Guardar cambios" : "Crear plan + generar checkout"}
         </button>
+        {clientValidationError && (
+          <span className="text-xs text-muted-foreground">{clientValidationError}</span>
+        )}
         {result?.error && <span className="text-xs text-destructive">{result.error}</span>}
       </div>
 

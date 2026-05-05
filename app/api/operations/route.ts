@@ -1177,7 +1177,7 @@ export async function GET(request: Request) {
         console.error("Error fetching operations:", retryResult.error)
         return NextResponse.json({ error: "Error al obtener operaciones" }, { status: 500 })
       }
-      operations = retryResult.data
+      operations = retryResult.data as any
       error = null
     }
 

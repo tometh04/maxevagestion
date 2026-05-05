@@ -65,7 +65,7 @@ export async function GET(request: Request) {
     }
 
     // Obtener vendedores
-    const sellerIds = Array.from(new Set((operations || []).map((op: any) => op.seller_id).filter(Boolean)))
+    const sellerIds: string[] = Array.from(new Set((operations || []).map((op: any) => op.seller_id as string).filter(Boolean)))
     let sellersMap: Record<string, string> = {}
     
     if (sellerIds.length > 0) {

@@ -9,7 +9,7 @@ export async function GET(
   const { id: agencyId } = await params
   try {
     const supabase = await createServerClient()
-    const { data } = await (supabase.from("agency_settings") as any)
+    const { data } = await ((supabase as any).from("agency_settings"))
       .select("data")
       .eq("agency_id", agencyId)
       .maybeSingle()
@@ -41,14 +41,14 @@ export async function PUT(
     const supabase = await createServerClient()
 
     // Upsert agency_settings.data.payment_approval_rules
-    const { data: existing } = await (supabase.from("agency_settings") as any)
+    const { data: existing } = await ((supabase as any).from("agency_settings"))
       .select("data")
       .eq("agency_id", agencyId)
       .maybeSingle()
 
     const newData = { ...(existing?.data || {}), payment_approval_rules: rules }
 
-    const { error } = await (supabase.from("agency_settings") as any)
+    const { error } = await ((supabase as any).from("agency_settings"))
       .upsert({ agency_id: agencyId, data: newData }, { onConflict: "agency_id" })
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })

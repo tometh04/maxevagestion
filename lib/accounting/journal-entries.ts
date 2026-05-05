@@ -366,8 +366,9 @@ export async function listJournalEntries(
     if (filters.dateFrom) opQuery = opQuery.gte("operation_date", filters.dateFrom)
     if (filters.dateTo) opQuery = opQuery.lte("operation_date", filters.dateTo)
     const { data: matchingOps } = await opQuery.limit(5000)
-    opIdsRestriction = (matchingOps || []).map((o: any) => o.id)
-    if (opIdsRestriction.length === 0) {
+    const ids = (matchingOps || []).map((o: any) => o.id as string)
+    opIdsRestriction = ids
+    if (ids.length === 0) {
       return { entries: [], total: 0, limit, offset, hasMore: false }
     }
   }

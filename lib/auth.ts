@@ -27,6 +27,9 @@ export const getCurrentUser = cache(async (): Promise<{ user: User; session: { u
       is_active: true,
       can_view_agency_operations_support: false,
       can_add_services_on_agency_operations: false,
+      default_commission_percentage: null,
+      legal_accepted_at: null,
+      legal_version: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }

@@ -7,7 +7,7 @@ export async function GET(request: Request) {
   try {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
-    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role)
+    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
     const events: any[] = []
 
     const isSeller = user.role === "SELLER"

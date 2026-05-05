@@ -9,7 +9,7 @@ export default async function CustomerDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const { user } = await getCurrentUser()
+  await getCurrentUser() // gate auth (RLS scopea la org en queries siguientes)
   const supabase = await createServerClient()
 
   // Get customer
@@ -22,20 +22,7 @@ export default async function CustomerDetailPage({
     notFound()
   }
 
-  // Get operations for this customer
-  // Primero, obtener los operation_customers sin relaciones para debug
-  const { data: operationCustomersRaw, error: operationCustomersRawError } = await supabase
-    .from("operation_customers")
-    .select("*")
-    .eq("customer_id", id)
-
-  console.log(`[CustomerDetailPage] Raw operation_customers for customer ${id}:`, {
-    count: operationCustomersRaw?.length || 0,
-    data: operationCustomersRaw,
-    error: operationCustomersRawError
-  })
-
-  // Ahora obtener con relaciones
+  // operation_customers + operations + relaciones (single query, no duplicate)
   const { data: operationCustomers, error: operationCustomersError } = await supabase
     .from("operation_customers")
     .select(`
@@ -50,22 +37,15 @@ export default async function CustomerDetailPage({
     .eq("customer_id", id)
 
   if (operationCustomersError) {
-    console.error("[CustomerDetailPage] Error fetching operation_customers with relations:", operationCustomersError)
+    console.error("[CustomerDetailPage] operation_customers fetch error:", operationCustomersError)
   }
 
-  console.log(`[CustomerDetailPage] operation_customers with relations for customer ${id}:`, {
-    count: operationCustomers?.length || 0,
-    sample: operationCustomers?.[0]
-  })
-
-  // Get operation IDs for payments and documents
+  // Operation IDs for payments and documents
   const operationIds = (operationCustomers || []).map((oc: any) => oc.operation_id).filter(Boolean)
 
-  // Get payments related to customer's operations
-  // También incluir pagos directamente vinculados al cliente si existe esa relación en el futuro
+  // Pagos vinculados a operaciones del cliente
   let payments: any[] = []
   if (operationIds.length > 0) {
-    console.log(`[CustomerDetailPage] Fetching payments for operation_ids:`, operationIds)
     const { data: paymentsData, error: paymentsError } = await supabase
       .from("payments")
       .select(`
@@ -80,22 +60,14 @@ export default async function CustomerDetailPage({
       .eq("payer_type", "CUSTOMER")
       .order("date_due", { ascending: true })
     if (paymentsError) {
-      console.error("[CustomerDetailPage] Error fetching payments:", paymentsError)
-    } else {
-      console.log(`[CustomerDetailPage] Found ${paymentsData?.length || 0} payments for customer ${id}`)
-      // Si los pagos no tienen exchange_rate pero la operación tiene sale_currency USD,
-      // podríamos calcularlo, pero por ahora usamos el fallback en el componente
+      console.error("[CustomerDetailPage] payments fetch error:", paymentsError)
     }
     payments = paymentsData || []
-  } else {
-    console.log(`[CustomerDetailPage] No operation_ids to fetch payments for customer ${id}`)
   }
 
-  // Get documents - incluir documentos del cliente Y de sus operaciones
-  
+  // Documentos: del cliente directo + de sus operaciones
   let documents: any[] = []
-  
-  // Documentos directamente vinculados al cliente
+
   const { data: customerDocs, error: customerDocsError } = await supabase
     .from("documents")
     .select("*")
@@ -103,27 +75,23 @@ export default async function CustomerDetailPage({
     .order("uploaded_at", { ascending: false })
 
   if (customerDocsError) {
-    console.error("[CustomerDetailPage] Error fetching customer documents:", customerDocsError)
+    console.error("[CustomerDetailPage] customer documents fetch error:", customerDocsError)
   }
-  
   if (customerDocs) {
     documents = [...documents, ...customerDocs]
   }
-  
-  // Documentos de las operaciones del cliente
+
   if (operationIds.length > 0) {
     const { data: operationDocs, error: operationDocsError } = await supabase
       .from("documents")
       .select("*")
       .in("operation_id", operationIds)
       .order("uploaded_at", { ascending: false })
-    
+
     if (operationDocsError) {
-      console.error("[CustomerDetailPage] Error fetching operation documents:", operationDocsError)
+      console.error("[CustomerDetailPage] operation documents fetch error:", operationDocsError)
     }
-    
     if (operationDocs) {
-      // Agregar documentos de operaciones que no estén ya en la lista
       for (const doc of operationDocs as any[]) {
         if (!documents.find((d: any) => d.id === (doc as any).id)) {
           documents.push(doc)
@@ -131,54 +99,26 @@ export default async function CustomerDetailPage({
       }
     }
   }
-  
-  // Log para debugging
-  console.log(`[CustomerDetailPage] Customer ${id}:`, {
-    operationCustomersCount: operationCustomers?.length || 0,
-    operationIdsCount: operationIds.length,
-    paymentsCount: payments.length,
-    documentsCount: documents.length
-  })
-  
-  // Ordenar todos los documentos por fecha
-  documents.sort((a: any, b: any) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime())
 
-  // Extraer operaciones de operation_customers
-  // En Supabase, cuando haces una relación con foreign key, devuelve un objeto único (no array)
+  documents.sort(
+    (a: any, b: any) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime()
+  )
+
+  // Extraer operaciones desde operation_customers; el JOIN devuelve objeto único
   let operations: any[] = []
-  
   if (operationCustomers && operationCustomers.length > 0) {
     operations = operationCustomers
       .map((oc: any) => {
-        console.log(`[CustomerDetailPage] Processing operation_customer:`, {
-          oc_id: oc.id,
-          operation_id: oc.operation_id,
-          operations_field: oc.operations,
-          operations_type: typeof oc.operations,
-          is_array: Array.isArray(oc.operations)
-        })
-        
-        // oc.operations puede ser un objeto único o null
-        if (oc.operations && typeof oc.operations === 'object' && !Array.isArray(oc.operations)) {
+        if (oc.operations && typeof oc.operations === "object" && !Array.isArray(oc.operations)) {
           return oc.operations
-        }
-        // Si operations es null pero tenemos operation_id, intentar obtener la operación directamente
-        if (!oc.operations && oc.operation_id) {
-          console.warn(`[CustomerDetailPage] operation_customer ${oc.id} has operation_id ${oc.operation_id} but operations field is null`)
         }
         return null
       })
       .filter((op: any) => op !== null && op !== undefined)
   }
 
-  console.log(`[CustomerDetailPage] Final operations array for customer ${id}:`, {
-    count: operations.length,
-    operation_ids: operations.map((op: any) => op?.id)
-  })
-
-  // Si no hay operaciones pero sí hay operation_customers, intentar obtener las operaciones directamente
+  // Fallback: si la relación devolvió null pero tenemos IDs, fetch directo
   if (operations.length === 0 && operationIds.length > 0) {
-    console.log(`[CustomerDetailPage] No operations from relation, fetching directly for IDs:`, operationIds)
     const { data: directOperations, error: directOpsError } = await supabase
       .from("operations")
       .select(`
@@ -189,11 +129,10 @@ export default async function CustomerDetailPage({
       `)
       .in("id", operationIds)
       .order("created_at", { ascending: false })
-    
+
     if (directOpsError) {
-      console.error("[CustomerDetailPage] Error fetching operations directly:", directOpsError)
+      console.error("[CustomerDetailPage] direct operations fetch error:", directOpsError)
     } else if (directOperations && directOperations.length > 0) {
-      console.log(`[CustomerDetailPage] Found ${directOperations.length} operations via direct query`)
       operations = directOperations
     }
   }
