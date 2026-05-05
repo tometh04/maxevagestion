@@ -5,6 +5,7 @@ import { formatArs } from "@/lib/billing/plans"
 import { cn } from "@/lib/utils"
 import { AlertCircle, Clock, Tag, Activity } from "lucide-react"
 import { PageHeader } from "@/components/admin/page-header"
+import { MpSandboxBanner } from "@/components/admin/mp-sandbox-banner"
 import { EmptyState } from "@/components/admin/empty-state"
 import {
   DataTableShell,
@@ -77,6 +78,8 @@ export default async function AdminBillingPage() {
         title="Operaciones de billing"
         description="Cobranzas pendientes, vencimientos próximos, custom plans vigentes y eventos recientes cross-org."
       />
+
+      <MpSandboxBanner />
 
       <PendingSection rows={pending ?? []} />
       <UpcomingSection rows={upcoming ?? []} />

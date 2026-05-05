@@ -172,6 +172,11 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
   // Llamarlo cuando la agencia tenga cert instalado. Resultado determina si
   // mostramos el banner-tutorial "habilitá WSFE en afip.gob.ar" o el estado
   // "Activo".
+  //
+  // Bug #18: si el PV persistido (default 1 al setup) NO está en la lista
+  // que devuelve FEParamGetPtosVenta pero hay alguno detectado, lo alineamos
+  // automáticamente al primero detectado para que "Probar Conexión" funcione
+  // sin que el usuario tenga que reconfigurar manualmente.
   const checkPointsOfSale = useCallback(async (agencyId: string) => {
     if (!agencyId) return
     setPosStatus(prev => ({ ...prev, checking: true, error: null }))
@@ -194,10 +199,39 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
         setPosStatus({ checking: false, has_ws_points: null, points: [], error: null })
         return
       }
+      const detectedPoints = (agencyData.points_of_sale || []) as PointOfSale[]
+      const persistedPv = agencyData.default_point_of_sale as number | null | undefined
+
+      // Bug #18: auto-fix mismatch entre PV guardado y PVs detectados
+      if (
+        detectedPoints.length > 0 &&
+        persistedPv != null &&
+        !detectedPoints.some((p) => p.numero === persistedPv)
+      ) {
+        const newPv = detectedPoints[0].numero
+        try {
+          const fixRes = await fetch("/api/settings/afip/update-punto-venta", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agency_id: agencyId, punto_venta: newPv }),
+          })
+          if (fixRes.ok) {
+            toast({
+              title: "Punto de venta alineado",
+              description: `AFIP solo habilita el #${newPv} para WSFE — actualizamos tu config (antes #${persistedPv}).`,
+            })
+            // Refrescar status para que la UI muestre el nuevo PV
+            await loadStatus(agencyId)
+          }
+        } catch {
+          // No bloqueamos si falla el auto-fix; el usuario puede reconfigurar
+        }
+      }
+
       setPosStatus({
         checking: false,
         has_ws_points: !!agencyData.has_ws_points,
-        points: (agencyData.points_of_sale || []) as PointOfSale[],
+        points: detectedPoints,
         error: agencyData._debug_error || null,
       })
     } catch (err: any) {
@@ -208,7 +242,7 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
         error: err?.message || "Error de red al chequear puntos de venta",
       })
     }
-  }, [])
+  }, [loadStatus, toast])
 
   useEffect(() => {
     if (selectedAgencyId) {
@@ -717,7 +751,12 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Entorno</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      {/* Bug #13b: tenía defaultValue={field.value} que hacía
+                          al Select uncontrolled — el valor visual cambiaba
+                          pero form.state seguía en "production", así que al
+                          submit se mandaba siempre Producción aunque el user
+                          hubiera elegido Sandbox. Cambiado a controlled. */}
+                      <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue />

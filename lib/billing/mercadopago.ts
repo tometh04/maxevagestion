@@ -48,6 +48,16 @@ function mpWebhookSecret(): string | undefined {
   return process.env.MERCADOPAGO_WEBHOOK_SECRET || process.env.MP_WEBHOOK_SECRET || undefined
 }
 
+/**
+ * True si la integración MP está corriendo contra sandbox (test mode).
+ * Útil para que la UI muestre un banner y no se confundan tokens reales con
+ * tokens de prueba. La env `MP_USE_SANDBOX=true` activa el modo y exige
+ * `MERCADOPAGO_ACCESS_TOKEN_SANDBOX` configurado.
+ */
+export function isMpSandbox(): boolean {
+  return process.env.MP_USE_SANDBOX === "true"
+}
+
 export interface CreatePreapprovalParams {
   orgId: string
   plan: PlanId | "CUSTOM"

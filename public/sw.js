@@ -1,6 +1,6 @@
-// Service Worker para Web Push Notifications — MAXEVA GESTION
+// Service Worker para Web Push Notifications — Vibook
 
-const CACHE_NAME = 'maxeva-push-v1'
+const CACHE_NAME = 'vibook-push-v1'
 
 // Install: activar inmediatamente
 self.addEventListener('install', (event) => {
@@ -21,17 +21,17 @@ self.addEventListener('push', (event) => {
     data = event.data.json()
   } catch (e) {
     data = {
-      title: 'MAXEVA GESTION',
+      title: 'Vibook',
       body: event.data.text(),
     }
   }
 
-  const title = data.title || 'MAXEVA GESTION'
+  const title = data.title || 'Vibook'
   const options = {
     body: data.body || '',
     icon: '/icon-192.png',
     badge: '/icon-192.png',
-    tag: data.tag || 'maxeva-notification',
+    tag: data.tag || 'vibook-notification',
     renotify: true,
     data: {
       url: data.url || '/dashboard',

@@ -5,7 +5,7 @@ import { createServerClient } from "@/lib/supabase/server"
 
 // Esquema COMPLETO de la base de datos - ACTUALIZADO 2026-02-26
 const DATABASE_SCHEMA = `
-## ESQUEMA COMPLETO DE BASE DE DATOS - MAXEVA GESTION
+## ESQUEMA COMPLETO DE BASE DE DATOS - Vibook
 
 ### 📊 TABLAS PRINCIPALES
 

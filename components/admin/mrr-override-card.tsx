@@ -43,19 +43,46 @@ export function MrrOverrideCard({ orgId, currentOverride, hasCustomPlan }: Props
     }
   }
 
+  // Bug #8: cap razonable para evitar typos (un MRR > $100M ARS es casi seguro
+  // un copy/paste con cero de más). El backend igual valida.
+  const MRR_MAX_ARS = 100_000_000
+
   function handleSave(e: React.FormEvent) {
     e.preventDefault()
     const trimmed = value.trim()
-    if (trimmed === "") return submit(null)
+    // Si el input está vacío y ya hay override, exigir el botón "Borrar override"
+    // (que pide confirm) — no se permite borrar accidentalmente con Enter.
+    if (trimmed === "") {
+      if (currentOverride != null) {
+        setError(
+          'Para borrar el override usá el botón "Borrar override". El input vacío en "Guardar" no borra.',
+        )
+        return
+      }
+      // Si no hay override existente, no-op
+      return
+    }
     const num = Number(trimmed)
     if (!Number.isFinite(num) || num < 0) {
-      setError("Ingresá un número válido (>= 0) o dejá vacío para borrar.")
+      setError("Ingresá un número válido (>= 0) o usá 'Borrar override'.")
+      return
+    }
+    if (num > MRR_MAX_ARS) {
+      setError(
+        `El monto $${num.toLocaleString("es-AR")} parece muy alto (máx $${MRR_MAX_ARS.toLocaleString("es-AR")}). Verificá el valor.`,
+      )
       return
     }
     submit(num)
   }
 
   function handleClear() {
+    if (currentOverride != null) {
+      const ok = window.confirm(
+        `¿Borrar el override de MRR ($${Number(currentOverride).toLocaleString("es-AR")})? Esta org volverá a calcular MRR desde su custom plan o el plan estándar.`,
+      )
+      if (!ok) return
+    }
     setValue("")
     submit(null)
   }
@@ -83,6 +110,7 @@ export function MrrOverrideCard({ orgId, currentOverride, hasCustomPlan }: Props
               id="mrr-override"
               type="number"
               min={0}
+              max={MRR_MAX_ARS}
               step="0.01"
               value={value}
               onChange={(e) => setValue(e.target.value)}

@@ -98,7 +98,7 @@ export function ToolsSettingsPageClient() {
     emilia_allowed_actions: ['search', 'summarize', 'suggest'],
     email_enabled: true,
     email_provider: 'resend',
-    email_from_name: 'MAXEVA Gestión',
+    email_from_name: 'Vibook',
     whatsapp_enabled: true,
     whatsapp_provider: 'manual',
     whatsapp_default_country_code: '+54',
@@ -484,7 +484,7 @@ export function ToolsSettingsPageClient() {
                   Firma que se incluye en los emails
                 </p>
                 <Textarea
-                  placeholder="Ej: Saludos cordiales,&#10;El equipo de MAXEVA"
+                  placeholder="Ej: Saludos cordiales,&#10;El equipo de Vibook"
                   value={settings.email_signature || ''}
                   onChange={(e) => setSettings({
                     ...settings,

@@ -10,10 +10,11 @@ import {
 } from "@/components/admin/data-table-shell"
 import { EmptyState } from "@/components/admin/empty-state"
 import { EnterpriseWithoutPriceAlert } from "@/components/admin/enterprise-without-price-alert"
+import { MpSandboxBanner } from "@/components/admin/mp-sandbox-banner"
 import { MrrBarChart } from "@/components/admin/mrr-bar-chart"
 import { formatArs, PLANS } from "@/lib/billing/plans"
 import {
-  computeMrrArs, computeTrialPipelineMrrArs, computePotentialMrrArs,
+  computeMrrArsDetailed, computeTrialPipelineMrrArs, computePotentialMrrArs,
   type MrrOrg, type MrrCustomPlan,
 } from "@/lib/admin/metrics"
 
@@ -79,6 +80,8 @@ export default async function AdminMetricsPage() {
   }
 
   let mrrTotal = 0
+  let mrrEstimated = 0       // Bug #4: monto estimado (ENTERPRISE fallback)
+  let mrrEstimatedOrgs = 0   // count de orgs con monto estimado
   let trialPipelineMrr = 0
   let newMrr30d = 0
   let activePayingOrgs = 0
@@ -93,9 +96,13 @@ export default async function AdminMetricsPage() {
     }
     const cp = o.custom_plan_id ? cpMap.get(o.id) ?? null : null
 
-    const mrr = computeMrrArs(org, cp)
+    const { amount: mrr, estimated } = computeMrrArsDetailed(org, cp)
     mrrTotal += mrr
     if (mrr > 0) activePayingOrgs += 1
+    if (estimated) {
+      mrrEstimated += mrr
+      mrrEstimatedOrgs += 1
+    }
 
     const pipeline = computeTrialPipelineMrrArs(org, cp)
     trialPipelineMrr += pipeline
@@ -144,6 +151,7 @@ export default async function AdminMetricsPage() {
         description="Vista global del SaaS — orgs por estado, MRR/ARR, breakdown por plan."
       />
 
+      <MpSandboxBanner />
       <EnterpriseWithoutPriceAlert />
 
       <section>
@@ -180,7 +188,11 @@ export default async function AdminMetricsPage() {
             label="MRR"
             value={formatArs(mrrTotal)}
             icon={CircleDollarSign}
-            hint="ARS / mes"
+            hint={
+              mrrEstimatedOrgs > 0
+                ? `ARS / mes · ${formatArs(mrrEstimated)} estimado en ${mrrEstimatedOrgs} Enterprise sin precio`
+                : "ARS / mes"
+            }
           />
           <StatCard
             label="ARR"
