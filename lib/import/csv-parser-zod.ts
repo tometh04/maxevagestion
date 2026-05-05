@@ -56,3 +56,4 @@ export async function parseCsv<T>(
   })
 
   return { rows, headerError: null }
+}
