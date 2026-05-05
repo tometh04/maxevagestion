@@ -423,6 +423,18 @@ export function TrelloSettings({ agencies, defaultAgencyId }: TrelloSettingsProp
             )}
           </div>
         </div>
+        {/* Pendientes 2.4 — Trello sync deprecado en favor de Manychat. La
+            configuración sigue disponible para tenants que ya la usan, pero
+            avisamos a los nuevos para que no la levanten sin necesidad. */}
+        <Alert className="mb-4 border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+          <AlertDescription>
+            <strong>Trello queda como integración legacy.</strong> El flujo
+            recomendado para CRM ahora es Manychat (configurable desde el
+            kanban en <code>/sales/crm-manychat</code>). Si todavía no
+            configuraste Trello, podés saltearlo. Si ya lo tenías andando,
+            seguís pudiendo usar el sync sin cambios.
+          </AlertDescription>
+        </Alert>
         {agencies.length > 0 && (
           <div className="flex items-center gap-2">
             <Label htmlFor="trello-agency-select">Agencia:</Label>

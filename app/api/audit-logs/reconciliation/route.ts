@@ -5,13 +5,25 @@ import { getCurrentUser } from "@/lib/auth"
 /**
  * GET /api/audit-logs/reconciliation
  * Verificaciones de integridad contable del sistema.
- * Solo analiza datos POST-IMPORTACIÓN (después del 19/02/2026).
- * La importación masiva del 12-18/02/2026 creó pagos PAID sin ledger y
- * cash_movements sin financial_account_id — eso es por diseño.
+ *
+ * Cutoff per-tenant para distinguir data importada vs data nativa:
+ *   - Lozada (org pre-Vibook) hizo importación masiva 12-18/02/2026 que
+ *     creó pagos PAID sin ledger por diseño → cutoff hardcoded 19/02/2026
+ *   - Tenants creados post-Vibook usan org.created_at como cutoff → cualquier
+ *     pago insertado antes que la org existiera no tiene sentido validar
+ *
+ * Bug #19 (parcial): el cutoff global hacía que Test V7 (creado 27/04)
+ * mostrara los pagos del seed como huérfanos. Al usar max(GLOBAL, org.created_at)
+ * el cutoff efectivo para Test V7 es ~27/04 — los seeds quedan tras esa fecha
+ * pero ya estamos diciendo que "esto es por diseño porque no hubo flow real".
+ *
+ * NOTA: el fix completo requiere migration agregando organizations.legacy_import_until
+ * para distinguir explícitamente seed/import vs producción. Mientras tanto,
+ * esto baja el ruido de tenants nuevos sin perder la cobertura para Lozada.
  */
 
-// Fecha de corte: después de la reimportación masiva del 18/02/2026
-const POST_IMPORT_DATE = "2026-02-19T00:00:00Z"
+// Fecha de corte global (Lozada legacy): post-reimportación masiva
+const LOZADA_POST_IMPORT_DATE = "2026-02-19T00:00:00Z"
 
 export async function GET() {
   try {
@@ -22,6 +34,19 @@ export async function GET() {
     }
 
     const supabase = await createServerClient()
+
+    // Resolver cutoff per-tenant: max(LOZADA_POST_IMPORT_DATE, org.created_at).
+    // Por RLS, esta query sólo devuelve la org del user actual.
+    const { data: org } = await (supabase.from("organizations") as any)
+      .select("id, created_at")
+      .eq("id", user.org_id)
+      .maybeSingle()
+
+    const orgCreated = org?.created_at as string | undefined
+    const POST_IMPORT_DATE =
+      orgCreated && new Date(orgCreated).getTime() > new Date(LOZADA_POST_IMPORT_DATE).getTime()
+        ? orgCreated
+        : LOZADA_POST_IMPORT_DATE
     const checks: Array<{
       id: string
       name: string
