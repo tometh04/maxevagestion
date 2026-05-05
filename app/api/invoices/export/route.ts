@@ -95,9 +95,32 @@ export async function GET(request: NextRequest) {
       afipCuitByOrg.set(orgId, (svc as any)?.config?.cuit ?? "")
     }
 
-    // Footer company name (unique per org)
+    // Branding per-tenant — carga settings relevantes de organization_settings.
+    // Pendientes 4.5: company_name (footer) + brand_color_primary (header) +
+    // brand_logo_url (logo) + terms_pdf (T&Cs en footer).
     const { data: orgSettings } = await (supabase.from("organization_settings") as any).select("key, value")
-    const footerCompanyName = orgSettings?.find((s: any) => s.key === "company_name")?.value
+    const settingsMap = new Map<string, string>(
+      (orgSettings || []).map((s: any) => [s.key as string, s.value as string])
+    )
+    const footerCompanyName = settingsMap.get("company_name")
+    const brandColorHex = settingsMap.get("brand_color_primary") || settingsMap.get("primary_color")
+    const brandLogoUrl = settingsMap.get("brand_logo_url") || settingsMap.get("company_logo_url")
+    const termsText = settingsMap.get("terms_pdf") || settingsMap.get("terms")
+
+    // Cargar el logo una sola vez (común a todas las facturas del ZIP).
+    // Si la URL falla, seguimos sin logo — no rompemos por un asset opcional.
+    let logoBytes: Uint8Array | undefined
+    if (brandLogoUrl) {
+      try {
+        const logoRes = await fetch(brandLogoUrl)
+        if (logoRes.ok) {
+          const buf = await logoRes.arrayBuffer()
+          logoBytes = new Uint8Array(buf)
+        }
+      } catch (err) {
+        console.warn("[invoices/export] Logo del tenant no se pudo cargar:", err)
+      }
+    }
 
     // Promise pool (concurrency=5) para render paralelo
     const zip = new JSZip()
@@ -115,6 +138,11 @@ export async function GET(request: NextRequest) {
               emisor: { cuit: emisorCuit, razonSocial: agency?.name ?? "" },
               agency: { name: agency?.name ?? "Agencia" },
               footerCompanyName,
+              branding: {
+                logoPngBytes: logoBytes,
+                primaryColorHex: brandColorHex,
+                termsText,
+              },
             })
             const pv = String(inv.pto_vta).padStart(4, "0")
             const nro = String(inv.cbte_nro ?? 0).padStart(8, "0")

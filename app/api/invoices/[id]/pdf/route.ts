@@ -46,17 +46,42 @@ export async function GET(
     const afipSvc = await getAfipServiceForOrg(supabase, invoice.org_id)
     const emisorCuit = (afipSvc as any)?.config?.cuit || ""
 
-    // Footer company name opcional desde organization_settings
+    // Branding per-tenant (Pendientes 4.5) — same que en invoices/export
     const { data: orgSettings } = await (supabase.from("organization_settings") as any)
       .select("key, value")
-    const footerCompanyName =
-      orgSettings?.find((s: any) => s.key === "company_name")?.value || agency?.name
+    const settingsMap = new Map<string, string>(
+      (orgSettings || []).map((s: any) => [s.key as string, s.value as string])
+    )
+    const footerCompanyName = settingsMap.get("company_name") || agency?.name
+    const brandColorHex =
+      settingsMap.get("brand_color_primary") || settingsMap.get("primary_color")
+    const brandLogoUrl =
+      settingsMap.get("brand_logo_url") || settingsMap.get("company_logo_url")
+    const termsText = settingsMap.get("terms_pdf") || settingsMap.get("terms")
+
+    let logoBytes: Uint8Array | undefined
+    if (brandLogoUrl) {
+      try {
+        const logoRes = await fetch(brandLogoUrl)
+        if (logoRes.ok) {
+          const buf = await logoRes.arrayBuffer()
+          logoBytes = new Uint8Array(buf)
+        }
+      } catch (err) {
+        console.warn("[invoices/[id]/pdf] Logo del tenant no se pudo cargar:", err)
+      }
+    }
 
     const pdfBytes = await renderInvoicePdf({
       invoice,
       emisor: { cuit: emisorCuit, razonSocial: agency?.name ?? "" },
       agency: { name: agency?.name ?? "Agencia" },
       footerCompanyName,
+      branding: {
+        logoPngBytes: logoBytes,
+        primaryColorHex: brandColorHex,
+        termsText,
+      },
     })
 
     const compStr = invoice.cbte_nro

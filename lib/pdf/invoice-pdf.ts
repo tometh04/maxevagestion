@@ -17,11 +17,42 @@ import {
 } from "@/lib/invoices/calculation"
 import { buildAfipQrPayload, buildAfipQrUrl } from "@/lib/afip/qr"
 
+/**
+ * Branding per-tenant aplicado al PDF (Pendientes 4.5 — Customizaciones MUST).
+ * Todo opcional: si no se setea nada, cae al diseño default (header naranja
+ * Vibook + sin logo + sin T&C).
+ */
+export interface InvoicePdfBranding {
+  /** Logo PNG en bytes. Se renderiza arriba del header naranja. */
+  logoPngBytes?: Uint8Array | Buffer
+  /** Color del header en hex (#RRGGBB). Default: naranja Vibook. */
+  primaryColorHex?: string
+  /** Texto de T&Cs / política. Se imprime en footer si hay espacio. */
+  termsText?: string
+}
+
 export interface InvoicePdfParams {
   invoice: any
   emisor: { cuit: string; razonSocial: string }
   agency: { name: string }
   footerCompanyName?: string
+  branding?: InvoicePdfBranding
+}
+
+/**
+ * Convierte "#RRGGBB" → rgb(r, g, b) normalizado [0,1]. Si el formato es
+ * inválido o se omite, devuelve null y el caller cae al color default.
+ */
+function hexToRgb(hex?: string): { r: number; g: number; b: number } | null {
+  if (!hex) return null
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim())
+  if (!m) return null
+  const num = parseInt(m[1], 16)
+  return {
+    r: ((num >> 16) & 0xff) / 255,
+    g: ((num >> 8) & 0xff) / 255,
+    b: (num & 0xff) / 255,
+  }
 }
 
 const fmt = (n: number) =>
@@ -38,7 +69,7 @@ const fmtDate = (s?: string | null) => {
 }
 
 export async function renderInvoicePdf(params: InvoicePdfParams): Promise<Uint8Array> {
-  const { invoice, emisor, agency, footerCompanyName } = params
+  const { invoice, emisor, agency, footerCompanyName, branding } = params
 
   const pdfDoc = await PDFDocument.create()
   const page = pdfDoc.addPage(PageSizes.A4) // 595 × 842 pt
@@ -50,7 +81,23 @@ export async function renderInvoicePdf(params: InvoicePdfParams): Promise<Uint8A
   const black = rgb(0, 0, 0)
   const gray = rgb(0.45, 0.45, 0.45)
   const light = rgb(0.92, 0.92, 0.92)
-  const orange = rgb(0.85, 0.33, 0.1)
+  // Pendientes 4.5 — primary color override per-tenant. Default = naranja Vibook.
+  const customPrimary = hexToRgb(branding?.primaryColorHex)
+  const orange = customPrimary
+    ? rgb(customPrimary.r, customPrimary.g, customPrimary.b)
+    : rgb(0.85, 0.33, 0.1)
+
+  // Embebemos el logo arriba si el tenant lo configuró. Si falla el embed
+  // (PNG corrupto, formato no soportado, etc.) seguimos sin logo — no
+  // rompemos la generación del PDF por un asset opcional.
+  let logoImage: Awaited<ReturnType<typeof pdfDoc.embedPng>> | null = null
+  if (branding?.logoPngBytes) {
+    try {
+      logoImage = await pdfDoc.embedPng(branding.logoPngBytes)
+    } catch (err) {
+      console.warn("[invoice-pdf] No se pudo embeber logo del tenant:", err)
+    }
+  }
 
   const L = 40
   const R = width - 40
@@ -73,6 +120,21 @@ export async function renderInvoicePdf(params: InvoicePdfParams): Promise<Uint8A
     receptorCondicionIva: invoice.receptor_condicion_iva,
   })
   const fmtMoney = (value: number) => formatInvoiceMoney(value, invoice.moneda)
+
+  // LOGO (si el tenant lo configuró, va arriba del header naranja)
+  if (logoImage) {
+    const logoMaxH = 36
+    const ratio = logoImage.width / logoImage.height
+    const logoH = Math.min(logoMaxH, logoImage.height)
+    const logoW = logoH * ratio
+    page.drawImage(logoImage, {
+      x: L,
+      y: y - logoH,
+      width: logoW,
+      height: logoH,
+    })
+    y -= logoH + 8
+  }
 
   // HEADER
   rect(L, y - 54, W, 56, orange)
@@ -232,6 +294,14 @@ export async function renderInvoicePdf(params: InvoicePdfParams): Promise<Uint8A
 
   // FOOTER
   const company = footerCompanyName || agency.name
+  // Pendientes 4.5 — T&Cs override del tenant. Si configuró un texto largo,
+  // lo imprimimos arriba del footer line. Trunca a primeras 2 líneas para
+  // no comer todo el espacio del PDF.
+  if (branding?.termsText) {
+    const trimmed = branding.termsText.trim().slice(0, 200)
+    line(L, 50, R, 50, gray, 0.2)
+    text(trimmed, L, 40, 6, regular, gray)
+  }
   line(L, 35, R, 35, gray, 0.3)
   text(`Comprobante generado por ${company} - Sistema de Gestion`, L, 22, 7, regular, gray)
   text("Verificá en: www.afip.gob.ar/fe/qr", R - 160, 22, 7, regular, gray)
