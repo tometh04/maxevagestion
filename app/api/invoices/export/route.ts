@@ -103,9 +103,21 @@ export async function GET(request: NextRequest) {
       (orgSettings || []).map((s: any) => [s.key as string, s.value as string])
     )
     const footerCompanyName = settingsMap.get("company_name")
-    const brandColorHex = settingsMap.get("brand_color_primary") || settingsMap.get("primary_color")
-    const brandLogoUrl = settingsMap.get("brand_logo_url") || settingsMap.get("company_logo_url")
-    const termsText = settingsMap.get("terms_pdf") || settingsMap.get("terms")
+    // Aliases: la UI Mi Empresa usa "brand_color" / "brand_logo"; algunos
+    // tenants legacy tienen "brand_color_primary" / "primary_color" /
+    // "brand_logo_url" / "company_logo_url". Aceptamos todos.
+    const brandColorHex =
+      settingsMap.get("brand_color") ||
+      settingsMap.get("brand_color_primary") ||
+      settingsMap.get("primary_color")
+    const brandLogoUrl =
+      settingsMap.get("brand_logo") ||
+      settingsMap.get("brand_logo_url") ||
+      settingsMap.get("company_logo_url")
+    const termsText =
+      settingsMap.get("pdf_terms_text") ||
+      settingsMap.get("terms_pdf") ||
+      settingsMap.get("terms")
 
     // Cargar el logo una sola vez (común a todas las facturas del ZIP).
     // Si la URL falla, seguimos sin logo — no rompemos por un asset opcional.
