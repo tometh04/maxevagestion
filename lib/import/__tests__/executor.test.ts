@@ -18,7 +18,7 @@ describe("executeInsert", () => {
     expect(log).toEqual([{ table: "customers", id: "new-id" }])
   })
 
-  it("retorna null si Supabase devuelve error", async () => {
+  it("retorna { error } con detalle de Postgres si Supabase devuelve error", async () => {
     const supabase: any = {
       from: jest.fn().mockReturnThis(),
       insert: jest.fn().mockReturnThis(),
@@ -27,7 +27,21 @@ describe("executeInsert", () => {
     }
     const log: any[] = []
     const result = await executeInsert(supabase, "customers", {}, log)
-    expect(result).toBeNull()
+    expect(result).toEqual({ error: "fail" })
+    expect(log).toEqual([])
+  })
+
+  it("retorna { error } útil cuando data es null sin error explícito", async () => {
+    const supabase: any = {
+      from: jest.fn().mockReturnThis(),
+      insert: jest.fn().mockReturnThis(),
+      select: jest.fn().mockReturnThis(),
+      single: jest.fn().mockResolvedValue({ data: null, error: null }),
+    }
+    const log: any[] = []
+    const result = await executeInsert(supabase, "customers", {}, log)
+    expect(result).toHaveProperty("error")
+    expect((result as { error: string }).error).toContain("RLS")
     expect(log).toEqual([])
   })
 
