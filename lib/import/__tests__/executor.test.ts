@@ -1,4 +1,4 @@
-import { executeInsert } from "../executor"
+import { executeInsert, executeRollback } from "../executor"
 
 describe("executeInsert", () => {
   it("inserta y agrega entrada al rollback log", async () => {
@@ -63,5 +63,49 @@ describe("executeInsert", () => {
       { table: "operators", id: "id-2" },
       { table: "payments", id: "id-3" },
     ])
+  })
+})
+
+describe("executeRollback", () => {
+  it("borra entries en orden inverso", async () => {
+    const calls: Array<{ table: string; id: string }> = []
+    const supabase: any = {
+      from: jest.fn((table: string) => ({
+        delete: jest.fn().mockReturnValue({
+          eq: jest.fn().mockImplementation((_col: string, id: string) => {
+            calls.push({ table, id })
+            return Promise.resolve({ error: null })
+          }),
+        }),
+      })),
+    }
+    const entries = [
+      { table: "customers", id: "c1" },
+      { table: "operators", id: "o1" },
+      { table: "operations", id: "op1" },
+    ]
+    const result = await executeRollback(supabase, entries)
+    expect(result.deleted).toBe(3)
+    expect(result.failed).toBe(0)
+    // Inverso: operations primero, luego operators, luego customers
+    expect(calls).toEqual([
+      { table: "operations", id: "op1" },
+      { table: "operators", id: "o1" },
+      { table: "customers", id: "c1" },
+    ])
+  })
+
+  it("reporta fallas sin tirar excepción", async () => {
+    const supabase: any = {
+      from: jest.fn(() => ({
+        delete: jest.fn().mockReturnValue({
+          eq: jest.fn().mockResolvedValue({ error: { message: "RLS" } }),
+        }),
+      })),
+    }
+    const result = await executeRollback(supabase, [{ table: "customers", id: "c1" }])
+    expect(result.deleted).toBe(0)
+    expect(result.failed).toBe(1)
+    expect(result.failures[0]).toEqual({ table: "customers", id: "c1", error: "RLS" })
   })
 })

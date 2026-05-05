@@ -44,3 +44,49 @@ export async function executeInsert(
   rollbackLog.push({ table, id: result.id })
   return { id: result.id }
 }
+
+/**
+ * Aplica un rollback: borra todas las filas insertadas listadas en `entries`.
+ * Pendientes 1.5 — atomicidad row-level: cuando una fila del CSV falla a
+ * mitad de inserción (ej. operation OK pero operation_customers FK falla),
+ * el pipeline tiene que poder limpiar las filas previas que ya entraron a
+ * la DB para no dejar registros parciales.
+ *
+ * Mejor effort: si alguna delete falla, lo logueamos pero seguimos. La
+ * función NO tira excepción — devuelve un summary para que el pipeline
+ * pueda reportar warnings al user.
+ */
+export async function executeRollback(
+  supabase: SupabaseClientTyped,
+  entries: RollbackEntry[]
+): Promise<{ deleted: number; failed: number; failures: Array<{ table: string; id: string; error: string }> }> {
+  let deleted = 0
+  let failed = 0
+  const failures: Array<{ table: string; id: string; error: string }> = []
+
+  // Borramos en orden inverso al de inserción — preserva FK constraints
+  // (children primero, parents después). El log siempre fue append-only así
+  // que el order original es de creación.
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const entry = entries[i]
+    try {
+      const { error } = await (supabase.from(entry.table as any) as any)
+        .delete()
+        .eq("id", entry.id)
+      if (error) {
+        failed++
+        failures.push({ table: entry.table, id: entry.id, error: error.message })
+      } else {
+        deleted++
+      }
+    } catch (err: any) {
+      failed++
+      failures.push({
+        table: entry.table,
+        id: entry.id,
+        error: err?.message ?? "exception",
+      })
+    }
+  }
+  return { deleted, failed, failures }
+}

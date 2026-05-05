@@ -6,7 +6,7 @@ import {
   resolveOperator,
   resolveSeller,
 } from "../resolver"
-import { executeInsert } from "../executor"
+import { executeInsert, executeRollback } from "../executor"
 import {
   parseAmount,
   parseDate,
@@ -111,6 +111,28 @@ export const operationsMasterPipeline: PipelineFn = async (
       row[field] = rawRow[idx]?.trim() ?? ""
     })
 
+    // Pendientes 1.5 — atomicidad row-level. Cada iteración acumula sus
+    // inserts en `rowRollback`. Si la fila completa termina OK, pusheamos
+    // a `rollbackLog` global. Si falla a mitad (ej. operation insert dies
+    // tras customer/operators creados), llamamos executeRollback ANTES de
+    // hacer continue para no dejar registros parciales en la DB.
+    const rowRollback: RollbackEntry[] = []
+    const abortRow = async (msg: string, err?: string) => {
+      errors.push({
+        rowNumber,
+        message: err ? `${msg}: ${err}` : msg,
+      })
+      if (rowRollback.length > 0 && !dryRun) {
+        const rb = await executeRollback(supabase, rowRollback)
+        if (rb.failed > 0) {
+          warnings.push({
+            rowNumber,
+            message: `Rollback parcial: ${rb.deleted} ok, ${rb.failed} fallaron al borrar — quedaron registros huérfanos`,
+          })
+        }
+      }
+    }
+
     const reqErrors = validateRequiredFields(row, REQUIRED)
     if (reqErrors.length > 0) {
       reqErrors.forEach(e =>
@@ -167,7 +189,7 @@ export const operationsMasterPipeline: PipelineFn = async (
           phone: "",
           email: row.customer_email || null,
         },
-        rollbackLog
+        rowRollback
       )
       if (inserted?.id) {
         customer = { id: inserted.id }
@@ -192,7 +214,7 @@ export const operationsMasterPipeline: PipelineFn = async (
           supabase,
           "operators",
           { agency_id: config.agencyId, name: opName },
-          rollbackLog
+          rowRollback
         )
         if (inserted?.id) {
           operator = { id: inserted.id }
@@ -251,14 +273,11 @@ export const operationsMasterPipeline: PipelineFn = async (
           margin_amount: marginAmount,
           margin_percentage: marginPercentage,
         },
-        rollbackLog
+        rowRollback
       )
       if (!operation || !("id" in operation)) {
         const errMsg = operation && "error" in operation ? operation.error : "sin detalle"
-        errors.push({
-          rowNumber,
-          message: `Falló insert operation (DB): ${errMsg}`,
-        })
+        await abortRow("Falló insert operation (DB)", errMsg)
         continue
       }
       const operationId = operation.id
@@ -274,7 +293,7 @@ export const operationsMasterPipeline: PipelineFn = async (
             customer_id: customer.id,
             role: "MAIN",
           },
-          rollbackLog
+          rowRollback
         )
       }
 
@@ -289,7 +308,7 @@ export const operationsMasterPipeline: PipelineFn = async (
             cost: oe.cost,
             product_type: "PAQUETE",
           },
-          rollbackLog
+          rowRollback
         )
       }
     } else {
@@ -325,7 +344,7 @@ export const operationsMasterPipeline: PipelineFn = async (
           date_paid: opDate.toISOString().slice(0, 10),
           status: "PAID",
         },
-        rollbackLog
+        rowRollback
       )
       paymentsCreated++
     } else if (collectedArs > 0) {
@@ -347,7 +366,7 @@ export const operationsMasterPipeline: PipelineFn = async (
           date_due: departureDate.toISOString().slice(0, 10),
           status: "PENDING",
         },
-        rollbackLog
+        rowRollback
       )
       paymentsCreated++
     } else if (pendingCollectedArs > 0) {
@@ -377,7 +396,7 @@ export const operationsMasterPipeline: PipelineFn = async (
               date_paid: opDate.toISOString().slice(0, 10),
               status: "PAID",
             },
-            rollbackLog
+            rowRollback
           )
           paymentsCreated++
         } else if (paid > 0) {
@@ -399,7 +418,7 @@ export const operationsMasterPipeline: PipelineFn = async (
               date_due: departureDate.toISOString().slice(0, 10),
               status: "PENDING",
             },
-            rollbackLog
+            rowRollback
           )
           paymentsCreated++
         } else if (pending > 0) {
@@ -408,6 +427,9 @@ export const operationsMasterPipeline: PipelineFn = async (
       }
     }
 
+    // Fila terminó OK — promovemos sus inserts al log global para que
+    // un rollback total post-import también borre estos.
+    rollbackLog.push(...rowRollback)
     successRows++
   }
 
