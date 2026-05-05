@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { autoUpdateExchangeRate } from "@/lib/accounting/bcra-exchange-rates"
+import { checkCronAuth } from "@/lib/cron/auth"
 
 /**
  * Endpoint para cron jobs - Actualizar tipo de cambio oficial desde BCRA
@@ -13,10 +14,9 @@ import { autoUpdateExchangeRate } from "@/lib/accounting/bcra-exchange-rates"
  */
 export async function POST(request: Request) {
   try {
-    const authHeader = request.headers.get("authorization")
-    const cronSecret = process.env.CRON_SECRET
-    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const auth = checkCronAuth(request, "exchange-rates")
+    if (!auth.authorized) {
+      return NextResponse.json({ error: "Unauthorized", reason: auth.reason }, { status: 401 })
     }
 
     const supabase = createAdminClient() as any

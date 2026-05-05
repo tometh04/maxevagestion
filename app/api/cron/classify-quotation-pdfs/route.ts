@@ -1,15 +1,15 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { classifyPdf } from "@/lib/wha-control/classify-quotation"
+import { checkCronAuth } from "@/lib/cron/auth"
 
 const BATCH_LIMIT = 200
 const LOOKBACK_DAYS = 30
 
 export async function GET(request: Request) {
-  const cronSecret = process.env.CRON_SECRET
-  const authHeader = request.headers.get("authorization")
-  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "No autorizado" }, { status: 401 })
+  const auth = checkCronAuth(request, "classify-quotation-pdfs")
+  if (!auth.authorized) {
+    return NextResponse.json({ error: "No autorizado", reason: auth.reason }, { status: 401 })
   }
 
   const openaiKey = process.env.OPENAI_API_KEY
