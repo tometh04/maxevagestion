@@ -40,19 +40,55 @@ export interface InvoicePdfParams {
 }
 
 /**
- * Convierte "#RRGGBB" → rgb(r, g, b) normalizado [0,1]. Si el formato es
- * inválido o se omite, devuelve null y el caller cae al color default.
+ * Convierte color en hex "#RRGGBB" o HSL "H S% L%" → rgb(r, g, b)
+ * normalizado [0,1]. Si formato inválido o omitido, devuelve null y el
+ * caller cae al color default.
+ *
+ * La UI Mi Empresa guarda HSL nativo (Tailwind CSS variables format) pero
+ * algunos tenants legacy guardan hex. Aceptamos ambos.
  */
-function hexToRgb(hex?: string): { r: number; g: number; b: number } | null {
-  if (!hex) return null
-  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim())
-  if (!m) return null
-  const num = parseInt(m[1], 16)
-  return {
-    r: ((num >> 16) & 0xff) / 255,
-    g: ((num >> 8) & 0xff) / 255,
-    b: (num & 0xff) / 255,
+function parseColor(input?: string): { r: number; g: number; b: number } | null {
+  if (!input) return null
+  const trimmed = input.trim()
+
+  // Hex: #RRGGBB o #RGB
+  const hexMatch = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(trimmed)
+  if (hexMatch) {
+    let hex = hexMatch[1]
+    if (hex.length === 3) hex = hex.split("").map((c) => c + c).join("")
+    const num = parseInt(hex, 16)
+    return {
+      r: ((num >> 16) & 0xff) / 255,
+      g: ((num >> 8) & 0xff) / 255,
+      b: (num & 0xff) / 255,
+    }
   }
+
+  // HSL Tailwind format: "222 89% 55%" o "222, 89%, 55%"
+  const hslMatch = /^([\d.]+)[\s,]+([\d.]+)%[\s,]+([\d.]+)%$/.exec(trimmed)
+  if (hslMatch) {
+    const h = parseFloat(hslMatch[1])
+    const s = parseFloat(hslMatch[2]) / 100
+    const l = parseFloat(hslMatch[3]) / 100
+    return hslToRgbNorm(h, s, l)
+  }
+
+  return null
+}
+
+// HSL [0-360, 0-1, 0-1] → RGB [0-1] normalizado
+function hslToRgbNorm(h: number, s: number, l: number): { r: number; g: number; b: number } {
+  const c = (1 - Math.abs(2 * l - 1)) * s
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1))
+  const m = l - c / 2
+  let r = 0, g = 0, b = 0
+  if (h < 60) [r, g, b] = [c, x, 0]
+  else if (h < 120) [r, g, b] = [x, c, 0]
+  else if (h < 180) [r, g, b] = [0, c, x]
+  else if (h < 240) [r, g, b] = [0, x, c]
+  else if (h < 300) [r, g, b] = [x, 0, c]
+  else [r, g, b] = [c, 0, x]
+  return { r: r + m, g: g + m, b: b + m }
 }
 
 const fmt = (n: number) =>
@@ -82,7 +118,9 @@ export async function renderInvoicePdf(params: InvoicePdfParams): Promise<Uint8A
   const gray = rgb(0.45, 0.45, 0.45)
   const light = rgb(0.92, 0.92, 0.92)
   // Pendientes 4.5 — primary color override per-tenant. Default = naranja Vibook.
-  const customPrimary = hexToRgb(branding?.primaryColorHex)
+  // Acepta hex (#RRGGBB) o HSL Tailwind ("H S% L%"). El field se sigue
+  // llamando primaryColorHex por compat retroactiva con el call-site.
+  const customPrimary = parseColor(branding?.primaryColorHex)
   const orange = customPrimary
     ? rgb(customPrimary.r, customPrimary.g, customPrimary.b)
     : rgb(0.85, 0.33, 0.1)
