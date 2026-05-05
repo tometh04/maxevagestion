@@ -122,6 +122,10 @@ const allNavigation: NavItem[] = [
       { title: "Templates", url: "/resources/templates" },
       { title: "Tareas", url: "/tools/tasks" },
       { title: "WHA Control", url: "/tools/wha-control" },
+      // Pendientes 3.2: el v2 import vivía sólo via URL directa. Lo colgamos
+      // de Herramientas (admin task) en vez de Configuración para evitar
+      // duplicación con el tab "Importación" del legacy en /settings.
+      { title: "Importar CSV", url: "/settings/import-v2" },
     ],
   },
   // 7. Cerebro
@@ -208,6 +212,11 @@ export function AppSidebar({ userRole, user, ...props }: AppSidebarProps) {
 
             // Ocultar WHA Control para todos excepto SUPER_ADMIN y ADMIN
             if (subItem.url === "/tools/wha-control" && !["SUPER_ADMIN", "ADMIN"].includes(userRole)) {
+              return null
+            }
+            // Ocultar Importar CSV para todos excepto SUPER_ADMIN y ADMIN
+            // (puede borrar/sobrescribir data masivamente)
+            if (subItem.url === "/settings/import-v2" && !["SUPER_ADMIN", "ADMIN"].includes(userRole)) {
               return null
             }
             if (userRole === "SELLER" && subItem.url === "/tools/cerebro") {
