@@ -6,10 +6,15 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
 
-const supabase = createClient(
-  'https://yisiinkkrmomfuduaegh.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlpc2lpbmtrcm1vbWZ1ZHVhZWdoIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2Nzk3NTY3OSwiZXhwIjoyMDgzNTUxNjc5fQ.8qr6DTJmmDutvNq0QNBlcputTsFJW3c8M4HNy3a1G-w'
-);
+// Security P0: env vars en vez de hardcodes (repo público).
+const SUPABASE_URL = process.env.SUPABASE_URL
+const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
+if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
+  console.error('ERROR: faltan env vars SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY')
+  process.exit(1)
+}
+
+const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
 async function main() {
   // 1. Crear bucket público si no existe

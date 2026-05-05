@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { runAllMessageGenerators } from "@/lib/whatsapp/message-generator"
+import { checkCronAuth } from "@/lib/cron/auth"
 
 /**
  * CRON job para generar mensajes WhatsApp automáticos
@@ -8,12 +9,9 @@ import { runAllMessageGenerators } from "@/lib/whatsapp/message-generator"
  */
 export async function GET(request: Request) {
   try {
-    // Verificar autorización
-    const authHeader = request.headers.get("authorization")
-    const cronSecret = process.env.CRON_SECRET
-
-    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: "No autorizado" }, { status: 401 })
+    const auth = checkCronAuth(request, "whatsapp")
+    if (!auth.authorized) {
+      return NextResponse.json({ error: "No autorizado", reason: auth.reason }, { status: 401 })
     }
 
     // SaaS multi-tenant: cron sin user logueado → RLS bloquea. Bypass con admin.

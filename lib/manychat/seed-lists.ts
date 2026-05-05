@@ -5,9 +5,10 @@ import type { SupabaseClient } from "@supabase/supabase-js"
  * estándar para una agencia argentina + nombres genéricos sin asociar a sellers.
  * Cada admin de la agencia puede después renombrar / agregar / asignar a sellers.
  *
- * IMPORTANTE: estos nombres están sincronizados con `regionToListName` en
- * `app/api/leads/route.ts:287-296` para que el flujo Manychat → Lead funcione.
- * Si cambian acá, cambiar también allá.
+ * Ya NO está sincronizada con un mapping hardcoded en /api/leads/route.ts:
+ * el resolver `resolveListNameForRegion` lee directamente de
+ * `manychat_list_order` por agency_id y matchea por nombre case-insensitive
+ * con sinónimos comunes. Cada tenant puede renombrar sus listas sin romper.
  */
 const DEFAULT_MANYCHAT_LISTS: Array<{ list_name: string; position: number }> = [
   { list_name: "Leads - Argentina", position: 0 },
@@ -18,6 +19,68 @@ const DEFAULT_MANYCHAT_LISTS: Array<{ list_name: string; position: number }> = [
   { list_name: "Leads - Exoticos", position: 5 },
   { list_name: "Leads - Otros", position: 6 },
 ]
+
+/**
+ * Sinónimos por región para que el matching reconozca renombres comunes.
+ * Ej: si una agencia mexicana renombró "Leads - EEUU" a "Estados Unidos",
+ * el lookup todavía la encuentra cuando llega un lead con region=EEUU.
+ */
+const REGION_SYNONYMS: Record<string, string[]> = {
+  ARGENTINA: ["argentina", "nacional"],
+  CARIBE: ["caribe", "caribbean"],
+  BRASIL: ["brasil", "brazil"],
+  EUROPA: ["europa", "europe"],
+  EEUU: ["eeuu", "ee.uu", "estados unidos", "usa", "united states"],
+  CRUCEROS: ["crucero", "cruceros", "exotic", "exótico"],
+  OTROS: ["otros", "otro", "other"],
+}
+
+/**
+ * Resuelve a qué lista Manychat va un lead nuevo, en base a las listas que la
+ * agencia REALMENTE tiene configuradas. Reemplaza el mapping hardcoded
+ * `regionToListName` que vivía en /api/leads/route.ts y mezclaba nombres
+ * Lozada-style entre tenants.
+ *
+ * Algoritmo:
+ *   1. Cargar las listas de la agencia (manychat_list_order)
+ *   2. Para cada sinónimo de la región, buscar una lista cuyo nombre lo contenga
+ *      (case-insensitive). "CARIBE" matchea "Leads - Caribe", "Caribe Premium",
+ *      "🌴 Caribe", etc.
+ *   3. Si nada matchea, usar la primera lista de la agencia (suele ser
+ *      "Argentina" o la default principal)
+ *   4. Si la agencia no tiene listas, devolver null y dejar que el caller
+ *      decida (típicamente caer al string "Leads - Otros" como antes)
+ */
+export async function resolveListNameForRegion(
+  agencyId: string,
+  region: string | null | undefined,
+  supabase: SupabaseClient,
+): Promise<string | null> {
+  const { data: lists } = await (supabase
+    .from("manychat_list_order") as any)
+    .select("list_name, position")
+    .eq("agency_id", agencyId)
+    .order("position", { ascending: true })
+
+  const allLists = (lists || []) as Array<{ list_name: string; position: number }>
+  if (allLists.length === 0) return null
+
+  if (!region) {
+    return allLists[0].list_name
+  }
+
+  const upperRegion = region.toString().toUpperCase().trim()
+  const synonyms = REGION_SYNONYMS[upperRegion] ?? [region.toString().toLowerCase().trim()]
+
+  for (const syn of synonyms) {
+    const match = allLists.find((l) =>
+      l.list_name.toLowerCase().includes(syn),
+    )
+    if (match) return match.list_name
+  }
+
+  return allLists[0].list_name
+}
 
 /**
  * Crea las listas Manychat default para una agencia nueva. Idempotente: si la

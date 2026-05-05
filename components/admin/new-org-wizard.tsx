@@ -196,11 +196,12 @@ export function NewOrgWizard() {
               />
               <div className="flex-1 space-y-1">
                 <Label htmlFor="seed_chart" className="cursor-pointer">
-                  Clonar plan de cuentas de Lozada Viajes (recomendado)
+                  Clonar plan de cuentas estándar AR (recomendado)
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  Copia toda la jerarquía de cuentas estándar para una agencia AR. Si lo dejás
-                  vacío, el cliente arranca con plan en blanco.
+                  Copia toda la jerarquía de cuentas estándar para una agencia argentina (basada en el
+                  plan de Lozada Viajes — el caso de uso de referencia). Si lo dejás vacío, el cliente
+                  arranca con plan en blanco.
                 </p>
               </div>
             </div>

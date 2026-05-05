@@ -19,8 +19,16 @@
 
 import { createClient } from "@supabase/supabase-js"
 
-const SUPABASE_URL = "https://pmqvplyyxiobkllapgjp.supabase.co"
-const SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBtcXZwbHl5eGlvYmtsbGFwZ2pwIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NDA5MTI5NCwiZXhwIjoyMDc5NjY3Mjk0fQ.VBeE3W9HNeTc4FQs_QCU9uD-EHDtPpGZVaPQS5nNp3c"
+// Security P0: env vars en vez de JWT hardcodeada (repo público).
+// Antes de correr:
+//   export SUPABASE_URL="https://pmqvplyyxiobkllapgjp.supabase.co"
+//   export SUPABASE_SERVICE_ROLE_KEY="<service_role_key>"
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
+const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
+if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
+  console.error("ERROR: faltan env vars SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY")
+  process.exit(1)
+}
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
 

@@ -3,18 +3,15 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { calculateEffectivePrice } from "@/lib/billing/custom-plans"
 import { applyPriceChange } from "@/lib/billing/mp-update"
 import { logSecurityEvent } from "@/lib/security/audit"
+import { checkCronAuth } from "@/lib/cron/auth"
 
 export const dynamic = "force-dynamic"
 
-function unauthorized() {
-  return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-}
-
 export async function POST(request: Request) {
-  const secret = process.env.CRON_SECRET
-  if (!secret) return unauthorized()
-  const auth = request.headers.get("authorization") ?? ""
-  if (auth !== `Bearer ${secret}`) return unauthorized()
+  const auth = checkCronAuth(request, "apply-pricing-changes")
+  if (!auth.authorized) {
+    return NextResponse.json({ error: "Unauthorized", reason: auth.reason }, { status: 401 })
+  }
 
   const admin = createAdminClient() as any
   const now = new Date()

@@ -3,11 +3,20 @@
  * Lee de afip_config (tabla vieja) e inserta en integrations (tabla nueva)
  */
 
-const SUPABASE_URL = 'https://yisiinkkrmomfuduaegh.supabase.co'
-const SERVICE_ROLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlpc2lpbmtrcm1vbWZ1ZHVhZWdoIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2Nzk3NTY3OSwiZXhwIjoyMDgzNTUxNjc5fQ.8qr6DTJmmDutvNq0QNBlcputTsFJW3c8M4HNy3a1G-w'
-const AFIP_API_KEY = 'pMyl7uKEb0pW79d9IvNHpq32IGjzEOslCDeupftyVBItAfVJa3yL9cjqqPaUnVUH'
-const AGENCY_ID = '2848db20-be29-474d-8bc0-b2b53ae7419f' // Agencia Monk3
-const USER_ID = '9ec9dbcf-5cdd-428f-a303-c3f79b06d0be'
+// Security P0: env vars en vez de hardcodes (repo público).
+//   export SUPABASE_URL="https://yisiinkkrmomfuduaegh.supabase.co"
+//   export SUPABASE_SERVICE_ROLE_KEY="<service_role>"
+//   export AFIP_SDK_API_KEY="<afip_sdk_key>"
+//   export AGENCY_ID="..." USER_ID="..."
+const SUPABASE_URL = process.env.SUPABASE_URL
+const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
+const AFIP_API_KEY = process.env.AFIP_SDK_API_KEY
+const AGENCY_ID = process.env.AGENCY_ID
+const USER_ID = process.env.USER_ID
+if (!SUPABASE_URL || !SERVICE_ROLE_KEY || !AFIP_API_KEY || !AGENCY_ID || !USER_ID) {
+  console.error('ERROR: faltan env vars SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, AFIP_SDK_API_KEY, AGENCY_ID, USER_ID')
+  process.exit(1)
+}
 
 const headers = {
   'Content-Type': 'application/json',

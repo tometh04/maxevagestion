@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { generateAllRecurringPayments } from "@/lib/accounting/recurring-payments"
+import { checkCronAuth } from "@/lib/cron/auth"
 
 /**
  * Endpoint para cron jobs - Generar pagos recurrentes
@@ -9,10 +10,9 @@ import { generateAllRecurringPayments } from "@/lib/accounting/recurring-payment
  */
 export async function POST(request: Request) {
   try {
-    const authHeader = request.headers.get("authorization")
-    const cronSecret = process.env.CRON_SECRET
-    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const auth = checkCronAuth(request, "recurring-payments")
+    if (!auth.authorized) {
+      return NextResponse.json({ error: "Unauthorized", reason: auth.reason }, { status: 401 })
     }
 
     // SaaS multi-tenant: cron sin user logueado → RLS bloquea. Bypass con admin.

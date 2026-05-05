@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { runAllNotificationGenerators } from "@/lib/notifications/notification-generator"
+import { checkCronAuth } from "@/lib/cron/auth"
 
 /**
  * Endpoint CRON para generar notificaciones automáticas
@@ -15,12 +16,9 @@ import { runAllNotificationGenerators } from "@/lib/notifications/notification-g
  */
 export async function GET(request: Request) {
   try {
-    // Verificar autorización (opcional - usar un token secreto)
-    const authHeader = request.headers.get("authorization")
-    const cronSecret = process.env.CRON_SECRET
-
-    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: "No autorizado" }, { status: 401 })
+    const auth = checkCronAuth(request, "notifications")
+    if (!auth.authorized) {
+      return NextResponse.json({ error: "No autorizado", reason: auth.reason }, { status: 401 })
     }
 
     // SaaS multi-tenant: cron sin user logueado → RLS bloquea. Bypass con admin.

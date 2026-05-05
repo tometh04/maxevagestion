@@ -12,6 +12,7 @@ import {
   getAccountTypeForDeposit,
 } from "@/lib/accounting/deposit-utils"
 import { applyLeadsFilters, canPerformAction } from "@/lib/permissions-api"
+import { resolveListNameForRegion } from "@/lib/manychat/seed-lists"
 
 export async function GET(request: Request) {
   try {
@@ -308,17 +309,18 @@ export async function POST(request: Request) {
       }
     }
 
-    // Auto-asignar list_name según la región si no se proporcionó explícitamente
-    const regionToListName: Record<string, string> = {
-      ARGENTINA: "Leads - Argentina",
-      CARIBE: "Leads - Caribe",
-      BRASIL: "Leads - Brasil",
-      EUROPA: "Leads - Europa",
-      EEUU: "Leads - EEUU",
-      OTROS: "Leads - Otros",
-      CRUCEROS: "Leads - Exoticos",
+    // Auto-asignar list_name según la región si no se proporcionó explícitamente.
+    // Antes había un mapping hardcoded (regionToListName) con nombres
+    // "Leads - X" Lozada-style — eso rompía cuando un tenant renombraba sus
+    // listas o tenía otro set. Ahora consultamos las listas reales de la
+    // agencia (manychat_list_order) y matcheamos por sinónimos de la región.
+    let resolvedListName: string
+    if (list_name) {
+      resolvedListName = list_name
+    } else {
+      const fromTenant = await resolveListNameForRegion(agency_id, region, supabase)
+      resolvedListName = fromTenant ?? "Leads - Otros"
     }
-    const resolvedListName = list_name || regionToListName[region] || "Leads - Otros"
 
     const leadData: Record<string, any> = {
       agency_id,
