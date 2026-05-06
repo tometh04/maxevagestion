@@ -34,14 +34,20 @@ export async function POST(
     return NextResponse.json({ error: "No tenés permiso para aprobar este monto" }, { status: 403 })
   }
 
-  // Race-safe UPDATE: only if still PENDING_APPROVAL
+  // Race-safe UPDATE: only if still PENDING_APPROVAL.
+  // Bug Yamil 2026-05-05: NO seteamos status="PAID" acá. Los side effects
+  // (ledger_movements, cash_movements, balance del operador, asiento) viven
+  // en el flow de "Registrar Pago" → POST /api/payments + applyOperatorPaymentSettlement
+  // que requiere financial_account_id (input del user). Al aprobar dejamos
+  // el operator_payment en status="PENDING" + approval_status="APPROVED" para
+  // que el admin termine el flow eligiendo cuenta financiera.
+  // El bug previo: aprobar marcaba PAID directo, esto bloqueaba el flow real
+  // y el sistema quedaba inconsistente: deuda PAID, pero saldos sin moverse.
   const { data: updated, error: updError } = await (supabase.from("operator_payments") as any)
     .update({
       approval_status: "APPROVED",
       approved_by_user_id: user.id,
       approved_at: new Date().toISOString(),
-      status: "PAID",
-      date_paid: new Date().toISOString().split("T")[0],
     })
     .eq("id", id)
     .eq("approval_status", "PENDING_APPROVAL")
@@ -52,21 +58,15 @@ export async function POST(
     return NextResponse.json({ error: "Race condition o pago ya resuelto" }, { status: 409 })
   }
 
-  // NOTE: Ledger creation is NOT triggered here intentionally.
-  // The full ledger flow for operator payments lives in the accounting module and
-  // requires financial_account_id as user input. After approval, trigger the
-  // accounting settlement flow to complete the ledger entries.
-  // TODO: consider auto-triggering settlement with a default account if fully automated
-  // ledger creation on approval is desired.
-  console.warn(`[operator-payments/approve] Payment ${id} approved but ledger NOT created yet. Trigger accounting settlement to complete.`)
-
-  // Notify creator
+  // Notify creator — el pago a operador está aprobado pero la deuda todavía
+  // PENDING. Hay que ejecutar "Registrar Pago" eligiendo cuenta financiera
+  // para que se descuente saldo y se cree el asiento.
   if ((payment as any).created_by_user_id) {
     await admin.from("alerts").insert({
       user_id: (payment as any).created_by_user_id,
       org_id: (payment as any).org_id,
       type: "PAYMENT_APPROVED",
-      description: `Tu pago a operador ${(payment as any).amount} ${(payment as any).currency} fue aprobado`,
+      description: `Tu pago a operador ${(payment as any).amount} ${(payment as any).currency} fue aprobado. Ahora ejecutá "Registrar Pago" en el detalle de la operación eligiendo la cuenta financiera para que se actualicen los saldos.`,
       date_due: new Date().toISOString().split("T")[0],
       status: "PENDING",
     }).catch((e: any) => console.warn("notify failed:", e?.message))

@@ -394,7 +394,11 @@ export function OperationPaymentsSection({
     }
 
     setEditingPayment(payment)
-    setMarkAsPaid(false)
+    // Si el pago ya fue aprobado pero todavía está PENDING (post-fix bug Yamil),
+    // pre-checkeamos "Marcar como pagado" para que el user solo elija la cuenta
+    // financiera y termine el flow en un click. Eso dispara el ledger/cash en
+    // el PATCH.
+    setMarkAsPaid(payment.approval_status === "APPROVED" && payment.status !== "PAID")
     editForm.reset({
       payer_type: payment.payer_type,
       direction: payment.direction,
@@ -797,9 +801,23 @@ export function OperationPaymentsSection({
                       })()}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={payment.status === "PAID" ? "default" : "secondary"}>
-                        {payment.status === "PAID" ? "Pagado" : "Pendiente"}
-                      </Badge>
+                      {payment.status === "PAID" ? (
+                        <Badge variant="default">Pagado</Badge>
+                      ) : payment.approval_status === "APPROVED" ? (
+                        <Badge
+                          variant="secondary"
+                          className="bg-amber-100 text-amber-900 border-amber-300"
+                          title="El pago fue aprobado pero todavía no se registró el cobro/pago. Editá y marcá como pagado eligiendo cuenta financiera para mover saldos."
+                        >
+                          Aprobado · Falta cobrar
+                        </Badge>
+                      ) : payment.approval_status === "PENDING_APPROVAL" ? (
+                        <Badge variant="secondary" className="bg-blue-100 text-blue-900 border-blue-300">
+                          Esperando aprobación
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary">Pendiente</Badge>
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">

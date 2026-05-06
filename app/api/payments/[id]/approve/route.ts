@@ -34,14 +34,21 @@ export async function POST(
     return NextResponse.json({ error: "No tenés permiso para aprobar este monto" }, { status: 403 })
   }
 
-  // Race-safe UPDATE: only if still PENDING_APPROVAL
+  // Race-safe UPDATE: only if still PENDING_APPROVAL.
+  // Bug Yamil 2026-05-05: NO seteamos status="PAID" acá. Los side effects
+  // contables (ledger_movements, cash_movements, operator_payment_settlement,
+  // FX, percepciones, counterparts, WhatsApp recibo) viven en mark-paid y
+  // necesitan financial_account_id (input del user). Al aprobar dejamos el
+  // payment en status="PENDING" + approval_status="APPROVED" para que el
+  // creador (o admin) pueda terminar el flow eligiendo cuenta financiera.
+  // El bug previo: aprobar marcaba PAID directo, esto BLOQUEABA mark-paid
+  // (CAS guard exige status=PENDING) y el sistema quedaba inconsistente:
+  // payment PAID, pero saldos/caja/libro mayor sin moverse.
   const { data: updated, error: updError } = await (supabase.from("payments") as any)
     .update({
       approval_status: "APPROVED",
       approved_by_user_id: user.id,
       approved_at: new Date().toISOString(),
-      status: "PAID",
-      date_paid: new Date().toISOString().split("T")[0],
     })
     .eq("id", id)
     .eq("approval_status", "PENDING_APPROVAL")
@@ -52,22 +59,15 @@ export async function POST(
     return NextResponse.json({ error: "Race condition o pago ya resuelto" }, { status: 409 })
   }
 
-  // NOTE: Ledger/cash creation is NOT triggered here intentionally.
-  // The full ledger flow (FX, counterparts, journal entries, perceptions, WhatsApp)
-  // lives in app/api/payments/mark-paid/route.ts and requires financial_account_id
-  // which is a user input. After approval, a user with ADMIN+ role should trigger
-  // mark-paid to complete the accounting entries.
-  // TODO: consider auto-triggering mark-paid with a default financial_account_id
-  // if you want fully automated ledger creation on approval.
-  console.warn(`[payments/approve] Payment ${id} approved but ledger/cash NOT created yet. Use mark-paid to complete accounting.`)
-
-  // Notify creator
+  // Notify creator — el pago está aprobado pero todavía PENDING. Hay que
+  // marcarlo como cobrado eligiendo cuenta financiera para que el sistema
+  // genere el ledger + cash + asiento contable.
   if ((payment as any).created_by_user_id) {
     await admin.from("alerts").insert({
       user_id: (payment as any).created_by_user_id,
       org_id: (payment as any).org_id,
       type: "PAYMENT_APPROVED",
-      description: `Tu pago ${(payment as any).amount} ${(payment as any).currency} fue aprobado`,
+      description: `Tu pago ${(payment as any).amount} ${(payment as any).currency} fue aprobado. Andá al detalle de la operación y marcalo como cobrado eligiendo la cuenta financiera para que se actualicen los saldos.`,
       date_due: new Date().toISOString().split("T")[0],
       status: "PENDING",
     }).catch((e: any) => console.warn("notify failed:", e?.message))
