@@ -369,9 +369,52 @@ export async function getMonthlyIVAToPay(
     else { salesIvaARS += iva; salesCountARS++ }
   }
 
-  // Obtener compras con detalle de alícuota y moneda
+  // ── COMPRAS — IVA Crédito Fiscal ──
+  //
+  // Hay dos fuentes:
+  // 1. `purchase_invoices`: facturas FORMALES recibidas de operadores
+  //    (cargadas manualmente o vía OCR). Es la fuente oficial AFIP.
+  // 2. `iva_purchases`: IVA ESTIMADO calculado automáticamente desde
+  //    operations.operator_cost (asume cost incluye IVA al 21%).
+  //
+  // Bug fix 2026-05-06: la versión previa solo consultaba `iva_purchases`,
+  // por lo que cuando el user subía una factura real al detalle de la
+  // operación (purchase_invoices), el IVA crédito no aparecía en Posición
+  // IVA aunque sí lo hacía en Libro IVA. Resultado: discrepancia entre
+  // los dos paneles.
+  //
+  // Lógica: para cada operación, preferimos `purchase_invoices` (oficial)
+  // si existe; caemos a `iva_purchases` (estimado) solo cuando no hay
+  // factura real cargada. Así evitamos el doble cómputo.
+  const { data: purchaseInvoices, error: piError } = await (supabase.from("purchase_invoices") as any)
+    .select("operation_id, iva_amount, currency, iva_rate")
+    .gte("invoice_date", startDate)
+    .lte("invoice_date", endDate)
+
+  if (piError) {
+    console.warn("Error obteniendo purchase_invoices para IVA mensual:", piError.message)
+  }
+
+  const operationsWithFormalInvoice = new Set<string>()
+  let purchasesIvaARS = 0, purchasesIvaUSD = 0
+  let purchasesCountARS = 0, purchasesCountUSD = 0
+
+  for (const record of (purchaseInvoices || [])) {
+    const iva = parseFloat(record.iva_amount || "0")
+    const rate = parseFloat(record.iva_rate || "0.21")
+    const isUSD = record.currency === "USD"
+
+    if (rate === 0) continue
+    if (record.operation_id) {
+      operationsWithFormalInvoice.add(record.operation_id)
+    }
+
+    if (isUSD) { purchasesIvaUSD += iva; purchasesCountUSD++ }
+    else { purchasesIvaARS += iva; purchasesCountARS++ }
+  }
+
   const { data: purchasesIVA, error: purchasesError } = await (supabase.from("iva_purchases") as any)
-    .select("iva_amount, net_amount, operator_cost_total, iva_rate, currency")
+    .select("operation_id, iva_amount, net_amount, operator_cost_total, iva_rate, currency")
     .gte("purchase_date", startDate)
     .lte("purchase_date", endDate)
 
@@ -379,15 +422,14 @@ export async function getMonthlyIVAToPay(
     throw new Error(`Error obteniendo IVA de compras: ${purchasesError.message}`)
   }
 
-  let purchasesIvaARS = 0, purchasesIvaUSD = 0
-  let purchasesCountARS = 0, purchasesCountUSD = 0
-
   for (const record of (purchasesIVA || [])) {
     const iva = parseFloat(record.iva_amount || "0")
     const rate = parseFloat(record.iva_rate || "0.21")
     const isUSD = record.currency === "USD"
 
     if (rate === 0) continue
+    // Si hay una factura formal para esta op, usamos solo esa
+    if (record.operation_id && operationsWithFormalInvoice.has(record.operation_id)) continue
 
     if (isUSD) { purchasesIvaUSD += iva; purchasesCountUSD++ }
     else { purchasesIvaARS += iva; purchasesCountARS++ }
