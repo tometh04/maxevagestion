@@ -152,32 +152,65 @@ export function AppSidebar({ userRole, user, ...props }: AppSidebarProps) {
   const [companyName, setCompanyName] = useState<string | null>(null)
 
   useEffect(() => {
-    // Load brand settings from localStorage first (instant, no flash)
-    const cachedLogo = localStorage.getItem("brand_logo")
-    if (cachedLogo) setBrandLogo(cachedLogo)
-    const cachedName = localStorage.getItem("company_name")
-    if (cachedName) setCompanyName(cachedName)
-
-    // Then fetch from API for shared org settings
+    // Multi-tenant: cache scoped por org_id. NUNCA mostramos cache "global"
+    // porque al cambiar de tenant (mismo browser, mismo user con membresías
+    // a varios orgs, o user logout+login con otro user) el localStorage
+    // del tenant anterior persiste y filtra branding cross-tenant. Bug
+    // detectado 2026-05-06: usuarios viendo logo de Lozada en Test V7.
+    //
+    // Patrón:
+    //   1) Render inicial sin logo (acepta un flash sub-100ms).
+    //   2) Fetch /api/settings/organization (devuelve {data: [{key, value, org_id}]}).
+    //      Notar que el código previo leía `data.brand_logo` directamente
+    //      pero la API SIEMPRE retorna {data: [...]} — nunca matcheaba,
+    //      el state vivía 100% del cache localStorage stale.
+    //   3) Construir mapa per-key, identificar el org_id de la respuesta.
+    //   4) Si hay cache scoped a ese org_id Y matchea los valores, usar.
+    //      Si no, escribir cache nuevo. Cuando cambia el tenant, el
+    //      localStorage del anterior queda como key separada y no leak.
+    let cancelled = false
     async function loadOrgSettings() {
       try {
         const res = await fetch("/api/settings/organization")
-        if (res.ok) {
-          const data = await res.json()
-          if (data.brand_logo) {
-            setBrandLogo(data.brand_logo)
-            localStorage.setItem("brand_logo", data.brand_logo)
-          }
-          if (data.company_name) {
-            setCompanyName(data.company_name)
-            localStorage.setItem("company_name", data.company_name)
-          }
+        if (!res.ok || cancelled) return
+        const json = await res.json()
+        const rows = Array.isArray(json?.data) ? json.data : []
+        const orgId = rows[0]?.org_id ?? null
+        const map = new Map<string, string>(
+          rows.map((r: { key: string; value: string }) => [r.key, r.value])
+        )
+
+        const logo = map.get("brand_logo") ?? null
+        const name = map.get("company_name") ?? null
+
+        if (cancelled) return
+        // SIEMPRE seteamos (incluso a null) — si el tenant nuevo no tiene
+        // brand_logo, hay que limpiar lo que había en el render previo.
+        setBrandLogo(logo)
+        setCompanyName(name)
+
+        if (orgId) {
+          // Cache scoped por org_id. removeItem si el valor es null para
+          // no acumular keys vacías.
+          if (logo) localStorage.setItem(`brand_logo:${orgId}`, logo)
+          else localStorage.removeItem(`brand_logo:${orgId}`)
+          if (name) localStorage.setItem(`company_name:${orgId}`, name)
+          else localStorage.removeItem(`company_name:${orgId}`)
         }
+
+        // Limpieza one-shot del cache global legacy (pre-fix). Garantiza
+        // que cualquier user que cargue esta versión ya no arrastre el
+        // logo de un tenant anterior por la próxima sesión.
+        localStorage.removeItem("brand_logo")
+        localStorage.removeItem("company_name")
       } catch {
-        // silent — use cached
+        // silent — sin cache es preferible a cache stale cross-tenant
       }
     }
     loadOrgSettings()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   // Filtrar navegación según permisos

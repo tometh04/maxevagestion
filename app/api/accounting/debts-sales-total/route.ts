@@ -28,6 +28,12 @@ export async function GET(request: Request) {
     const dateFromFilter = searchParams.get("dateFrom")
     const dateToFilter = searchParams.get("dateTo")
     const dateType = (searchParams.get("dateType") || "SALIDA").toUpperCase()
+    // Bug 2026-05-06: el endpoint NO leía el filtro de agencia del query,
+    // siempre devolvía deudores de TODAS las agencias del user. Asimétrico
+    // con sibling /api/accounting/operator-debts-total que sí lo lee.
+    // Multi-tenant: si el user filtra por agencia en el dashboard, el KPI
+    // Deudores tiene que respetarlo.
+    const agencyIdFilter = searchParams.get("agencyId")
 
     if (!canAccessModule(user.role as any, "accounting")) {
       return NextResponse.json(
@@ -51,6 +57,11 @@ export async function GET(request: Request) {
         p_seller_id:
           sellerIdFilter && sellerIdFilter !== "ALL" ? sellerIdFilter : null,
         p_date_type: dateType === "CREACION" ? "CREACION" : "SALIDA",
+        // p_agency_id (singular): si está seteado, restringe el cálculo a
+        // ESA agencia específica dentro de las del user. Si NULL, suma
+        // todas las p_agency_ids.
+        p_agency_id:
+          agencyIdFilter && agencyIdFilter !== "ALL" ? agencyIdFilter : null,
       }
     )
 

@@ -112,6 +112,9 @@ export function DashboardPageClient({
   const [destinationsAllData, setDestinationsAllData] = useState<any[]>([])
   const [cashflowData, setCashflowData] = useState<any[]>([])
   const [hiddenKpis, setHiddenKpis] = useState<Set<DashboardKpiId>>(new Set())
+  // Counter usado por el botón "Actualizar" para forzar refetch sin
+  // duplicar con el auto-refresh del cambio de filtros (ver useEffect abajo).
+  const [refreshTrigger, setRefreshTrigger] = useState(0)
 
   // [perf-instrumentation] Loguea cuándo el page client component se monta
   // (relativo al page load del browser). Se correlaciona con CLICK del sidebar
@@ -208,6 +211,14 @@ export function DashboardPageClient({
       debtsSalesSearchParams.set("dateTo", filters.dateTo)
       if (filters.sellerId && filters.sellerId !== "ALL") {
         debtsSalesSearchParams.set("sellerId", filters.sellerId)
+      }
+      // Bug 2026-05-06: el KPI Deudores ignoraba el filtro de agencia. En
+      // tenants multi-agencia (Lozada = Rosario + Madero) el filtro funcionaba
+      // para Ventas/Margen/Cashflow/Operadores PERO Deudores siempre sumaba
+      // todas las agencias. Asimétrico con `operatorsDebtParams` que sí lo
+      // pasa. Multi-tenant correcto = filtro de agencia se respeta SIEMPRE.
+      if (filters.agencyId && filters.agencyId !== "ALL") {
+        debtsSalesSearchParams.set("agencyId", filters.agencyId)
       }
 
       const operatorsDebtParams = new URLSearchParams()
@@ -352,10 +363,19 @@ export function DashboardPageClient({
     }
   }, [filters])
 
+  // Bug 2026-05-06: doble fetch al cambiar filtro + click "Actualizar".
+  // ANTES: este useEffect disparaba en cada cambio de filtro (auto-refresh
+  // del debounce) Y el botón Actualizar llamaba fetchDashboardData() directo
+  // (otro disparo). Resultado: 16 requests en vez de 8 si el user cambió
+  // un filtro y apretó Actualizar antes del debounce.
+  // AHORA: refreshTrigger unifica ambos disparos en un solo effect.
+  // - Cambio de filtro → debounced setFilters → useEffect dispara 1 vez
+  // - Click "Actualizar" → setRefreshTrigger(prev+1) → useEffect dispara 1 vez
+  // Nunca se duplica el fetch.
   useEffect(() => {
     fetchDashboardData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.dateFrom, filters.dateTo, filters.agencyId, filters.sellerId])
+  }, [filters.dateFrom, filters.dateTo, filters.agencyId, filters.sellerId, refreshTrigger])
 
   return (
     <div className="space-y-4">
@@ -367,7 +387,7 @@ export function DashboardPageClient({
             Vista general del negocio
           </p>
         </div>
-        <Button onClick={fetchDashboardData} disabled={loading} variant="outline" size="sm" className="w-full sm:w-auto">
+        <Button onClick={() => setRefreshTrigger((t) => t + 1)} disabled={loading} variant="outline" size="sm" className="w-full sm:w-auto">
           <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? "animate-spin" : ""}`} />
           Actualizar
         </Button>
