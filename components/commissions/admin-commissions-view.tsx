@@ -510,8 +510,11 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Comisiones</h1>
+      {/* Bug fix 2026-05-06: el h1 "Comisiones" estaba duplicado — la
+          page parent (app/(dashboard)/commissions/page.tsx:15) ya
+          renderiza el h1 + descripción. Acá solo dejamos el botón
+          "Objetivos de vendedores" alineado a la derecha. */}
+      <div className="flex items-center justify-end">
         <Link
           href="/commissions/objectives"
           className="inline-flex items-center gap-1.5 rounded-full border border-border/60 px-3 py-1.5 text-xs font-medium hover:bg-muted/50 transition-colors"
