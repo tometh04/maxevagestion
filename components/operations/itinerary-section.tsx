@@ -108,15 +108,40 @@ export function ItinerarySection({ operationId, operation }: ItinerarySectionPro
   const [uploadingImage, setUploadingImage] = useState(false)
   const [formData, setFormData] = useState<Record<string, any>>({})
   const [servicesTotalSale, setServicesTotalSale] = useState(0)
-  // Logo del tenant (levantado por BrandProvider en localStorage). Si el tenant
-  // no subió un logo, no renderizamos nada — antes caía a /lozada-logo.png
-  // hardcoded, que se veía como "Lozada Viajes" en el itinerario de todas las
-  // orgs que usaban el sistema.
+  // Branding del tenant (multi-tenant safe). Antes leíamos localStorage
+  // global ("brand_logo", "company_name") y el footer del Detalle de Compra
+  // tenía hardcodeada la dirección/Instagram/legajo de Lozada Rosario.
+  // Eso era un leak severo: cualquier agencia veía branding de Lozada en
+  // el PDF de itinerario.
+  // Ahora levantamos TODO desde /api/settings/organization scopeado por
+  // user.org_id (RLS garantiza el aislamiento).
   const [brandLogo, setBrandLogo] = useState<string | null>(null)
   const [companyName, setCompanyName] = useState<string | null>(null)
+  const [companyAddress, setCompanyAddress] = useState<string | null>(null)
+  const [companyInstagram, setCompanyInstagram] = useState<string | null>(null)
+  const [companyLegajoPrefix, setCompanyLegajoPrefix] = useState<string | null>(null)
   useEffect(() => {
-    setBrandLogo(localStorage.getItem("brand_logo"))
-    setCompanyName(localStorage.getItem("company_name"))
+    let cancelled = false
+    async function loadBranding() {
+      try {
+        const res = await fetch("/api/settings/organization")
+        if (!res.ok || cancelled) return
+        const json = await res.json()
+        const rows: Array<{ key: string; value: string }> = Array.isArray(json?.data) ? json.data : []
+        const settings: Record<string, string> = {}
+        rows.forEach((r) => { settings[r.key] = r.value })
+        if (cancelled) return
+        setBrandLogo(settings.brand_logo || null)
+        setCompanyName(settings.company_name || null)
+        setCompanyAddress(settings.company_address || settings.address || null)
+        setCompanyInstagram(settings.company_instagram || settings.instagram || null)
+        setCompanyLegajoPrefix(settings.company_legajo || settings.legajo || null)
+      } catch {
+        // silent — sin branding es preferible al leak cross-tenant
+      }
+    }
+    loadBranding()
+    return () => { cancelled = true }
   }, [])
 
   const fetchItems = useCallback(async () => {
@@ -479,12 +504,20 @@ export function ItinerarySection({ operationId, operation }: ItinerarySectionPro
           </div>
         )}
 
-        {/* Brand footer */}
-        {items.length > 0 && (
-          <div className="bg-accent-coral text-white px-8 py-3 text-xs flex justify-between">
-            <span>Nro de Legajo: 18181</span>
-            <span>📍 Corrientes 631 - Piso 1 Oficina F</span>
-            <span>🌐 lozadaviajes.rosario</span>
+        {/* Brand footer — solo se muestra si el tenant configuró al menos un dato.
+            Antes este footer era hardcoded con dirección/legajo/Instagram de
+            Lozada y se veía en TODAS las agencias (leak multi-tenant). */}
+        {items.length > 0 && (companyLegajoPrefix || companyAddress || companyInstagram) && (
+          <div className="bg-accent-coral text-white px-8 py-3 text-xs flex justify-between gap-3 flex-wrap">
+            {companyLegajoPrefix && (
+              <span>Nro de Legajo: {companyLegajoPrefix}</span>
+            )}
+            {companyAddress && (
+              <span>📍 {companyAddress}</span>
+            )}
+            {companyInstagram && (
+              <span>🌐 {companyInstagram}</span>
+            )}
           </div>
         )}
       </div>
