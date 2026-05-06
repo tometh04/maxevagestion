@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import crypto from "crypto"
-import { createServerClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/server"
 import { syncManychatLeadToLead, ManychatLeadData } from "@/lib/manychat/sync"
 
 /**
@@ -95,7 +95,11 @@ export async function POST(request: Request) {
     }
     
     // 5. Sincronizar lead
-    const supabase = await createServerClient()
+    // NOTA: usamos createAdminClient (service_role) para bypassear RLS.
+    // ManyChat hace POST sin user/cookies; createServerClient devuelve un
+    // cliente anon que RLS bloquea, y determineAgencyId() retorna null →
+    // el webhook respondía 400 silenciosamente desde 2025-12-15.
+    const supabase = createAdminClient()
     const result = await syncManychatLeadToLead(manychatData, supabase)
     
     // 6. Retornar respuesta
