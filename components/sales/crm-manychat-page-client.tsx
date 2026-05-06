@@ -275,7 +275,7 @@ export function CRMManychatPageClient({
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
-            <BreadcrumbPage>CRM Manychat</BreadcrumbPage>
+            <BreadcrumbPage>CRM Ventas</BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
@@ -283,7 +283,7 @@ export function CRMManychatPageClient({
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-semibold tracking-tight">CRM Manychat</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">CRM Ventas</h1>
             <div 
               className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs ${
                 realtimeConnected 
@@ -306,7 +306,7 @@ export function CRMManychatPageClient({
             </div>
           </div>
           <p className="text-muted-foreground">
-            Leads desde Manychat • Actualización en tiempo real
+            Leads de todos los canales (Manychat, WhatsApp, Instagram, Trello, Meta Ads) • Actualización en tiempo real
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">

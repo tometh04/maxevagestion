@@ -65,7 +65,7 @@ const allNavigation: NavItem[] = [
     module: "leads",
     items: [
       // { title: "Leads", url: "/sales/leads" }, // OCULTO temporalmente
-      { title: "CRM Manychat", url: "/sales/crm-manychat" },
+      { title: "CRM Ventas", url: "/sales/crm-manychat" },
       { title: "Estadísticas", url: "/sales/statistics" },
     ],
   },

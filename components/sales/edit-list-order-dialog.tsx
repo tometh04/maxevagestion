@@ -141,7 +141,7 @@ export function EditListOrderDialog({
         <DialogHeader>
           <DialogTitle>Editar Orden de Listas</DialogTitle>
           <DialogDescription>
-            Arrastra las listas para reordenarlas. El orden se aplicará al kanban de CRM Manychat.
+            Arrastra las listas para reordenarlas. El orden se aplicará al kanban de CRM Ventas.
           </DialogDescription>
         </DialogHeader>
 
