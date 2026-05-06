@@ -349,14 +349,15 @@ export function PaymentsTable({
   return (
     <>
       <div className="space-y-4">
+        {/* Bug fix 2026-05-06: el DataTable tenía su propio search box
+            ("Buscar por destino o agencia...") que duplicaba el search bar
+            global del payments-page-client ("Buscar por destino, cliente...").
+            Dos cajas de búsqueda lado a lado, una server-side y otra
+            client-side, era confuso. Dejamos solo la global removiendo
+            searchKey/searchPlaceholder de acá. */}
         <DataTable
           columns={columns}
-          data={payments.map((p) => ({
-            ...p,
-            searchText: `${p.operations?.destination || ""} ${p.operations?.agencies?.name || ""}`.toLowerCase(),
-          }))}
-          searchKey="searchText"
-          searchPlaceholder="Buscar por destino o agencia..."
+          data={payments}
           showPagination={false}
         />
         
