@@ -400,7 +400,7 @@ export function SalesStatisticsPageClient() {
             <div>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Activos</p>
               <p className="text-base font-semibold text-primary">{stats.overview.activeLeads}</p>
-              <p className="text-[10px] text-muted-foreground">sin convertir</p>
+              <p className="text-[10px] text-muted-foreground">sin op + no perdidos</p>
             </div>
           </div>
         </Card>

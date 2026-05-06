@@ -95,7 +95,11 @@ export function NewLeadDialog({
     resolver: zodResolver(leadSchema) as any,
     defaultValues: {
       agency_id: defaultAgencyId || "",
-      source: "Manychat",
+      // Bug fix 2026-05-06: el default era "Manychat" pero este dialog es
+      // para creación MANUAL del user. Marcar todos los manual como
+      // "Manychat" rompe analytics/segmentación por canal. "Other" es la
+      // fuente correcta — el user puede cambiarla si fue derivado, etc.
+      source: "Other",
       status: "NEW",
       region: "ARGENTINA",
       destination: "",

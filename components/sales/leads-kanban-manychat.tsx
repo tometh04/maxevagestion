@@ -1009,7 +1009,7 @@ export function LeadsKanbanManychat({
               <Label htmlFor="new-list-name">Nombre de la lista</Label>
               <Input
                 id="new-list-name"
-                placeholder="Ej: Leads - Santiago"
+                placeholder="Ej: Cancún · Madero · Familias"
                 value={newListName}
                 onChange={(e) => setNewListName(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") handleSubmitCreateList() }}
