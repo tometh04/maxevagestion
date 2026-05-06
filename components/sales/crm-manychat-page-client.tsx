@@ -86,43 +86,26 @@ export function CRMManychatPageClient({
     }
   }, [])
 
-  // Cargar leads: Manychat (nuevos) + Trello con list_name (migración visual)
-  // OPTIMIZACIÓN Fase 2: límite 200 por fuente (antes 5000)
+  // Cargar leads del tenant — TODOS los canales (CRM Ventas).
+  // 2026-05-06: refactor — antes hacía 2 fetches (source=Manychat + source=Trello
+  // con list_name) que escondía leads de WhatsApp/Instagram/Meta Ads/Other.
+  // Ahora 1 solo fetch sin filtro source. El kanban tiene fallback interno
+  // (list_name → region → "Sin lista") para asignar columna a cada lead.
   const loadLeads = useCallback(async (agencyId: string) => {
     setLoading(true)
     try {
       const limit = 200
-      const manychatUrl = agencyId === "ALL"
-        ? `/api/leads?page=1&limit=${limit}&source=Manychat`
-        : `/api/leads?agencyId=${agencyId}&page=1&limit=${limit}&source=Manychat`
-      const trelloUrl = agencyId === "ALL"
-        ? `/api/leads?page=1&limit=${limit}&source=Trello`
-        : `/api/leads?agencyId=${agencyId}&page=1&limit=${limit}&source=Trello`
+      const url =
+        agencyId === "ALL"
+          ? `/api/leads?page=1&limit=${limit}`
+          : `/api/leads?agencyId=${agencyId}&page=1&limit=${limit}`
 
-      const [manychatResponse, trelloResponse] = await Promise.all([
-        fetch(manychatUrl, { cache: 'no-store' }),
-        fetch(trelloUrl, { cache: 'no-store' })
-      ])
-      
-      const manychatData = await manychatResponse.json()
-      const trelloData = await trelloResponse.json()
-      
-      // Filtrar leads de Trello que tienen list_name asignado (migración visual)
-      const trelloLeadsWithListName = (trelloData.leads || []).filter((lead: any) => lead.list_name)
-      
-      // Combinar: Manychat (nuevos) + Trello con list_name (migración visual)
-      const allLeads = [
-        ...(manychatData.leads || []),
-        ...trelloLeadsWithListName
-      ]
-      
-      if (allLeads.length > 0) {
-        setLeads(allLeads)
-        console.log(`✅ Cargados ${manychatData.leads?.length || 0} leads de Manychat + ${trelloLeadsWithListName.length} de Trello (con list_name)`)
-      } else {
-        setLeads([])
-        console.log("ℹ️ No se encontraron leads")
-      }
+      const response = await fetch(url, { cache: "no-store" })
+      const data = await response.json()
+      const allLeads = data.leads || []
+
+      setLeads(allLeads)
+      console.log(`✅ CRM Ventas: cargados ${allLeads.length} leads de todos los canales`)
     } catch (error) {
       console.error("Error loading leads:", error)
     } finally {
