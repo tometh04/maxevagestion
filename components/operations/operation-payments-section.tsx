@@ -60,6 +60,7 @@ import {
   type OperationOperatorPaymentLike,
   type OperationServicePaymentRelationLike,
 } from "@/lib/operations/payment-operators"
+import { normalizePaymentMethodForForm } from "@/lib/accounting/payment-counterparts"
 
 interface FinancialAccount {
   id: string
@@ -402,7 +403,11 @@ export function OperationPaymentsSection({
     editForm.reset({
       payer_type: payment.payer_type,
       direction: payment.direction,
-      method: payment.method || "Transferencia",
+      // Normalizamos: la DB puede tener vocabulario ledger ('BANK', 'CASH',
+      // 'MP', 'USD', 'OTHER') por seeds o auto-generación. El Select del form
+      // usa vocabulario humano ('Transferencia', 'Efectivo', etc.). Sin esta
+      // normalización el Select queda vacío al editar pagos legacy.
+      method: normalizePaymentMethodForForm(payment.method),
       amount: Number(payment.amount),
       currency: payment.currency || "USD",
       financial_account_id: "", // Se selecciona de nuevo
@@ -774,7 +779,7 @@ export function OperationPaymentsSection({
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell>{payment.method || "-"}</TableCell>
+                    <TableCell>{payment.method ? normalizePaymentMethodForForm(payment.method) : "-"}</TableCell>
                     <TableCell>
                       {payment.currency} {Number(payment.amount).toLocaleString("es-AR", { minimumFractionDigits: 2 })}
                     </TableCell>
