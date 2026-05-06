@@ -253,14 +253,14 @@ export function CRMManychatPageClient({
     setLeads(prev => prev.map(lead => lead.id === leadId ? { ...lead, ...updates } : lead))
   }, [])
 
-  // Filtrar leads que tienen list_name asignado (Manychat + Trello migrados)
-  const leadsWithListName = useMemo(
-    () => leads.filter((lead) => lead.list_name),
-    [leads]
-  )
+  // Fix 2026-05-06: el filtro por list_name escondía leads de WhatsApp/
+  // Instagram/Meta Ads que vienen sin list_name asignado. Ahora pasamos
+  // TODOS los leads al kanban — el componente tiene fallback interno
+  // (list_name → region → "Sin lista") para asignarlos a una columna.
+  const allLeads = leads
   const effectiveAgencyId = selectedAgencyId !== "ALL"
     ? selectedAgencyId
-    : (leadsWithListName[0] as any)?.agency_id || agencies[0]?.id || defaultAgencyId
+    : (allLeads[0] as any)?.agency_id || agencies[0]?.id || defaultAgencyId
   // Mostrar Kanban siempre que haya agencia seleccionada (las columnas se muestran vacías)
   const shouldUseManychatKanban = !!effectiveAgencyId && effectiveAgencyId !== "ALL"
 
@@ -363,7 +363,7 @@ export function CRMManychatPageClient({
             </div>
           ) : shouldUseManychatKanban ? (
             <LeadsKanbanManychat
-              leads={leadsWithListName as any}
+              leads={allLeads as any}
               agencyId={effectiveAgencyId!}
               agencies={agencies}
               sellers={sellers}

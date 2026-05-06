@@ -494,11 +494,19 @@ export function LeadsKanbanManychat({
     const grouped: Record<string, Lead[]> = {}
     listOrder.forEach(list => { grouped[list.name] = [] })
     leads.forEach(lead => {
-      if (lead.list_name) {
-        const listName = lead.list_name.trim()
-        if (!grouped[listName]) grouped[listName] = []
-        grouped[listName].push(lead)
-      }
+      // Fix 2026-05-06 (CRM Ventas): el Kanban antes filtraba leads sin
+      // list_name (los descartaba). En tenants con leads de WhatsApp/
+      // Instagram/Meta Ads (sin list_name asignado), el Kanban quedaba
+      // vacío aunque la Tabla mostraba todo. Fallback: list_name → region
+      // → "Sin lista" para que TODOS los leads sean visibles en alguna
+      // columna del Kanban.
+      const listName = (
+        (lead.list_name && lead.list_name.trim()) ||
+        ((lead as any).region && (lead as any).region.trim()) ||
+        "Sin lista"
+      )
+      if (!grouped[listName]) grouped[listName] = []
+      grouped[listName].push(lead)
     })
     // Ordenar cada columna: el último movido queda primero
     Object.keys(grouped).forEach(listName => {
