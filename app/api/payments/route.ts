@@ -1703,13 +1703,50 @@ export async function PATCH(request: Request) {
       updateData.operator_id = linkedOperatorId
       updateData.operator_payment_id = linkedOperatorPaymentId
     }
-    // Marcar como PAID si se solicita
-    if (markAsPaid) {
-      updateData.status = "PAID"
-    }
     // Solo resetear ledger_movement_id si el pago tenía uno (evita error de schema cache)
     if (wasPaid && existingPayment.ledger_movement_id) {
       updateData.ledger_movement_id = null
+    }
+
+    // BUG #3 audit forense 2026-05-05: si el user solicita `markAsPaid=true`
+    // tenemos que aplicar un guard CAS (Compare-And-Set) sobre `status='PENDING'`
+    // para evitar que dos requests concurrentes pasen el `if (wasPaid || markAsPaid)`
+    // simultáneamente y dupliquen ledger_movements + cash_movements + counterparts.
+    // El guard atómico en mark-paid/route.ts (status PENDING → PROCESSING) evita
+    // exactamente este escenario; replicamos el patrón acá.
+    if (markAsPaid && !wasPaid) {
+      const { data: casUpdate, error: casError } = await (supabase.from("payments") as any)
+        .update({ status: "PROCESSING" })
+        .eq("id", paymentId)
+        .eq("status", "PENDING") // CAS: solo si sigue PENDING
+        .select("id")
+        .maybeSingle()
+
+      if (casError) {
+        console.error("Error en CAS guard del PATCH markAsPaid:", casError)
+        return NextResponse.json(
+          { error: `Error verificando estado del pago: ${casError.message}` },
+          { status: 500 }
+        )
+      }
+
+      if (!casUpdate) {
+        return NextResponse.json(
+          {
+            error: "Este pago ya fue marcado como pagado por otra operación. Refrescá la página.",
+            already_paid: true,
+          },
+          { status: 409 }
+        )
+      }
+
+      // Pasamos el guard. El UPDATE final (más abajo) seteará status='PAID'.
+      updateData.status = "PAID"
+    } else if (markAsPaid && wasPaid) {
+      // Edición de un pago YA pagado: el bloque previo (línea 1648+) ya revirtió
+      // los movimientos contables anteriores y los recreará con los nuevos datos.
+      // status se mantiene PAID — no necesitamos CAS porque no hay transición.
+      updateData.status = "PAID"
     }
 
     const { error: updateError } = await (supabase.from("payments") as any)
