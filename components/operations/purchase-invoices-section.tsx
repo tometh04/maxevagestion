@@ -285,7 +285,7 @@ export function PurchaseInvoicesSection({
 
   const handleSave = async () => {
     if (!form.invoice_number || !form.emitter_cuit) {
-      toast({ title: "Error", description: "Completá el N\u00famero de factura y el CUIT", variant: "destructive" })
+      toast({ title: "Error", description: "Completá el Número de factura y el CUIT", variant: "destructive" })
       return
     }
 
@@ -504,7 +504,7 @@ export function PurchaseInvoicesSection({
                 <TableRow>
                   <TableHead>Fecha</TableHead>
                   <TableHead>Tipo</TableHead>
-                  <TableHead>N\u00famero</TableHead>
+                  <TableHead>Número</TableHead>
                   <TableHead>Emisor</TableHead>
                   <TableHead className="text-right">Neto</TableHead>
                   <TableHead className="text-right">IVA</TableHead>
@@ -603,7 +603,7 @@ export function PurchaseInvoicesSection({
                 </Select>
               </div>
               <div>
-                <Label>N\u00famero de Factura *</Label>
+                <Label>Número de Factura *</Label>
                 <Input
                   placeholder="0001-00012345"
                   value={form.invoice_number}
@@ -675,7 +675,7 @@ export function PurchaseInvoicesSection({
                 />
               </div>
               <div>
-                <Label>Al\u00edcuota IVA %</Label>
+                <Label>Alícuota IVA %</Label>
                 <Select value={form.iva_rate} onValueChange={v => setForm(prev => ({ ...prev, iva_rate: v }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
