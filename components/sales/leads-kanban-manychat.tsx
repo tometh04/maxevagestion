@@ -493,20 +493,30 @@ export function LeadsKanbanManychat({
   const leadsByListName = useMemo(() => {
     const grouped: Record<string, Lead[]> = {}
     listOrder.forEach(list => { grouped[list.name] = [] })
+    // Fix 2026-05-06 (CRM Ventas): match case-insensitive entre list_name
+    // del lead y los nombres de columna del listOrder. ANTES los leads con
+    // region="ARGENTINA" (uppercase) generaban una columna duplicada
+    // separada de "Argentina" (capitalize del listOrder seed). Ahora si
+    // un lead tiene region o list_name que matchea case-insensitive
+    // con una columna existente, se agrega a esa columna. Si no hay
+    // match, crea una columna nueva con el valor original del lead.
+    const normalizeKey = (s: string) => s.trim().toLowerCase()
     leads.forEach(lead => {
-      // Fix 2026-05-06 (CRM Ventas): el Kanban antes filtraba leads sin
-      // list_name (los descartaba). En tenants con leads de WhatsApp/
-      // Instagram/Meta Ads (sin list_name asignado), el Kanban quedaba
-      // vacío aunque la Tabla mostraba todo. Fallback: list_name → region
-      // → "Sin lista" para que TODOS los leads sean visibles en alguna
-      // columna del Kanban.
-      const listName = (
+      // Fallback: list_name (Manychat/Trello) → region (manuales) → "Sin lista"
+      const rawName = (
         (lead.list_name && lead.list_name.trim()) ||
         ((lead as any).region && (lead as any).region.trim()) ||
         "Sin lista"
       )
-      if (!grouped[listName]) grouped[listName] = []
-      grouped[listName].push(lead)
+      const normalized = normalizeKey(rawName)
+      // Si ya existe una columna que matchea case-insensitive, usar ESA key
+      // (preserva la version del listOrder seed). Sino crear nueva.
+      const existingKey = Object.keys(grouped).find(
+        (k) => normalizeKey(k) === normalized
+      )
+      const targetKey = existingKey || rawName
+      if (!grouped[targetKey]) grouped[targetKey] = []
+      grouped[targetKey].push(lead)
     })
     // Ordenar cada columna: el último movido queda primero
     Object.keys(grouped).forEach(listName => {
