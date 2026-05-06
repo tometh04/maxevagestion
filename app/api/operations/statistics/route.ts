@@ -97,24 +97,43 @@ export async function GET(request: Request) {
       paymentsData = payments || []
     }
 
-    // Agrupar pagos por operación
+    // Obtener tasa de cambio más reciente como fallback
+    const latestExchangeRate = await getLatestExchangeRate(supabase) || DEFAULT_USD_ARS_FALLBACK_RATE
+
+    // Agrupar pagos por operación, convirtiendo a USD.
+    //
+    // Bug fix 2026-05-06: la versión previa confiaba en `payment.amount_usd`
+    // como primer hint, y el fallback para ARS sin exchange_rate caía a 0
+    // (else-if currency === "USD" no matcheaba). Resultado: si amount_usd
+    // estaba mal (legacy/seed igual a amount en ARS), el card "Cobrado USD"
+    // mostraba miles de millones (vimos $11.5M USD vs Ventas $37k USD).
+    //
+    // Nuevo orden:
+    //  1. Si currency === "USD" → usar amount directo (siempre correcto)
+    //  2. Si currency === "ARS" → dividir por payment.exchange_rate, o por
+    //     latestExchangeRate como fallback (mejor que 0)
+    //  3. Solo entonces caer a amount_usd como tercer recurso
     const paymentsByOperation: Record<string, number> = {}
     for (const payment of paymentsData) {
       if (!paymentsByOperation[payment.operation_id]) {
         paymentsByOperation[payment.operation_id] = 0
       }
-      // Calcular en USD
-      let amountUsd = payment.amount_usd || 0
-      if (!amountUsd && payment.currency === "ARS" && payment.exchange_rate) {
-        amountUsd = payment.amount / payment.exchange_rate
-      } else if (!amountUsd && payment.currency === "USD") {
-        amountUsd = payment.amount
+      let amountUsd = 0
+      const amount = parseFloat(payment.amount) || 0
+      const paymentCurrency = (payment.currency || "USD").toUpperCase()
+
+      if (paymentCurrency === "USD") {
+        amountUsd = amount
+      } else if (paymentCurrency === "ARS") {
+        const fx = parseFloat(payment.exchange_rate) || latestExchangeRate
+        amountUsd = fx > 0 ? amount / fx : 0
+      } else {
+        // Fallback final si la moneda es exótica
+        amountUsd = parseFloat(payment.amount_usd) || amount
       }
+
       paymentsByOperation[payment.operation_id] += amountUsd
     }
-
-    // Obtener tasa de cambio más reciente como fallback
-    const latestExchangeRate = await getLatestExchangeRate(supabase) || DEFAULT_USD_ARS_FALLBACK_RATE
 
     // Procesar operaciones
     let totalSales = 0
