@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Phone, Instagram, MapPin, DollarSign, UserPlus, Loader2, Pencil, Trash2, Plus, GripVertical, Inbox, Check, X, User, Archive, ArchiveRestore } from "lucide-react"
+import { Phone, Instagram, MapPin, DollarSign, UserPlus, Loader2, Pencil, Trash2, Plus, GripVertical, Inbox, Check, X, User, Archive, ArchiveRestore, ListOrdered } from "lucide-react"
 import {
   Select,
   SelectContent,
@@ -636,6 +636,22 @@ export function LeadsKanbanManychat({
         </div>
         {canCreateLists && (
           <div className="flex items-center gap-2">
+            {/* Bug fix 2026-05-06: el dialog EditListOrder estaba renderizado
+                en el árbol pero no había NINGÚN trigger que llamara
+                setEditOrderDialogOpen(true). Feature inalcanzable. Acá
+                exponemos el botón al lado de "Nueva Lista" para que el
+                user pueda reordenar las columnas del kanban. */}
+            {orderedListNames.length > 1 && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="bg-white/80 dark:bg-card/80 hover:bg-white dark:hover:bg-card"
+                onClick={() => setEditOrderDialogOpen(true)}
+              >
+                <ListOrdered className="mr-2 h-4 w-4" />
+                Editar Orden
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"
