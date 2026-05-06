@@ -1709,53 +1709,52 @@ export async function PATCH(request: Request) {
     }
 
     // BUG #3 audit forense 2026-05-05: si el user solicita `markAsPaid=true`
-    // tenemos que aplicar un guard CAS (Compare-And-Set) sobre `status='PENDING'`
-    // para evitar que dos requests concurrentes pasen el `if (wasPaid || markAsPaid)`
-    // simultáneamente y dupliquen ledger_movements + cash_movements + counterparts.
-    // El guard atómico en mark-paid/route.ts (status PENDING → PROCESSING) evita
-    // exactamente este escenario; replicamos el patrón acá.
-    if (markAsPaid && !wasPaid) {
-      const { data: casUpdate, error: casError } = await (supabase.from("payments") as any)
-        .update({ status: "PROCESSING" })
-        .eq("id", paymentId)
-        .eq("status", "PENDING") // CAS: solo si sigue PENDING
-        .select("id")
-        .maybeSingle()
-
-      if (casError) {
-        console.error("Error en CAS guard del PATCH markAsPaid:", casError)
-        return NextResponse.json(
-          { error: `Error verificando estado del pago: ${casError.message}` },
-          { status: 500 }
-        )
-      }
-
-      if (!casUpdate) {
-        return NextResponse.json(
-          {
-            error: "Este pago ya fue marcado como pagado por otra operación. Refrescá la página.",
-            already_paid: true,
-          },
-          { status: 409 }
-        )
-      }
-
-      // Pasamos el guard. El UPDATE final (más abajo) seteará status='PAID'.
-      updateData.status = "PAID"
-    } else if (markAsPaid && wasPaid) {
-      // Edición de un pago YA pagado: el bloque previo (línea 1648+) ya revirtió
-      // los movimientos contables anteriores y los recreará con los nuevos datos.
-      // status se mantiene PAID — no necesitamos CAS porque no hay transición.
+    // tenemos que aplicar un guard CAS (Compare-And-Set) para evitar que dos
+    // requests concurrentes pasen el `if (wasPaid || markAsPaid)` simultáneamente
+    // y dupliquen ledger_movements + cash_movements + counterparts.
+    //
+    // El CAS se hace en el UPDATE final con un filtro `.eq("status", "PENDING")`,
+    // todo en una sola operación atómica. Si dos requests corren a la vez, solo
+    // uno hace match (Postgres serializa); el otro recibe `count: 0` rows
+    // afectadas y devolvemos 409.
+    //
+    // (Antes intentábamos un guard intermedio status='PROCESSING' pero el CHECK
+    // constraint payments_status_check solo permite ('PENDING','PAID','OVERDUE').
+    // El UPDATE atómico con filtro de status logra el mismo efecto sin agregar
+    // un estado transient al enum.)
+    if (markAsPaid) {
       updateData.status = "PAID"
     }
 
-    const { error: updateError } = await (supabase.from("payments") as any)
+    let updateQuery = (supabase.from("payments") as any)
       .update(updateData)
       .eq("id", paymentId)
+
+    // Solo aplicamos CAS cuando estamos transitando PENDING → PAID (caso Yamil).
+    // En edición de un pago ya PAID el bloque previo (línea 1648+) ya revirtió
+    // los movimientos; ahí no necesitamos CAS porque no hay transición de status.
+    if (markAsPaid && !wasPaid) {
+      updateQuery = updateQuery.eq("status", "PENDING")
+    }
+
+    const { data: updatedRows, error: updateError, count } = await updateQuery
+      .select("id", { count: "exact" })
 
     if (updateError) {
       console.error("Error updating payment:", updateError)
       return NextResponse.json({ error: `Error al actualizar pago: ${updateError.message}` }, { status: 500 })
+    }
+
+    // CAS check: si esperabamos transicionar PENDING → PAID y no afectamos filas,
+    // significa que otra request ya lo marcó como PAID. Devolvemos 409.
+    if (markAsPaid && !wasPaid && (!updatedRows || updatedRows.length === 0)) {
+      return NextResponse.json(
+        {
+          error: "Este pago ya fue marcado como pagado por otra operación. Refrescá la página.",
+          already_paid: true,
+        },
+        { status: 409 }
+      )
     }
 
     // 4. Si el pago estaba PAID o se está marcando como PAID, crear/recrear movimientos contables
