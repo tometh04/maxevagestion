@@ -398,19 +398,23 @@ export function DashboardPageClient({
     }
   }, [filters])
 
-  // Bug 2026-05-06: doble fetch al cambiar filtro + click "Actualizar".
-  // ANTES: este useEffect disparaba en cada cambio de filtro (auto-refresh
-  // del debounce) Y el botón Actualizar llamaba fetchDashboardData() directo
-  // (otro disparo). Resultado: 16 requests en vez de 8 si el user cambió
-  // un filtro y apretó Actualizar antes del debounce.
-  // AHORA: refreshTrigger unifica ambos disparos en un solo effect.
-  // - Cambio de filtro → debounced setFilters → useEffect dispara 1 vez
-  // - Click "Actualizar" → setRefreshTrigger(prev+1) → useEffect dispara 1 vez
-  // Nunca se duplica el fetch.
+  // Bug 2026-05-06 round 3: doble fetch al cambiar filtro + click Actualizar.
+  // El round 2 (refreshTrigger counter + dedup ms + AbortController) NO eliminó
+  // el problema. Causa raíz observada en prod:
+  //   t=0.00  click filtro → child setLocalFilters (no commit todavía, debounce 500ms)
+  //   t=0.05  click Actualizar → setRefreshTrigger(1) → useEffect dispara
+  //   t=0.50  debounce settle → child onChange → parent setFilters → useEffect
+  //           dispara OTRA VEZ porque filters.X cambió
+  // Total: 2 disparos separados por ~450ms. El dedup de 150ms no los protege.
+  //
+  // Fix definitivo: el useEffect SOLO depende de `refreshTrigger`. Cualquier
+  // cambio de filtro también incrementa refreshTrigger via callback custom
+  // (handleFiltersChange abajo), garantizando un único disparo del effect
+  // por cualquier mutación.
   useEffect(() => {
     fetchDashboardData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.dateFrom, filters.dateTo, filters.agencyId, filters.sellerId, refreshTrigger])
+  }, [refreshTrigger])
 
   return (
     <div className="space-y-4">
@@ -443,7 +447,20 @@ export function DashboardPageClient({
         sellers={sellers}
         value={filters}
         defaultValue={defaultFilters}
-        onChange={setFilters}
+        onChange={(next) => {
+          // Bug fix round 3: unificar el trigger del fetch.
+          // Cualquier cambio real de filtros también incrementa refreshTrigger
+          // → el useEffect [refreshTrigger] dispara 1 vez. Si solo el botón
+          // Actualizar también incrementa refreshTrigger, el efecto dispara
+          // 1 vez por button O por filter change, nunca 2x.
+          const changed =
+            next.dateFrom !== filters.dateFrom ||
+            next.dateTo !== filters.dateTo ||
+            next.agencyId !== filters.agencyId ||
+            next.sellerId !== filters.sellerId
+          setFilters(next)
+          if (changed) setRefreshTrigger((t) => t + 1)
+        }}
       />
 
       {/* KPIs - Stripe style */}
