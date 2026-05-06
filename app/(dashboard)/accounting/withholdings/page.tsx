@@ -174,9 +174,16 @@ export default function WithholdingsPage() {
     return parts.join(" + ")
   }
 
-  const periodLabel = period
-    ? new Date(period + "-01").toLocaleDateString("es-AR", { month: "long", year: "numeric" })
-    : "Todos"
+  // Bug fix 2026-05-06: usar new Date("2026-05-01") parsea como UTC
+  // medianoche, que en AR (UTC-3) se muestra como abril 30. Resultado:
+  // header del Detalle decía "abril de 2026" cuando el filtro estaba
+  // en mayo. Construimos la fecha en zona local.
+  const periodLabel = (() => {
+    if (!period) return "Todos"
+    const [yr, mo] = period.split("-").map(Number)
+    if (!yr || !mo) return "Todos"
+    return new Date(yr, mo - 1, 1).toLocaleDateString("es-AR", { month: "long", year: "numeric" })
+  })()
 
   return (
     <div className="space-y-6">
