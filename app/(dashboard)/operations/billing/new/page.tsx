@@ -1144,7 +1144,33 @@ export default function NewInvoicePage() {
                   <Label>CUIT/DNI</Label>
                   <Input
                     value={formData.receptor_doc_nro === '0' ? '' : formData.receptor_doc_nro}
-                    onChange={(e) => setFormData({ ...formData, receptor_doc_nro: e.target.value || '0' })}
+                    onChange={(e) => {
+                      // Bug fix 2026-05-06: si el cliente fue cargado con DNI
+                      // y el user tipea el CUIT acá manualmente para emitir
+                      // Factura A, antes solo updateábamos receptor_doc_nro
+                      // — el receptor_doc_tipo seguía siendo 96 (DNI) y AFIP
+                      // rechazaba con 10013. Ahora también inferimos el tipo
+                      // del documento desde la cantidad de dígitos tipeados:
+                      //   11 dígitos → 80 (CUIT)
+                      //   7-8 dígitos → 96 (DNI)
+                      //   vacío → 99 (Consumidor Final)
+                      // Si la condición IVA es Responsable Inscripto (1)
+                      // forzamos siempre 80, incluso si todavía no terminó
+                      // de tipear los 11 dígitos.
+                      const docNro = e.target.value || '0'
+                      const digits = docNro.replace(/\D/g, '')
+                      let receptor_doc_tipo = formData.receptor_doc_tipo
+                      if (formData.receptor_condicion_iva === 1) {
+                        receptor_doc_tipo = 80
+                      } else if (digits.length === 0) {
+                        receptor_doc_tipo = 99
+                      } else if (digits.length === 11) {
+                        receptor_doc_tipo = 80
+                      } else if (digits.length === 7 || digits.length === 8) {
+                        receptor_doc_tipo = 96
+                      }
+                      setFormData({ ...formData, receptor_doc_nro: docNro, receptor_doc_tipo })
+                    }}
                     placeholder={formData.receptor_condicion_iva === 1 ? "20123456789 (requerido)" : "Consumidor Final (opcional)"}
                   />
                 </div>
