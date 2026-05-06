@@ -469,7 +469,20 @@ export class AfipService {
     if (draft.concepto === 2 || draft.concepto === 3) {
       const serviceFrom = draft.fch_serv_desde || draft.fecha_emision || new Date()
       const serviceTo = draft.fch_serv_hasta || serviceFrom
-      const paymentDue = draft.fecha_vto_pago || serviceTo
+
+      // Bug fix 2026-05-06: AFIP error 10036 — "FchVtoPago no puede ser
+      // anterior a la fecha del comprobante". Caso real: facturación
+      // retroactiva de un viaje ya finalizado. Antes usábamos `serviceTo`
+      // como fallback de paymentDue, lo cual es un fecha pasada cuando
+      // se factura post-trip. Ahora clampeamos al cbteFch (fecha de
+      // emisión, que el comprobante usa como CbteFch en AFIP).
+      const cbteFch = draft.fecha_emision || new Date()
+      const cbteFchTime = (cbteFch instanceof Date ? cbteFch : new Date(cbteFch)).getTime()
+      let paymentDue: string | Date = draft.fecha_vto_pago || serviceTo
+      const paymentDueTime = (paymentDue instanceof Date ? paymentDue : new Date(paymentDue)).getTime()
+      if (Number.isFinite(paymentDueTime) && Number.isFinite(cbteFchTime) && paymentDueTime < cbteFchTime) {
+        paymentDue = cbteFch
+      }
 
       payload.FchServDesde = this.formatDate(serviceFrom)
       payload.FchServHasta = this.formatDate(serviceTo)
