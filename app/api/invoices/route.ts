@@ -15,7 +15,13 @@ function formatLocalDate(date = new Date()): string {
   return `${year}-${month}-${day}`
 }
 
-// Schema de validación para crear factura
+// Schema de validación para crear factura.
+//
+// Bug fix 2026-05-06: AFIP error 10013 — Factura A (cbte_tipo 1) obliga
+// DocTipo=80 (CUIT) y un nro de 11 dígitos. Antes la API aceptaba DocTipo
+// 96/86 si el cliente tenía DNI/CUIL guardado, y AFIP rechazaba todo el
+// flujo recién al autorizar. Validamos antes para fallar rápido con un
+// mensaje accionable en lugar de redirigir y dejar el borrador colgado.
 const createInvoiceSchema = z.object({
   operation_id: z.string().uuid().optional().nullable(),
   customer_id: z.string().uuid().optional().nullable(),
@@ -43,6 +49,27 @@ const createInvoiceSchema = z.object({
   fch_serv_hasta: z.string().optional(),
   fecha_vto_pago: z.string().optional(),
   notes: z.string().optional(),
+}).superRefine((data, ctx) => {
+  // Factura A / A con leyenda → exige CUIT del receptor (AFIP 10013).
+  // Tipos A: 1 (Factura A), 2 (NC A), 3 (ND A), 51 (Factura A MiPyME), 201 (Factura A FCE), etc.
+  const isFacturaA = [1, 2, 3, 51, 52, 53, 201, 202, 203].includes(data.cbte_tipo)
+  if (isFacturaA) {
+    if (data.receptor_doc_tipo !== 80) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["receptor_doc_tipo"],
+        message: "Factura A requiere CUIT (DocTipo 80). Cambiá la condición IVA del receptor o registrá su CUIT.",
+      })
+    }
+    const cuit = String(data.receptor_doc_nro || "").replace(/\D/g, "")
+    if (cuit.length !== 11) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["receptor_doc_nro"],
+        message: "Factura A requiere CUIT de 11 dígitos del receptor.",
+      })
+    }
+  }
 })
 
 // GET - Obtener facturas

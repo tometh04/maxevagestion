@@ -1160,16 +1160,29 @@ export default function NewInvoicePage() {
                       const condicion = parseInt(v)
                       // Mapear condición IVA → tipo de comprobante automáticamente
                       const cbte_tipo = condicion === 1 ? 1 : 6 // RI → A, resto → B
-                      const selectedCustomer = customers.find(customer => customer.id === formData.customer_id)
-                      const fallbackDocType = selectedCustomer
-                        ? getCustomerAfipDocType(selectedCustomer)
-                        : [80, 86, 96].includes(formData.receptor_doc_tipo)
-                          ? formData.receptor_doc_tipo
-                          : 96
-                      const receptor_doc_tipo =
-                        formData.receptor_doc_nro && formData.receptor_doc_nro !== '0'
-                          ? fallbackDocType
-                          : 99
+
+                      // Bug fix 2026-05-06: AFIP error 10013 — Factura A obliga
+                      // DocTipo=80 (CUIT). Si el cliente tenía guardado DNI o
+                      // CUIL y el user seleccionó Responsable Inscripto, la
+                      // versión vieja dejaba pasar DocTipo=96/86 → AFIP rechaza.
+                      // Ahora forzamos 80 cuando la condición es RI; el user
+                      // ya ve el warning "Factura A requiere CUIT" si el campo
+                      // está vacío.
+                      let receptor_doc_tipo: number
+                      if (condicion === 1) {
+                        receptor_doc_tipo = 80
+                      } else {
+                        const selectedCustomer = customers.find(customer => customer.id === formData.customer_id)
+                        const fallbackDocType = selectedCustomer
+                          ? getCustomerAfipDocType(selectedCustomer)
+                          : [80, 86, 96].includes(formData.receptor_doc_tipo)
+                            ? formData.receptor_doc_tipo
+                            : 96
+                        receptor_doc_tipo =
+                          formData.receptor_doc_nro && formData.receptor_doc_nro !== '0'
+                            ? fallbackDocType
+                            : 99
+                      }
                       setFormData({ ...formData, receptor_condicion_iva: condicion, cbte_tipo, receptor_doc_tipo })
                     }}
                   >
