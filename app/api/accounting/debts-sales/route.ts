@@ -32,9 +32,20 @@ export async function GET(request: Request) {
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
 
     // Build base query — .select() FIRST so applyCustomersFilters can chain .eq()
+    //
+    // Perf 2026-05-06: antes hacíamos `select("*")` y traíamos TODAS las
+    // columnas de customers (~30+ campos incluyendo custom_fields JSONB,
+    // notes, address, dietary_restrictions, etc.). El page client solo usa
+    // 6 campos. Bajamos el payload ~70% y aliviamos serialización RLS.
+    // Perf 2026-05-06: usamos `operation_customers!inner` para que customers
+    // sin operaciones quedan fuera ya en la query (antes los traíamos y
+    // filtrábamos en JS). En tenants con miles de leads que nunca llegaron
+    // a operation, esto elimina ~80% del resultset. Mismo patrón se podrá
+    // aplicar al join interno con `operations!inner` cuando confirmemos
+    // que ningún operation_customers tiene operation_id NULL.
     let query = supabase.from("customers").select(`
-        *,
-        operation_customers(
+        id, first_name, last_name, email, phone, document_number, document_type,
+        operation_customers!inner(
           operation_id,
           operations:operation_id(
             id,
