@@ -130,15 +130,36 @@ export function NewLeadDialog({
     }
   }, [watchedDestination, form])
 
-  // Auto-asignar lista cuando cambia la región
+  // Auto-asignar lista cuando cambia la región.
+  // Bug fix 2026-05-06: antes seteábamos siempre el nombre legacy
+  // "Leads - Argentina" / "Leads - Caribe" / etc. Pero los tenants nuevos
+  // (Test V7, Madero) tienen listas renombradas a "Argentina" / "Caribe"
+  // sin prefijo. El form creaba leads con list_name="Leads - Argentina"
+  // que no matcheaba ninguna columna del kanban → el lead aparecía en una
+  // columna fantasma invisible y el user pensaba que se perdió.
+  //
+  // Fix: priorizar matches contra las listas EXISTENTES del tenant
+  // (case-insensitive, comparando el nombre de la región contra el final
+  // del nombre de la lista). Solo caer al fallback "Leads - X" si no hay
+  // ninguna lista en el tenant que matchee.
   useEffect(() => {
-    if (watchedRegion) {
-      const defaultList = REGION_TO_LIST[watchedRegion]
-      if (defaultList) {
-        form.setValue("list_name", defaultList)
-      }
+    if (!watchedRegion) return
+    const regionLower = watchedRegion.toLowerCase()
+    // 1) buscar entre las listas existentes del tenant
+    const existing = crmLists.find((listName) => {
+      const ln = listName.toLowerCase().trim()
+      return ln === regionLower || ln.endsWith(` ${regionLower}`) || ln.endsWith(`-${regionLower}`)
+    })
+    if (existing) {
+      form.setValue("list_name", existing)
+      return
     }
-  }, [watchedRegion, form])
+    // 2) fallback al nombre legacy si el tenant no tiene listas (o ninguna matchea)
+    const defaultList = REGION_TO_LIST[watchedRegion]
+    if (defaultList) {
+      form.setValue("list_name", defaultList)
+    }
+  }, [watchedRegion, crmLists, form])
 
   // Cargar listas del CRM cuando cambia la agencia seleccionada
   useEffect(() => {
