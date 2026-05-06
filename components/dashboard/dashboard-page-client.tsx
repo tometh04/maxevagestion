@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { DashboardFilters, DashboardFiltersState } from "./dashboard-filters"
 import { SalesBySellerChart } from "./sales-by-seller-chart"
@@ -115,6 +115,16 @@ export function DashboardPageClient({
   // Counter usado por el botón "Actualizar" para forzar refetch sin
   // duplicar con el auto-refresh del cambio de filtros (ver useEffect abajo).
   const [refreshTrigger, setRefreshTrigger] = useState(0)
+  // Bug 2026-05-06 (post-fix #5 que NO funcionó): aún con refreshTrigger
+  // counter, observamos doble ejecución de fetchDashboardData (8 → 16
+  // requests) al click "Actualizar" sin tocar filtros. Causa probable:
+  // re-render compensatorio del componente padre/child que dispara el
+  // useEffect 2 veces. Defense-in-depth: dedup temporal + AbortController.
+  // Si llega una llamada en <150ms de la previa, la ignoramos. Y abortamos
+  // el fetch in-flight previo si arranca uno nuevo (libera el client de
+  // esperar respuestas obsoletas; el server sigue procesando el viejo).
+  const lastFetchTimeRef = useRef(0)
+  const inFlightCtrlRef = useRef<AbortController | null>(null)
 
   // [perf-instrumentation] Loguea cuándo el page client component se monta
   // (relativo al page load del browser). Se correlaciona con CLICK del sidebar
@@ -148,6 +158,22 @@ export function DashboardPageClient({
   }, [])
 
   const fetchDashboardData = useCallback(async () => {
+    // Dedup: si la última invocación fue hace <150ms, ignoramos.
+    // Esto cubre el caso (no resuelto) donde el useEffect dispara 2x por
+    // un re-render que no detectamos. Solo afecta llamadas casi simultáneas;
+    // un nuevo cambio de filtro o click después del settle SIEMPRE pasa.
+    const now = performance.now()
+    if (now - lastFetchTimeRef.current < 150) {
+      return
+    }
+    lastFetchTimeRef.current = now
+
+    // Abortar fetch previo in-flight para liberar al client de esperar
+    // respuestas obsoletas. El server sigue procesando, pero no cuelga la UI.
+    inFlightCtrlRef.current?.abort()
+    const ctrl = new AbortController()
+    inFlightCtrlRef.current = ctrl
+
     setLoading(true)
     setLoadingProgress(0)
     // Tracker de progreso: incrementa por cada fetch que termina (sea ok o error).
@@ -197,8 +223,9 @@ export function DashboardPageClient({
       // Fetch en paralelo. Cache controlado por header Cache-Control de cada
       // endpoint (private, max-age=30, stale-while-revalidate=60). El botón
       // "Actualizar" del header re-monta el componente y fuerza re-fetch.
-      const fetchOptions = {
-        cache: "default" as RequestCache
+      const fetchOptions: RequestInit = {
+        cache: "default" as RequestCache,
+        signal: ctrl.signal,
       }
       
       // Deudores: llamamos directamente al endpoint /api/accounting/debts-sales
@@ -353,13 +380,21 @@ export function DashboardPageClient({
       setDestinationsData(destinationsData.destinations || [])
       setDestinationsAllData(destinationsAllData.destinations || [])
       setCashflowData(cashflowData.cashflow || [])
-    } catch (error) {
+    } catch (error: any) {
+      // Si fue abort por nueva invocación, NO loguear ni cambiar loading
+      // (otro fetch ya está in-flight, el state se va a setear ahí).
+      if (error?.name === "AbortError") {
+        return
+      }
       console.error("Error fetching dashboard data:", error)
     } finally {
-      // Forzar 100% al cierre para que el bar no se quede estancado en
-      // un valor intermedio si alguna fetch hizo throw antes del finally.
-      setLoadingProgress(100)
-      setLoading(false)
+      // Solo cambiar loading si el ctrl actual sigue siendo el más reciente.
+      // Si fue abortado y reemplazado por otro, el otro se encargará.
+      if (inFlightCtrlRef.current === ctrl) {
+        setLoadingProgress(100)
+        setLoading(false)
+        inFlightCtrlRef.current = null
+      }
     }
   }, [filters])
 
