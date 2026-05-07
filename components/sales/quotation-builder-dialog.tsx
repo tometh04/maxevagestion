@@ -214,7 +214,9 @@ function createNewQuotationDraft(lead: QuotationBuilderProps["lead"]) {
     infants: 0,
     currency: "USD",
     pricingMode: "PER_PERSON" as QuotationPricingMode,
-    notes: "",
+    packageDescription: "",
+    notes: "",          // notas para el cliente (visibles en /cotizacion público)
+    internalNotes: "",  // notas privadas del vendedor (NO se muestran al cliente)
     paymentMethods: [] as string[],
     options: [createEmptyOption(1)],
   }
@@ -296,17 +298,28 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
   const [infants, setInfants] = useState(0)
   const [currency, setCurrency] = useState("USD")
   const [pricingMode, setPricingMode] = useState<QuotationPricingMode>("PER_PERSON")
+  // Descripción general del paquete (reemplaza descripción individual por item).
+  const [packageDescription, setPackageDescription] = useState("")
+  // Notas para el cliente — se muestran en /cotizacion/[token] como "Notas del asesor".
   const [notes, setNotes] = useState("")
+  // Notas internas del vendedor — NO se exponen en la vista pública.
+  const [internalNotes, setInternalNotes] = useState("")
   const [paymentMethods, setPaymentMethods] = useState<string[]>([])
 
   // Options
   const [options, setOptions] = useState<QuotationOption[]>(initialDraft.options)
   const hasPendingFlightScreenshotUploads = Object.keys(uploadingFlightScreenshotIds).length > 0
 
+  // Sincroniza vuelos Y traslados de la opción 1 a las opciones siguientes.
+  // Feedback Yami 2026-05-07: "el vuelo siempre se repite igual que el
+  // traslado, cuando la cotización tiene más de una opción solo se muestra
+  // el detalle de precio diferido con los hoteles". Antes solo sincronizaba
+  // vuelos — ahora extiende a TRANSFER también.
   const syncLinkedFlights = useCallback((nextOptions: QuotationOption[]) => {
     if (nextOptions.length === 0) return nextOptions
 
     const masterFlights = nextOptions[0].items.filter((item) => item.item_type === "FLIGHT")
+    const masterTransfers = nextOptions[0].items.filter((item) => item.item_type === "TRANSFER")
 
     return nextOptions.map((option, index) => {
       if (index === 0) {
@@ -314,14 +327,20 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
       }
 
       const currentFlights = option.items.filter((item) => item.item_type === "FLIGHT")
-      const nonFlights = option.items.filter((item) => item.item_type !== "FLIGHT")
+      const currentTransfers = option.items.filter((item) => item.item_type === "TRANSFER")
+      const otherItems = option.items.filter(
+        (item) => item.item_type !== "FLIGHT" && item.item_type !== "TRANSFER"
+      )
       const syncedFlights = masterFlights.map((flight, flightIndex) =>
         cloneQuotationItem(flight, currentFlights[flightIndex]?.id)
+      )
+      const syncedTransfers = masterTransfers.map((transfer, transferIndex) =>
+        cloneQuotationItem(transfer, currentTransfers[transferIndex]?.id)
       )
 
       return {
         ...option,
-        items: [...syncedFlights, ...nonFlights],
+        items: [...syncedFlights, ...syncedTransfers, ...otherItems],
       }
     })
   }, [])
@@ -346,7 +365,9 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
     setInfants(draft.infants)
     setCurrency(draft.currency)
     setPricingMode(draft.pricingMode)
+    setPackageDescription(draft.packageDescription)
     setNotes(draft.notes)
+    setInternalNotes(draft.internalNotes)
     setPaymentMethods(draft.paymentMethods)
     setOptions(draft.options)
   }, [])
@@ -385,7 +406,9 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
         setInfants(data.infants || 0)
         setCurrency(data.currency || "USD")
         setPricingMode(normalizeQuotationPricingMode(data.pricing_mode))
+        setPackageDescription(data.package_description || "")
         setNotes(data.notes || "")
+        setInternalNotes(data.internal_notes || "")
         setPaymentMethods(Array.isArray(data.payment_methods) ? data.payment_methods : [])
         // Reconstruct options from quotation_options + quotation_items
         const opts = (data.quotation_options || [])
@@ -671,8 +694,10 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
   // --- Item management ---
   function addItem(optionId: string, type: string = "FLIGHT") {
     const optionIndex = options.findIndex((o) => o.id === optionId)
-    if (optionIndex > 0 && type === "FLIGHT") {
-      toast.error("Los vuelos se editan desde la opcion 1")
+    // Vuelos y traslados se editan desde la opción 1 — la 2/3/N hereda
+    // automáticamente vía syncLinkedFlights (ver feedback Yami 2026-05-07).
+    if (optionIndex > 0 && (type === "FLIGHT" || type === "TRANSFER")) {
+      toast.error(`Los ${type === "FLIGHT" ? "vuelos" : "traslados"} se editan desde la opción 1`)
       return
     }
     const newItem = createEmptyItem(type)
@@ -693,6 +718,18 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
         if (diff > 0) newItem.nights = diff
       }
     }
+    // Traslado: por default hereda el operador del primer hotel de la opción.
+    // Yami quiere que el operador del traslado siga al del hotel sin tener que
+    // re-tipearlo cada vez (la mayoría compra ambos al mismo tour operator).
+    if (type === "TRANSFER") {
+      const targetOption = options.find((o) => o.id === optionId)
+      const firstHotel = targetOption?.items.find(
+        (i) => i.item_type === "HOTEL" || i.item_type === "ACCOMMODATION"
+      )
+      if (firstHotel?.operator_id) {
+        newItem.operator_id = firstHotel.operator_id
+      }
+    }
     applyOptionsUpdate((current) =>
       current.map((o) =>
         o.id === optionId ? { ...o, items: [...o.items, newItem] } : o
@@ -704,8 +741,8 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
     const option = options.find((o) => o.id === optionId)
     const optionIndex = options.findIndex((o) => o.id === optionId)
     const item = option?.items.find((i) => i.id === itemId)
-    if (optionIndex > 0 && item?.item_type === "FLIGHT") {
-      toast.error("Los vuelos se eliminan desde la opcion 1")
+    if (optionIndex > 0 && (item?.item_type === "FLIGHT" || item?.item_type === "TRANSFER")) {
+      toast.error(`Los ${item?.item_type === "FLIGHT" ? "vuelos" : "traslados"} se eliminan desde la opción 1`)
       return
     }
     applyOptionsUpdate((current) =>
@@ -902,6 +939,67 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
     }
   }
 
+  // -------------------------------------------------------------------------
+  // Paste handler — Ctrl+V de imagen del portapapeles para flight screenshot.
+  // Feedback Yami 2026-05-07: "al subir el screenshot del vuelo estaria bueno
+  // tocar Control V y que automaticamente pegue lo que este en el portapapeles
+  // como si lo hubiesen subido desde el escritorio."
+  //
+  // Estrategia: listener global mientras el dialog está abierto. Filtra para
+  // no robar pastes en inputs/textarea (ahí el browser pega texto normal).
+  // Cuando llega una imagen, la sube al primer FLIGHT sin screenshot; si todos
+  // los vuelos ya tienen screenshot, va al primero (overwrite intencional).
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    if (!open) return
+
+    const onPaste = (event: ClipboardEvent) => {
+      const items = event.clipboardData?.items
+      if (!items || items.length === 0) return
+
+      // Si el target es un input/textarea/contenteditable, no interceptar:
+      // dejá que el browser haga su paste normal.
+      const target = event.target as HTMLElement | null
+      if (target) {
+        const tag = target.tagName
+        if (tag === "INPUT" || tag === "TEXTAREA" || target.isContentEditable) {
+          return
+        }
+      }
+
+      // Buscar primer image/* en el clipboard
+      let imageFile: File | null = null
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i]
+        if (it.kind === "file" && it.type.startsWith("image/")) {
+          imageFile = it.getAsFile()
+          if (imageFile) break
+        }
+      }
+      if (!imageFile) return
+
+      // Buscar el flight target. Prioridad:
+      //   1. Primer FLIGHT de la opción 1 sin screenshot
+      //   2. Si no hay sin screenshot, primer FLIGHT de la opción 1
+      // Si no hay vuelos, ignoramos.
+      const masterOption = options[0]
+      if (!masterOption) return
+      const flights = masterOption.items.filter((i) => i.item_type === "FLIGHT")
+      if (flights.length === 0) return
+
+      const target_item = flights.find((f) => !f.flight_screenshot_url) || flights[0]
+
+      event.preventDefault()
+      void handleFlightScreenshotUpload(masterOption.id, target_item.id, imageFile)
+    }
+
+    document.addEventListener("paste", onPaste)
+    return () => document.removeEventListener("paste", onPaste)
+    // handleFlightScreenshotUpload no está en deps porque es una función estable
+    // a nivel del componente (no useCallback) — no causa re-bind cada render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, options])
+
   // --- Save ---
   async function handleSave(andSend: boolean = false) {
     if (hasPendingFlightScreenshotUploads) {
@@ -924,12 +1022,10 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
         toast.error(`"${opt.title}" necesita al menos un servicio`)
         return
       }
-      for (const item of opt.items) {
-        if (!item.description.trim()) {
-          toast.error(`Completa la descripcion de todos los servicios en "${opt.title}"`)
-          return
-        }
-      }
+      // Nota 2026-05-07: removida la validación que exigía description por item.
+      // Ahora la descripción es a nivel cotización (package_description) y los
+      // items se identifican por su tipo + datos contextuales (hotel_name,
+      // screenshot del vuelo, etc.).
 
       const optionCostTotal = getOptionCostTotal(opt)
       const effectiveTotal = getEffectiveOptionTotal(opt)
@@ -969,7 +1065,9 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
         infants,
         currency,
         pricing_mode: normalizeQuotationPricingMode(pricingMode),
+        package_description: packageDescription || null,
         notes: notes || null,
+        internal_notes: internalNotes || null,
         payment_methods: paymentMethods,
         options: finalOptions.map((opt) => ({
           title: opt.title,
@@ -1305,9 +1403,11 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                 )}
               </div>
 
-              {optIndex > 0 && options[0]?.items.some((item) => item.item_type === "FLIGHT") && (
+              {optIndex > 0 && options[0]?.items.some(
+                (item) => item.item_type === "FLIGHT" || item.item_type === "TRANSFER"
+              ) && (
                 <div className="rounded-lg border border-primary/15 bg-primary/70 px-3 py-2 text-xs text-primary">
-                  Los vuelos de esta opcion estan vinculados a la opcion 1. Itinerario, precio y screenshot se editan solo ahi.
+                  Los vuelos y traslados de esta opción están vinculados a la opción 1. Itinerario, precio y screenshot se editan solo ahí.
                 </div>
               )}
 
@@ -1353,7 +1453,10 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                   const isNegativeMargin = itemMargin < 0 && totalCost > 0
                   const typeConfig = ITEM_TYPES.find(t => t.value === item.item_type)
                   const TypeIcon = typeConfig?.icon || MapPin
-                  const isLinkedFlightReadonly = optIndex > 0 && item.item_type === "FLIGHT"
+                  // Vuelos Y traslados se editan desde la opción 1 — la 2/3/N
+                  // hereda automáticamente vía syncLinkedFlights.
+                  const isLinkedFlightReadonly =
+                    optIndex > 0 && (item.item_type === "FLIGHT" || item.item_type === "TRANSFER")
 
                   return (
                     <div key={item.id} className={`border rounded-lg p-3 space-y-3 ${isNegativeMargin ? "border-destructive/30 bg-destructive/60 dark:bg-destructive/20" : "bg-muted/30"}`}>
@@ -1370,7 +1473,11 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                             </SelectTrigger>
                             <SelectContent>
                               {ITEM_TYPES.map((t) => (
-                                <SelectItem key={t.value} value={t.value} disabled={optIndex > 0 && t.value === "FLIGHT"}>
+                                <SelectItem
+                                  key={t.value}
+                                  value={t.value}
+                                  disabled={optIndex > 0 && (t.value === "FLIGHT" || t.value === "TRANSFER")}
+                                >
                                   {t.label}
                                 </SelectItem>
                               ))}
@@ -1394,18 +1501,9 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                         </Button>
                       </div>
 
-                      {/* Common fields */}
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                        <div className="col-span-2 space-y-1">
-                          <Label className="text-xs">Descripcion *</Label>
-                          <Input
-                            value={item.description}
-                            disabled={isLinkedFlightReadonly}
-                            onChange={(e) => updateItem(option.id, item.id, "description", e.target.value)}
-                            placeholder="Ej: Vuelo directo Buenos Aires - Miami"
-                            className="text-sm"
-                          />
-                        </div>
+                      {/* Common fields — sacada la descripción por item (2026-05-07).
+                          La info contextual va en quotations.package_description. */}
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                         <div className="space-y-1">
                           <Label className="text-xs">Operador</Label>
                           {operators.length > 0 ? (
@@ -1632,57 +1730,14 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                         </div>
                       )}
 
-                      {/* Flight-specific fields */}
+                      {/* Flight-specific fields — feedback Yami 2026-05-07: la
+                          info textual (aerolinea, ruta, clase, escalas) se quitó
+                          porque ya viene en el screenshot del vuelo. Se mantiene
+                          solo fecha ida/vuelta + screenshot. */}
                       {item.item_type === "FLIGHT" && (
                         <div className="rounded-md border border-border/30 bg-background/50 p-3 space-y-3">
                           <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Datos del vuelo</p>
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                            <div className="space-y-1">
-                              <Label className="text-xs">Aerolinea</Label>
-                              <Input
-                                value={item.airline || ""}
-                                disabled={isLinkedFlightReadonly}
-                                onChange={(e) => updateItem(option.id, item.id, "airline", e.target.value)}
-                                placeholder="Ej: Aerolineas Argentinas"
-                                className="text-sm"
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <Label className="text-xs">Ruta</Label>
-                              <Input
-                                value={item.flight_route || ""}
-                                disabled={isLinkedFlightReadonly}
-                                onChange={(e) => updateItem(option.id, item.id, "flight_route", e.target.value)}
-                                placeholder="Ej: EZE - MIA"
-                                className="text-sm"
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <Label className="text-xs">Clase</Label>
-                              <Select
-                                value={item.flight_class || ""}
-                                disabled={isLinkedFlightReadonly}
-                                onValueChange={(v) => updateItem(option.id, item.id, "flight_class", v)}
-                              >
-                                <SelectTrigger className="text-sm"><SelectValue placeholder="--" /></SelectTrigger>
-                                <SelectContent>
-                                  {FLIGHT_CLASSES.map((fc) => (
-                                    <SelectItem key={fc.value} value={fc.value}>{fc.label}</SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="space-y-1">
-                              <Label className="text-xs">Escalas</Label>
-                              <Input
-                                type="number"
-                                min={0}
-                                value={item.flight_stops ?? 0}
-                                disabled={isLinkedFlightReadonly}
-                                onChange={(e) => updateItem(option.id, item.id, "flight_stops", Number(e.target.value))}
-                                className="text-sm"
-                              />
-                            </div>
+                          <div className="grid grid-cols-2 gap-2">
                             <div className="space-y-1">
                               <Label className="text-xs">Fecha ida</Label>
                               <DateInputWithCalendar
@@ -1707,7 +1762,14 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                           </div>
                           {/* Screenshot de vuelo */}
                           <div className="space-y-2 pt-1">
-                            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Screenshot del vuelo</p>
+                            <div className="flex items-center justify-between">
+                              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Screenshot del vuelo</p>
+                              {!isLinkedFlightReadonly && (
+                                <p className="text-[10px] text-muted-foreground">
+                                  o pegá con <kbd className="px-1 py-0.5 rounded bg-muted/60 border text-[9px] font-mono">Ctrl+V</kbd>
+                                </p>
+                              )}
+                            </div>
                             {!isLinkedFlightReadonly && (
                               <input
                                 type="file"
@@ -1806,55 +1868,18 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                                 )}
                               </div>
                             )}
+                          {/* Stopovers UI removida 2026-05-07 — la info de
+                              escalas ya viene en el screenshot del vuelo. Los
+                              datos legacy de stopovers en cotizaciones viejas
+                              siguen guardándose pero no se editan. */}
                           </div>
-                          {/* Stopover details */}
-                          {(item.stopovers || []).length > 0 && (
-                            <div className="space-y-2 pt-1">
-                              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Escalas</p>
-                              {(item.stopovers || []).map((stop, si) => (
-                                <div key={si} className="grid grid-cols-2 gap-2">
-                                  <div className="space-y-1">
-                                    <Label className="text-xs">Escala {si + 1} — Ciudad</Label>
-                                    <Input
-                                      value={stop.city}
-                                      disabled={isLinkedFlightReadonly}
-                                      onChange={(e) => updateStopover(option.id, item.id, si, "city", e.target.value)}
-                                      placeholder="Ej: Panama City"
-                                      className="text-sm"
-                                    />
-                                  </div>
-                                  <div className="space-y-1">
-                                    <Label className="text-xs">Tiempo de espera</Label>
-                                    <Input
-                                      value={stop.wait_time}
-                                      disabled={isLinkedFlightReadonly}
-                                      onChange={(e) => updateStopover(option.id, item.id, si, "wait_time", e.target.value)}
-                                      placeholder="Ej: 2h 30m"
-                                      className="text-sm"
-                                    />
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
                         </div>
                       )}
 
-                      {/* Transfer-specific fields */}
-                      {item.item_type === "TRANSFER" && (
-                        <div className="rounded-md border border-border/30 bg-background/50 p-3 space-y-3">
-                          <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Datos del traslado</p>
-                          <div className="space-y-1">
-                            <Label className="text-xs">Detalle</Label>
-                            <Input
-                              value={item.transfer_description || ""}
-                              onChange={(e) => updateItem(option.id, item.id, "transfer_description", e.target.value)}
-                              placeholder="Ej: Aeropuerto - Hotel, privado"
-                              className="text-sm"
-                            />
-                          </div>
-                        </div>
-                      )}
+                      {/* Transfer-specific fields — feedback Yami 2026-05-07:
+                          se sacó el campo "Detalle". Los traslados se
+                          identifican por el operador (default = el del hotel)
+                          y se auto-mirrorean entre opciones igual que los vuelos. */}
                     </div>
                   )
                 })}
@@ -1863,7 +1888,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                 <div className="flex flex-wrap gap-1">
                   {ITEM_TYPES.map((t) => {
                     const Icon = t.icon
-                    const isDisabled = optIndex > 0 && t.value === "FLIGHT"
+                    const isDisabled = optIndex > 0 && (t.value === "FLIGHT" || t.value === "TRANSFER")
                     return (
                       <Button
                         key={t.value}
@@ -1880,9 +1905,11 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                     )
                   })}
                 </div>
-                {optIndex > 0 && options[0]?.items.some((item) => item.item_type === "FLIGHT") && (
+                {optIndex > 0 && options[0]?.items.some(
+                  (item) => item.item_type === "FLIGHT" || item.item_type === "TRANSFER"
+                ) && (
                   <p className="text-[11px] text-muted-foreground">
-                    Los vuelos se administran desde la opcion 1 y se replican automaticamente en todas las opciones.
+                    Los vuelos y traslados se administran desde la opción 1 y se replican automáticamente en todas las opciones.
                   </p>
                 )}
               </div>
@@ -1897,21 +1924,62 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
             </Button>
           )}
 
-          {/* Notes */}
-          <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="flex items-center justify-center h-6 w-6 rounded-md bg-accent-violet/10">
-                <StickyNote className="h-3.5 w-3.5 text-accent-violet" />
+          {/* Descripción general del paquete (reemplaza descripción individual por item) */}
+          <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-3">
+            <div className="flex items-center gap-2 mb-1">
+              <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                <StickyNote className="h-3.5 w-3.5 text-primary" />
               </div>
-              <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Notas internas</h4>
+              <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">
+                Descripción del paquete
+              </h4>
+              <span className="text-[10px] text-muted-foreground">(visible al cliente · opcional)</span>
             </div>
-            <div className="space-y-1">
-              <Label className="text-xs">No se muestran al cliente</Label>
+            <Textarea
+              value={packageDescription}
+              onChange={(e) => setPackageDescription(e.target.value)}
+              placeholder="Ej: Paquete familiar 7 noches all inclusive con vuelos directos desde EZE…"
+              rows={3}
+            />
+          </div>
+
+          {/* Notas */}
+          <div className="grid gap-4 md:grid-cols-2">
+            {/* Notas para el cliente — se muestran en /cotizacion como "Notas del asesor" */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-3">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-success/10">
+                  <StickyNote className="h-3.5 w-3.5 text-success" />
+                </div>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">
+                  Notas para el cliente
+                </h4>
+                <span className="text-[10px] text-muted-foreground">(visible al cliente)</span>
+              </div>
               <Textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Notas internas sobre esta cotizacion..."
-                rows={2}
+                placeholder="Notas que verá el cliente en la cotización web…"
+                rows={3}
+              />
+            </div>
+
+            {/* Notas internas — privadas del vendedor */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-3">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-accent-violet/10">
+                  <StickyNote className="h-3.5 w-3.5 text-accent-violet" />
+                </div>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">
+                  Notas internas
+                </h4>
+                <span className="text-[10px] text-muted-foreground">(privadas)</span>
+              </div>
+              <Textarea
+                value={internalNotes}
+                onChange={(e) => setInternalNotes(e.target.value)}
+                placeholder="Recordatorios, contexto, follow-ups… solo se ven internamente."
+                rows={3}
               />
             </div>
           </div>

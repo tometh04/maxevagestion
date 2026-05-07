@@ -83,6 +83,20 @@ function monthKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
 }
 
+/**
+ * monthKeyFromIso: dado un string ISO ("2026-05-01" o "2026-05-01T...") devuelve
+ * "2026-05" SIN pasar por `new Date()`, evitando el bug de timezone que hacía
+ * que comisiones del primer día del mes se asignaran al mes anterior en AR
+ * (UTC-3). Causa raíz del bug Yami "al cambio de mes dejaron de ver las del
+ * mes siguiente": una comisión con date_calculated="2026-05-01" parseada por
+ * `new Date()` daba `getMonth() === 3` (Abril), entonces no aparecía cuando
+ * el seller filtraba por "Mayo 2026".
+ */
+function monthKeyFromIso(iso: string | null | undefined): string {
+  if (!iso) return "unknown"
+  return iso.substring(0, 7) // "YYYY-MM"
+}
+
 function monthLabel(key: string): string {
   const [year, month] = key.split("-")
   const d = new Date(Number(year), Number(month) - 1, 1)
@@ -149,12 +163,9 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
       result = result.filter((c) => c.status === statusFilter)
     }
 
-    // month
+    // month — usar string slicing TZ-safe para evitar el bug de la zona horaria
     if (monthFilterBalance !== "ALL") {
-      result = result.filter((c) => {
-        const d = new Date(c.date_calculated)
-        return monthKey(d) === monthFilterBalance
-      })
+      result = result.filter((c) => monthKeyFromIso(c.date_calculated) === monthFilterBalance)
     }
 
     // date range
@@ -193,10 +204,11 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
   )
 
   const currentMonthTotal = useMemo(() => {
+    // monthKey(new Date()) está OK acá: usamos `now` local, no parseo de string DB.
     const now = new Date()
     const key = monthKey(now)
     return commissions
-      .filter((c) => monthKey(new Date(c.date_calculated)) === key)
+      .filter((c) => monthKeyFromIso(c.date_calculated) === key)
       .reduce((s, c) => s + c.amount, 0)
   }, [commissions])
 
@@ -213,10 +225,9 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
     let result = commissions.filter((c) => c.status === "PAID")
 
     if (monthFilterHistory !== "ALL") {
-      result = result.filter((c) => {
-        if (!c.date_paid) return false
-        return monthKey(new Date(c.date_paid)) === monthFilterHistory
-      })
+      result = result.filter(
+        (c) => c.date_paid && monthKeyFromIso(c.date_paid) === monthFilterHistory
+      )
     }
 
     if (histDateFrom) {
@@ -250,9 +261,11 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
   const paidGroupedByMonth = useMemo(() => {
     const groups: Record<string, Commission[]> = {}
     for (const c of paidCommissions) {
+      // monthKeyFromIso evita el bug de TZ que partía comisiones del día 1
+      // del mes hacia el mes anterior en AR (UTC-3).
       const key = c.date_paid
-        ? monthKey(new Date(c.date_paid))
-        : monthKey(new Date(c.date_calculated))
+        ? monthKeyFromIso(c.date_paid)
+        : monthKeyFromIso(c.date_calculated)
       if (!groups[key]) groups[key] = []
       groups[key].push(c)
     }

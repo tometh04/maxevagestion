@@ -28,7 +28,7 @@ import {
   getQuotationPassengerCount,
   getQuotationPassengersText,
   QUOTATION_AVAILABILITY_NOTE,
-  QUOTATION_FLIGHT_CLASS_LABELS,
+  // QUOTATION_FLIGHT_CLASS_LABELS — removido 2026-05-07 con el rediseño del FlightCard.
   QUOTATION_MEAL_PLAN_LABELS,
   QUOTATION_STATUS_LABELS,
   type QuotationPresentationData,
@@ -207,10 +207,9 @@ function HotelCard({ item, brandColor }: { item: QuotationPresentationItem; bran
 }
 
 function FlightCard({ item, brandColor }: { item: QuotationPresentationItem; brandColor: string }) {
-  const classLabel = item.flight_class ? (QUOTATION_FLIGHT_CLASS_LABELS[item.flight_class] || item.flight_class) : null
-  const routeDisplay = item.flight_route
-    ? item.flight_route.replace(/\s*[-→>]+\s*/g, " \u2708 ")
-    : null
+  // Feedback Yami 2026-05-07: aerolínea, ruta, clase y escalas se sacaron de
+  // la card pública del vuelo — esa info ahora va embebida en el screenshot.
+  // Quedan solo: ícono de tipo, fechas y screenshot.
 
   return (
     <div className="quotation-print-service bg-white border rounded-xl p-4 space-y-3">
@@ -221,37 +220,8 @@ function FlightCard({ item, brandColor }: { item: QuotationPresentationItem; bra
           </div>
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: brandColor }}>Vuelo</p>
-            {item.airline && <h4 className="font-semibold text-foreground text-sm mt-0.5">{item.airline}</h4>}
           </div>
         </div>
-      </div>
-
-      {routeDisplay && (
-        <div className="text-center py-2">
-          <p className="text-lg font-bold text-foreground tracking-wider">{routeDisplay}</p>
-        </div>
-      )}
-
-      {!routeDisplay && item.description && (
-        <p className="text-sm text-muted-foreground">{item.description}</p>
-      )}
-
-      <div className="flex flex-wrap gap-2 justify-center">
-        {classLabel && (
-          <Badge variant="secondary" className="text-xs font-medium bg-primary/10 text-primary">
-            {classLabel}
-          </Badge>
-        )}
-        {item.flight_stops != null && item.flight_stops > 0 && (
-          <Badge variant="secondary" className="text-xs font-medium bg-accent-coral/10 text-accent-coral">
-            {item.flight_stops} escala{item.flight_stops > 1 ? "s" : ""}
-          </Badge>
-        )}
-        {item.flight_stops === 0 && (
-          <Badge variant="secondary" className="text-xs font-medium bg-success/10 text-success">
-            Directo
-          </Badge>
-        )}
       </div>
 
       {(item.flight_date || item.flight_return_date) && (
@@ -261,10 +231,6 @@ function FlightCard({ item, brandColor }: { item: QuotationPresentationItem; bra
           {item.flight_date && item.flight_return_date && <span className="text-muted-foreground">|</span>}
           {item.flight_return_date && <span>Vuelta: {formatQuotationDateShort(item.flight_return_date)}</span>}
         </div>
-      )}
-
-      {routeDisplay && item.description && item.description !== item.flight_route && (
-        <p className="text-xs text-muted-foreground">{item.description}</p>
       )}
 
       {item.flight_screenshot_url && (
@@ -298,14 +264,10 @@ function TransferCard({ item, brandColor }: { item: QuotationPresentationItem; b
         </div>
         <div className="flex-1">
           <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: brandColor }}>Traslado</p>
-          <h4 className="font-semibold text-foreground text-sm mt-0.5">
-            {item.transfer_description || item.description}
-          </h4>
+          {/* Feedback Yami 2026-05-07: el campo Detalle del traslado se sacó.
+              La info contextual va en quotations.package_description. */}
         </div>
       </div>
-      {item.transfer_description && item.description && item.transfer_description !== item.description && (
-        <p className="text-sm text-muted-foreground">{item.description}</p>
-      )}
       {item.provider && (
         <p className="text-xs text-muted-foreground">Operador: {item.provider}</p>
       )}
@@ -376,7 +338,7 @@ function ServiceCard({ item, brandColor }: { item: QuotationPresentationItem; br
 
 export function PublicQuotationLoading({ mode }: { mode: PublicQuotationViewMode }) {
   return (
-    <div className={`min-h-screen flex items-center justify-center ${mode === "print" ? "bg-white" : "bg-muted"}`}>
+    <div className={`light-force min-h-screen flex items-center justify-center ${mode === "print" ? "bg-white" : "bg-muted"}`}>
       <div className="text-center space-y-3">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mx-auto" />
         <p className="text-sm text-muted-foreground">Cargando cotizacion...</p>
@@ -393,7 +355,7 @@ export function PublicQuotationError({
   message: string
 }) {
   return (
-    <div className={`min-h-screen flex items-center justify-center ${mode === "print" ? "bg-white" : "bg-muted"}`}>
+    <div className={`light-force min-h-screen flex items-center justify-center ${mode === "print" ? "bg-white" : "bg-muted"}`}>
       <Card className="max-w-md w-full mx-4">
         <CardContent className="pt-6 text-center">
           <AlertTriangle className="h-12 w-12 text-accent-coral mx-auto mb-4" />
@@ -433,7 +395,9 @@ export function PublicQuotationDocument({
   const companyInstagram = branding.instagram || branding.company_instagram || null
 
   return (
-    <div className={`quotation-print-shell min-h-screen ${mode === "print" ? "bg-white" : "bg-gradient-to-b from-muted to-white"}`}>
+    // light-force: feedback Yami 2026-05-07 — la cotización pública SIEMPRE
+    // va en modo claro, independientemente del tema del usuario.
+    <div className={`light-force quotation-print-shell min-h-screen ${mode === "print" ? "bg-white" : "bg-gradient-to-b from-muted to-white"}`}>
       <div className={mode === "print" ? "quotation-print-header bg-white" : "quotation-print-header bg-white shadow-sm sticky top-0 z-10"}>
         <div className="max-w-3xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between gap-3">
@@ -532,6 +496,16 @@ export function PublicQuotationDocument({
             </div>
           </CardContent>
         </Card>
+
+        {/* Descripción general del paquete (visible al cliente). Va antes que
+            las opciones para que el cliente lea el "qué incluye en general"
+            antes del detalle precio-por-precio. */}
+        {data.package_description && (
+          <div className="quotation-print-note bg-success/5 border border-success/15 rounded-xl p-4 text-sm">
+            <p className="font-semibold text-xs uppercase tracking-wide mb-2 text-success">Descripción del paquete</p>
+            <p className="whitespace-pre-line text-foreground">{data.package_description}</p>
+          </div>
+        )}
 
         {data.notes && (
           <div className="quotation-print-note bg-primary/5 border border-primary/10 rounded-xl p-4 text-sm text-primary">

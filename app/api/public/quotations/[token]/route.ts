@@ -20,6 +20,7 @@ export async function GET(
         departure_date, return_date, valid_until,
         adults, children, infants,
         total_amount, currency, pricing_mode, status,
+        package_description,
         notes, terms_and_conditions, payment_methods,
         created_at,
         seller:seller_id(name, email),
