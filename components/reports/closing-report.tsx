@@ -69,8 +69,13 @@ interface ClosingResponse {
     from: string
     to: string
     months_count: number
-    fixed_categories: string[]
     tax_category: string
+    sources: {
+      fixed: string
+      variable: string
+      commissions: string
+      taxes: string
+    }
   }
 }
 
@@ -347,10 +352,10 @@ export function ClosingReport({ agencies }: ClosingReportProps) {
             <CardContent>
               <ul className="text-[11px] text-muted-foreground space-y-0.5 list-disc ml-4">
                 <li><b>Ventas / Margen</b>: operaciones (no canceladas)</li>
-                <li><b>Fijos</b>: gastos en {data.meta.fixed_categories.join(", ")}</li>
-                <li><b>Variables</b>: resto de gastos sin clasificar</li>
-                <li><b>Comisiones</b>: pagadas en el mes (date_paid)</li>
-                <li><b>Impuestos</b>: gastos categoría &quot;{data.meta.tax_category}&quot;</li>
+                <li><b>Fijos</b>: {data.meta.sources.fixed}</li>
+                <li><b>Variables</b>: {data.meta.sources.variable}</li>
+                <li><b>Comisiones</b>: {data.meta.sources.commissions}</li>
+                <li><b>Impuestos</b>: {data.meta.sources.taxes}</li>
               </ul>
             </CardContent>
           </Card>

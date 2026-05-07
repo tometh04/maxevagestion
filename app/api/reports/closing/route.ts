@@ -15,35 +15,53 @@ import {
  * Cierre de mes consolidado en USD. Devuelve una fila por mes con:
  *   - Total Ventas
  *   - Margen Ventas
- *   - Gastos Fijos     (cash_movements EXPENSE en categorías "fijas")
- *   - Gastos Variables (cash_movements EXPENSE en categorías "variables" / sin categoría)
- *   - Comisiones       (commission_records.date_paid en el mes)
- *   - Impuestos        (cash_movements EXPENSE en categoría "Impuestos")
+ *   - Gastos Fijos     (devengado: recurring_payments × meses activos)
+ *   - Gastos Variables (efectivo: cash_movements EXPENSE no-turísticos)
+ *   - Comisiones       (devengado: commission_records.date_calculated en el mes)
+ *   - Impuestos        (devengado fijo + efectivo variable, categoría "Impuestos")
  *   - Ganancia Real    = Margen − Fijos − Variables − Comisiones − Impuestos
  *
- * Decisiones:
- * - Todo se consolida a USD usando FX histórico por fecha del movimiento
- *   (mismo patrón que /api/reports/margins). El detalle ARS/USD por bucket
- *   no se muestra acá — para eso está la pestaña de Márgenes.
- * - Gastos Fijos vs Variables se separan por nombre de categoría:
- *     Fijos      = "Gastos oficina", "Sueldos", "Marketing y sistemas"
- *     Variables  = "Varios", "Otros", o NULL (sin categoría asignada)
- *   "Impuestos" se trata como bucket propio (no entra en Fijos/Variables).
- * - Comisiones usan commission_records (status PAID, date_paid en el mes)
- *   como fuente de verdad — evita doble-conteo si alguien también las cargó
- *   como cash_movement EXPENSE (caso edge poco frecuente).
+ * Decisiones (feedback Yami 2026-05-07):
  *
- * Multi-tenant: filtra por agency_id ∈ agencias visibles del user. RLS de
- * operations/commission_records protege org_id por separado.
+ * 1. **Variables solo no-turísticos**: filtramos cash_movements con
+ *    `is_touristic = false` — la deuda a operadores ya está descontada del
+ *    margen, no debe aparecer acá. Mismo filtro que /api/expenses/variable.
+ *
+ * 2. **Fijos en devengado**: Yami quiere que cada mes muestre lo que
+ *    "debería" gastar de fijos según los recurring_payments configurados,
+ *    aunque algunos templates todavía no se hayan pagado ese mes (ej:
+ *    alquiler de mayo todavía no ejecutado al día 7). Se calcula tomando
+ *    cada recurring_payment activo en el mes y normalizándolo a equivalente
+ *    mensual según su frequency (WEEKLY ≈ 4.35, MONTHLY=1, YEARLY=1/12,
+ *    etc.).
+ *
+ * 3. **Comisiones devengadas**: la versión anterior filtraba por
+ *    `status = PAID` y `date_paid`, lo que daba casi todo en cero porque
+ *    la mayoría de las comisiones quedan en PENDING hasta liquidar. La
+ *    "ganancia real" devenga la comisión cuando la operación cierra
+ *    (`date_calculated`), no cuando se paga. Incluimos PENDING + PAID.
+ *
+ * 4. **Impuestos = recurrente + variable de la categoría "Impuestos"**:
+ *    devengado para los recurring (IVA/IIBB mensual), efectivo para los
+ *    one-off (cash_movements categoría Impuestos).
+ *
+ * Multi-tenant: filtra por agency_id ∈ agencias visibles del user.
+ * Multi-moneda: todo se consolida a USD usando FX histórico por fecha.
  */
 export const dynamic = "force-dynamic"
 
-// Categorías que se consideran "fijas" (renta, sueldos, marketing & sistemas).
-// Están hardcodeadas porque la migración 144 las consolidó como el set canónico
-// del cliente. Si en el futuro un tenant quiere customizarlas, agregamos una
-// columna `category_kind` en recurring_payment_categories.
-const FIXED_CATEGORY_NAMES = ["Gastos oficina", "Sueldos", "Marketing y sistemas"]
 const TAX_CATEGORY_NAME = "Impuestos"
+
+// Multiplicadores para normalizar recurring_payments a equivalente mensual.
+// Yami quiere ver el "costo mensual" agnóstico de la frecuencia; un pago
+// semanal de $1000 cuenta como ~$4348/mes en el cierre.
+const FREQUENCY_TO_MONTHLY: Record<string, number> = {
+  WEEKLY: 365.25 / 12 / 7,    // ≈ 4.3482
+  BIWEEKLY: 365.25 / 12 / 14, // ≈ 2.1741
+  MONTHLY: 1,
+  QUARTERLY: 1 / 3,           // ≈ 0.3333
+  YEARLY: 1 / 12,             // ≈ 0.0833
+}
 
 type MonthBucket = {
   month: string // "2026-04"
@@ -59,18 +77,8 @@ type MonthBucket = {
 }
 
 const MONTH_LABELS_ES = [
-  "Enero",
-  "Febrero",
-  "Marzo",
-  "Abril",
-  "Mayo",
-  "Junio",
-  "Julio",
-  "Agosto",
-  "Septiembre",
-  "Octubre",
-  "Noviembre",
-  "Diciembre",
+  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
 ]
 
 function monthKey(date: Date | string): string {
@@ -83,6 +91,33 @@ function monthKey(date: Date | string): string {
 function monthLabel(key: string): string {
   const [y, m] = key.split("-")
   return `${MONTH_LABELS_ES[parseInt(m, 10) - 1]} ${y}`
+}
+
+/**
+ * monthKeyFromIso: TZ-safe — toma "2026-05-01" y devuelve "2026-05" sin
+ * pasar por `new Date()`. Mismo bug que en seller-commissions-view.tsx
+ * pero acá las fechas vienen de DB DATE columns (string YYYY-MM-DD).
+ */
+function monthKeyFromIso(iso: string | null | undefined): string | null {
+  if (!iso) return null
+  const slice = iso.substring(0, 7)
+  return /^\d{4}-\d{2}$/.test(slice) ? slice : null
+}
+
+/**
+ * isRecurringActiveInMonth: chequea si un recurring_payment estaba activo
+ * durante un mes dado. Activo = is_active=true AND start_date <= mes AND
+ * (end_date IS NULL OR end_date >= mes).
+ */
+function isRecurringActiveInMonth(
+  recurring: { start_date: string; end_date: string | null; is_active: boolean },
+  monthFirstDayIso: string, // "2026-05-01"
+  monthLastDayIso: string  // "2026-05-31"
+): boolean {
+  if (!recurring.is_active) return false
+  if (recurring.start_date > monthLastDayIso) return false
+  if (recurring.end_date && recurring.end_date < monthFirstDayIso) return false
+  return true
 }
 
 export async function GET(request: Request) {
@@ -98,7 +133,7 @@ export async function GET(request: Request) {
     // Rango de fechas: primer día del mes (now − months + 1) hasta hoy
     const now = new Date()
     const firstMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (months - 1), 1))
-    const lastMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)) // último día del mes actual
+    const lastMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0))
     const fromIso = firstMonth.toISOString().split("T")[0]
     const toIso = lastMonth.toISOString().split("T")[0]
 
@@ -121,7 +156,7 @@ export async function GET(request: Request) {
     }
 
     // ---------------------------------------------------------------------
-    // 1. Cargar categoría "Impuestos" + categorías "fijas" (lookup por nombre)
+    // 1. Categorías (lookup id → name)
     // ---------------------------------------------------------------------
     const { data: categories } = await (supabase
       .from("recurring_payment_categories") as any)
@@ -148,11 +183,16 @@ export async function GET(request: Request) {
     }
 
     // ---------------------------------------------------------------------
-    // 3. Cash movements EXPENSE: para Fijos / Variables / Impuestos
+    // 3. Cash movements EXPENSE no-turísticos (Variables + Impuestos one-off)
+    //
+    // is_touristic = false excluye los pagos a operadores (que ya están
+    // descontados del margen) y deja solo los gastos operativos de la
+    // agencia (alquiler, sueldos pagados ad-hoc, marketing, etc).
     // ---------------------------------------------------------------------
     let cashQuery = (supabase.from("cash_movements") as any)
-      .select("id, type, category, category_id, amount, currency, movement_date, agency_id, operation_id")
+      .select("id, amount, currency, movement_date, agency_id, category, category_id, is_touristic")
       .eq("type", "EXPENSE")
+      .eq("is_touristic", false)
       .gte("movement_date", fromIso)
       .lte("movement_date", toIso)
     if (agencyFilter) cashQuery = cashQuery.in("agency_id", agencyFilter)
@@ -163,14 +203,28 @@ export async function GET(request: Request) {
     }
 
     // ---------------------------------------------------------------------
-    // 4. Commission records pagadas en el rango (date_paid)
-    //    Se joinea con operations para heredar moneda + agencia.
+    // 4. Recurring payments (templates) — para Fijos devengados.
+    //    Cargamos TODOS los activos y los matchamos contra cada mes según
+    //    start_date/end_date.
+    // ---------------------------------------------------------------------
+    let recQuery = (supabase.from("recurring_payments") as any)
+      .select("id, amount, currency, frequency, start_date, end_date, is_active, category_id, agency_id")
+    if (agencyFilter) recQuery = recQuery.in("agency_id", agencyFilter)
+    const { data: recurringPayments, error: recErr } = (await recQuery) as { data: any[] | null; error: any }
+    if (recErr) {
+      console.error("closing: recurring_payments error", recErr)
+      return NextResponse.json({ error: recErr.message }, { status: 500 })
+    }
+
+    // ---------------------------------------------------------------------
+    // 5. Commission records — DEVENGADAS (date_calculated, no date_paid)
+    //    Incluye PENDING + PAID. Excluye REVERTED si el status existe.
     // ---------------------------------------------------------------------
     let commQuery = (supabase.from("commission_records") as any)
-      .select("id, amount, status, date_paid, agency_id, operations!inner(currency, sale_currency, agency_id)")
-      .eq("status", "PAID")
-      .gte("date_paid", fromIso)
-      .lte("date_paid", toIso)
+      .select("id, amount, status, date_calculated, agency_id, operations!inner(currency, sale_currency, agency_id)")
+      .gte("date_calculated", fromIso)
+      .lte("date_calculated", toIso)
+      .neq("status", "REVERTED")
     if (agencyFilter) commQuery = commQuery.in("agency_id", agencyFilter)
     const { data: commissions, error: commErr } = (await commQuery) as { data: any[] | null; error: any }
     if (commErr) {
@@ -179,12 +233,12 @@ export async function GET(request: Request) {
     }
 
     // ---------------------------------------------------------------------
-    // 5. FX map para todas las fechas que vamos a convertir
+    // 6. FX map para todas las fechas de conversión
     // ---------------------------------------------------------------------
-    const allDates = [
+    const allDates: (string | null | undefined)[] = [
       ...(operations || []).map((o: any) => o.departure_date || o.operation_date),
       ...(cashMovements || []).map((c: any) => c.movement_date),
-      ...(commissions || []).map((c: any) => c.date_paid),
+      ...(commissions || []).map((c: any) => c.date_calculated),
     ].filter(Boolean)
     const fxLookup = await buildExchangeRateMap(supabase as any, allDates)
     const latestRate =
@@ -198,12 +252,15 @@ export async function GET(request: Request) {
     }
 
     // ---------------------------------------------------------------------
-    // 6. Inicializar buckets por mes (todos los meses del rango, aunque vacíos)
+    // 7. Inicializar buckets por mes
     // ---------------------------------------------------------------------
     const buckets = new Map<string, MonthBucket>()
+    const monthBoundaries = new Map<string, { first: string; last: string }>()
+
     for (let i = 0; i < months; i++) {
       const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (months - 1) + i, 1))
       const key = monthKey(d)
+      const lastDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0))
       buckets.set(key, {
         month: key,
         monthLabel: monthLabel(key),
@@ -216,21 +273,23 @@ export async function GET(request: Request) {
         real_profit_usd: 0,
         ops_count: 0,
       })
+      monthBoundaries.set(key, {
+        first: d.toISOString().split("T")[0],
+        last: lastDay.toISOString().split("T")[0],
+      })
     }
 
-    const ensureBucket = (key: string): MonthBucket | null => {
-      // Si una row cae fuera del rango (no debería por el filtro de fechas
-      // pero por las dudas), la ignoramos en vez de crear bucket espontáneo.
+    const ensureBucket = (key: string | null): MonthBucket | null => {
+      if (!key) return null
       return buckets.get(key) || null
     }
 
     // ---------------------------------------------------------------------
-    // 7. Acumular operations
+    // 8. Operations → ventas + margen
     // ---------------------------------------------------------------------
     for (const op of operations || []) {
       const d = op.operation_date || op.departure_date
-      if (!d) continue
-      const b = ensureBucket(monthKey(d))
+      const b = ensureBucket(monthKeyFromIso(d))
       if (!b) continue
       const cur = op.sale_currency || op.currency || "USD"
       const fxDate = op.departure_date || op.operation_date
@@ -240,47 +299,76 @@ export async function GET(request: Request) {
     }
 
     // ---------------------------------------------------------------------
-    // 8. Acumular cash_movements en Fijos / Variables / Impuestos
+    // 9. Cash movements (no-turísticos) → Variables + Impuestos one-off
+    //
+    // Yami: "los gastos variables son SOLO lo que aparece en /expenses
+    // Variables tab". El filtro is_touristic=false ya garantiza eso.
+    // Dentro de ese set, apartamos la categoría Impuestos al bucket aparte.
     // ---------------------------------------------------------------------
     for (const cm of cashMovements || []) {
-      const d = cm.movement_date
-      if (!d) continue
-      const b = ensureBucket(monthKey(d))
+      const b = ensureBucket(monthKeyFromIso(cm.movement_date))
       if (!b) continue
-      const amountUsd = toUsd(Number(cm.amount) || 0, cm.currency || "ARS", d)
-
-      const catName = cm.category_id
-        ? categoryNameById.get(cm.category_id)
-        : null
-      // Fallback: el campo legacy "category" (text) si no hay category_id mapeado
+      const amountUsd = toUsd(Number(cm.amount) || 0, cm.currency || "ARS", cm.movement_date)
+      const catName = cm.category_id ? categoryNameById.get(cm.category_id) : null
       const effectiveName = catName || (cm.category || "")
 
       if (effectiveName === TAX_CATEGORY_NAME) {
         b.taxes_usd += amountUsd
-      } else if (FIXED_CATEGORY_NAMES.includes(effectiveName)) {
-        b.fixed_expenses_usd += amountUsd
       } else {
-        // "Varios", "Otros", null o cualquier categoría no clasificada → Variables
+        // Todo lo demás (con o sin categoría) cae en Variables.
         b.variable_expenses_usd += amountUsd
       }
     }
 
     // ---------------------------------------------------------------------
-    // 9. Acumular comisiones (date_paid)
+    // 10. Recurring payments → Fijos devengados + Impuestos recurrentes
+    //
+    // Para cada mes del rango, recorremos los recurring_payments activos
+    // y sumamos su equivalente mensual. Si la categoría es "Impuestos",
+    // suma en taxes; si no, en fixed_expenses.
+    //
+    // FX: las fechas de los recurring son configuracionales (start/end) —
+    // para convertir ARS→USD usamos la tasa del último día del mes en
+    // cuestión, que es una aproximación razonable del "costo de mes".
     // ---------------------------------------------------------------------
-    for (const c of commissions || []) {
-      const d = c.date_paid
-      if (!d) continue
-      const b = ensureBucket(monthKey(d))
+    for (const [monthKey, boundaries] of Array.from(monthBoundaries.entries())) {
+      const b = buckets.get(monthKey)
       if (!b) continue
-      // Currency desde la operation joineada
-      const opData = c.operations as { currency?: string; sale_currency?: string } | null
-      const cur = opData?.sale_currency || opData?.currency || "USD"
-      b.commissions_usd += toUsd(Number(c.amount) || 0, cur, d)
+
+      for (const rp of recurringPayments || []) {
+        if (!isRecurringActiveInMonth(rp, boundaries.first, boundaries.last)) continue
+
+        const monthlyMultiplier = FREQUENCY_TO_MONTHLY[rp.frequency] ?? 1
+        const monthlyAmount = (Number(rp.amount) || 0) * monthlyMultiplier
+        const amountUsd = toUsd(monthlyAmount, rp.currency || "ARS", boundaries.last)
+
+        const catName = rp.category_id ? categoryNameById.get(rp.category_id) : null
+        if (catName === TAX_CATEGORY_NAME) {
+          b.taxes_usd += amountUsd
+        } else {
+          b.fixed_expenses_usd += amountUsd
+        }
+      }
     }
 
     // ---------------------------------------------------------------------
-    // 10. Calcular Ganancia Real por mes
+    // 11. Comisiones devengadas
+    //
+    // Filtramos por date_calculated en el mes, status != REVERTED.
+    // Incluye PENDING (todavía no se pagaron pero ya se generaron) y PAID.
+    // Esto refleja el "costo de comisiones" devengado en la operatoria
+    // del mes, no cuando efectivamente se cobraron las comisiones.
+    // ---------------------------------------------------------------------
+    for (const c of commissions || []) {
+      const b = ensureBucket(monthKeyFromIso(c.date_calculated))
+      if (!b) continue
+      const opData = c.operations as { currency?: string; sale_currency?: string } | null
+      const cur = opData?.sale_currency || opData?.currency || "USD"
+      b.commissions_usd += toUsd(Number(c.amount) || 0, cur, c.date_calculated)
+    }
+
+    // ---------------------------------------------------------------------
+    // 12. Calcular Ganancia Real por mes
     // ---------------------------------------------------------------------
     const rows: MonthBucket[] = Array.from(buckets.values()).map((b) => {
       b.real_profit_usd =
@@ -291,11 +379,10 @@ export async function GET(request: Request) {
         b.taxes_usd
       return b
     })
-    // Orden cronológico ascendente (mes más viejo arriba), igual que un cash flow.
     rows.sort((a, b) => a.month.localeCompare(b.month))
 
     // ---------------------------------------------------------------------
-    // 11. Totales del rango
+    // 13. Totales del rango
     // ---------------------------------------------------------------------
     const totals = rows.reduce(
       (acc, r) => ({
@@ -327,8 +414,13 @@ export async function GET(request: Request) {
         from: fromIso,
         to: toIso,
         months_count: months,
-        fixed_categories: FIXED_CATEGORY_NAMES,
         tax_category: TAX_CATEGORY_NAME,
+        sources: {
+          fixed: "recurring_payments (devengado, normalizado a equivalente mensual)",
+          variable: "cash_movements EXPENSE no-turísticos (efectivo)",
+          commissions: "commission_records.date_calculated (devengado, PENDING+PAID)",
+          taxes: "categoría Impuestos en cash_movements + recurring_payments",
+        },
       },
     })
   } catch (error: any) {
