@@ -7,6 +7,7 @@ import {
   verifyWebhookSignature,
 } from "@/lib/billing/mercadopago"
 import { transitionFromMP, type MPPaymentEvent, type MPPreapproval } from "@/lib/billing/state-machine"
+import { logSecurityEvent } from "@/lib/security/audit"
 
 /**
  * POST /api/billing/mp-webhook
@@ -48,6 +49,16 @@ export async function POST(request: Request) {
   })
   if (!signatureOk) {
     console.warn("mp-webhook: firma inválida", { dataId: resolvedId, type })
+    // Audit: firma inválida es una señal fuerte. Puede ser webhook
+    // secret rotado en MP sin updatear MP_WEBHOOK_SECRET en Railway,
+    // O un atacante intentando forjar webhooks. Severity ERROR para
+    // que aparezca en queries de incidentes.
+    logSecurityEvent({
+      eventType: "mp_webhook_invalid_signature",
+      severity: "ERROR",
+      requestPath: "/api/billing/mp-webhook",
+      details: { dataId: resolvedId, type },
+    })
     return NextResponse.json({ error: "invalid signature" }, { status: 401 })
   }
 
@@ -192,6 +203,33 @@ export async function POST(request: Request) {
       currency: preapproval.auto_recurring?.currency_id ?? null,
       status: preapproval.status,
       payload: { preapproval, payment_event: paymentEvent },
+    })
+  }
+
+  // Audit: cambios de status críticos en subscription. CANCELLED o
+  // SUSPENDED implican que el tenant pierde acceso (paywall) — son
+  // candidatos típicos de disputas tipo "yo no cancelé". Loguear con
+  // WARN para que aparezcan al filtrar audit log por incidentes.
+  // ACTIVE es estado normal — INFO.
+  if (org.subscription_status !== transition.subscription_status) {
+    const isCritical =
+      transition.subscription_status === "CANCELLED" ||
+      transition.subscription_status === "SUSPENDED" ||
+      transition.subscription_status === "PENDING_PAYMENT"
+    logSecurityEvent({
+      eventType: "subscription_status_changed_via_mp",
+      severity: isCritical ? "WARN" : "INFO",
+      targetOrgId: orgId,
+      targetEntity: "organization",
+      targetEntityId: orgId,
+      requestPath: "/api/billing/mp-webhook",
+      details: {
+        from_status: org.subscription_status,
+        to_status: transition.subscription_status,
+        mp_preapproval_id: preapproval.id,
+        mp_event_type: type,
+        mp_external_id: String(resolvedId),
+      },
     })
   }
 
