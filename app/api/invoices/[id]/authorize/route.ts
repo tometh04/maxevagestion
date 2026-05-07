@@ -3,6 +3,7 @@ import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
 import { getAfipServiceForOrg } from "@/lib/afip/afip-service"
+import { logSecurityEvent } from "@/lib/security/audit"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
@@ -180,6 +181,27 @@ export async function POST(
           },
         })
         .eq("id", id)
+
+      // Audit log: rechazo AFIP. Útil para soporte cuando el tenant
+      // pregunta "qué pasó con esta factura". Guarda CUIT, PV, tipo,
+      // monto y el error literal de AFIP.
+      logSecurityEvent({
+        eventType: "afip_invoice_authorize_failed",
+        severity: "WARN",
+        actorUserId: user.id,
+        actorOrgId: user.org_id ?? null,
+        targetEntity: "invoice",
+        targetEntityId: id,
+        details: {
+          cbte_tipo: invoice.cbte_tipo,
+          pto_vta: invoice.pto_vta,
+          imp_total: invoice.imp_total,
+          receptor_doc_nro: invoice.receptor_doc_nro,
+          afip_error: result.error,
+          verification_status: result.verification_status,
+        },
+      })
+
       return NextResponse.json(
         {
           success: false,
@@ -189,6 +211,27 @@ export async function POST(
         { status: 400 }
       )
     }
+
+    // Audit log: autorización exitosa con CAE. Esta es la fila clave
+    // para disputas tipo "yo no autoricé esa factura". Guarda CAE +
+    // cbte_nro asignado por AFIP + actor + fecha (created_at automático).
+    logSecurityEvent({
+      eventType: "afip_invoice_authorized",
+      severity: "INFO",
+      actorUserId: user.id,
+      actorOrgId: user.org_id ?? null,
+      targetEntity: "invoice",
+      targetEntityId: id,
+      details: {
+        cbte_tipo: invoice.cbte_tipo,
+        pto_vta: invoice.pto_vta,
+        cbte_nro: result.cbte_nro,
+        cae: result.cae,
+        cae_fch_vto: result.cae_fch_vto,
+        imp_total: invoice.imp_total,
+        receptor_doc_nro: invoice.receptor_doc_nro,
+      },
+    })
 
     return NextResponse.json({
       success: true,

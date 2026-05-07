@@ -12,6 +12,7 @@ import { setupAfipAutomatically } from "@/lib/afip/afip-automations"
 import { saveAfipConfigForAgency, getAfipConfigForAgency } from "@/lib/afip/afip-helpers"
 import { formatCuit, isValidCuit } from "@/lib/afip/afip-config"
 import { testConnection, getLastVoucherNumber } from "@/lib/afip/afip-client"
+import { logSecurityEvent } from "@/lib/security/audit"
 
 export const dynamic = 'force-dynamic'
 
@@ -142,6 +143,26 @@ export async function POST(request: Request) {
         environment: validatedData.environment,
         point_of_sale: validatedData.point_of_sale,
         verification,
+      },
+    })
+
+    // Audit log: setup AFIP. Crítico para "yo no cambié mi config" o
+    // "quién cambió el CUIT". NO logueamos password ni cert. Solo qué
+    // CUIT, qué PV, qué agency, qué environment, y si verificó OK.
+    logSecurityEvent({
+      eventType: "afip_integration_setup",
+      severity: "INFO",
+      actorUserId: user.id,
+      actorOrgId: user.org_id ?? null,
+      targetEntity: "integration",
+      targetEntityId: saveResult.integrationId ?? null,
+      details: {
+        agency_id: validatedData.agency_id,
+        cuit: formattedCuit,
+        environment: validatedData.environment,
+        point_of_sale: validatedData.point_of_sale,
+        verified: verification.success,
+        verification_error: verification.success ? null : verification.error,
       },
     })
 
