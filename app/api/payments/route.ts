@@ -663,24 +663,49 @@ export async function POST(request: Request) {
           supabase
         )
         
-        // 8. Actualizar payment con referencia al ledger_movement
+        // 8. Actualizar payment con referencia al ledger_movement (CRÍTICO)
+        //
+        // Bug fix 2026-05-07 (caso Santi op 35a1ef37): si este UPDATE fallaba,
+        // el código solo logueaba "⚠️ RETRY FAILED" y seguía como si nada,
+        // dejando un payment status=PAID sin ledger_movement_id (huérfano).
+        // Después del fallo se creaba o no el cash_movement con otro silencio,
+        // la UI mostraba el cobro como pagado y la contabilidad quedaba MAL.
+        //
+        // Ahora: si después del retry el link falla, hacemos rollback
+        // completo (borrar ledger_movement + payment) y devolvemos 500.
+        // El usuario ve un error claro y puede retomar; el sistema queda
+        // consistente.
         const { error: linkError } = await (supabase.from("payments") as any)
           .update({ ledger_movement_id: ledgerMovementId })
           .eq("id", payment.id)
 
         if (linkError) {
-          console.error("⚠️ CRITICAL: Failed to link ledger_movement_id to payment:", linkError)
-          console.error("  Payment ID:", payment.id, "Ledger Movement ID:", ledgerMovementId)
-          // Intentar con retry
+          console.error("⚠️ Failed to link ledger_movement_id to payment, retrying:", linkError)
           const { error: retryError } = await (supabase.from("payments") as any)
             .update({ ledger_movement_id: ledgerMovementId })
             .eq("id", payment.id)
           if (retryError) {
-            console.error("⚠️ RETRY FAILED: ledger_movement_id NOT linked to payment. Orphan risk!")
+            console.error("⚠️ CRITICAL: link retry failed — rolling back payment + ledger:", {
+              paymentId: payment.id, ledgerMovementId, error: retryError,
+            })
+            await (supabase.from("ledger_movements") as any).delete().eq("id", ledgerMovementId)
+            await (supabase.from("payments") as any).delete().eq("id", payment.id)
+            return NextResponse.json(
+              {
+                error: "No se pudo vincular el pago al libro mayor. La operación se revirtió por completo, reintentá. Si vuelve a fallar avisá a soporte.",
+              },
+              { status: 500 }
+            )
           }
         }
 
-        // 9. Crear cash_movement para que aparezca en la vista de caja
+        // 9. Crear cash_movement para que aparezca en la vista de caja (CRÍTICO)
+        //
+        // Mismo problema histórico: cashMovementError caía en console.warn y
+        // se ignoraba. Ahora: si falla, rollback completo (borrar ledger,
+        // borrar payment) y 500. agency_id se pasa explícito (defensivo —
+        // el trigger autofill_cash_movements_agency_id lo cubre, pero
+        // asegurar evita race conditions del schema cache de PostgREST).
         const { data: defaultCashBox } = await (supabase.from("cash_boxes") as any)
           .select("id")
           .eq("currency", currency)
@@ -703,10 +728,21 @@ export async function POST(request: Request) {
             movement_date: date_paid || new Date().toISOString().split("T")[0],
             notes: notes || null,
             is_touristic: true,
+            agency_id: agencyId,
           })
 
         if (cashMovementError) {
-          console.warn(`⚠️ Error creando cash_movement para pago ${payment.id}:`, cashMovementError)
+          console.error("⚠️ CRITICAL: cash_movement insert failed — rolling back:", {
+            paymentId: payment.id, ledgerMovementId, error: cashMovementError,
+          })
+          await (supabase.from("ledger_movements") as any).delete().eq("id", ledgerMovementId)
+          await (supabase.from("payments") as any).delete().eq("id", payment.id)
+          return NextResponse.json(
+            {
+              error: `No se pudo crear el movimiento de caja: ${cashMovementError.message}. La operación se revirtió, reintentá.`,
+            },
+            { status: 500 }
+          )
         }
 
         // 10. Si es pago a operador, marcar operator_payment como PAID
@@ -1850,10 +1886,24 @@ export async function PATCH(request: Request) {
           supabase
         )
 
-        // Vincular nuevo ledger_movement al pago
-        await (supabase.from("payments") as any)
+        // Vincular nuevo ledger_movement al pago (CRÍTICO).
+        // Bug fix 2026-05-07: si este UPDATE falla en silencio, el pago queda
+        // PAID pero `ledger_movement_id` apunta al viejo (ya borrado) o queda
+        // null. Resultado: pago huérfano. Ahora si falla hacemos rollback del
+        // ledger nuevo y devolvemos 500.
+        const { error: linkErr } = await (supabase.from("payments") as any)
           .update({ ledger_movement_id: newLedgerMovementId })
           .eq("id", paymentId)
+        if (linkErr) {
+          console.error("⚠️ CRITICAL: PATCH no pudo vincular nuevo ledger al payment — rollback:", {
+            paymentId, newLedgerMovementId, error: linkErr,
+          })
+          await (supabase.from("ledger_movements") as any).delete().eq("id", newLedgerMovementId)
+          return NextResponse.json(
+            { error: "No se pudo vincular el pago al libro mayor. Reintentá; si vuelve a fallar avisá a soporte." },
+            { status: 500 }
+          )
+        }
 
         // Marcar operator_payment como PAID si aplica
         if (existingPayment.payer_type === "OPERATOR" && linkedOperatorPaymentId) {
@@ -1912,10 +1962,27 @@ export async function PATCH(request: Request) {
             movement_date: finalDatePaid,
             notes: finalNotes || null,
             is_touristic: true,
+            agency_id: agencyId,
           })
 
         if (cashInsertError) {
-          console.warn(`⚠️ Error recreando cash_movement para pago ${paymentId}:`, cashInsertError)
+          // Bug fix 2026-05-07: antes era console.warn — el endpoint devolvía
+          // 200 al cliente y la UI mostraba el cobro como editado, pero la
+          // caja quedaba sin el movimiento. Ahora rollback: borrar el ledger
+          // recién creado, desvincularlo del payment, y devolver 500.
+          console.error("⚠️ CRITICAL: PATCH cash_movement insert falló — rollback:", {
+            paymentId, newLedgerMovementId, error: cashInsertError,
+          })
+          await (supabase.from("payments") as any)
+            .update({ ledger_movement_id: null })
+            .eq("id", paymentId)
+          await (supabase.from("ledger_movements") as any).delete().eq("id", newLedgerMovementId)
+          return NextResponse.json(
+            {
+              error: `No se pudo crear el movimiento de caja: ${cashInsertError.message}. La edición se revirtió, reintentá.`,
+            },
+            { status: 500 }
+          )
         }
 
         await createPaymentCounterpartMovement({
