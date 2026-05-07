@@ -222,6 +222,79 @@ export async function sendWelcomeEmail(
 }
 
 /**
+ * Recordatorio de trial por vencer. Pensado para ser disparado por
+ * un cron cuando faltan ~2-3 días para que el trial se acabe y el
+ * tenant todavía no eligió plan / conectó MP.
+ *
+ * El objetivo es conversion + no-sorpresa: que el user no se entere
+ * de que "no le anda" porque el sistema lo bloqueó por trial vencido.
+ */
+export async function sendTrialExpiringEmail(
+  to: string,
+  agencyName: string,
+  trialEndsAt: Date,
+  daysLeft: number
+): Promise<SendEmailResult> {
+  const trialFmt = trialEndsAt.toLocaleDateString("es-AR", {
+    day: "numeric",
+    month: "long",
+  })
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://app.vibook.ai"
+  const subjectPrefix = daysLeft <= 1 ? "¡Mañana!" : `${daysLeft} días`
+
+  const html = `<!DOCTYPE html>
+<html>
+<body style="font-family: -apple-system, system-ui, sans-serif; margin: 0; padding: 0; background: #f5f7fa;">
+  <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 16px; overflow: hidden; margin-top: 24px; margin-bottom: 24px;">
+    <div style="background: ${VIBOOK_EMAIL_GRADIENT_WARNING}; padding: 36px 30px; text-align: center;">
+      <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 700;">
+        Tu trial vence ${daysLeft <= 1 ? "mañana" : `en ${daysLeft} días`}
+      </h1>
+      <p style="color: rgba(255,255,255,0.9); margin: 12px 0 0 0; font-size: 15px;">
+        ${agencyName} · ${trialFmt}
+      </p>
+    </div>
+
+    <div style="padding: 32px 30px;">
+      <p style="font-size: 15px; color: #1f2937; line-height: 1.6; margin: 0 0 20px 0;">
+        Para que <strong>${agencyName}</strong> siga operando sin interrupción,
+        elegí un plan y conectá Mercado Pago antes del <strong>${trialFmt}</strong>.
+      </p>
+
+      <p style="font-size: 14px; color: #6b7280; line-height: 1.6; margin: 0 0 20px 0;">
+        Si no te suscribís, el acceso queda suspendido hasta que pagues. Tus
+        datos NO se borran — siguen ahí para cuando reactives.
+      </p>
+
+      <div style="text-align: center; margin: 28px 0;">
+        <a href="${appUrl}/onboarding/billing"
+           style="display: inline-block; background: ${VIBOOK_EMAIL_GRADIENT}; color: white; padding: 14px 32px; border-radius: 999px; text-decoration: none; font-weight: 600; font-size: 15px;">
+          Elegir plan y pagar
+        </a>
+      </div>
+
+      <p style="font-size: 13px; color: #6b7280; line-height: 1.6; margin: 24px 0 0 0;">
+        ¿Necesitás un plan custom o tenés dudas? Respondé este mail o escribinos a
+        <a href="mailto:soporte@vibook.ai" style="color: hsl(232 76% 58%); text-decoration: none;">soporte@vibook.ai</a>.
+      </p>
+    </div>
+
+    <div style="background: #f9fafb; padding: 16px; text-align: center; color: #9ca3af; font-size: 12px;">
+      Vibook — Gestión integral para agencias de viajes
+    </div>
+  </div>
+</body>
+</html>`
+
+  return sendEmail({
+    to,
+    subject: `[${subjectPrefix}] Tu trial de Vibook vence pronto · ${agencyName}`,
+    html,
+    replyTo: "soporte@vibook.ai",
+  })
+}
+
+/**
  * Enviar cotización por email
  */
 export async function sendQuotationEmail(
