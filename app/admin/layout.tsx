@@ -19,8 +19,15 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   // jerarquía visual y dejaba todo monocromo gris. Ahora usamos los
   // tokens semánticos de shadcn (background, card, border, primary)
   // que ya son los correctos en light mode por defecto del CSS.
+  //
+  // Iteración 2: si el user tiene el dashboard en dark theme (next-themes
+  // aplica .dark al <html>), las CSS vars se sobrescriben a dark y el
+  // admin heredaba ese tema. Ahora usamos `.light-force` (definida en
+  // globals.css) que re-impone las light vars con specificity igual a
+  // .dark pero declarada después → siempre gana. Resultado: admin SIEMPRE
+  // se ve light, sin importar el theme del user en /dashboard.
   return (
-    <div className="flex min-h-screen bg-background text-foreground">
+    <div className="light-force flex min-h-screen bg-background text-foreground">
       <aside className="w-64 shrink-0 border-r border-border bg-card flex flex-col">
         <div className="px-5 py-6 border-b border-border">
           <Link href="/admin/orgs" className="flex items-center gap-2">

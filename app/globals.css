@@ -154,6 +154,63 @@
     --shadow-glow: 0 24px 70px -18px hsl(232 76% 67% / 0.40);
     --shadow-card: 0 1px 2px hsl(0 0% 0% / 0.30), 0 6px 20px -6px hsl(0 0% 0% / 0.40);
   }
+
+  /*
+   * .light-force — fuerza modo claro para una sección de la app
+   * independientemente del theme global del user (system/dark).
+   *
+   * Caso de uso 2026-05-06: el admin (admin.vibook.ai/admin) tiene que
+   * verse siempre claro porque la copy/jerarquía visual está pensada
+   * para light. Si el user tiene el dashboard en dark, antes el admin
+   * heredaba .dark del <html> y se veía monocromo gris.
+   *
+   * Definido AFTER .dark por orden de fuente: ambos tienen specificity
+   * 0,1,0 y la regla más tarde gana. Por eso wrapping un subtree con
+   * className="light-force" lo fuerza a light variables aunque <html>
+   * tenga la clase .dark aplicada por next-themes.
+   */
+  .light-force {
+    color-scheme: light;
+    --background: 0 0% 100%;
+    --background-alt: 220 30% 99%;
+    --foreground: 222 47% 11%;
+    --ink: 230 38% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 232 76% 58%;
+    --primary-foreground: 0 0% 100%;
+    --accent-teal: 199 82% 38%;
+    --accent-teal-foreground: 0 0% 100%;
+    --accent-violet: 252 70% 70%;
+    --accent-violet-foreground: 222 47% 11%;
+    --accent-coral: 10 78% 66%;
+    --accent-coral-foreground: 222 47% 11%;
+    --accent-sand: 224 36% 97%;
+    --accent-sand-foreground: 222 47% 11%;
+    --secondary: 224 28% 97%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 224 22% 96%;
+    --muted-foreground: 226 12% 48%;
+    --accent: 224 28% 97%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 160 58% 30%;
+    --success-foreground: 0 0% 100%;
+    --border: 224 18% 92%;
+    --input: 224 18% 92%;
+    --ring: 232 76% 58%;
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 222 47% 11%;
+    --sidebar-primary: 232 76% 58%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 224 28% 97%;
+    --sidebar-accent-foreground: 222 47% 11%;
+    --sidebar-border: 224 18% 92%;
+    --sidebar-ring: 232 76% 58%;
+  }
 }
 
 @layer base {
