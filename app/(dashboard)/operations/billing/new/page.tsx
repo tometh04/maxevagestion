@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { COMPROBANTE_LABELS } from "@/lib/afip/types"
+import { translateAfipError } from "@/lib/afip/error-translator"
 import {
   calculateInvoice,
   formatInvoiceMoney,
@@ -1580,24 +1581,57 @@ export default function NewInvoicePage() {
         }}
       >
         <AlertDialogContent className="max-w-lg">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-destructive" />
-              AFIP rechazó la autorización
-            </AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="space-y-3">
-                <p>La factura quedó guardada como <strong>borrador</strong>. Podés reintentar la autorización desde el listado de facturas con el botón &quot;Autorizar&quot;.</p>
-                <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3">
-                  <p className="text-xs font-medium text-destructive mb-1">Error reportado por AFIP:</p>
-                  <p className="text-sm font-mono whitespace-pre-wrap break-words">{afipFailureAlert?.message}</p>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Causas comunes: cotización USD fuera del rango ±2% oficial, certificado AFIP vencido, punto de venta no autorizado, o campos obligatorios faltantes según condición IVA del receptor.
-                </p>
-              </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
+          {(() => {
+            const t = translateAfipError(afipFailureAlert?.message)
+            return (
+              <AlertDialogHeader>
+                <AlertDialogTitle className="flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-destructive" />
+                  {t.title}
+                  {t.code !== null && (
+                    <span className="text-xs font-mono text-muted-foreground">#{t.code}</span>
+                  )}
+                </AlertDialogTitle>
+                <AlertDialogDescription asChild>
+                  <div className="space-y-3">
+                    <p>La factura quedó guardada como <strong>borrador</strong>. Podés reintentar desde el listado con el botón &quot;Autorizar&quot;.</p>
+
+                    {/* Caso traducido: mostrar explicación + paso accionable */}
+                    {t.severity !== 'unknown' && (
+                      <>
+                        <div className="rounded-md border border-accent-coral/30 bg-accent-coral/5 p-3 space-y-2">
+                          <p className="text-sm">{t.explanation}</p>
+                          <div className="border-t border-accent-coral/20 pt-2">
+                            <p className="text-xs font-medium text-accent-coral mb-1">Qué hacer:</p>
+                            <p className="text-sm">{t.action}</p>
+                          </div>
+                        </div>
+                        <details className="rounded-md border border-border bg-muted/20 p-2">
+                          <summary className="text-xs cursor-pointer text-muted-foreground select-none">
+                            Ver mensaje técnico de AFIP
+                          </summary>
+                          <p className="text-xs font-mono whitespace-pre-wrap break-words mt-2 text-muted-foreground">
+                            {t.rawMessage}
+                          </p>
+                        </details>
+                      </>
+                    )}
+
+                    {/* Fallback: código no mapeado, mostrar raw + causas comunes */}
+                    {t.severity === 'unknown' && (
+                      <>
+                        <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3">
+                          <p className="text-xs font-medium text-destructive mb-1">Error reportado por AFIP:</p>
+                          <p className="text-sm font-mono whitespace-pre-wrap break-words">{t.rawMessage}</p>
+                        </div>
+                        <p className="text-xs text-muted-foreground">{t.action}</p>
+                      </>
+                    )}
+                  </div>
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+            )
+          })()}
           <AlertDialogFooter>
             <AlertDialogAction onClick={() => {
               if (afipFailureAlert?.pendingRedirect) {

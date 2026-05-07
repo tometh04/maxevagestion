@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Loader2, Plus, Send, Eye, Download, Search, Filter, User, DollarSign, ShieldCheck, AlertCircle, RefreshCw } from "lucide-react"
+import { translateAfipError } from "@/lib/afip/error-translator"
 import {
   Breadcrumb,
   BreadcrumbList,
@@ -670,27 +671,59 @@ export function InvoicesPageClient() {
                   selectedInvoice.status === 'rejected' ||
                   (selectedInvoice.status === 'draft' && selectedInvoice.afip_response?.error)
                 ) ? (
-                <div className="rounded-xl border border-destructive/15 dark:border-destructive/40 bg-destructive/50 dark:bg-destructive/20 p-4 space-y-3">
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center justify-center h-6 w-6 rounded-md bg-destructive/10">
-                      <AlertCircle className="h-3.5 w-3.5 text-destructive dark:text-destructive" />
+                (() => {
+                  const t = translateAfipError(selectedInvoice.afip_response?.error)
+                  return (
+                    <div className="rounded-xl border border-destructive/15 dark:border-destructive/40 bg-destructive/5 dark:bg-destructive/10 p-4 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center justify-center h-6 w-6 rounded-md bg-destructive/10">
+                          <AlertCircle className="h-3.5 w-3.5 text-destructive" />
+                        </div>
+                        <h4 className="text-[11px] font-semibold uppercase tracking-widest text-destructive flex items-center gap-1.5">
+                          {t.title}
+                          {t.code !== null && (
+                            <span className="font-mono text-muted-foreground normal-case tracking-normal">#{t.code}</span>
+                          )}
+                        </h4>
+                      </div>
+
+                      {/* Caso reconocido: explicación + acción concreta */}
+                      {t.severity !== 'unknown' && (
+                        <>
+                          <p className="text-xs text-foreground/80">{t.explanation}</p>
+                          <div className="rounded-md border border-accent-coral/30 bg-accent-coral/5 p-2.5">
+                            <p className="text-[11px] font-medium text-accent-coral mb-1 uppercase tracking-wider">Qué hacer</p>
+                            <p className="text-xs text-foreground/80">{t.action}</p>
+                          </div>
+                          <details className="text-[11px]">
+                            <summary className="cursor-pointer text-muted-foreground select-none hover:text-foreground">
+                              Ver mensaje técnico de AFIP
+                            </summary>
+                            <p className="font-mono text-muted-foreground mt-1.5 whitespace-pre-wrap break-words">
+                              {t.rawMessage}
+                            </p>
+                          </details>
+                        </>
+                      )}
+
+                      {/* Fallback: error sin código mapeado */}
+                      {t.severity === 'unknown' && (
+                        <p className="text-xs text-destructive whitespace-pre-wrap break-words">
+                          {t.rawMessage ||
+                            (selectedInvoice.status === 'draft'
+                              ? 'La factura no pudo autorizarse en AFIP.'
+                              : 'Esta factura no fue autorizada. Creá una nueva con los datos corregidos.')}
+                        </p>
+                      )}
+
+                      {selectedInvoice.status === 'draft' && (
+                        <p className="text-[11px] text-muted-foreground">
+                          La factura quedó como borrador. Podés reintentar la autorización con el botón al pie del diálogo.
+                        </p>
+                      )}
                     </div>
-                    <h4 className="text-[11px] font-semibold uppercase tracking-widest text-destructive dark:text-destructive">
-                      {selectedInvoice.status === 'draft' ? 'AFIP rechazó la autorización' : 'Rechazada por AFIP'}
-                    </h4>
-                  </div>
-                  <p className="text-xs text-destructive dark:text-destructive whitespace-pre-wrap break-words">
-                    {selectedInvoice.afip_response?.error ||
-                      (selectedInvoice.status === 'draft'
-                        ? 'La factura no pudo autorizarse en AFIP.'
-                        : 'Esta factura no fue autorizada. Creá una nueva con los datos corregidos.')}
-                  </p>
-                  {selectedInvoice.status === 'draft' && (
-                    <p className="text-[11px] text-destructive/80 dark:text-destructive/80">
-                      La factura quedó como borrador. Podés reintentar la autorización con el botón al pie del diálogo.
-                    </p>
-                  )}
-                </div>
+                  )
+                })()
               ) : null}
 
               {/* Items */}
