@@ -121,6 +121,107 @@ export async function sendEmail(options: EmailOptions): Promise<SendEmailResult>
 }
 
 /**
+ * Enviar email de bienvenida a un tenant nuevo recién creado en /onboarding.
+ *
+ * Pendientes 2026-05-07 (GTM piloto): el tenant que completa onboarding
+ * se chocaba con un dashboard sin contexto y debía adivinar los próximos
+ * pasos. Ahora le mandamos un mail con:
+ *   - Confirmación de que su agencia quedó creada
+ *   - Cuándo vence el trial (14 días)
+ *   - Quick-start: 3 pasos críticos para empezar a operar
+ *   - Link al setup de AFIP (lo único que NO se puede saltar para emitir)
+ *   - Email de soporte
+ *
+ * NO usa orgSettings porque al momento del onboarding la org recién se
+ * creó y no tiene branding aún. Usamos branding fijo Vibook.
+ */
+export async function sendWelcomeEmail(
+  to: string,
+  agencyName: string,
+  trialEndsAt: Date
+): Promise<SendEmailResult> {
+  const trialFmt = trialEndsAt.toLocaleDateString("es-AR", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  })
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://app.vibook.ai"
+
+  const html = `<!DOCTYPE html>
+<html>
+<body style="font-family: -apple-system, system-ui, sans-serif; margin: 0; padding: 0; background: #f5f7fa;">
+  <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 16px; overflow: hidden; margin-top: 24px; margin-bottom: 24px;">
+    <div style="background: ${VIBOOK_EMAIL_GRADIENT}; padding: 40px 30px; text-align: center;">
+      <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 700;">Bienvenido a Vibook</h1>
+      <p style="color: rgba(255,255,255,0.9); margin: 12px 0 0 0; font-size: 16px;">
+        Tu agencia <strong>${agencyName}</strong> quedó creada.
+      </p>
+    </div>
+
+    <div style="padding: 32px 30px;">
+      <p style="font-size: 15px; color: #1f2937; line-height: 1.6; margin: 0 0 20px 0;">
+        Tenés <strong>14 días de trial</strong> sin cargo. Vence el <strong>${trialFmt}</strong>.
+        Antes de esa fecha podés elegir un plan y conectar Mercado Pago para que la suscripción siga activa.
+      </p>
+
+      <div style="background: #f9fafb; border-radius: 12px; padding: 20px; margin: 24px 0;">
+        <h2 style="font-size: 14px; color: #1f2937; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 16px 0;">
+          Empezá por acá
+        </h2>
+        <ol style="margin: 0; padding-left: 20px; color: #374151; font-size: 14px; line-height: 1.7;">
+          <li>
+            <strong>Conectá AFIP</strong> para emitir facturas electrónicas.
+            <br/>
+            <a href="${appUrl}/settings/integrations" style="color: hsl(232 76% 58%); text-decoration: none;">
+              Ir a Configuración → Integraciones →
+            </a>
+          </li>
+          <li style="margin-top: 12px;">
+            <strong>Cargá tu primera operación</strong> con cliente + operador + venta.
+            <br/>
+            <a href="${appUrl}/operations" style="color: hsl(232 76% 58%); text-decoration: none;">
+              Ir a Operaciones →
+            </a>
+          </li>
+          <li style="margin-top: 12px;">
+            <strong>Sumá a tu equipo</strong> invitando vendedores.
+            <br/>
+            <a href="${appUrl}/settings/users" style="color: hsl(232 76% 58%); text-decoration: none;">
+              Ir a Configuración → Usuarios →
+            </a>
+          </li>
+        </ol>
+      </div>
+
+      <div style="text-align: center; margin: 28px 0;">
+        <a href="${appUrl}/dashboard"
+           style="display: inline-block; background: ${VIBOOK_EMAIL_GRADIENT}; color: white; padding: 14px 32px; border-radius: 999px; text-decoration: none; font-weight: 600; font-size: 15px;">
+          Abrir Vibook
+        </a>
+      </div>
+
+      <p style="font-size: 13px; color: #6b7280; line-height: 1.6; margin: 24px 0 0 0;">
+        ¿Algo no funciona o tenés una duda? Respondé este mail o escribinos a
+        <a href="mailto:soporte@vibook.ai" style="color: hsl(232 76% 58%); text-decoration: none;">soporte@vibook.ai</a>.
+      </p>
+    </div>
+
+    <div style="background: #f9fafb; padding: 16px; text-align: center; color: #9ca3af; font-size: 12px;">
+      Vibook — Gestión integral para agencias de viajes
+    </div>
+  </div>
+</body>
+</html>`
+
+  return sendEmail({
+    to,
+    subject: `Bienvenido a Vibook · ${agencyName}`,
+    html,
+    replyTo: "soporte@vibook.ai",
+  })
+}
+
+/**
  * Enviar cotización por email
  */
 export async function sendQuotationEmail(
