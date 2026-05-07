@@ -198,7 +198,21 @@ export function IntegrationsPageClient() {
         return
       }
 
-      toast.success('AFIP configurado correctamente. Ya puedes comenzar a facturar.')
+      // Mostrar resultado del test post-setup (cert+key+PV validados contra AFIP).
+      // Si verified=true → todo ok. Si verified=false → config guardada pero hay
+      // un problema accionable (PV no autorizado, cert vencido, etc.) que el
+      // user puede arreglar antes de la primera factura real.
+      if (data.verified) {
+        toast.success(data.message || 'AFIP configurado y verificado. Ya podés facturar.')
+      } else {
+        toast.warning(
+          data.verification_warning
+            ? `AFIP guardado pero la verificación falló: ${data.verification_warning}`
+            : 'AFIP guardado pero la verificación tiró un error. Revisá el punto de venta antes de emitir.',
+          { duration: 12000 }
+        )
+      }
+
       setShowNewDialog(false)
       setFormData({ name: '', integration_type: '', description: '', config: {}, sync_enabled: false, sync_frequency: 'manual' })
       setAfipSetupData({ agency_id: agencies[0]?.id || '', cuit: '', username: '', password: '', point_of_sale: 1, environment: 'production' })
