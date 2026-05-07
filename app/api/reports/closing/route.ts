@@ -206,10 +206,22 @@ export async function GET(request: Request) {
     // 4. Recurring payments (templates) — para Fijos devengados.
     //    Cargamos TODOS los activos y los matchamos contra cada mes según
     //    start_date/end_date.
+    //
+    //    Nota multi-tenant 2026-05-07: muchos recurring_payments están
+    //    cargados a nivel ORGANIZACIÓN (agency_id NULL) — alquiler de oficina,
+    //    sueldos, contador, marketing son gastos compartidos entre las
+    //    agencias del tenant (Lozada Rosario + Lozada Madero comparten estos
+    //    costos). Si filtrásemos solo por `.in("agency_id", agencyFilter)`,
+    //    PostgREST excluiría esos rows por tratamiento estricto de NULL.
+    //    Incluimos `agency_id IS NULL` con `.or()`.
     // ---------------------------------------------------------------------
     let recQuery = (supabase.from("recurring_payments") as any)
       .select("id, amount, currency, frequency, start_date, end_date, is_active, category_id, agency_id")
-    if (agencyFilter) recQuery = recQuery.in("agency_id", agencyFilter)
+    if (agencyFilter) {
+      recQuery = recQuery.or(
+        `agency_id.is.null,agency_id.in.(${agencyFilter.join(",")})`
+      )
+    }
     const { data: recurringPayments, error: recErr } = (await recQuery) as { data: any[] | null; error: any }
     if (recErr) {
       console.error("closing: recurring_payments error", recErr)
