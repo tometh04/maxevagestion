@@ -96,7 +96,10 @@ export function ClosingReport({ agencies }: ClosingReportProps) {
         months,
         agencyId: agencyId !== "ALL" ? agencyId : "",
       })
-      const res = await fetch(`/api/reports/closing?${params}`)
+      // cache: no-store evita que el browser sirva la respuesta cacheada cuando
+      // cambia la lógica server-side (ocurrió 2026-05-07 con el fix de
+      // is_touristic / devengado: usuarios seguían viendo números viejos).
+      const res = await fetch(`/api/reports/closing?${params}`, { cache: "no-store" })
       const result = await res.json()
       if (result.error) throw new Error(result.error)
       setData(result)
