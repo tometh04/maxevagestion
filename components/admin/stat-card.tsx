@@ -30,14 +30,14 @@ export function StatCard({ label, value, icon: Icon, hint, delta, className }: P
   return (
     <div
       className={cn(
-        "group relative flex flex-col gap-3 rounded-lg border border-muted-foreground/80 bg-ink/40 p-4 backdrop-blur transition hover:border-muted-foreground",
+        "group relative flex flex-col gap-3 rounded-lg border border-border bg-muted/40 p-4 backdrop-blur transition hover:border-border",
         className,
       )}
     >
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
         {Icon && (
-          <span className="rounded-md bg-ink/60 p-1.5 text-muted-foreground group-hover:text-muted-foreground">
+          <span className="rounded-md bg-card p-1.5 text-muted-foreground group-hover:text-muted-foreground">
             <Icon className="h-3.5 w-3.5" />
           </span>
         )}

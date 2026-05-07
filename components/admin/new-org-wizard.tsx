@@ -96,7 +96,7 @@ export function NewOrgWizard() {
     <div className="space-y-6 max-w-2xl">
       <Stepper current={step} />
 
-      <Card className="bg-ink/40 border-muted-foreground p-6">
+      <Card className="bg-muted/40 border-border p-6">
         {step === 1 && (
           <div className="space-y-4">
             <h2 className="text-lg font-semibold text-muted-foreground">Datos de la organización</h2>
@@ -188,7 +188,7 @@ export function NewOrgWizard() {
         {step === 4 && (
           <div className="space-y-4">
             <h2 className="text-lg font-semibold text-muted-foreground">Setup inicial</h2>
-            <div className="flex items-start gap-3 rounded-md border border-muted-foreground bg-ink/40 p-4">
+            <div className="flex items-start gap-3 rounded-md border border-border bg-muted/40 p-4">
               <Checkbox
                 id="seed_chart"
                 checked={form.seed_chart_of_accounts}
@@ -205,7 +205,7 @@ export function NewOrgWizard() {
                 </p>
               </div>
             </div>
-            <div className="flex items-start gap-3 rounded-md border border-muted-foreground bg-ink/40 p-4">
+            <div className="flex items-start gap-3 rounded-md border border-border bg-muted/40 p-4">
               <Checkbox
                 id="seed_lists"
                 checked={form.seed_manychat_lists}
@@ -295,7 +295,7 @@ function Stepper({ current }: { current: number }) {
                 "flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs font-semibold",
                 isActive && "border-primary bg-primary/20 text-primary",
                 isDone && "border-success bg-success/20 text-success",
-                !isActive && !isDone && "border-muted-foreground text-muted-foreground",
+                !isActive && !isDone && "border-border text-muted-foreground",
               )}
             >
               {isDone ? <Check className="h-3.5 w-3.5" /> : s.n}
@@ -309,7 +309,7 @@ function Stepper({ current }: { current: number }) {
               {s.label}
             </span>
             {idx < STEPS.length - 1 && (
-              <div className={cn("flex-1 h-px", isDone ? "bg-success/40" : "bg-ink")} />
+              <div className={cn("flex-1 h-px", isDone ? "bg-success/40" : "bg-muted")} />
             )}
           </li>
         )

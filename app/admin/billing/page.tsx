@@ -247,7 +247,7 @@ function CustomPlansSection({ rows, orgNameMap }: { rows: any[]; orgNameMap: Map
                       )}
                     </DataTableTd>
                     <DataTableTd>
-                      <span className="rounded bg-ink px-2 py-0.5 text-xs">{r.billing_method}</span>
+                      <span className="rounded bg-muted px-2 py-0.5 text-xs">{r.billing_method}</span>
                     </DataTableTd>
                     <DataTableTd className="text-muted-foreground">{relativeTime(r.created_at)}</DataTableTd>
                   </DataTableRow>
@@ -295,7 +295,7 @@ function EventsSection({ rows, orgNameMap }: { rows: any[]; orgNameMap: Map<stri
                     <span
                       className={cn(
                         "rounded px-2 py-0.5 text-xs font-medium",
-                        EVENT_COLORS[r.event_type] ?? "bg-ink text-muted-foreground"
+                        EVENT_COLORS[r.event_type] ?? "bg-muted text-muted-foreground"
                       )}
                     >
                       {r.event_type}
@@ -333,7 +333,7 @@ function statusColor(s: string): string {
   if (s === "PAST_DUE" || s === "PENDING_PAYMENT") return "bg-accent-coral/15 text-accent-coral"
   if (s === "SUSPENDED" || s === "CANCELLED") return "bg-destructive/15 text-destructive"
   if (s === "TRIAL" || s === "TRIALING") return "bg-primary/15 text-primary"
-  return "bg-ink text-muted-foreground"
+  return "bg-muted text-muted-foreground"
 }
 
 function relativeTime(iso: string | null): string {

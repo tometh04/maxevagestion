@@ -61,7 +61,7 @@ export default async function AdminAuditPage() {
                 <DataTableTd>
                   <details>
                     <summary className="cursor-pointer text-primary">ver</summary>
-                    <pre className="text-[10px] mt-1 bg-ink p-2 rounded max-w-md overflow-auto text-muted-foreground">
+                    <pre className="text-[10px] mt-1 bg-muted p-2 rounded max-w-md overflow-auto text-muted-foreground">
                       {JSON.stringify(e.details, null, 2)}
                     </pre>
                   </details>

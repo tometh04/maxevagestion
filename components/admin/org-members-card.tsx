@@ -32,9 +32,9 @@ export async function OrgMembersCard({ orgId }: Props) {
   }>
 
   return (
-    <Card className="bg-ink/60 border-muted-foreground">
+    <Card className="bg-card border-border">
       <CardHeader>
-        <CardTitle className="text-white text-base">
+        <CardTitle className="text-foreground text-base">
           Miembros ({rows.length})
         </CardTitle>
       </CardHeader>
@@ -42,9 +42,9 @@ export async function OrgMembersCard({ orgId }: Props) {
         {rows.length === 0 ? (
           <p className="text-sm text-muted-foreground">Sin miembros.</p>
         ) : (
-          <div className="overflow-x-auto rounded border border-muted-foreground">
+          <div className="overflow-x-auto rounded border border-border">
             <table className="min-w-full text-sm">
-              <thead className="bg-ink/60 text-xs uppercase tracking-wide text-muted-foreground">
+              <thead className="bg-card text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
                   <Th>Email</Th>
                   <Th>Nombre</Th>
@@ -61,14 +61,14 @@ export async function OrgMembersCard({ orgId }: Props) {
                     <tr
                       key={m.id}
                       className={cn(
-                        "border-t border-muted-foreground",
-                        !m.is_active && "bg-ink/15",
+                        "border-t border-border",
+                        !m.is_active && "bg-muted/20",
                       )}
                     >
                       <Td className="font-medium text-muted-foreground">{m.email}</Td>
                       <Td>{m.name ?? "—"}</Td>
                       <Td>
-                        <span className="rounded bg-ink px-2 py-0.5 text-xs">
+                        <span className="rounded bg-muted px-2 py-0.5 text-xs">
                           {m.role}
                         </span>
                       </Td>

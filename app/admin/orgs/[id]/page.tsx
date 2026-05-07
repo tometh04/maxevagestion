@@ -26,7 +26,7 @@ const STATUS_META: Record<string, { label: string; className: string }> = {
   PENDING_PAYMENT: { label: "Pendiente de pago", className: "bg-accent-coral/15 text-accent-coral border-accent-coral/30" },
   PAST_DUE: { label: "Cobro pendiente", className: "bg-accent-coral/15 text-accent-coral border-accent-coral/30" },
   SUSPENDED: { label: "Suspendida", className: "bg-destructive/15 text-destructive border-destructive/30" },
-  CANCELLED: { label: "Cancelada", className: "bg-muted-foreground/15 text-muted-foreground border-muted-foreground/30" },
+  CANCELLED: { label: "Cancelada", className: "bg-muted-foreground/15 text-muted-foreground border-border/60" },
 }
 
 export default async function AdminOrgDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -85,7 +85,7 @@ export default async function AdminOrgDetailPage({ params }: { params: Promise<{
 
   const status = STATUS_META[org.subscription_status ?? ""] ?? {
     label: org.subscription_status ?? "—",
-    className: "bg-muted-foreground/15 text-muted-foreground border-muted-foreground/30",
+    className: "bg-muted-foreground/15 text-muted-foreground border-border/60",
   }
 
   return (
@@ -113,9 +113,9 @@ export default async function AdminOrgDetailPage({ params }: { params: Promise<{
 
       <TenantMetrics orgId={id} />
 
-      <Card className="bg-ink/60 border-muted-foreground">
+      <Card className="bg-card border-border">
         <CardHeader>
-          <CardTitle className="text-white text-base">Billing</CardTitle>
+          <CardTitle className="text-foreground text-base">Billing</CardTitle>
           <CardDescription className="text-muted-foreground">
             Datos de facturación y estado de la suscripción.
           </CardDescription>
@@ -174,9 +174,9 @@ export default async function AdminOrgDetailPage({ params }: { params: Promise<{
 
       <MpSnapshot orgId={id} />
 
-      <Card className="bg-ink/60 border-muted-foreground">
+      <Card className="bg-card border-border">
         <CardHeader>
-          <CardTitle className="text-white text-base">Audit log</CardTitle>
+          <CardTitle className="text-foreground text-base">Audit log</CardTitle>
           <CardDescription className="text-muted-foreground">Últimos 10 eventos registrados.</CardDescription>
         </CardHeader>
         <CardContent>

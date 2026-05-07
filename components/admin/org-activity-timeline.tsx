@@ -131,9 +131,9 @@ export async function OrgActivityTimeline({ orgId }: { orgId: string }) {
   const top = items.slice(0, 30)
 
   return (
-    <Card className="bg-ink/60 border-muted-foreground">
+    <Card className="bg-card border-border">
       <CardHeader>
-        <CardTitle className="text-white text-base">Actividad reciente</CardTitle>
+        <CardTitle className="text-foreground text-base">Actividad reciente</CardTitle>
       </CardHeader>
       <CardContent>
         {top.length === 0 ? (
@@ -143,14 +143,14 @@ export async function OrgActivityTimeline({ orgId }: { orgId: string }) {
             description="Esta org todavía no registró operaciones, leads, pagos ni logins."
           />
         ) : (
-          <ol className="relative space-y-3 border-l border-muted-foreground pl-5">
+          <ol className="relative space-y-3 border-l border-border pl-5">
             {top.map((it) => {
               const Icon = ICONS[it.kind]
               return (
                 <li key={it.id} className="relative">
                   <span
                     className={cn(
-                      "absolute -left-[26px] top-0.5 flex h-5 w-5 items-center justify-center rounded-full border border-muted-foreground bg-ink",
+                      "absolute -left-[26px] top-0.5 flex h-5 w-5 items-center justify-center rounded-full border border-border bg-muted",
                       KIND_COLOR[it.kind],
                     )}
                   >

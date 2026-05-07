@@ -53,7 +53,7 @@ function PageLink({
     "inline-flex h-8 min-w-8 items-center justify-center rounded border px-2 text-sm",
     active
       ? "border-primary/40 bg-primary/15 text-primary"
-      : "border-muted-foreground text-muted-foreground hover:bg-ink",
+      : "border-border text-muted-foreground hover:bg-accent",
     disabled && "pointer-events-none opacity-40",
   )
   if (disabled) return <span className={className}>{label}</span>

@@ -116,7 +116,7 @@ export function OrgsTable({ orgs, sort, dir, buildSortHref }: Props) {
               <span
                 className={cn(
                   "rounded px-2 py-0.5 text-xs",
-                  STATUS_COLOR[o.subscription_status] ?? "bg-ink text-muted-foreground",
+                  STATUS_COLOR[o.subscription_status] ?? "bg-muted text-muted-foreground",
                 )}
               >
                 {o.subscription_status}

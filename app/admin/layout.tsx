@@ -14,13 +14,18 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const isAdmin = await isPlatformAdmin(supabase, user.id)
   if (!isAdmin) redirect("/dashboard")
 
+  // Modo claro Vibook 2026-05-06: el admin estaba en "fake dark mode" —
+  // usaba bg-foreground (token de TEXTO) como fondo, lo cual rompía la
+  // jerarquía visual y dejaba todo monocromo gris. Ahora usamos los
+  // tokens semánticos de shadcn (background, card, border, primary)
+  // que ya son los correctos en light mode por defecto del CSS.
   return (
-    <div className="flex min-h-screen bg-gradient-to-br from-foreground via-foreground to-foreground text-muted-foreground">
-      <aside className="w-64 shrink-0 border-r border-muted-foreground/60 bg-ink/80 backdrop-blur flex flex-col">
-        <div className="px-5 py-6 border-b border-muted-foreground/60">
+    <div className="flex min-h-screen bg-background text-foreground">
+      <aside className="w-64 shrink-0 border-r border-border bg-card flex flex-col">
+        <div className="px-5 py-6 border-b border-border">
           <Link href="/admin/orgs" className="flex items-center gap-2">
             <Image
-              src="/vibook-logo-white.png"
+              src="/vibook-logo.png"
               alt="Vibook"
               width={120}
               height={36}
@@ -28,7 +33,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
               className="h-8 w-auto object-contain"
             />
           </Link>
-          <div className="mt-3 text-[10px] font-semibold uppercase tracking-widest text-primary/80">
+          <div className="mt-3 text-[10px] font-semibold uppercase tracking-widest text-primary">
             Platform Admin
           </div>
         </div>
@@ -40,23 +45,23 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <SidebarLink href="/admin/audit" icon={ScrollText} label="Audit log" />
         </nav>
 
-        <div className="px-3 py-4 border-t border-muted-foreground/60 space-y-1">
+        <div className="px-3 py-4 border-t border-border space-y-1">
           <Link
             href="/logout"
-            className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-ink/40 hover:text-muted-foreground transition"
+            className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-foreground/80 hover:bg-accent hover:text-foreground transition"
           >
             <LogOut className="h-4 w-4" />
             Cerrar sesión
           </Link>
         </div>
 
-        <div className="px-5 py-4 border-t border-muted-foreground/60">
+        <div className="px-5 py-4 border-t border-border bg-background-alt/40">
           <div className="text-xs text-muted-foreground">Conectado como</div>
-          <div className="text-sm font-medium text-muted-foreground truncate">{user.email}</div>
+          <div className="text-sm font-medium text-foreground truncate">{user.email}</div>
         </div>
       </aside>
 
-      <main className="flex-1 overflow-x-auto">
+      <main className="flex-1 overflow-x-auto bg-background-alt/30">
         <div className="px-8 py-8 max-w-[1400px]">{children}</div>
       </main>
     </div>
@@ -75,7 +80,7 @@ function SidebarLink({
   return (
     <Link
       href={href}
-      className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-ink/60 hover:text-white transition"
+      className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-foreground/80 hover:bg-accent hover:text-foreground transition"
     >
       <Icon className="h-4 w-4" />
       {label}
