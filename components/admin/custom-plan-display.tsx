@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 import { CustomPlanForm } from "./custom-plan-form"
 
 type CustomPlan = {
@@ -31,8 +32,13 @@ export function CustomPlanDisplay({
     setDeleting(true)
     const res = await fetch(`/api/admin/orgs/${orgId}/custom-plan`, { method: "DELETE" })
     setDeleting(false)
-    if (res.ok) router.refresh()
-    else alert("Error borrando el plan")
+    if (res.ok) {
+      toast.success("Custom plan borrado")
+      router.refresh()
+    } else {
+      const body = await res.json().catch(() => ({}))
+      toast.error(body?.error || "Error borrando el plan")
+    }
   }
 
   if (editing) {

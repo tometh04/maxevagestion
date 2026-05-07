@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 
 type ManualPayment = {
   id: string
@@ -49,9 +50,11 @@ export function ManualPaymentsSection({
     setBusy(false)
     if (res.ok) {
       setCreating(false)
+      toast.success("Pago manual registrado")
       router.refresh()
     } else {
-      alert(`Error: ${(await res.json()).error}`)
+      const body = await res.json().catch(() => ({}))
+      toast.error(body?.error || "Error registrando el pago manual")
     }
   }
 

@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 
 export function CriticalActions({
   orgId,
@@ -27,8 +28,13 @@ export function CriticalActions({
       body: JSON.stringify(body ?? {}),
     })
     setBusy(false)
-    if (res.ok) router.refresh()
-    else alert(`Error: ${(await res.json()).error ?? res.statusText}`)
+    if (res.ok) {
+      toast.success("Acción aplicada")
+      router.refresh()
+    } else {
+      const errBody = await res.json().catch(() => ({}))
+      toast.error(errBody?.error ?? res.statusText ?? "Error en la acción")
+    }
   }
 
   return (
