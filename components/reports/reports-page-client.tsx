@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { BarChart3, TrendingUp, Wallet, Download, Percent, HelpCircle, Calendar, FileSearch } from "lucide-react"
+import { BarChart3, TrendingUp, Wallet, Download, Percent, HelpCircle, Calendar, FileSearch, CalendarRange } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -15,6 +15,7 @@ import { CashFlowReport } from "./cash-flow-report"
 import { MarginsReport } from "./margins-report"
 import { VencimientosReport } from "./vencimientos-report"
 import { ConciliacionReport } from "./conciliacion-report"
+import { ClosingReport } from "./closing-report"
 import {
   Breadcrumb,
   BreadcrumbList,
@@ -101,6 +102,12 @@ export function ReportsPageClient({ userRole, userId, sellers, agencies }: Repor
               Conciliación
             </TabsTrigger>
           )}
+          {canSeeCashFlow && (
+            <TabsTrigger value="closing" className="flex items-center gap-2">
+              <CalendarRange className="h-4 w-4" />
+              Cierre de Mes
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="sales" className="mt-6">
@@ -134,6 +141,12 @@ export function ReportsPageClient({ userRole, userId, sellers, agencies }: Repor
         {canSeeCashFlow && (
           <TabsContent value="conciliacion" className="mt-6">
             <ConciliacionReport agencies={agencies} />
+          </TabsContent>
+        )}
+
+        {canSeeCashFlow && (
+          <TabsContent value="closing" className="mt-6">
+            <ClosingReport agencies={agencies} />
           </TabsContent>
         )}
       </Tabs>
