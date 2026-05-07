@@ -14,6 +14,7 @@ import { AuditLogInline } from "@/components/admin/audit-log-inline"
 import { OrgProfileCard } from "@/components/admin/org-profile-card"
 import { OrgMembersCard } from "@/components/admin/org-members-card"
 import { OrgActivityTimeline } from "@/components/admin/org-activity-timeline"
+import { OrgHealthCard } from "@/components/admin/org-health-card"
 import { PageHeader } from "@/components/admin/page-header"
 import { MrrOverrideCard } from "@/components/admin/mrr-override-card"
 
@@ -112,6 +113,11 @@ export default async function AdminOrgDetailPage({ params }: { params: Promise<{
       />
 
       <TenantMetrics orgId={id} />
+
+      {/* Diagnóstico — vista única para soporte. Insertado arriba de
+          Billing porque es lo PRIMERO que querés ver al abrir un tenant
+          que reporta problemas. */}
+      <OrgHealthCard orgId={id} />
 
       <Card className="bg-card border-border">
         <CardHeader>
