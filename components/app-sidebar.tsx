@@ -37,6 +37,10 @@ interface NavSubItem {
   url: string
   items?: NavSubSubItem[]
   module?: "dashboard" | "leads" | "operations" | "customers" | "operators" | "cash" | "accounting" | "alerts" | "reports" | "settings" | "commissions"
+  badge?: {
+    variant: 'warning' | 'error' | 'info'
+    tooltip: string
+  }
 }
 
 interface NavItem {
@@ -150,6 +154,14 @@ export function AppSidebar({ userRole, user, ...props }: AppSidebarProps) {
   const pathname = usePathname()
   const [brandLogo, setBrandLogo] = useState<string | null>(null)
   const [companyName, setCompanyName] = useState<string | null>(null)
+  // Salud AFIP — usado para mostrar badge en "Facturación" si la org
+  // tuvo failures recientes de AFIP (cert vencido, PV desautorizado,
+  // etc.). Fetched on-mount; cache HTTP 60s del lado server.
+  const [afipHealth, setAfipHealth] = useState<{
+    status: 'ok' | 'warning' | 'error' | 'not-configured'
+    recentFailures: number
+    lastErrorCode: number | null
+  } | null>(null)
 
   useEffect(() => {
     // Multi-tenant: cache scoped por org_id. NUNCA mostramos cache "global"
@@ -208,6 +220,26 @@ export function AppSidebar({ userRole, user, ...props }: AppSidebarProps) {
       }
     }
     loadOrgSettings()
+
+    // Fetch AFIP health en paralelo (sin esperar al brand). Endpoint con
+    // cache 60s + SWR 5min — bajo costo en navegación normal.
+    async function loadAfipHealth() {
+      try {
+        const res = await fetch("/api/afip/health")
+        if (!res.ok || cancelled) return
+        const json = await res.json()
+        if (cancelled) return
+        setAfipHealth({
+          status: json?.status ?? 'not-configured',
+          recentFailures: Number(json?.recentFailures) || 0,
+          lastErrorCode: json?.lastErrorCode ?? null,
+        })
+      } catch {
+        // silent — sin badge es preferible a un badge falso positivo
+      }
+    }
+    loadAfipHealth()
+
     return () => {
       cancelled = true
     }
@@ -259,6 +291,26 @@ export function AppSidebar({ userRole, user, ...props }: AppSidebarProps) {
             // Si el subitem tiene items (nivel 3), mantenerlos todos
             if (subItem.items) {
               return subItem
+            }
+
+            // Badge AFIP roto sobre "Facturación" — único surface por
+            // ahora. Si afipHealth es 'warning' o 'error', mostramos un
+            // dot coloreado + tooltip. 'ok' y 'not-configured' silent.
+            if (
+              subItem.url === "/operations/billing" &&
+              afipHealth &&
+              (afipHealth.status === "warning" || afipHealth.status === "error")
+            ) {
+              const codeSuffix = afipHealth.lastErrorCode
+                ? ` (último: AFIP #${afipHealth.lastErrorCode})`
+                : ""
+              return {
+                ...subItem,
+                badge: {
+                  variant: afipHealth.status === "error" ? ("error" as const) : ("warning" as const),
+                  tooltip: `AFIP rechazó ${afipHealth.recentFailures} factura${afipHealth.recentFailures === 1 ? "" : "s"} en las últimas 24h${codeSuffix}. Revisá Configuración → Integraciones.`,
+                },
+              }
             }
 
             return subItem
