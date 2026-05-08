@@ -80,6 +80,9 @@ export async function GET() {
       `
       )
       .eq("status", "PAID")
+      // 2026-05-08: excluir settlements legacy (pagos históricos sin
+      // ledger por diseño — la plata salió del banco antes del go-live).
+      .eq("is_legacy_settled", false)
       .is("ledger_movement_id", null)
       .order("created_at", { ascending: false })
       .limit(500)
@@ -162,6 +165,10 @@ export async function POST(request: Request) {
         })
         .in("id", operatorPaymentIds)
         .eq("status", "PAID")
+        // 2026-05-08: si un user (vía UI o curl) intenta revertir un pago
+        // legacy_settled a PENDING, no lo dejamos. Esos pagos están como
+        // PAID por diseño (la plata salió del banco antes del go-live).
+        .eq("is_legacy_settled", false)
         .is("ledger_movement_id", null)
         .select("id")
 

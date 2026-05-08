@@ -775,9 +775,13 @@ export function OperationPaymentsSection({
                             <Badge
                               variant="outline"
                               className="w-fit text-[10px] border-muted-foreground/30 text-muted-foreground"
-                              title="Pago importado del sistema anterior. El dinero ya entró al banco antes del import — no genera movimiento de caja nuevo."
+                              title={
+                                payment.source === "LEGACY_SETTLEMENT"
+                                  ? "Pago histórico declarado fuera del sistema. La plata ya salió del banco antes de cargar el sistema — no afecta saldos."
+                                  : "Pago importado del sistema anterior. El dinero ya entró al banco antes del import — no genera movimiento de caja nuevo."
+                              }
                             >
-                              Importado
+                              Histórico
                             </Badge>
                           )}
                           {payment.payer_type === "OPERATOR" && payment.operator_id && (
