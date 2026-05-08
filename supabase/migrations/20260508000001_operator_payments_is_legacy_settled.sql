@@ -36,3 +36,14 @@ COMMENT ON COLUMN operator_payments.is_legacy_settled IS
 CREATE INDEX IF NOT EXISTS idx_operator_payments_is_legacy_settled
   ON operator_payments(is_legacy_settled)
   WHERE is_legacy_settled = true;
+
+-- Extender el CHECK de payments.source para aceptar LEGACY_SETTLEMENT.
+-- Lo usa el script scripts/legacy-settlement-lozada-rosario.sql cuando crea
+-- los rows sintéticos en payments para que aparezcan en el "Historial de
+-- Pagos" de la operación con badge "Histórico".
+ALTER TABLE payments
+  DROP CONSTRAINT IF EXISTS payments_source_check;
+
+ALTER TABLE payments
+  ADD CONSTRAINT payments_source_check
+  CHECK (source IN ('MANUAL', 'OPERATOR_BULK', 'LEGACY_SETTLEMENT'));
