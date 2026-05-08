@@ -14,7 +14,7 @@ export async function POST(
 
   // 1. Lookup integration by token
   const { data: integ } = await admin
-    .from("integration_webhooks")
+    .from("org_integrations")
     .select("org_id, webhook_secret, is_active")
     .eq("integration", "manychat")
     .eq("webhook_token", token)

@@ -13,7 +13,7 @@ export async function POST(
   const admin = createAdminClient() as any
 
   const { data: integ } = await admin
-    .from("integration_webhooks")
+    .from("org_integrations")
     .select("org_id, webhook_secret, is_active")
     .eq("integration", "callbell-in")
     .eq("webhook_token", token)

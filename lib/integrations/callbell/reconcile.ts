@@ -62,7 +62,7 @@ export async function reconcileSingleOrg(
   factory: CallbellClientFactory = defaultFactory
 ): Promise<number> {
   const { data: integ } = await admin
-    .from("integration_webhooks")
+    .from("org_integrations")
     .select("webhook_secret, is_active, config")
     .eq("org_id", orgId)
     .eq("integration", "callbell-out")

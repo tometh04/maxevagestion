@@ -5560,6 +5560,57 @@ export type Database = {
         }
         Relationships: []
       }
+      org_integrations: {
+        Row: {
+          config: Json
+          created_at: string
+          id: string
+          integration: string
+          is_active: boolean
+          org_id: string
+          updated_at: string
+          webhook_secret: string
+          webhook_token: string
+        }
+        Insert: {
+          config?: Json
+          created_at?: string
+          id?: string
+          integration: string
+          is_active?: boolean
+          org_id: string
+          updated_at?: string
+          webhook_secret: string
+          webhook_token: string
+        }
+        Update: {
+          config?: Json
+          created_at?: string
+          id?: string
+          integration?: string
+          is_active?: boolean
+          org_id?: string
+          updated_at?: string
+          webhook_secret?: string
+          webhook_token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "org_integrations_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "org_integrations_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations_with_profile_completion"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organization_invitations: {
         Row: {
           accepted_at: string | null

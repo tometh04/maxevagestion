@@ -3,7 +3,7 @@
  *
  * Integration test for reconcile against real Supabase prod, but with a MOCKED
  * Callbell client (no real Callbell calls). Creates a TEST_RECONCILE_ORG_<ts>
- * tenant with integration_webhooks row + funnels + lead, runs reconcile, asserts
+ * tenant with org_integrations row + funnels + lead, runs reconcile, asserts
  * the lead got updated.
  */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js"
@@ -19,7 +19,7 @@ import type { Database } from "@/lib/supabase/types"
 
 loadEnv({ path: ".env.local" })
 
-// We need encryption key to encrypt the fake apiToken when seeding integration_webhooks
+// We need encryption key to encrypt the fake apiToken when seeding org_integrations
 process.env.WEBHOOK_SECRET_ENCRYPTION_KEY =
   process.env.WEBHOOK_SECRET_ENCRYPTION_KEY ?? "0".repeat(64)
 
@@ -110,9 +110,9 @@ describeOrSkip("reconcileAllAdvancedOrgs", () => {
       .single()
     testLeadId = (lead as { id: string }).id
 
-    // Seed integration_webhooks row for this org (callbell-out)
+    // Seed org_integrations row for this org (callbell-out)
     const fakeToken = "fake-callbell-api-token-for-test"
-    await admin.from("integration_webhooks").insert({
+    await admin.from("org_integrations").insert({
       org_id: testOrgId,
       integration: "callbell-out",
       webhook_token: `unused-out-${Date.now()}`,
