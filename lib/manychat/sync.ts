@@ -365,22 +365,31 @@ export async function syncManychatLeadToLead(
     syncedAt: new Date().toISOString(),
   }
   
-  // 5. Buscar lead existente por teléfono o Instagram (deduplicación)
+  // 5. Determinar nombre de lista ANTES de dedup (necesitamos list_name para
+  //    que la misma persona pueda ser lead en campañas distintas simultáneamente)
+  const listName = determineListName(manychatData)
+  console.log(`✅ Lead de Manychat asignado a lista: "${listName}"`)
+
+  // 6. Buscar lead existente por teléfono o Instagram (deduplicación)
+  //    Filtros: mismo source + misma agencia + misma lista (campaña)
+  //    → misma persona en campañas distintas = leads separados
   let existingLead: { id: string } | null = null
-  
+
   if (contact_phone) {
     const { data: leadByPhone } = await supabase
       .from("leads")
       .select("id")
       .eq("contact_phone", contact_phone)
       .eq("source", "Manychat")
+      .eq("agency_id", agency_id)
+      .eq("list_name", listName)
       .maybeSingle()
-    
+
     if (leadByPhone) {
       existingLead = leadByPhone as { id: string }
     }
   }
-  
+
   // Si no se encontró por teléfono, buscar por Instagram
   if (!existingLead && contact_instagram) {
     const { data: leadByInstagram } = await supabase
@@ -388,17 +397,14 @@ export async function syncManychatLeadToLead(
       .select("id")
       .eq("contact_instagram", contact_instagram)
       .eq("source", "Manychat")
+      .eq("agency_id", agency_id)
+      .eq("list_name", listName)
       .maybeSingle()
-    
+
     if (leadByInstagram) {
       existingLead = leadByInstagram as { id: string }
     }
   }
-  
-  // 6. Determinar nombre de lista según lógica de Zapier (INDEPENDIENTE de Trello)
-  // Este nombre se usa para agrupar leads en el kanban de CRM Manychat
-  const listName = determineListName(manychatData)
-  console.log(`✅ Lead de Manychat asignado a lista: "${listName}"`)
 
   // 6b. Auto-registrar la lista en manychat_list_order al inicio del kanban (posición 0)
   //     Solo si la lista no existe todavía para esta agencia
