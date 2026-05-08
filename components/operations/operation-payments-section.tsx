@@ -771,6 +771,15 @@ export function OperationPaymentsSection({
                               Pago Masivo
                             </Badge>
                           )}
+                          {payment.is_legacy_import && (
+                            <Badge
+                              variant="outline"
+                              className="w-fit text-[10px] border-muted-foreground/30 text-muted-foreground"
+                              title="Pago importado del sistema anterior. El dinero ya entró al banco antes del import — no genera movimiento de caja nuevo."
+                            >
+                              Importado
+                            </Badge>
+                          )}
                           {payment.payer_type === "OPERATOR" && payment.operator_id && (
                             <span className="text-xs font-medium">
                               {operatorNameById.get(payment.operator_id) || "Operador seleccionado"}

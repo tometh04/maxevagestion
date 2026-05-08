@@ -50,16 +50,24 @@ export async function GET() {
 
     // ============================================
     // CHECK 1: Pagos PAID sin asiento contable (post-importación)
+    //
+    // 2026-05-07: agregamos `.eq("is_legacy_import", false)` para excluir
+    // los 125 pagos del bulk import del 29/04 (pipeline payments-suelto).
+    // Esos pagos están en estado PAID por diseño pero sin ledger/cash —
+    // el dinero ya entró al banco real antes del import. La columna
+    // `is_legacy_import` se backfillea en la migración 20260507000003.
     // ============================================
     try {
       const { count: totalWithout } = await (supabase.from("payments") as any)
         .select("id", { count: "exact", head: true })
         .eq("status", "PAID")
+        .eq("is_legacy_import", false)
         .is("ledger_movement_id", null)
 
       const { count: recentWithout } = await (supabase.from("payments") as any)
         .select("id", { count: "exact", head: true })
         .eq("status", "PAID")
+        .eq("is_legacy_import", false)
         .is("ledger_movement_id", null)
         .gte("created_at", POST_IMPORT_DATE)
 

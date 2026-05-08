@@ -50,6 +50,9 @@ export async function GET() {
       `
       )
       .eq("status", "PAID")
+      // 2026-05-07: excluir imports legacy (ya no son "huérfanos" — son carga
+      // histórica intencional sin ledger por diseño).
+      .eq("is_legacy_import", false)
       .is("ledger_movement_id", null)
       .order("created_at", { ascending: false })
       .limit(500)
@@ -136,6 +139,11 @@ export async function POST(request: Request) {
         })
         .in("id", paymentIds)
         .eq("status", "PAID")
+        // 2026-05-07: si un user (vía UI o curl) intenta revertir un pago
+        // legacy a PENDING, no lo dejamos. Esos pagos están como PAID por
+        // diseño (la plata ya entró al banco real antes del import). El CAS
+        // los protege para que no muten accidentalmente.
+        .eq("is_legacy_import", false)
         .is("ledger_movement_id", null)
         .select("id")
 
