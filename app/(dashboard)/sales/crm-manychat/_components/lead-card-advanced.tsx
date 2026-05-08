@@ -1,8 +1,10 @@
 "use client"
 
+import { useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
+import { TagAssignmentDialog } from "./tag-assignment-dialog"
 
 type TagAssignment = {
   tag: {
@@ -38,37 +40,52 @@ function getColorClass(color: string): string {
 
 interface LeadCardAdvancedProps {
   lead: LeadAdvanced
+  orgId: string
 }
 
-export function LeadCardAdvanced({ lead }: LeadCardAdvancedProps) {
+export function LeadCardAdvanced({ lead, orgId }: LeadCardAdvancedProps) {
+  const [dialogOpen, setDialogOpen] = useState(false)
+
   const tags = lead.tag_assignments
     .map((ta) => ta.tag)
     .filter((t): t is NonNullable<typeof t> => t !== null)
 
   return (
-    <Card className={cn("p-3 mb-2 cursor-pointer hover:shadow-md transition-shadow duration-150")}>
-      <p className="font-medium text-sm leading-tight">{lead.contact_name}</p>
-      {lead.contact_phone && (
-        <p className="text-xs text-muted-foreground mt-0.5">{lead.contact_phone}</p>
-      )}
-      {tags.length > 0 && (
-        <div className="flex flex-wrap gap-1 mt-2">
-          {tags.map((tag) => (
-            <Badge
-              key={tag.id}
-              variant="outline"
-              className={cn("text-[10px] px-1.5 py-0 border", getColorClass(tag.category.color))}
-            >
-              {tag.label}
-            </Badge>
-          ))}
-        </div>
-      )}
-      {lead.assigned_seller && (
-        <p className="text-[10px] text-muted-foreground mt-1.5">
-          → {lead.assigned_seller.name}
-        </p>
-      )}
-    </Card>
+    <>
+      <Card
+        className={cn("p-3 mb-2 cursor-pointer hover:shadow-md transition-shadow duration-150")}
+        onClick={() => setDialogOpen(true)}
+      >
+        <p className="font-medium text-sm leading-tight">{lead.contact_name}</p>
+        {lead.contact_phone && (
+          <p className="text-xs text-muted-foreground mt-0.5">{lead.contact_phone}</p>
+        )}
+        {tags.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-2">
+            {tags.map((tag) => (
+              <Badge
+                key={tag.id}
+                variant="outline"
+                className={cn("text-[10px] px-1.5 py-0 border", getColorClass(tag.category.color))}
+              >
+                {tag.label}
+              </Badge>
+            ))}
+          </div>
+        )}
+        {lead.assigned_seller && (
+          <p className="text-[10px] text-muted-foreground mt-1.5">
+            → {lead.assigned_seller.name}
+          </p>
+        )}
+      </Card>
+      <TagAssignmentDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        orgId={orgId}
+        leadId={lead.id}
+        onSaved={() => window.location.reload()}
+      />
+    </>
   )
 }
