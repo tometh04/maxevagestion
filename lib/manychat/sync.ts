@@ -70,47 +70,48 @@ export function normalizeInstagram(ig: string | undefined): string | null {
 export async function determineAgencyId(
   agencyTag: string | undefined,
   supabase: Awaited<ReturnType<typeof createServerClient>>
-): Promise<string> {
+): Promise<{ agency_id: string; org_id: string }> {
+  const empty = { agency_id: "", org_id: "" }
+
   if (!agencyTag) {
-    // Fallback: buscar Rosario por defecto
     const { data: rosario } = await supabase
       .from("agencies")
-      .select("id")
+      .select("id, org_id")
       .ilike("name", "%rosario%")
       .maybeSingle()
-    
-    return (rosario as { id: string } | null)?.id || ""
+
+    if (!rosario) return empty
+    return { agency_id: (rosario as any).id, org_id: (rosario as any).org_id }
   }
-  
-  // Buscar agencia por nombre (case insensitive)
+
   const normalizedTag = agencyTag.toLowerCase().trim()
-  
-  // Mapeo directo de tags comunes
+
   const tagMap: Record<string, string> = {
     "rosario": "rosario",
     "madero": "madero",
   }
-  
+
   const searchTerm = tagMap[normalizedTag] || normalizedTag
-  
+
   const { data: agency } = await supabase
     .from("agencies")
-    .select("id")
+    .select("id, org_id")
     .ilike("name", `%${searchTerm}%`)
     .maybeSingle()
-  
+
   if (agency) {
-    return (agency as { id: string }).id
+    return { agency_id: (agency as any).id, org_id: (agency as any).org_id }
   }
-  
-  // Si no se encuentra, buscar Rosario como fallback
+
+  // Fallback: Rosario
   const { data: rosario } = await supabase
     .from("agencies")
-    .select("id")
+    .select("id, org_id")
     .ilike("name", "%rosario%")
     .maybeSingle()
-  
-  return (rosario as { id: string } | null)?.id || ""
+
+  if (!rosario) return empty
+  return { agency_id: (rosario as any).id, org_id: (rosario as any).org_id }
 }
 
 /**
@@ -314,9 +315,9 @@ export async function syncManychatLeadToLead(
   supabase: Awaited<ReturnType<typeof createServerClient>>
 ): Promise<{ created: boolean; leadId: string }> {
   
-  // 1. Determinar agency_id
-  const agency_id = await determineAgencyId(manychatData.agency, supabase)
-  
+  // 1. Determinar agency_id + org_id
+  const { agency_id, org_id } = await determineAgencyId(manychatData.agency, supabase)
+
   if (!agency_id) {
     throw new Error("No se pudo determinar la agencia. Verifica que existan agencias en la base de datos.")
   }
@@ -451,6 +452,7 @@ export async function syncManychatLeadToLead(
   // 7. Preparar datos del lead
   const leadData: any = {
     agency_id,
+    org_id: org_id || undefined,
     source: "Manychat" as const,
     status,
     region,
