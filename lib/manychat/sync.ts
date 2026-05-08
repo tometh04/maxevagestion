@@ -425,9 +425,10 @@ export async function syncManychatLeadToLead(
           .eq("agency_id", agency_id)
 
         const shiftedData = [
-          { agency_id, list_name: listName, position: 0, seller_id: null },
+          { agency_id, org_id: org_id || undefined, list_name: listName, position: 0, seller_id: null },
           ...currentLists.map((list: any, idx: number) => ({
             agency_id,
+            org_id: org_id || undefined,
             list_name: list.list_name,
             position: idx + 1,
             seller_id: list.seller_id || null,
@@ -439,7 +440,7 @@ export async function syncManychatLeadToLead(
       } else {
         // No hay listas previas, insertar directamente en posición 0
         await (supabase.from("manychat_list_order") as any)
-          .insert({ agency_id, list_name: listName, position: 0, seller_id: null })
+          .insert({ agency_id, org_id: org_id || undefined, list_name: listName, position: 0, seller_id: null })
       }
 
       console.log(`✅ Lista "${listName}" registrada en posición 0 del kanban`)
