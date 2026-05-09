@@ -1,10 +1,10 @@
 import { NextRequest } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { searchArticles, getAllArticles } from '@/lib/support/kb'
-import Anthropic from '@anthropic-ai/sdk'
+import OpenAI from 'openai'
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY || '',
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY || '',
 })
 
 interface ChatMessage {
@@ -36,9 +36,9 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  if (!process.env.ANTHROPIC_API_KEY) {
+  if (!process.env.OPENAI_API_KEY) {
     return new Response(
-      JSON.stringify({ error: 'ANTHROPIC_API_KEY not configured' }),
+      JSON.stringify({ error: 'OPENAI_API_KEY not configured' }),
       { status: 500, headers: { 'Content-Type': 'application/json' } }
     )
   }
@@ -64,11 +64,9 @@ export async function POST(req: NextRequest) {
   // ── RAG: buscar artículos relevantes ─────────────────────────────
   let contextArticles = ''
   try {
-    // Intentar FTS primero
     const searchResults = await searchArticles(message)
 
     if (searchResults.length > 0) {
-      // Tenemos resultados de búsqueda — cargar contenido completo
       const { createServerClient } = await import('@/lib/supabase/server')
       const supabase = await createServerClient()
       const slugs = searchResults.slice(0, 5).map((r) => r.slug)
@@ -79,20 +77,17 @@ export async function POST(req: NextRequest) {
 
       if (articles?.length) {
         contextArticles = articles
-          .map(
-            (a: any) =>
-              `### ${a.title}\n${a.content}`
-          )
+          .map((a: any) => `### ${a.title}\n${a.content}`)
           .join('\n\n---\n\n')
       }
     }
 
-    // Fallback: si no hay resultados FTS, mandar un resumen de todos los artículos
+    // Fallback: si no hay resultados FTS, mandar resumen de todos
     if (!contextArticles) {
       const all = await getAllArticles()
       if (all.length > 0) {
         contextArticles = all
-          .slice(0, 15) // máximo 15 para no volar el context
+          .slice(0, 15)
           .map((a) => `### ${a.title}\n${a.content}`)
           .join('\n\n---\n\n')
       }
@@ -101,13 +96,13 @@ export async function POST(req: NextRequest) {
     console.error('Error fetching KB articles for RAG:', err)
   }
 
-  // ── Construir mensajes para Claude ───────────────────────────────
+  // ── Construir mensajes para OpenAI ───────────────────────────────
   const systemContent = contextArticles
     ? `${SYSTEM_PROMPT}\n\n---\n\nARTÍCULOS DE AYUDA DISPONIBLES:\n\n${contextArticles}`
     : SYSTEM_PROMPT
 
-  const messages: Anthropic.MessageParam[] = [
-    // Últimos 10 mensajes del historial (para no volar contexto)
+  const messages: OpenAI.ChatCompletionMessageParam[] = [
+    { role: 'system', content: systemContent },
     ...history.slice(-10).map((m) => ({
       role: m.role as 'user' | 'assistant',
       content: m.content,
@@ -117,24 +112,21 @@ export async function POST(req: NextRequest) {
 
   // ── Stream response ──────────────────────────────────────────────
   try {
-    const stream = anthropic.messages.stream({
-      model: 'claude-3-5-haiku-20241022',
+    const stream = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
       max_tokens: 1024,
-      system: systemContent,
+      stream: true,
       messages,
     })
 
-    // Convertir a ReadableStream para Next.js
     const readableStream = new ReadableStream({
       async start(controller) {
         const encoder = new TextEncoder()
         try {
-          for await (const event of stream) {
-            if (
-              event.type === 'content_block_delta' &&
-              event.delta.type === 'text_delta'
-            ) {
-              controller.enqueue(encoder.encode(event.delta.text))
+          for await (const chunk of stream) {
+            const text = chunk.choices[0]?.delta?.content
+            if (text) {
+              controller.enqueue(encoder.encode(text))
             }
           }
           controller.close()
@@ -153,7 +145,7 @@ export async function POST(req: NextRequest) {
       },
     })
   } catch (err) {
-    console.error('Anthropic API error:', err)
+    console.error('OpenAI API error:', err)
     return new Response(
       JSON.stringify({ error: 'Error al procesar tu consulta' }),
       { status: 500, headers: { 'Content-Type': 'application/json' } }
