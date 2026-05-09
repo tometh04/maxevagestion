@@ -11,6 +11,7 @@ import {
   Plane,
   GalleryVerticalEnd,
   Bot,
+  HelpCircle,
 } from "lucide-react"
 import { shouldShowInSidebar, type UserRole } from "@/lib/permissions"
 import { NavMain } from "@/components/nav-main"
@@ -137,6 +138,13 @@ const allNavigation: NavItem[] = [
     title: "🧠 Cerebro",
     url: "/tools/cerebro",
     icon: Bot,
+    collapsible: false,
+  },
+  // 8. Ayuda
+  {
+    title: "Ayuda",
+    url: "/ayuda",
+    icon: HelpCircle,
     collapsible: false,
   },
 ]
