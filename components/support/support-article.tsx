@@ -10,6 +10,7 @@ import remarkGfm from "remark-gfm"
 interface ArticleData {
   title: string
   content: string
+  video_url?: string | null
   category_name?: string
   updated_at?: string
 }
@@ -95,6 +96,23 @@ export function SupportArticle({ slug, onBack }: SupportArticleProps) {
 
       {/* Article content */}
       <ScrollArea className="flex-1">
+        {/* Video tutorial inline */}
+        {article.video_url && (
+          <div className="px-4 pt-3">
+            <div className="rounded-lg overflow-hidden border bg-black aspect-video">
+              <video
+                src={article.video_url}
+                controls
+                preload="metadata"
+                className="w-full h-full"
+                playsInline
+              />
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-1.5">
+              🎬 Video tutorial
+            </p>
+          </div>
+        )}
         <div className="p-4 prose prose-sm dark:prose-invert max-w-none prose-headings:text-sm prose-headings:font-semibold prose-p:text-sm prose-li:text-sm prose-p:leading-relaxed">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>
             {article.content}

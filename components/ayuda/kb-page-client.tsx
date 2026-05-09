@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { Search, BookOpen, FileText, ChevronRight, Plane, DollarSign, Users, Settings, BarChart3, ShoppingCart, Calculator, Bell } from "lucide-react"
+import { Search, BookOpen, FileText, ChevronRight, Plane, DollarSign, Users, Settings, BarChart3, ShoppingCart, Calculator, Bell, Play } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -137,9 +137,17 @@ export function KbPageClient({ categories, articles }: KbPageClientProps) {
               >
                 <FileText className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium group-hover:text-primary truncate">
-                    {article.title}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium group-hover:text-primary truncate">
+                      {article.title}
+                    </p>
+                    {article.video_url && (
+                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0 gap-0.5 shrink-0">
+                        <Play className="h-2.5 w-2.5" />
+                        Video
+                      </Badge>
+                    )}
+                  </div>
                   <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
                     {article.summary}
                   </p>
@@ -171,9 +179,17 @@ export function KbPageClient({ categories, articles }: KbPageClientProps) {
               >
                 <FileText className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium group-hover:text-primary truncate">
-                    {article.title}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium group-hover:text-primary truncate">
+                      {article.title}
+                    </p>
+                    {article.video_url && (
+                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0 gap-0.5 shrink-0">
+                        <Play className="h-2.5 w-2.5" />
+                        Video
+                      </Badge>
+                    )}
+                  </div>
                   <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
                     {article.summary}
                   </p>

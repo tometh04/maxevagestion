@@ -24,6 +24,7 @@ export async function GET(
       title: article.title,
       content: article.content,
       summary: article.summary,
+      video_url: article.video_url,
       category_name: article.category_name,
       updated_at: article.updated_at,
     },

@@ -51,6 +51,24 @@ export default async function ArticlePage({ params }: PageProps) {
         </h1>
         <p className="text-sm text-muted-foreground mb-6">{article.summary}</p>
 
+        {/* Video tutorial */}
+        {article.video_url && (
+          <div className="mb-6">
+            <div className="rounded-lg overflow-hidden border bg-black aspect-video">
+              <video
+                src={article.video_url}
+                controls
+                preload="metadata"
+                className="w-full h-full"
+                playsInline
+              />
+            </div>
+            <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+              🎬 Video tutorial — seguí los pasos del video o leé el artículo abajo
+            </p>
+          </div>
+        )}
+
         <KbArticleView content={article.content} />
       </article>
 

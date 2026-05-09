@@ -10,9 +10,10 @@ import {
   DollarSign,
   Plane,
   GalleryVerticalEnd,
-  Bot,
+  Wrench,
   HelpCircle,
 } from "lucide-react"
+import Link from "next/link"
 import { shouldShowInSidebar, type UserRole } from "@/lib/permissions"
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
@@ -119,7 +120,7 @@ const allNavigation: NavItem[] = [
   {
     title: "Herramientas",
     url: "/tools/tasks",
-    icon: Bot,
+    icon: Wrench,
     items: [
       { title: "Calendario", url: "/calendar" },
       { title: "Alertas", url: "/alerts", module: "alerts" as const },
@@ -137,14 +138,6 @@ const allNavigation: NavItem[] = [
   {
     title: "🧠 Cerebro",
     url: "/tools/cerebro",
-    icon: Bot,
-    collapsible: false,
-  },
-  // 8. Ayuda
-  {
-    title: "Ayuda",
-    url: "/ayuda",
-    icon: HelpCircle,
     collapsible: false,
   },
 ]
@@ -366,6 +359,16 @@ export function AppSidebar({ userRole, user, ...props }: AppSidebarProps) {
       </SidebarContent>
       <SidebarFooter>
         <ThemeToggleSidebar />
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton tooltip="Ayuda" asChild isActive={pathname === "/ayuda" || pathname?.startsWith("/ayuda/")}>
+              <Link href="/ayuda">
+                <HelpCircle className="h-4 w-4" />
+                <span>Ayuda</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
         <NavUser user={user} />
       </SidebarFooter>
       <SidebarRail />

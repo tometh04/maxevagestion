@@ -17,6 +17,7 @@ export interface KbArticle {
   slug: string
   content: string
   summary: string
+  video_url?: string | null
   sort_order: number
   published: boolean
   created_at: string
@@ -159,6 +160,7 @@ function mapArticle(row: any): KbArticle {
     slug: row.slug,
     content: row.content,
     summary: row.summary,
+    video_url: row.video_url ?? null,
     sort_order: row.sort_order,
     published: row.published,
     created_at: row.created_at,
