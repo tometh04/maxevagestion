@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic'
 const createIntegrationSchema = z.object({
   name: z.string().min(1, "El nombre es requerido"),
   integration_type: z.enum([
-    'trello', 'manychat', 'whatsapp', 'afip', 'email', 
+    'manychat', 'whatsapp', 'afip', 'email',
     'calendar', 'slack', 'webhook', 'zapier', 'other'
   ]),
   description: z.string().optional(),

@@ -307,8 +307,7 @@ export function determineListName(manychatData: ManychatLeadData): string {
 
 
 /**
- * Sync Manychat lead data to a lead in the database
- * Lógica IDÉNTICA a syncTrelloCardToLead pero adaptada para Manychat
+ * Sync Manychat lead data to a lead in the database.
  */
 export async function syncManychatLeadToLead(
   manychatData: ManychatLeadData,
@@ -337,7 +336,7 @@ export async function syncManychatLeadToLead(
   // 3. Construir descripción estructurada (igual que Zapier)
   const notes = buildStructuredDescription(manychatData)
   
-  // 4. Preparar datos completos de Manychat para guardar en JSONB (similar a trello_full_data)
+  // 4. Preparar datos completos de Manychat para guardar en JSONB
   const manychatFullData = {
     // Datos del lead
     ig: manychatData.ig,
@@ -470,8 +469,9 @@ export async function syncManychatLeadToLead(
     contact_instagram,
     assigned_seller_id: null, // No se asigna automáticamente
     notes: notes || null,
-    manychat_full_data: manychatFullData, // Similar a trello_full_data
-    list_name: listName, // Nombre de la lista para el kanban (INDEPENDIENTE de Trello)
+    manychat_full_data: manychatFullData,
+    list_name: listName, // Nombre de la lista para el kanban
+
     updated_at: new Date().toISOString(),
   }
   

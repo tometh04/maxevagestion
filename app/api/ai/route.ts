@@ -33,7 +33,7 @@ const DATABASE_SCHEMA = `
 - status ('NEW','IN_PROGRESS','QUOTED','WON','LOST')
 - region ('ARGENTINA','CARIBE','BRASIL','EUROPA','EEUU','OTROS','CRUCEROS')
 - destination, contact_name, contact_phone, contact_email, contact_instagram
-- assigned_seller_id, external_id, trello_url, notes
+- assigned_seller_id, notes
 - created_at, updated_at
 
 #### operations (Operaciones/Ventas) ⭐ TABLA PRINCIPAL

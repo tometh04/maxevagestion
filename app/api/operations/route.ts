@@ -927,7 +927,7 @@ export async function GET(request: Request) {
         sellers_secondary:seller_secondary_id(id, name, email),
         operators:operator_id(id, name),
         agencies:agency_id(id, name, city),
-        leads:lead_id(id, contact_name, destination, trello_url, status),
+        leads:lead_id(id, contact_name, destination, status),
         operation_customers(
           role,
           customers:customer_id(
@@ -1146,7 +1146,7 @@ export async function GET(request: Request) {
           sellers_secondary:seller_secondary_id(name),
           operators:operator_id(name),
           agencies:agency_id(name),
-          leads:lead_id(contact_name, destination, trello_url),
+          leads:lead_id(contact_name, destination),
           operation_customers(role, customers:customer_id(id, first_name, last_name)),
           operation_operators(id, cost, cost_currency, notes, operators:operator_id(id, name))
         `)
@@ -1166,7 +1166,7 @@ export async function GET(request: Request) {
           sellers_secondary:seller_secondary_id(name),
           operators:operator_id(name),
           agencies:agency_id(name),
-          leads:lead_id(contact_name, destination, trello_url),
+          leads:lead_id(contact_name, destination),
           operation_customers(role, customers:customer_id(id, first_name, last_name))
         `)
         .order("operation_date", { ascending: false, nullsFirst: false })

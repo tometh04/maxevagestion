@@ -5,7 +5,6 @@ import { useSearchParams, useRouter } from "next/navigation"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { UsersSettings } from "@/components/settings/users-settings"
 import { AgenciesSettings } from "@/components/settings/agencies-settings"
-import { TrelloSettings } from "@/components/settings/trello-settings"
 import { CommissionsSettings } from "@/components/settings/commissions-settings"
 import { AISettings } from "@/components/settings/ai-settings"
 import { SeedMockData } from "@/components/settings/seed-mock-data"
@@ -98,7 +97,6 @@ export function SettingsPageClient({ defaultTab, agencies, firstAgencyId, userRo
         <TabsTrigger value="operadores">Operadores</TabsTrigger>
         <TabsTrigger value="agencies">Agencias</TabsTrigger>
         {/* Hidden tabs - kept for future use
-        <TabsTrigger value="trello">Trello</TabsTrigger>
         <TabsTrigger value="commissions">Comisiones</TabsTrigger>
         <TabsTrigger value="ai">AI</TabsTrigger>
         <TabsTrigger value="import">Importar Datos</TabsTrigger>
@@ -135,9 +133,6 @@ export function SettingsPageClient({ defaultTab, agencies, firstAgencyId, userRo
         </div>
       </TabsContent>
       {/* Hidden tab contents - kept for future use */}
-      <TabsContent value="trello" className="mt-6">
-        <TrelloSettings agencies={agencies} defaultAgencyId={firstAgencyId} />
-      </TabsContent>
       <TabsContent value="commissions" className="mt-6">
         <CommissionsSettings />
       </TabsContent>
