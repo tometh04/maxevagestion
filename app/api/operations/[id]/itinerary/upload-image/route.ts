@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { createAdminClient } from "@/lib/supabase/server"
+import { createAdminClient, createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canPerformAction } from "@/lib/permissions-api"
 
@@ -15,6 +15,24 @@ export async function POST(
     }
 
     const { id: operationId } = await params
+
+    // P0 2026-05-10: verificar que la operation pertenece a la org del user
+    // ANTES de usar adminClient (que bypassea RLS). Sin esto, cualquier user
+    // podría sobrescribir/subir imágenes a itineraries de otros tenants
+    // teniendo el UUID de la operation.
+    const userClient = await createServerClient()
+    const { data: opRow, error: opErr } = await (userClient.from("operations") as any)
+      .select("id, org_id")
+      .eq("id", operationId)
+      .maybeSingle()
+    if (opErr || !opRow) {
+      return NextResponse.json({ error: "Operación no encontrada o sin acceso" }, { status: 404 })
+    }
+    const userOrgId = (user as any).org_id as string | null
+    if (!userOrgId || (opRow as any).org_id !== userOrgId) {
+      return NextResponse.json({ error: "No tiene acceso a esta operación" }, { status: 403 })
+    }
+
     const adminDb = createAdminClient()
 
     const formData = await request.formData()
