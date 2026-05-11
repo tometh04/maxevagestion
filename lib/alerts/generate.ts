@@ -69,6 +69,7 @@ export async function generateUpcomingTripAlerts(tripDays: number = 7): Promise<
 
     // Create alert
     await supabase.from("alerts").insert({
+      org_id: operation.org_id, // P0 2026-05-10: required para RLS tenant_isolation (mig 5)
       operation_id: operation.id,
       user_id: operation.seller_id,
       type: "UPCOMING_TRIP",
@@ -128,6 +129,7 @@ export async function generateMissingDocumentAlerts(): Promise<void> {
 
       // Create alert
       await supabase.from("alerts").insert({
+        org_id: operation.org_id, // P0 2026-05-10: required para RLS tenant_isolation
         operation_id: operation.id,
         user_id: operation.seller_id,
         type: "MISSING_DOC",
@@ -242,6 +244,19 @@ export async function generatePaymentAlerts30Days(
   today.setHours(0, 0, 0, 0)
   const alertsToCreate: any[] = []
 
+  // P0 2026-05-10: derivar org_id desde la operation para inyectarlo en cada INSERT.
+  // Sin esto, el cron de alerts crea rows con org_id NULL invisibles a todos los tenants
+  // tras tightener la policy (mig 20260510000005).
+  const { data: opData } = await (supabase.from("operations") as any)
+    .select("org_id")
+    .eq("id", operationId)
+    .maybeSingle()
+  const operationOrgId = (opData as any)?.org_id
+  if (!operationOrgId) {
+    console.warn(`[generatePaymentAlerts30Days] operation ${operationId} sin org_id — skip`)
+    return
+  }
+
   // Obtener todos los pagos de la operación
   const { data: payments } = await (supabase.from("payments") as any)
     .select("id, amount, currency, date_due, direction, payer_type, status")
@@ -283,6 +298,7 @@ export async function generatePaymentAlerts30Days(
           if (payment.direction === "INCOME" && payment.payer_type === "CUSTOMER") {
             // Alerta de cobro de cliente
             alertsToCreate.push({
+              org_id: operationOrgId,
               operation_id: operationId,
               user_id: sellerId,
               type: "PAYMENT_DUE",
@@ -293,6 +309,7 @@ export async function generatePaymentAlerts30Days(
           } else if (payment.direction === "EXPENSE" && payment.payer_type === "OPERATOR") {
             // Alerta de pago a operador
             alertsToCreate.push({
+              org_id: operationOrgId,
               operation_id: operationId,
               user_id: sellerId,
               type: "OPERATOR_DUE",
