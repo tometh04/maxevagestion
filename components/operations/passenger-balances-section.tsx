@@ -55,6 +55,8 @@ interface Payment {
   id: string
   amount: number
   currency: string
+  amount_usd?: number | null      // USD equivalent computed al crear el pago (fuente de verdad para FX)
+  exchange_rate?: number | null   // T/C usado para convertir ARS↔USD (fallback si amount_usd null)
   status: string
   direction: string
   payer_type: string
@@ -199,22 +201,85 @@ export function PassengerBalancesSection({
     (p) => p.payer_type === "CUSTOMER" && p.direction === "INCOME" && p.status === "PAID"
   )
 
-  // Calculate per-passenger paid totals from allocations, in OP currency only.
-  // Allocations en otra moneda no cuentan acá (hasta que tengamos conversión via exchange_rate).
+  // Map de paymentId → payment para lookup rápido al convertir allocations.
+  const paymentsById = customerPayments.reduce<Record<string, Payment>>((acc, p) => {
+    acc[p.id] = p
+    return acc
+  }, {})
+
+  /**
+   * Convierte el monto de una allocation a la moneda de la operación.
+   *
+   * - Si ya está en op currency → as-is
+   * - Si está en otra moneda → busca el pago padre y usa:
+   *   1. amount_usd (proporcional al ratio allocation/payment) — preferido
+   *   2. exchange_rate del pago — fallback
+   *   3. null si nada matchea (no se cuenta)
+   *
+   * Bug fix 2026-05-11 (Santi): antes las allocations en ARS para op USD se
+   * descartaban. Ahora se convierten para reflejar correctamente el "Pagado"
+   * de cada pasajero en la moneda de la operación.
+   */
+  const convertAllocationToOpCurrency = (a: Allocation): number | null => {
+    const allocCcy = a.currency || currency
+    const allocAmount = Number(a.amount)
+    if (allocCcy === currency) return allocAmount
+
+    const parentPayment = paymentsById[a.payment_id]
+    if (!parentPayment) return null
+
+    const paymentAmount = Number(parentPayment.amount)
+    if (!paymentAmount || paymentAmount <= 0) return null
+
+    // Caso 1: op USD, alloc ARS → necesitamos USD value
+    if (currency === "USD" && allocCcy === "ARS") {
+      if (parentPayment.amount_usd != null) {
+        // Proporcional: si payment es ARS 200k = USD 139.86, y la allocation es
+        // ARS 100k (mitad), entonces aporta USD 69.93
+        return (allocAmount / paymentAmount) * Number(parentPayment.amount_usd)
+      }
+      if (parentPayment.exchange_rate && Number(parentPayment.exchange_rate) > 0) {
+        return allocAmount / Number(parentPayment.exchange_rate)
+      }
+      return null
+    }
+
+    // Caso 2: op ARS, alloc USD → necesitamos ARS value
+    if (currency === "ARS" && allocCcy === "USD") {
+      if (parentPayment.amount_usd != null && Number(parentPayment.amount_usd) > 0) {
+        // Proporcional: si payment es USD 100 = ARS 143000, alloc USD 50 → ARS 71500
+        return (allocAmount / Number(parentPayment.amount_usd)) * paymentAmount
+      }
+      if (parentPayment.exchange_rate && Number(parentPayment.exchange_rate) > 0) {
+        return allocAmount * Number(parentPayment.exchange_rate)
+      }
+      return null
+    }
+
+    return null
+  }
+
+  // Pagado per passenger en op currency. Suma allocations directas + convertidas.
   const getPassengerPaid = (opCustomerId: string) => {
     return allocations
-      .filter((a) => a.operation_customer_id === opCustomerId && (a.currency || currency) === currency)
-      .reduce((sum, a) => sum + Number(a.amount), 0)
+      .filter((a) => a.operation_customer_id === opCustomerId)
+      .reduce((sum, a) => {
+        const converted = convertAllocationToOpCurrency(a)
+        return converted != null ? sum + converted : sum
+      }, 0)
   }
 
   // Amount per passenger: SOLO usado en el dialog de Asignar para el placeholder.
   // El "A pagar" de la tabla usa getExpectedAmount(c.id) que respeta expected_amount custom.
   const amountPerPassenger = customers.length > 0 ? saleAmount / customers.length : saleAmount
 
-  // Total allocated en la moneda de la operación (no mezcla monedas)
-  const totalAllocated = allocations
-    .filter((a) => (a.currency || currency) === currency)
-    .reduce((sum, a) => sum + Number(a.amount), 0)
+  // Total allocated en la moneda de la operación (con conversión FX).
+  // Bug fix Santi: antes filtraba `a.currency === op currency`, descartando
+  // allocations en otra moneda. Ahora se convierten via amount_usd/exchange_rate.
+  const totalAllocated = allocations.reduce((sum, a) => {
+    const converted = convertAllocationToOpCurrency(a)
+    return converted != null ? sum + converted : sum
+  }, 0)
 
   // Total de pagos por moneda (cada pago suma a su propia moneda, NO mezcla USD+ARS)
   // Bug fix 2026-05-11 (Santi): antes se sumaba sum(amount) ignorando currency,
