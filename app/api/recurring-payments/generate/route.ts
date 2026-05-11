@@ -194,6 +194,7 @@ export async function GET(request: Request) {
 
         if (!existingAlert) {
           await (supabase.from("alerts") as any).insert({
+            org_id: payment.org_id || null, // P0 2026-05-10: required tras tighten policy mig 5
             type: "RECURRING_PAYMENT",
             description: alertDescription,
             date_due: payment.next_due_date,

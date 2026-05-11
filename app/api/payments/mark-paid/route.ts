@@ -490,6 +490,7 @@ export async function POST(request: Request) {
         // Crear alerta de sistema para revisión manual
         try {
           await (supabase.from("alerts") as any).insert({
+            org_id: paymentData.org_id || null, // P0 2026-05-10: required tras tighten policy mig 5
             agency_id: agencyId || null,
             user_id: user.id,
             operation_id: paymentData.operation_id,

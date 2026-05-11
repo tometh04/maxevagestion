@@ -298,8 +298,23 @@ async function createReminderAlert(
     return false
   }
 
+  // P0 2026-05-10: derivar org_id desde la operation para no insertar NULL
+  let alertOrgId: string | null = null
+  if (reminder.operationId) {
+    const { data: opData } = await (supabase.from("operations") as any)
+      .select("org_id")
+      .eq("id", reminder.operationId)
+      .maybeSingle()
+    alertOrgId = (opData as any)?.org_id || null
+  }
+  if (!alertOrgId) {
+    console.warn(`[payment-reminders] No se pudo resolver org_id para ${reminder.paymentId} — skip`)
+    return false
+  }
+
   // Crear la alerta
   const { error } = await supabase.from("alerts").insert({
+    org_id: alertOrgId,
     operation_id: reminder.operationId,
     user_id: userId,
     type: alertType,

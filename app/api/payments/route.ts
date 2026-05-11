@@ -988,11 +988,12 @@ export async function POST(request: Request) {
         // Resolver agency_id y file_code de la operación (las variables del scope
         // interno de creación del cash_movement no están accesibles acá).
         const { data: opForAlert } = await (supabase.from("operations") as any)
-          .select("agency_id, file_code")
+          .select("agency_id, org_id, file_code")
           .eq("id", operation_id)
           .maybeSingle()
 
         const alertAgencyId = opForAlert?.agency_id || null
+        const alertOrgId = opForAlert?.org_id || null
         const opCode = opForAlert?.file_code || operation_id.slice(0, 8)
 
         if (!alertAgencyId) {
@@ -1023,6 +1024,7 @@ export async function POST(request: Request) {
 
             if (!existingAlert) {
               await (supabase.from("alerts") as any).insert({
+                org_id: alertOrgId, // P0 2026-05-10: required tras tighten policy mig 5
                 agency_id: alertAgencyId,
                 user_id: user.id,
                 operation_id,
