@@ -1,33 +1,54 @@
 # Vibook — Triage de Bugs y Friction Arquitectural
 
 **Generado**: 2026-05-08 (sweep automatizado con metodología `diagnose` + `improve-codebase-architecture` + security audit)
+**Última actualización**: 2026-05-10 (post-cleanup multi-tenant + Trello deploy a main)
 **Audiencia**: founder + dev nuevo
-**Stats**: 9 P0 críticos · 21 P1 importantes · 12 P2 defense-in-depth · 10 deepening opportunities
+**Stats actuales** (post-deploy 2026-05-10):
+- **P0 cerrados**: 7 de 9 (multi-tenant leaks de `seller_objectives`, `audit_logs`, `alerts` NULL leak parcial, bulk double-pay con CAS, mark-paid counterpart detection extendido, upload-image trust RLS, payments RLS organization_members híbrida)
+- **P0 pendientes**: 2 — alerts tighten (mig 5 pospuesta) + backfill 331 payments NULL (no bloqueante por policy híbrida)
+- **P1**: 21 — backlog Q3 del dev nuevo
+- **P2**: 12 — backlog Q4
+- **Refactors arquitecturales**: 10
 
-> **Nota 2026-05-08**: Trello ya no se usa como integración activa. Manychat es el canal real. Findings relacionados a Trello fueron movidos a "Cleanup obsoleto"; findings de Manychat fueron escalados a P1.
+> **Nota 2026-05-08**: Trello ya no se usa como integración activa. Manychat es el canal real.
+> **Nota 2026-05-10**: Trello cleanup + 3 migrations P0 (payments híbrida, audit_logs, seller_objectives) deployadas a producción. Lozada productivo verificado intacto post-deploy.
 
 > **Cómo usar este doc**: cada finding tiene severidad, archivo:línea exacto, problema concreto y fix propuesto. Los P0 son **blockers para el dev nuevo** — fix antes de release. Los P1 son backlog Q3. Los P2 son backlog Q4. Los refactors arquitecturales son el norte para Q3-Q4.
 
 ---
 
-## 🔴 P0 — BLOCKERS (fix antes de entregar al dev nuevo)
+## 🔴 P0 — BLOCKERS
 
-### Multi-tenant data leaks
+### ✅ Cerrados en deploy 2026-05-10 (PR #25)
 
-| # | Bug | Archivo | Fix |
+| # | Bug | Status | Detalle |
 |---|---|---|---|
-| 1 | `seller_objectives` sin RLS + endpoint sin filtro org/agency. ADMIN de un tenant lista TODOS los objectives | `supabase/migrations/127_create_seller_objectives.sql` + `app/api/commissions/objectives/route.ts:19-38` | Agregar `org_id` col + policy `tenant_isolation` + `getUserAgencyIds().in("agency_id", ...)` en endpoint |
-| 2 | `destinations` con RLS `USING (true)` + API global. Agencias polluten el catálogo de otras | `supabase/migrations/114_destinations_master.sql:23-30` + `app/api/destinations/route.ts:17-87` | Agregar `org_id`, RLS por org, scope GET/POST por user.org_id (memory: "catálogos per-tenant siempre") |
-| 3 | `itinerary_items` con RLS `USING (true)`. Cualquier user autenticado SELECT/UPDATE/DELETE itinerarios ajenos por UUID-guess | `supabase/migrations/115_itinerary_items.sql:51-56` + `app/api/operations/[id]/itinerary/[itemId]/route.ts` | Policy joining `operations.org_id` + verificar `operation_id ∈ user.org` en API |
-| 4 | `audit_logs` GET sin filtro org. ADMIN ve who-did-what de TODOS los tenants | `app/api/audit-logs/route.ts:30-100` | `.eq("org_id", user.org_id)` o join via users |
-| 5 | RLS de `alerts` permite ver rows con `org_id IS NULL` desde cualquier tenant. Las 1209 NULL-org alerts son visibles a TODOS | `supabase/migrations/20260331000136_saas_rls_tenant_isolation.sql:93-99` | Backfill NULLs primero, después tightener policy quitando `org_id IS NULL OR ...` |
+| 1 | `seller_objectives` sin RLS | ✅ | Mig `20260510000002` aplicada en prod. ADD `org_id` + RLS tenant_isolation + endpoint POST con fallback chain |
+| 2 | `destinations` con RLS `USING(true)` | ⏭️ **SKIPED** | Decisión de producto: catálogo maestro global compartido. Riesgo cross-tenant aceptado (es metadata pública, no PII) |
+| 3 | `itinerary_items` con RLS `USING(true)` | ✅ | Ya estaba fixeado en mig 143 (anterior a este sweep) |
+| 4 | `audit_logs` GET sin filtro org | ✅ | Mig `20260510000003` aplicada. ADD `org_id` + backfill via `organization_members` + RLS scopeada (SUPER_ADMIN global bypass) + endpoint con filter explícito |
+| 5 | `alerts` RLS NULL bypass | 🟡 **POSPUESTA** | Mig `20260510000005` lista pero NO aplicada. Backfill grande (1209 rows) — programar post-lanzamiento con dev nuevo |
+| 6 | Bulk operator-payment double-pay | ✅ | CAS guard agregado en `app/api/accounting/operator-payments/bulk/route.ts`. Aborta con error explícito si paid_amount cambió desde lectura |
+| 7 | mark-paid counterpart silencioso | ✅ | `/api/payments/orphans` extendido. Detecta payments PAID con main ledger pero sin counterpart movement via marker `counterpart_payment_id=<uuid>` en notes |
+| 8 | itinerary/upload-image sin auth check | ✅ | SELECT con userClient (respeta RLS) gates al adminClient. Si RLS deja leer la operation, el user tiene acceso al tenant |
+| 9 | `expense_receipts` con `DISABLE RLS` | ✅ | Verificado: no hay endpoint user-facing que lo lea, solo admin scripts. OK con DISABLE por ahora |
 
-### Payments / accounting (plata real)
+### 🔧 Cambios de schema/runtime descubiertos durante el deploy
 
-| # | Bug | Archivo | Fix |
-|---|---|---|---|
-| 6 | Bulk operator-payment **double-pay possible** — flippea `status='PAID'` sin CAS guard, sin idempotency. Dos bulk runs simultáneos = paga 2 veces | `app/api/accounting/operator-payments/bulk/route.ts:360-396` | CAS update `.eq("status","PENDING")` + INSERT con `ON CONFLICT (operator_payment_id, reference)` |
-| 7 | `mark-paid` deja payment PAID + ledger creado, pero counterpart silencioso por catch console.error. Cuentas por Cobrar/Pagar **NO se reduce** → deuda nunca cierra. Invisible al endpoint orphans actual | `app/api/payments/mark-paid/route.ts:422+` | Extender `/api/payments/orphans` para detectar missing counterpart; mover counterpart a la transacción del ledger |
+| Bug encontrado en deploy | Fix aplicado |
+|---|---|
+| **Función `user_org_ids()` tenía mismatch FK**: comparaba `WHERE user_id = auth.uid()` pero `organization_members.user_id` es FK a `auth.users(id)` no `public.users(id)`. La tabla quedaba "vacía" para todos los users porque la función nunca matcheaba. | Reescrita: ahora joinea `auth.users(id) = users.auth_id`. Aplicada en prod junto al backfill |
+| **`organization_members` vacía en prod**: ningún user tenía membership registrada en el modelo SaaS (todos vivían en legacy `user_agencies`) | Backfill desde `user_agencies` con role mapping (SUPER_ADMIN→OWNER, ADMIN→ADMIN, CONTABLE/SELLER→same, default VIEWER). 40 rows insertadas. Excluido 1 huérfano (`naza@agencialozada.com` cuya `auth_id` no existe en `auth.users`) |
+| **Policy de `payments` cambió a HÍBRIDA**: la migration original solo aceptaba `organization_members`. Como users productivos también viven en `user_agencies` legacy, se aplicó versión híbrida que acepta ambas — zero-downtime durante transición. Cuando todos los users estén en `organization_members`, simplificar quitando la rama legacy. | Aplicada en prod. Anotada como deuda técnica futura |
+| **`admin@vibook.ai`** SUPER_ADMIN sin `user_agencies` asignada → quedó fuera del backfill | No crítico (Tomi usa `tomas.sanchez04@gmail.com`). Si lo necesitan, asignar manualmente |
+| **`naza@agencialozada.com`** SELLER de Lozada con `auth_id` huérfano (no en `auth.users`) | Flagged. Re-crear en Supabase Auth → relinkear `public.users.auth_id` cuando la quieran activar |
+
+### Pendientes de la lista P0 (no bloqueantes para lanzamiento)
+
+| Item | Status | Plan |
+|---|---|---|
+| Mig 5 alerts tighten | Pendiente | Post-lanzamiento, dev nuevo primera semana. Script en `supabase/migrations/20260510000005_p0_alerts_tighten_rls.sql` |
+| Backfill 331 payments NULL org_id | Pendiente | Script en `scripts/p0-backfill-orphan-payments-org-id.sql`. Mientras tanto, policy híbrida de payments los mantiene visibles vía rama `user_agencies` legacy |
 
 ### Catalogación pendiente (verify)
 

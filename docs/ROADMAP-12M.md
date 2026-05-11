@@ -2,8 +2,10 @@
 
 **Audiencia**: Product Manager, dev nuevo, stakeholders.
 **Autor**: Tomi (founder/CEO).
-**Última actualización**: 2026-05-08.
-**Status**: vivo — se revisa quarter-end y se ajusta.
+**Última actualización**: 2026-05-10 (post-deploy cleanup multi-tenant P0 + Trello removal).
+**Status**: vivo — se revisa quarter-end y se ajusta. **Lanzamiento público mañana 2026-05-11**.
+
+> **Hito 2026-05-10**: Deploy de PR #25 a producción. Cerrados 7 de 9 P0 multi-tenant. Trello integration removida (5K líneas). Lozada productivo verificado intacto. Ver `docs/BUGS-TRIAGE.md` para detalle.
 
 > Este doc es el plan estratégico de los próximos 12 meses. No es un Gantt detallado; es la dirección. Los detalles tácticos (sprint planning, tickets) viven en GitHub Issues / Linear.
 
@@ -451,6 +453,18 @@ Cosas que están en el aire pero no comprometidas en este roadmap. Se evalúan t
 - Multi-language UI (después de internacionalización)
 - Audit log per-tenant (visible al ADMIN del tenant, no solo a SUPER_ADMIN nuestro)
 - Marketplace de plugins (vs solo templates)
+
+### Deuda técnica conocida (programar)
+- **Mig 5 alerts tighten** (post-lanzamiento, semana 1): script ya en `supabase/migrations/20260510000005_p0_alerts_tighten_rls.sql`. Backfillea 1209 alerts NULL + tightenea policy. Mientras tanto, 1209 alerts visibles cross-tenant — leak conocido de info no-sensible
+- **Backfill 331 payments org_id NULL** (post-lanzamiento): script en `scripts/p0-backfill-orphan-payments-org-id.sql`. Policy híbrida de payments los mantiene visibles vía `user_agencies` legacy
+- **Simplificar policy híbrida de `payments`**: cuando todos los users vivan en `organization_members`, quitar la rama legacy `user_agencies` del RLS de payments
+- **Cleanup Vercel** (1-2 días post-lanzamiento, requiere coordinación DNS):
+  - 3 proyectos legacy a borrar: `maxevagestion-v5`, `vibookservicessaas`, `vibook-landing`
+  - 2 dominios productivos usan nameservers Vercel: `vibook.ai`, `maxevagestion.com` → migrar a Cloudflare DNS
+  - Migrar redirect `maxevagestion.com → app.vibook.ai` (hoy hosteado en Vercel) a Cloudflare Page Rule
+  - Downgrade plan o delete team — corta el cobro mensual de Vercel
+- **Re-activar user `naza@agencialozada.com`** (a demanda): re-crear en Supabase Auth → relinkear `users.auth_id` → INSERT en `organization_members`. Ver runbook en `docs/HANDOVER.md` Bug I
+- **`admin@vibook.ai`** sin `user_agencies`: asignar a alguna org si lo van a usar como admin operativo (hoy Tomi usa `tomas.sanchez04@gmail.com`)
 
 ---
 

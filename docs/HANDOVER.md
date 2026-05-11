@@ -258,6 +258,43 @@ UPDATE operator_payments SET paid_amount = amount WHERE paid_amount > amount;
 **Causa**: `CRON_SECRET` desincronizado entre `maxevagestion` y los cron services.
 **Fix**: ver `docs/runbook-incidents.md` sección 4.
 
+### Bug H — User productivo de Lozada deja de ver sus payments / data
+**Síntoma**: un seller/admin se loguea y `/payments` (o cualquier vista filtrada por RLS) está vacía.
+**Causa probable**: el user no está en `organization_members` (o `organization_members.user_id` mal seteado — debe ser `users.auth_id`, no `users.id`).
+**Diagnóstico**:
+```sql
+SELECT u.email, u.role,
+  CASE WHEN om.user_id IS NOT NULL THEN '✓ en org_members' ELSE '✗ FALTA' END AS membership
+FROM users u
+LEFT JOIN organization_members om ON om.user_id = u.auth_id AND om.status = 'ACTIVE'
+WHERE u.email = '<email-del-user>';
+```
+**Fix**: insertar manualmente:
+```sql
+INSERT INTO organization_members (user_id, organization_id, role, status)
+VALUES (
+  (SELECT auth_id FROM users WHERE email = '<email-del-user>'),
+  '<org-id-de-su-tenant>',
+  'OWNER',  -- o ADMIN/SELLER/CONTABLE/VIEWER según corresponda
+  'ACTIVE'
+);
+```
+
+### Bug I — User en `public.users` con auth_id huérfano (no existe en `auth.users`)
+**Síntoma**: backfill de `organization_members` lo saltea, no puede loguear.
+**Causa**: alguien creó al user en `public.users` (manual o legacy) pero nunca completó el alta en Supabase Auth. O fue borrado del panel Auth → Users.
+**Fix**:
+1. Supabase Dashboard → Authentication → Users → Invite User con el email
+2. Supabase manda email de invitación, user setea password
+3. Una vez creado en `auth.users`, actualizar el link:
+   ```sql
+   UPDATE public.users
+   SET auth_id = '<new-auth-uuid>'
+   WHERE email = '<email>';
+   ```
+4. Insertar en `organization_members` con el nuevo `auth_id`
+**Caso real**: `naza@agencialozada.com` (SELLER de Lozada) — pendiente activar manualmente cuando la necesiten.
+
 ---
 
 ## 7. Operativa: deploy, rollback, soporte
@@ -307,7 +344,9 @@ UPDATE operator_payments SET paid_amount = amount WHERE paid_amount > amount;
 - **Mark-paid de operator_payments**: tiene side effects en commission settlement, FX, percepciones, IVA. Si rompés mark-paid, rompés todo
 - **Imports V2**: matching por nombre, sensible a typos en CSV
 - **Cache de Next**: cualquier reporte sin `force-dynamic` va a mostrar dato viejo
-- **`org_id` NULL en tablas viejas**: 331 payments + 1209 alerts hoy con NULL. Pendiente backfill (ver Bug A arriba)
+- **`org_id` NULL en tablas viejas**: 331 payments con NULL (policy híbrida los mantiene visibles vía `user_agencies`) + 1209 alerts NULL (mig 5 pendiente). Backfill en `scripts/p0-backfill-orphan-payments-org-id.sql`
+- **Policy HÍBRIDA de `payments`** (post-deploy 2026-05-10): acepta `organization_members` (SaaS nuevo) Y `user_agencies` (legacy). Zero-downtime durante transición. Cuando todos los users estén en `organization_members`, simplificar quitando la rama legacy. Es deuda técnica conocida
+- **Función `user_org_ids()`**: fue reescrita 2026-05-10 — la original tenía mismatch entre `auth.uid()` y FK target de `organization_members`. Si la tocás, el JOIN correcto es `auth.uid() → users.auth_id → users.id → organization_members.user_id`
 
 ### Black boxes (todavía no auditadas)
 - Some recurring_payments con `agency_id` NULL — backfill parcial hecho, pero hay rows que persisten
