@@ -36,7 +36,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Plus, Trash2, AlertTriangle, Building2, ArrowRightLeft } from "lucide-react"
 import { TransferAccountDialog } from "./transfer-account-dialog"
 import { toast } from "sonner"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useDefaultCurrency } from "@/hooks/use-default-currency"
 
 function formatCurrency(amount: number, currency: string = "ARS"): string {
@@ -84,6 +84,7 @@ interface FinancialAccountsPageClientProps {
 
 export function FinancialAccountsPageClient({ agencies: initialAgencies }: FinancialAccountsPageClientProps) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { currency: defaultCurrency } = useDefaultCurrency()
   const [loading, setLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
@@ -132,6 +133,22 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
   useEffect(() => {
     setFormData((prev: any) => prev.type ? prev : { ...prev, currency: defaultCurrency })
   }, [defaultCurrency])
+
+  // Auto-abrir dialog de creación si vienen con ?new=1 (deep-link desde
+  // empty states de Caja, dialog de pagos, etc). Permite "crear xxx" inline
+  // sin que el user tenga que perder contexto buscando el botón.
+  useEffect(() => {
+    const action = searchParams?.get("new")
+    if (action === "1") {
+      // Pre-cargar currency si vino en query (ej: ?new=1&currency=USD)
+      const ccy = searchParams?.get("currency")
+      if (ccy === "USD" || ccy === "ARS") {
+        setFormData((prev: any) => ({ ...prev, currency: ccy }))
+      }
+      setOpenDialog(true)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
   async function fetchData(bustCache = false) {
     setLoading(true)

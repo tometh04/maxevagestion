@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Loader2, AlertCircle, CheckCircle2, PieChart } from "lucide-react"
+import { Loader2, AlertCircle, CheckCircle2, PieChart, ExternalLink } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 interface Partner {
@@ -230,8 +230,17 @@ export function DistributeProfitsDialog({
             {preview.length === 0 && (
               <Alert>
                 <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  No hay socios activos con porcentaje de ganancias asignado. Configure los porcentajes en &quot;Cuentas de Socios&quot;.
+                <AlertDescription className="space-y-2">
+                  <p>No hay socios activos con porcentaje de ganancias asignado.</p>
+                  <a
+                    href="/accounting/partner-accounts"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
+                  >
+                    Ir a Cuentas de Socios
+                    <ExternalLink className="h-3 w-3 opacity-60" />
+                  </a>
                 </AlertDescription>
               </Alert>
             )}

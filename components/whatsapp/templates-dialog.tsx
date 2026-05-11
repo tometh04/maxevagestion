@@ -490,12 +490,27 @@ export function TemplatesDialog({ open, onOpenChange, templates, onRefresh }: Te
           </div>
         ) : (
           <div className="rounded-xl border border-border/40 bg-muted/20 p-8 text-center">
-            <div className="text-muted-foreground">
-              <p className="text-lg font-medium mb-2">No hay templates configurados</p>
-              <p className="text-sm mb-4">
-                Hacé clic en &quot;Cargar Templates por Defecto&quot; para comenzar con templates pre-configurados,
-                o creá uno nuevo manualmente.
-              </p>
+            <div className="text-muted-foreground space-y-4">
+              <div>
+                <p className="text-lg font-medium mb-2">No hay templates configurados</p>
+                <p className="text-sm">
+                  Cargá los templates pre-configurados (pagos, viajes, cumpleaños...) o creá uno nuevo manualmente.
+                </p>
+              </div>
+              <div className="flex gap-2 justify-center flex-wrap">
+                <Button onClick={loadDefaultTemplates} disabled={seeding}>
+                  {seeding ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4 mr-2" />
+                  )}
+                  Cargar Templates por Defecto
+                </Button>
+                <Button onClick={() => setShowNewForm(!showNewForm)} variant="outline">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Crear template manual
+                </Button>
+              </div>
             </div>
           </div>
         )}

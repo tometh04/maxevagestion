@@ -34,7 +34,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
-import { DollarSign, CalendarIcon, FileText, Loader2, Wallet, CheckCircle, Receipt } from "lucide-react"
+import { DollarSign, CalendarIcon, FileText, Loader2, Wallet, CheckCircle, Receipt, Plus, ExternalLink } from "lucide-react"
 import { toast } from "sonner"
 import {
   buildOpenOperationBasePayableOperators,
@@ -727,6 +727,18 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
                             ))}
                           </SelectContent>
                         </Select>
+                        {filteredAccounts.length === 0 && (
+                          <a
+                            href={`/accounting/financial-accounts?new=1&currency=${watchCurrency || 'USD'}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline mt-1"
+                          >
+                            <Plus className="h-3 w-3" />
+                            Crear cuenta financiera
+                            <ExternalLink className="h-3 w-3 opacity-60" />
+                          </a>
+                        )}
                         <FormMessage />
                       </FormItem>
                     )}

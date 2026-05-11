@@ -702,8 +702,18 @@ export function UsersSettings() {
           </Table>
 
           {users.length === 0 && (
-            <div className="text-center py-8 text-muted-foreground text-sm">
-              No hay usuarios registrados. Invita al primer usuario.
+            <div className="flex flex-col items-center text-center py-10 gap-3">
+              <UserPlus className="h-10 w-10 text-muted-foreground" />
+              <div>
+                <h3 className="text-base font-semibold">No hay usuarios registrados</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Invitá a tu equipo para que cada uno tenga su acceso con su rol.
+                </p>
+              </div>
+              <Button size="sm" className="rounded-full mt-1" onClick={() => setInviteDialogOpen(true)}>
+                <UserPlus className="h-4 w-4 mr-2" />
+                Invitar primer usuario
+              </Button>
             </div>
           )}
         </div>
