@@ -93,9 +93,10 @@ export async function POST(request: Request) {
     }
 
     // P0 2026-05-10: resolver org_id explícito para INSERT (NOT NULL post-mig
-     // 20260510000002). Si pasaron agency_id, derivar org desde ese agency
-     // (y validar que pertenece al user — defense in depth además del RLS
-     // WITH CHECK). Si no, usar user.org_id.
+    // 20260510000002). Cadena de fallbacks:
+    //   1. agency_id pasado → org de esa agency
+    //   2. users.org_id directo (si está populado)
+    //   3. organization_members del user (fallback si users.org_id es NULL — común en data legacy)
     let resolvedOrgId = (user as any).org_id as string | null
     if (agency_id) {
       const { data: agencyRow, error: agencyErr } = await supabase
@@ -109,7 +110,20 @@ export async function POST(request: Request) {
       resolvedOrgId = (agencyRow as any).org_id
     }
     if (!resolvedOrgId) {
-      return NextResponse.json({ error: "No se pudo resolver el org_id" }, { status: 400 })
+      // Fallback: primera org del user en organization_members
+      const { data: memberRow } = await supabase
+        .from("organization_members")
+        .select("organization_id")
+        .eq("user_id", (user as any).auth_id)
+        .eq("status", "ACTIVE")
+        .limit(1)
+        .maybeSingle()
+      if (memberRow && (memberRow as any).organization_id) {
+        resolvedOrgId = (memberRow as any).organization_id
+      }
+    }
+    if (!resolvedOrgId) {
+      return NextResponse.json({ error: "No se pudo resolver el org_id del usuario" }, { status: 400 })
     }
 
     const { data, error } = await supabase

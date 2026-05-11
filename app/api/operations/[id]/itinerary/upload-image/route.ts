@@ -16,21 +16,18 @@ export async function POST(
 
     const { id: operationId } = await params
 
-    // P0 2026-05-10: verificar que la operation pertenece a la org del user
-    // ANTES de usar adminClient (que bypassea RLS). Sin esto, cualquier user
-    // podría sobrescribir/subir imágenes a itineraries de otros tenants
-    // teniendo el UUID de la operation.
+    // P0 2026-05-10: verificar que el user PUEDE LEER la operation con su
+    // client (que respeta RLS) ANTES de usar adminClient para upload. Si el
+    // SELECT retorna la row, RLS confirmó que el user tiene acceso al tenant
+    // de esa operation — usamos eso como gate sin requerir users.org_id
+    // explícitamente populado (más compatible con users legacy).
     const userClient = await createServerClient()
     const { data: opRow, error: opErr } = await (userClient.from("operations") as any)
-      .select("id, org_id")
+      .select("id")
       .eq("id", operationId)
       .maybeSingle()
     if (opErr || !opRow) {
       return NextResponse.json({ error: "Operación no encontrada o sin acceso" }, { status: 404 })
-    }
-    const userOrgId = (user as any).org_id as string | null
-    if (!userOrgId || (opRow as any).org_id !== userOrgId) {
-      return NextResponse.json({ error: "No tiene acceso a esta operación" }, { status: 403 })
     }
 
     const adminDb = createAdminClient()
