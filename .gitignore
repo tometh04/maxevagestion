@@ -66,3 +66,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+
+# Graphify hook cache (do not commit)
+graphify-out/
+
+# Supabase CLI temp state
+supabase/.temp/

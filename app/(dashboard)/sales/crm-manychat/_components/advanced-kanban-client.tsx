@@ -27,14 +27,14 @@ type Lead = {
 type Funnel = {
   id: string
   name: string
-  color: string
+  color: string | null
   display_order: number
 }
 
 type CategoryForFilter = {
   id: string
   name: string
-  color: string
+  color: string | null
   tags: Array<{ id: string; label: string }>
 }
 
