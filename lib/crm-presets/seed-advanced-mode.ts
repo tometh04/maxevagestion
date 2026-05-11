@@ -74,8 +74,11 @@ export async function seedAdvancedMode(
     })
   )
 
-  // Full category id map
-  const allCategoryIds = new Map([...existingMap, ...newCategoryMap])
+  // Full category id map (avoid Map spread — requires ES2015+ target which the
+  // project's build doesn't set; use forEach instead)
+  const allCategoryIds = new Map<string, string>()
+  existingMap.forEach((v, k) => allCategoryIds.set(k, v))
+  newCategoryMap.forEach((v, k) => allCategoryIds.set(k, v))
 
   // 2. Batch upsert tags per category (one round trip per category)
   for (const cat of config.categories) {
