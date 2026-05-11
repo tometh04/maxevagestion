@@ -10,7 +10,7 @@ type TagAssignment = {
   tag: {
     id: string
     label: string
-    category: { name: string; color: string }
+    category: { name: string; color: string | null }
   } | null
 }
 
