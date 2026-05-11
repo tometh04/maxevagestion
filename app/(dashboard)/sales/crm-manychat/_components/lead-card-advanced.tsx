@@ -10,7 +10,7 @@ type TagAssignment = {
   tag: {
     id: string
     label: string
-    category: { name: string; color: string }
+    category: { name: string; color: string | null }
   } | null
 }
 
@@ -66,7 +66,7 @@ export function LeadCardAdvanced({ lead, orgId }: LeadCardAdvancedProps) {
               <Badge
                 key={tag.id}
                 variant="outline"
-                className={cn("text-[10px] px-1.5 py-0 border", getColorClass(tag.category.color))}
+                className={cn("text-[10px] px-1.5 py-0 border", getColorClass(tag.category.color ?? "gray"))}
               >
                 {tag.label}
               </Badge>

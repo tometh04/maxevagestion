@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { createClient } from "@/lib/supabase/client"
+import { supabase } from "@/lib/supabase/client"
 
 type Tag = {
   id: string
@@ -34,7 +34,7 @@ type Props = {
 }
 
 export function TagAssignmentDialog({ open, onOpenChange, orgId, leadId, onSaved }: Props) {
-  const supabase = createClient()
+  
 
   const [categories, setCategories] = useState<Category[]>([])
   const [assigned, setAssigned] = useState<Set<string>>(new Set())
