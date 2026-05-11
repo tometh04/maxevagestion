@@ -1093,13 +1093,14 @@ export function NewOperationDialog({
                 )}
 
                 {operatorList.length === 0 && (
-                  <div className="text-center py-8 border-2 border-dashed rounded-lg">
+                  <div className="flex flex-col items-center text-center py-8 border-2 border-dashed rounded-lg gap-3">
                     <p className="text-sm text-muted-foreground">
                       No hay operadores agregados
-                  </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Haz clic en &quot;Agregar Operador&quot; para comenzar
                     </p>
+                    <Button type="button" size="sm" variant="outline" onClick={addOperator}>
+                      <Plus className="h-4 w-4 mr-1" />
+                      Agregar Operador
+                    </Button>
                   </div>
                 )}
               </div>

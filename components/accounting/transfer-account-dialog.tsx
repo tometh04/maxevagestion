@@ -25,7 +25,7 @@ import {
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
 import { toast } from "sonner"
-import { ArrowRight, ArrowUpFromLine, ArrowDownToLine, CalendarIcon, Loader2, StickyNote } from "lucide-react"
+import { ArrowRight, ArrowUpFromLine, ArrowDownToLine, CalendarIcon, Loader2, StickyNote, Plus, ExternalLink } from "lucide-react"
 
 interface FinancialAccount {
   id: string
@@ -376,6 +376,18 @@ export function TransferAccountDialog({
                         )}
                       </SelectContent>
                     </Select>
+                    {fromAccountId && filteredToAccounts.length === 0 && (
+                      <a
+                        href="/accounting/financial-accounts?new=1"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline mt-1"
+                      >
+                        <Plus className="h-3 w-3" />
+                        Crear cuenta financiera
+                        <ExternalLink className="h-3 w-3 opacity-60" />
+                      </a>
+                    )}
                     <FormMessage />
                   </FormItem>
                 )}
