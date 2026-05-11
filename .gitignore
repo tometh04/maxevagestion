@@ -80,3 +80,6 @@ next-env.d.ts
 * [0-9].js
 * [0-9].csv
 * [0-9].patch
+
+# Graphify knowledge graph (local-only working data)
+graphify-out/

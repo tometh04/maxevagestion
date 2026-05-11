@@ -87,9 +87,7 @@ export function CRMManychatPageClient({
   }, [])
 
   // Cargar leads del tenant — TODOS los canales (CRM Ventas).
-  // 2026-05-06: refactor — antes hacía 2 fetches (source=Manychat + source=Trello
-  // con list_name) que escondía leads de WhatsApp/Instagram/Meta Ads/Other.
-  // Ahora 1 solo fetch sin filtro source. El kanban tiene fallback interno
+  // 1 fetch sin filtro source. El kanban tiene fallback interno
   // (list_name → region → "Sin lista") para asignar columna a cada lead.
   const loadLeads = useCallback(async (agencyId: string) => {
     setLoading(true)
@@ -289,7 +287,7 @@ export function CRMManychatPageClient({
             </div>
           </div>
           <p className="text-muted-foreground">
-            Leads de todos los canales (Manychat, WhatsApp, Instagram, Trello, Meta Ads) • Actualización en tiempo real
+            Leads de todos los canales (Manychat, WhatsApp, Instagram, Meta Ads) • Actualización en tiempo real
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">

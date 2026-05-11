@@ -43,7 +43,7 @@ export async function DELETE(
     const lead = currentLead as any
 
     // Propiedad total sobre leads: cualquier usuario con permiso puede eliminar cualquier lead,
-    // independientemente de si está asignado a otro vendedor o si viene de Trello.
+    // independientemente de si está asignado a otro vendedor o de su origen.
     // Única restricción de integridad: no se puede eliminar si está vinculado a una operación.
 
     // Check if lead is linked to an operation
@@ -130,7 +130,7 @@ export async function PATCH(
 
     // Propiedad total: una vez en el sistema, el lead es nuestro.
     // Cualquier usuario con permiso puede editar cualquier campo de cualquier lead,
-    // sin importar su origen (Trello, Manychat) ni a quién esté asignado.
+    // sin importar su origen ni a quién esté asignado.
 
     const updateData: any = {
       ...body,
@@ -140,8 +140,8 @@ export async function PATCH(
     // Proteger campos del sistema que nunca deben modificarse directamente
     delete updateData.id
     delete updateData.created_at
-    delete updateData.external_id  // ID en Trello — no tocar
-    delete updateData.trello_url   // URL en Trello — no tocar
+    delete updateData.external_id  // ID externo legacy (Trello import) — no tocar
+    delete updateData.trello_url   // legacy column — no tocar
 
     // Auto-asignar seller cuando se mueve a una lista con dueño
     if (body.list_name && body.list_name !== lead.list_name) {

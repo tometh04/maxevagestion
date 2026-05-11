@@ -1,0 +1,1007 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vibook — Estrategia 12 meses</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg: #0a0a0b;
+      --bg-2: #131316;
+      --bg-3: #1c1c21;
+      --border: #2a2a30;
+      --border-light: #3a3a42;
+      --text: #f5f5f7;
+      --text-2: #a8a8b3;
+      --text-3: #6e6e76;
+      --accent: #6366f1;
+      --accent-2: #818cf8;
+      --green: #10b981;
+      --yellow: #f59e0b;
+      --red: #ef4444;
+      --blue: #3b82f6;
+      --purple: #a855f7;
+      --pink: #ec4899;
+    }
+    html, body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', -apple-system, sans-serif;
+      font-size: 15px;
+      line-height: 1.6;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+    .container {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 0 32px;
+    }
+    /* Header */
+    header {
+      padding: 56px 0 32px;
+      border-bottom: 1px solid var(--border);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .brand-mark {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, var(--accent), var(--purple));
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 18px;
+    }
+    .brand-name {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+    h1 {
+      font-size: 48px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+      margin-bottom: 12px;
+    }
+    h1 .grad {
+      background: linear-gradient(90deg, var(--accent-2), var(--pink));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .subtitle {
+      font-size: 18px;
+      color: var(--text-2);
+      max-width: 720px;
+      margin-bottom: 24px;
+    }
+    .meta {
+      display: flex;
+      gap: 24px;
+      font-size: 13px;
+      color: var(--text-3);
+    }
+    .meta span { display: inline-flex; align-items: center; gap: 6px; }
+    .dot { width: 6px; height: 6px; background: var(--green); border-radius: 50%; }
+    /* Tabs */
+    nav.tabs {
+      display: flex;
+      gap: 4px;
+      border-bottom: 1px solid var(--border);
+      margin: 32px 0 48px;
+      position: sticky;
+      top: 0;
+      background: var(--bg);
+      z-index: 10;
+      padding-top: 16px;
+    }
+    .tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-2);
+      padding: 14px 24px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s;
+      font-family: inherit;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .tab-btn:hover { color: var(--text); }
+    .tab-btn.active {
+      color: var(--text);
+      border-bottom-color: var(--accent);
+    }
+    .tab-btn .badge {
+      background: var(--bg-3);
+      color: var(--text-2);
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-weight: 500;
+    }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; animation: fadeIn 0.3s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    /* Sections */
+    section { margin-bottom: 64px; }
+    h2 {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 8px;
+    }
+    h3 {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+    .section-sub {
+      color: var(--text-2);
+      margin-bottom: 28px;
+      max-width: 760px;
+    }
+    /* KPI cards */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+    .kpi {
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+      position: relative;
+      overflow: hidden;
+    }
+    .kpi::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, var(--accent), var(--purple));
+    }
+    .kpi-label {
+      color: var(--text-3);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 8px;
+      font-weight: 600;
+    }
+    .kpi-value {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.1;
+    }
+    .kpi-trend {
+      font-size: 12px;
+      color: var(--text-2);
+      margin-top: 6px;
+    }
+    .kpi-trend.up { color: var(--green); }
+    .kpi-trend.down { color: var(--red); }
+    /* Quarter cards */
+    .quarters {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+    .q-card {
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px;
+      position: relative;
+    }
+    .q-card.q3 { border-left: 3px solid var(--blue); }
+    .q-card.q4 { border-left: 3px solid var(--green); }
+    .q-card.q1 { border-left: 3px solid var(--purple); }
+    .q-card.q2 { border-left: 3px solid var(--pink); }
+    .q-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 16px;
+    }
+    .q-tag {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-3);
+      margin-bottom: 4px;
+    }
+    .q-name { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+    .q-theme {
+      font-size: 13px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(99, 102, 241, 0.15);
+      color: var(--accent-2);
+    }
+    .q-card.q3 .q-theme { background: rgba(59, 130, 246, 0.15); color: #93c5fd; }
+    .q-card.q4 .q-theme { background: rgba(16, 185, 129, 0.15); color: #6ee7b7; }
+    .q-card.q1 .q-theme { background: rgba(168, 85, 247, 0.15); color: #d8b4fe; }
+    .q-card.q2 .q-theme { background: rgba(236, 72, 153, 0.15); color: #f9a8d4; }
+    .q-goal {
+      font-size: 14px;
+      color: var(--text-2);
+      padding: 12px;
+      background: var(--bg-3);
+      border-radius: 8px;
+      margin-bottom: 20px;
+      border-left: 2px solid var(--border-light);
+    }
+    .q-init {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .q-init li {
+      display: flex;
+      gap: 10px;
+      font-size: 14px;
+      align-items: flex-start;
+    }
+    .q-init .check {
+      color: var(--accent-2);
+      font-weight: 700;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .q-target {
+      margin-top: 18px;
+      padding-top: 16px;
+      border-top: 1px dashed var(--border);
+      font-size: 13px;
+      color: var(--text-3);
+    }
+    .q-target b { color: var(--text); font-weight: 600; }
+    /* Metrics table */
+    .table-wrap {
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th {
+      text-align: left;
+      padding: 14px 18px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-3);
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-3);
+    }
+    td {
+      padding: 14px 18px;
+      font-size: 14px;
+      border-bottom: 1px solid var(--border);
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--bg-3); }
+    td.num { font-family: 'JetBrains Mono', monospace; font-weight: 500; }
+    td .pill {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .pill.green { background: rgba(16, 185, 129, 0.15); color: #6ee7b7; }
+    .pill.yellow { background: rgba(245, 158, 11, 0.15); color: #fcd34d; }
+    .pill.red { background: rgba(239, 68, 68, 0.15); color: #fca5a5; }
+    .pill.blue { background: rgba(59, 130, 246, 0.15); color: #93c5fd; }
+    .pill.purple { background: rgba(168, 85, 247, 0.15); color: #d8b4fe; }
+    /* Risk matrix */
+    .risks {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+    .risk {
+      padding: 16px;
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      border-left: 3px solid var(--border-light);
+    }
+    .risk.high { border-left-color: var(--red); }
+    .risk.med { border-left-color: var(--yellow); }
+    .risk.low { border-left-color: var(--green); }
+    .risk-head { display: flex; justify-content: space-between; margin-bottom: 8px; }
+    .risk-name { font-weight: 600; font-size: 14px; }
+    .risk-mit { color: var(--text-2); font-size: 13px; line-height: 1.5; }
+    /* Cost stage cards */
+    .stages {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+    .stage {
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+      text-align: left;
+      position: relative;
+    }
+    .stage.current { border-color: var(--accent); }
+    .stage.current::after {
+      content: 'HOY';
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      background: var(--accent);
+      color: white;
+      font-size: 9px;
+      font-weight: 700;
+      padding: 3px 7px;
+      border-radius: 4px;
+      letter-spacing: 0.05em;
+    }
+    .stage-tag {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-3);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 4px;
+    }
+    .stage-name { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 16px; }
+    .stage-cost {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--accent-2);
+      margin-bottom: 4px;
+    }
+    .stage-per {
+      font-size: 12px;
+      color: var(--text-3);
+    }
+    .stage-meta {
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      font-size: 12px;
+    }
+    .stage-meta div { color: var(--text-3); }
+    .stage-meta b { display: block; color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 13px; margin-top: 2px; }
+    /* Chart wrap */
+    .chart-card {
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+    .chart-card h3 { margin-bottom: 4px; }
+    .chart-sub { color: var(--text-3); font-size: 13px; margin-bottom: 20px; }
+    canvas { max-height: 320px; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    /* Callout */
+    .callout {
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(168, 85, 247, 0.05));
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      border-radius: 14px;
+      padding: 24px;
+      margin: 32px 0;
+    }
+    .callout h3 { color: var(--accent-2); margin-bottom: 8px; }
+    .callout p { color: var(--text); font-size: 14px; }
+    .callout ul {
+      margin-top: 12px;
+      list-style: none;
+    }
+    .callout li {
+      padding: 6px 0;
+      font-size: 14px;
+      display: flex;
+      gap: 8px;
+    }
+    .callout li::before { content: '→'; color: var(--accent-2); flex-shrink: 0; }
+    /* Footer */
+    footer {
+      padding: 32px 0;
+      border-top: 1px solid var(--border);
+      color: var(--text-3);
+      font-size: 13px;
+      text-align: center;
+      margin-top: 48px;
+    }
+    @media (max-width: 900px) {
+      .quarters, .stages, .risks, .grid-2 { grid-template-columns: 1fr; }
+      h1 { font-size: 36px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="brand">
+        <div class="brand-mark">V</div>
+        <div class="brand-name">Vibook</div>
+      </div>
+      <h1>Estrategia <span class="grad">12 meses</span></h1>
+      <p class="subtitle">Roadmap de producto y modelo de costos para escalar Vibook de 1 a 50 agencias activas en Argentina, con vista a expansión LatAm.</p>
+      <div class="meta">
+        <span><span class="dot"></span>Documento vivo</span>
+        <span>Última actualización: 2026-05-08</span>
+        <span>Autor: Tomi (founder)</span>
+        <span>Período: May 2026 → May 2027</span>
+      </div>
+    </header>
+
+    <nav class="tabs">
+      <button class="tab-btn active" data-tab="roadmap">📍 Roadmap producto <span class="badge">12 meses</span></button>
+      <button class="tab-btn" data-tab="costos">💰 Costos & escala <span class="badge">1 → 50 agencias</span></button>
+    </nav>
+
+    <!-- ============ TAB 1: ROADMAP ============ -->
+    <div class="tab-content active" id="roadmap">
+
+      <section>
+        <h2>El plan en 60 segundos</h2>
+        <p class="section-sub">4 trimestres, 4 temas. Cada uno construye sobre el anterior. Sin saltos: arrancamos por confianza, después growth, después depth, después ecosistema.</p>
+        <div class="kpi-grid">
+          <div class="kpi"><div class="kpi-label">North Star</div><div class="kpi-value">20</div><div class="kpi-trend up">agencias pagas activas en 12 meses (20×)</div></div>
+          <div class="kpi"><div class="kpi-label">MRR target Q2 fin</div><div class="kpi-value">$4.8k</div><div class="kpi-trend up">desde $719 actual (~7×)</div></div>
+          <div class="kpi"><div class="kpi-label">AI feature adoption</div><div class="kpi-value">70%</div><div class="kpi-trend up">tenants usando ≥3 features AI/sem</div></div>
+          <div class="kpi"><div class="kpi-label">NPS target</div><div class="kpi-value">≥50</div><div class="kpi-trend up">"product worth telling friends"</div></div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Roadmap por trimestre</h2>
+        <p class="section-sub">4 trimestres, 4 temas, 4 saltos de producto. Cada uno construye una capa que la competencia argentina <b>no tiene</b>: AI nativo → conectividad real-time → experiencia del cliente final → plataforma abierta.</p>
+        <div class="quarters">
+
+          <div class="q-card q3">
+            <div class="q-head">
+              <div>
+                <div class="q-tag">Q3 · MAY–JUL 2026</div>
+                <div class="q-name">AI-First</div>
+              </div>
+              <span class="q-theme">Diferenciar</span>
+            </div>
+            <div class="q-goal"><b>Tesis:</b> ningún ERP de viajes argentino tiene AI integrado. Vibook es el AI-native travel ERP de LatAm — la marca queda asociada a "el sistema con IA".</div>
+            <ul class="q-init">
+              <li><span class="check">▸</span><div><b>AI Sales Coach</b> — Analiza cada cotización vs cierre y le da feedback al vendedor en tiempo real. "Esta cotización tiene 60% de cierre. Para subirlo, ofrecé una opción más barata o agregá fotos del hotel."</div></li>
+              <li><span class="check">▸</span><div><b>AI Auto-Cotizador conversacional</b> — Cliente describe su viaje en chat ("Cancún 7 días en agosto, familia con 2 nenes"). Sistema arma cotización completa: vuelo + hotel + transfer + seguro, ranked por probabilidad de cierre.</div></li>
+              <li><span class="check">▸</span><div><b>Voice-to-Operation</b> — Vendedor dicta 30 segundos por WhatsApp/app: "Pérez quiere ir a Brasil con familia, presu 8k USD". Sistema crea lead + customer + cotización inicial automáticamente.</div></li>
+              <li><span class="check">▸</span><div><b>Lead Intelligence ML</b> — Cada lead recibe un score 0-100 basado en señales (tiempo de respuesta, destinos, histórico). Vendedor sabe a quién llamar primero.</div></li>
+              <li><span class="check">▸</span><div><b>AI WhatsApp/Email Assistant</b> — Sugiere respuestas a clientes en estilo de la agencia. El vendedor edita y envía. 5× la velocidad de respuesta.</div></li>
+              <li><span class="check">▸</span><div><b>Smart Document Scanner v2</b> — Foto múltiple: pasaporte + visa + voucher en una sola imagen, extracción estructurada de los 3.</div></li>
+              <li><span class="check">▸</span><div><b>Vibook Travel Brain</b> — Conocimiento curado de 200+ destinos: mejores meses, requisitos de visa, vacunas, presupuesto típico. Embebido en Copilot y disponible standalone.</div></li>
+            </ul>
+            <div class="q-target"><b>Targets:</b> 4 agencias pagas · 70% usan ≥3 features AI/sem · NPS Copilot ≥ 8 · 1 case study con métricas</div>
+          </div>
+
+          <div class="q-card q4">
+            <div class="q-head">
+              <div>
+                <div class="q-tag">Q4 · AGO–OCT 2026</div>
+                <div class="q-name">Connect</div>
+              </div>
+              <span class="q-theme">Real-time</span>
+            </div>
+            <div class="q-goal"><b>Tesis:</b> hoy el vendedor llama por teléfono a Eurovips/Delfos para precios. Si Vibook trae los precios real-time, ahorra horas/día y diferencia brutalmente.</div>
+            <ul class="q-init">
+              <li><span class="check">▸</span><div><b>Amadeus / Sabre integration</b> — Búsqueda de vuelos real-time desde la cotización. No más "te paso precio en 1h".</div></li>
+              <li><span class="check">▸</span><div><b>Operator Marketplace privado</b> — Red B2B donde Eurovips, Delfos, etc. publican promos en tiempo real. Agencias ven y reservan en 1 click. Diferenciador único.</div></li>
+              <li><span class="check">▸</span><div><b>Travel Insurance APIs</b> — Assist Card, Universal Assistance, Travel Ace. Quote y booking dentro de Vibook con 1 click.</div></li>
+              <li><span class="check">▸</span><div><b>Auto-booking workflow</b> — Cliente confirma cotización → sistema reserva en operadores donde hay API. Reduce 10min de carga manual a 0.</div></li>
+              <li><span class="check">▸</span><div><b>Multi-currency FX hedging</b> — Lock TC para operaciones largas. Evita que la devaluación se coma el margen 3 meses después.</div></li>
+              <li><span class="check">▸</span><div><b>WhatsApp Business API nativo</b> — Reemplaza Manychat polling. Templates oficiales, mejor deliverability, conversation API completa.</div></li>
+              <li><span class="check">▸</span><div><b>Predictive Pricing</b> — ML que sugiere precio óptimo de venta basado en histórico de cierre, mercado y características del cliente.</div></li>
+            </ul>
+            <div class="q-target"><b>Targets:</b> 8 agencias pagas · 50% usan auto-booking · 2 operadores con API privada conectados</div>
+          </div>
+
+          <div class="q-card q1">
+            <div class="q-head">
+              <div>
+                <div class="q-tag">Q1 · NOV 2026 – ENE 2027</div>
+                <div class="q-name">Delight</div>
+              </div>
+              <span class="q-theme">Cliente final</span>
+            </div>
+            <div class="q-goal"><b>Tesis:</b> el verdadero NPS no lo da la agencia, lo da el cliente final del agencia. Si el viajero ama Vibook, la agencia se queda para siempre.</div>
+            <ul class="q-init">
+              <li><span class="check">▸</span><div><b>Customer Portal</b> — URL privada por operación: itinerario interactivo, vouchers descargables, pagar online, subir docs con OCR. El cliente final ve su viaje en una app de primer nivel.</div></li>
+              <li><span class="check">▸</span><div><b>Mobile native iOS + Android</b> — No PWA. App nativa con push, biometric login, modo offline completo. Para vendedores en la calle y clientes en viaje.</div></li>
+              <li><span class="check">▸</span><div><b>Travel Concierge AI</b> — Cliente final tiene chat 24/7 con AI que conoce su itinerario, hotel, vuelo. "¿Qué hago en Cancún el martes?" → respuesta personalizada con reservas.</div></li>
+              <li><span class="check">▸</span><div><b>AI WhatsApp Negotiator</b> — IA negocia con leads por WhatsApp en nombre de la agencia. Cierra ventas de bajo ticket mientras el vendedor duerme.</div></li>
+              <li><span class="check">▸</span><div><b>Loyalty + Referral programs</b> — Puntos automáticos, tiers, descuentos configurables. Cliente trae cliente con recompensa automática.</div></li>
+              <li><span class="check">▸</span><div><b>Reviews automation</b> — Post-trip survey + auto-publish a Google Business + Trustpilot + landing del tenant. Genera marketing orgánico.</div></li>
+              <li><span class="check">▸</span><div><b>Predictive Cancellation</b> — ML alerta cuando un cliente está por cancelar (basado en behavior signals). Vendedor interviene antes que se vaya.</div></li>
+            </ul>
+            <div class="q-target"><b>Targets:</b> 14 agencias pagas · 60% logins desde mobile · NPS cliente final ≥ 50 · 30% ops con review</div>
+          </div>
+
+          <div class="q-card q2">
+            <div class="q-head">
+              <div>
+                <div class="q-tag">Q2 · FEB–ABR 2027</div>
+                <div class="q-name">Platform</div>
+              </div>
+              <span class="q-theme">Ecosistema</span>
+            </div>
+            <div class="q-goal"><b>Tesis:</b> Vibook deja de ser app y se vuelve plataforma. Otros construyen, otros venden, otros extienden. Network effects empiezan a jugar a favor.</div>
+            <ul class="q-init">
+              <li><span class="check">▸</span><div><b>Public API REST + GraphQL</b> — OpenAPI 3.1 docs, API keys per-tenant rotables, sandbox env, SDK TypeScript en npm. Agencias grandes integran su CRM custom.</div></li>
+              <li><span class="check">▸</span><div><b>Webhooks customizables</b> — Eventos: operation.created, payment.received, lead.converted, customer.churn-risk. Tenants reaccionan en sus sistemas.</div></li>
+              <li><span class="check">▸</span><div><b>Plugin Marketplace</b> — Community-built extensions. Top 50 plugins curados por nosotros. Revenue share 70/30 con el plugin author.</div></li>
+              <li><span class="check">▸</span><div><b>White-label completo</b> — Subdomain (lozada.vibook.ai), domain custom, branding pixel-perfect, emails desde @lozada.com.ar con DKIM.</div></li>
+              <li><span class="check">▸</span><div><b>Reseller Program</b> — Contadores, consultoras, agencias de marketing revenden Vibook con 20% rev share recurrente. Distribución por trust local.</div></li>
+              <li><span class="check">▸</span><div><b>Embeddable Booking Widgets</b> — Iframe que se incrusta en la web del tenant. Cliente entra a la web del tenant y arma cotización ahí mismo. Lead llega ya enriquecido a Vibook.</div></li>
+              <li><span class="check">▸</span><div><b>Uruguay piloto + i18n</b> — DGI integration MVP, soporte UYU, primera agencia piloto en Montevideo. Roadmap LatAm validado.</div></li>
+            </ul>
+            <div class="q-target"><b>Targets:</b> 20 agencias pagas · 5 con API integrada · 3 resellers activos · 1 agencia uruguaya piloto · 5 plugins en marketplace</div>
+          </div>
+
+        </div>
+      </section>
+
+      <section>
+        <h2>Métricas trayectoria</h2>
+        <p class="section-sub">Si los números reales se desvían &gt;30% del target trimestral, repriorizamos el siguiente quarter.</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Métrica</th>
+                <th>Hoy</th>
+                <th>Q3 fin</th>
+                <th>Q4 fin</th>
+                <th>Q1 fin</th>
+                <th>Q2 fin</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td><b>Agencias pagas activas</b></td><td class="num">1</td><td class="num">4</td><td class="num">8</td><td class="num">14</td><td class="num">20</td></tr>
+              <tr><td><b>MRR (USD)</b></td><td class="num">$719</td><td class="num">~$1.1k</td><td class="num">~$2.0k</td><td class="num">~$3.4k</td><td class="num">~$4.8k</td></tr>
+              <tr><td>AI feature adoption (≥3/sem)</td><td class="num">n/a</td><td class="num">70%</td><td class="num">75%</td><td class="num">80%</td><td class="num">80%</td></tr>
+              <tr><td>NPS</td><td class="num">n/a</td><td class="num">≥30</td><td class="num">≥40</td><td class="num">≥45</td><td class="num">≥50</td></tr>
+              <tr><td>Auto-booking penetration</td><td class="num">0%</td><td class="num">n/a</td><td class="num">50%</td><td class="num">60%</td><td class="num">70%</td></tr>
+              <tr><td>Mobile login %</td><td class="num">~10%</td><td class="num">15%</td><td class="num">25%</td><td class="num">60%</td><td class="num">65%</td></tr>
+              <tr><td>Trial → paid conversion</td><td class="num">n/a</td><td class="num">25%</td><td class="num">35%</td><td class="num">45%</td><td class="num">50%</td></tr>
+              <tr><td>Churn mensual</td><td class="num">n/a</td><td class="num">&lt;10%</td><td class="num">&lt;8%</td><td class="num">&lt;6%</td><td class="num">&lt;5%</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section>
+        <h2>Top 5 riesgos</h2>
+        <p class="section-sub">Lo que puede romper el plan. Cada uno con su mitigación. Se revisa mensualmente.</p>
+        <div class="risks">
+          <div class="risk high">
+            <div class="risk-head"><span class="risk-name">1. Concentración Lozada</span><span class="pill red">Crítico</span></div>
+            <div class="risk-mit">100% del revenue es 1 cliente. <b>Mitigación:</b> Q3 invertir en sales founder-led (referrals + content + Lozada case study) para llegar a 4 clientes diversificados.</div>
+          </div>
+          <div class="risk high">
+            <div class="risk-head"><span class="risk-name">2. AI commodity / competidores copian features</span><span class="pill red">Alto</span></div>
+            <div class="risk-mit">OpenAI hace que cualquiera pueda meter "IA" en su producto. <b>Mitigación:</b> el moat NO son los features sino la data específica del flujo (Travel Brain curado, ML scoring de leads basado en histórico nuestro). Y velocidad de ejecución.</div>
+          </div>
+          <div class="risk high">
+            <div class="risk-head"><span class="risk-name">3. Founder bus-factor</span><span class="pill red">Crítico</span></div>
+            <div class="risk-mit">Tomi = único con todo el contexto. <b>Mitigación:</b> dev senior contratado mayo + HANDOVER.md + runbook + AI agent on-call.</div>
+          </div>
+          <div class="risk med">
+            <div class="risk-head"><span class="risk-name">4. Operadores no abren API privada</span><span class="pill yellow">Alto</span></div>
+            <div class="risk-mit">Q4 depende de que Eurovips/Delfos abran integración. <b>Mitigación:</b> arrancar con scraping autorizado o uploads de Excel automatizados; API real cuando crezca volumen.</div>
+          </div>
+          <div class="risk med">
+            <div class="risk-head"><span class="risk-name">5. Costo OpenAI explota con AI features</span><span class="pill yellow">Medio</span></div>
+            <div class="risk-mit">7 features AI al mismo tiempo = ~$200-400/mo en OpenAI a 10 agencias. <b>Mitigación:</b> tier dedicado de Copilot uso, modelos más chicos donde aplica (Haiku para scoring), Vercel AI Gateway con fallbacks.</div>
+          </div>
+          <div class="risk med">
+            <div class="risk-head"><span class="risk-name">6. Devaluación ARS / Argentina macro</span><span class="pill yellow">Medio</span></div>
+            <div class="risk-mit">Pricing USD vs poder adquisitivo del cliente. <b>Mitigación:</b> tier ARS local con discount; mantener multi-currency en core.</div>
+          </div>
+        </div>
+      </section>
+
+      <div class="callout">
+        <h3>Lo que NO hacemos este año</h3>
+        <p>Foco mata "buenas ideas". Estas quedan explícitamente afuera del plan 12 meses:</p>
+        <ul>
+          <li>Crypto / Web3 / blockchain (no aplica al uso real de la industria)</li>
+          <li>B2B2C marketplace (Vibook como booking platform pública al consumidor final, tipo Despegar)</li>
+          <li>Replantear arquitectura (Next + Supabase + Railway aguanta hasta 100+ tenants)</li>
+          <li>SDK AFIP propio (afipsdk.com cubre el 99% por ahora — re-evaluar a 50+ tenants)</li>
+          <li>Mercados fuera de LatAm — primero Argentina, después Uruguay/Chile/Paraguay</li>
+          <li>Apps separadas para verticals distintos (eventos corporativos, cruceros only, etc.) — Vibook se mantiene full-service</li>
+        </ul>
+      </div>
+
+    </div>
+
+    <!-- ============ TAB 2: COSTOS ============ -->
+    <div class="tab-content" id="costos">
+
+      <section>
+        <h2>Costos por etapa de escala</h2>
+        <p class="section-sub">Modelo basado en uso real de Lozada Rosario (~100 ops/mes/agencia, 600 OCR calls, 500 emails, 100 facturas AFIP). Cifras en USD/mes. <b>NO incluye Mercado Pago</b> — MP cobra ~6-7% por transacción, es costo variable de cada cobro.</p>
+
+        <div class="stages">
+          <div class="stage current">
+            <div class="stage-tag">Hoy</div>
+            <div class="stage-name">1 agencia</div>
+            <div class="stage-cost">~$91</div>
+            <div class="stage-per">USD/mes total</div>
+            <div class="stage-meta">
+              <div>Costo/agencia<b>$91</b></div>
+              <div>Ops/mes<b>~100</b></div>
+            </div>
+          </div>
+          <div class="stage">
+            <div class="stage-tag">Q4 2026</div>
+            <div class="stage-name">8 agencias</div>
+            <div class="stage-cost">~$265</div>
+            <div class="stage-per">USD/mes total</div>
+            <div class="stage-meta">
+              <div>Costo/agencia<b>$33</b></div>
+              <div>Ops/mes<b>~800</b></div>
+            </div>
+          </div>
+          <div class="stage">
+            <div class="stage-tag">Q1 2027</div>
+            <div class="stage-name">14 agencias</div>
+            <div class="stage-cost">~$620</div>
+            <div class="stage-per">USD/mes total</div>
+            <div class="stage-meta">
+              <div>Costo/agencia<b>$44</b></div>
+              <div>Ops/mes<b>~1.400</b></div>
+            </div>
+          </div>
+          <div class="stage">
+            <div class="stage-tag">Q2 2027</div>
+            <div class="stage-name">20 agencias</div>
+            <div class="stage-cost">~$1.015</div>
+            <div class="stage-per">USD/mes total</div>
+            <div class="stage-meta">
+              <div>Costo/agencia<b>$51</b></div>
+              <div>Ops/mes<b>~2.000</b></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Detalle por aplicación</h2>
+        <p class="section-sub">Cada app de pago, cómo se factura, y el cost driver (qué la hace subir).</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>App</th>
+                <th>Tipo de costo</th>
+                <th>1 ag.</th>
+                <th>8 ag.</th>
+                <th>14 ag.</th>
+                <th>20 ag.</th>
+                <th>Cost driver</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td><b>Supabase</b><br><span style="color:var(--text-3);font-size:12px">DB + Auth + Storage</span></td><td><span class="pill blue">Tier-based</span></td><td class="num">$25<br><small>Pro</small></td><td class="num">$50<br><small>Pro+addon</small></td><td class="num">$100<br><small>Pro+addons</small></td><td class="num">$250<br><small>Pro+heavy</small></td><td>DB size, compute, egress</td></tr>
+              <tr><td><b>Railway</b><br><span style="color:var(--text-3);font-size:12px">Hosting + 7 crons</span></td><td><span class="pill blue">Usage</span></td><td class="num">$20</td><td class="num">$80</td><td class="num">$150</td><td class="num">$250</td><td>RAM/CPU hours, egress</td></tr>
+              <tr><td><b>OpenAI GPT-4o + Haiku</b><br><span style="color:var(--text-3);font-size:12px">Copilot + 7 features AI Q3+</span></td><td><span class="pill purple">Pay-per-use</span></td><td class="num">$20</td><td class="num">$100</td><td class="num">$180</td><td class="num">$260</td><td>Calls AI × tenants × ops</td></tr>
+              <tr><td><b>AFIP SDK</b><br><span style="color:var(--text-3);font-size:12px">Factura electrónica (afipsdk.com)</span></td><td><span class="pill blue">Tier+overage</span></td><td class="num">$25<br><small>Pro</small></td><td class="num">$25<br><small>Pro 10 CUITs</small></td><td class="num">$120<br><small>Pro+4 CUITs+PDF+Auto</small></td><td class="num">$135<br><small>Growth+PDF+Auto</small></td><td>CUITs + requests + PDFs</td></tr>
+              <tr><td><b>Cloudflare</b><br><span style="color:var(--text-3);font-size:12px">DNS + CDN + WAF</span></td><td><span class="pill green">Free/Pro</span></td><td class="num">$0</td><td class="num">$0</td><td class="num">$20</td><td class="num">$20</td><td>Tráfico</td></tr>
+              <tr><td><b>Misc</b><br><span style="color:var(--text-3);font-size:12px">Domain, backups, monitoring básico</span></td><td><span class="pill blue">Variable</span></td><td class="num">$1</td><td class="num">$10</td><td class="num">$50</td><td class="num">$100</td><td>Crece con team</td></tr>
+              <tr style="background:var(--bg-3)">
+                <td><b>TOTAL fijo OPEX</b></td>
+                <td></td>
+                <td class="num"><b>$91</b></td>
+                <td class="num"><b>$265</b></td>
+                <td class="num"><b>$620</b></td>
+                <td class="num"><b>$1.015</b></td>
+                <td>USD/mes</td>
+              </tr>
+              <tr>
+                <td>Costo por agencia/mes</td>
+                <td></td>
+                <td class="num">$91</td>
+                <td class="num">$33</td>
+                <td class="num">$44</td>
+                <td class="num">$51</td>
+                <td>Caída fuerte 1→8 (AFIP fits Pro)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout">
+          <h3>Lo que NO está en la tabla (y por qué)</h3>
+          <ul>
+            <li><b>WhatsApp / Manychat</b> — usás Manychat free tier o conexión directa. Sin costo SaaS.</li>
+            <li><b>Resend / email</b> — el volumen actual entra en free tier (3k/mes), futuro sigue gratis o Self-host SMTP.</li>
+            <li><b>Sentry / observability</b> — Railway logs + chequeos manuales por ahora; Sentry free tier cubre cuando lo activemos.</li>
+            <li><b>Travel Insurance APIs</b> — los seguros se le cobran al cliente final, no al SaaS.</li>
+            <li><b>App Store / Play Store</b> — el dev pre-mobile-native asume el costo si lo paga; mientras tanto $0.</li>
+            <li><b>Amadeus / Sabre</b> — Q4 a evaluar, hoy se reemplaza con uploads manuales o scraping autorizado de operadores. $0.</li>
+          </ul>
+          <p style="margin-top:12px"><b>Si en el futuro alguno se prende</b> (ej. Sentry Team a 8 agencias por incident response), se suma al modelo y reajustamos. Hoy es realista mantener OPEX fijo en estos 6 vendors.</p>
+        </div>
+      </section>
+
+      <section>
+        <h2>Evolución visual</h2>
+        <div class="grid-2">
+          <div class="chart-card">
+            <h3>Costo total mensual (USD)</h3>
+            <p class="chart-sub">Step-function por upgrades de tier (notar el salto Q1 cuando Supabase pasa a Team)</p>
+            <canvas id="totalChart"></canvas>
+          </div>
+          <div class="chart-card">
+            <h3>Costo por agencia (USD/mes)</h3>
+            <p class="chart-sub">Beneficio de escala — más agencias diluyen los fijos</p>
+            <canvas id="perAgencyChart"></canvas>
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <h3>Composición del costo por etapa</h3>
+          <p class="chart-sub">Qué % se va a cada vendor en cada escala</p>
+          <canvas id="stackedChart"></canvas>
+        </div>
+      </section>
+
+      <section>
+        <h2>Mercado Pago — costo variable de la subscription</h2>
+        <p class="section-sub">MP no es costo fijo: cobra ~6.5% por cada Preapproval cobrado al tenant. Lo separo del OPEX porque escala con revenue, no con tenants.</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Stage</th>
+                <th>Mix Pro/Ent</th>
+                <th>MRR bruto</th>
+                <th>MP fee 6.5%</th>
+                <th>MRR neto</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>1 agencia</td><td>1 Ent</td><td class="num">$719</td><td class="num">-$47</td><td class="num">$672</td></tr>
+              <tr><td>8 agencias</td><td>6 Pro + 2 Ent</td><td class="num">$2.152</td><td class="num">-$140</td><td class="num">$2.012</td></tr>
+              <tr><td>14 agencias</td><td>11 Pro + 3 Ent</td><td class="num">$3.466</td><td class="num">-$225</td><td class="num">$3.241</td></tr>
+              <tr><td>20 agencias</td><td>16 Pro + 4 Ent</td><td class="num">$4.780</td><td class="num">-$311</td><td class="num">$4.469</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout">
+          <h3>Notas de pricing</h3>
+          <ul>
+            <li>El 6.5% se descuenta del MRR. <b>Renegociar con MP a 5%</b> a 20+ tenants vale ~$70/mes que pasan directo a profit.</li>
+            <li>Los <b>cobros del cliente final del tenant</b> (cuando el tenant usa MP para cobrarles a sus clientes) <b>NO son costo nuestro</b> — MP le cobra al tenant directo, ni vemos esa plata.</li>
+            <li>Evaluar <b>dLocal / PayU LatAm</b> como alternativa Q1 2027 (más barato pero menos UX consumer).</li>
+          </ul>
+        </div>
+      </section>
+
+      <section>
+        <h2>Análisis de unit economics</h2>
+        <p class="section-sub">Pricing: <b>Pro $119 · Enterprise $719</b> USD/mes. Stage 1 = Lozada (Enterprise). Stages 8/14/20 asumen mix <b>80% Pro / 20% Ent</b> = $239 promedio. Margen sano en todas las etapas (>50%). El moat de los features AI permite mantener pricing premium.</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Stage</th>
+                <th>Mix</th>
+                <th>Revenue bruto</th>
+                <th>MP fee</th>
+                <th>Revenue neto</th>
+                <th>OPEX fijo</th>
+                <th>Gross profit</th>
+                <th>Gross margin</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>1 agencia</td><td><span class="pill purple">1 Ent</span></td><td class="num">$719</td><td class="num">-$47</td><td class="num">$672</td><td class="num">$91</td><td class="num">$581</td><td><span class="pill green">86%</span></td></tr>
+              <tr><td>8 agencias</td><td><span class="pill blue">6 Pro + 2 Ent</span></td><td class="num">$2.152</td><td class="num">-$140</td><td class="num">$2.012</td><td class="num">$265</td><td class="num">$1.747</td><td><span class="pill green">87%</span></td></tr>
+              <tr><td>14 agencias</td><td><span class="pill blue">11 Pro + 3 Ent</span></td><td class="num">$3.466</td><td class="num">-$225</td><td class="num">$3.241</td><td class="num">$620</td><td class="num">$2.621</td><td><span class="pill green">81%</span></td></tr>
+              <tr><td>20 agencias</td><td><span class="pill blue">16 Pro + 4 Ent</span></td><td class="num">$4.780</td><td class="num">-$311</td><td class="num">$4.469</td><td class="num">$1.015</td><td class="num">$3.454</td><td><span class="pill green">77%</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout">
+          <h3>Lectura — márgenes premium SaaS</h3>
+          <p>Margen entre <b>77% y 87%</b> en todas las etapas. <b>Premium SaaS territory</b> — el benchmark industry para B2B SaaS de calidad es 70-80%, Vibook está consistentemente arriba. Razones:</p>
+          <ul>
+            <li><b>AFIP SDK barato</b> — afipsdk.com tiene tier Pro a solo $25/mes para 10 CUITs. Solo se vuelve significativo a 100+ CUITs</li>
+            <li><b>Stack moderno = costos chicos</b> — Supabase + Railway escalan linealmente, no hay servidores ociosos</li>
+            <li><b>Pricing premium sostenible</b> — Pro $119 / Enterprise $719 con esos costos = unit economics excelentes</li>
+            <li><b>Gross profit a 20 ag = $3.454/mes</b> — sostiene 2 devs FT con margen para growth marketing</li>
+          </ul>
+          <p style="margin-top:12px"><b>Optimizaciones futuras</b> (suben margen 87% → 90%+ a escala): MP a 5% (-$70/mes), OpenAI Haiku para non-critical tasks (-$80), tier intermedio Business $299 captura ARPU adicional sin costo extra.</p>
+        </div>
+      </section>
+
+      <section>
+        <h2>Optimizaciones por etapa</h2>
+        <p class="section-sub">Cómo defender el margen en cada salto. Cada quarter trae costos nuevos por features pero también oportunidades de optimización.</p>
+        <div class="quarters">
+          <div class="q-card q3">
+            <div class="q-tag">Hoy → 8 agencias (Q3-Q4)</div>
+            <div class="q-name" style="font-size:18px;margin-bottom:12px">Setup AI cost-aware</div>
+            <ul class="q-init">
+              <li><span class="check">▸</span><div>OpenAI: usar Haiku (5× más barato) para scoring, Sonnet para Copilot, GPT-4o solo para OCR multi-modal</div></li>
+              <li><span class="check">▸</span><div>Cache agresivo de OCR results — mismo DNI no se procesa 2 veces</div></li>
+              <li><span class="check">▸</span><div>Embeddings de Travel Brain en pgvector (Supabase) — evita roundtrips a OpenAI</div></li>
+              <li><span class="check">▸</span><div>Trackear OpenAI cost per-tenant desde día 1 — datos para pricing tier de Copilot</div></li>
+            </ul>
+          </div>
+          <div class="q-card q4">
+            <div class="q-tag">8 → 14 agencias (Q1)</div>
+            <div class="q-name" style="font-size:18px;margin-bottom:12px">Defender margen mid-game</div>
+            <ul class="q-init">
+              <li><span class="check">▸</span><div>Lanzar tier intermedio Business $299 — capturar agencias que quedaron entre Pro y Enterprise</div></li>
+              <li><span class="check">▸</span><div>Cobrar Mobile + Customer Portal como add-on ($30/mes) en plan Pro</div></li>
+              <li><span class="check">▸</span><div>Empezar negociación con MP para bajar de 6.5% → 5% en Q2</div></li>
+              <li><span class="check">▸</span><div>Cloudflare Pro ($20): reduce egress Railway ~30%, ahorro ~$50/mes</div></li>
+            </ul>
+          </div>
+          <div class="q-card q1">
+            <div class="q-tag">14 → 20 agencias (Q2)</div>
+            <div class="q-name" style="font-size:18px;margin-bottom:12px">Push Enterprise mix</div>
+            <ul class="q-init">
+              <li><span class="check">▸</span><div>Mix shift hacia Enterprise (de 20% → 30%): cada Ent vale 6× un Pro</div></li>
+              <li><span class="check">▸</span><div>Reseller program: contadores cierran tickets más grandes (Enterprise) que self-serve</div></li>
+              <li><span class="check">▸</span><div>Negociar AFIP SDK volume tier directo (>15 cuentas)</div></li>
+            </ul>
+          </div>
+          <div class="q-card q2">
+            <div class="q-tag">20+ agencias (post-roadmap)</div>
+            <div class="q-name" style="font-size:18px;margin-bottom:12px">Self-host estratégico</div>
+            <ul class="q-init">
+              <li><span class="check">▸</span><div>Self-host Supabase en Hetzner ($200) vs Pro+addons ($250+) — ahorro variable</div></li>
+              <li><span class="check">▸</span><div>SDK propio AFIP: si volumen &gt; 50k facturas/mes, breakeven ~3 meses dev</div></li>
+              <li><span class="check">▸</span><div>Migrar OpenAI a Vercel AI Gateway para fallbacks + caching automático</div></li>
+              <li><span class="check">▸</span><div>Read replicas Supabase para queries pesadas / multi-region LatAm</div></li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <footer>
+      Vibook · Estrategia 12 meses · Confidencial · 2026-05-08
+    </footer>
+  </div>
+
+  <script>
+    // Tab switching
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById(btn.dataset.tab).classList.add('active');
+        // Re-render charts when switching to costos tab (Chart.js needs visible canvas)
+        if (btn.dataset.tab === 'costos') {
+          setTimeout(renderCharts, 50);
+        }
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+    });
+
+    // Chart configs
+    const stages = ['1 ag.', '8 ag.', '14 ag.', '20 ag.'];
+    const totals = [91, 265, 620, 1015];
+    const perAgency = [91, 33, 44, 51];
+
+    const baseChartOpts = {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: '#a8a8b3', font: { family: 'Inter', size: 12 } } },
+        tooltip: { backgroundColor: '#1c1c21', borderColor: '#2a2a30', borderWidth: 1, padding: 12 }
+      },
+      scales: {
+        x: { ticks: { color: '#6e6e76' }, grid: { color: '#2a2a30' } },
+        y: { ticks: { color: '#6e6e76' }, grid: { color: '#2a2a30' }, beginAtZero: true }
+      }
+    };
+
+    let chartsRendered = false;
+    function renderCharts() {
+      if (chartsRendered) return;
+      chartsRendered = true;
+
+      // Total chart
+      new Chart(document.getElementById('totalChart'), {
+        type: 'line',
+        data: {
+          labels: stages,
+          datasets: [{
+            label: 'Costo total USD/mes',
+            data: totals,
+            borderColor: '#818cf8',
+            backgroundColor: 'rgba(99, 102, 241, 0.15)',
+            fill: true,
+            tension: 0.3,
+            pointRadius: 6,
+            pointBackgroundColor: '#818cf8',
+            borderWidth: 3
+          }]
+        },
+        options: baseChartOpts
+      });
+
+      // Per agency chart
+      new Chart(document.getElementById('perAgencyChart'), {
+        type: 'bar',
+        data: {
+          labels: stages,
+          datasets: [{
+            label: 'Costo por agencia USD/mes',
+            data: perAgency,
+            backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ec4899'],
+            borderRadius: 6
+          }]
+        },
+        options: baseChartOpts
+      });
+
+      // Stacked composition
+      new Chart(document.getElementById('stackedChart'), {
+        type: 'bar',
+        data: {
+          labels: stages,
+          datasets: [
+            { label: 'Supabase', data: [25, 50, 100, 250], backgroundColor: '#3ECF8E' },
+            { label: 'Railway', data: [20, 80, 150, 250], backgroundColor: '#9333EA' },
+            { label: 'AFIP SDK', data: [25, 25, 120, 135], backgroundColor: '#F59E0B' },
+            { label: 'OpenAI', data: [20, 100, 180, 260], backgroundColor: '#10B981' },
+            { label: 'Cloudflare', data: [0, 0, 20, 20], backgroundColor: '#F38020' },
+            { label: 'Misc', data: [1, 10, 50, 100], backgroundColor: '#6B7280' }
+          ]
+        },
+        options: {
+          ...baseChartOpts,
+          scales: {
+            x: { stacked: true, ticks: { color: '#6e6e76' }, grid: { color: '#2a2a30' } },
+            y: { stacked: true, ticks: { color: '#6e6e76' }, grid: { color: '#2a2a30' }, beginAtZero: true }
+          }
+        }
+      });
+    }
+  </script>
+</body>
+</html>

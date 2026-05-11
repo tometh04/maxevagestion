@@ -115,11 +115,6 @@ describe("Rate Limiting", () => {
       expect(RATE_LIMIT_CONFIGS.AI_COPILOT.windowMs).toBe(60000)
     })
 
-    it("should have TRELLO_WEBHOOK config with 100 requests per minute", () => {
-      expect(RATE_LIMIT_CONFIGS.TRELLO_WEBHOOK.maxRequests).toBe(100)
-      expect(RATE_LIMIT_CONFIGS.TRELLO_WEBHOOK.windowMs).toBe(60000)
-    })
-
     it("should have GENERAL config with 100 requests per minute", () => {
       expect(RATE_LIMIT_CONFIGS.GENERAL.maxRequests).toBe(100)
       expect(RATE_LIMIT_CONFIGS.GENERAL.windowMs).toBe(60000)

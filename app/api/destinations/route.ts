@@ -5,7 +5,11 @@ import { normalizeDestinationName, toTitleCase, findBestMatch } from "@/lib/dest
 
 /**
  * GET /api/destinations?q=punta
- * Search destinations with fuzzy matching
+ * Search destinations with fuzzy matching.
+ *
+ * NOTA: destinations es un catálogo maestro global (decisión de producto
+ * 2026-05-10). Todos los tenants comparten el catálogo de ciudades
+ * precargado. RLS permisiva, sin scoping por org_id.
  */
 export async function GET(request: Request) {
   try {

@@ -46,13 +46,9 @@ export default async function CRMManychatPage() {
     .select("id, name, admin_fee_percentage")
     .order("name")
 
-  // IMPORTANTE: Cargar leads de Manychat (nuevos) + Trello con list_name (migración visual)
-  // 2026-05-06: refactor "CRM Manychat" → "CRM Ventas". Antes filtraba
-  // restrictivamente source IN ('Manychat', 'Trello' con list_name); en
-  // tenants reales con leads de WhatsApp/Instagram/Meta Ads/etc, el Kanban
-  // quedaba perpetuamente vacío mientras la Tabla mostraba todos. Ahora
-  // muestra TODOS los leads (los de cualquier source) — el page se llama
-  // "CRM Ventas" y refleja la realidad del pipeline comercial completo.
+  // Cargar TODOS los leads del tenant (cualquier source). El kanban "CRM Ventas"
+  // refleja la realidad del pipeline comercial completo. Cleanup 2026-05-08:
+  // removida lógica histórica de filtros por source 'Trello'.
   let leads: any[] = []
   let leadsError: any = null
   const INITIAL_LIMIT = 5000

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 
-// POST - Eliminar seed data (NO elimina leads de Trello ni datos reales)
+// POST - Eliminar seed data (NO elimina leads ni datos reales)
 export async function POST(request: Request) {
   try {
     const { user } = await getCurrentUser()
@@ -16,7 +16,7 @@ export async function POST(request: Request) {
     const deletedCounts: Record<string, number> = {}
 
 
-    // 1. Eliminar alertas (excepto las de leads de Trello)
+    // 1. Eliminar alertas (excepto las de leads reales)
     const { data: alertsDeleted, error: alertsError } = await (supabase
       .from("alerts") as any)
       .delete()
@@ -122,14 +122,13 @@ export async function POST(request: Request) {
     deletedCounts.partner_accounts = partnersDeleted?.length || 0
 
     // NO ELIMINAR:
-    // - leads (vienen de Trello)
+    // - leads (datos reales, vienen de Manychat u otras fuentes)
     // - users (usuarios reales)
     // - agencies (configuración)
-    // - trello_configs (configuración)
     // - financial_accounts (configuración)
     // - destination_requirements (configuración)
     // - whatsapp_templates (configuración)
-    // - documents de leads (datos de Trello)
+    // - documents de leads (datos reales)
 
 
     return NextResponse.json({
@@ -137,10 +136,9 @@ export async function POST(request: Request) {
       message: "Seed data eliminada correctamente",
       deleted: deletedCounts,
       preserved: [
-        "leads (Trello)",
+        "leads",
         "users",
-        "agencies", 
-        "trello_configs",
+        "agencies",
         "financial_accounts",
         "destination_requirements",
         "whatsapp_templates",
