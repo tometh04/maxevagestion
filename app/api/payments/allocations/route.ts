@@ -189,17 +189,36 @@ export async function POST(request: Request) {
       }))
 
     if (allocationRows.length > 0) {
-      const { error: insertError } = await (admin.from("payment_passenger_allocations") as any)
-        .upsert(allocationRows, { onConflict: "payment_id,operation_customer_id" })
+      // Bug fix 2026-05-11 (Santi): el upsert silenciosamente fallaba sin retornar
+      // error. Cambio a INSERT explícito + .select() para verificar que el row
+      // realmente persistió, y si no, devolver 500 con el detalle (no success).
+      const { data: inserted, error: insertError } = await (admin.from("payment_passenger_allocations") as any)
+        .insert(allocationRows)
+        .select()
 
       if (insertError) {
         console.error("[Allocations] Insert error:", insertError)
-        return NextResponse.json({ error: insertError.message }, { status: 500 })
+        return NextResponse.json({
+          error: insertError.message,
+          code: insertError.code,
+          details: insertError.details,
+          hint: insertError.hint,
+        }, { status: 500 })
       }
+
+      if (!inserted || inserted.length === 0) {
+        console.error("[Allocations] Insert silenciosamente devolvió 0 rows. Payload:", allocationRows)
+        return NextResponse.json({
+          error: "El insert no retornó filas — verificar permisos service_role o triggers en la tabla",
+          payload: allocationRows,
+        }, { status: 500 })
+      }
+
+      return NextResponse.json({ success: true, allocations: inserted })
     }
   }
 
-  return NextResponse.json({ success: true })
+  return NextResponse.json({ success: true, allocations: [] })
 }
 
 /**
