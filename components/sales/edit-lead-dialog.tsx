@@ -37,38 +37,13 @@ import { toast } from "sonner"
 // Esquema base para leads normales
 const baseLeadSchema = z.object({
   agency_id: z.string().min(1, "La agencia es requerida"),
-  source: z.enum(["Instagram", "WhatsApp", "Meta Ads", "Referido", "Cliente", "Other", "Trello", "Manychat"]),
+  source: z.enum(["Instagram", "WhatsApp", "Meta Ads", "Referido", "Cliente", "Other", "Manychat"]),
   status: z.enum(["NEW", "IN_PROGRESS", "QUOTED", "WON", "LOST"]),
   region: z.enum(["ARGENTINA", "CARIBE", "BRASIL", "EUROPA", "EEUU", "OTROS", "CRUCEROS"]),
   destination: z.string().min(1, "El destino es requerido"),
   contact_name: z.string().min(1, "El nombre de contacto es requerido"),
   contact_phone: z.string().min(1, "El teléfono es requerido"),
   contact_email: z.string().email().optional().or(z.literal("")),
-  contact_instagram: z.string().optional(),
-  assigned_seller_id: z.string().optional().nullable().or(z.literal("none")),
-  notes: z.string().optional(),
-  quoted_price: z.coerce.number().min(0).optional().nullable(),
-  has_deposit: z.boolean().default(false),
-  deposit_amount: z.coerce.number().min(0).optional().nullable(),
-  deposit_currency: z.enum(["ARS", "USD"]).optional().nullable().or(z.literal("none")),
-  deposit_method: z.string().optional().nullable(),
-  deposit_date: z.date().optional().nullable(),
-  deposit_account_id: z.string().optional().nullable().or(z.literal("none")),
-  estimated_checkin_date: z.date().optional().nullable(),
-  estimated_departure_date: z.date().optional().nullable(),
-  follow_up_date: z.date().optional().nullable(),
-})
-
-// Esquema para leads de Trello (campos de contacto opcionales porque vienen de Trello)
-const trelloLeadSchema = z.object({
-  agency_id: z.string().optional(),
-  source: z.enum(["Instagram", "WhatsApp", "Meta Ads", "Referido", "Cliente", "Other", "Trello", "Manychat"]).optional(),
-  status: z.enum(["NEW", "IN_PROGRESS", "QUOTED", "WON", "LOST"]).optional(),
-  region: z.enum(["ARGENTINA", "CARIBE", "BRASIL", "EUROPA", "EEUU", "OTROS", "CRUCEROS"]).optional(),
-  destination: z.string().optional(),
-  contact_name: z.string().optional(),
-  contact_phone: z.string().optional(), // No requerido para Trello
-  contact_email: z.string().optional(),
   contact_instagram: z.string().optional(),
   assigned_seller_id: z.string().optional().nullable().or(z.literal("none")),
   notes: z.string().optional(),
@@ -142,9 +117,8 @@ export function EditLeadDialog({
 }: EditLeadDialogProps) {
   const [loading, setLoading] = useState(false)
   const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([])
-  // Solo bloquear edición si el lead está sincronizado activamente con Trello (tiene external_id)
-  // Los leads de Manychat que crean tarjetas pero no están sincronizados pueden editarse completamente
-  const isSyncedWithTrello = lead ? (lead.source === "Trello" && lead.external_id && lead.trello_url) : false
+  // Cleanup 2026-05-08: removida lógica de "sincronizado con Trello" — integración borrada
+  const isSyncedWithTrello = false
 
   // Cargar cuentas financieras
   useEffect(() => {
@@ -164,9 +138,8 @@ export function EditLeadDialog({
     }
   }, [open])
 
-  // Usar el esquema de Trello solo si está sincronizado con Trello
   const form = useForm<LeadFormValues>({
-    resolver: zodResolver(isSyncedWithTrello ? trelloLeadSchema : leadSchema) as any,
+    resolver: zodResolver(leadSchema) as any,
     defaultValues: {
       agency_id: "",
       source: "Other",
@@ -334,7 +307,7 @@ export function EditLeadDialog({
           <DialogTitle>Editar Lead</DialogTitle>
           <DialogDescription>
             {isSyncedWithTrello && (
-              <span className="text-warning">
+              <span className="text-accent-coral">
                 ⚠️ Este lead está sincronizado con Trello. Solo puedes editar ciertos campos.
               </span>
             )}
@@ -411,7 +384,7 @@ export function EditLeadDialog({
             {/* Viaje */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
-                <MapPin className="h-3.5 w-3.5 text-emerald-500" />
+                <MapPin className="h-3.5 w-3.5 text-success" />
                 <span className="text-xs font-medium text-foreground/70">Viaje</span>
               </div>
               <div className="grid gap-4 md:grid-cols-2">
@@ -466,7 +439,7 @@ export function EditLeadDialog({
             {/* Asignación */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
-                <UserCheck className="h-3.5 w-3.5 text-violet-500" />
+                <UserCheck className="h-3.5 w-3.5 text-accent-violet" />
                 <span className="text-xs font-medium text-foreground/70">Asignación</span>
               </div>
               <div className="grid gap-4 md:grid-cols-2">
@@ -553,7 +526,7 @@ export function EditLeadDialog({
             {/* Detalles */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
-                <StickyNote className="h-3.5 w-3.5 text-sky-500" />
+                <StickyNote className="h-3.5 w-3.5 text-accent-teal" />
                 <span className="text-xs font-medium text-foreground/70">Detalles</span>
               </div>
               <FormField

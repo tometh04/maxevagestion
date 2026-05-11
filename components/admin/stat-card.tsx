@@ -14,9 +14,9 @@ type Props = {
 }
 
 const TREND_COLOR: Record<Delta["trend"], string> = {
-  up: "text-emerald-400",
-  down: "text-red-400",
-  neutral: "text-slate-400",
+  up: "text-success",
+  down: "text-destructive",
+  neutral: "text-muted-foreground",
 }
 
 const TREND_ICON: Record<Delta["trend"], React.ComponentType<{ className?: string }>> = {
@@ -30,19 +30,19 @@ export function StatCard({ label, value, icon: Icon, hint, delta, className }: P
   return (
     <div
       className={cn(
-        "group relative flex flex-col gap-3 rounded-lg border border-slate-800/80 bg-slate-900/40 p-4 backdrop-blur transition hover:border-slate-700",
+        "group relative flex flex-col gap-3 rounded-lg border border-border bg-muted/40 p-4 backdrop-blur transition hover:border-border",
         className,
       )}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</span>
+        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
         {Icon && (
-          <span className="rounded-md bg-slate-800/60 p-1.5 text-slate-400 group-hover:text-slate-300">
+          <span className="rounded-md bg-card p-1.5 text-muted-foreground group-hover:text-muted-foreground">
             <Icon className="h-3.5 w-3.5" />
           </span>
         )}
       </div>
-      <div className="text-2xl font-semibold tracking-tight text-slate-100">{value}</div>
+      <div className="text-2xl font-semibold tracking-tight text-muted-foreground">{value}</div>
       {(hint || delta) && (
         <div className="flex items-center gap-2 text-xs">
           {delta && TrendIcon && (
@@ -51,7 +51,7 @@ export function StatCard({ label, value, icon: Icon, hint, delta, className }: P
               {delta.value}
             </span>
           )}
-          {hint && <span className="text-slate-500">{hint}</span>}
+          {hint && <span className="text-muted-foreground">{hint}</span>}
         </div>
       )}
     </div>

@@ -69,7 +69,7 @@ export function OrgProfileForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-slate-200">Editando perfil</h3>
+        <h3 className="text-sm font-semibold text-muted-foreground">Editando perfil</h3>
         <ProfileBadge completion={completion} />
       </div>
 
@@ -129,8 +129,8 @@ export function OrgProfileForm({
         </Field>
       </section>
 
-      <section className="rounded border border-amber-500/30 bg-amber-500/5 p-4">
-        <h4 className="text-xs font-semibold uppercase text-amber-300 mb-2">
+      <section className="rounded border border-accent-coral/30 bg-accent-coral/5 p-4">
+        <h4 className="text-xs font-semibold uppercase text-accent-coral mb-2">
           Notas internas · solo admin
         </h4>
         <Textarea
@@ -142,7 +142,7 @@ export function OrgProfileForm({
       </section>
 
       {error && (
-        <div className="rounded border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300">
+        <div className="rounded border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
           {error}
         </div>
       )}
@@ -156,7 +156,7 @@ export function OrgProfileForm({
         </Button>
       </div>
 
-      <div className="text-xs text-slate-500">
+      <div className="text-xs text-muted-foreground">
         Completitud actual: {completion}/{PROFILE_FIELD_COUNT}
       </div>
     </form>
@@ -166,7 +166,7 @@ export function OrgProfileForm({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <Label className="text-xs text-slate-400">{label}</Label>
+      <Label className="text-xs text-muted-foreground">{label}</Label>
       {children}
     </div>
   )

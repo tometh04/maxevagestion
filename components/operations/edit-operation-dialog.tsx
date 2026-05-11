@@ -78,11 +78,11 @@ const operationTypeOptions = [
 ]
 
 const standardStatusOptions = [
-  { value: "RESERVED", label: "Reservado", color: "bg-info" },
+  { value: "RESERVED", label: "Reservado", color: "bg-accent-teal" },
   { value: "CONFIRMED", label: "Confirmado", color: "bg-success" },
   { value: "CANCELLED", label: "Cancelado", color: "bg-destructive" },
-  { value: "TRAVELLING", label: "En viaje", color: "bg-warning" },
-  { value: "TRAVELLED", label: "Viajado", color: "bg-purple-500" },
+  { value: "TRAVELLING", label: "En viaje", color: "bg-accent-coral" },
+  { value: "TRAVELLED", label: "Viajado", color: "bg-accent-violet" },
 ]
 
 interface Operation {
@@ -176,7 +176,7 @@ export function EditOperationDialog({
 
   // Combinar estados estándar con personalizados
   const statusOptions = useMemo(() => {
-    return [...standardStatusOptions, ...customStatuses.map(s => ({ value: s.value, label: s.label, color: s.color || "bg-gray-500" }))]
+    return [...standardStatusOptions, ...customStatuses.map(s => ({ value: s.value, label: s.label, color: s.color || "bg-muted-foreground" }))]
   }, [customStatuses])
 
   // Sincronizar operadores cuando cambian
@@ -431,7 +431,7 @@ export function EditOperationDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[95vh] overflow-hidden">
+      <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[95vh]">
         <DialogHeader>
           <DialogTitle>Editar Operación</DialogTitle>
           <DialogDescription>
@@ -471,7 +471,7 @@ export function EditOperationDialog({
         </Card>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex-1 overflow-y-auto min-h-0 px-6 py-5 space-y-5">
             {/* General */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
@@ -529,6 +529,42 @@ export function EditOperationDialog({
                 )}
               />
 
+              {/* Bug #15: Editar Op no exponía Vendedor Secundario, lo que obligaba
+                  a borrar y re-crear la operación para convertirla en shared sale.
+                  El backend YA acepta seller_secondary_id en el submit (línea ~377)
+                  y los campos de commission % aparecen abajo cuando hay secundario.
+                  Solo faltaba el selector. */}
+              <FormField
+                control={form.control}
+                name="seller_secondary_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Vendedor Secundario</FormLabel>
+                    <Select
+                      onValueChange={(v) => field.onChange(v === "none" ? null : v)}
+                      value={field.value ?? "none"}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Sin vendedor secundario" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="none">Sin vendedor secundario</SelectItem>
+                        {sellers
+                          .filter((s) => s.id !== form.watch("seller_id"))
+                          .map((seller) => (
+                            <SelectItem key={seller.id} value={seller.id}>
+                              {seller.name}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
               {/* Comisión compartida - dos inputs absolutos (29/04 — Tomi opción B).
                   Solo visible con vendedor secundario. ADMIN/SUPER_ADMIN/CONTABLE pueden
                   editar; resto ve readonly. Validación reactiva: suma ≤ pct del principal.
@@ -552,7 +588,7 @@ export function EditOperationDialog({
                 return (
                   <div className="space-y-3 mt-4">
                     {isLegacy && canEdit && primaryVal == null && secondaryVal == null && (
-                      <p className="text-xs text-amber-600">
+                      <p className="text-xs text-accent-coral">
                         Esta operación usa el sistema legacy de split. Editá los valores absolutos
                         a continuación para migrarla al nuevo modelo (suma ≤ {principalPct}% del principal).
                       </p>
@@ -603,9 +639,15 @@ export function EditOperationDialog({
                         )}
                       />
                     </div>
+                    {/* Bug #12: idem new-operation-dialog — renombrado a "Cap del
+                        vendedor principal" y ocultado cuando = 0 para que no se vea
+                        un confuso "0.00%" cuando el seller no tiene default. */}
                     <div className={`text-xs ${exceedsPrincipal ? "text-destructive font-medium" : "text-muted-foreground"}`}>
-                      Suma: {sum.toFixed(2)}% · Comisión vendedor principal: {principalPct.toFixed(2)}%
-                      {exceedsPrincipal && " — la suma no puede superar la comisión del principal"}
+                      Suma: {sum.toFixed(2)}%
+                      {principalPct > 0 && (
+                        <> · Cap del vendedor principal: {principalPct.toFixed(2)}%</>
+                      )}
+                      {exceedsPrincipal && " — la suma no puede superar el cap del principal"}
                     </div>
                   </div>
                 )
@@ -840,7 +882,7 @@ export function EditOperationDialog({
             {/* Ruta y Fechas */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
-                <MapPin className="h-3.5 w-3.5 text-emerald-500" />
+                <MapPin className="h-3.5 w-3.5 text-success" />
                 <span className="text-xs font-medium text-foreground/70">Ruta y Fechas</span>
               </div>
             <div className="grid gap-4 md:grid-cols-2">
@@ -974,7 +1016,7 @@ export function EditOperationDialog({
             {/* Pasajeros */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
-                <Users className="h-3.5 w-3.5 text-blue-500" />
+                <Users className="h-3.5 w-3.5 text-primary" />
                 <span className="text-xs font-medium text-foreground/70">Pasajeros</span>
               </div>
             <div className="grid gap-4 md:grid-cols-4">
@@ -1065,7 +1107,7 @@ export function EditOperationDialog({
             {/* Financiero */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
-                <DollarSign className="h-3.5 w-3.5 text-warning" />
+                <DollarSign className="h-3.5 w-3.5 text-accent-coral" />
                 <span className="text-xs font-medium text-foreground/70">Financiero</span>
               </div>
             <div className="grid gap-4 md:grid-cols-3">
@@ -1161,7 +1203,7 @@ export function EditOperationDialog({
             {/* Codigos */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
-                <Ticket className="h-3.5 w-3.5 text-violet-500" />
+                <Ticket className="h-3.5 w-3.5 text-accent-violet" />
                 <span className="text-xs font-medium text-foreground/70">Codigos de Reserva</span>
               </div>
               <div className="grid gap-4 md:grid-cols-2">

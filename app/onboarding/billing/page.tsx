@@ -39,7 +39,7 @@ export default async function OnboardingBillingPage() {
           className="h-auto w-auto max-h-10 object-contain"
         />
         <form action="/api/auth/logout" method="POST">
-          <button className="text-sm text-gray-400 hover:text-white transition-colors">
+          <button className="text-sm text-muted-foreground hover:text-white transition-colors">
             Cerrar sesión
           </button>
         </form>
@@ -48,17 +48,20 @@ export default async function OnboardingBillingPage() {
       <main className="flex-1 flex items-center justify-center p-6 pb-20">
         <div className="max-w-4xl w-full space-y-12">
           <div className="text-center space-y-4">
-            <span className="inline-block text-green-400 text-sm font-medium tracking-wider uppercase">
+            <span className="inline-block text-[11px] font-semibold uppercase tracking-eyebrow text-success">
               Activá tu cuenta
             </span>
-            <h1 className="text-4xl md:text-5xl font-bold text-white">
+            <h1 className="text-4xl md:text-5xl font-bold tracking-tighter-hero leading-[1.1] text-white">
               {isCancelledExpired ? (
                 <>Tu suscripción venció{firstName ? `, ${firstName}` : ""}</>
               ) : (
-                <>{firstName ? `Hola ${firstName}, elegí` : "Elegí"} un plan para empezar</>
+                <>
+                  {firstName ? `Hola ${firstName}, elegí` : "Elegí"}{" "}
+                  <span className="text-gradient-signature">un plan</span> para empezar
+                </>
               )}
             </h1>
-            <p className="text-xl text-gray-400 max-w-2xl mx-auto">
+            <p className="text-xl text-muted-foreground max-w-2xl mx-auto text-balance">
               {isCancelledExpired
                 ? "Reactivá tu cuenta para volver a operar. Toda tu información sigue intacta."
                 : "Empezá gratis por 7 días. Sin cobro hasta el día 8. Cancelás cuando quieras."}
@@ -71,7 +74,7 @@ export default async function OnboardingBillingPage() {
             ))}
           </div>
 
-          <div className="text-center text-gray-500 text-sm space-y-1">
+          <div className="text-center text-muted-foreground text-sm space-y-1">
             <p>Facturamos por MercadoPago · Cancelás cuando quieras · Exportás tus datos en cualquier momento</p>
             <p className="text-xs">
               🔒 Tu tarjeta se guarda en Mercado Pago con cifrado PCI. Nunca vemos los datos completos.

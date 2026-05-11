@@ -33,9 +33,9 @@ import { toast } from "sonner"
 
 const PRIORITY_CONFIG = {
   URGENT: { label: "Urgente", className: "bg-destructive/10 text-destructive", dot: "bg-destructive" },
-  HIGH: { label: "Alta", className: "bg-warning/10 text-warning", dot: "bg-warning" },
-  MEDIUM: { label: "Media", className: "bg-info/10 text-info", dot: "bg-info" },
-  LOW: { label: "Baja", className: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400", dot: "bg-gray-400" },
+  HIGH: { label: "Alta", className: "bg-accent-coral/10 text-accent-coral", dot: "bg-accent-coral" },
+  MEDIUM: { label: "Media", className: "bg-accent-teal/10 text-accent-teal", dot: "bg-accent-teal" },
+  LOW: { label: "Baja", className: "bg-muted text-muted-foreground dark:bg-card dark:text-muted-foreground", dot: "bg-muted-foreground/30" },
 } as const
 
 const STATUS_ICONS = {
@@ -116,7 +116,7 @@ export function TaskCard({
           "group flex items-start gap-1.5 p-2 rounded-md border text-sm cursor-pointer transition-colors",
           isDone && "opacity-50 bg-muted/30",
           isOverdue && "border-destructive bg-destructive/10",
-          isDueToday && "border-warning bg-warning/10",
+          isDueToday && "border-accent-coral bg-accent-coral/10",
           !isDone && !isOverdue && !isDueToday && "hover:bg-muted/50"
         )}
       >
@@ -128,13 +128,13 @@ export function TaskCard({
           disabled={isToggling}
           className={cn(
             "mt-0.5 shrink-0 transition-colors",
-            isDone ? "text-green-600" : "text-muted-foreground hover:text-primary"
+            isDone ? "text-success" : "text-muted-foreground hover:text-primary"
           )}
         >
           {isToggling ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
           ) : (
-            <StatusIcon className={cn("h-3.5 w-3.5", isDone && "fill-green-600")} />
+            <StatusIcon className={cn("h-3.5 w-3.5", isDone && "fill-success")} />
           )}
         </button>
         <div className="flex-1 min-w-0">
@@ -161,7 +161,7 @@ export function TaskCard({
         "flex items-start gap-3 p-4 rounded-lg border transition-colors",
         isDone && "opacity-60 bg-muted/30",
         isOverdue && "border-destructive",
-        isDueToday && "border-warning",
+        isDueToday && "border-accent-coral",
         !isDone && !isOverdue && !isDueToday && "hover:bg-muted/50"
       )}
     >
@@ -171,13 +171,13 @@ export function TaskCard({
         disabled={isToggling}
         className={cn(
           "mt-0.5 shrink-0 transition-colors",
-          isDone ? "text-green-600" : "text-muted-foreground hover:text-primary"
+          isDone ? "text-success" : "text-muted-foreground hover:text-primary"
         )}
       >
         {isToggling ? (
           <Loader2 className="h-5 w-5 animate-spin" />
         ) : (
-          <StatusIcon className={cn("h-5 w-5", isDone && "fill-green-600")} />
+          <StatusIcon className={cn("h-5 w-5", isDone && "fill-success")} />
         )}
       </button>
 
@@ -213,7 +213,7 @@ export function TaskCard({
               className={cn(
                 "flex items-center gap-1",
                 isOverdue && "text-destructive font-medium",
-                isDueToday && "text-warning font-medium"
+                isDueToday && "text-accent-coral font-medium"
               )}
             >
               <Clock className="h-3 w-3" />

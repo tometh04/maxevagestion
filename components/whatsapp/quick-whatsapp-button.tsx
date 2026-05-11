@@ -155,7 +155,7 @@ export function QuickWhatsAppButton({
     return (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" className="h-8 w-8 text-green-600">
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-success">
             <MessageSquare className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
@@ -228,7 +228,7 @@ export function QuickWhatsAppButton({
               <Button
                 onClick={handleCustomMessage}
                 disabled={saving || !customMessage.trim()}
-                className="bg-green-600 hover:bg-green-700"
+                className="bg-success hover:bg-success"
               >
                 <ExternalLink className="h-4 w-4 mr-2" />
                 Abrir WhatsApp

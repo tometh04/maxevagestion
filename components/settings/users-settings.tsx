@@ -93,11 +93,11 @@ const roleLabels: Record<string, string> = {
 }
 
 const roleColors: Record<string, string> = {
-  SUPER_ADMIN: "bg-purple-500",
-  ADMIN: "bg-info",
-  CONTABLE: "bg-green-500",
-  SELLER: "bg-warning",
-  VIEWER: "bg-gray-500",
+  SUPER_ADMIN: "bg-accent-violet",
+  ADMIN: "bg-accent-teal",
+  CONTABLE: "bg-success",
+  SELLER: "bg-accent-coral",
+  VIEWER: "bg-muted-foreground",
 }
 
 const roleDescriptions: Record<string, string> = {
@@ -451,8 +451,8 @@ export function UsersSettings() {
                 {/* Rol y Permisos */}
                 <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
                   <div className="flex items-center gap-2 mb-3">
-                    <div className="flex items-center justify-center h-6 w-6 rounded-md bg-blue-500/10">
-                      <Shield className="h-3.5 w-3.5 text-blue-500" />
+                    <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                      <Shield className="h-3.5 w-3.5 text-primary" />
                     </div>
                     <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Rol y Permisos</h4>
                   </div>
@@ -628,7 +628,7 @@ export function UsersSettings() {
                   </TableCell>
                   <TableCell>
                     {user.is_active ? (
-                      <Badge variant="outline" className="text-green-600 border-green-600">
+                      <Badge variant="outline" className="text-success border-success">
                         <CheckCircle2 className="mr-1 h-3 w-3" />
                         Activo
                       </Badge>
@@ -702,8 +702,18 @@ export function UsersSettings() {
           </Table>
 
           {users.length === 0 && (
-            <div className="text-center py-8 text-muted-foreground text-sm">
-              No hay usuarios registrados. Invita al primer usuario.
+            <div className="flex flex-col items-center text-center py-10 gap-3">
+              <UserPlus className="h-10 w-10 text-muted-foreground" />
+              <div>
+                <h3 className="text-base font-semibold">No hay usuarios registrados</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Invitá a tu equipo para que cada uno tenga su acceso con su rol.
+                </p>
+              </div>
+              <Button size="sm" className="rounded-full mt-1" onClick={() => setInviteDialogOpen(true)}>
+                <UserPlus className="h-4 w-4 mr-2" />
+                Invitar primer usuario
+              </Button>
             </div>
           )}
         </div>
@@ -890,16 +900,16 @@ export function UsersSettings() {
                 </Button>
               </div>
               <div className="text-xs text-muted-foreground space-y-1">
-                <p className={newPassword.length >= 8 ? "text-green-500" : ""}>
+                <p className={newPassword.length >= 8 ? "text-success" : ""}>
                   • Mínimo 8 caracteres
                 </p>
-                <p className={/[A-Z]/.test(newPassword) ? "text-green-500" : ""}>
+                <p className={/[A-Z]/.test(newPassword) ? "text-success" : ""}>
                   • Al menos una mayúscula
                 </p>
-                <p className={/[a-z]/.test(newPassword) ? "text-green-500" : ""}>
+                <p className={/[a-z]/.test(newPassword) ? "text-success" : ""}>
                   • Al menos una minúscula
                 </p>
-                <p className={/\d/.test(newPassword) ? "text-green-500" : ""}>
+                <p className={/\d/.test(newPassword) ? "text-success" : ""}>
                   • Al menos un número
                 </p>
               </div>

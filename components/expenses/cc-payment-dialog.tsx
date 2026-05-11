@@ -333,7 +333,7 @@ export function CCPaymentDialog({ open, onOpenChange, onSuccess }: CCPaymentDial
                   name="exchange_rate"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-orange-600">
+                      <FormLabel className="text-accent-coral">
                         Tipo de Cambio (ARS por 1 USD)
                       </FormLabel>
                       <FormControl>
@@ -360,7 +360,7 @@ export function CCPaymentDialog({ open, onOpenChange, onSuccess }: CCPaymentDial
             {/* Items Breakdown */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
-                <Landmark className="h-3.5 w-3.5 text-emerald-500" />
+                <Landmark className="h-3.5 w-3.5 text-success" />
                 <span className="text-xs font-medium text-foreground/70">Desglose de items</span>
               </div>
 
@@ -514,17 +514,17 @@ export function CCPaymentDialog({ open, onOpenChange, onSuccess }: CCPaymentDial
               <div
                 className={`flex items-center justify-between rounded-lg p-3 text-sm ${
                   isBalanced
-                    ? "bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800"
+                    ? "bg-success/5 dark:bg-success/30 border border-success/15 dark:border-success"
                     : totalNum > 0
-                      ? "bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800"
+                      ? "bg-destructive/5 dark:bg-destructive/30 border border-destructive/15 dark:border-destructive"
                       : "bg-muted/30 border border-border/40"
                 }`}
               >
                 <div className="flex items-center gap-2">
                   {isBalanced ? (
-                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    <CheckCircle2 className="h-4 w-4 text-success" />
                   ) : totalNum > 0 ? (
-                    <AlertCircle className="h-4 w-4 text-red-600" />
+                    <AlertCircle className="h-4 w-4 text-destructive" />
                   ) : null}
                   <span>
                     Total items: <strong>{formatCurrency(itemsSum, watchCurrency)}</strong>
@@ -533,7 +533,7 @@ export function CCPaymentDialog({ open, onOpenChange, onSuccess }: CCPaymentDial
                 <span>
                   Total pago: <strong>{formatCurrency(totalNum, watchCurrency)}</strong>
                   {totalNum > 0 && !isBalanced && (
-                    <span className="ml-2 text-red-600">
+                    <span className="ml-2 text-destructive">
                       (Diferencia: {formatCurrency(difference, watchCurrency)})
                     </span>
                   )}

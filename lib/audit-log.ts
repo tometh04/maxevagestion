@@ -32,7 +32,6 @@ export type AuditAction =
   | "UPDATE_SETTINGS"
   | "INVITE_USER"
   | "UPDATE_USER_ROLE"
-  | "SYNC_TRELLO"
   | "EXPORT_REPORT"
   | "AI_COPILOT_QUERY"
 

@@ -36,7 +36,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Plus, Trash2, AlertTriangle, Building2, ArrowRightLeft } from "lucide-react"
 import { TransferAccountDialog } from "./transfer-account-dialog"
 import { toast } from "sonner"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useDefaultCurrency } from "@/hooks/use-default-currency"
 
 function formatCurrency(amount: number, currency: string = "ARS"): string {
@@ -84,6 +84,7 @@ interface FinancialAccountsPageClientProps {
 
 export function FinancialAccountsPageClient({ agencies: initialAgencies }: FinancialAccountsPageClientProps) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { currency: defaultCurrency } = useDefaultCurrency()
   const [loading, setLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
@@ -132,6 +133,22 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
   useEffect(() => {
     setFormData((prev: any) => prev.type ? prev : { ...prev, currency: defaultCurrency })
   }, [defaultCurrency])
+
+  // Auto-abrir dialog de creación si vienen con ?new=1 (deep-link desde
+  // empty states de Caja, dialog de pagos, etc). Permite "crear xxx" inline
+  // sin que el user tenga que perder contexto buscando el botón.
+  useEffect(() => {
+    const action = searchParams?.get("new")
+    if (action === "1") {
+      // Pre-cargar currency si vino en query (ej: ?new=1&currency=USD)
+      const ccy = searchParams?.get("currency")
+      if (ccy === "USD" || ccy === "ARS") {
+        setFormData((prev: any) => ({ ...prev, currency: ccy }))
+      }
+      setOpenDialog(true)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
   async function fetchData(bustCache = false) {
     setLoading(true)
@@ -436,7 +453,7 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
                         ) : deleteStep === "confirm" ? (
                           <p>
                             La cuenta <strong>{accountToDelete.displayName}</strong> tiene{" "}
-                            <strong className={accountToDelete.balance >= 0 ? "text-warning" : "text-destructive"}>
+                            <strong className={accountToDelete.balance >= 0 ? "text-accent-coral" : "text-destructive"}>
                               {formatCurrency(accountToDelete.balance, accountToDelete.currency)}
                             </strong>{" "}
                             de saldo. ¿Quieres transferirlo a otra cuenta?
@@ -445,7 +462,7 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
                           <>
                             <p>
                               Transferir{" "}
-                              <strong className={accountToDelete.balance >= 0 ? "text-warning" : "text-destructive"}>
+                              <strong className={accountToDelete.balance >= 0 ? "text-accent-coral" : "text-destructive"}>
                                 {formatCurrency(Math.abs(accountToDelete.balance), accountToDelete.currency)}
                               </strong>{" "}
                               a:
@@ -475,7 +492,7 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
                                 a.currency === accountToDelete.currency &&
                                 a.is_active !== false
                             ).length === 0 && (
-                              <p className="text-sm text-warning">
+                              <p className="text-sm text-accent-coral">
                                 No hay otras cuentas en {accountToDelete.currency} para transferir.
                               </p>
                             )}
@@ -534,7 +551,7 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
                 Nueva Cuenta
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogContent className="max-w-2xl">
               <DialogHeader>
                 <DialogTitle>Nueva Cuenta Financiera</DialogTitle>
                 <DialogDescription>
@@ -880,7 +897,7 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
                           <TableCell className="text-right">
                             <span
                               className={`font-bold ${
-                                (account.current_balance ?? 0) >= 0 ? "text-warning" : "text-destructive"
+                                (account.current_balance ?? 0) >= 0 ? "text-accent-coral" : "text-destructive"
                               }`}
                             >
                               {formatCurrency(account.current_balance ?? 0, account.currency)}

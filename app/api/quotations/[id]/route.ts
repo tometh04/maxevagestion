@@ -24,7 +24,9 @@ function buildQuotationRestorePayload(quotation: any) {
     children: quotation.children,
     infants: quotation.infants,
     currency: quotation.currency,
+    package_description: quotation.package_description,
     notes: quotation.notes,
+    internal_notes: quotation.internal_notes,
     terms_and_conditions: quotation.terms_and_conditions,
     status: quotation.status,
     subtotal: quotation.subtotal,
@@ -126,7 +128,8 @@ export async function PATCH(
     const allowedFields = [
       "destination", "origin", "region", "departure_date", "return_date",
       "valid_until", "adults", "children", "infants", "currency",
-      "notes", "terms_and_conditions", "status",
+      "package_description", "notes", "internal_notes",
+      "terms_and_conditions", "status",
       "subtotal", "total_amount", "pricing_mode",
     ]
 

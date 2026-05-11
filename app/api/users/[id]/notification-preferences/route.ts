@@ -17,7 +17,7 @@ export async function GET(
     }
 
     // Buscar preferencias existentes
-    const { data: prefs } = await (supabase.from("user_notification_preferences") as any)
+    const { data: prefs } = await ((supabase as any).from("user_notification_preferences"))
       .select("*")
       .eq("user_id", userId)
       .single()
@@ -61,7 +61,7 @@ export async function PUT(
     const { preferences } = body
 
     // Upsert preferencias
-    const { data, error } = await (supabase.from("user_notification_preferences") as any)
+    const { data, error } = await ((supabase as any).from("user_notification_preferences"))
       .upsert({
         user_id: userId,
         preferences,

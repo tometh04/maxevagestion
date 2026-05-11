@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Loader2, Plus, Send, Eye, Download, Search, Filter, User, DollarSign, ShieldCheck, AlertCircle, RefreshCw } from "lucide-react"
+import { translateAfipError } from "@/lib/afip/error-translator"
 import {
   Breadcrumb,
   BreadcrumbList,
@@ -22,6 +23,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import { DateRangePicker } from "@/components/ui/date-range-picker"
 import {
   Table,
   TableBody,
@@ -112,6 +119,18 @@ export function InvoicesPageClient() {
   const [verifying, setVerifying] = useState(false)
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
   const [exporting, setExporting] = useState(false)
+  // Bug #16: el botón "Descargar ZIP" defaulteaba al mes corriente sin selector,
+  // dando 400 cuando la org no tenía facturas en el mes en curso. Ahora pedimos
+  // rango via popover, default = mes anterior (típico para presentar Libro IVA).
+  const [exportOpen, setExportOpen] = useState(false)
+  const [exportFrom, setExportFrom] = useState(() => {
+    const now = new Date()
+    return new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 10)
+  })
+  const [exportTo, setExportTo] = useState(() => {
+    const now = new Date()
+    return new Date(now.getFullYear(), now.getMonth(), 0).toISOString().slice(0, 10)
+  })
   const selectedInvoiceHideTaxBreakdown = selectedInvoice
     ? shouldHideInvoiceTaxBreakdown({
         amountEntryMode: selectedInvoice.amount_entry_mode,
@@ -230,27 +249,47 @@ export function InvoicesPageClient() {
   }
 
   const handleExport = async () => {
+    if (!exportFrom || !exportTo) {
+      toast({
+        title: "Falta rango de fechas",
+        description: "Elegí Desde y Hasta antes de descargar.",
+        variant: "destructive",
+      })
+      return
+    }
+    if (exportFrom > exportTo) {
+      toast({
+        title: "Rango inválido",
+        description: '"Desde" no puede ser posterior a "Hasta".',
+        variant: "destructive",
+      })
+      return
+    }
+
     setExporting(true)
     try {
-      const now = new Date()
-      const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
-      const lastOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10)
-
-      // El componente no tiene filtros de fecha locales, asi que defaulteamos
-      // al mes corriente. Sí respetamos el statusFilter activo (si no es "ALL").
+      // Sí respetamos el statusFilter activo (si no es "ALL").
       const params = new URLSearchParams({
-        from: firstOfMonth,
-        to: lastOfMonth,
+        from: exportFrom,
+        to: exportTo,
       })
       if (statusFilter !== "ALL") params.set("status", statusFilter)
 
       const res = await fetch(`/api/invoices/export?${params}`)
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "Error desconocido" }))
+        // Caso típico: backend devuelve 400 con "No hay facturas con esos filtros"
+        // — informativo, no error técnico.
+        const isEmpty =
+          res.status === 400 &&
+          typeof err.error === "string" &&
+          /no hay facturas/i.test(err.error)
         toast({
-          title: "No se pudo descargar",
-          description: err.error || `HTTP ${res.status}`,
-          variant: "destructive",
+          title: isEmpty ? "Sin facturas en ese rango" : "No se pudo descargar",
+          description: isEmpty
+            ? "Probá con un rango distinto o sacá filtros de estado."
+            : err.error || `HTTP ${res.status}`,
+          variant: isEmpty ? "default" : "destructive",
         })
         return
       }
@@ -269,6 +308,7 @@ export function InvoicesPageClient() {
         title: "Descarga iniciada",
         description: "El ZIP con las facturas se está descargando.",
       })
+      setExportOpen(false)
     } catch (err: any) {
       toast({
         title: "Error de red",
@@ -323,20 +363,60 @@ export function InvoicesPageClient() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 rounded-full"
-            onClick={handleExport}
-            disabled={exporting}
-          >
-            {exporting ? (
-              <Loader2 className="h-4 w-4 animate-spin mr-2" />
-            ) : (
-              <Download className="h-4 w-4 mr-2" />
-            )}
-            Descargar ZIP
-          </Button>
+          <Popover open={exportOpen} onOpenChange={setExportOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 rounded-full"
+                disabled={exporting}
+              >
+                {exporting ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <Download className="h-4 w-4 mr-2" />
+                )}
+                Descargar ZIP
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-80" align="end">
+              <div className="space-y-3">
+                <div>
+                  <h4 className="font-medium text-sm">Descargar facturas en ZIP</h4>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Elegí el rango. Default: mes anterior. Respeta el filtro de estado activo.
+                  </p>
+                </div>
+                <DateRangePicker
+                  dateFrom={exportFrom}
+                  dateTo={exportTo}
+                  onChange={(from, to) => {
+                    setExportFrom(from)
+                    setExportTo(to)
+                  }}
+                  disabled={exporting}
+                />
+                <div className="flex justify-end gap-2 pt-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setExportOpen(false)}
+                    disabled={exporting}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button size="sm" onClick={handleExport} disabled={exporting}>
+                    {exporting ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                      <Download className="h-4 w-4 mr-2" />
+                    )}
+                    Descargar
+                  </Button>
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
           <Button size="sm" className="h-8 rounded-full" asChild>
             <Link href="/operations/billing/new">
               <Plus className="mr-2 h-4 w-4" />
@@ -422,7 +502,7 @@ export function InvoicesPageClient() {
                         {statusLabels[invoice.status]?.label || invoice.status}
                       </Badge>
                       {invoice.verification_status === 'verified' && (
-                        <Badge variant="outline" className="text-green-600 border-green-600">
+                        <Badge variant="outline" className="text-success border-success">
                           ✓ Verificada AFIP
                         </Badge>
                       )}
@@ -437,7 +517,7 @@ export function InvoicesPageClient() {
                         </Badge>
                       )}
                       {invoice.status === 'authorized' && (!invoice.verification_status || invoice.verification_status === 'unverified') && (
-                        <Badge variant="secondary" className="text-amber-600">
+                        <Badge variant="secondary" className="text-accent-coral">
                           Sin verificar
                         </Badge>
                       )}
@@ -529,8 +609,8 @@ export function InvoicesPageClient() {
               {/* Datos del Receptor */}
               <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <div className="flex items-center justify-center h-6 w-6 rounded-md bg-blue-500/10">
-                    <User className="h-3.5 w-3.5 text-blue-500" />
+                  <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                    <User className="h-3.5 w-3.5 text-primary" />
                   </div>
                   <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Receptor</h4>
                 </div>
@@ -554,31 +634,31 @@ export function InvoicesPageClient() {
 
               {/* AFIP / CAE */}
               {selectedInvoice.cae ? (
-                <div className="rounded-xl border border-green-200 dark:border-green-800/40 bg-green-50/50 dark:bg-green-950/20 p-4 space-y-4">
+                <div className="rounded-xl border border-success/15 dark:border-success/40 bg-success/50 dark:bg-success/20 p-4 space-y-4">
                   <div className="flex items-center gap-2 mb-3">
-                    <div className="flex items-center justify-center h-6 w-6 rounded-md bg-green-500/10">
-                      <ShieldCheck className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />
+                    <div className="flex items-center justify-center h-6 w-6 rounded-md bg-success/10">
+                      <ShieldCheck className="h-3.5 w-3.5 text-success dark:text-success" />
                     </div>
-                    <h4 className="text-[11px] font-semibold uppercase tracking-widest text-green-700 dark:text-green-400">Autorización AFIP</h4>
+                    <h4 className="text-[11px] font-semibold uppercase tracking-widest text-success dark:text-success">Autorización AFIP</h4>
                   </div>
                   <div className="grid grid-cols-2 gap-x-5 gap-y-3">
                     <div>
-                      <p className="text-[11px] text-green-600/70 dark:text-green-500/70 mb-0.5">CAE</p>
-                      <p className="text-sm font-mono font-medium text-green-800 dark:text-green-300">{selectedInvoice.cae}</p>
+                      <p className="text-[11px] text-success/70 dark:text-success/70 mb-0.5">CAE</p>
+                      <p className="text-sm font-mono font-medium text-success dark:text-success">{selectedInvoice.cae}</p>
                     </div>
                     <div>
-                      <p className="text-[11px] text-green-600/70 dark:text-green-500/70 mb-0.5">Vencimiento CAE</p>
-                      <p className="text-sm text-green-800 dark:text-green-300">{selectedInvoice.cae_fch_vto}</p>
+                      <p className="text-[11px] text-success/70 dark:text-success/70 mb-0.5">Vencimiento CAE</p>
+                      <p className="text-sm text-success dark:text-success">{selectedInvoice.cae_fch_vto}</p>
                     </div>
                     <div>
-                      <p className="text-[11px] text-green-600/70 dark:text-green-500/70 mb-0.5">Comprobante N°</p>
-                      <p className="text-sm font-mono text-green-800 dark:text-green-300">
+                      <p className="text-[11px] text-success/70 dark:text-success/70 mb-0.5">Comprobante N°</p>
+                      <p className="text-sm font-mono text-success dark:text-success">
                         {String(selectedInvoice.pto_vta).padStart(4, '0')}-{String(selectedInvoice.cbte_nro).padStart(8, '0')}
                       </p>
                     </div>
                     <div>
-                      <p className="text-[11px] text-green-600/70 dark:text-green-500/70 mb-0.5">Fecha de Emisión</p>
-                      <p className="text-sm text-green-800 dark:text-green-300">
+                      <p className="text-[11px] text-success/70 dark:text-success/70 mb-0.5">Fecha de Emisión</p>
+                      <p className="text-sm text-success dark:text-success">
                         {selectedInvoice.fecha_emision
                           ? format(new Date(selectedInvoice.fecha_emision), "dd/MM/yyyy", { locale: es })
                           : format(new Date(selectedInvoice.created_at), "dd/MM/yyyy", { locale: es })
@@ -591,34 +671,66 @@ export function InvoicesPageClient() {
                   selectedInvoice.status === 'rejected' ||
                   (selectedInvoice.status === 'draft' && selectedInvoice.afip_response?.error)
                 ) ? (
-                <div className="rounded-xl border border-red-200 dark:border-red-800/40 bg-red-50/50 dark:bg-red-950/20 p-4 space-y-3">
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center justify-center h-6 w-6 rounded-md bg-red-500/10">
-                      <AlertCircle className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
+                (() => {
+                  const t = translateAfipError(selectedInvoice.afip_response?.error)
+                  return (
+                    <div className="rounded-xl border border-destructive/15 dark:border-destructive/40 bg-destructive/5 dark:bg-destructive/10 p-4 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center justify-center h-6 w-6 rounded-md bg-destructive/10">
+                          <AlertCircle className="h-3.5 w-3.5 text-destructive" />
+                        </div>
+                        <h4 className="text-[11px] font-semibold uppercase tracking-widest text-destructive flex items-center gap-1.5">
+                          {t.title}
+                          {t.code !== null && (
+                            <span className="font-mono text-muted-foreground normal-case tracking-normal">#{t.code}</span>
+                          )}
+                        </h4>
+                      </div>
+
+                      {/* Caso reconocido: explicación + acción concreta */}
+                      {t.severity !== 'unknown' && (
+                        <>
+                          <p className="text-xs text-foreground/80">{t.explanation}</p>
+                          <div className="rounded-md border border-accent-coral/30 bg-accent-coral/5 p-2.5">
+                            <p className="text-[11px] font-medium text-accent-coral mb-1 uppercase tracking-wider">Qué hacer</p>
+                            <p className="text-xs text-foreground/80">{t.action}</p>
+                          </div>
+                          <details className="text-[11px]">
+                            <summary className="cursor-pointer text-muted-foreground select-none hover:text-foreground">
+                              Ver mensaje técnico de AFIP
+                            </summary>
+                            <p className="font-mono text-muted-foreground mt-1.5 whitespace-pre-wrap break-words">
+                              {t.rawMessage}
+                            </p>
+                          </details>
+                        </>
+                      )}
+
+                      {/* Fallback: error sin código mapeado */}
+                      {t.severity === 'unknown' && (
+                        <p className="text-xs text-destructive whitespace-pre-wrap break-words">
+                          {t.rawMessage ||
+                            (selectedInvoice.status === 'draft'
+                              ? 'La factura no pudo autorizarse en AFIP.'
+                              : 'Esta factura no fue autorizada. Creá una nueva con los datos corregidos.')}
+                        </p>
+                      )}
+
+                      {selectedInvoice.status === 'draft' && (
+                        <p className="text-[11px] text-muted-foreground">
+                          La factura quedó como borrador. Podés reintentar la autorización con el botón al pie del diálogo.
+                        </p>
+                      )}
                     </div>
-                    <h4 className="text-[11px] font-semibold uppercase tracking-widest text-red-700 dark:text-red-400">
-                      {selectedInvoice.status === 'draft' ? 'AFIP rechazó la autorización' : 'Rechazada por AFIP'}
-                    </h4>
-                  </div>
-                  <p className="text-xs text-red-700 dark:text-red-300 whitespace-pre-wrap break-words">
-                    {selectedInvoice.afip_response?.error ||
-                      (selectedInvoice.status === 'draft'
-                        ? 'La factura no pudo autorizarse en AFIP.'
-                        : 'Esta factura no fue autorizada. Creá una nueva con los datos corregidos.')}
-                  </p>
-                  {selectedInvoice.status === 'draft' && (
-                    <p className="text-[11px] text-red-700/80 dark:text-red-400/80">
-                      La factura quedó como borrador. Podés reintentar la autorización con el botón al pie del diálogo.
-                    </p>
-                  )}
-                </div>
+                  )
+                })()
               ) : null}
 
               {/* Items */}
               <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <div className="flex items-center justify-center h-6 w-6 rounded-md bg-emerald-500/10">
-                    <DollarSign className="h-3.5 w-3.5 text-emerald-500" />
+                  <div className="flex items-center justify-center h-6 w-6 rounded-md bg-success/10">
+                    <DollarSign className="h-3.5 w-3.5 text-success" />
                   </div>
                   <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Detalle</h4>
                 </div>

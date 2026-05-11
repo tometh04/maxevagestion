@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**MAXEVA GESTION** is a comprehensive travel agency management system (ERP) built with Next.js 14+ App Router, TypeScript, Supabase (PostgreSQL), and shadcn/ui. The system manages the complete business flow: leads from Trello → operations → payments → accounting → commissions.
+**MAXEVA GESTION** is a comprehensive travel agency management system (ERP) built with Next.js 14+ App Router, TypeScript, Supabase (PostgreSQL), and shadcn/ui. The system manages the complete business flow: leads from Manychat → operations → payments → accounting → commissions.
 
 **Status**: ~98% complete, production-ready with some improvements pending.
 
@@ -41,7 +41,7 @@ npm run db:check        # Verify tables exist in database
 - **Authentication**: Supabase Auth with role-based access control
 - **External Integrations**:
   - OpenAI GPT-4o (OCR for documents, AI Copilot)
-  - Trello API (bidirectional sync for sales pipeline)
+  - Manychat (Instagram/WhatsApp lead capture via webhook)
 
 ### Project Structure
 
@@ -77,7 +77,7 @@ maxevagestion/
 │   ├── permissions.ts       # Role-based permission system
 │   ├── auth.ts              # Authentication utilities
 │   ├── supabase/            # Supabase clients (client.ts, server.ts, types.ts)
-│   └── trello/              # Trello integration
+│   └── manychat/            # Manychat integration (lead capture)
 ├── supabase/migrations/     # Database migration SQL files
 └── scripts/                 # Utility scripts (seed, verify-tables, etc.)
 ```
@@ -137,15 +137,15 @@ The system implements **double-entry bookkeeping** via `ledger_movements` table:
 - `lib/accounting/fx.ts` - Foreign exchange handling
 - `lib/commissions/calculate.ts` - Commission calculations
 
-### 4. Trello Integration
+### 4. Manychat Integration
 
-**Bidirectional Sync**:
-- Trello cards → Leads (via webhooks in real-time)
-- Leads → Trello cards (when creating/updating leads)
-- Automatic field extraction: phone, email, destination, seller assignment
-- Webhooks handled at `/api/trello/webhook` (NO authentication required)
+**Lead Capture**:
+- Manychat (Instagram/WhatsApp flows) → Leads (via webhook `/api/webhooks/manychat`)
+- Auth via static API key header
+- Automatic field extraction: phone, email, destination, region
+- Lead asignado a lista personal del vendedor via `manychat_list_order`
 
-**Configuration**: Settings → Trello tab
+**Configuration**: vía environment variables. Ver `lib/manychat/`.
 
 ### 5. Alert System
 
@@ -305,7 +305,7 @@ EMILIA_API_URL=https://api.vibook.ai/search  # Optional, defaults to vibook.ai
 DISABLE_AUTH=true                # DEVELOPMENT ONLY - Remove for production
 ```
 
-Ver `.env.example` y `docs/testing-railway-migration.md` para la matriz completa (Resend, MP, AFIP, Trello, VAPID, Manychat, Amadeus, Geoapify, etc.).
+Ver `.env.example` y `docs/testing-railway-migration.md` para la matriz completa (Resend, MP, AFIP, VAPID, Manychat, Amadeus, Geoapify, etc.).
 
 ## Hosting & Deployment
 
@@ -320,7 +320,7 @@ Endpoints cron existentes (ver `app/api/cron/`): `recurring-payments`, `alerts`,
 ### Core Tables
 - `users` - System users with roles
 - `agencies` - Multiple agencies (Rosario, Madero, etc.)
-- `leads` - Sales leads from Trello or manual entry
+- `leads` - Sales leads from Manychat or manual entry
 - `operations` - Confirmed travel operations
 - `customers` - Client information
 - `operators` - Travel operators/suppliers
@@ -333,7 +333,6 @@ Endpoints cron existentes (ver `app/api/cron/`): `recurring-payments`, `alerts`,
 - `documents` - Uploaded documents with OCR data
 - `alerts` - Automated system alerts
 - `iva_sales` / `iva_purchases` - VAT tracking
-- `settings_trello` - Trello integration configuration
 
 ### Key Relationships
 - Operations → Customers (many-to-many via `operation_customers`)
@@ -376,10 +375,10 @@ See `ROADMAP.md` for complete list. Key items:
    - Check permission matrix in `lib/permissions.ts`
    - Ensure API route calls `getCurrentUser()`
 
-3. **Trello sync not working**
-   - Verify webhook is active in Trello
-   - Check `/api/trello/webhook` logs
-   - Verify Trello settings in Settings → Trello
+3. **Manychat lead capture not working**
+   - Verify Manychat external request action points to `/api/webhooks/manychat`
+   - Check `/api/webhooks/manychat` logs (Railway logs filtering `manychat`)
+   - Verify `MANYCHAT_API_KEY` env var is set correctly
 
 4. **Ledger movements not creating**
    - Check if payment status is `PAID`
@@ -396,3 +395,13 @@ See `ROADMAP.md` for complete list. Key items:
 - `docs/testing-railway-migration.md` - QA checklist post-migración Vercel → Railway (20 flujos que dependen de env vars)
 - `ROADMAP.md` - Development roadmap and pending tasks
 - `.cursor/ESTADO-COMPLETO-PROYECTO.md` - Detailed project status analysis
+
+## graphify
+
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+
+Rules:
+- ALWAYS read graphify-out/GRAPH_REPORT.md before reading any source files, running grep/glob searches, or answering codebase questions. The graph is your primary map of the codebase.
+- IF graphify-out/wiki/index.md EXISTS, navigate it instead of reading raw files
+- For cross-module "how does X relate to Y" questions, prefer `graphify query "<question>"`, `graphify path "<A>" "<B>"`, or `graphify explain "<concept>"` over grep — these traverse the graph's EXTRACTED + INFERRED edges instead of scanning files
+- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).

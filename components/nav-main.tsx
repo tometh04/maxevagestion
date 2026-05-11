@@ -20,6 +20,19 @@ import {
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar"
 
+/**
+ * Badge opcional al lado del título del subitem. Pensado para alertas
+ * proactivas tipo "AFIP roto" — un dot pequeño + tooltip con el motivo.
+ *
+ * Pendientes 2026-05-07: por ahora solo lo usa "Facturación" cuando el
+ * AFIP de la org tuvo failures recientes. Si crece a más casos, mover
+ * a un componente dedicado.
+ */
+interface SidebarBadge {
+  variant: 'warning' | 'error' | 'info'
+  tooltip: string
+}
+
 interface NavSubSubItem {
   title: string
   url: string
@@ -29,6 +42,7 @@ interface NavSubItem {
   title: string
   url: string
   items?: NavSubSubItem[]
+  badge?: SidebarBadge
 }
 
 interface NavItem {
@@ -37,6 +51,7 @@ interface NavItem {
   icon?: React.ComponentType<{ className?: string }>
   items?: NavSubItem[]
   collapsible?: boolean
+  badge?: SidebarBadge
 }
 
 interface NavMainProps {
@@ -136,12 +151,28 @@ export function NavMain({ items, pathname }: NavMainProps) {
                           )
                         }
 
-                        // Si el subitem NO tiene hijos, renderizar como link directo
+                        // Si el subitem NO tiene hijos, renderizar como link directo.
+                        // Si tiene badge, lo agregamos al lado del título (dot
+                        // pequeño coloreado por variant + title attr para tooltip).
                         return (
                           <SidebarMenuSubItem key={subItem.url}>
                             <SidebarMenuSubButton asChild isActive={subIsActive}>
                               <Link href={subItem.url} onClick={() => logSidebarClick(subItem.url)}>
-                                <span>{subItem.title}</span>
+                                <span className="flex-1">{subItem.title}</span>
+                                {subItem.badge && (
+                                  <span
+                                    title={subItem.badge.tooltip}
+                                    aria-label={subItem.badge.tooltip}
+                                    className={
+                                      "ml-auto h-1.5 w-1.5 rounded-full shrink-0 " +
+                                      (subItem.badge.variant === 'error'
+                                        ? 'bg-destructive'
+                                        : subItem.badge.variant === 'warning'
+                                          ? 'bg-accent-coral'
+                                          : 'bg-primary')
+                                    }
+                                  />
+                                )}
                               </Link>
                             </SidebarMenuSubButton>
                           </SidebarMenuSubItem>

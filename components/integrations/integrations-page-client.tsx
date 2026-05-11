@@ -49,22 +49,22 @@ interface IntegrationLog {
 }
 
 const integrationTypes = [
-  { value: 'trello', label: 'Trello', icon: FileText, color: 'bg-info' },
-  { value: 'manychat', label: 'Manychat', icon: MessageSquare, color: 'bg-purple-500' },
+  { value: 'trello', label: 'Trello', icon: FileText, color: 'bg-accent-teal' },
+  { value: 'manychat', label: 'Manychat', icon: MessageSquare, color: 'bg-accent-violet' },
   { value: 'whatsapp', label: 'WhatsApp', icon: MessageSquare, color: 'bg-success' },
-  { value: 'afip', label: 'AFIP', icon: FileText, color: 'bg-sky-500' },
-  { value: 'email', label: 'Email/SMTP', icon: Mail, color: 'bg-warning' },
+  { value: 'afip', label: 'AFIP', icon: FileText, color: 'bg-accent-teal' },
+  { value: 'email', label: 'Email/SMTP', icon: Mail, color: 'bg-accent-coral' },
   { value: 'calendar', label: 'Calendario', icon: Calendar, color: 'bg-destructive' },
-  { value: 'webhook', label: 'Webhook', icon: Webhook, color: 'bg-gray-500' },
-  { value: 'zapier', label: 'Zapier', icon: Zap, color: 'bg-warning' },
-  { value: 'other', label: 'Otro', icon: Plug, color: 'bg-slate-500' },
+  { value: 'webhook', label: 'Webhook', icon: Webhook, color: 'bg-muted-foreground' },
+  { value: 'zapier', label: 'Zapier', icon: Zap, color: 'bg-accent-coral' },
+  { value: 'other', label: 'Otro', icon: Plug, color: 'bg-muted-foreground' },
 ]
 
 const statusConfig = {
-  active: { label: 'Activo', color: 'bg-green-500', icon: CheckCircle },
-  inactive: { label: 'Inactivo', color: 'bg-gray-500', icon: XCircle },
+  active: { label: 'Activo', color: 'bg-success', icon: CheckCircle },
+  inactive: { label: 'Inactivo', color: 'bg-muted-foreground', icon: XCircle },
   error: { label: 'Error', color: 'bg-destructive', icon: AlertCircle },
-  pending: { label: 'Pendiente', color: 'bg-yellow-500', icon: Clock },
+  pending: { label: 'Pendiente', color: 'bg-accent-coral', icon: Clock },
 }
 
 export function IntegrationsPageClient() {
@@ -198,7 +198,21 @@ export function IntegrationsPageClient() {
         return
       }
 
-      toast.success('AFIP configurado correctamente. Ya puedes comenzar a facturar.')
+      // Mostrar resultado del test post-setup (cert+key+PV validados contra AFIP).
+      // Si verified=true → todo ok. Si verified=false → config guardada pero hay
+      // un problema accionable (PV no autorizado, cert vencido, etc.) que el
+      // user puede arreglar antes de la primera factura real.
+      if (data.verified) {
+        toast.success(data.message || 'AFIP configurado y verificado. Ya podés facturar.')
+      } else {
+        toast.warning(
+          data.verification_warning
+            ? `AFIP guardado pero la verificación falló: ${data.verification_warning}`
+            : 'AFIP guardado pero la verificación tiró un error. Revisá el punto de venta antes de emitir.',
+          { duration: 12000 }
+        )
+      }
+
       setShowNewDialog(false)
       setFormData({ name: '', integration_type: '', description: '', config: {}, sync_enabled: false, sync_frequency: 'manual' })
       setAfipSetupData({ agency_id: agencies[0]?.id || '', cuit: '', username: '', password: '', point_of_sale: 1, environment: 'production' })
@@ -281,13 +295,13 @@ export function IntegrationsPageClient() {
         </Card>
         <Card className="rounded-xl border-border/40 bg-muted/20">
           <CardContent className="pt-6">
-            <div className="text-2xl font-bold text-green-600">{stats.active}</div>
+            <div className="text-2xl font-bold text-success">{stats.active}</div>
             <p className="text-xs text-muted-foreground">Activas</p>
           </CardContent>
         </Card>
         <Card className="rounded-xl border-border/40 bg-muted/20">
           <CardContent className="pt-6">
-            <div className="text-2xl font-bold text-gray-600">{stats.inactive}</div>
+            <div className="text-2xl font-bold text-muted-foreground">{stats.inactive}</div>
             <p className="text-xs text-muted-foreground">Inactivas</p>
           </CardContent>
         </Card>
@@ -409,8 +423,8 @@ export function IntegrationsPageClient() {
                           Use Sandbox para pruebas, Producción para facturar reales
                         </p>
                       </div>
-                      <div className="p-3 bg-info/10 rounded-lg">
-                        <p className="text-xs text-info">
+                      <div className="p-3 bg-accent-teal/10 rounded-lg">
+                        <p className="text-xs text-accent-teal">
                           <strong>Importante:</strong> Asegúrese de haber autorizado el servicio de Facturación Electrónica en AFIP Clave Fiscal antes de continuar.
                         </p>
                       </div>
@@ -546,9 +560,9 @@ export function IntegrationsPageClient() {
                         <div className="flex items-center gap-2">
                           <Badge variant="outline" className="gap-1">
                             <StatusIcon className={`h-3 w-3 ${
-                              integration.status === 'active' ? 'text-green-500' :
+                              integration.status === 'active' ? 'text-success' :
                               integration.status === 'error' ? 'text-destructive' :
-                              integration.status === 'pending' ? 'text-yellow-500' : 'text-gray-500'
+                              integration.status === 'pending' ? 'text-accent-coral' : 'text-muted-foreground'
                             }`} />
                             {status.label}
                           </Badge>
@@ -653,9 +667,9 @@ export function IntegrationsPageClient() {
                           <div key={log.id} className="text-xs p-2 bg-muted rounded">
                             <div className="flex items-center justify-between">
                               <Badge variant="outline" className={`
-                                ${log.log_type === 'success' ? 'border-green-500 text-green-600' : ''}
+                                ${log.log_type === 'success' ? 'border-success text-success' : ''}
                                 ${log.log_type === 'error' ? 'border-destructive text-destructive' : ''}
-                                ${log.log_type === 'warning' ? 'border-yellow-500 text-yellow-600' : ''}
+                                ${log.log_type === 'warning' ? 'border-accent-coral text-accent-coral' : ''}
                               `}>
                                 {log.action}
                               </Badge>
@@ -680,7 +694,7 @@ export function IntegrationsPageClient() {
       <Card className="rounded-xl border-border/40">
         <CardHeader>
           <CardTitle>Integraciones Disponibles</CardTitle>
-          <CardDescription>Conecta MAXEVA GESTION con estos servicios</CardDescription>
+          <CardDescription>Conecta Vibook con estos servicios</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-3 md:grid-cols-5 gap-4">

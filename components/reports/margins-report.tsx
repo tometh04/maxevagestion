@@ -47,6 +47,74 @@ interface MarginsReportProps {
   agencies: Array<{ id: string; name: string }>
 }
 
+/**
+ * Renderiza un monto multi-moneda. Si solo hay una moneda con valor != 0,
+ * muestra una sola línea. Si las dos están presentes, las apila (ARS arriba,
+ * USD abajo en muted) con un pill de moneda. Si las dos son cero, muestra "—".
+ *
+ * Uso:
+ *   <MoneyStack ars={s.total_sale_ars} usd={s.total_sale_usd} />
+ *   <MoneyStack ars={s.total_margin_ars} usd={s.total_margin_usd} sign />
+ *   <MoneyStack ars={s.total_cost_ars} usd={s.total_cost_usd} muted />
+ */
+function MoneyStack({
+  ars,
+  usd,
+  muted = false,
+  sign = false,
+}: {
+  ars: number
+  usd: number
+  muted?: boolean
+  sign?: boolean
+}) {
+  const arsAmount = Number(ars) || 0
+  const usdAmount = Number(usd) || 0
+  const hasArs = arsAmount !== 0
+  const hasUsd = usdAmount !== 0
+
+  if (!hasArs && !hasUsd) return <span className="text-muted-foreground">—</span>
+
+  const colorClass = (amount: number) => {
+    if (muted) return "text-muted-foreground"
+    if (sign) return amount >= 0 ? "text-success" : "text-destructive"
+    return ""
+  }
+
+  const fmt = (n: number) => Math.round(n).toLocaleString("es-AR")
+
+  if (hasArs && !hasUsd) {
+    return (
+      <span className={`font-medium ${colorClass(arsAmount)}`}>
+        $ {fmt(arsAmount)}
+        <Badge variant="outline" className="ml-1.5 text-[10px] py-0 px-1">ARS</Badge>
+      </span>
+    )
+  }
+  if (!hasArs && hasUsd) {
+    return (
+      <span className={`font-medium ${colorClass(usdAmount)}`}>
+        US$ {fmt(usdAmount)}
+        <Badge variant="outline" className="ml-1.5 text-[10px] py-0 px-1">USD</Badge>
+      </span>
+    )
+  }
+
+  // Ambas monedas — apilar
+  return (
+    <div className="leading-tight">
+      <div className={`font-medium ${colorClass(arsAmount)}`}>
+        $ {fmt(arsAmount)}
+        <Badge variant="outline" className="ml-1.5 text-[10px] py-0 px-1">ARS</Badge>
+      </div>
+      <div className={`text-xs ${muted ? "text-muted-foreground/80" : sign ? colorClass(usdAmount) : "text-muted-foreground"}`}>
+        US$ {fmt(usdAmount)}
+        <Badge variant="outline" className="ml-1.5 text-[10px] py-0 px-1">USD</Badge>
+      </div>
+    </div>
+  )
+}
+
 export function MarginsReport({ userRole, userId, sellers, agencies }: MarginsReportProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
@@ -109,31 +177,71 @@ export function MarginsReport({ userRole, userId, sellers, agencies }: MarginsRe
         op.currency,
       ])
     } else if (viewType === "seller") {
-      headers = ["Vendedor", "Operaciones", "Venta Total", "Costo Total", "Margen Total", "% Margen Promedio"]
+      // CSV multi-moneda: columnas separadas por moneda + USD-equiv para ranking.
+      headers = [
+        "Vendedor",
+        "Operaciones",
+        "Venta ARS",
+        "Venta USD",
+        "Costo ARS",
+        "Costo USD",
+        "Margen ARS",
+        "Margen USD",
+        "Margen USD equiv (ranking)",
+        "% Margen Promedio",
+      ]
       rows = (data.bySeller || []).map((s: any) => [
         s.seller_name,
         s.count,
-        s.total_sale,
-        s.total_cost,
-        s.total_margin,
+        Math.round(s.total_sale_ars || 0),
+        Math.round(s.total_sale_usd || 0),
+        Math.round(s.total_cost_ars || 0),
+        Math.round(s.total_cost_usd || 0),
+        Math.round(s.total_margin_ars || 0),
+        Math.round(s.total_margin_usd || 0),
+        Math.round(s.total_margin_usd_equiv || 0),
         `${s.avg_margin_percent?.toFixed(1) || 0}%`,
       ])
     } else if (viewType === "operator") {
-      headers = ["Operador", "Operaciones", "Costo Total", "Margen Generado", "% Margen Promedio"]
+      headers = [
+        "Operador",
+        "Operaciones",
+        "Costo ARS",
+        "Costo USD",
+        "Margen ARS",
+        "Margen USD",
+        "Margen USD equiv (ranking)",
+        "% Margen Promedio",
+      ]
       rows = (data.byOperator || []).map((o: any) => [
         o.operator_name,
         o.count,
-        o.total_cost,
-        o.total_margin,
+        Math.round(o.total_cost_ars || 0),
+        Math.round(o.total_cost_usd || 0),
+        Math.round(o.total_margin_ars || 0),
+        Math.round(o.total_margin_usd || 0),
+        Math.round(o.total_margin_usd_equiv || 0),
         `${o.avg_margin_percent?.toFixed(1) || 0}%`,
       ])
     } else if (viewType === "product") {
-      headers = ["Tipo Producto", "Operaciones", "Venta Total", "Margen Total", "% Margen Promedio"]
+      headers = [
+        "Tipo Producto",
+        "Operaciones",
+        "Venta ARS",
+        "Venta USD",
+        "Margen ARS",
+        "Margen USD",
+        "Margen USD equiv (ranking)",
+        "% Margen Promedio",
+      ]
       rows = (data.byProduct || []).map((p: any) => [
         p.product_type,
         p.count,
-        p.total_sale,
-        p.total_margin,
+        Math.round(p.total_sale_ars || 0),
+        Math.round(p.total_sale_usd || 0),
+        Math.round(p.total_margin_ars || 0),
+        Math.round(p.total_margin_usd || 0),
+        Math.round(p.total_margin_usd_equiv || 0),
         `${p.avg_margin_percent?.toFixed(1) || 0}%`,
       ])
     }
@@ -454,14 +562,14 @@ export function MarginsReport({ userRole, userId, sellers, agencies }: MarginsRe
                         </div>
                       </TableCell>
                       <TableCell className="text-right">{s.count}</TableCell>
-                      <TableCell className="text-right font-medium">
-                        {s.currency === "USD" ? "US$" : "$"} {Math.round(s.total_sale).toLocaleString("es-AR")}
+                      <TableCell className="text-right">
+                        <MoneyStack ars={s.total_sale_ars} usd={s.total_sale_usd} />
                       </TableCell>
-                      <TableCell className="text-right text-muted-foreground">
-                        {s.currency === "USD" ? "US$" : "$"} {Math.round(s.total_cost).toLocaleString("es-AR")}
+                      <TableCell className="text-right">
+                        <MoneyStack ars={s.total_cost_ars} usd={s.total_cost_usd} muted />
                       </TableCell>
-                      <TableCell className={`text-right font-medium ${s.total_margin >= 0 ? "text-success" : "text-destructive"}`}>
-                        {s.currency === "USD" ? "US$" : "$"} {Math.round(s.total_margin).toLocaleString("es-AR")}
+                      <TableCell className="text-right">
+                        <MoneyStack ars={s.total_margin_ars} usd={s.total_margin_usd} sign />
                       </TableCell>
                       <TableCell className="text-right">
                         <Badge variant={s.avg_margin_percent >= 20 ? "default" : "secondary"}>
@@ -501,11 +609,11 @@ export function MarginsReport({ userRole, userId, sellers, agencies }: MarginsRe
                         </div>
                       </TableCell>
                       <TableCell className="text-right">{o.count}</TableCell>
-                      <TableCell className="text-right text-muted-foreground">
-                        {o.currency === "USD" ? "US$" : "$"} {Math.round(o.total_cost).toLocaleString("es-AR")}
+                      <TableCell className="text-right">
+                        <MoneyStack ars={o.total_cost_ars} usd={o.total_cost_usd} muted />
                       </TableCell>
-                      <TableCell className={`text-right font-medium ${o.total_margin >= 0 ? "text-success" : "text-destructive"}`}>
-                        {o.currency === "USD" ? "US$" : "$"} {Math.round(o.total_margin).toLocaleString("es-AR")}
+                      <TableCell className="text-right">
+                        <MoneyStack ars={o.total_margin_ars} usd={o.total_margin_usd} sign />
                       </TableCell>
                       <TableCell className="text-right">
                         <Badge variant={o.avg_margin_percent >= 20 ? "default" : "secondary"}>
@@ -546,11 +654,11 @@ export function MarginsReport({ userRole, userId, sellers, agencies }: MarginsRe
                           </div>
                         </TableCell>
                         <TableCell className="text-right">{p.count}</TableCell>
-                        <TableCell className="text-right font-medium">
-                          {p.currency === "USD" ? "US$" : "$"} {Math.round(p.total_sale).toLocaleString("es-AR")}
+                        <TableCell className="text-right">
+                          <MoneyStack ars={p.total_sale_ars} usd={p.total_sale_usd} />
                         </TableCell>
-                        <TableCell className={`text-right font-medium ${p.total_margin >= 0 ? "text-success" : "text-destructive"}`}>
-                          {p.currency === "USD" ? "US$" : "$"} {Math.round(p.total_margin).toLocaleString("es-AR")}
+                        <TableCell className="text-right">
+                          <MoneyStack ars={p.total_margin_ars} usd={p.total_margin_usd} sign />
                         </TableCell>
                         <TableCell className="text-right">
                           <Badge variant={p.avg_margin_percent >= 20 ? "default" : "secondary"}>
@@ -576,7 +684,10 @@ export function MarginsReport({ userRole, userId, sellers, agencies }: MarginsRe
                           <Pie
                             data={data.byProduct.map((p: any) => ({
                               name: p.product_type || "Sin clasificar",
-                              value: Math.round(p.total_margin),
+                              // Pie usa USD-equiv para que ARS y USD sean comparables
+                              // en una sola torta. Sin esto, una sola moneda dominaría
+                              // por magnitud nominal (ARS son números grandes).
+                              value: Math.round(p.total_margin_usd_equiv || 0),
                             }))}
                             cx="50%"
                             cy="50%"

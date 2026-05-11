@@ -164,7 +164,7 @@ export function SellerObjectivesCards({ sellerId }: SellerObjectivesCardsProps) 
                   <div className="flex items-center gap-2 flex-wrap">
                     <h4 className="text-sm font-semibold">{item.objective.name}</h4>
                     {item.is_achieved && (
-                      <Badge variant="default" className="bg-green-600 text-white">
+                      <Badge variant="default" className="bg-success text-white">
                         <CheckCircle2 className="h-3 w-3 mr-1" />
                         Alcanzado
                       </Badge>

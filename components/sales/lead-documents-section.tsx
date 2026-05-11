@@ -400,7 +400,7 @@ export function LeadDocumentsSection({ leadId }: LeadDocumentsSectionProps) {
                                 </Badge>
                               )}
                               {status.status === "WARNING" && (
-                                <Badge variant="outline" className="ml-2 border-yellow-500 text-yellow-600">
+                                <Badge variant="outline" className="ml-2 border-accent-coral text-accent-coral">
                                   <AlertTriangle className="h-3 w-3 mr-1" />
                                   {status.message}
                                 </Badge>

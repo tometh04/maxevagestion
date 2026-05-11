@@ -32,7 +32,8 @@ import {
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ArrowUpCircle, ArrowDownCircle, Wallet, HelpCircle, DollarSign, Search } from "lucide-react"
+import { ArrowUpCircle, ArrowDownCircle, Wallet, HelpCircle, DollarSign, Search, Plus } from "lucide-react"
+import Link from "next/link"
 import { Input } from "@/components/ui/input"
 import type { UserRole } from "@/lib/permissions"
 import { toast } from "sonner"
@@ -504,7 +505,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo, cu
               <div className="space-y-6">
                 <div>
                   <div className="flex items-center gap-1.5 mb-3">
-                    <DollarSign className="h-3.5 w-3.5 text-emerald-500" />
+                    <DollarSign className="h-3.5 w-3.5 text-success" />
                     <span className="text-xs font-medium text-foreground/70">Cuentas USD</span>
                   </div>
                   <div className="space-y-2">
@@ -515,13 +516,21 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo, cu
                       </div>
                     ))}
                     {usdAccounts.length === 0 && (
-                      <p className="text-sm text-muted-foreground">No hay cuentas USD</p>
+                      <div className="flex items-center justify-between gap-2 p-3 rounded-xl border border-dashed border-border/60">
+                        <p className="text-sm text-muted-foreground">No hay cuentas USD</p>
+                        <Button asChild size="sm" variant="ghost" className="h-7 text-xs">
+                          <Link href="/accounting/financial-accounts?new=1&currency=USD">
+                            <Plus className="h-3.5 w-3.5 mr-1" />
+                            Crear
+                          </Link>
+                        </Button>
+                      </div>
                     )}
                   </div>
                 </div>
                 <div>
                   <div className="flex items-center gap-1.5 mb-3">
-                    <DollarSign className="h-3.5 w-3.5 text-blue-500" />
+                    <DollarSign className="h-3.5 w-3.5 text-primary" />
                     <span className="text-xs font-medium text-foreground/70">Cuentas ARS</span>
                   </div>
                   <div className="space-y-2">
@@ -532,7 +541,15 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo, cu
                       </div>
                     ))}
                     {arsAccounts.length === 0 && (
-                      <p className="text-sm text-muted-foreground">No hay cuentas ARS</p>
+                      <div className="flex items-center justify-between gap-2 p-3 rounded-xl border border-dashed border-border/60">
+                        <p className="text-sm text-muted-foreground">No hay cuentas ARS</p>
+                        <Button asChild size="sm" variant="ghost" className="h-7 text-xs">
+                          <Link href="/accounting/financial-accounts?new=1&currency=ARS">
+                            <Plus className="h-3.5 w-3.5 mr-1" />
+                            Crear
+                          </Link>
+                        </Button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -548,11 +565,23 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo, cu
               <Skeleton className="h-64 w-full" />
             </div>
           ) : usdAccounts.length === 0 ? (
-        <Card>
-              <CardContent className="py-8 text-center text-muted-foreground">
-                No hay cuentas USD configuradas
-          </CardContent>
-        </Card>
+            <Card>
+              <CardContent className="py-10 flex flex-col items-center text-center gap-3">
+                <Wallet className="h-10 w-10 text-muted-foreground" />
+                <div>
+                  <h3 className="text-base font-semibold">No hay cuentas USD configuradas</h3>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Creá tu primera cuenta financiera en USD para empezar a registrar movimientos y pagos.
+                  </p>
+                </div>
+                <Button asChild size="sm" className="rounded-full mt-1">
+                  <Link href="/accounting/financial-accounts?new=1&currency=USD">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Crear cuenta USD
+                  </Link>
+                </Button>
+              </CardContent>
+            </Card>
           ) : (
             <div className="space-y-6">
               {usdAccounts.map(account => {
@@ -725,8 +754,20 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo, cu
             </div>
           ) : arsAccounts.length === 0 ? (
             <Card>
-              <CardContent className="py-8 text-center text-muted-foreground">
-                No hay cuentas ARS configuradas
+              <CardContent className="py-10 flex flex-col items-center text-center gap-3">
+                <Wallet className="h-10 w-10 text-muted-foreground" />
+                <div>
+                  <h3 className="text-base font-semibold">No hay cuentas ARS configuradas</h3>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Creá tu primera cuenta financiera en ARS para empezar a registrar movimientos y pagos.
+                  </p>
+                </div>
+                <Button asChild size="sm" className="rounded-full mt-1">
+                  <Link href="/accounting/financial-accounts?new=1&currency=ARS">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Crear cuenta ARS
+                  </Link>
+                </Button>
               </CardContent>
             </Card>
           ) : (

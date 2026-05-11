@@ -88,10 +88,14 @@ export async function POST(request: Request) {
       .maybeSingle()
     const cashBoxId = (defaultCashBox as any)?.id || null
 
-    // Build the concept string
+    // Bug fix 2026-05-06: antes construíamos `concept = "Gasto: ..."` pero
+    // nunca lo persistíamos — la descripción del user se perdía silently.
+    // El cash_movement no tiene un campo `description` separado, así que
+    // anteponemos la descripción al campo `notes` para que se preserve.
     const concept = provider_name
-      ? `Gasto: ${description} (${provider_name})`
-      : `Gasto: ${description}`
+      ? `${description} (${provider_name})`
+      : description
+    const finalNotes = notes ? `${concept} — ${notes}` : concept
 
     // Create cash_movement
     // SaaS Pilar 2: inyectar org_id desde el user para que el row nuevo
@@ -107,7 +111,7 @@ export async function POST(request: Request) {
       financial_account_id,
       cash_box_id: cashBoxId,
       movement_date,
-      notes: notes || null,
+      notes: finalNotes,
       is_touristic: false,
       movement_category: "ADMINISTRATIVE",
     }

@@ -264,7 +264,7 @@ export function FacturasComprasPageClient({ agencies }: FacturasComprasPageClien
       <Card className="rounded-xl border-border/40">
         <CardHeader className="pb-4">
           <div className="flex items-center gap-2">
-            <FileText className="h-5 w-5 text-orange-500" />
+            <FileText className="h-5 w-5 text-accent-coral" />
             <div>
               <CardTitle className="text-base">Facturas de Compras</CardTitle>
               <CardDescription>
@@ -528,7 +528,7 @@ export function FacturasComprasPageClient({ agencies }: FacturasComprasPageClien
         <SheetContent className="sm:max-w-lg overflow-y-auto">
           <SheetHeader className="pb-4">
             <SheetTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5 text-orange-500" />
+              <FileText className="h-5 w-5 text-accent-coral" />
               Detalle del Comprobante
             </SheetTitle>
             {selectedVoucher && (
@@ -541,7 +541,7 @@ export function FacturasComprasPageClient({ agencies }: FacturasComprasPageClien
           {selectedVoucher && (
             <div className="space-y-5 pt-2">
               {/* Total highlight */}
-              <div className="rounded-xl border border-orange-200 bg-orange-50 dark:bg-orange-950/20 dark:border-orange-800/30 p-4 text-center">
+              <div className="rounded-xl border border-accent-coral/15 bg-accent-coral/5 dark:bg-accent-coral/20 dark:border-accent-coral/30 p-4 text-center">
                 <div className="text-sm text-muted-foreground">Importe Total</div>
                 <div className="text-3xl font-bold text-foreground">
                   {formatMoney(normalizeVoucher(selectedVoucher).total)}
@@ -556,7 +556,7 @@ export function FacturasComprasPageClient({ agencies }: FacturasComprasPageClien
                 {getVoucherDetailRows(selectedVoucher).map((row, i) => (
                   <div
                     key={i}
-                    className={`flex items-center justify-between px-4 py-2.5 ${row.highlight ? "bg-orange-50/50 dark:bg-orange-950/10" : ""}`}
+                    className={`flex items-center justify-between px-4 py-2.5 ${row.highlight ? "bg-accent-coral/50 dark:bg-accent-coral/10" : ""}`}
                   >
                     <span className="text-xs text-muted-foreground">{row.label}</span>
                     <div className="flex items-center gap-1.5">
@@ -570,7 +570,7 @@ export function FacturasComprasPageClient({ agencies }: FacturasComprasPageClien
                           title="Copiar"
                         >
                           {copiedField === row.label ? (
-                            <Check className="h-3 w-3 text-green-500" />
+                            <Check className="h-3 w-3 text-success" />
                           ) : (
                             <Copy className="h-3 w-3" />
                           )}

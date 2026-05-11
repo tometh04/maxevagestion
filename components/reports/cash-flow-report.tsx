@@ -210,13 +210,13 @@ export function CashFlowReport({ agencies }: CashFlowReportProps) {
             <div className="grid gap-4 md:grid-cols-2 mb-6">
               <div className="space-y-1">
                 <div className="text-sm text-muted-foreground">Total ARS</div>
-                <div className="text-2xl font-bold text-warning">
+                <div className="text-2xl font-bold text-accent-coral">
                   $ {Math.round(accountBalances.summary.total_ars || 0).toLocaleString("es-AR")}
                 </div>
               </div>
               <div className="space-y-1">
                 <div className="text-sm text-muted-foreground">Total USD</div>
-                <div className="text-2xl font-bold text-warning">
+                <div className="text-2xl font-bold text-accent-coral">
                   US$ {Math.round(accountBalances.summary.total_usd || 0).toLocaleString("es-AR")}
                 </div>
               </div>
@@ -245,7 +245,7 @@ export function CashFlowReport({ agencies }: CashFlowReportProps) {
                               </Badge>
                             </TableCell>
                             <TableCell className="text-right">
-                              <span className={`font-semibold ${(account.current_balance ?? 0) >= 0 ? "text-warning" : "text-destructive"}`}>
+                              <span className={`font-semibold ${(account.current_balance ?? 0) >= 0 ? "text-accent-coral" : "text-destructive"}`}>
                                 {account.currency === "USD" ? "US$" : "$"} {Math.round(account.current_balance ?? 0).toLocaleString("es-AR")}
                               </span>
                             </TableCell>
@@ -257,10 +257,10 @@ export function CashFlowReport({ agencies }: CashFlowReportProps) {
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="space-y-1">
-                              <div className="font-semibold text-warning">
+                              <div className="font-semibold text-accent-coral">
                                 $ {Math.round(agencyData.ars || 0).toLocaleString("es-AR")}
                               </div>
-                              <div className="font-semibold text-warning">
+                              <div className="font-semibold text-accent-coral">
                                 US$ {Math.round(agencyData.usd || 0).toLocaleString("es-AR")}
                               </div>
                             </div>

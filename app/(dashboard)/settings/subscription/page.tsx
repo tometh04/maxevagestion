@@ -10,6 +10,7 @@ import { CancelDialog } from "@/components/billing/cancel-dialog"
 import { ReactivateDialog } from "@/components/billing/reactivate-dialog"
 import { CustomPlanOwnerView } from "@/components/subscription/custom-plan-owner-view"
 import { fetchPreapproval } from "@/lib/billing/mercadopago"
+import { MpSandboxBanner } from "@/components/admin/mp-sandbox-banner"
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING_PAYMENT: "Pendiente de pago",
@@ -136,16 +137,18 @@ export default async function SubscriptionPage({
         </p>
       </div>
 
+      <MpSandboxBanner />
+
       {checkoutFailed && (
-        <Card className="border-red-200 bg-red-50">
+        <Card className="border-destructive/15 bg-destructive/5">
           <CardContent className="py-4">
-            <p className="text-sm font-medium text-red-900">
+            <p className="text-sm font-medium text-destructive">
               El checkout con MercadoPago falló
             </p>
             {checkoutError && (
-              <p className="text-xs text-red-700 mt-1 break-words">{checkoutError}</p>
+              <p className="text-xs text-destructive mt-1 break-words">{checkoutError}</p>
             )}
-            <p className="text-xs text-red-700 mt-1">
+            <p className="text-xs text-destructive mt-1">
               Elegí un plan abajo para reintentar.
             </p>
           </CardContent>
@@ -164,7 +167,7 @@ export default async function SubscriptionPage({
         </CardHeader>
         <CardContent className="space-y-2 text-sm">
           {status === "PENDING_PAYMENT" && (
-            <p className="text-orange-700">
+            <p className="text-accent-coral">
               Todavía no elegiste un plan. Tu acceso está bloqueado hasta que completes el checkout.
             </p>
           )}
@@ -180,13 +183,13 @@ export default async function SubscriptionPage({
             </p>
           )}
           {status === "PAST_DUE" && (
-            <p className="text-red-700">
+            <p className="text-destructive">
               No pudimos cobrar tu última cuota. Actualizá tu medio de pago antes del{" "}
               {fmt(org.current_period_ends_at)} para no perder el acceso.
             </p>
           )}
           {isCancelledWithAccess && (
-            <p className="text-blue-700">
+            <p className="text-primary">
               Tu suscripción está cancelada. Mantenés acceso hasta el{" "}
               <strong>{fmt(org.current_period_ends_at)}</strong>. Podés reactivar cuando quieras.
             </p>
@@ -197,7 +200,7 @@ export default async function SubscriptionPage({
             </p>
           )}
           {status === "SUSPENDED" && (
-            <p className="text-red-700">
+            <p className="text-destructive">
               Tu cuenta está suspendida. Contactanos a hola@vibook.ai.
             </p>
           )}
@@ -242,9 +245,9 @@ export default async function SubscriptionPage({
 
       {/* Acciones: cancelar o reactivar */}
       {(canCancel || canReactivate) && (
-        <Card className="border-red-200">
+        <Card className="border-destructive/15">
           <CardHeader>
-            <CardTitle className="text-red-700">
+            <CardTitle className="text-destructive">
               {canReactivate ? "Reactivar suscripción" : "Cancelar suscripción"}
             </CardTitle>
           </CardHeader>

@@ -105,10 +105,13 @@ export const customersPipeline: PipelineFn = async (
       rollbackLog
     )
 
-    if (inserted) {
+    if (inserted?.id) {
       successRows++
     } else {
-      errors.push({ rowNumber, message: "Falló insert (DB)" })
+      errors.push({
+        rowNumber,
+        message: `Falló insert (DB): ${inserted?.error ?? "sin detalle"}`,
+      })
     }
   }
 

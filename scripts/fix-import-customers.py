@@ -20,9 +20,22 @@ import re
 # ============================================================
 # CONFIG
 # ============================================================
-SB_URL = "https://pmqvplyyxiobkllapgjp.supabase.co"
-SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBtcXZwbHl5eGlvYmtsbGFwZ2pwIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NDA5MTI5NCwiZXhwIjoyMDc5NjY3Mjk0fQ.VBeE3W9HNeTc4FQs_QCU9uD-EHDtPpGZVaPQS5nNp3c"
-CSV_PATH = "/Users/tomiisanchezz/Desktop/Repos/erplozada/import-rosario.csv"
+import os
+
+# Bug Security P0: las credenciales se leen SIEMPRE de env vars. Hardcodear
+# JWT service_role en scripts versionados (este repo es público) era el agujero
+# original. Setear antes de correr:
+#   export SB_URL="https://pmqvplyyxiobkllapgjp.supabase.co"
+#   export SB_KEY="$SUPABASE_SERVICE_ROLE_KEY"
+SB_URL = os.environ.get("SB_URL") or os.environ.get("SUPABASE_URL")
+SB_KEY = os.environ.get("SB_KEY") or os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+if not SB_URL or not SB_KEY:
+    raise SystemExit(
+        "ERROR: faltan env vars SB_URL y SB_KEY (o SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY).\n"
+        "  export SB_URL='https://<project>.supabase.co'\n"
+        "  export SB_KEY='<service_role_key>'"
+    )
+CSV_PATH = os.environ.get("CSV_PATH", "/Users/tomiisanchezz/Desktop/Repos/erplozada/import-rosario.csv")
 
 DRY_RUN = "--dry-run" in sys.argv
 

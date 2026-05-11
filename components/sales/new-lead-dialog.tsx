@@ -95,7 +95,11 @@ export function NewLeadDialog({
     resolver: zodResolver(leadSchema) as any,
     defaultValues: {
       agency_id: defaultAgencyId || "",
-      source: "Manychat",
+      // Bug fix 2026-05-06: el default era "Manychat" pero este dialog es
+      // para creación MANUAL del user. Marcar todos los manual como
+      // "Manychat" rompe analytics/segmentación por canal. "Other" es la
+      // fuente correcta — el user puede cambiarla si fue derivado, etc.
+      source: "Other",
       status: "NEW",
       region: "ARGENTINA",
       destination: "",
@@ -130,15 +134,36 @@ export function NewLeadDialog({
     }
   }, [watchedDestination, form])
 
-  // Auto-asignar lista cuando cambia la región
+  // Auto-asignar lista cuando cambia la región.
+  // Bug fix 2026-05-06: antes seteábamos siempre el nombre legacy
+  // "Leads - Argentina" / "Leads - Caribe" / etc. Pero los tenants nuevos
+  // (Test V7, Madero) tienen listas renombradas a "Argentina" / "Caribe"
+  // sin prefijo. El form creaba leads con list_name="Leads - Argentina"
+  // que no matcheaba ninguna columna del kanban → el lead aparecía en una
+  // columna fantasma invisible y el user pensaba que se perdió.
+  //
+  // Fix: priorizar matches contra las listas EXISTENTES del tenant
+  // (case-insensitive, comparando el nombre de la región contra el final
+  // del nombre de la lista). Solo caer al fallback "Leads - X" si no hay
+  // ninguna lista en el tenant que matchee.
   useEffect(() => {
-    if (watchedRegion) {
-      const defaultList = REGION_TO_LIST[watchedRegion]
-      if (defaultList) {
-        form.setValue("list_name", defaultList)
-      }
+    if (!watchedRegion) return
+    const regionLower = watchedRegion.toLowerCase()
+    // 1) buscar entre las listas existentes del tenant
+    const existing = crmLists.find((listName) => {
+      const ln = listName.toLowerCase().trim()
+      return ln === regionLower || ln.endsWith(` ${regionLower}`) || ln.endsWith(`-${regionLower}`)
+    })
+    if (existing) {
+      form.setValue("list_name", existing)
+      return
     }
-  }, [watchedRegion, form])
+    // 2) fallback al nombre legacy si el tenant no tiene listas (o ninguna matchea)
+    const defaultList = REGION_TO_LIST[watchedRegion]
+    if (defaultList) {
+      form.setValue("list_name", defaultList)
+    }
+  }, [watchedRegion, crmLists, form])
 
   // Cargar listas del CRM cuando cambia la agencia seleccionada
   useEffect(() => {
@@ -216,7 +241,7 @@ export function NewLeadDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Nuevo Lead</DialogTitle>
           <DialogDescription>Crear un nuevo lead manualmente</DialogDescription>
@@ -294,7 +319,7 @@ export function NewLeadDialog({
             {/* Viaje */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
-                <MapPin className="h-3.5 w-3.5 text-emerald-500" />
+                <MapPin className="h-3.5 w-3.5 text-success" />
                 <span className="text-xs font-medium text-foreground/70">Viaje</span>
               </div>
               <FormField
@@ -345,7 +370,7 @@ export function NewLeadDialog({
             {/* Asignación */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
-                <UserCheck className="h-3.5 w-3.5 text-violet-500" />
+                <UserCheck className="h-3.5 w-3.5 text-accent-violet" />
                 <span className="text-xs font-medium text-foreground/70">Asignación</span>
               </div>
               <div className="grid gap-4 md:grid-cols-2">
@@ -478,7 +503,7 @@ export function NewLeadDialog({
             {/* Detalles */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
-                <StickyNote className="h-3.5 w-3.5 text-sky-500" />
+                <StickyNote className="h-3.5 w-3.5 text-accent-teal" />
                 <span className="text-xs font-medium text-foreground/70">Detalles</span>
               </div>
               <FormField
@@ -524,7 +549,7 @@ export function NewLeadDialog({
 
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
-                <CalendarIcon className="h-3.5 w-3.5 text-amber-500" />
+                <CalendarIcon className="h-3.5 w-3.5 text-accent-coral" />
                 <span className="text-xs font-medium text-foreground/70">Información Contable</span>
               </div>
               <div className="grid gap-4 md:grid-cols-2">

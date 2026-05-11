@@ -94,7 +94,7 @@ export async function GET(request: Request) {
     }
 
     // Obtener vendedores
-    const sellerIds = Array.from(new Set((leads || []).map((lead: any) => lead.assigned_seller_id).filter(Boolean)))
+    const sellerIds: string[] = Array.from(new Set((leads || []).map((lead: any) => lead.assigned_seller_id as string).filter(Boolean)))
     let sellersMap: Record<string, string> = {}
 
     if (sellerIds.length > 0) {

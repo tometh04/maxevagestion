@@ -66,8 +66,8 @@ const statusLabels: Record<string, string> = {
 }
 
 const statusColors: Record<string, string> = {
-  PENDING: "bg-yellow-500",
-  PAID: "bg-warning",
+  PENDING: "bg-accent-coral",
+  PAID: "bg-accent-coral",
   OVERDUE: "bg-destructive",
 }
 
@@ -592,7 +592,7 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
                         {paidAmount > 0 ? (
-                          <span className="text-green-600 dark:text-green-400 font-medium">
+                          <span className="text-success dark:text-success font-medium">
                             {formatCurrency(paidAmount, payment.currency)}
                           </span>
                         ) : (
@@ -606,7 +606,7 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                           return isPaid ? (
                             <span className="text-muted-foreground">-</span>
                           ) : (
-                            <span className={debt > 0 ? "text-red-600 dark:text-red-400" : ""}>
+                            <span className={debt > 0 ? "text-destructive dark:text-destructive" : ""}>
                               {formatCurrency(debt, payment.currency)}
                             </span>
                           )
@@ -622,7 +622,7 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          <Badge className={statusColors[displayStatus] || "bg-gray-500"}>
+                          <Badge className={statusColors[displayStatus] || "bg-muted-foreground"}>
                             {statusLabels[displayStatus] || displayStatus}
                           </Badge>
                           {isPartial && (

@@ -128,7 +128,7 @@ export function FinancialReport({ filters }: FinancialReportProps) {
             <CardTitle className="text-sm font-medium">Total Ingresos</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-warning">
+            <div className="text-2xl font-bold text-accent-coral">
               {formatCurrency(data.totalIncome, "ARS")}
             </div>
           </CardContent>
@@ -152,7 +152,7 @@ export function FinancialReport({ filters }: FinancialReportProps) {
           <CardContent>
             <div
               className={`text-2xl font-bold ${
-                data.netCashflow >= 0 ? "text-warning" : "text-destructive"
+                data.netCashflow >= 0 ? "text-accent-coral" : "text-destructive"
               }`}
             >
               {formatCurrency(data.netCashflow, "ARS")}
@@ -194,7 +194,7 @@ export function FinancialReport({ filters }: FinancialReportProps) {
                       <TableCell className="font-medium">
                         {new Date(item.date).toLocaleDateString("es-AR")}
                       </TableCell>
-                      <TableCell className="text-right text-warning">
+                      <TableCell className="text-right text-accent-coral">
                         {formatCurrency(item.income, "ARS")}
                       </TableCell>
                       <TableCell className="text-right text-destructive">
@@ -202,7 +202,7 @@ export function FinancialReport({ filters }: FinancialReportProps) {
                       </TableCell>
                       <TableCell
                         className={`text-right font-medium ${
-                          item.net >= 0 ? "text-warning" : "text-destructive"
+                          item.net >= 0 ? "text-accent-coral" : "text-destructive"
                         }`}
                       >
                         {formatCurrency(item.net, "ARS")}

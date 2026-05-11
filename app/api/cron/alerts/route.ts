@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { generateAllAlerts, type AlertGenerationSettings } from "@/lib/alerts/generate"
 import { createAdminClient } from "@/lib/supabase/server"
+import { checkCronAuth } from "@/lib/cron/auth"
 
 /**
  * Endpoint para cron jobs - Generar todas las alertas
@@ -12,10 +13,9 @@ import { createAdminClient } from "@/lib/supabase/server"
  */
 export async function POST(request: Request) {
   try {
-    const authHeader = request.headers.get("authorization")
-    const cronSecret = process.env.CRON_SECRET
-    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const auth = checkCronAuth(request, "alerts")
+    if (!auth.authorized) {
+      return NextResponse.json({ error: "Unauthorized", reason: auth.reason }, { status: 401 })
     }
 
     // Leer configuración de alertas desde operation_settings

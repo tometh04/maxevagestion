@@ -417,8 +417,8 @@ export function TaskDialog({
             {/* Asignación y Prioridad */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-2 mb-3">
-                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-blue-500/10">
-                  <Users className="h-3.5 w-3.5 text-blue-500" />
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                  <Users className="h-3.5 w-3.5 text-primary" />
                 </div>
                 <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Asignación</h4>
               </div>
@@ -478,8 +478,8 @@ export function TaskDialog({
             {/* Fecha y Recordatorio */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-2 mb-3">
-                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-orange-500/10">
-                  <Calendar className="h-3.5 w-3.5 text-orange-500" />
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-accent-coral/10">
+                  <Calendar className="h-3.5 w-3.5 text-accent-coral" />
                 </div>
                 <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Fecha</h4>
               </div>
@@ -579,8 +579,8 @@ export function TaskDialog({
             {/* Vincular */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-2 mb-3">
-                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-violet-500/10">
-                  <Link2 className="h-3.5 w-3.5 text-violet-500" />
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-accent-violet/10">
+                  <Link2 className="h-3.5 w-3.5 text-accent-violet" />
                 </div>
                 <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Vincular</h4>
               </div>

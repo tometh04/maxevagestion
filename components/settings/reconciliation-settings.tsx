@@ -1,9 +1,10 @@
 "use client"
 
-import { useState } from "react"
-import { Card, CardContent } from "@/components/ui/card"
+import { useState, useEffect } from "react"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   CheckCircle2,
   AlertTriangle,
@@ -11,8 +12,38 @@ import {
   RefreshCw,
   Loader2,
   ShieldCheck,
+  Wrench,
 } from "lucide-react"
 import { toast } from "sonner"
+
+interface OrphanPayment {
+  id: string
+  operation_id: string | null
+  payer_type: "CUSTOMER" | "OPERATOR"
+  direction: "INCOME" | "EXPENSE"
+  method: string | null
+  amount: number | string
+  currency: "ARS" | "USD"
+  date_paid: string | null
+  approval_status: string | null
+  approved_at: string | null
+  created_at: string
+  operations?: { id: string; file_code: string | null; destination: string | null } | null
+}
+
+interface OrphanOperatorPayment {
+  id: string
+  operation_id: string | null
+  operator_id: string | null
+  amount: number | string
+  paid_amount: number | string | null
+  currency: "ARS" | "USD"
+  approval_status: string | null
+  approved_at: string | null
+  created_at: string
+  operations?: { id: string; file_code: string | null; destination: string | null } | null
+  operators?: { id: string; name: string | null } | null
+}
 
 interface Check {
   id: string
@@ -36,25 +67,33 @@ interface Summary {
 const statusConfig = {
   ok: {
     icon: CheckCircle2,
-    color: "text-green-600 dark:text-green-400",
-    bg: "bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800",
-    badge: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+    color: "text-success dark:text-success",
+    bg: "bg-success/5 dark:bg-success/30 border-success/15 dark:border-success",
+    badge: "bg-success/10 text-success dark:bg-success dark:text-success",
     label: "OK",
   },
   warning: {
     icon: AlertTriangle,
-    color: "text-yellow-600 dark:text-yellow-400",
-    bg: "bg-yellow-50 dark:bg-yellow-950/30 border-yellow-200 dark:border-yellow-800",
-    badge: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
+    color: "text-accent-coral dark:text-accent-coral",
+    bg: "bg-accent-coral/5 dark:bg-accent-coral/30 border-accent-coral/15 dark:border-accent-coral",
+    badge: "bg-accent-coral/10 text-accent-coral dark:bg-accent-coral dark:text-accent-coral",
     label: "Atención",
   },
   error: {
     icon: XCircle,
-    color: "text-red-600 dark:text-red-400",
-    bg: "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800",
-    badge: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+    color: "text-destructive dark:text-destructive",
+    bg: "bg-destructive/5 dark:bg-destructive/30 border-destructive/15 dark:border-destructive",
+    badge: "bg-destructive/10 text-destructive dark:bg-destructive dark:text-destructive",
     label: "Error",
   },
+}
+
+function formatMoney(value: number | string | null | undefined, currency: string) {
+  const n = Number(value ?? 0)
+  return new Intl.NumberFormat("es-AR", {
+    style: "currency",
+    currency: currency === "USD" ? "USD" : "ARS",
+  }).format(n)
 }
 
 export function ReconciliationSettings() {
@@ -62,6 +101,108 @@ export function ReconciliationSettings() {
   const [summary, setSummary] = useState<Summary | null>(null)
   const [loading, setLoading] = useState(false)
   const [hasRun, setHasRun] = useState(false)
+  const [orphanPayments, setOrphanPayments] = useState<OrphanPayment[]>([])
+  const [orphanOpPayments, setOrphanOpPayments] = useState<OrphanOperatorPayment[]>([])
+  const [loadingOrphans, setLoadingOrphans] = useState(false)
+  const [reverting, setReverting] = useState(false)
+  const [selectedPayments, setSelectedPayments] = useState<Set<string>>(new Set())
+  const [selectedOpPayments, setSelectedOpPayments] = useState<Set<string>>(new Set())
+
+  const fetchOrphans = async () => {
+    setLoadingOrphans(true)
+    try {
+      const res = await fetch("/api/payments/orphans")
+      if (!res.ok) throw new Error("Error obteniendo huérfanos")
+      const data = await res.json()
+      setOrphanPayments(data.payments || [])
+      setOrphanOpPayments(data.operator_payments || [])
+    } catch (e: any) {
+      toast.error(e.message || "Error obteniendo pagos huérfanos")
+    } finally {
+      setLoadingOrphans(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchOrphans()
+  }, [])
+
+  const togglePayment = (id: string) => {
+    setSelectedPayments((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleOpPayment = (id: string) => {
+    setSelectedOpPayments((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const selectAllPayments = () => {
+    if (selectedPayments.size === orphanPayments.length) {
+      setSelectedPayments(new Set())
+    } else {
+      setSelectedPayments(new Set(orphanPayments.map((p) => p.id)))
+    }
+  }
+
+  const selectAllOpPayments = () => {
+    if (selectedOpPayments.size === orphanOpPayments.length) {
+      setSelectedOpPayments(new Set())
+    } else {
+      setSelectedOpPayments(new Set(orphanOpPayments.map((p) => p.id)))
+    }
+  }
+
+  const revertSelected = async () => {
+    const totalSelected = selectedPayments.size + selectedOpPayments.size
+    if (totalSelected === 0) {
+      toast.error("Seleccioná al menos un pago para revertir")
+      return
+    }
+
+    if (
+      !confirm(
+        `¿Revertir ${totalSelected} pago(s) huérfano(s) a estado PENDING? ` +
+          `Después podés re-procesarlos vía "Marcar como cobrado" / "Registrar Pago" eligiendo cuenta financiera.`
+      )
+    ) {
+      return
+    }
+
+    setReverting(true)
+    try {
+      const res = await fetch("/api/payments/orphans", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          paymentIds: Array.from(selectedPayments),
+          operatorPaymentIds: Array.from(selectedOpPayments),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Error revirtiendo pagos")
+
+      toast.success(
+        `Revertidos: ${data.revertedPayments} pagos cliente + ${data.revertedOpPayments} pagos a operador. ` +
+          `Refrescá el detalle de cada operación para procesarlos.`
+      )
+      setSelectedPayments(new Set())
+      setSelectedOpPayments(new Set())
+      await fetchOrphans()
+    } catch (e: any) {
+      toast.error(e.message || "Error revirtiendo pagos")
+    } finally {
+      setReverting(false)
+    }
+  }
 
   const runReconciliation = async () => {
     setLoading(true)
@@ -88,6 +229,9 @@ export function ReconciliationSettings() {
       setLoading(false)
     }
   }
+
+  const totalOrphans = orphanPayments.length + orphanOpPayments.length
+  const totalSelected = selectedPayments.size + selectedOpPayments.size
 
   return (
     <div className="space-y-4">
@@ -126,29 +270,29 @@ export function ReconciliationSettings() {
       {/* Resumen */}
       {summary && (
         <div className="grid grid-cols-3 gap-3">
-          <Card className="border-green-200 dark:border-green-800">
+          <Card className="border-success/15 dark:border-success">
             <CardContent className="flex items-center gap-3 py-3 px-4">
-              <CheckCircle2 className="h-5 w-5 text-green-600" />
+              <CheckCircle2 className="h-5 w-5 text-success" />
               <div>
-                <p className="text-2xl font-bold text-green-600">{summary.ok}</p>
+                <p className="text-2xl font-bold text-success">{summary.ok}</p>
                 <p className="text-xs text-muted-foreground">Correctos</p>
               </div>
             </CardContent>
           </Card>
-          <Card className="border-yellow-200 dark:border-yellow-800">
+          <Card className="border-accent-coral/15 dark:border-accent-coral">
             <CardContent className="flex items-center gap-3 py-3 px-4">
-              <AlertTriangle className="h-5 w-5 text-yellow-600" />
+              <AlertTriangle className="h-5 w-5 text-accent-coral" />
               <div>
-                <p className="text-2xl font-bold text-yellow-600">{summary.warnings}</p>
+                <p className="text-2xl font-bold text-accent-coral">{summary.warnings}</p>
                 <p className="text-xs text-muted-foreground">Advertencias</p>
               </div>
             </CardContent>
           </Card>
-          <Card className="border-red-200 dark:border-red-800">
+          <Card className="border-destructive/15 dark:border-destructive">
             <CardContent className="flex items-center gap-3 py-3 px-4">
-              <XCircle className="h-5 w-5 text-red-600" />
+              <XCircle className="h-5 w-5 text-destructive" />
               <div>
-                <p className="text-2xl font-bold text-red-600">{summary.errors}</p>
+                <p className="text-2xl font-bold text-destructive">{summary.errors}</p>
                 <p className="text-xs text-muted-foreground">Errores</p>
               </div>
             </CardContent>
@@ -219,6 +363,207 @@ export function ReconciliationSettings() {
           Última verificación: {new Date(summary.checkedAt).toLocaleString("es-AR")}
         </p>
       )}
+
+      {/* Pagos huérfanos: status=PAID pero sin ledger_movement_id.
+          Generados antes del fix Yamil 2026-05-05 (approve flipeaba PAID
+          sin disparar mark-paid). Permite revertir a PENDING para re-procesar. */}
+      <Card className="border-destructive/30">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Wrench className="h-4 w-4" />
+                Pagos huérfanos detectados
+                {totalOrphans > 0 && (
+                  <Badge variant="destructive" className="ml-1">
+                    {totalOrphans}
+                  </Badge>
+                )}
+              </CardTitle>
+              <CardDescription className="mt-1">
+                Pagos marcados PAID en la base pero sin movimiento contable asociado.
+                Bug detectado el 2026-05-05 en el flow de aprobación. Revertir a PENDING
+                permite re-procesarlos vía &quot;Marcar como cobrado&quot; / &quot;Registrar Pago&quot;
+                eligiendo cuenta financiera para que se actualicen saldos, libro mayor y
+                deudas a operadores.
+              </CardDescription>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={fetchOrphans}
+              disabled={loadingOrphans}
+            >
+              {loadingOrphans ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {loadingOrphans ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">
+              Cargando huérfanos…
+            </p>
+          ) : totalOrphans === 0 ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">
+              ✓ No hay pagos huérfanos. Sistema consistente.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {orphanPayments.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-medium">
+                      Pagos cliente / operador (tabla payments) — {orphanPayments.length}
+                    </h4>
+                    <Button variant="ghost" size="sm" onClick={selectAllPayments}>
+                      {selectedPayments.size === orphanPayments.length
+                        ? "Deseleccionar todos"
+                        : "Seleccionar todos"}
+                    </Button>
+                  </div>
+                  <div className="border rounded-md max-h-64 overflow-y-auto">
+                    <table className="w-full text-xs">
+                      <thead className="bg-muted/50 sticky top-0">
+                        <tr>
+                          <th className="text-left p-2 w-8"></th>
+                          <th className="text-left p-2">Operación</th>
+                          <th className="text-left p-2">Tipo</th>
+                          <th className="text-right p-2">Monto</th>
+                          <th className="text-left p-2">Aprobado</th>
+                          <th className="text-left p-2">Creado</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {orphanPayments.map((p) => (
+                          <tr key={p.id}>
+                            <td className="p-2">
+                              <Checkbox
+                                checked={selectedPayments.has(p.id)}
+                                onCheckedChange={() => togglePayment(p.id)}
+                              />
+                            </td>
+                            <td className="p-2">
+                              <div className="font-medium">
+                                {p.operations?.file_code || p.operation_id?.slice(0, 8) || "—"}
+                              </div>
+                              <div className="text-muted-foreground">
+                                {p.operations?.destination || ""}
+                              </div>
+                            </td>
+                            <td className="p-2">
+                              {p.payer_type === "CUSTOMER" ? "Cobro" : "Pago a op."} ·{" "}
+                              {p.method || "—"}
+                            </td>
+                            <td className="p-2 text-right font-mono">
+                              {formatMoney(p.amount, p.currency)}
+                            </td>
+                            <td className="p-2">
+                              {p.approved_at
+                                ? new Date(p.approved_at).toLocaleDateString("es-AR")
+                                : "—"}
+                            </td>
+                            <td className="p-2">
+                              {new Date(p.created_at).toLocaleDateString("es-AR")}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {orphanOpPayments.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-medium">
+                      Deudas a operadores (operator_payments) — {orphanOpPayments.length}
+                    </h4>
+                    <Button variant="ghost" size="sm" onClick={selectAllOpPayments}>
+                      {selectedOpPayments.size === orphanOpPayments.length
+                        ? "Deseleccionar todos"
+                        : "Seleccionar todos"}
+                    </Button>
+                  </div>
+                  <div className="border rounded-md max-h-64 overflow-y-auto">
+                    <table className="w-full text-xs">
+                      <thead className="bg-muted/50 sticky top-0">
+                        <tr>
+                          <th className="text-left p-2 w-8"></th>
+                          <th className="text-left p-2">Operador</th>
+                          <th className="text-left p-2">Operación</th>
+                          <th className="text-right p-2">Monto</th>
+                          <th className="text-left p-2">Aprobado</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {orphanOpPayments.map((p) => (
+                          <tr key={p.id}>
+                            <td className="p-2">
+                              <Checkbox
+                                checked={selectedOpPayments.has(p.id)}
+                                onCheckedChange={() => toggleOpPayment(p.id)}
+                              />
+                            </td>
+                            <td className="p-2 font-medium">
+                              {p.operators?.name || p.operator_id?.slice(0, 8) || "—"}
+                            </td>
+                            <td className="p-2">
+                              <div>
+                                {p.operations?.file_code || p.operation_id?.slice(0, 8) || "—"}
+                              </div>
+                              <div className="text-muted-foreground">
+                                {p.operations?.destination || ""}
+                              </div>
+                            </td>
+                            <td className="p-2 text-right font-mono">
+                              {formatMoney(p.amount, p.currency)}
+                            </td>
+                            <td className="p-2">
+                              {p.approved_at
+                                ? new Date(p.approved_at).toLocaleDateString("es-AR")
+                                : "—"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between pt-2 border-t">
+                <p className="text-xs text-muted-foreground">
+                  {totalSelected > 0
+                    ? `${totalSelected} seleccionado(s) para revertir`
+                    : "Seleccioná los pagos a revertir a PENDING"}
+                </p>
+                <Button
+                  onClick={revertSelected}
+                  disabled={reverting || totalSelected === 0}
+                  variant="destructive"
+                >
+                  {reverting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Revirtiendo...
+                    </>
+                  ) : (
+                    <>
+                      <Wrench className="h-4 w-4 mr-2" />
+                      Revertir {totalSelected > 0 ? `${totalSelected} ` : ""}seleccionados a PENDING
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }

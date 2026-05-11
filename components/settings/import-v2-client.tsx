@@ -387,7 +387,7 @@ export function ImportV2Client({ agencies }: Props) {
                 </>
               ) : (
                 <>
-                  <CheckCircle2 className="h-5 w-5 text-green-600" />
+                  <CheckCircle2 className="h-5 w-5 text-success" />
                   Importación completada
                 </>
               )}
@@ -479,7 +479,7 @@ export function ImportV2Client({ agencies }: Props) {
             {result.warnings.length > 0 && (
               <div>
                 <h4 className="font-medium flex items-center gap-2 mb-2">
-                  <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                  <AlertTriangle className="h-4 w-4 text-accent-coral" />
                   Advertencias
                 </h4>
                 <ul className="text-sm space-y-1">
@@ -514,9 +514,9 @@ function Stat({
 }) {
   const colorClass =
     variant === "success"
-      ? "text-green-600"
+      ? "text-success"
       : variant === "warning"
-        ? "text-yellow-600"
+        ? "text-accent-coral"
         : variant === "destructive"
           ? "text-destructive"
           : ""

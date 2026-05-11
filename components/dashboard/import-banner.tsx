@@ -19,8 +19,8 @@ export function ImportBanner() {
   if (!show) return null
 
   return (
-    <Alert className="bg-blue-500/10 border-blue-500/30 mb-4">
-      <Upload className="h-4 w-4 text-blue-500" />
+    <Alert className="bg-primary/10 border-primary/30 mb-4">
+      <Upload className="h-4 w-4 text-primary" />
       <AlertDescription className="flex items-center justify-between gap-4">
         <span>
           ¿Traés datos de otro sistema? Importá tu histórico desde CSV en{" "}

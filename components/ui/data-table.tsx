@@ -56,11 +56,20 @@ export function DataTable<TData, TValue>({
   )
   const [columnVisibility, setColumnVisibility] =
     React.useState<VisibilityState>(() => {
-      // Hide searchText column by default if it exists
-      if (searchKey) {
-        return { [searchKey]: false }
+      // Bug fix 2026-05-06: la versión previa hacía
+      //   if (searchKey) return { [searchKey]: false }
+      // Eso ocultaba cualquier columna cuyo accessorKey igualara al
+      // searchKey. La intención original era ocultar una columna helper
+      // llamada literalmente "searchText" (usada solo para filtrar) —
+      // pero terminaba ocultando la columna principal.
+      // Ej: <DataTable searchKey="name"> en /settings Operadores ocultaba
+      // la columna "Operador" (los users veían la tabla sin nombres).
+      // Solo ocultamos por default si el searchKey es el helper literal.
+      const initial: VisibilityState = {}
+      if (searchKey === "searchText") {
+        initial.searchText = false
       }
-      return {}
+      return initial
     })
   const [rowSelection, setRowSelection] = React.useState({})
   const [searchInput, setSearchInput] = React.useState("")

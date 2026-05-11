@@ -135,6 +135,34 @@ export function mapPaymentMethodToLedgerMethod(method?: string | null): LedgerMe
   }
 }
 
+/**
+ * Normaliza el campo payment.method (que puede haber sido guardado como
+ * vocabulario ledger CASH/BANK/MP/USD/OTHER por seeds, tests o flows
+ * legacy) al vocabulario humano usado por el Select del form
+ * (Transferencia/Efectivo/MercadoPago/Otro).
+ *
+ * Si el valor ya está en vocabulario humano, lo devuelve tal cual.
+ */
+export function normalizePaymentMethodForForm(method?: string | null): string {
+  const raw = (method || "").trim()
+  if (!raw) return "Transferencia"
+
+  switch (raw.toUpperCase()) {
+    case "BANK":
+      return "Transferencia"
+    case "CASH":
+      return "Efectivo"
+    case "MP":
+      return "MercadoPago"
+    case "USD":
+      return "Otro"
+    case "OTHER":
+      return "Otro"
+    default:
+      return raw // ya es vocabulario humano
+  }
+}
+
 export function getPaymentCounterpartAccountCode(
   direction?: string | null,
   payerType?: string | null

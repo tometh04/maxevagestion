@@ -32,14 +32,14 @@ interface Alert {
 }
 
 const alertTypeConfig: Record<string, { icon: any; color: string }> = {
-  PAYMENT_DUE: { icon: DollarSign, color: "text-yellow-500" },
-  UPCOMING_TRIP: { icon: Calendar, color: "text-info" },
-  MISSING_DOCUMENT: { icon: FileText, color: "text-warning" },
+  PAYMENT_DUE: { icon: DollarSign, color: "text-accent-coral" },
+  UPCOMING_TRIP: { icon: Calendar, color: "text-accent-teal" },
+  MISSING_DOCUMENT: { icon: FileText, color: "text-accent-coral" },
   LOW_MARGIN: { icon: AlertTriangle, color: "text-destructive" },
-  QUOTATION_EXPIRING: { icon: Bell, color: "text-purple-500" },
-  TASK_REMINDER: { icon: CheckSquare, color: "text-indigo-500" },
-  TASK_ASSIGNED: { icon: CheckSquare, color: "text-green-500" },
-  MISSING_INVOICE: { icon: FileText, color: "text-red-500" },
+  QUOTATION_EXPIRING: { icon: Bell, color: "text-accent-violet" },
+  TASK_REMINDER: { icon: CheckSquare, color: "text-primary" },
+  TASK_ASSIGNED: { icon: CheckSquare, color: "text-success" },
+  MISSING_INVOICE: { icon: FileText, color: "text-destructive" },
 }
 
 export function NotificationBell() {
@@ -149,7 +149,7 @@ export function NotificationBell() {
   }
 
   const getAlertConfig = (type: string) => {
-    return alertTypeConfig[type] || { icon: Bell, color: "text-gray-500" }
+    return alertTypeConfig[type] || { icon: Bell, color: "text-muted-foreground" }
   }
 
   const handleTogglePush = async () => {
@@ -272,7 +272,7 @@ export function NotificationBell() {
             <div className="p-3 flex items-center justify-between">
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 {pushEnabled ? (
-                  <BellRing className="h-3.5 w-3.5 text-green-500" />
+                  <BellRing className="h-3.5 w-3.5 text-success" />
                 ) : (
                   <BellOff className="h-3.5 w-3.5" />
                 )}

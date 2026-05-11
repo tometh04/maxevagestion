@@ -529,8 +529,8 @@ export function NewCustomerDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent 
-          className="max-w-lg max-h-[90vh] overflow-y-auto"
+        <DialogContent
+          className="max-w-lg"
           onEscapeKeyDown={(e) => e.preventDefault()}
           onPointerDownOutside={(e) => e.preventDefault()}
         >
@@ -542,7 +542,7 @@ export function NewCustomerDialog({
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex-1 overflow-y-auto min-h-0 px-6 py-5 space-y-5">
             {/* Datos Personales */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
@@ -625,7 +625,7 @@ export function NewCustomerDialog({
             {/* Documento */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
-                <FileText className="h-3.5 w-3.5 text-emerald-500" />
+                <FileText className="h-3.5 w-3.5 text-success" />
                 <span className="text-xs font-medium text-foreground/70">Documento</span>
               </div>
               <div className="grid gap-4 md:grid-cols-2">
@@ -712,7 +712,7 @@ export function NewCustomerDialog({
             {/* Sección de carga de documento con OCR */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
-                <Upload className="h-3.5 w-3.5 text-violet-500" />
+                <Upload className="h-3.5 w-3.5 text-accent-violet" />
                 <span className="text-xs font-medium text-foreground/70">Escanear Documento</span>
               </div>
               <p className="text-sm text-muted-foreground">
@@ -786,7 +786,7 @@ export function NewCustomerDialog({
             {/* Sección: Crear desde CUIL */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
-                <FileText className="h-3.5 w-3.5 text-blue-500" />
+                <FileText className="h-3.5 w-3.5 text-primary" />
                 <span className="text-xs font-medium text-foreground/70">Crear desde CUIL</span>
               </div>
               <p className="text-sm text-muted-foreground">
@@ -833,8 +833,8 @@ export function NewCustomerDialog({
                 </div>
               </div>
               {generatedCuil && (
-                <div className="flex items-center gap-2 p-3 bg-background rounded-md border border-emerald-200">
-                  <CheckCircle className="h-4 w-4 text-emerald-500 shrink-0" />
+                <div className="flex items-center gap-2 p-3 bg-background rounded-md border border-success/15">
+                  <CheckCircle className="h-4 w-4 text-success shrink-0" />
                   <span className="text-sm font-medium">CUIL: {generatedCuil}</span>
                 </div>
               )}

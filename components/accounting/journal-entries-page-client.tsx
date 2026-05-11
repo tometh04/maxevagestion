@@ -71,11 +71,11 @@ const SOURCE_LABELS: Record<string, string> = {
 }
 
 const SOURCE_COLORS: Record<string, string> = {
-  MANUAL: "bg-blue-100 text-blue-800",
-  AUTO_PAYMENT: "bg-green-100 text-green-800",
-  AUTO_CONFIRMATION: "bg-purple-100 text-purple-800",
-  AUTO_COMMISSION: "bg-amber-100 text-amber-800",
-  AUTO_FX: "bg-cyan-100 text-cyan-800",
+  MANUAL: "bg-primary/10 text-primary",
+  AUTO_PAYMENT: "bg-success/10 text-success",
+  AUTO_CONFIRMATION: "bg-accent-violet/10 text-accent-violet",
+  AUTO_COMMISSION: "bg-accent-coral/10 text-accent-coral",
+  AUTO_FX: "bg-accent-teal/10 text-accent-teal",
 }
 
 function formatCurrency(amount: number, currency: string = "ARS"): string {
@@ -273,7 +273,7 @@ export function JournalEntriesPageClient() {
                     </TableCell>
                     <TableCell>
                       <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${SOURCE_COLORS[entry.source] || "bg-gray-100 text-gray-800"}`}
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${SOURCE_COLORS[entry.source] || "bg-muted text-foreground"}`}
                       >
                         {SOURCE_LABELS[entry.source] || entry.source}
                       </span>

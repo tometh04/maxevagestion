@@ -96,10 +96,10 @@ export function NewOrgWizard() {
     <div className="space-y-6 max-w-2xl">
       <Stepper current={step} />
 
-      <Card className="bg-slate-900/40 border-slate-800 p-6">
+      <Card className="bg-muted/40 border-border p-6">
         {step === 1 && (
           <div className="space-y-4">
-            <h2 className="text-lg font-semibold text-slate-100">Datos de la organización</h2>
+            <h2 className="text-lg font-semibold text-muted-foreground">Datos de la organización</h2>
             <div className="space-y-2">
               <Label htmlFor="org_name">Nombre de la org *</Label>
               <Input
@@ -109,7 +109,7 @@ export function NewOrgWizard() {
                 placeholder="Viajes Pampa SA"
                 autoFocus
               />
-              <p className="text-xs text-slate-500">El slug se genera automático del nombre.</p>
+              <p className="text-xs text-muted-foreground">El slug se genera automático del nombre.</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="cuit">CUIT (opcional)</Label>
@@ -125,7 +125,7 @@ export function NewOrgWizard() {
 
         {step === 2 && (
           <div className="space-y-4">
-            <h2 className="text-lg font-semibold text-slate-100">Agencia inicial + moneda</h2>
+            <h2 className="text-lg font-semibold text-muted-foreground">Agencia inicial + moneda</h2>
             <div className="space-y-2">
               <Label htmlFor="agency_name">Nombre de la agencia</Label>
               <Input
@@ -134,7 +134,7 @@ export function NewOrgWizard() {
                 onChange={(e) => update("agency_name", e.target.value)}
                 placeholder={form.org_name || "Sucursal Centro"}
               />
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-muted-foreground">
                 Si lo dejás vacío, se usa el nombre de la org.
               </p>
             </div>
@@ -158,8 +158,8 @@ export function NewOrgWizard() {
 
         {step === 3 && (
           <div className="space-y-4">
-            <h2 className="text-lg font-semibold text-slate-100">Usuario admin</h2>
-            <p className="text-sm text-slate-400">
+            <h2 className="text-lg font-semibold text-muted-foreground">Usuario admin</h2>
+            <p className="text-sm text-muted-foreground">
               Se le manda un email de invitación con link para setear su password. No vas a setear
               vos la contraseña.
             </p>
@@ -187,8 +187,8 @@ export function NewOrgWizard() {
 
         {step === 4 && (
           <div className="space-y-4">
-            <h2 className="text-lg font-semibold text-slate-100">Setup inicial</h2>
-            <div className="flex items-start gap-3 rounded-md border border-slate-800 bg-slate-950/40 p-4">
+            <h2 className="text-lg font-semibold text-muted-foreground">Setup inicial</h2>
+            <div className="flex items-start gap-3 rounded-md border border-border bg-muted/40 p-4">
               <Checkbox
                 id="seed_chart"
                 checked={form.seed_chart_of_accounts}
@@ -196,15 +196,16 @@ export function NewOrgWizard() {
               />
               <div className="flex-1 space-y-1">
                 <Label htmlFor="seed_chart" className="cursor-pointer">
-                  Clonar plan de cuentas de Lozada Viajes (recomendado)
+                  Clonar plan de cuentas estándar AR (recomendado)
                 </Label>
-                <p className="text-xs text-slate-500">
-                  Copia toda la jerarquía de cuentas estándar para una agencia AR. Si lo dejás
-                  vacío, el cliente arranca con plan en blanco.
+                <p className="text-xs text-muted-foreground">
+                  Copia toda la jerarquía de cuentas estándar para una agencia argentina (basada en el
+                  plan de Lozada Viajes — el caso de uso de referencia). Si lo dejás vacío, el cliente
+                  arranca con plan en blanco.
                 </p>
               </div>
             </div>
-            <div className="flex items-start gap-3 rounded-md border border-slate-800 bg-slate-950/40 p-4">
+            <div className="flex items-start gap-3 rounded-md border border-border bg-muted/40 p-4">
               <Checkbox
                 id="seed_lists"
                 checked={form.seed_manychat_lists}
@@ -214,7 +215,7 @@ export function NewOrgWizard() {
                 <Label htmlFor="seed_lists" className="cursor-pointer">
                   Crear 7 listas Manychat default (recomendado)
                 </Label>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-muted-foreground">
                   Argentina, Caribe, Brasil, EEUU, Europa, Exoticos, Otros — para que el CRM no
                   arranque vacío cuando lleguen leads.
                 </p>
@@ -225,7 +226,7 @@ export function NewOrgWizard() {
 
         {step === 5 && (
           <div className="space-y-4">
-            <h2 className="text-lg font-semibold text-slate-100">Confirmar y crear</h2>
+            <h2 className="text-lg font-semibold text-muted-foreground">Confirmar y crear</h2>
             <dl className="grid grid-cols-[140px_1fr] gap-y-2 text-sm">
               <SummaryRow label="Org" value={form.org_name} />
               <SummaryRow label="CUIT" value={form.cuit || "—"} />
@@ -236,7 +237,7 @@ export function NewOrgWizard() {
               <SummaryRow label="Listas CRM" value={form.seed_manychat_lists ? "7 listas default" : "Vacío"} />
             </dl>
             {error && (
-              <div className="flex items-start gap-2 rounded border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300">
+              <div className="flex items-start gap-2 rounded border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
                 <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
                 <div>{error}</div>
               </div>
@@ -292,9 +293,9 @@ function Stepper({ current }: { current: number }) {
             <div
               className={cn(
                 "flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs font-semibold",
-                isActive && "border-blue-500 bg-blue-500/20 text-blue-300",
-                isDone && "border-emerald-500 bg-emerald-500/20 text-emerald-300",
-                !isActive && !isDone && "border-slate-700 text-slate-500",
+                isActive && "border-primary bg-primary/20 text-primary",
+                isDone && "border-success bg-success/20 text-success",
+                !isActive && !isDone && "border-border text-muted-foreground",
               )}
             >
               {isDone ? <Check className="h-3.5 w-3.5" /> : s.n}
@@ -302,13 +303,13 @@ function Stepper({ current }: { current: number }) {
             <span
               className={cn(
                 "text-xs hidden sm:inline",
-                isActive ? "text-slate-200" : "text-slate-500",
+                isActive ? "text-muted-foreground" : "text-muted-foreground",
               )}
             >
               {s.label}
             </span>
             {idx < STEPS.length - 1 && (
-              <div className={cn("flex-1 h-px", isDone ? "bg-emerald-500/40" : "bg-slate-800")} />
+              <div className={cn("flex-1 h-px", isDone ? "bg-success/40" : "bg-muted")} />
             )}
           </li>
         )
@@ -320,8 +321,8 @@ function Stepper({ current }: { current: number }) {
 function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
     <>
-      <dt className="text-slate-500">{label}</dt>
-      <dd className="text-slate-200 font-medium">{value}</dd>
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="text-muted-foreground font-medium">{value}</dd>
     </>
   )
 }

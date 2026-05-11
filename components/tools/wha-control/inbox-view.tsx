@@ -263,8 +263,8 @@ export function InboxView({ agencies }: InboxViewProps) {
                   className={`w-full text-left p-3 hover:bg-accent/50 transition-colors ${selectedChat?.id === chat.id ? "bg-accent" : ""}`}
                 >
                   <div className="flex items-start gap-3">
-                    <div className={`flex h-10 w-10 items-center justify-center rounded-full flex-shrink-0 ${chat.is_group ? "bg-orange-100" : "bg-muted"}`}>
-                      {chat.is_group ? <Users className="h-5 w-5 text-orange-600" /> : <User className="h-5 w-5 text-muted-foreground" />}
+                    <div className={`flex h-10 w-10 items-center justify-center rounded-full flex-shrink-0 ${chat.is_group ? "bg-accent-coral/10" : "bg-muted"}`}>
+                      {chat.is_group ? <Users className="h-5 w-5 text-accent-coral" /> : <User className="h-5 w-5 text-muted-foreground" />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
@@ -305,8 +305,8 @@ export function InboxView({ agencies }: InboxViewProps) {
               >
                 <ArrowLeft className="h-4 w-4" />
               </Button>
-              <div className={`flex h-10 w-10 items-center justify-center rounded-full ${selectedChat.is_group ? "bg-orange-100" : "bg-muted"}`}>
-                {selectedChat.is_group ? <Users className="h-5 w-5 text-orange-600" /> : <User className="h-5 w-5 text-muted-foreground" />}
+              <div className={`flex h-10 w-10 items-center justify-center rounded-full ${selectedChat.is_group ? "bg-accent-coral/10" : "bg-muted"}`}>
+                {selectedChat.is_group ? <Users className="h-5 w-5 text-accent-coral" /> : <User className="h-5 w-5 text-muted-foreground" />}
               </div>
               <div className="flex-1">
                 <p className="font-medium text-sm">{getChatName(selectedChat)}</p>
@@ -352,12 +352,12 @@ export function InboxView({ agencies }: InboxViewProps) {
                         <div
                           className={`max-w-[75%] rounded-2xl px-4 py-2 ${
                             isOutbound
-                              ? "bg-orange-500 text-white rounded-br-md"
+                              ? "bg-accent-coral text-white rounded-br-md"
                               : "bg-muted rounded-bl-md"
                           }`}
                         >
                           {isGroupChat && !isOutbound && participantName && (
-                            <p className="text-xs font-semibold text-orange-600 mb-0.5">
+                            <p className="text-xs font-semibold text-accent-coral mb-0.5">
                               {participantName}
                             </p>
                           )}

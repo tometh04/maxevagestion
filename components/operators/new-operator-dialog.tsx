@@ -179,7 +179,7 @@ export function NewOperatorDialog({
 
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
-                <Phone className="h-3.5 w-3.5 text-emerald-500" />
+                <Phone className="h-3.5 w-3.5 text-success" />
                 <span className="text-xs font-medium text-foreground/70">Contacto</span>
               </div>
               <div className="grid gap-4 md:grid-cols-2">
@@ -215,7 +215,7 @@ export function NewOperatorDialog({
 
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
-                <DollarSign className="h-3.5 w-3.5 text-warning" />
+                <DollarSign className="h-3.5 w-3.5 text-accent-coral" />
                 <span className="text-xs font-medium text-foreground/70">Financiero</span>
               </div>
               <FormField

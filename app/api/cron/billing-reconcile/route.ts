@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { fetchPreapproval } from "@/lib/billing/mercadopago"
 import { transitionFromMP, type MPPreapproval } from "@/lib/billing/state-machine"
+import { checkCronAuth } from "@/lib/cron/auth"
 
 /**
  * POST /api/cron/billing-reconcile
@@ -18,10 +19,9 @@ import { transitionFromMP, type MPPreapproval } from "@/lib/billing/state-machin
  * Auth: Bearer CRON_SECRET en header Authorization.
  */
 export async function POST(request: Request) {
-  const auth = request.headers.get("authorization") || ""
-  const expected = `Bearer ${process.env.CRON_SECRET || ""}`
-  if (!process.env.CRON_SECRET || auth !== expected) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 })
+  const auth = checkCronAuth(request, "billing-reconcile")
+  if (!auth.authorized) {
+    return NextResponse.json({ error: "unauthorized", reason: auth.reason }, { status: 401 })
   }
 
   const admin = createAdminClient() as any

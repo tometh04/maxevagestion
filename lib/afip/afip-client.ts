@@ -200,15 +200,27 @@ export async function getAfipExchangeRate(
     const afip = createAfipInstance(config)
     const fchCotiz = formatDate(date || new Date())
 
-    // El SDK expone getExchangeRate(MonId, Date) o, en versiones viejas,
-    // el método está en FEParamGetCotizacion. Intentamos el camino estándar.
-    const rate = await afip.ElectronicBilling.getExchangeRate(monId, fchCotiz)
+    let rate: any = null
+
+    if (typeof afip.ElectronicBilling.getExchangeRate === 'function') {
+      rate = await afip.ElectronicBilling.getExchangeRate(monId, fchCotiz)
+    } else if (typeof afip.ElectronicBilling.executeRequest === 'function') {
+      rate = await afip.ElectronicBilling.executeRequest('FEParamGetCotizacion', {
+        MonId: monId,
+      })
+    } else {
+      return {
+        success: false,
+        error: 'El SDK AFIP instalado no expone consulta de cotización',
+      }
+    }
 
     // La respuesta del SDK puede venir como número directo o como objeto
+    const result = rate?.ResultGet ?? rate
     const cotiz =
-      typeof rate === 'number'
-        ? rate
-        : Number(rate?.MonCotiz ?? rate?.cotizacion ?? 0)
+      typeof result === 'number'
+        ? result
+        : Number(result?.MonCotiz ?? result?.cotizacion ?? 0)
 
     if (!cotiz || cotiz <= 0) {
       return {

@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     const { user } = await getCurrentUser()
 
     // Solo ADMIN, SUPER_ADMIN y CONTABLE pueden marcar pagos como cobrados
-    if (!canAccessModule(user.role, "cash")) {
+    if (!canAccessModule(user.role as any, "cash")) {
       return NextResponse.json({ error: "No tiene permisos para marcar pagos como cobrados" }, { status: 403 })
     }
 
@@ -144,23 +144,6 @@ export async function POST(request: Request) {
       }, { status: 409 }) // 409 Conflict
     }
 
-    // Guard adicional: usar update atómico con condición de estado
-    // Esto previene race conditions entre requests simultáneos
-    const { data: atomicUpdate, error: atomicError } = await paymentsTable
-      .update({ status: "PROCESSING" }) // Estado transitorio para bloquear otros requests
-      .eq("id", paymentId)
-      .eq("status", "PENDING") // Solo actualizar si sigue PENDING (Compare-And-Set)
-      .select("id")
-      .maybeSingle()
-
-    if (!atomicUpdate) {
-      // Otro request ya tomó este pago, o cambió de estado
-      return NextResponse.json({
-        error: "Este pago ya está siendo procesado por otra operación",
-        already_paid: true
-      }, { status: 409 })
-    }
-
     // Calcular amount_usd si hay exchange_rate proporcionado
     let amountUsd: number | null = null
     if (exchange_rate && paymentData.currency === "ARS") {
@@ -169,7 +152,15 @@ export async function POST(request: Request) {
       amountUsd = parseFloat(paymentData.amount)
     }
 
-    // Update payment — ya pasó el guard atómico (status = PROCESSING)
+    // CAS atómico PENDING → PAID: combinamos guard + update final en una sola
+    // operación. Si dos requests corren a la vez, Postgres serializa: solo uno
+    // hace match con `.eq("status","PENDING")`; el otro afecta 0 filas y
+    // devolvemos 409.
+    //
+    // (Antes hacíamos un guard intermedio status='PROCESSING' pero el CHECK
+    // constraint payments_status_check solo permite ('PENDING','PAID','OVERDUE').
+    // El UPDATE atómico con filtro de status logra el mismo efecto sin agregar
+    // un estado transient al enum.)
     const updateData: any = {
       date_paid: datePaid,
       status: "PAID",
@@ -180,7 +171,7 @@ export async function POST(request: Request) {
       updateData.operator_id = linkedOperatorId
       updateData.operator_payment_id = linkedOperatorPaymentId
     }
-    
+
     // Si se proporcionó exchange_rate, guardarlo y calcular amount_usd
     if (exchange_rate) {
       updateData.exchange_rate = exchange_rate
@@ -188,10 +179,27 @@ export async function POST(request: Request) {
         updateData.amount_usd = amountUsd
       }
     }
-    
-    await paymentsTable
+
+    const { data: atomicUpdate, error: atomicError } = await paymentsTable
       .update(updateData)
       .eq("id", paymentId)
+      .eq("status", "PENDING") // Solo si sigue PENDING (CAS)
+      .select("id")
+
+    if (atomicError) {
+      console.error("Error en CAS update mark-paid:", atomicError)
+      return NextResponse.json({
+        error: `Error actualizando pago: ${atomicError.message}`,
+      }, { status: 500 })
+    }
+
+    if (!atomicUpdate || atomicUpdate.length === 0) {
+      // Otro request ya tomó este pago, o cambió de estado
+      return NextResponse.json({
+        error: "Este pago ya fue marcado como pagado por otra operación",
+        already_paid: true
+      }, { status: 409 })
+    }
 
     // Get agency_id from operation or user agencies
     let agencyId = operation?.agency_id
@@ -482,6 +490,7 @@ export async function POST(request: Request) {
         // Crear alerta de sistema para revisión manual
         try {
           await (supabase.from("alerts") as any).insert({
+            org_id: paymentData.org_id || null, // P0 2026-05-10: required tras tighten policy mig 5
             agency_id: agencyId || null,
             user_id: user.id,
             operation_id: paymentData.operation_id,
@@ -726,19 +735,15 @@ export async function POST(request: Request) {
   } catch (error: any) {
     console.error("Error en mark-paid:", error)
 
-    // Si el pago quedó en PROCESSING por un error, revertirlo a PENDING
-    try {
-      const body = await request.clone().json().catch(() => null)
-      if (body?.paymentId) {
-        const supabase = await createServerClient()
-        await (supabase.from("payments") as any)
-          .update({ status: "PENDING", updated_at: new Date().toISOString() })
-          .eq("id", body.paymentId)
-          .eq("status", "PROCESSING") // Solo revertir si sigue en PROCESSING
-      }
-    } catch (revertError) {
-      console.error("Error revirtiendo estado PROCESSING:", revertError)
-    }
+    // NOTA: con el CAS atómico actual, si el UPDATE inicial fue exitoso el
+    // payment ya está PAID. Si falló cualquier paso posterior (ledger,
+    // cash_movement, counterpart, etc.) el payment queda PAID pero los
+    // movimientos contables pueden estar incompletos. Para detectar y
+    // remediar esos casos usamos el endpoint /api/payments/orphans que lista
+    // payments PAID sin ledger_movement_id y permite revertirlos a PENDING
+    // con un nuevo CAS. (Antes acá había un fallback que revertía
+    // status='PROCESSING' → 'PENDING' pero ese estado ya no se usa porque
+    // el CHECK constraint no lo permite.)
 
     return NextResponse.json(
       { error: error.message || "Error al actualizar" },

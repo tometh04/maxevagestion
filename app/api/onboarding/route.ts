@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { logSecurityEvent } from "@/lib/security/audit"
+import { sendWelcomeEmail } from "@/lib/email/email-service"
 
 const PLAN_LIMITS: Record<string, { max_users: number; max_agencies: number; max_operations_per_month: number }> = {
   STARTER: { max_users: 3, max_agencies: 1, max_operations_per_month: 50 },
@@ -118,6 +119,24 @@ export async function POST(request: Request) {
     targetEntityId: org.id,
     details: { plan, slug: org.slug },
   })
+
+  // Welcome email — fire-and-forget. Si Resend está caído o falta la
+  // API key, NO bloqueamos el onboarding: el tenant ya tiene su org
+  // creada y puede entrar al dashboard. Loguear el resultado para
+  // diagnóstico.
+  sendWelcomeEmail(billingEmail || user.email, name, trialEndsAt)
+    .then((res) => {
+      if (!res.success) {
+        console.warn("onboarding: welcome email no enviado", {
+          orgId: org.id,
+          email: billingEmail || user.email,
+          error: res.error,
+        })
+      }
+    })
+    .catch((err) => {
+      console.error("onboarding: welcome email crashed", err)
+    })
 
   return NextResponse.json({ org_id: org.id, slug: org.slug })
 }

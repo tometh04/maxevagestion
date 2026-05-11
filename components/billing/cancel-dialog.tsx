@@ -71,11 +71,11 @@ export function CancelDialog({
                 <li>Reportes y contabilidad</li>
                 <li>WhatsApp integrado</li>
               </ul>
-              <p className="text-green-700 font-medium">
+              <p className="text-success font-medium">
                 Tu información NO se borra. Si volvés a suscribirte — antes o después
                 de la fecha de corte — recuperás todo tal como lo dejaste.
               </p>
-              {error && <p className="text-red-600">{error}</p>}
+              {error && <p className="text-destructive">{error}</p>}
             </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
@@ -84,7 +84,7 @@ export function CancelDialog({
           <AlertDialogAction
             disabled={loading}
             onClick={handleCancel}
-            className="bg-red-600 hover:bg-red-700"
+            className="bg-destructive hover:bg-destructive"
           >
             {loading ? "Cancelando…" : "Sí, cancelar"}
           </AlertDialogAction>

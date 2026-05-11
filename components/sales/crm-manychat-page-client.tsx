@@ -86,43 +86,24 @@ export function CRMManychatPageClient({
     }
   }, [])
 
-  // Cargar leads: Manychat (nuevos) + Trello con list_name (migración visual)
-  // OPTIMIZACIÓN Fase 2: límite 200 por fuente (antes 5000)
+  // Cargar leads del tenant — TODOS los canales (CRM Ventas).
+  // 1 fetch sin filtro source. El kanban tiene fallback interno
+  // (list_name → region → "Sin lista") para asignar columna a cada lead.
   const loadLeads = useCallback(async (agencyId: string) => {
     setLoading(true)
     try {
       const limit = 200
-      const manychatUrl = agencyId === "ALL"
-        ? `/api/leads?page=1&limit=${limit}&source=Manychat`
-        : `/api/leads?agencyId=${agencyId}&page=1&limit=${limit}&source=Manychat`
-      const trelloUrl = agencyId === "ALL"
-        ? `/api/leads?page=1&limit=${limit}&source=Trello`
-        : `/api/leads?agencyId=${agencyId}&page=1&limit=${limit}&source=Trello`
+      const url =
+        agencyId === "ALL"
+          ? `/api/leads?page=1&limit=${limit}`
+          : `/api/leads?agencyId=${agencyId}&page=1&limit=${limit}`
 
-      const [manychatResponse, trelloResponse] = await Promise.all([
-        fetch(manychatUrl, { cache: 'no-store' }),
-        fetch(trelloUrl, { cache: 'no-store' })
-      ])
-      
-      const manychatData = await manychatResponse.json()
-      const trelloData = await trelloResponse.json()
-      
-      // Filtrar leads de Trello que tienen list_name asignado (migración visual)
-      const trelloLeadsWithListName = (trelloData.leads || []).filter((lead: any) => lead.list_name)
-      
-      // Combinar: Manychat (nuevos) + Trello con list_name (migración visual)
-      const allLeads = [
-        ...(manychatData.leads || []),
-        ...trelloLeadsWithListName
-      ]
-      
-      if (allLeads.length > 0) {
-        setLeads(allLeads)
-        console.log(`✅ Cargados ${manychatData.leads?.length || 0} leads de Manychat + ${trelloLeadsWithListName.length} de Trello (con list_name)`)
-      } else {
-        setLeads([])
-        console.log("ℹ️ No se encontraron leads")
-      }
+      const response = await fetch(url, { cache: "no-store" })
+      const data = await response.json()
+      const allLeads = data.leads || []
+
+      setLeads(allLeads)
+      console.log(`✅ CRM Ventas: cargados ${allLeads.length} leads de todos los canales`)
     } catch (error) {
       console.error("Error loading leads:", error)
     } finally {
@@ -253,14 +234,14 @@ export function CRMManychatPageClient({
     setLeads(prev => prev.map(lead => lead.id === leadId ? { ...lead, ...updates } : lead))
   }, [])
 
-  // Filtrar leads que tienen list_name asignado (Manychat + Trello migrados)
-  const leadsWithListName = useMemo(
-    () => leads.filter((lead) => lead.list_name),
-    [leads]
-  )
+  // Fix 2026-05-06: el filtro por list_name escondía leads de WhatsApp/
+  // Instagram/Meta Ads que vienen sin list_name asignado. Ahora pasamos
+  // TODOS los leads al kanban — el componente tiene fallback interno
+  // (list_name → region → "Sin lista") para asignarlos a una columna.
+  const allLeads = leads
   const effectiveAgencyId = selectedAgencyId !== "ALL"
     ? selectedAgencyId
-    : (leadsWithListName[0] as any)?.agency_id || agencies[0]?.id || defaultAgencyId
+    : (allLeads[0] as any)?.agency_id || agencies[0]?.id || defaultAgencyId
   // Mostrar Kanban siempre que haya agencia seleccionada (las columnas se muestran vacías)
   const shouldUseManychatKanban = !!effectiveAgencyId && effectiveAgencyId !== "ALL"
 
@@ -275,7 +256,7 @@ export function CRMManychatPageClient({
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
-            <BreadcrumbPage>CRM Manychat</BreadcrumbPage>
+            <BreadcrumbPage>CRM Ventas</BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
@@ -283,12 +264,12 @@ export function CRMManychatPageClient({
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-semibold tracking-tight">CRM Manychat</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">CRM Ventas</h1>
             <div 
               className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs ${
                 realtimeConnected 
                   ? 'bg-success/10 text-success'
-                  : 'bg-warning/10 text-warning'
+                  : 'bg-accent-coral/10 text-accent-coral'
               }`}
               title={realtimeConnected ? "Conectado - Los cambios se actualizan automáticamente" : "Conectando..."}
             >
@@ -306,7 +287,7 @@ export function CRMManychatPageClient({
             </div>
           </div>
           <p className="text-muted-foreground">
-            Leads desde Manychat • Actualización en tiempo real
+            Leads de todos los canales (Manychat, WhatsApp, Instagram, Meta Ads) • Actualización en tiempo real
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -363,7 +344,7 @@ export function CRMManychatPageClient({
             </div>
           ) : shouldUseManychatKanban ? (
             <LeadsKanbanManychat
-              leads={leadsWithListName as any}
+              leads={allLeads as any}
               agencyId={effectiveAgencyId!}
               agencies={agencies}
               sellers={sellers}

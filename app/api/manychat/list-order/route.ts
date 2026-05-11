@@ -5,7 +5,7 @@ import { canPerformAction } from "@/lib/permissions-api"
 
 /**
  * GET /api/manychat/list-order?agencyId=xxx
- * Obtiene el orden de listas para CRM Manychat (INDEPENDIENTE de Trello)
+ * Obtiene el orden de listas para CRM Manychat.
  */
 export async function GET(request: Request) {
   try {

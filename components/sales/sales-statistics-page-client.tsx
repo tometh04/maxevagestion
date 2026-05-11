@@ -381,8 +381,8 @@ export function SalesStatisticsPageClient() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card className="p-3">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded bg-info/10">
-              <Users className="h-3.5 w-3.5 text-info" />
+            <div className="p-1.5 rounded bg-accent-teal/10">
+              <Users className="h-3.5 w-3.5 text-accent-teal" />
             </div>
             <div>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Total Leads</p>
@@ -400,19 +400,19 @@ export function SalesStatisticsPageClient() {
             <div>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Activos</p>
               <p className="text-base font-semibold text-primary">{stats.overview.activeLeads}</p>
-              <p className="text-[10px] text-muted-foreground">sin convertir</p>
+              <p className="text-[10px] text-muted-foreground">sin op + no perdidos</p>
             </div>
           </div>
         </Card>
 
         <Card className="p-3">
           <div className="flex items-center gap-2">
-            <div className={`p-1.5 rounded ${stats.overview.conversionRate >= 20 ? 'bg-success/10' : stats.overview.conversionRate >= 10 ? 'bg-warning/10' : 'bg-destructive/10'}`}>
-              <Percent className={`h-3.5 w-3.5 ${stats.overview.conversionRate >= 20 ? 'text-success' : stats.overview.conversionRate >= 10 ? 'text-warning' : 'text-destructive'}`} />
+            <div className={`p-1.5 rounded ${stats.overview.conversionRate >= 20 ? 'bg-success/10' : stats.overview.conversionRate >= 10 ? 'bg-accent-coral/10' : 'bg-destructive/10'}`}>
+              <Percent className={`h-3.5 w-3.5 ${stats.overview.conversionRate >= 20 ? 'text-success' : stats.overview.conversionRate >= 10 ? 'text-accent-coral' : 'text-destructive'}`} />
             </div>
             <div>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Conversión</p>
-              <p className={`text-base font-semibold ${stats.overview.conversionRate >= 20 ? 'text-success' : stats.overview.conversionRate >= 10 ? 'text-warning' : 'text-destructive'}`}>
+              <p className={`text-base font-semibold ${stats.overview.conversionRate >= 20 ? 'text-success' : stats.overview.conversionRate >= 10 ? 'text-accent-coral' : 'text-destructive'}`}>
                 {stats.overview.conversionRate}%
               </p>
               <p className="text-[10px] text-muted-foreground">{stats.overview.wonLeads} convertidos</p>
@@ -592,7 +592,7 @@ export function SalesStatisticsPageClient() {
                       {seller.leads}
                     </TableCell>
                     <TableCell className="text-xs py-1.5 px-2 text-right">
-                      <span className={seller.conversionRate >= 25 ? "text-success" : seller.conversionRate >= 15 ? "text-warning" : "text-muted-foreground"}>
+                      <span className={seller.conversionRate >= 25 ? "text-success" : seller.conversionRate >= 15 ? "text-accent-coral" : "text-muted-foreground"}>
                         {seller.conversionRate.toFixed(1)}%
                       </span>
                     </TableCell>
@@ -641,7 +641,7 @@ export function SalesStatisticsPageClient() {
                       {(source as any).converted || 0}
                     </TableCell>
                     <TableCell className="text-xs py-1.5 px-2 text-right">
-                      <span className={source.conversionRate >= 25 ? "text-success" : source.conversionRate >= 15 ? "text-warning" : "text-muted-foreground"}>
+                      <span className={source.conversionRate >= 25 ? "text-success" : source.conversionRate >= 15 ? "text-accent-coral" : "text-muted-foreground"}>
                         {source.conversionRate.toFixed(1)}%
                       </span>
                     </TableCell>

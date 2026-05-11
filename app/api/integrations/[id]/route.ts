@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { getUserAgencyIds } from "@/lib/permissions-api"
+import { logSecurityEvent } from "@/lib/security/audit"
 import { z } from "zod"
 
 export const dynamic = 'force-dynamic'
@@ -124,6 +125,23 @@ export async function PUT(
       details: { changes: Object.keys(validatedData) },
     })
 
+    // Audit log: solo logueamos los KEYS modificados, no los values
+    // (los values pueden contener secretos como cert/key/api_key).
+    logSecurityEvent({
+      eventType: "integration_updated",
+      severity: validatedData.status === "inactive" ? "WARN" : "INFO",
+      actorUserId: user.id,
+      actorOrgId: user.org_id ?? null,
+      targetEntity: "integration",
+      targetEntityId: id,
+      details: {
+        integration_name: existing.name,
+        integration_type: (existing as any).integration_type,
+        changed_fields: Object.keys(validatedData),
+        new_status: validatedData.status ?? null,
+      },
+    })
+
     return NextResponse.json({ integration })
   } catch (error: any) {
     console.error("Error in PUT /api/integrations/[id]:", error)
@@ -163,6 +181,13 @@ export async function DELETE(
     // Obtener agencias del usuario
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
 
+    // Snapshot pre-delete para audit log
+    const { data: existing } = await (supabase.from("integrations") as any)
+      .select("name, integration_type, agency_id")
+      .eq("id", id)
+      .in("agency_id", agencyIds)
+      .single()
+
     // Hard delete (también elimina logs por CASCADE)
     const { error } = await (supabase.from("integrations") as any)
       .delete()
@@ -175,6 +200,25 @@ export async function DELETE(
         { error: "Error al eliminar integración" },
         { status: 500 }
       )
+    }
+
+    // Audit log: severity ERROR porque borrar una integración AFIP rompe
+    // facturación productiva. Si esto se hace por accidente o con mala
+    // intención, queremos saber quién y cuándo.
+    if (existing) {
+      logSecurityEvent({
+        eventType: "integration_deleted",
+        severity: "ERROR",
+        actorUserId: user.id,
+        actorOrgId: user.org_id ?? null,
+        targetEntity: "integration",
+        targetEntityId: id,
+        details: {
+          integration_name: (existing as any).name,
+          integration_type: (existing as any).integration_type,
+          agency_id: (existing as any).agency_id,
+        },
+      })
     }
 
     return NextResponse.json({ success: true })

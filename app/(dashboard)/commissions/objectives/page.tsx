@@ -210,7 +210,7 @@ export default function ObjectivesPage() {
           </Link>
           <div>
             <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
-              <Trophy className="h-6 w-6 text-warning" />
+              <Trophy className="h-6 w-6 text-accent-coral" />
               Objetivos de Vendedores
             </h1>
             <p className="text-muted-foreground text-sm">

@@ -288,8 +288,8 @@ export function OperationsStatisticsPageClient() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card className="p-3">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded bg-info/10">
-              <DollarSign className="h-3.5 w-3.5 text-info" />
+            <div className="p-1.5 rounded bg-accent-teal/10">
+              <DollarSign className="h-3.5 w-3.5 text-accent-teal" />
             </div>
             <div>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Ventas</p>
@@ -458,7 +458,7 @@ export function OperationsStatisticsPageClient() {
                       {formatCurrency(dest.totalSales)}
                     </TableCell>
                     <TableCell className="text-xs py-1.5 px-2 text-right">
-                      <span className={dest.avgMargin >= 15 ? "text-success" : dest.avgMargin >= 10 ? "text-warning" : "text-muted-foreground"}>
+                      <span className={dest.avgMargin >= 15 ? "text-success" : dest.avgMargin >= 10 ? "text-accent-coral" : "text-muted-foreground"}>
                         {dest.avgMargin.toFixed(0)}%
                       </span>
                     </TableCell>

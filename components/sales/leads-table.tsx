@@ -20,12 +20,12 @@ import { ServerPagination } from "@/components/ui/server-pagination"
 import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
 
 const regionColors: Record<string, string> = {
-  ARGENTINA: "bg-info",
-  CARIBE: "bg-cyan-500",
+  ARGENTINA: "bg-accent-teal",
+  CARIBE: "bg-accent-teal",
   BRASIL: "bg-success",
-  EUROPA: "bg-purple-500",
+  EUROPA: "bg-accent-violet",
   EEUU: "bg-destructive",
-  OTROS: "bg-gray-500",
+  OTROS: "bg-muted-foreground",
   CRUCEROS: "bg-primary",
 }
 

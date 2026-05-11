@@ -27,10 +27,10 @@ const KIND_LABEL: Record<Item["kind"], string> = {
 }
 
 const KIND_COLOR: Record<Item["kind"], string> = {
-  operation: "bg-blue-500/15 text-blue-300",
-  lead: "bg-violet-500/15 text-violet-300",
-  payment: "bg-emerald-500/15 text-emerald-300",
-  login: "bg-slate-500/15 text-slate-300",
+  operation: "bg-primary/15 text-primary",
+  lead: "bg-accent-violet/15 text-accent-violet",
+  payment: "bg-success/15 text-success",
+  login: "bg-muted-foreground/15 text-muted-foreground",
 }
 
 export async function OrgActivityTimeline({ orgId }: { orgId: string }) {
@@ -131,9 +131,9 @@ export async function OrgActivityTimeline({ orgId }: { orgId: string }) {
   const top = items.slice(0, 30)
 
   return (
-    <Card className="bg-slate-900/60 border-slate-800">
+    <Card className="bg-card border-border">
       <CardHeader>
-        <CardTitle className="text-white text-base">Actividad reciente</CardTitle>
+        <CardTitle className="text-foreground text-base">Actividad reciente</CardTitle>
       </CardHeader>
       <CardContent>
         {top.length === 0 ? (
@@ -143,14 +143,14 @@ export async function OrgActivityTimeline({ orgId }: { orgId: string }) {
             description="Esta org todavía no registró operaciones, leads, pagos ni logins."
           />
         ) : (
-          <ol className="relative space-y-3 border-l border-slate-800 pl-5">
+          <ol className="relative space-y-3 border-l border-border pl-5">
             {top.map((it) => {
               const Icon = ICONS[it.kind]
               return (
                 <li key={it.id} className="relative">
                   <span
                     className={cn(
-                      "absolute -left-[26px] top-0.5 flex h-5 w-5 items-center justify-center rounded-full border border-slate-800 bg-slate-950",
+                      "absolute -left-[26px] top-0.5 flex h-5 w-5 items-center justify-center rounded-full border border-border bg-muted",
                       KIND_COLOR[it.kind],
                     )}
                   >
@@ -166,9 +166,9 @@ export async function OrgActivityTimeline({ orgId }: { orgId: string }) {
                       >
                         {KIND_LABEL[it.kind]}
                       </span>
-                      <span className="text-slate-200">{it.title}</span>
+                      <span className="text-muted-foreground">{it.title}</span>
                     </div>
-                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <span>{relativeTime(it.occurred_at)}</span>
                       {it.detail && (
                         <>

@@ -48,9 +48,6 @@ export async function POST(
 
     // Probar según el tipo de integración
     switch (integration.integration_type) {
-      case 'trello':
-        testResult = await testTrelloConnection(integration.config)
-        break
       case 'manychat':
         testResult = await testManychatConnection(integration.config)
         break
@@ -110,29 +107,6 @@ export async function POST(
 }
 
 // Funciones de prueba para cada tipo de integración
-async function testTrelloConnection(config: any): Promise<{ success: boolean; message: string; details?: any }> {
-  if (!config.api_key || !config.token) {
-    return { success: false, message: "API Key y Token son requeridos" }
-  }
-  
-  try {
-    const response = await fetch(
-      `https://api.trello.com/1/members/me?key=${config.api_key}&token=${config.token}`
-    )
-    if (response.ok) {
-      const data = await response.json()
-      return { 
-        success: true, 
-        message: `Conexión exitosa - Usuario: ${data.fullName}`,
-        details: { username: data.username, fullName: data.fullName }
-      }
-    }
-    return { success: false, message: "Credenciales inválidas" }
-  } catch {
-    return { success: false, message: "Error de conexión con Trello" }
-  }
-}
-
 async function testManychatConnection(config: any): Promise<{ success: boolean; message: string; details?: any }> {
   if (!config.api_key) {
     return { success: false, message: "API Key es requerida" }

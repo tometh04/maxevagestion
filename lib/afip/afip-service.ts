@@ -10,6 +10,7 @@ import type { AfipConfig } from "./afip-config"
 import { isAfipConfigValid } from "./afip-config"
 import { afipRateCache } from "./rate-cache"
 import { diffVoucher, type VoucherFields, type VoucherDiff } from "./diff"
+import { getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
 
 type AfipSdkInstance = {
   ElectronicBilling: {
@@ -17,7 +18,8 @@ type AfipSdkInstance = {
     getLastVoucher: (pv: number, cbte: number) => Promise<number>
     getVoucherInfo: (nro: number, pv: number, cbte: number) => Promise<any | null>
     getSalesPoints: () => Promise<any>
-    getExchangeRate: (monId: string, date: string) => Promise<any>
+    getExchangeRate?: (monId: string, date: string) => Promise<any>
+    executeRequest?: (operation: string, params?: any) => Promise<any>
   }
   RegisterScopeThirteen?: {
     getTaxpayerDetails: (cuit: number) => Promise<any>
@@ -197,7 +199,7 @@ export class AfipService {
       ImpIVA: draft.imp_iva,
       DocNro: Number(draft.receptor_doc_nro),
       DocTipo: draft.receptor_doc_tipo,
-      CbteFch: this.formatDate(draft.fecha_emision),
+      CbteFch: this.formatDate(draft.fecha_emision || new Date()),
       CbteDesde: voucherNumber,
       CbteHasta: voucherNumber,
     }
@@ -300,7 +302,7 @@ export class AfipService {
       ImpIVA: inv.imp_iva,
       DocNro: Number(inv.receptor_doc_nro),
       DocTipo: inv.receptor_doc_tipo,
-      CbteFch: this.formatDate(inv.fecha_emision),
+      CbteFch: this.formatDate(inv.fecha_emision || new Date()),
       CbteDesde: inv.cbte_nro,
       CbteHasta: inv.cbte_nro,
     }
@@ -357,14 +359,30 @@ export class AfipService {
     const cached = afipRateCache.get(cacheKey)
     if (cached !== undefined) return cached
 
-    const response = await this.afip.ElectronicBilling.getExchangeRate(currency, dateStr)
+    let response: any = null
+
+    if (typeof this.afip.ElectronicBilling.getExchangeRate === "function") {
+      response = await this.afip.ElectronicBilling.getExchangeRate(currency, dateStr)
+    } else if (typeof this.afip.ElectronicBilling.executeRequest === "function") {
+      response = await this.afip.ElectronicBilling.executeRequest("FEParamGetCotizacion", {
+        MonId: currency,
+      })
+    }
+
+    const result = response?.ResultGet ?? response
     const rate =
-      typeof response === "number"
-        ? response
-        : Number(response?.MonCotiz ?? response?.cotizacion ?? 0)
+      typeof result === "number"
+        ? result
+        : Number(result?.MonCotiz ?? result?.cotizacion ?? 0)
 
     if (!rate || rate <= 0) {
-      throw new Error(`AFIP no devolvió cotización válida para ${currency} el ${dateStr}`)
+      const fallback = await getExchangeRateWithFallback(
+        this.supabase as any,
+        d,
+        `afip-rate-${this.orgId}-${currency}`
+      )
+      afipRateCache.set(cacheKey, fallback.rate)
+      return fallback.rate
     }
 
     afipRateCache.set(cacheKey, rate)
@@ -449,9 +467,26 @@ export class AfipService {
     if (ivaArray.length > 0) payload.Iva = ivaArray
 
     if (draft.concepto === 2 || draft.concepto === 3) {
-      payload.FchServDesde = this.formatDate(draft.fch_serv_desde)
-      payload.FchServHasta = this.formatDate(draft.fch_serv_hasta)
-      payload.FchVtoPago = this.formatDate(draft.fch_vto_pago || draft.fch_serv_hasta)
+      const serviceFrom = draft.fch_serv_desde || draft.fecha_emision || new Date()
+      const serviceTo = draft.fch_serv_hasta || serviceFrom
+
+      // Bug fix 2026-05-06: AFIP error 10036 — "FchVtoPago no puede ser
+      // anterior a la fecha del comprobante". Caso real: facturación
+      // retroactiva de un viaje ya finalizado. Antes usábamos `serviceTo`
+      // como fallback de paymentDue, lo cual es un fecha pasada cuando
+      // se factura post-trip. Ahora clampeamos al cbteFch (fecha de
+      // emisión, que el comprobante usa como CbteFch en AFIP).
+      const cbteFch = draft.fecha_emision || new Date()
+      const cbteFchTime = (cbteFch instanceof Date ? cbteFch : new Date(cbteFch)).getTime()
+      let paymentDue: string | Date = draft.fecha_vto_pago || serviceTo
+      const paymentDueTime = (paymentDue instanceof Date ? paymentDue : new Date(paymentDue)).getTime()
+      if (Number.isFinite(paymentDueTime) && Number.isFinite(cbteFchTime) && paymentDueTime < cbteFchTime) {
+        paymentDue = cbteFch
+      }
+
+      payload.FchServDesde = this.formatDate(serviceFrom)
+      payload.FchServHasta = this.formatDate(serviceTo)
+      payload.FchVtoPago = this.formatDate(paymentDue)
     }
 
     return payload

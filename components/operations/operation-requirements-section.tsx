@@ -36,11 +36,11 @@ interface OperationRequirementsSectionProps {
 
 const typeConfig: Record<string, { icon: any; label: string; color: string }> = {
   VACCINE: { icon: Syringe, label: "Vacuna", color: "bg-destructive" },
-  FORM: { icon: FileText, label: "Formulario", color: "bg-info" },
-  VISA: { icon: CreditCard, label: "Visa", color: "bg-purple-500" },
+  FORM: { icon: FileText, label: "Formulario", color: "bg-accent-teal" },
+  VISA: { icon: CreditCard, label: "Visa", color: "bg-accent-violet" },
   INSURANCE: { icon: Shield, label: "Seguro", color: "bg-success" },
-  DOCUMENT: { icon: File, label: "Documento", color: "bg-warning" },
-  OTHER: { icon: Info, label: "Otro", color: "bg-gray-500" },
+  DOCUMENT: { icon: File, label: "Documento", color: "bg-accent-coral" },
+  OTHER: { icon: Info, label: "Otro", color: "bg-muted-foreground" },
 }
 
 export function OperationRequirementsSection({ destination, departureDate }: OperationRequirementsSectionProps) {
@@ -123,7 +123,7 @@ export function OperationRequirementsSection({ destination, departureDate }: Ope
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 text-warning" />
+            <AlertTriangle className="h-4 w-4 text-accent-coral" />
             Requisitos del Destino
           </CardTitle>
           {matchedDestinations.length > 0 && (

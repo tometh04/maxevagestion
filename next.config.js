@@ -6,10 +6,11 @@ const nextConfig = {
   // so Vercel's file tracer picks it up and includes it in the serverless deployment
   serverExternalPackages: ['@afipsdk/afip.js'],
   outputFileTracingRoot: path.join(__dirname),
-  // Existe código legacy (app/api/exchange-rates/*, app/api/destination-requirements/*)
-  // que referencia tablas no tipadas en lib/supabase/types.ts post-regen del 2026-04-22.
-  // No bloqueamos deploys; el TS check corre en dev/CI. TODO: restaurar tipos o refactor.
-  typescript: { ignoreBuildErrors: true },
+  // 2026-05-05: removido `typescript.ignoreBuildErrors`. tsc pasa con 0 errores
+  // tras limpiar V1 import (dead code), corregir casts en tablas no tipadas
+  // (agency_settings, user_notification_preferences) y sumar campos faltantes
+  // del mock user. Si una migration nueva agrega tablas/columnas y rompe el
+  // build, regenerar types con `npm run db:generate` antes de mergear.
   eslint: { ignoreDuringBuilds: true },
   images: {
     remotePatterns: [

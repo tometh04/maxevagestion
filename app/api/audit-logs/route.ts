@@ -31,6 +31,7 @@ export async function GET(request: Request) {
       .select(`
         id,
         user_id,
+        org_id,
         action,
         entity_type,
         entity_id,
@@ -42,6 +43,14 @@ export async function GET(request: Request) {
         )
       `, { count: "exact" })
       .order("created_at", { ascending: false })
+
+    // P0 2026-05-10: scopear por org_id del user. Defense-in-depth además
+    // del RLS policy (mig 20260510000003). SUPER_ADMIN global ve todos
+    // (incluye rows sin org_id que son system actions).
+    const userOrgId = (user as any).org_id as string | null
+    if (user.role !== "SUPER_ADMIN" && userOrgId) {
+      query = query.eq("org_id", userOrgId)
+    }
 
     // Filtros
     if (action) {

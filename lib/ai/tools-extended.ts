@@ -208,7 +208,7 @@ export async function getSalesByChannel(user: User, from?: string, to?: string):
   const channelStats: Record<string, any> = {
     "Instagram": { channel: "Instagram", sales: 0, count: 0 },
     "WhatsApp": { channel: "WhatsApp", sales: 0, count: 0 },
-    "Trello": { channel: "Trello", sales: 0, count: 0 },
+    "Manychat": { channel: "Manychat", sales: 0, count: 0 },
     "Referido": { channel: "Referido", sales: 0, count: 0 },
     "Web": { channel: "Web", sales: 0, count: 0 },
     "Otro": { channel: "Otro", sales: 0, count: 0 },
@@ -217,9 +217,9 @@ export async function getSalesByChannel(user: User, from?: string, to?: string):
   for (const op of (operations || [])) {
     const lead = (wonLeads || []).find((l: any) => l.id === op.lead_id)
     const source = lead?.source || "Otro"
-    const channel = source.includes("Instagram") ? "Instagram" 
+    const channel = source.includes("Instagram") ? "Instagram"
       : source.includes("WhatsApp") ? "WhatsApp"
-      : source.includes("Trello") ? "Trello"
+      : source.includes("Manychat") ? "Manychat"
       : source.includes("Referido") ? "Referido"
       : source.includes("Web") ? "Web"
       : "Otro"

@@ -111,8 +111,10 @@ export function RegisterForm({
       {...props}
     >
       <FieldGroup>
-        <div className="flex flex-col items-center gap-1 text-center">
-          <h1 className="text-2xl font-bold">Crear cuenta</h1>
+        <div className="flex flex-col items-center gap-2 text-center">
+          <h1 className="text-3xl font-bold tracking-tighter-h2 leading-[1.1]">
+            <span className="text-gradient-signature">Crear cuenta</span>
+          </h1>
           <p className="text-muted-foreground text-sm text-balance">
             {wantsPro
               ? "Probá Vibook PRO 7 días gratis. Conectás MercadoPago al terminar."
@@ -120,7 +122,7 @@ export function RegisterForm({
           </p>
         </div>
         {error && (
-          <Alert className="text-red-600">
+          <Alert className="text-destructive">
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
@@ -255,7 +257,7 @@ export function RegisterForm({
           )}
         </Field>
         <Field>
-          <Button type="submit" disabled={loading} className="w-full">
+          <Button type="submit" variant="cta" size="lg" disabled={loading} className="w-full">
             {loading
               ? "Creando cuenta..."
               : wantsPro

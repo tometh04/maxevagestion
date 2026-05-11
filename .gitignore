@@ -66,8 +66,22 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+.gstack/
 
-# Graphify hook cache (do not commit)
+# iCloud Drive sync conflicts (e.g. "file 2.ts", "file 3.md")
+# El repo vivió en iCloud y los duplicados se commitearon por error. Estos
+# archivos siempre son ruido — ignorar para que no entren al index nunca más.
+* [0-9].py
+* [0-9].ts
+* [0-9].tsx
+* [0-9].md
+* [0-9].sql
+* [0-9].mjs
+* [0-9].js
+* [0-9].csv
+* [0-9].patch
+
+# Graphify knowledge graph (local-only working data)
 graphify-out/
 
 # Supabase CLI temp state

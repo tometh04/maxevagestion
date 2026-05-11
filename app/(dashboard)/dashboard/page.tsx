@@ -2,8 +2,10 @@ import dynamic from "next/dynamic"
 import { headers } from "next/headers"
 import { DashboardFiltersState } from "@/components/dashboard/dashboard-filters"
 import { ImportBanner } from "@/components/dashboard/import-banner"
+import { AfipNotConfiguredBanner } from "@/components/dashboard/afip-not-configured-banner"
 import { getCurrentUser } from "@/lib/auth"
 import { createServerClient } from "@/lib/supabase/server"
+import { getAfipServiceForOrg } from "@/lib/afip/afip-service"
 import { Skeleton } from "@/components/ui/skeleton"
 import { makeTimer } from "@/lib/perf-log"
 
@@ -55,6 +57,15 @@ export default async function DashboardPage() {
   // - Otros roles: user_agencies + sellers en paralelo, luego agencies scoped.
   const userRole = user.role as string
 
+  // AFIP banner check: solo para roles admin con org_id. Disparamos en paralelo
+  // con las queries de abajo y resolvemos al final. Si no aplica, Promise.resolve
+  // garantiza que el await no agrega latencia.
+  const isAdminRole = userRole === "SUPER_ADMIN" || userRole === "ADMIN" || userRole === "ORG_OWNER"
+  const afipCheckPromise: Promise<boolean> =
+    isAdminRole && user.org_id
+      ? getAfipServiceForOrg(supabase, user.org_id).then((svc) => svc === null).catch(() => false)
+      : Promise.resolve(false)
+
   let sellersQuery = supabase
     .from("users")
     .select("id, name")
@@ -92,7 +103,10 @@ export default async function DashboardPage() {
     }
   }
 
-  t.end(`agencies=${agencies.length} sellers=${sellers?.length ?? 0} role=${userRole}`)
+  const afipNotConfigured = await afipCheckPromise
+  t.mark("afip check")
+
+  t.end(`agencies=${agencies.length} sellers=${sellers?.length ?? 0} role=${userRole} afipMissing=${afipNotConfigured}`)
 
   const dates = getDefaultDateRange()
 
@@ -105,6 +119,9 @@ export default async function DashboardPage() {
 
   return (
     <>
+      {afipNotConfigured && user.org_id && (
+        <AfipNotConfiguredBanner orgId={user.org_id} />
+      )}
       <ImportBanner />
       <DashboardPageClient
         agencies={agencies}

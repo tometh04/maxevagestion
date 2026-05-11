@@ -28,12 +28,16 @@ import {
   getQuotationPassengerCount,
   getQuotationPassengersText,
   QUOTATION_AVAILABILITY_NOTE,
-  QUOTATION_FLIGHT_CLASS_LABELS,
+  // QUOTATION_FLIGHT_CLASS_LABELS — removido 2026-05-07 con el rediseño del FlightCard.
   QUOTATION_MEAL_PLAN_LABELS,
   QUOTATION_STATUS_LABELS,
   type QuotationPresentationData,
   type QuotationPresentationItem,
 } from "@/lib/quotations/presentation"
+import {
+  getQuotationItemTypeColors,
+  getQuotationStatusColors,
+} from "@/lib/vibook-status-colors"
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   EFECTIVO_USD: "Efectivo USD",
@@ -80,27 +84,27 @@ interface PublicQuotationDocumentProps {
   onDownload: () => void
 }
 
-const ITEM_TYPE_CONFIG: Record<string, { label: string; icon: LucideIcon; emoji: string; bgColor: string }> = {
-  FLIGHT: { label: "Vuelo", icon: Plane, emoji: "\u2708\uFE0F", bgColor: "bg-blue-50" },
-  HOTEL: { label: "Hotel", icon: Hotel, emoji: "\uD83C\uDFE8", bgColor: "bg-amber-50" },
-  ACCOMMODATION: { label: "Alojamiento", icon: Hotel, emoji: "\uD83C\uDFE8", bgColor: "bg-amber-50" },
-  TRANSFER: { label: "Traslado", icon: Bus, emoji: "\uD83D\uDE90", bgColor: "bg-emerald-50" },
-  ASSISTANCE: { label: "Asistencia", icon: Shield, emoji: "\uD83D\uDEE1\uFE0F", bgColor: "bg-purple-50" },
-  INSURANCE: { label: "Asistencia", icon: Shield, emoji: "\uD83D\uDEE1\uFE0F", bgColor: "bg-purple-50" },
-  EXCURSION: { label: "Excursion", icon: MapPin, emoji: "\uD83C\uDFAF", bgColor: "bg-rose-50" },
-  ACTIVITY: { label: "Excursion", icon: MapPin, emoji: "\uD83C\uDFAF", bgColor: "bg-rose-50" },
-  VISA: { label: "Visa", icon: MapPin, emoji: "\uD83D\uDCC4", bgColor: "bg-indigo-50" },
-  OTHER: { label: "Otro", icon: MapPin, emoji: "\uD83D\uDCCB", bgColor: "bg-gray-50" },
+const ITEM_TYPE_CONFIG: Record<string, { label: string; icon: LucideIcon; emoji: string }> = {
+  FLIGHT: { label: "Vuelo", icon: Plane, emoji: "\u2708\uFE0F" },
+  HOTEL: { label: "Hotel", icon: Hotel, emoji: "\uD83C\uDFE8" },
+  ACCOMMODATION: { label: "Alojamiento", icon: Hotel, emoji: "\uD83C\uDFE8" },
+  TRANSFER: { label: "Traslado", icon: Bus, emoji: "\uD83D\uDE90" },
+  ASSISTANCE: { label: "Asistencia", icon: Shield, emoji: "\uD83D\uDEE1\uFE0F" },
+  INSURANCE: { label: "Asistencia", icon: Shield, emoji: "\uD83D\uDEE1\uFE0F" },
+  EXCURSION: { label: "Excursion", icon: MapPin, emoji: "\uD83C\uDFAF" },
+  ACTIVITY: { label: "Excursion", icon: MapPin, emoji: "\uD83C\uDFAF" },
+  VISA: { label: "Visa", icon: MapPin, emoji: "\uD83D\uDCC4" },
+  OTHER: { label: "Otro", icon: MapPin, emoji: "\uD83D\uDCCB" },
 }
 
-const STATUS_CONFIG: Record<string, { label: string; color: string; icon: LucideIcon }> = {
-  DRAFT: { label: QUOTATION_STATUS_LABELS.DRAFT, color: "bg-slate-100 text-slate-700 border-slate-200", icon: Eye },
-  SENT: { label: QUOTATION_STATUS_LABELS.SENT, color: "bg-blue-100 text-blue-700 border-blue-200", icon: Clock },
-  PENDING_APPROVAL: { label: QUOTATION_STATUS_LABELS.PENDING_APPROVAL, color: "bg-yellow-100 text-yellow-700 border-yellow-200", icon: Clock },
-  APPROVED: { label: QUOTATION_STATUS_LABELS.APPROVED, color: "bg-green-100 text-green-700 border-green-200", icon: CheckCircle2 },
-  REJECTED: { label: QUOTATION_STATUS_LABELS.REJECTED, color: "bg-red-100 text-red-700 border-red-200", icon: XCircle },
-  EXPIRED: { label: QUOTATION_STATUS_LABELS.EXPIRED, color: "bg-gray-100 text-gray-600 border-gray-200", icon: AlertTriangle },
-  CONVERTED: { label: QUOTATION_STATUS_LABELS.CONVERTED, color: "bg-green-100 text-green-700 border-green-200", icon: CheckCircle2 },
+const STATUS_CONFIG: Record<string, { label: string; icon: LucideIcon }> = {
+  DRAFT: { label: QUOTATION_STATUS_LABELS.DRAFT, icon: Eye },
+  SENT: { label: QUOTATION_STATUS_LABELS.SENT, icon: Clock },
+  PENDING_APPROVAL: { label: QUOTATION_STATUS_LABELS.PENDING_APPROVAL, icon: Clock },
+  APPROVED: { label: QUOTATION_STATUS_LABELS.APPROVED, icon: CheckCircle2 },
+  REJECTED: { label: QUOTATION_STATUS_LABELS.REJECTED, icon: XCircle },
+  EXPIRED: { label: QUOTATION_STATUS_LABELS.EXPIRED, icon: AlertTriangle },
+  CONVERTED: { label: QUOTATION_STATUS_LABELS.CONVERTED, icon: CheckCircle2 },
 }
 
 function HotelCard({ item, brandColor }: { item: QuotationPresentationItem; brandColor: string }) {
@@ -114,7 +118,7 @@ function HotelCard({ item, brandColor }: { item: QuotationPresentationItem; bran
           <img src={item.hotel_photo_url} alt={item.hotel_name || "Hotel"} className="w-full h-full object-cover" />
           <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
           <div className="absolute bottom-2 left-3 flex items-center gap-2">
-            {stars && <span className="text-amber-400 text-sm drop-shadow-lg">{stars}</span>}
+            {stars && <span className="text-accent-coral text-sm drop-shadow-lg">{stars}</span>}
             <h4 className="font-bold text-white text-sm drop-shadow-lg">
               {item.hotel_name || item.description}
             </h4>
@@ -126,15 +130,15 @@ function HotelCard({ item, brandColor }: { item: QuotationPresentationItem; bran
         {!item.hotel_photo_url && (
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center text-lg flex-shrink-0">
+              <div className="w-10 h-10 rounded-lg bg-accent-coral/5 flex items-center justify-center text-lg flex-shrink-0">
                 🏨
               </div>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: brandColor }}>Alojamiento</p>
-                <h4 className="font-semibold text-gray-900 text-sm mt-0.5">
+                <h4 className="font-semibold text-foreground text-sm mt-0.5">
                   {item.hotel_name || item.description}
                 </h4>
-                {stars && <p className="text-amber-500 text-sm tracking-wider">{stars}</p>}
+                {stars && <p className="text-accent-coral text-sm tracking-wider">{stars}</p>}
               </div>
             </div>
             {item.price_per_unit != null && item.price_per_unit > 0 && (
@@ -146,38 +150,38 @@ function HotelCard({ item, brandColor }: { item: QuotationPresentationItem; bran
         )}
 
         {item.hotel_name && item.description && item.hotel_name !== item.description && (
-          <p className="text-sm text-gray-600">{item.description}</p>
+          <p className="text-sm text-muted-foreground">{item.description}</p>
         )}
 
         <div className="flex flex-wrap gap-2">
           {item.destination_city && (
-            <Badge variant="secondary" className="flex items-center gap-1 text-xs font-medium bg-slate-100 text-slate-700">
+            <Badge variant="secondary" className="flex items-center gap-1 text-xs font-medium bg-muted text-foreground">
               <MapPin className="h-3 w-3" />
               {item.destination_city}
             </Badge>
           )}
           {item.room_type && (
-            <Badge variant="secondary" className="text-xs font-medium bg-gray-100 text-gray-700">
+            <Badge variant="secondary" className="text-xs font-medium bg-muted text-foreground">
               {item.room_type}
             </Badge>
           )}
           {mealLabel && (
-            <Badge variant="secondary" className="text-xs font-medium bg-amber-100 text-amber-800">
+            <Badge variant="secondary" className="text-xs font-medium bg-accent-coral/10 text-accent-coral">
               {mealLabel}
             </Badge>
           )}
           {item.rooms && item.rooms > 1 && (
-            <Badge variant="secondary" className="text-xs font-medium bg-blue-100 text-blue-700">
+            <Badge variant="secondary" className="text-xs font-medium bg-primary/10 text-primary">
               {item.rooms} habitaciones
             </Badge>
           )}
         </div>
 
         {item.checkin_date && item.checkout_date && (
-          <div className="flex items-center gap-2 text-sm text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
-            <Calendar className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
+          <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted rounded-lg px-3 py-2">
+            <Calendar className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
             <span>{formatQuotationDateShort(item.checkin_date)}</span>
-            <span className="text-gray-400">&rarr;</span>
+            <span className="text-muted-foreground">&rarr;</span>
             <span>{formatQuotationDateShort(item.checkout_date)}</span>
             {item.nights && (
               <span className="text-xs text-muted-foreground ml-auto">
@@ -203,64 +207,30 @@ function HotelCard({ item, brandColor }: { item: QuotationPresentationItem; bran
 }
 
 function FlightCard({ item, brandColor }: { item: QuotationPresentationItem; brandColor: string }) {
-  const classLabel = item.flight_class ? (QUOTATION_FLIGHT_CLASS_LABELS[item.flight_class] || item.flight_class) : null
-  const routeDisplay = item.flight_route
-    ? item.flight_route.replace(/\s*[-→>]+\s*/g, " \u2708 ")
-    : null
+  // Feedback Yami 2026-05-07: aerolínea, ruta, clase y escalas se sacaron de
+  // la card pública del vuelo — esa info ahora va embebida en el screenshot.
+  // Quedan solo: ícono de tipo, fechas y screenshot.
 
   return (
     <div className="quotation-print-service bg-white border rounded-xl p-4 space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center text-lg flex-shrink-0">
+          <div className="w-10 h-10 rounded-lg bg-primary/5 flex items-center justify-center text-lg flex-shrink-0">
             ✈️
           </div>
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: brandColor }}>Vuelo</p>
-            {item.airline && <h4 className="font-semibold text-gray-900 text-sm mt-0.5">{item.airline}</h4>}
           </div>
         </div>
       </div>
 
-      {routeDisplay && (
-        <div className="text-center py-2">
-          <p className="text-lg font-bold text-gray-800 tracking-wider">{routeDisplay}</p>
-        </div>
-      )}
-
-      {!routeDisplay && item.description && (
-        <p className="text-sm text-gray-600">{item.description}</p>
-      )}
-
-      <div className="flex flex-wrap gap-2 justify-center">
-        {classLabel && (
-          <Badge variant="secondary" className="text-xs font-medium bg-blue-100 text-blue-700">
-            {classLabel}
-          </Badge>
-        )}
-        {item.flight_stops != null && item.flight_stops > 0 && (
-          <Badge variant="secondary" className="text-xs font-medium bg-orange-100 text-orange-700">
-            {item.flight_stops} escala{item.flight_stops > 1 ? "s" : ""}
-          </Badge>
-        )}
-        {item.flight_stops === 0 && (
-          <Badge variant="secondary" className="text-xs font-medium bg-green-100 text-green-700">
-            Directo
-          </Badge>
-        )}
-      </div>
-
       {(item.flight_date || item.flight_return_date) && (
-        <div className="flex items-center gap-2 text-sm text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
-          <Calendar className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
+        <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted rounded-lg px-3 py-2">
+          <Calendar className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
           {item.flight_date && <span>Ida: {formatQuotationDateShort(item.flight_date)}</span>}
-          {item.flight_date && item.flight_return_date && <span className="text-gray-400">|</span>}
+          {item.flight_date && item.flight_return_date && <span className="text-muted-foreground">|</span>}
           {item.flight_return_date && <span>Vuelta: {formatQuotationDateShort(item.flight_return_date)}</span>}
         </div>
-      )}
-
-      {routeDisplay && item.description && item.description !== item.flight_route && (
-        <p className="text-xs text-muted-foreground">{item.description}</p>
       )}
 
       {item.flight_screenshot_url && (
@@ -268,7 +238,7 @@ function FlightCard({ item, brandColor }: { item: QuotationPresentationItem; bra
           <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground text-center">
             Itinerario del vuelo
           </p>
-          <div className="rounded-xl border bg-slate-50 p-2">
+          <div className="rounded-xl border bg-muted p-2">
             <img
               src={item.flight_screenshot_url}
               alt="Itinerario del vuelo"
@@ -289,19 +259,15 @@ function TransferCard({ item, brandColor }: { item: QuotationPresentationItem; b
   return (
     <div className="quotation-print-service bg-white border rounded-xl p-4 space-y-2">
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center text-lg flex-shrink-0">
+        <div className="w-10 h-10 rounded-lg bg-success/5 flex items-center justify-center text-lg flex-shrink-0">
           🚐
         </div>
         <div className="flex-1">
           <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: brandColor }}>Traslado</p>
-          <h4 className="font-semibold text-gray-900 text-sm mt-0.5">
-            {item.transfer_description || item.description}
-          </h4>
+          {/* Feedback Yami 2026-05-07: el campo Detalle del traslado se sacó.
+              La info contextual va en quotations.package_description. */}
         </div>
       </div>
-      {item.transfer_description && item.description && item.transfer_description !== item.description && (
-        <p className="text-sm text-gray-600">{item.description}</p>
-      )}
       {item.provider && (
         <p className="text-xs text-muted-foreground">Operador: {item.provider}</p>
       )}
@@ -313,12 +279,12 @@ function InsuranceCard({ item, brandColor }: { item: QuotationPresentationItem; 
   return (
     <div className="quotation-print-service bg-white border rounded-xl p-4 space-y-2">
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-lg bg-purple-50 flex items-center justify-center text-lg flex-shrink-0">
+        <div className="w-10 h-10 rounded-lg bg-accent-violet/5 flex items-center justify-center text-lg flex-shrink-0">
           🛡️
         </div>
         <div className="flex-1">
           <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: brandColor }}>Asistencia al viajero</p>
-          <h4 className="font-semibold text-gray-900 text-sm mt-0.5">{item.description}</h4>
+          <h4 className="font-semibold text-foreground text-sm mt-0.5">{item.description}</h4>
         </div>
       </div>
       {item.provider && (
@@ -330,16 +296,17 @@ function InsuranceCard({ item, brandColor }: { item: QuotationPresentationItem; 
 
 function ActivityCard({ item, brandColor }: { item: QuotationPresentationItem; brandColor: string }) {
   const config = ITEM_TYPE_CONFIG[item.item_type] || ITEM_TYPE_CONFIG.OTHER
+  const colors = getQuotationItemTypeColors(item.item_type)
 
   return (
     <div className="quotation-print-service bg-white border rounded-xl p-4 space-y-2">
       <div className="flex items-center gap-3">
-        <div className={`w-10 h-10 rounded-lg ${config.bgColor} flex items-center justify-center text-lg flex-shrink-0`}>
+        <div className={`w-10 h-10 rounded-lg ${colors.bg} flex items-center justify-center text-lg flex-shrink-0`}>
           {config.emoji}
         </div>
         <div className="flex-1">
           <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: brandColor }}>{config.label}</p>
-          <h4 className="font-semibold text-gray-900 text-sm mt-0.5">{item.description}</h4>
+          <h4 className="font-semibold text-foreground text-sm mt-0.5">{item.description}</h4>
         </div>
       </div>
       {item.provider && (
@@ -371,9 +338,9 @@ function ServiceCard({ item, brandColor }: { item: QuotationPresentationItem; br
 
 export function PublicQuotationLoading({ mode }: { mode: PublicQuotationViewMode }) {
   return (
-    <div className={`min-h-screen flex items-center justify-center ${mode === "print" ? "bg-white" : "bg-gray-50"}`}>
+    <div className={`light-force min-h-screen flex items-center justify-center ${mode === "print" ? "bg-white" : "bg-muted"}`}>
       <div className="text-center space-y-3">
-        <Loader2 className="h-8 w-8 animate-spin text-gray-400 mx-auto" />
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mx-auto" />
         <p className="text-sm text-muted-foreground">Cargando cotizacion...</p>
       </div>
     </div>
@@ -388,10 +355,10 @@ export function PublicQuotationError({
   message: string
 }) {
   return (
-    <div className={`min-h-screen flex items-center justify-center ${mode === "print" ? "bg-white" : "bg-gray-50"}`}>
+    <div className={`light-force min-h-screen flex items-center justify-center ${mode === "print" ? "bg-white" : "bg-muted"}`}>
       <Card className="max-w-md w-full mx-4">
         <CardContent className="pt-6 text-center">
-          <AlertTriangle className="h-12 w-12 text-yellow-500 mx-auto mb-4" />
+          <AlertTriangle className="h-12 w-12 text-accent-coral mx-auto mb-4" />
           <h2 className="text-lg font-semibold mb-2">Cotizacion no disponible</h2>
           <p className="text-muted-foreground text-sm">{message}</p>
         </CardContent>
@@ -410,6 +377,7 @@ export function PublicQuotationDocument({
   onDownload,
 }: PublicQuotationDocumentProps) {
   const statusConfig = STATUS_CONFIG[data.status] || STATUS_CONFIG.DRAFT
+  const statusColors = getQuotationStatusColors(data.status)
   const StatusIcon = statusConfig.icon
   const canAccept = mode === "interactive" && ["SENT", "PENDING_APPROVAL"].includes(data.status)
   const accepted = ["APPROVED", "CONVERTED"].includes(data.status)
@@ -427,7 +395,9 @@ export function PublicQuotationDocument({
   const companyInstagram = branding.instagram || branding.company_instagram || null
 
   return (
-    <div className={`quotation-print-shell min-h-screen ${mode === "print" ? "bg-white" : "bg-gradient-to-b from-gray-50 to-white"}`}>
+    // light-force: feedback Yami 2026-05-07 — la cotización pública SIEMPRE
+    // va en modo claro, independientemente del tema del usuario.
+    <div className={`light-force quotation-print-shell min-h-screen ${mode === "print" ? "bg-white" : "bg-gradient-to-b from-muted to-white"}`}>
       <div className={mode === "print" ? "quotation-print-header bg-white" : "quotation-print-header bg-white shadow-sm sticky top-0 z-10"}>
         <div className="max-w-3xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between gap-3">
@@ -470,7 +440,7 @@ export function PublicQuotationDocument({
                   <span className="hidden sm:inline">Descargar PDF</span>
                 </Button>
               )}
-              <Badge className={`${statusConfig.color} border`}>
+              <Badge className={`${statusColors.bg} ${statusColors.text} ${statusColors.border} border`}>
                 <StatusIcon className="h-3.5 w-3.5 mr-1" />
                 {statusConfig.label}
               </Badge>
@@ -491,7 +461,7 @@ export function PublicQuotationDocument({
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Destino</p>
-                  <p className="font-bold text-gray-900">{data.destination}</p>
+                  <p className="font-bold text-foreground">{data.destination}</p>
                   {data.origin && (
                     <p className="text-xs text-muted-foreground mt-0.5">Desde {data.origin}</p>
                   )}
@@ -504,7 +474,7 @@ export function PublicQuotationDocument({
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Fechas</p>
-                  <p className="font-semibold text-gray-900 text-sm">{formatQuotationDateLong(data.departure_date)}</p>
+                  <p className="font-semibold text-foreground text-sm">{formatQuotationDateLong(data.departure_date)}</p>
                   {data.return_date && (
                     <p className="text-xs text-muted-foreground mt-0.5">Regreso: {formatQuotationDateLong(data.return_date)}</p>
                   )}
@@ -517,7 +487,7 @@ export function PublicQuotationDocument({
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Pasajeros</p>
-                  <p className="font-semibold text-gray-900 text-sm">
+                  <p className="font-semibold text-foreground text-sm">
                     {getQuotationPassengersText(data)}
                   </p>
                   <p className="text-xs text-muted-foreground mt-0.5">{totalPassengers} pasajero{totalPassengers > 1 ? "s" : ""} en total</p>
@@ -527,9 +497,19 @@ export function PublicQuotationDocument({
           </CardContent>
         </Card>
 
+        {/* Descripción general del paquete (visible al cliente). Va antes que
+            las opciones para que el cliente lea el "qué incluye en general"
+            antes del detalle precio-por-precio. */}
+        {data.package_description && (
+          <div className="quotation-print-note bg-success/5 border border-success/15 rounded-xl p-4 text-sm">
+            <p className="font-semibold text-xs uppercase tracking-wide mb-2 text-success">Descripción del paquete</p>
+            <p className="whitespace-pre-line text-foreground">{data.package_description}</p>
+          </div>
+        )}
+
         {data.notes && (
-          <div className="quotation-print-note bg-blue-50 border border-blue-100 rounded-xl p-4 text-sm text-blue-800">
-            <p className="font-semibold text-xs uppercase tracking-wide mb-1 text-blue-600">Notas del asesor</p>
+          <div className="quotation-print-note bg-primary/5 border border-primary/10 rounded-xl p-4 text-sm text-primary">
+            <p className="font-semibold text-xs uppercase tracking-wide mb-1 text-primary">Notas del asesor</p>
             <p className="whitespace-pre-line">{data.notes}</p>
           </div>
         )}
@@ -544,12 +524,12 @@ export function PublicQuotationDocument({
             return (
               <Card
                 key={option.id}
-                className={`quotation-print-option overflow-hidden transition-all ${isSelected ? "border-green-400 ring-2 ring-green-100 shadow-lg" : "shadow-sm hover:shadow-md"}`}
+                className={`quotation-print-option overflow-hidden transition-all ${isSelected ? "border-success/30 ring-2 ring-success/10 shadow-lg" : "shadow-sm hover:shadow-md"}`}
               >
                 <CardHeader className="pb-0">
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-base flex items-center gap-2">
-                      {isSelected && <CheckCircle2 className="h-5 w-5 text-green-600" />}
+                      {isSelected && <CheckCircle2 className="h-5 w-5 text-success" />}
                       {option.title}
                     </CardTitle>
                   </div>
@@ -595,8 +575,8 @@ export function PublicQuotationDocument({
                   )}
 
                   {isSelected && (
-                    <div className="text-center py-3 bg-green-50 rounded-xl border border-green-200">
-                      <p className="text-green-700 font-semibold flex items-center justify-center gap-2">
+                    <div className="text-center py-3 bg-success/5 rounded-xl border border-success/15">
+                      <p className="text-success font-semibold flex items-center justify-center gap-2">
                         <CheckCircle2 className="h-5 w-5" />
                         Opcion seleccionada
                       </p>
@@ -608,12 +588,12 @@ export function PublicQuotationDocument({
           })}
 
         {accepted && (
-          <Card className="quotation-print-section border-green-200 bg-green-50 overflow-hidden">
-            <div className="h-1" style={{ backgroundColor: "#22c55e" }} />
+          <Card className="quotation-print-section border-success/15 bg-success/5 overflow-hidden">
+            <div className="h-1 bg-success" />
             <CardContent className="pt-6 pb-6 text-center">
-              <CheckCircle2 className="h-12 w-12 text-green-600 mx-auto mb-3" />
-              <h3 className="text-xl font-bold text-green-800">Cotizacion aceptada</h3>
-              <p className="text-sm text-green-700 mt-2 max-w-md mx-auto">
+              <CheckCircle2 className="h-12 w-12 text-success mx-auto mb-3" />
+              <h3 className="text-xl font-bold text-success">Cotizacion aceptada</h3>
+              <p className="text-sm text-success mt-2 max-w-md mx-auto">
                 Tu asesor <span className="font-semibold">{data.seller_name}</span> se pondra en contacto para continuar con la reserva.
               </p>
             </CardContent>
@@ -633,12 +613,12 @@ export function PublicQuotationDocument({
               </div>
             )}
 
-            <h3 className="font-bold text-sm text-gray-700">{companyName}</h3>
+            <h3 className="font-bold text-sm text-foreground">{companyName}</h3>
 
             {(companyLegajo || companyTaxId) && (
               <div className="flex items-center gap-3 text-xs text-muted-foreground">
                 {companyLegajo && <span>Legajo N.° {companyLegajo}</span>}
-                {companyLegajo && companyTaxId && <span className="text-gray-300">|</span>}
+                {companyLegajo && companyTaxId && <span className="text-muted-foreground">|</span>}
                 {companyTaxId && <span>CUIT: {companyTaxId}</span>}
               </div>
             )}
@@ -676,7 +656,7 @@ export function PublicQuotationDocument({
             <Separator className="w-48 my-2" />
 
             <div className="text-center text-xs text-muted-foreground space-y-1">
-              <p>Asesor: <span className="font-medium text-gray-600">{data.seller_name}</span></p>
+              <p>Asesor: <span className="font-medium text-muted-foreground">{data.seller_name}</span></p>
               <p>Cotizacion generada el {formatQuotationDateLong(data.created_at.split("T")[0])}</p>
             </div>
 
@@ -698,7 +678,7 @@ export function PublicQuotationDocument({
                   {(data.payment_methods || []).map((pm) => (
                     <span
                       key={pm}
-                      className="inline-block rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-0.5 text-[10px] font-medium text-emerald-700"
+                      className="inline-block rounded-full border border-success/20 bg-success/5 px-2.5 py-0.5 text-[10px] font-medium text-success"
                     >
                       {paymentMethodLabel(pm)}
                     </span>

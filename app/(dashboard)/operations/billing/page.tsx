@@ -4,7 +4,7 @@ import { InvoicesPageClient } from "@/components/invoices/invoices-page-client"
 
 export default async function OperationsBillingPage() {
   const { user } = await getCurrentUser()
-  
+
   if (!canAccessModule(user.role as any, "cash")) {
     return (
       <div className="space-y-6">
@@ -16,6 +16,9 @@ export default async function OperationsBillingPage() {
     )
   }
 
+  // El gate de "tenés AFIP configurado?" lo aplica el layout server-side
+  // de este segmento (operations/billing/layout.tsx). Ver
+  // lib/afip/check-org-status.ts.
   return <InvoicesPageClient />
 }
 

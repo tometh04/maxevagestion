@@ -1,8 +1,20 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { applyLeadsFilters } from "@/lib/permissions-api"
+import { getUserAgencyIds } from "@/lib/permissions-api"
 
+/**
+ * GET /api/search?q=<term>
+ *
+ * Búsqueda global del ⌘K. Multi-tenant safe (respeta org_id + role +
+ * agency_ids del user).
+ *
+ * 2026-05-06: refactor para usar RPC `search_global_unaccent` con extension
+ * `unaccent` (migration 20260506000002). Bug previo: ILIKE directo no
+ * normalizaba acentos, "cancun" no encontraba "Cancún". El usuario tipea
+ * sin tildes el 99% del tiempo. La RPC normaliza ambos lados (column +
+ * query) con `lower(unaccent(...))` antes del LIKE.
+ */
 export async function GET(request: Request) {
   try {
     const { user } = await getCurrentUser()
@@ -10,11 +22,64 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const query = searchParams.get("q")
 
-    if (!query || query.length < 2) {
+    if (!query || query.trim().length < 2) {
       return NextResponse.json({ results: [] })
     }
 
-    const searchTerm = `%${query}%`
+    const agencyIds = await getUserAgencyIds(
+      supabase,
+      user.id,
+      user.role as any
+    )
+
+    const { data, error } = await (supabase.rpc as any)(
+      "search_global_unaccent",
+      {
+        p_query: query.trim(),
+        p_user_id: user.id,
+        p_org_id: user.org_id || null,
+        p_role: user.role,
+        p_agency_ids: agencyIds,
+      }
+    )
+
+    if (error) {
+      console.error("[Search API] RPC error:", error.message)
+      return NextResponse.json({ results: [] })
+    }
+
+    const rows = (data || []) as Array<{
+      id: string
+      result_type: "customer" | "operation" | "operator" | "lead"
+      title: string
+      subtitle: string
+      file_code: string | null
+      destination: string | null
+      status: string | null
+      email: string | null
+      phone: string | null
+      reservation_code_air: string | null
+      reservation_code_hotel: string | null
+      passenger_name: string | null
+    }>
+
+    const queryLower = query.toLowerCase()
+    const statusOpLabels: Record<string, string> = {
+      RESERVED: "Reservado",
+      CONFIRMED: "Confirmado",
+      CANCELLED: "Cancelado",
+      TRAVELLING: "En viaje",
+      TRAVELLED: "Viajado",
+    }
+    const statusLeadLabels: Record<string, string> = {
+      NEW: "Nuevo",
+      IN_PROGRESS: "En Progreso",
+      QUOTED: "Cotizado",
+      WON: "Ganado",
+      LOST: "Perdido",
+    }
+
+    const seen = new Set<string>()
     const results: Array<{
       id: string
       type: string
@@ -22,210 +87,74 @@ export async function GET(request: Request) {
       subtitle?: string
     }> = []
 
-    // Obtener agencias del usuario para filtrar
-    const { data: userAgencies } = await supabase
-      .from("user_agencies")
-      .select("agency_id")
-      .eq("user_id", user.id)
+    for (const r of rows) {
+      // Dedup por (id, type) — passenger_results y operation_results
+      // pueden devolver la misma operation. Preferimos passenger_name
+      // como title si llegó primero.
+      const key = `${r.result_type}:${r.id}`
+      if (seen.has(key)) continue
+      seen.add(key)
 
-    const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
-
-    // Paralelizar todas las búsquedas
-    const searchPromises = []
-
-    // Buscar clientes (buscar por nombre completo, email y teléfono)
-    const customerQuery = (supabase.from("customers") as any)
-      .select("id, first_name, last_name, email, phone")
-      .or(`first_name.ilike.${searchTerm},last_name.ilike.${searchTerm},email.ilike.${searchTerm},phone.ilike.${searchTerm}`)
-      .limit(5)
-    
-    searchPromises.push(
-      customerQuery
-        .then((r: any) => ({ type: 'customers', data: r.data, error: r.error }))
-        .catch((err: any) => ({ type: 'customers', data: null, error: err }))
-    )
-
-    // Buscar operaciones (por código, destino, códigos de reserva)
-    let operationQuery = (supabase.from("operations") as any)
-      .select("id, file_code, destination, status, agency_id, reservation_code_air, reservation_code_hotel")
-      .or(`file_code.ilike.${searchTerm},destination.ilike.${searchTerm},reservation_code_air.ilike.${searchTerm},reservation_code_hotel.ilike.${searchTerm}`)
-      .limit(5)
-    
-    // Aplicar filtros de permisos para operaciones
-    if (user.role !== "SUPER_ADMIN" && agencyIds.length > 0) {
-      operationQuery = operationQuery.in("agency_id", agencyIds)
-    } else if (user.role === "SELLER") {
-      operationQuery = operationQuery.eq("seller_id", user.id)
-    }
-    
-    searchPromises.push(
-      operationQuery
-        .then((r: any) => ({ type: 'operations', data: r.data, error: r.error }))
-        .catch((err: any) => ({ type: 'operations', data: null, error: err }))
-    )
-
-    // Buscar operaciones por nombre de pasajero (operation_customers)
-    let passengerSearchQuery = (supabase.from("operation_customers") as any)
-      .select(`
-        operation_id,
-        operations:operation_id (id, file_code, destination, status, agency_id, reservation_code_air, reservation_code_hotel, seller_id),
-        customers:customer_id (first_name, last_name)
-      `)
-      .or(`customers.first_name.ilike.${searchTerm},customers.last_name.ilike.${searchTerm}`)
-      .limit(5)
-    
-    // Aplicar filtros de permisos para búsqueda por pasajero
-    if (user.role !== "SUPER_ADMIN" && agencyIds.length > 0) {
-      passengerSearchQuery = passengerSearchQuery.in("operations.agency_id", agencyIds)
-    } else if (user.role === "SELLER") {
-      passengerSearchQuery = passengerSearchQuery.eq("operations.seller_id", user.id)
-    }
-    
-    searchPromises.push(
-      passengerSearchQuery
-        .then((r: any) => {
-          // Transformar resultados para que sean consistentes con la búsqueda de operaciones
-          const transformed = (r.data || []).map((item: any) => {
-            if (item.operations) {
-              return {
-                ...item.operations,
-                _passenger_name: item.customers ? `${item.customers.first_name || ""} ${item.customers.last_name || ""}`.trim() : null
-              }
-            }
-            return null
-          }).filter(Boolean)
-          return { type: 'operations_by_passenger', data: transformed, error: r.error }
-        })
-        .catch((err: any) => ({ type: 'operations_by_passenger', data: null, error: err }))
-    )
-
-    // Buscar operadores
-    const operatorQuery = (supabase.from("operators") as any)
-      .select("id, name, contact_email")
-      .or(`name.ilike.${searchTerm},contact_email.ilike.${searchTerm}`)
-      .limit(5)
-    
-    searchPromises.push(
-      operatorQuery
-        .then((r: any) => ({ type: 'operators', data: r.data, error: r.error }))
-        .catch((err: any) => ({ type: 'operators', data: null, error: err }))
-    )
-
-    // Buscar leads (con filtros de permisos)
-    let leadQuery = (supabase.from("leads") as any)
-      .select("id, contact_name, destination, status, agency_id, assigned_seller_id")
-      .or(`contact_name.ilike.${searchTerm},destination.ilike.${searchTerm}`)
-      .limit(5)
-    
-    // Aplicar filtros de permisos para leads
-    try {
-      leadQuery = applyLeadsFilters(leadQuery, user, agencyIds)
-    } catch {
-      // Si falla el filtro, solo buscar leads del usuario
-      if (user.role === "SELLER") {
-        leadQuery = leadQuery.eq("assigned_seller_id", user.id)
-      } else if (user.role !== "SUPER_ADMIN" && agencyIds.length > 0) {
-        leadQuery = leadQuery.in("agency_id", agencyIds)
-      }
-    }
-    
-    searchPromises.push(
-      leadQuery
-        .then((r: any) => ({ type: 'leads', data: r.data, error: r.error }))
-        .catch((err: any) => ({ type: 'leads', data: null, error: err }))
-    )
-
-    // Ejecutar todas las búsquedas en paralelo
-    const searchResults = await Promise.all(searchPromises)
-    // Procesar resultados
-    searchResults.forEach((result: any) => {
-      if (result.error) {
-        console.error(`Error in ${result.type} search:`, result.error)
-        return
-      }
-
-      if (result.type === 'customers' && result.data) {
-        result.data.forEach((c: any) => {
-          results.push({
-            id: c.id,
-            type: "customer",
-            title: `${c.first_name} ${c.last_name}`,
-            subtitle: c.email || c.phone || "Sin contacto",
-          })
-        })
-      } else if ((result.type === 'operations' || result.type === 'operations_by_passenger') && result.data) {
-        const statusLabels: Record<string, string> = {
-          RESERVED: "Reservado",
-          CONFIRMED: "Confirmado",
-          CANCELLED: "Cancelado",
-          TRAVELLING: "En viaje",
-          TRAVELLED: "Viajado",
+      if (r.result_type === "operation") {
+        let title = r.title
+        // Si el query matchea un código de reserva, mostrarlo en el título
+        if (
+          r.reservation_code_air &&
+          r.reservation_code_air.toLowerCase().includes(queryLower)
+        ) {
+          title = `Cod. Aéreo: ${r.reservation_code_air}`
+        } else if (
+          r.reservation_code_hotel &&
+          r.reservation_code_hotel.toLowerCase().includes(queryLower)
+        ) {
+          title = `Cod. Hotel: ${r.reservation_code_hotel}`
+        } else if (r.passenger_name) {
+          title = `${r.passenger_name} - ${r.file_code || "Sin código"}`
         }
-        result.data.forEach((o: any) => {
-          // Evitar duplicados (si ya está en results)
-          if (results.some((r: any) => r.id === o.id && r.type === "operation")) {
-            return
-          }
-          
-          // Determinar qué mostramos en el título según qué coincidió
-          const queryLower = query.toLowerCase()
-          let title = o.file_code || o.destination || "Sin código"
-          
-          // Si el código de búsqueda coincide con un código de reserva, mostrarlo primero
-          if (o.reservation_code_air && o.reservation_code_air.toLowerCase().includes(queryLower)) {
-            title = `Cod. Aéreo: ${o.reservation_code_air}`
-          } else if (o.reservation_code_hotel && o.reservation_code_hotel.toLowerCase().includes(queryLower)) {
-            title = `Cod. Hotel: ${o.reservation_code_hotel}`
-          } else if (o._passenger_name) {
-            // Si se encontró por nombre de pasajero, mostrar el nombre
-            title = `${o._passenger_name} - ${o.file_code || "Sin código"}`
-          }
-          
-          const subtitleParts = []
-          if (o.destination) subtitleParts.push(o.destination)
-          if (o.reservation_code_air) subtitleParts.push(`Rva Aéreo: ${o.reservation_code_air}`)
-          if (o.reservation_code_hotel) subtitleParts.push(`Rva Hotel: ${o.reservation_code_hotel}`)
-          subtitleParts.push(statusLabels[o.status] || o.status)
-          
-          results.push({
-            id: o.id,
-            type: "operation",
-            title: title,
-            subtitle: subtitleParts.join(" - "),
-          })
+
+        const subtitleParts: string[] = []
+        if (r.destination) subtitleParts.push(r.destination)
+        if (r.reservation_code_air)
+          subtitleParts.push(`Rva Aéreo: ${r.reservation_code_air}`)
+        if (r.reservation_code_hotel)
+          subtitleParts.push(`Rva Hotel: ${r.reservation_code_hotel}`)
+        if (r.status) subtitleParts.push(statusOpLabels[r.status] || r.status)
+
+        results.push({
+          id: r.id,
+          type: "operation",
+          title,
+          subtitle: subtitleParts.join(" - "),
         })
-      } else if (result.type === 'operators' && result.data) {
-        result.data.forEach((op: any) => {
-          results.push({
-            id: op.id,
-            type: "operator",
-            title: op.name,
-            subtitle: op.contact_email || "Sin email",
-          })
+      } else if (r.result_type === "customer") {
+        results.push({
+          id: r.id,
+          type: "customer",
+          title: r.title.trim() || "Sin nombre",
+          subtitle: r.subtitle,
         })
-      } else if (result.type === 'leads' && result.data) {
-        const statusLabels: Record<string, string> = {
-          NEW: "Nuevo",
-          IN_PROGRESS: "En Progreso",
-          QUOTED: "Cotizado",
-          WON: "Ganado",
-          LOST: "Perdido",
-        }
-        result.data.forEach((l: any) => {
-          results.push({
-            id: l.id,
-            type: "lead",
-            title: l.contact_name || "Sin nombre",
-            subtitle: `${l.destination || "Sin destino"} - ${statusLabels[l.status] || l.status}`,
-          })
+      } else if (r.result_type === "operator") {
+        results.push({
+          id: r.id,
+          type: "operator",
+          title: r.title,
+          subtitle: r.subtitle,
+        })
+      } else if (r.result_type === "lead") {
+        results.push({
+          id: r.id,
+          type: "lead",
+          title: r.title,
+          subtitle: `${r.destination || "Sin destino"} - ${
+            statusLeadLabels[r.status || ""] || r.status || ""
+          }`,
         })
       }
-    })
+    }
 
     return NextResponse.json({ results })
-  } catch (error) {
-    console.error("[Search API] Error in search:", error)
+  } catch (error: any) {
+    console.error("[Search API] Error:", error)
     return NextResponse.json({ results: [] })
   }
 }
-

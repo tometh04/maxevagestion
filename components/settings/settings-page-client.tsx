@@ -5,7 +5,6 @@ import { useSearchParams, useRouter } from "next/navigation"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { UsersSettings } from "@/components/settings/users-settings"
 import { AgenciesSettings } from "@/components/settings/agencies-settings"
-import { TrelloSettings } from "@/components/settings/trello-settings"
 import { CommissionsSettings } from "@/components/settings/commissions-settings"
 import { AISettings } from "@/components/settings/ai-settings"
 import { SeedMockData } from "@/components/settings/seed-mock-data"
@@ -14,7 +13,6 @@ import { DestinationRequirementsClient } from "@/components/settings/destination
 import { AfipSettings } from "@/components/settings/afip-settings"
 import { InterfaceSettings } from "@/components/settings/interface-settings"
 import { AuditSettings } from "@/components/settings/audit-settings"
-import { BulkImportTab } from "@/components/settings/bulk-import-tab"
 import { AgencyApprovalRulesForm } from "@/components/settings/agency-approval-rules-form"
 import { OperatorsTable, Operator } from "@/components/operators/operators-table"
 import { NewOperatorDialog } from "@/components/operators/new-operator-dialog"
@@ -99,7 +97,6 @@ export function SettingsPageClient({ defaultTab, agencies, firstAgencyId, userRo
         <TabsTrigger value="operadores">Operadores</TabsTrigger>
         <TabsTrigger value="agencies">Agencias</TabsTrigger>
         {/* Hidden tabs - kept for future use
-        <TabsTrigger value="trello">Trello</TabsTrigger>
         <TabsTrigger value="commissions">Comisiones</TabsTrigger>
         <TabsTrigger value="ai">AI</TabsTrigger>
         <TabsTrigger value="import">Importar Datos</TabsTrigger>
@@ -107,7 +104,6 @@ export function SettingsPageClient({ defaultTab, agencies, firstAgencyId, userRo
         */}
         <TabsTrigger value="requirements">Requisitos Destino</TabsTrigger>
         <TabsTrigger value="afip">Facturación AFIP</TabsTrigger>
-        <TabsTrigger value="import">Importación</TabsTrigger>
         <TabsTrigger value="auditoria">Auditoría</TabsTrigger>
       </TabsList>
       <TabsContent value="interface" className="mt-6">
@@ -137,9 +133,6 @@ export function SettingsPageClient({ defaultTab, agencies, firstAgencyId, userRo
         </div>
       </TabsContent>
       {/* Hidden tab contents - kept for future use */}
-      <TabsContent value="trello" className="mt-6">
-        <TrelloSettings agencies={agencies} defaultAgencyId={firstAgencyId} />
-      </TabsContent>
       <TabsContent value="commissions" className="mt-6">
         <CommissionsSettings />
       </TabsContent>
@@ -152,9 +145,6 @@ export function SettingsPageClient({ defaultTab, agencies, firstAgencyId, userRo
       </TabsContent>
       <TabsContent value="afip" className="mt-6">
         <AfipSettings agencies={agencies} defaultAgencyId={firstAgencyId} />
-      </TabsContent>
-      <TabsContent value="import" className="mt-6">
-        <BulkImportTab />
       </TabsContent>
       <TabsContent value="auditoria" className="mt-6">
         <AuditSettings />

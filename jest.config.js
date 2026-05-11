@@ -16,12 +16,24 @@ const customJestConfig = {
     '**/__tests__/**/*.[jt]s?(x)',
     '**/?(*.)+(spec|test).[jt]s?(x)',
   ],
+  // Excluir worktrees: jest del repo principal traversa el dir
+  // y choca con los node_modules / configuración de la worktree hermana,
+  // generando suite-failures espurias. La worktree corre sus propios tests.
+  testPathIgnorePatterns: [
+    '/node_modules/',
+    '/.next/',
+    '/.worktrees/',
+  ],
+  modulePathIgnorePatterns: [
+    '/.worktrees/',
+  ],
   collectCoverageFrom: [
     'lib/**/*.{js,jsx,ts,tsx}',
     'app/api/**/*.{js,jsx,ts,tsx}',
     '!**/*.d.ts',
     '!**/node_modules/**',
     '!**/.next/**',
+    '!**/.worktrees/**',
   ],
 }
 

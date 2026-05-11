@@ -490,7 +490,7 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
             <CardTitle className="text-sm font-medium">Total Mensual USD</CardTitle>
           </CardHeader>
           <CardContent className="p-0 pt-2">
-            <div className="text-2xl font-bold text-emerald-600">
+            <div className="text-2xl font-bold text-success">
               {formatCurrency(totalMonthlyUSD, "USD")}
             </div>
             <p className="text-xs text-muted-foreground">
@@ -646,7 +646,7 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
                       <TableCell className="max-w-[200px] truncate">
                         {payment.description}
                       </TableCell>
-                      <TableCell className={payment.currency === "USD" ? "text-emerald-600 font-medium" : ""}>
+                      <TableCell className={payment.currency === "USD" ? "text-success font-medium" : ""}>
                         {formatCurrency(payment.amount, payment.currency)}
                       </TableCell>
                       <TableCell>
@@ -662,12 +662,12 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
                             })}
                           </span>
                           {daysUntilDue <= 0 && (
-                            <span className="text-xs text-red-500 font-medium">
+                            <span className="text-xs text-destructive font-medium">
                               {daysUntilDue === 0 ? "Vence hoy" : `Vencido hace ${Math.abs(daysUntilDue)} días`}
                             </span>
                           )}
                           {daysUntilDue > 0 && daysUntilDue <= 7 && (
-                            <span className="text-xs text-amber-600">
+                            <span className="text-xs text-accent-coral">
                               {daysUntilDue === 1 ? "Mañana" : `En ${daysUntilDue} días`}
                             </span>
                           )}
@@ -701,7 +701,7 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 text-red-500 hover:text-red-700"
+                            className="h-8 w-8 text-destructive hover:text-destructive"
                             onClick={() => setDeleteDialog({ open: true, payment })}
                           >
                             <Trash2 className="h-4 w-4" />
@@ -871,13 +871,13 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
             <CardContent className="px-4 pb-4">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-blue-600">
+                  <div className="text-2xl font-bold text-primary">
                     {filteredPayments.filter(p => p.is_active).length}
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">Gastos Activos</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-orange-600">
+                  <div className="text-2xl font-bold text-accent-coral">
                     {filteredPayments.filter(p => {
                       const daysUntilDue = Math.ceil(
                         (new Date(p.next_due_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
@@ -888,7 +888,7 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
                   <div className="text-xs text-muted-foreground mt-1">Vencen Esta Semana</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-red-600">
+                  <div className="text-2xl font-bold text-destructive">
                     {filteredPayments.filter(p => {
                       const daysUntilDue = Math.ceil(
                         (new Date(p.next_due_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
@@ -899,7 +899,7 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
                   <div className="text-xs text-muted-foreground mt-1">Vencidos</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-green-600">
+                  <div className="text-2xl font-bold text-success">
                     {filteredPayments.filter(p => p.currency === "USD").length}
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">En USD</div>
@@ -952,7 +952,7 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteRecurring} className="bg-red-600 hover:bg-red-700">
+            <AlertDialogAction onClick={handleDeleteRecurring} className="bg-destructive hover:bg-destructive">
               Eliminar
             </AlertDialogAction>
           </AlertDialogFooter>

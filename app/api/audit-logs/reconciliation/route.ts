@@ -5,13 +5,15 @@ import { getCurrentUser } from "@/lib/auth"
 /**
  * GET /api/audit-logs/reconciliation
  * Verificaciones de integridad contable del sistema.
- * Solo analiza datos POST-IMPORTACIÓN (después del 19/02/2026).
- * La importación masiva del 12-18/02/2026 creó pagos PAID sin ledger y
- * cash_movements sin financial_account_id — eso es por diseño.
+ *
+ * Cutoff per-tenant explícito vía organizations.legacy_import_until
+ * (migration 20260505000001):
+ *   - Si la columna está seteada (Lozada = 2026-02-19) → excluye movimientos
+ *     anteriores de los chequeos.
+ *   - Si null (tenants nuevos default) → fallback a org.created_at: cualquier
+ *     pago/movimiento creado antes que la org existiera es ruido del seed
+ *     y no rompe los checks de integridad real.
  */
-
-// Fecha de corte: después de la reimportación masiva del 18/02/2026
-const POST_IMPORT_DATE = "2026-02-19T00:00:00Z"
 
 export async function GET() {
   try {
@@ -22,6 +24,19 @@ export async function GET() {
     }
 
     const supabase = await createServerClient()
+
+    // Resolver cutoff per-tenant: legacy_import_until (si seteado) o
+    // org.created_at (fallback). Por RLS, sólo devuelve la org del user.
+    const { data: org } = await (supabase.from("organizations") as any)
+      .select("id, created_at, legacy_import_until")
+      .eq("id", user.org_id)
+      .maybeSingle()
+
+    const legacyUntil = org?.legacy_import_until as string | null | undefined
+    const orgCreated = org?.created_at as string | undefined
+    // Prioridad: 1) legacy_import_until explícito, 2) org.created_at, 3) epoch.
+    const POST_IMPORT_DATE =
+      legacyUntil || orgCreated || "1970-01-01T00:00:00Z"
     const checks: Array<{
       id: string
       name: string
@@ -35,16 +50,24 @@ export async function GET() {
 
     // ============================================
     // CHECK 1: Pagos PAID sin asiento contable (post-importación)
+    //
+    // 2026-05-07: agregamos `.eq("is_legacy_import", false)` para excluir
+    // los 125 pagos del bulk import del 29/04 (pipeline payments-suelto).
+    // Esos pagos están en estado PAID por diseño pero sin ledger/cash —
+    // el dinero ya entró al banco real antes del import. La columna
+    // `is_legacy_import` se backfillea en la migración 20260507000003.
     // ============================================
     try {
       const { count: totalWithout } = await (supabase.from("payments") as any)
         .select("id", { count: "exact", head: true })
         .eq("status", "PAID")
+        .eq("is_legacy_import", false)
         .is("ledger_movement_id", null)
 
       const { count: recentWithout } = await (supabase.from("payments") as any)
         .select("id", { count: "exact", head: true })
         .eq("status", "PAID")
+        .eq("is_legacy_import", false)
         .is("ledger_movement_id", null)
         .gte("created_at", POST_IMPORT_DATE)
 
@@ -63,7 +86,7 @@ export async function GET() {
           : `${recentOrphan} pagos sin asiento`,
         details: recentOrphan === 0
           ? `OK.${importedOrphan > 0 ? ` (${importedOrphan} pagos de la importación inicial sin asiento — esperado por diseño)` : ""}`
-          : `${recentOrphan} pago(s) creados después del 19/02/2026 sin movimiento contable.${importedOrphan > 0 ? ` (${importedOrphan} adicionales de la importación, esperados)` : ""}`,
+          : `${recentOrphan} pago(s) creados post-cutoff de importación sin movimiento contable.${importedOrphan > 0 ? ` (${importedOrphan} adicionales de la importación legacy, esperados)` : ""}`,
       })
     } catch (err) {
       checks.push({

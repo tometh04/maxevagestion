@@ -301,7 +301,7 @@ export function NewVariableExpenseDialog({
                 name="exchange_rate"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-orange-600">
+                    <FormLabel className="text-accent-coral">
                       Tipo de Cambio (ARS por 1 USD) *
                     </FormLabel>
                     <FormControl>
@@ -324,7 +324,7 @@ export function NewVariableExpenseDialog({
 
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
-                <Landmark className="h-3.5 w-3.5 text-emerald-500" />
+                <Landmark className="h-3.5 w-3.5 text-success" />
                 <span className="text-xs font-medium text-foreground/70">Cuenta</span>
               </div>
               <div className="grid gap-4 md:grid-cols-2">
@@ -381,7 +381,7 @@ export function NewVariableExpenseDialog({
 
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
-                <StickyNote className="h-3.5 w-3.5 text-amber-500" />
+                <StickyNote className="h-3.5 w-3.5 text-accent-coral" />
                 <span className="text-xs font-medium text-foreground/70">Notas</span>
               </div>
               <FormField

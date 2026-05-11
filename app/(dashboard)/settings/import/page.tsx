@@ -1,10 +1,10 @@
-import { BulkImportTab } from "@/components/settings/bulk-import-tab"
+import { redirect } from "next/navigation"
 
 /**
- * URL standalone para importación masiva. Usa el mismo componente que el tab
- * dentro de /settings. Se conserva esta ruta porque el banner del dashboard
- * ya linkea acá — un redirect a /settings?tab=import agregaría un hop innecesario.
+ * URL legacy → redirect permanente a la versión V2 del importador.
+ * V1 (BulkImportTab + entity-panel/error-panel/preview-table) quedó deprecado
+ * tras el rollout de import V2 con motor lib/import/ y endpoint chunked.
  */
 export default function ImportPage() {
-  return <BulkImportTab />
+  redirect("/settings/import-v2")
 }

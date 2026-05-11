@@ -124,12 +124,24 @@ export const paymentsSueltoPipeline: PipelineFn = async (
         date_paid: datePaid ? datePaid.toISOString().slice(0, 10) : null,
         status: datePaid ? "PAID" : "PENDING",
         reference: row.reference || null,
+        // Este pipeline carga HISTORIAL legacy (pagos cuyo dinero ya entró
+        // al banco real antes del import). Por diseño NO crea cash_movement
+        // ni ledger_movement — si lo hiciera, los saldos del banco se
+        // duplicarían (entraría la misma plata dos veces).
+        // El flag is_legacy_import los excluye de los chequeos de "pagos
+        // huérfanos" en queries de diagnóstico (ej: /api/audit-logs/...).
+        // Bug fix 2026-05-07: antes este flag no se seteaba y los 125 pagos
+        // del bulk import del 29/04 aparecían como huérfanos.
+        is_legacy_import: true,
       },
       rollbackLog
     )
 
-    if (inserted) successRows++
-    else errors.push({ rowNumber, message: "Falló insert payment (DB)" })
+    if (inserted?.id) successRows++
+    else errors.push({
+      rowNumber,
+      message: `Falló insert payment (DB): ${inserted?.error ?? "sin detalle"}`,
+    })
   }
 
   return {

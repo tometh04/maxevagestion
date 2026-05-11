@@ -43,28 +43,40 @@ export function DateInputWithCalendar({
     }
   }, [value])
 
-  // Manejar cambio en el input manual
+  // Auto-format dd/MM/yyyy: agrega "/" después de pos 2 y 5 mientras el
+  // user tipea solo números. Se hace en onChange (no keyDown) para evitar
+  // desync entre DOM nativo y state React.
+  function applyAutoSlash(raw: string): string {
+    const digits = raw.replace(/\D/g, "").slice(0, 8) // ddmmyyyy max 8
+    if (digits.length <= 2) return digits
+    if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`
+    return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`
+  }
+
+  // Bug fix 2026-05-06: la versión previa tenía dos bugs:
+  // 1) Si la fecha tipeada estaba fuera de minDate/maxDate, hacíamos
+  //    `return` sin llamar onChange — el input mostraba el valor pero
+  //    el state quedaba vacío. El user pensaba que ingresó la fecha pero
+  //    nunca se guardó (silent failure visible solo al submit).
+  // 2) handleInputKeyDown hacía preventDefault + setInputValue manual,
+  //    lo cual desincroniza React state con el DOM nativo en algunos
+  //    teclados/IME y causa que parts de la fecha se pierdan.
+  // Fix: aplicamos auto-slash dentro de handleInputChange (sync con
+  // React state). Si la fecha completa está fuera de rango, llamamos
+  // onChange igualmente para que el form muestre el error de validación
+  // en lugar de fallar silenciosamente.
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const rawValue = e.target.value.replace(/[^\d/]/g, "") // Solo números y /
+    const formatted = applyAutoSlash(e.target.value)
+    setInputValue(formatted)
 
-    // Limitar longitud
-    if (rawValue.length > 10) return
-
-    setInputValue(rawValue)
-
-    // Intentar parsear cuando tenga formato completo (10 caracteres: dd/MM/yyyy)
-    if (rawValue.length === 10) {
-      try {
-        const parsedDate = parse(rawValue, "dd/MM/yyyy", new Date())
-        if (isValid(parsedDate)) {
-          if (minDate && parsedDate < minDate) return
-          if (maxDate && parsedDate > maxDate) return
-          onChange(parsedDate)
-        }
-      } catch (error) {
-        // Ignorar errores de parseo
+    if (formatted.length === 10) {
+      const parsedDate = parse(formatted, "dd/MM/yyyy", new Date())
+      if (isValid(parsedDate)) {
+        // Llamamos onChange aunque esté fuera de rango — el form muestra
+        // mensaje de error si corresponde. Antes hacíamos return silencioso.
+        onChange(parsedDate)
       }
-    } else if (rawValue.length === 0) {
+    } else if (formatted.length === 0) {
       onChange(undefined)
     }
   }
@@ -74,20 +86,6 @@ export function DateInputWithCalendar({
     onChange(date)
     if (date) {
       setIsOpen(false)
-    }
-  }
-
-  // Formatear automáticamente mientras se tipea (agregar / automáticamente)
-  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (/\d/.test(e.key) && inputValue.length === 2 && !inputValue.includes("/")) {
-      e.preventDefault()
-      setInputValue(inputValue + "/" + e.key)
-      return
-    }
-    if (/\d/.test(e.key) && inputValue.length === 5 && inputValue.charAt(4) !== "/") {
-      e.preventDefault()
-      setInputValue(inputValue + "/" + e.key)
-      return
     }
   }
 
@@ -103,9 +101,9 @@ export function DateInputWithCalendar({
       >
         <input
           type="text"
+          inputMode="numeric"
           value={inputValue}
           onChange={handleInputChange}
-          onKeyDown={handleInputKeyDown}
           placeholder={placeholder}
           disabled={disabled}
           maxLength={10}

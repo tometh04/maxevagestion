@@ -107,7 +107,9 @@ export async function POST(request: Request) {
       infants,
       currency,
       pricing_mode,
-      notes,
+      package_description, // descripción general del paquete (visible al cliente)
+      notes,               // notas para el cliente (visibles al cliente)
+      internal_notes,      // notas internas privadas del vendedor (NO visibles al cliente)
       terms_and_conditions,
       payment_methods,
       options, // Array de opciones: [{ title, total_amount, manual_total_amount?, items: [...] }]
@@ -168,7 +170,9 @@ export async function POST(request: Request) {
         currency: currency || "USD",
         pricing_mode: normalizeQuotationPricingMode(pricing_mode ?? "PER_PERSON"),
         status: "DRAFT",
+        package_description: package_description || null,
         notes: notes || null,
+        internal_notes: internal_notes || null,
         terms_and_conditions: terms_and_conditions || null,
         payment_methods: Array.isArray(payment_methods) ? payment_methods : [],
         created_by: user.id,

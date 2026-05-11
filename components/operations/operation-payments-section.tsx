@@ -60,6 +60,7 @@ import {
   type OperationOperatorPaymentLike,
   type OperationServicePaymentRelationLike,
 } from "@/lib/operations/payment-operators"
+import { normalizePaymentMethodForForm } from "@/lib/accounting/payment-counterparts"
 
 interface FinancialAccount {
   id: string
@@ -394,11 +395,19 @@ export function OperationPaymentsSection({
     }
 
     setEditingPayment(payment)
-    setMarkAsPaid(false)
+    // Si el pago ya fue aprobado pero todavía está PENDING (post-fix bug Yamil),
+    // pre-checkeamos "Marcar como pagado" para que el user solo elija la cuenta
+    // financiera y termine el flow en un click. Eso dispara el ledger/cash en
+    // el PATCH.
+    setMarkAsPaid(payment.approval_status === "APPROVED" && payment.status !== "PAID")
     editForm.reset({
       payer_type: payment.payer_type,
       direction: payment.direction,
-      method: payment.method || "Transferencia",
+      // Normalizamos: la DB puede tener vocabulario ledger ('BANK', 'CASH',
+      // 'MP', 'USD', 'OTHER') por seeds o auto-generación. El Select del form
+      // usa vocabulario humano ('Transferencia', 'Efectivo', etc.). Sin esta
+      // normalización el Select queda vacío al editar pagos legacy.
+      method: normalizePaymentMethodForForm(payment.method),
       amount: Number(payment.amount),
       currency: payment.currency || "USD",
       financial_account_id: "", // Se selecciona de nuevo
@@ -762,6 +771,19 @@ export function OperationPaymentsSection({
                               Pago Masivo
                             </Badge>
                           )}
+                          {payment.is_legacy_import && (
+                            <Badge
+                              variant="outline"
+                              className="w-fit text-[10px] border-muted-foreground/30 text-muted-foreground"
+                              title={
+                                payment.source === "LEGACY_SETTLEMENT"
+                                  ? "Pago histórico declarado fuera del sistema. La plata ya salió del banco antes de cargar el sistema — no afecta saldos."
+                                  : "Pago importado del sistema anterior. El dinero ya entró al banco antes del import — no genera movimiento de caja nuevo."
+                              }
+                            >
+                              Histórico
+                            </Badge>
+                          )}
                           {payment.payer_type === "OPERATOR" && payment.operator_id && (
                             <span className="text-xs font-medium">
                               {operatorNameById.get(payment.operator_id) || "Operador seleccionado"}
@@ -770,7 +792,7 @@ export function OperationPaymentsSection({
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell>{payment.method || "-"}</TableCell>
+                    <TableCell>{payment.method ? normalizePaymentMethodForForm(payment.method) : "-"}</TableCell>
                     <TableCell>
                       {payment.currency} {Number(payment.amount).toLocaleString("es-AR", { minimumFractionDigits: 2 })}
                     </TableCell>
@@ -797,9 +819,23 @@ export function OperationPaymentsSection({
                       })()}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={payment.status === "PAID" ? "default" : "secondary"}>
-                        {payment.status === "PAID" ? "Pagado" : "Pendiente"}
-                      </Badge>
+                      {payment.status === "PAID" ? (
+                        <Badge variant="default">Pagado</Badge>
+                      ) : payment.approval_status === "APPROVED" ? (
+                        <Badge
+                          variant="secondary"
+                          className="bg-amber-100 text-amber-900 border-amber-300"
+                          title="El pago fue aprobado pero todavía no se registró el cobro/pago. Editá y marcá como pagado eligiendo cuenta financiera para mover saldos."
+                        >
+                          Aprobado · Falta cobrar
+                        </Badge>
+                      ) : payment.approval_status === "PENDING_APPROVAL" ? (
+                        <Badge variant="secondary" className="bg-blue-100 text-blue-900 border-blue-300">
+                          Esperando aprobación
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary">Pendiente</Badge>
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
@@ -809,7 +845,7 @@ export function OperationPaymentsSection({
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8 text-info hover:text-info/80 hover:bg-info/10"
+                              className="h-8 w-8 text-accent-teal hover:text-accent-teal/80 hover:bg-accent-teal/10"
                               onClick={() => handleDownloadReceipt(payment.id)}
                               disabled={downloadingReceiptId === payment.id}
                               title="Descargar recibo PDF"
@@ -841,7 +877,7 @@ export function OperationPaymentsSection({
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 text-warning hover:text-warning/80 hover:bg-warning/10"
+                            className="h-8 w-8 text-accent-coral hover:text-accent-coral/80 hover:bg-accent-coral/10"
                             onClick={() => handleOpenEditDialog(payment)}
                             disabled={payment.source === "OPERATOR_BULK"}
                             title={payment.source === "OPERATOR_BULK" ? "Pago generado desde Pago Masivo" : "Editar pago"}
@@ -991,7 +1027,7 @@ export function OperationPaymentsSection({
               {/* Sub-card: Fecha y Cuenta */}
               <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
                 <div className="flex items-center gap-1.5">
-                  <Landmark className="h-3.5 w-3.5 text-emerald-500" />
+                  <Landmark className="h-3.5 w-3.5 text-success" />
                   <span className="text-xs font-medium text-foreground/70">Destino del cobro</span>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -1078,9 +1114,9 @@ export function OperationPaymentsSection({
                 const watchedCurrency = incomeForm.watch("currency")
                 const isCash = watchedMethod === "Efectivo"
                 return (
-                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 space-y-3">
+                  <div className="rounded-xl border border-accent-coral/30 bg-accent-coral/5 p-4 space-y-3">
                     <div className="flex items-center gap-1.5">
-                      <Receipt className="h-3.5 w-3.5 text-amber-500" />
+                      <Receipt className="h-3.5 w-3.5 text-accent-coral" />
                       <span className="text-xs font-medium text-foreground/70">Percepciones Impositivas</span>
                     </div>
                     <p className="text-xs text-muted-foreground">
@@ -1291,7 +1327,7 @@ export function OperationPaymentsSection({
                 {/* Sub-card: Fecha y Estado */}
                 <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
                   <div className="flex items-center gap-1.5">
-                    <Landmark className="h-3.5 w-3.5 text-emerald-500" />
+                    <Landmark className="h-3.5 w-3.5 text-success" />
                     <span className="text-xs font-medium text-foreground/70">Fecha y Cuenta</span>
                   </div>
                   <FormField
@@ -1472,7 +1508,7 @@ export function OperationPaymentsSection({
                 {/* Sub-card: Método y Monto */}
                 <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
                   <div className="flex items-center gap-1.5">
-                    <Banknote className="h-3.5 w-3.5 text-warning" />
+                    <Banknote className="h-3.5 w-3.5 text-accent-coral" />
                     <span className="text-xs font-medium text-foreground/70">Pago al Operador</span>
                   </div>
                   <FormField
@@ -1571,7 +1607,7 @@ export function OperationPaymentsSection({
                 {/* Sub-card: Fecha y Cuenta */}
                 <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
                   <div className="flex items-center gap-1.5">
-                    <Landmark className="h-3.5 w-3.5 text-emerald-500" />
+                    <Landmark className="h-3.5 w-3.5 text-success" />
                     <span className="text-xs font-medium text-foreground/70">Destino del pago</span>
                   </div>
                   <div className="grid grid-cols-2 gap-4">

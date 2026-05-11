@@ -135,28 +135,28 @@ export function MonthlyExpensesTab() {
       <div className="grid gap-4 md:grid-cols-4">
         <div className="rounded-xl border border-border/40 p-5">
             <div className="flex items-center gap-2 mb-2">
-              <TrendingDown className="h-4 w-4 text-red-600" />
+              <TrendingDown className="h-4 w-4 text-destructive" />
               <span className="text-xs font-medium text-muted-foreground">Total Egresos ARS</span>
             </div>
             <p className="text-2xl font-semibold tabular-nums tracking-tight">{formatCurrency(totals.ars, "ARS")}</p>
         </div>
         <div className="rounded-xl border border-border/40 p-5">
             <div className="flex items-center gap-2 mb-2">
-              <DollarSign className="h-4 w-4 text-green-600" />
+              <DollarSign className="h-4 w-4 text-success" />
               <span className="text-xs font-medium text-muted-foreground">Total Egresos USD</span>
             </div>
             <p className="text-2xl font-semibold tabular-nums tracking-tight">{formatCurrency(totals.usd, "USD")}</p>
         </div>
         <div className="rounded-xl border border-border/40 p-5">
             <div className="flex items-center gap-2 mb-2">
-              <Repeat className="h-4 w-4 text-blue-600" />
+              <Repeat className="h-4 w-4 text-primary" />
               <span className="text-xs font-medium text-muted-foreground">Gastos Fijos</span>
             </div>
             <p className="text-2xl font-semibold tabular-nums tracking-tight">{totals.countRecurring}</p>
         </div>
         <div className="rounded-xl border border-border/40 p-5">
             <div className="flex items-center gap-2 mb-2">
-              <Receipt className="h-4 w-4 text-orange-600" />
+              <Receipt className="h-4 w-4 text-accent-coral" />
               <span className="text-xs font-medium text-muted-foreground">Gastos Variables</span>
             </div>
             <p className="text-2xl font-semibold tabular-nums tracking-tight">{totals.countVariable}</p>
@@ -262,12 +262,12 @@ export function MonthlyExpensesTab() {
                   <TableCell>
                     <Badge
                       variant="outline"
-                      className={expense.expense_type === "recurring" ? "border-blue-400 text-blue-600" : "border-orange-400 text-orange-600"}
+                      className={expense.expense_type === "recurring" ? "border-primary/30 text-primary" : "border-accent-coral/30 text-accent-coral"}
                     >
                       {expense.expense_type === "recurring" ? "Fijo" : "Variable"}
                     </Badge>
                   </TableCell>
-                  <TableCell className={`text-right font-medium ${expense.currency === "USD" ? "text-emerald-600" : ""}`}>
+                  <TableCell className={`text-right font-medium ${expense.currency === "USD" ? "text-success" : ""}`}>
                     {formatCurrency(expense.amount, expense.currency)}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">

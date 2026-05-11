@@ -17,7 +17,7 @@ export function OrgsPagination({ page, totalPages, buildHref }: Props) {
       <PageLink href={buildHref(Math.max(1, page - 1))} disabled={page <= 1} label="◀" />
       {pages.map((p, i) =>
         p === "…" ? (
-          <span key={`gap-${i}`} className="px-2 text-slate-500">
+          <span key={`gap-${i}`} className="px-2 text-muted-foreground">
             …
           </span>
         ) : (
@@ -52,8 +52,8 @@ function PageLink({
   const className = cn(
     "inline-flex h-8 min-w-8 items-center justify-center rounded border px-2 text-sm",
     active
-      ? "border-blue-500/40 bg-blue-500/15 text-blue-200"
-      : "border-slate-700 text-slate-300 hover:bg-slate-800",
+      ? "border-primary/40 bg-primary/15 text-primary"
+      : "border-border text-muted-foreground hover:bg-accent",
     disabled && "pointer-events-none opacity-40",
   )
   if (disabled) return <span className={className}>{label}</span>

@@ -302,8 +302,8 @@ export function NewPaymentDialog({
             {/* Monto y Fecha */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-2 mb-3">
-                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-emerald-500/10">
-                  <DollarSign className="h-3.5 w-3.5 text-emerald-500" />
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-success/10">
+                  <DollarSign className="h-3.5 w-3.5 text-success" />
                 </div>
                 <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Monto y Fecha</h4>
               </div>

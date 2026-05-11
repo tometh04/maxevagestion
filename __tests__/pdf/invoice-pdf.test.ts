@@ -75,4 +75,50 @@ describe("renderInvoicePdf", () => {
     const pdfString = Buffer.from(bytes).toString("binary")
     expect(pdfString).not.toContain("/Subtype /Image")
   })
+
+  // Pendientes 4.5 — branding per-tenant smoke tests
+  describe("branding per-tenant", () => {
+    it("renderiza con primaryColorHex en hex", async () => {
+      const bytes = await renderInvoicePdf({
+        ...baseParams,
+        branding: { primaryColorHex: "#0066FF" },
+      })
+      expect(bytes.length).toBeGreaterThan(1000)
+    })
+
+    it("renderiza con primaryColorHex en HSL Tailwind", async () => {
+      const bytes = await renderInvoicePdf({
+        ...baseParams,
+        branding: { primaryColorHex: "222 89% 55%" },
+      })
+      expect(bytes.length).toBeGreaterThan(1000)
+    })
+
+    it("ignora color inválido y cae al default sin tirar", async () => {
+      const bytes = await renderInvoicePdf({
+        ...baseParams,
+        branding: { primaryColorHex: "rgb(invalid)" },
+      })
+      expect(bytes.length).toBeGreaterThan(1000)
+    })
+
+    it("renderiza T&Cs en footer cuando se pasa termsText (PDF más grande)", async () => {
+      const noTerms = await renderInvoicePdf(baseParams)
+      const withTerms = await renderInvoicePdf({
+        ...baseParams,
+        branding: { termsText: "Política de cancelación: 50% retención si cancela con menos de 30 días de anticipación" },
+      })
+      // El PDF con texto adicional debe ser mayor (aunque sea por chars).
+      expect(withTerms.length).toBeGreaterThanOrEqual(noTerms.length)
+      expect(withTerms.length).toBeGreaterThan(1000)
+    })
+
+    it("ignora logo PNG corrupto sin tirar", async () => {
+      const bytes = await renderInvoicePdf({
+        ...baseParams,
+        branding: { logoPngBytes: new Uint8Array([0xff, 0xff, 0xff]) },
+      })
+      expect(bytes.length).toBeGreaterThan(1000)
+    })
+  })
 })

@@ -62,13 +62,13 @@ interface Filters {
 }
 
 const ACTION_LABELS: Record<string, { label: string; color: string }> = {
-  PAYMENT_MARKED_PAID: { label: "Pago realizado", color: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200" },
-  OPERATION_DELETED: { label: "Operación eliminada", color: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200" },
-  USER_ACTIVATED: { label: "Usuario activado", color: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200" },
-  USER_DEACTIVATED: { label: "Usuario desactivado", color: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200" },
-  USER_ROLE_CHANGED: { label: "Rol cambiado", color: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200" },
-  LOGIN: { label: "Inicio de sesión", color: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200" },
-  LOGOUT: { label: "Cierre de sesión", color: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200" },
+  PAYMENT_MARKED_PAID: { label: "Pago realizado", color: "bg-success/10 text-success dark:bg-success dark:text-success" },
+  OPERATION_DELETED: { label: "Operación eliminada", color: "bg-destructive/10 text-destructive dark:bg-destructive dark:text-destructive" },
+  USER_ACTIVATED: { label: "Usuario activado", color: "bg-primary/10 text-primary dark:bg-primary dark:text-primary" },
+  USER_DEACTIVATED: { label: "Usuario desactivado", color: "bg-accent-coral/10 text-accent-coral dark:bg-accent-coral dark:text-accent-coral" },
+  USER_ROLE_CHANGED: { label: "Rol cambiado", color: "bg-accent-violet/10 text-accent-violet dark:bg-accent-violet dark:text-accent-violet" },
+  LOGIN: { label: "Inicio de sesión", color: "bg-muted text-foreground dark:bg-card dark:text-muted-foreground" },
+  LOGOUT: { label: "Cierre de sesión", color: "bg-muted text-foreground dark:bg-card dark:text-muted-foreground" },
 }
 
 const ENTITY_LABELS: Record<string, string> = {
@@ -81,7 +81,7 @@ const ENTITY_LABELS: Record<string, string> = {
 }
 
 function getActionInfo(action: string) {
-  return ACTION_LABELS[action] || { label: action, color: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200" }
+  return ACTION_LABELS[action] || { label: action, color: "bg-muted text-foreground dark:bg-card dark:text-muted-foreground" }
 }
 
 function formatDetails(details: Record<string, any>): string[] {

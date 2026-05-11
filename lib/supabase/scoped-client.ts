@@ -64,5 +64,5 @@ export function scopedFrom(
   orgId: string,
   table: string
 ) {
-  return (supabase.from(table) as any).select().eq("org_id", orgId)
+  return (supabase as any).from(table).select().eq("org_id", orgId)
 }

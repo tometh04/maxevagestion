@@ -1,8 +1,25 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { getExchangeRate, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
+import {
+  buildExchangeRateMap,
+  getLatestExchangeRate,
+  DEFAULT_USD_ARS_FALLBACK_RATE,
+} from "@/lib/accounting/exchange-rates"
 
+/**
+ * GET /api/reports/margins
+ *
+ * Devuelve el reporte de márgenes agrupado por vendedor, operador, producto
+ * o como detalle de operaciones. Multi-moneda: NO colapsa a una sola moneda
+ * por fila — cada fila trae buckets ARS y USD separados, más un equivalente
+ * en USD para ordenar el ranking.
+ *
+ * Bug histórico que esto arregla: la versión anterior elegía la "moneda
+ * dominante" por fila con `total_sale_ars > total_sale_usd ? "ARS" : "USD"`
+ * y descartaba la otra. Yami lo reportó: "los vendedores que aparecen en
+ * pesos también tienen ventas en dólares y no se ven". Confirmado en código.
+ */
 export async function GET(request: Request) {
   try {
     const { user } = await getCurrentUser()
@@ -61,17 +78,41 @@ export async function GET(request: Request) {
       query = query.eq("agency_id", agencyId)
     }
 
-    const { data: operations, error } = await query.order("operation_date", { ascending: false }) as { data: any[] | null, error: any }
+    const { data: operations, error } = (await query.order("operation_date", {
+      ascending: false,
+    })) as { data: any[] | null; error: any }
 
     if (error) {
       console.error("Error fetching margins report:", error)
       return NextResponse.json({ error: "Error al obtener reporte" }, { status: 500 })
     }
 
-    // Obtener tasa de cambio más reciente como fallback
-    const latestExchangeRate = await getLatestExchangeRate(supabase) || DEFAULT_USD_ARS_FALLBACK_RATE
+    // -----------------------------------------------------------------------
+    // FX map: una sola query batched para todas las fechas en el rango
+    // (antes hacía 1 query por operation = N+1 lento). Reutiliza tasas
+    // contiguas y cachea fallback latest.
+    // -----------------------------------------------------------------------
+    const opDates = (operations || []).map(
+      (op: any) => op.departure_date || op.operation_date || op.created_at
+    )
+    const fxLookup = await buildExchangeRateMap(supabase as any, opDates)
+    const latestExchangeRate =
+      (await getLatestExchangeRate(supabase as any)) || DEFAULT_USD_ARS_FALLBACK_RATE
 
-    // Calcular totales - TODO en USD (según requisito: todo el sistema en USD)
+    /**
+     * Convierte un monto a USD-equivalente. ARS se divide por la tasa.
+     * USD se devuelve tal cual. Si no hay tasa, usa la más reciente.
+     */
+    const toUsd = (amount: number, currency: string, opDate: string | null): number => {
+      if (currency !== "ARS") return amount
+      const rate = fxLookup(opDate) || latestExchangeRate
+      return rate > 0 ? amount / rate : 0
+    }
+
+    // -----------------------------------------------------------------------
+    // Totales globales (KPIs top): siempre se consolidan a USD-equiv.
+    // Mantenemos también total_sale_ars/usd separados para retro-compat.
+    // -----------------------------------------------------------------------
     const totals: any = {
       count: operations?.length || 0,
       total_sale_usd: 0,
@@ -80,12 +121,12 @@ export async function GET(request: Request) {
       total_cost_ars: 0,
       total_margin_usd: 0,
       total_margin_ars: 0,
-      currency: "USD", // Siempre USD según requisito
-      total_sale: 0, // Total general en USD (ARS convertido + USD original)
-      total_cost: 0, // Total general en USD
-      total_margin: 0, // Total general en USD
-      total_sale_other: 0, // Para compatibilidad (ARS sin convertir)
-      total_margin_other: 0, // Para compatibilidad
+      currency: "USD", // KPI top siempre en USD
+      total_sale: 0,
+      total_cost: 0,
+      total_margin: 0,
+      total_sale_other: 0,
+      total_margin_other: 0,
       avg_margin_percent: 0,
     }
 
@@ -94,214 +135,196 @@ export async function GET(request: Request) {
       const sale = Number(op.sale_amount_total) || 0
       const cost = Number(op.operator_cost) || 0
       const margin = Number(op.margin_amount) || 0
-
-      // Obtener tasa de cambio histórica
-      const operationDate = op.departure_date || op.operation_date || op.created_at
-      let exchangeRate = await getExchangeRate(supabase, operationDate ? new Date(operationDate) : new Date())
-      if (!exchangeRate) {
-        exchangeRate = latestExchangeRate
-      }
-
-      // Convertir a USD
-      let saleUsd = sale
-      let costUsd = cost
-      let marginUsd = margin
+      const opDate = op.departure_date || op.operation_date || op.created_at
 
       if (saleCurrency === "ARS") {
         totals.total_sale_ars += sale
         totals.total_cost_ars += cost
         totals.total_margin_ars += margin
-        
-        // Convertir ARS a USD: dividir por exchange_rate
-        saleUsd = sale / exchangeRate
-        costUsd = cost / exchangeRate
-        marginUsd = margin / exchangeRate
       } else {
         totals.total_sale_usd += sale
         totals.total_cost_usd += cost
         totals.total_margin_usd += margin
-        // Ya está en USD, no necesita conversión
       }
 
-      // Sumar al total general (siempre en USD)
-      totals.total_sale += saleUsd
-      totals.total_cost += costUsd
-      totals.total_margin += marginUsd
+      totals.total_sale += toUsd(sale, saleCurrency, opDate)
+      totals.total_cost += toUsd(cost, saleCurrency, opDate)
+      totals.total_margin += toUsd(margin, saleCurrency, opDate)
     }
 
-    // Para compatibilidad con frontend que puede usar total_sale_other
     totals.total_sale_other = totals.total_sale_ars
     totals.total_margin_other = totals.total_margin_ars
+    totals.avg_margin_percent =
+      totals.total_sale > 0 ? (totals.total_margin / totals.total_sale) * 100 : 0
 
-    totals.avg_margin_percent = totals.total_sale > 0 ? (totals.total_margin / totals.total_sale) * 100 : 0
+    const result: any = { totals, operations: operations || [] }
 
-    let result: any = { totals, operations: operations || [] }
+    // -----------------------------------------------------------------------
+    // Helper: agrupa operaciones por una key arbitraria. Cada bucket de salida
+    // mantiene ARS y USD separados Y un total_*_usd_equiv para ordenar/calcular
+    // % margen sin perder ninguna moneda.
+    // -----------------------------------------------------------------------
+    type GroupBucket = {
+      key: string
+      meta: Record<string, any>
+      count: number
+      total_sale_ars: number
+      total_sale_usd: number
+      total_cost_ars: number
+      total_cost_usd: number
+      total_margin_ars: number
+      total_margin_usd: number
+      total_sale_usd_equiv: number
+      total_cost_usd_equiv: number
+      total_margin_usd_equiv: number
+    }
 
+    const groupOperations = (
+      keyOf: (op: any) => string,
+      metaOf: (op: any) => Record<string, any>
+    ): GroupBucket[] => {
+      const buckets = new Map<string, GroupBucket>()
+
+      for (const op of operations || []) {
+        const key = keyOf(op)
+        let bucket = buckets.get(key)
+        if (!bucket) {
+          bucket = {
+            key,
+            meta: metaOf(op),
+            count: 0,
+            total_sale_ars: 0,
+            total_sale_usd: 0,
+            total_cost_ars: 0,
+            total_cost_usd: 0,
+            total_margin_ars: 0,
+            total_margin_usd: 0,
+            total_sale_usd_equiv: 0,
+            total_cost_usd_equiv: 0,
+            total_margin_usd_equiv: 0,
+          }
+          buckets.set(key, bucket)
+        }
+
+        bucket.count++
+
+        const sale = Number(op.sale_amount_total) || 0
+        const cost = Number(op.operator_cost) || 0
+        const margin = Number(op.margin_amount) || 0
+        const saleCur = op.sale_currency || op.currency || "USD"
+        const opDate = op.departure_date || op.operation_date || op.created_at
+
+        if (saleCur === "ARS") {
+          bucket.total_sale_ars += sale
+          bucket.total_cost_ars += cost
+          bucket.total_margin_ars += margin
+        } else {
+          bucket.total_sale_usd += sale
+          bucket.total_cost_usd += cost
+          bucket.total_margin_usd += margin
+        }
+
+        bucket.total_sale_usd_equiv += toUsd(sale, saleCur, opDate)
+        bucket.total_cost_usd_equiv += toUsd(cost, saleCur, opDate)
+        bucket.total_margin_usd_equiv += toUsd(margin, saleCur, opDate)
+      }
+
+      return Array.from(buckets.values())
+    }
+
+    // -----------------------------------------------------------------------
     // Agrupar por vendedor
+    // -----------------------------------------------------------------------
     if (viewType === "seller" || viewType === "all") {
-      const bySeller: Record<string, any> = {}
-      
-      for (const op of operations || []) {
-        const sellerId = op.seller_id || "unknown"
-        const sellerName = (op.sellers as any)?.name || "Sin asignar"
-        
-        if (!bySeller[sellerId]) {
-          bySeller[sellerId] = {
-            seller_id: sellerId,
-            seller_name: sellerName,
-            count: 0,
-            total_sale_usd: 0,
-            total_sale_ars: 0,
-            total_cost_usd: 0,
-            total_cost_ars: 0,
-            total_margin_usd: 0,
-            total_margin_ars: 0,
-            margins: [],
-          }
-        }
+      const buckets = groupOperations(
+        (op) => op.seller_id || "unknown",
+        (op) => ({
+          seller_id: op.seller_id || "unknown",
+          seller_name: (op.sellers as any)?.name || "Sin asignar",
+        })
+      )
 
-        bySeller[sellerId].count++
-        const sale = Number(op.sale_amount_total) || 0
-        const cost = Number(op.operator_cost) || 0
-        const margin = Number(op.margin_amount) || 0
-
-        const saleCur = op.sale_currency || op.currency || "USD"
-        if (saleCur === "ARS") {
-          bySeller[sellerId].total_sale_ars += sale
-          bySeller[sellerId].total_cost_ars += cost
-          bySeller[sellerId].total_margin_ars += margin
-        } else {
-          bySeller[sellerId].total_sale_usd += sale
-          bySeller[sellerId].total_cost_usd += cost
-          bySeller[sellerId].total_margin_usd += margin
-        }
-        bySeller[sellerId].margins.push(Number(op.margin_percentage) || 0)
-      }
-
-      const sellerData = Object.values(bySeller).map((s: any) => {
-        const currency = s.total_sale_ars > s.total_sale_usd ? "ARS" : "USD"
-        const total_sale = currency === "ARS" ? s.total_sale_ars : s.total_sale_usd
-        const total_cost = currency === "ARS" ? s.total_cost_ars : s.total_cost_usd
-        const total_margin = currency === "ARS" ? s.total_margin_ars : s.total_margin_usd
-        const avg_margin_percent = total_sale > 0 ? (total_margin / total_sale) * 100 : 0
-
-        return {
-          ...s,
-          currency,
-          total_sale,
-          total_cost,
-          total_margin,
-          avg_margin_percent,
-        }
-      }).sort((a: any, b: any) => b.total_margin - a.total_margin)
-
-      result.bySeller = sellerData
+      result.bySeller = buckets
+        .map((b) => ({
+          seller_id: b.meta.seller_id,
+          seller_name: b.meta.seller_name,
+          count: b.count,
+          total_sale_ars: b.total_sale_ars,
+          total_sale_usd: b.total_sale_usd,
+          total_cost_ars: b.total_cost_ars,
+          total_cost_usd: b.total_cost_usd,
+          total_margin_ars: b.total_margin_ars,
+          total_margin_usd: b.total_margin_usd,
+          total_sale_usd_equiv: b.total_sale_usd_equiv,
+          total_margin_usd_equiv: b.total_margin_usd_equiv,
+          avg_margin_percent:
+            b.total_sale_usd_equiv > 0
+              ? (b.total_margin_usd_equiv / b.total_sale_usd_equiv) * 100
+              : 0,
+        }))
+        .sort((a, b) => b.total_margin_usd_equiv - a.total_margin_usd_equiv)
     }
 
+    // -----------------------------------------------------------------------
     // Agrupar por operador
+    // -----------------------------------------------------------------------
     if (viewType === "operator" || viewType === "all") {
-      const byOperator: Record<string, any> = {}
-      
-      for (const op of operations || []) {
-        const operatorId = op.operator_id || "unknown"
-        const operatorName = (op.operators as any)?.name || "Sin operador"
-        
-        if (!byOperator[operatorId]) {
-          byOperator[operatorId] = {
-            operator_id: operatorId,
-            operator_name: operatorName,
-            count: 0,
-            total_cost_usd: 0,
-            total_cost_ars: 0,
-            total_margin_usd: 0,
-            total_margin_ars: 0,
-            margins: [],
-          }
-        }
+      const buckets = groupOperations(
+        (op) => op.operator_id || "unknown",
+        (op) => ({
+          operator_id: op.operator_id || "unknown",
+          operator_name: (op.operators as any)?.name || "Sin operador",
+        })
+      )
 
-        byOperator[operatorId].count++
-        const cost = Number(op.operator_cost) || 0
-        const margin = Number(op.margin_amount) || 0
-
-        const saleCur = op.sale_currency || op.currency || "USD"
-        if (saleCur === "ARS") {
-          byOperator[operatorId].total_cost_ars += cost
-          byOperator[operatorId].total_margin_ars += margin
-        } else {
-          byOperator[operatorId].total_cost_usd += cost
-          byOperator[operatorId].total_margin_usd += margin
-        }
-        byOperator[operatorId].margins.push(Number(op.margin_percentage) || 0)
-      }
-
-      const operatorData = Object.values(byOperator).map((o: any) => {
-        const currency = o.total_cost_ars > o.total_cost_usd ? "ARS" : "USD"
-        const total_cost = currency === "ARS" ? o.total_cost_ars : o.total_cost_usd
-        const total_margin = currency === "ARS" ? o.total_margin_ars : o.total_margin_usd
-        const avg_margin_percent = total_cost > 0 ? (total_margin / total_cost) * 100 : 0
-
-        return {
-          ...o,
-          currency,
-          total_cost,
-          total_margin,
-          avg_margin_percent,
-        }
-      }).sort((a: any, b: any) => b.total_margin - a.total_margin)
-
-      result.byOperator = operatorData
+      result.byOperator = buckets
+        .map((b) => ({
+          operator_id: b.meta.operator_id,
+          operator_name: b.meta.operator_name,
+          count: b.count,
+          total_cost_ars: b.total_cost_ars,
+          total_cost_usd: b.total_cost_usd,
+          total_margin_ars: b.total_margin_ars,
+          total_margin_usd: b.total_margin_usd,
+          total_cost_usd_equiv: b.total_cost_usd_equiv,
+          total_margin_usd_equiv: b.total_margin_usd_equiv,
+          // Para operadores, % margen se calcula sobre costo (revenue del operador
+          // = costo nuestro). Mantenemos la convención que ya tenía el endpoint.
+          avg_margin_percent:
+            b.total_cost_usd_equiv > 0
+              ? (b.total_margin_usd_equiv / b.total_cost_usd_equiv) * 100
+              : 0,
+        }))
+        .sort((a, b) => b.total_margin_usd_equiv - a.total_margin_usd_equiv)
     }
 
+    // -----------------------------------------------------------------------
     // Agrupar por tipo de producto
+    // -----------------------------------------------------------------------
     if (viewType === "product" || viewType === "all") {
-      const byProduct: Record<string, any> = {}
-      
-      for (const op of operations || []) {
-        const productType = op.product_type || "Sin clasificar"
-        
-        if (!byProduct[productType]) {
-          byProduct[productType] = {
-            product_type: productType,
-            count: 0,
-            total_sale_usd: 0,
-            total_sale_ars: 0,
-            total_margin_usd: 0,
-            total_margin_ars: 0,
-            margins: [],
-          }
-        }
+      const buckets = groupOperations(
+        (op) => op.product_type || "Sin clasificar",
+        (op) => ({
+          product_type: op.product_type || "Sin clasificar",
+        })
+      )
 
-        byProduct[productType].count++
-        const sale = Number(op.sale_amount_total) || 0
-        const margin = Number(op.margin_amount) || 0
-
-        const saleCur = op.sale_currency || op.currency || "USD"
-        if (saleCur === "ARS") {
-          byProduct[productType].total_sale_ars += sale
-          byProduct[productType].total_margin_ars += margin
-        } else {
-          byProduct[productType].total_sale_usd += sale
-          byProduct[productType].total_margin_usd += margin
-        }
-        byProduct[productType].margins.push(Number(op.margin_percentage) || 0)
-      }
-
-      const productData = Object.values(byProduct).map((p: any) => {
-        const currency = p.total_sale_ars > p.total_sale_usd ? "ARS" : "USD"
-        const total_sale = currency === "ARS" ? p.total_sale_ars : p.total_sale_usd
-        const total_margin = currency === "ARS" ? p.total_margin_ars : p.total_margin_usd
-        const avg_margin_percent = total_sale > 0 ? (total_margin / total_sale) * 100 : 0
-
-        return {
-          ...p,
-          currency,
-          total_sale,
-          total_margin,
-          avg_margin_percent,
-        }
-      }).sort((a: any, b: any) => b.total_margin - a.total_margin)
-
-      result.byProduct = productData
+      result.byProduct = buckets
+        .map((b) => ({
+          product_type: b.meta.product_type,
+          count: b.count,
+          total_sale_ars: b.total_sale_ars,
+          total_sale_usd: b.total_sale_usd,
+          total_margin_ars: b.total_margin_ars,
+          total_margin_usd: b.total_margin_usd,
+          total_sale_usd_equiv: b.total_sale_usd_equiv,
+          total_margin_usd_equiv: b.total_margin_usd_equiv,
+          avg_margin_percent:
+            b.total_sale_usd_equiv > 0
+              ? (b.total_margin_usd_equiv / b.total_sale_usd_equiv) * 100
+              : 0,
+        }))
+        .sort((a, b) => b.total_margin_usd_equiv - a.total_margin_usd_equiv)
     }
 
     return NextResponse.json(result)
@@ -310,4 +333,3 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Error interno" }, { status: 500 })
   }
 }
-

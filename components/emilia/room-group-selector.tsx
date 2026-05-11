@@ -194,8 +194,8 @@ function RoomCard({
           <Circle
             className={cn(
               "h-2 w-2 fill-current",
-              availabilityConfig.available && "text-green-500",
-              availabilityConfig.consult && "text-yellow-500",
+              availabilityConfig.available && "text-success",
+              availabilityConfig.consult && "text-accent-coral",
               availabilityConfig.unavailable && "text-destructive"
             )}
           />

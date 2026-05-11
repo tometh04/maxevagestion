@@ -55,13 +55,13 @@ export default async function AdminAuditPage() {
                 <DataTableTd className="whitespace-nowrap">{new Date(e.created_at).toLocaleString()}</DataTableTd>
                 <DataTableTd className={`font-semibold ${sevClass(e.severity)}`}>{e.severity}</DataTableTd>
                 <DataTableTd>{e.event_type}</DataTableTd>
-                <DataTableTd className="text-slate-500">{e.actor_org_id?.slice(0, 8) || "—"}</DataTableTd>
-                <DataTableTd className="text-slate-500">{e.target_org_id?.slice(0, 8) || "—"}</DataTableTd>
-                <DataTableTd className="text-slate-500">{e.request_path || "—"}</DataTableTd>
+                <DataTableTd className="text-muted-foreground">{e.actor_org_id?.slice(0, 8) || "—"}</DataTableTd>
+                <DataTableTd className="text-muted-foreground">{e.target_org_id?.slice(0, 8) || "—"}</DataTableTd>
+                <DataTableTd className="text-muted-foreground">{e.request_path || "—"}</DataTableTd>
                 <DataTableTd>
                   <details>
-                    <summary className="cursor-pointer text-blue-400">ver</summary>
-                    <pre className="text-[10px] mt-1 bg-slate-900 p-2 rounded max-w-md overflow-auto text-slate-300">
+                    <summary className="cursor-pointer text-primary">ver</summary>
+                    <pre className="text-[10px] mt-1 bg-muted p-2 rounded max-w-md overflow-auto text-muted-foreground">
                       {JSON.stringify(e.details, null, 2)}
                     </pre>
                   </details>
@@ -77,9 +77,9 @@ export default async function AdminAuditPage() {
 
 function sevClass(s: string): string {
   switch (s) {
-    case "CRITICAL": return "text-red-600"
-    case "ERROR": return "text-red-500"
-    case "WARN": return "text-amber-600"
+    case "CRITICAL": return "text-destructive"
+    case "ERROR": return "text-destructive"
+    case "WARN": return "text-accent-coral"
     default: return "text-muted-foreground"
   }
 }

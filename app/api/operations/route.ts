@@ -14,6 +14,7 @@ import { logAudit, getClientIP } from "@/lib/audit"
 import { enforceUserRateLimit } from "@/lib/rate-limit"
 import { checkLimit } from "@/lib/billing/limits"
 import { getSellerPercentage } from "@/lib/commissions/calculate"
+import { calculateOperationBalances } from "@/lib/operations/operation-financials"
 
 export async function POST(request: Request) {
   try {
@@ -926,7 +927,7 @@ export async function GET(request: Request) {
         sellers_secondary:seller_secondary_id(id, name, email),
         operators:operator_id(id, name),
         agencies:agency_id(id, name, city),
-        leads:lead_id(id, contact_name, destination, trello_url, status),
+        leads:lead_id(id, contact_name, destination, status),
         operation_customers(
           role,
           customers:customer_id(
@@ -1145,7 +1146,7 @@ export async function GET(request: Request) {
           sellers_secondary:seller_secondary_id(name),
           operators:operator_id(name),
           agencies:agency_id(name),
-          leads:lead_id(contact_name, destination, trello_url),
+          leads:lead_id(contact_name, destination),
           operation_customers(role, customers:customer_id(id, first_name, last_name)),
           operation_operators(id, cost, cost_currency, notes, operators:operator_id(id, name))
         `)
@@ -1165,7 +1166,7 @@ export async function GET(request: Request) {
           sellers_secondary:seller_secondary_id(name),
           operators:operator_id(name),
           agencies:agency_id(name),
-          leads:lead_id(contact_name, destination, trello_url),
+          leads:lead_id(contact_name, destination),
           operation_customers(role, customers:customer_id(id, first_name, last_name))
         `)
         .order("operation_date", { ascending: false, nullsFirst: false })
@@ -1176,7 +1177,7 @@ export async function GET(request: Request) {
         console.error("Error fetching operations:", retryResult.error)
         return NextResponse.json({ error: "Error al obtener operaciones" }, { status: 500 })
       }
-      operations = retryResult.data
+      operations = retryResult.data as any
       error = null
     }
 
@@ -1296,14 +1297,22 @@ export async function GET(request: Request) {
         operator_pending: 0,
         currency: op.currency || "ARS" 
       }
+      const balances = calculateOperationBalances({
+        saleAmount: op.sale_amount_total,
+        operatorCost: op.operator_cost,
+        customerPaid: paymentData.customer_paid,
+        operatorPaid: paymentData.operator_paid,
+      })
       
       return {
         ...op,
         customer_name: customerName,
         paid_amount: paymentData.customer_paid, // Monto Cobrado
-        pending_amount: paymentData.customer_pending, // A cobrar
+        scheduled_pending_amount: paymentData.customer_pending,
+        pending_amount: balances.customerPending, // A cobrar
         operator_paid_amount: paymentData.operator_paid, // Pagado (a operadores)
-        operator_pending_amount: paymentData.operator_pending, // A pagar (a operadores)
+        scheduled_operator_pending_amount: paymentData.operator_pending,
+        operator_pending_amount: balances.operatorPending, // A pagar (a operadores)
       }
     })
 
@@ -1349,6 +1358,16 @@ async function generateDestinationRequirementAlerts(
   departureDate: string,
   sellerId: string
 ) {
+  // P0 2026-05-10: derivar org_id para inyectar en cada alert (mig 5 tighten)
+  const { data: opData } = await (supabase.from("operations") as any)
+    .select("org_id")
+    .eq("id", operationId)
+    .maybeSingle()
+  const operationOrgId = (opData as any)?.org_id || null
+  if (!operationOrgId) {
+    console.warn(`[generateDestinationRequirementAlerts] op ${operationId} sin org_id — skip`)
+    return
+  }
   const destLower = destination.toLowerCase()
   
   // Encontrar códigos de país que matchean con el destino
@@ -1390,6 +1409,7 @@ async function generateDestinationRequirementAlerts(
     // Solo crear alerta si la fecha de alerta es en el futuro
     if (alertDate > new Date()) {
       alertsToCreate.push({
+        org_id: operationOrgId,
         operation_id: operationId,
         user_id: sellerId,
         type: "DESTINATION_REQUIREMENT",
@@ -1438,6 +1458,16 @@ async function generateOperationAlerts(
   }
 ) {
   const { departure_date, return_date, checkin_date, checkout_date, destination, seller_id } = data
+  // P0 2026-05-10: derivar org_id para inyectar en cada alert (mig 5 tighten)
+  const { data: opData } = await (supabase.from("operations") as any)
+    .select("org_id")
+    .eq("id", operationId)
+    .maybeSingle()
+  const operationOrgId = (opData as any)?.org_id || null
+  if (!operationOrgId) {
+    console.warn(`[generateOperationAlerts] op ${operationId} sin org_id — skip`)
+    return
+  }
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   
@@ -1452,6 +1482,7 @@ async function generateOperationAlerts(
 
     if (checkInAlertDate >= today) {
       alertsToCreate.push({
+        org_id: operationOrgId,
         operation_id: operationId,
         user_id: seller_id,
         type: "UPCOMING_TRIP",
@@ -1471,6 +1502,7 @@ async function generateOperationAlerts(
 
     if (checkOutAlertDate >= today) {
       alertsToCreate.push({
+        org_id: operationOrgId,
         operation_id: operationId,
         user_id: seller_id,
         type: "UPCOMING_TRIP",
@@ -1517,6 +1549,7 @@ async function generateOperationAlerts(
 
       if (birthdayAlertDate >= today && birthdayAlertDate <= sixtyDaysFromNow) {
         alertsToCreate.push({
+          org_id: operationOrgId,
           operation_id: operationId,
           customer_id: customer.id,
           user_id: seller_id,

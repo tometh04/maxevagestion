@@ -4,94 +4,212 @@
 
 @layer base {
   :root {
+    /* Base */
     --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
+    --background-alt: 220 30% 99%;
+    --foreground: 222 47% 11%;
+    --ink: 230 38% 10%;
     --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
+    --card-foreground: 222 47% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 238 84% 56%;
+    --popover-foreground: 222 47% 11%;
+
+    /* Marca */
+    --primary: 232 76% 58%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
-    --destructive: 0 84.2% 60.2%;
+    --accent-teal: 199 82% 38%;
+    --accent-teal-foreground: 0 0% 100%;
+    --accent-violet: 252 70% 70%;
+    --accent-violet-foreground: 222 47% 11%;
+    --accent-coral: 10 78% 66%;
+    --accent-coral-foreground: 222 47% 11%;
+    --accent-sand: 224 36% 97%;
+    --accent-sand-foreground: 222 47% 11%;
+
+    /* UI */
+    --secondary: 224 28% 97%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 224 22% 96%;
+    --muted-foreground: 226 12% 48%;
+    --accent: 224 28% 97%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 238 84% 56%;
-    --radius: 0.5rem;
-
-    --success: 142 76% 36%;
+    --success: 160 58% 30%;
     --success-foreground: 0 0% 100%;
-    --warning: 38 92% 50%;
-    --warning-foreground: 0 0% 0%;
-    --info: 214 100% 50%;
-    --info-foreground: 0 0% 100%;
+    --border: 224 18% 92%;
+    --input: 224 18% 92%;
+    --ring: 232 76% 58%;
 
-    --chart-1: 238 84% 56%;
-    --chart-2: 270 70% 60%;
-    --chart-3: 199 89% 48%;
-    --chart-4: 142 76% 36%;
-    --chart-5: 38 92% 50%;
-    --chart-6: 346 77% 50%;
+    /* Radius */
+    --radius: 1.25rem;
+    --radius-dense: 0.5rem;
 
+    /* Charts (alineados con accents Vibook) */
+    --chart-1: 232 76% 58%;
+    --chart-2: 199 82% 38%;
+    --chart-3: 252 70% 70%;
+    --chart-4: 10 78% 66%;
+    --chart-5: 160 58% 30%;
+    --chart-6: 219 60% 35%;
+
+    /* Sidebar */
     --sidebar-background: 0 0% 100%;
-    --sidebar-foreground: 240 10% 3.9%;
-    --sidebar-primary: 238 84% 56%;
+    --sidebar-foreground: 222 47% 11%;
+    --sidebar-primary: 232 76% 58%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 0 0% 100%;
-    --sidebar-ring: 238 84% 56%;
+    --sidebar-accent: 224 28% 97%;
+    --sidebar-accent-foreground: 222 47% 11%;
+    --sidebar-border: 224 18% 92%;
+    --sidebar-ring: 232 76% 58%;
+
+    /* Gradientes Vibook (teal a 50% L para gradientes — un poco más claro que el token sólido pero más oscuro que el original) */
+    --gradient-signature: linear-gradient(135deg, hsl(232 76% 58%) 0%, hsl(199 82% 50%) 50%, hsl(252 70% 70%) 100%);
+    --gradient-cta: linear-gradient(135deg, hsl(232 76% 58%) 0%, hsl(252 70% 70%) 100%);
+    --gradient-hero: radial-gradient(ellipse at top, hsl(232 76% 58% / 0.15) 0%, transparent 50%), radial-gradient(ellipse at bottom right, hsl(199 82% 50% / 0.12) 0%, transparent 60%), radial-gradient(ellipse at bottom left, hsl(252 70% 70% / 0.10) 0%, transparent 60%);
+    --gradient-warm: linear-gradient(135deg, hsl(10 78% 66%) 0%, hsl(252 70% 70%) 100%);
+    --gradient-cool: linear-gradient(135deg, hsl(199 82% 50%) 0%, hsl(232 76% 58%) 100%);
+    --gradient-ink: linear-gradient(180deg, hsl(230 38% 14%) 0%, hsl(230 38% 8%) 100%);
+    --gradient-card: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(220 30% 99%) 100%);
+    --gradient-disruptor: linear-gradient(135deg, hsl(232 76% 58%) 0%, hsl(199 82% 50%) 50%, hsl(252 70% 70%) 100%);
+
+    /* Shadows Vibook */
+    --shadow-sm: 0 1px 2px hsl(230 40% 20% / 0.04);
+    --shadow-md: 0 6px 20px -6px hsl(230 40% 20% / 0.07);
+    --shadow-lg: 0 24px 60px -22px hsl(230 40% 20% / 0.14);
+    --shadow-glow: 0 24px 70px -18px hsl(232 76% 58% / 0.28);
+    --shadow-card: 0 1px 2px hsl(230 40% 20% / 0.04), 0 6px 20px -6px hsl(230 40% 20% / 0.07);
   }
 
   .dark {
-    --background: 240 10% 3.9%;
+    /* Base — derivado de --ink Vibook */
+    --background: 230 38% 8%;
+    --background-alt: 230 38% 10%;
     --foreground: 0 0% 98%;
-    --card: 240 10% 5.5%;
+    --ink: 230 38% 6%;
+    --card: 230 30% 11%;
     --card-foreground: 0 0% 98%;
-    --popover: 240 10% 5.5%;
+    --popover: 230 30% 11%;
     --popover-foreground: 0 0% 98%;
-    --primary: 238 84% 67%;
+
+    /* Marca — clarificados para contraste sobre fondo dark; foregrounds dark para botones sólidos AA */
+    --primary: 232 76% 67%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 240 3.7% 15.9%;
+    --accent-teal: 199 82% 65%;
+    --accent-teal-foreground: 230 38% 8%;
+    --accent-violet: 252 70% 75%;
+    --accent-violet-foreground: 230 38% 8%;
+    --accent-coral: 10 78% 70%;
+    --accent-coral-foreground: 230 38% 8%;
+    --accent-sand: 230 20% 16%;
+    --accent-sand-foreground: 0 0% 98%;
+
+    /* UI */
+    --secondary: 230 20% 14%;
     --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
+    --muted: 230 20% 14%;
+    --muted-foreground: 226 12% 60%;
+    --accent: 230 20% 14%;
     --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
+    --destructive: 0 62% 50%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 238 84% 67%;
+    --success: 160 58% 50%;
+    --success-foreground: 230 38% 8%;
+    --border: 230 20% 18%;
+    --input: 230 20% 18%;
+    --ring: 232 76% 67%;
 
-    --success: 142 71% 45%;
-    --success-foreground: 0 0% 100%;
-    --warning: 38 92% 50%;
-    --warning-foreground: 0 0% 0%;
-    --info: 214 100% 60%;
-    --info-foreground: 0 0% 100%;
+    /* Charts dark */
+    --chart-1: 232 76% 67%;
+    --chart-2: 199 82% 65%;
+    --chart-3: 252 70% 75%;
+    --chart-4: 10 78% 70%;
+    --chart-5: 160 58% 50%;
+    --chart-6: 219 60% 60%;
 
-    --chart-1: 238 84% 67%;
-    --chart-2: 270 70% 70%;
-    --chart-3: 199 89% 58%;
-    --chart-4: 142 71% 45%;
-    --chart-5: 38 92% 58%;
-    --chart-6: 346 77% 60%;
-
-    --sidebar-background: 240 10% 3.9%;
+    /* Sidebar dark */
+    --sidebar-background: 230 38% 8%;
     --sidebar-foreground: 0 0% 98%;
-    --sidebar-primary: 238 84% 67%;
+    --sidebar-primary: 232 76% 67%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 12%;
+    --sidebar-accent: 230 20% 14%;
     --sidebar-accent-foreground: 0 0% 98%;
-    --sidebar-border: 240 10% 3.9%;
-    --sidebar-ring: 238 84% 67%;
+    --sidebar-border: 230 20% 18%;
+    --sidebar-ring: 232 76% 67%;
+
+    /* Gradientes dark */
+    --gradient-signature: linear-gradient(135deg, hsl(232 76% 67%) 0%, hsl(199 82% 65%) 50%, hsl(252 70% 75%) 100%);
+    --gradient-cta: linear-gradient(135deg, hsl(232 76% 67%) 0%, hsl(252 70% 75%) 100%);
+    --gradient-hero: radial-gradient(ellipse at top, hsl(232 76% 67% / 0.18) 0%, transparent 50%), radial-gradient(ellipse at bottom right, hsl(199 82% 65% / 0.14) 0%, transparent 60%), radial-gradient(ellipse at bottom left, hsl(252 70% 75% / 0.12) 0%, transparent 60%);
+    --gradient-warm: linear-gradient(135deg, hsl(10 78% 70%) 0%, hsl(252 70% 75%) 100%);
+    --gradient-cool: linear-gradient(135deg, hsl(199 82% 65%) 0%, hsl(232 76% 67%) 100%);
+    --gradient-ink: linear-gradient(180deg, hsl(230 38% 14%) 0%, hsl(230 38% 6%) 100%);
+    --gradient-card: linear-gradient(180deg, hsl(230 30% 11%) 0%, hsl(230 38% 8%) 100%);
+    --gradient-disruptor: linear-gradient(135deg, hsl(232 76% 67%) 0%, hsl(199 82% 65%) 50%, hsl(252 70% 75%) 100%);
+
+    /* Shadows dark */
+    --shadow-sm: 0 1px 2px hsl(0 0% 0% / 0.30);
+    --shadow-md: 0 6px 20px -6px hsl(0 0% 0% / 0.40);
+    --shadow-lg: 0 24px 60px -22px hsl(0 0% 0% / 0.55);
+    --shadow-glow: 0 24px 70px -18px hsl(232 76% 67% / 0.40);
+    --shadow-card: 0 1px 2px hsl(0 0% 0% / 0.30), 0 6px 20px -6px hsl(0 0% 0% / 0.40);
+  }
+
+  /*
+   * .light-force — fuerza modo claro para una sección de la app
+   * independientemente del theme global del user (system/dark).
+   *
+   * Caso de uso 2026-05-06: el admin (admin.vibook.ai/admin) tiene que
+   * verse siempre claro porque la copy/jerarquía visual está pensada
+   * para light. Si el user tiene el dashboard en dark, antes el admin
+   * heredaba .dark del <html> y se veía monocromo gris.
+   *
+   * Definido AFTER .dark por orden de fuente: ambos tienen specificity
+   * 0,1,0 y la regla más tarde gana. Por eso wrapping un subtree con
+   * className="light-force" lo fuerza a light variables aunque <html>
+   * tenga la clase .dark aplicada por next-themes.
+   */
+  .light-force {
+    color-scheme: light;
+    --background: 0 0% 100%;
+    --background-alt: 220 30% 99%;
+    --foreground: 222 47% 11%;
+    --ink: 230 38% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 232 76% 58%;
+    --primary-foreground: 0 0% 100%;
+    --accent-teal: 199 82% 38%;
+    --accent-teal-foreground: 0 0% 100%;
+    --accent-violet: 252 70% 70%;
+    --accent-violet-foreground: 222 47% 11%;
+    --accent-coral: 10 78% 66%;
+    --accent-coral-foreground: 222 47% 11%;
+    --accent-sand: 224 36% 97%;
+    --accent-sand-foreground: 222 47% 11%;
+    --secondary: 224 28% 97%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 224 22% 96%;
+    --muted-foreground: 226 12% 48%;
+    --accent: 224 28% 97%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 160 58% 30%;
+    --success-foreground: 0 0% 100%;
+    --border: 224 18% 92%;
+    --input: 224 18% 92%;
+    --ring: 232 76% 58%;
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 222 47% 11%;
+    --sidebar-primary: 232 76% 58%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 224 28% 97%;
+    --sidebar-accent-foreground: 222 47% 11%;
+    --sidebar-border: 224 18% 92%;
+    --sidebar-ring: 232 76% 58%;
   }
 }
 
@@ -104,8 +222,147 @@
     min-height: 100vh;
     margin: 0;
     padding: 0;
-    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01";
   }
+  h1, h2, h3, h4 {
+    letter-spacing: -0.028em;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .glass {
+    backdrop-filter: blur(12px) saturate(160%);
+    -webkit-backdrop-filter: blur(12px) saturate(160%);
+    background-color: hsl(var(--background) / 0.65);
+    border: 1px solid hsl(var(--border) / 0.5);
+  }
+  .glass-dark {
+    backdrop-filter: blur(12px) saturate(160%);
+    -webkit-backdrop-filter: blur(12px) saturate(160%);
+    background-color: hsl(var(--ink) / 0.5);
+    border: 1px solid hsl(0 0% 100% / 0.08);
+  }
+
+  .text-gradient-signature {
+    background: var(--gradient-signature);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .text-gradient-warm {
+    background: var(--gradient-warm);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .text-gradient-cool {
+    background: var(--gradient-cool);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .text-gradient-disruptor {
+    background: var(--gradient-disruptor);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .grid-bg {
+    background-image:
+      linear-gradient(hsl(var(--border) / 0.6) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--border) / 0.6) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+  .dot-bg {
+    background-image: radial-gradient(hsl(var(--border)) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+  .noise {
+    position: relative;
+  }
+  .noise::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/></svg>");
+    opacity: 0.04;
+    mix-blend-mode: overlay;
+  }
+
+  .mask-fade-r {
+    mask-image: linear-gradient(to right, black 70%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to right, black 70%, transparent 100%);
+  }
+
+  .section-aura {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+  }
+  .section-aura::before {
+    content: "";
+    position: absolute;
+    inset: -10% -5% auto auto;
+    width: 480px;
+    height: 480px;
+    background: var(--gradient-signature);
+    filter: blur(120px);
+    opacity: 0.18;
+    pointer-events: none;
+    z-index: -1;
+  }
+  .section-aura-alt {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+  }
+  .section-aura-alt::before {
+    content: "";
+    position: absolute;
+    inset: auto auto -20% -10%;
+    width: 520px;
+    height: 520px;
+    background: var(--gradient-warm);
+    filter: blur(140px);
+    opacity: 0.14;
+    pointer-events: none;
+    z-index: -1;
+  }
+
+  .prose-vibook {
+    color: hsl(var(--foreground));
+    line-height: 1.65;
+  }
+  .prose-vibook h1,
+  .prose-vibook h2,
+  .prose-vibook h3 {
+    color: hsl(var(--foreground));
+    letter-spacing: -0.028em;
+    font-weight: 700;
+    margin-top: 1.5em;
+    margin-bottom: 0.5em;
+  }
+  .prose-vibook h1 { font-size: 2.25rem; line-height: 1.1; }
+  .prose-vibook h2 { font-size: 1.75rem; line-height: 1.15; }
+  .prose-vibook h3 { font-size: 1.35rem; line-height: 1.25; }
+  .prose-vibook p { margin: 0 0 1em; }
+  .prose-vibook a {
+    color: hsl(var(--primary));
+    text-decoration: underline;
+    text-underline-offset: 4px;
+  }
+  .prose-vibook ul,
+  .prose-vibook ol {
+    padding-left: 1.5em;
+    margin: 0 0 1em;
+  }
+  .prose-vibook li { margin-bottom: 0.35em; }
 }
 
 @media print {
@@ -116,7 +373,7 @@
 
   html,
   body {
-    background: #fff !important;
+    background: hsl(var(--background)) !important;
   }
 
   body {
@@ -126,7 +383,7 @@
 
   .quotation-print-shell {
     min-height: auto !important;
-    background: #fff !important;
+    background: hsl(var(--background)) !important;
   }
 
   .quotation-print-header {

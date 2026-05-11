@@ -70,47 +70,48 @@ export function normalizeInstagram(ig: string | undefined): string | null {
 export async function determineAgencyId(
   agencyTag: string | undefined,
   supabase: Awaited<ReturnType<typeof createServerClient>>
-): Promise<string> {
+): Promise<{ agency_id: string; org_id: string }> {
+  const empty = { agency_id: "", org_id: "" }
+
   if (!agencyTag) {
-    // Fallback: buscar Rosario por defecto
     const { data: rosario } = await supabase
       .from("agencies")
-      .select("id")
+      .select("id, org_id")
       .ilike("name", "%rosario%")
       .maybeSingle()
-    
-    return (rosario as { id: string } | null)?.id || ""
+
+    if (!rosario) return empty
+    return { agency_id: (rosario as any).id, org_id: (rosario as any).org_id }
   }
-  
-  // Buscar agencia por nombre (case insensitive)
+
   const normalizedTag = agencyTag.toLowerCase().trim()
-  
-  // Mapeo directo de tags comunes
+
   const tagMap: Record<string, string> = {
     "rosario": "rosario",
     "madero": "madero",
   }
-  
+
   const searchTerm = tagMap[normalizedTag] || normalizedTag
-  
+
   const { data: agency } = await supabase
     .from("agencies")
-    .select("id")
+    .select("id, org_id")
     .ilike("name", `%${searchTerm}%`)
     .maybeSingle()
-  
+
   if (agency) {
-    return (agency as { id: string }).id
+    return { agency_id: (agency as any).id, org_id: (agency as any).org_id }
   }
-  
-  // Si no se encuentra, buscar Rosario como fallback
+
+  // Fallback: Rosario
   const { data: rosario } = await supabase
     .from("agencies")
-    .select("id")
+    .select("id, org_id")
     .ilike("name", "%rosario%")
     .maybeSingle()
-  
-  return (rosario as { id: string } | null)?.id || ""
+
+  if (!rosario) return empty
+  return { agency_id: (rosario as any).id, org_id: (rosario as any).org_id }
 }
 
 /**
@@ -306,17 +307,16 @@ export function determineListName(manychatData: ManychatLeadData): string {
 
 
 /**
- * Sync Manychat lead data to a lead in the database
- * Lógica IDÉNTICA a syncTrelloCardToLead pero adaptada para Manychat
+ * Sync Manychat lead data to a lead in the database.
  */
 export async function syncManychatLeadToLead(
   manychatData: ManychatLeadData,
   supabase: Awaited<ReturnType<typeof createServerClient>>
 ): Promise<{ created: boolean; leadId: string }> {
   
-  // 1. Determinar agency_id
-  const agency_id = await determineAgencyId(manychatData.agency, supabase)
-  
+  // 1. Determinar agency_id + org_id
+  const { agency_id, org_id } = await determineAgencyId(manychatData.agency, supabase)
+
   if (!agency_id) {
     throw new Error("No se pudo determinar la agencia. Verifica que existan agencias en la base de datos.")
   }
@@ -336,7 +336,7 @@ export async function syncManychatLeadToLead(
   // 3. Construir descripción estructurada (igual que Zapier)
   const notes = buildStructuredDescription(manychatData)
   
-  // 4. Preparar datos completos de Manychat para guardar en JSONB (similar a trello_full_data)
+  // 4. Preparar datos completos de Manychat para guardar en JSONB
   const manychatFullData = {
     // Datos del lead
     ig: manychatData.ig,
@@ -364,22 +364,31 @@ export async function syncManychatLeadToLead(
     syncedAt: new Date().toISOString(),
   }
   
-  // 5. Buscar lead existente por teléfono o Instagram (deduplicación)
+  // 5. Determinar nombre de lista ANTES de dedup (necesitamos list_name para
+  //    que la misma persona pueda ser lead en campañas distintas simultáneamente)
+  const listName = determineListName(manychatData)
+  console.log(`✅ Lead de Manychat asignado a lista: "${listName}"`)
+
+  // 6. Buscar lead existente por teléfono o Instagram (deduplicación)
+  //    Filtros: mismo source + misma agencia + misma lista (campaña)
+  //    → misma persona en campañas distintas = leads separados
   let existingLead: { id: string } | null = null
-  
+
   if (contact_phone) {
     const { data: leadByPhone } = await supabase
       .from("leads")
       .select("id")
       .eq("contact_phone", contact_phone)
       .eq("source", "Manychat")
+      .eq("agency_id", agency_id)
+      .eq("list_name", listName)
       .maybeSingle()
-    
+
     if (leadByPhone) {
       existingLead = leadByPhone as { id: string }
     }
   }
-  
+
   // Si no se encontró por teléfono, buscar por Instagram
   if (!existingLead && contact_instagram) {
     const { data: leadByInstagram } = await supabase
@@ -387,17 +396,14 @@ export async function syncManychatLeadToLead(
       .select("id")
       .eq("contact_instagram", contact_instagram)
       .eq("source", "Manychat")
+      .eq("agency_id", agency_id)
+      .eq("list_name", listName)
       .maybeSingle()
-    
+
     if (leadByInstagram) {
       existingLead = leadByInstagram as { id: string }
     }
   }
-  
-  // 6. Determinar nombre de lista según lógica de Zapier (INDEPENDIENTE de Trello)
-  // Este nombre se usa para agrupar leads en el kanban de CRM Manychat
-  const listName = determineListName(manychatData)
-  console.log(`✅ Lead de Manychat asignado a lista: "${listName}"`)
 
   // 6b. Auto-registrar la lista en manychat_list_order al inicio del kanban (posición 0)
   //     Solo si la lista no existe todavía para esta agencia
@@ -424,9 +430,10 @@ export async function syncManychatLeadToLead(
           .eq("agency_id", agency_id)
 
         const shiftedData = [
-          { agency_id, list_name: listName, position: 0, seller_id: null },
+          { agency_id, org_id: org_id || undefined, list_name: listName, position: 0, seller_id: null },
           ...currentLists.map((list: any, idx: number) => ({
             agency_id,
+            org_id: org_id || undefined,
             list_name: list.list_name,
             position: idx + 1,
             seller_id: list.seller_id || null,
@@ -438,7 +445,7 @@ export async function syncManychatLeadToLead(
       } else {
         // No hay listas previas, insertar directamente en posición 0
         await (supabase.from("manychat_list_order") as any)
-          .insert({ agency_id, list_name: listName, position: 0, seller_id: null })
+          .insert({ agency_id, org_id: org_id || undefined, list_name: listName, position: 0, seller_id: null })
       }
 
       console.log(`✅ Lista "${listName}" registrada en posición 0 del kanban`)
@@ -451,6 +458,7 @@ export async function syncManychatLeadToLead(
   // 7. Preparar datos del lead
   const leadData: any = {
     agency_id,
+    org_id: org_id || undefined,
     source: "Manychat" as const,
     status,
     region,
@@ -461,8 +469,9 @@ export async function syncManychatLeadToLead(
     contact_instagram,
     assigned_seller_id: null, // No se asigna automáticamente
     notes: notes || null,
-    manychat_full_data: manychatFullData, // Similar a trello_full_data
-    list_name: listName, // Nombre de la lista para el kanban (INDEPENDIENTE de Trello)
+    manychat_full_data: manychatFullData,
+    list_name: listName, // Nombre de la lista para el kanban
+
     updated_at: new Date().toISOString(),
   }
   

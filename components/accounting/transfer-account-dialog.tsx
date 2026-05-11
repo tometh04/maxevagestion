@@ -338,7 +338,7 @@ export function TransferAccountDialog({
 
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
-                <ArrowDownToLine className="h-3.5 w-3.5 text-emerald-500" />
+                <ArrowDownToLine className="h-3.5 w-3.5 text-success" />
                 <span className="text-xs font-medium text-foreground/70">Destino</span>
               </div>
 
@@ -403,7 +403,7 @@ export function TransferAccountDialog({
 
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
-                <CalendarIcon className="h-3.5 w-3.5 text-sky-500" />
+                <CalendarIcon className="h-3.5 w-3.5 text-accent-teal" />
                 <span className="text-xs font-medium text-foreground/70">Detalles</span>
               </div>
 

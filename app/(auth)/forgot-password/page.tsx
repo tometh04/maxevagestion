@@ -44,14 +44,16 @@ export default function ForgotPasswordPage() {
 
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 p-4">
-        <Card className="w-full max-w-md">
+      <div className="relative min-h-screen flex items-center justify-center bg-background p-4 section-aura">
+        <Card className="w-full max-w-md relative z-10 rounded-2xl shadow-card border-border/50">
           <CardHeader className="text-center">
-            <div className="mx-auto mb-4 h-16 w-16 rounded-full bg-green-500/10 flex items-center justify-center">
-              <CheckCircle2 className="h-8 w-8 text-green-500" />
+            <div className="mx-auto mb-4 h-16 w-16 rounded-full bg-success/10 flex items-center justify-center">
+              <CheckCircle2 className="h-8 w-8 text-success" />
             </div>
-            <CardTitle className="text-2xl">¡Email enviado!</CardTitle>
-            <CardDescription>
+            <CardTitle className="text-2xl tracking-tighter-h2">
+              <span className="text-gradient-signature">¡Email enviado!</span>
+            </CardTitle>
+            <CardDescription className="text-balance">
               Revisá tu bandeja de entrada en <strong>{email}</strong>
             </CardDescription>
           </CardHeader>
@@ -83,14 +85,16 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 p-4">
-      <Card className="w-full max-w-md">
+    <div className="relative min-h-screen flex items-center justify-center bg-background p-4 section-aura">
+      <Card className="w-full max-w-md relative z-10 rounded-2xl shadow-card border-border/50">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-4 h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
-            <Mail className="h-6 w-6 text-primary" />
+          <div className="mx-auto mb-4 h-14 w-14 rounded-2xl bg-cta-gradient flex items-center justify-center shadow-glow">
+            <Mail className="h-6 w-6 text-white" />
           </div>
-          <CardTitle className="text-2xl">¿Olvidaste tu contraseña?</CardTitle>
-          <CardDescription>
+          <CardTitle className="text-2xl tracking-tighter-h2">
+            <span className="text-gradient-signature">¿Olvidaste tu contraseña?</span>
+          </CardTitle>
+          <CardDescription className="text-balance">
             Ingresá tu email y te enviaremos un enlace para restablecerla
           </CardDescription>
         </CardHeader>
@@ -115,7 +119,7 @@ export default function ForgotPasswordPage() {
               </Alert>
             )}
 
-            <Button type="submit" className="w-full" disabled={loading}>
+            <Button type="submit" variant="cta" size="lg" className="w-full" disabled={loading}>
               {loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

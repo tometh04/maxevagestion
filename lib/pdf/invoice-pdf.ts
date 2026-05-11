@@ -17,11 +17,78 @@ import {
 } from "@/lib/invoices/calculation"
 import { buildAfipQrPayload, buildAfipQrUrl } from "@/lib/afip/qr"
 
+/**
+ * Branding per-tenant aplicado al PDF (Pendientes 4.5 — Customizaciones MUST).
+ * Todo opcional: si no se setea nada, cae al diseño default (header naranja
+ * Vibook + sin logo + sin T&C).
+ */
+export interface InvoicePdfBranding {
+  /** Logo PNG en bytes. Se renderiza arriba del header naranja. */
+  logoPngBytes?: Uint8Array | Buffer
+  /** Color del header en hex (#RRGGBB). Default: naranja Vibook. */
+  primaryColorHex?: string
+  /** Texto de T&Cs / política. Se imprime en footer si hay espacio. */
+  termsText?: string
+}
+
 export interface InvoicePdfParams {
   invoice: any
   emisor: { cuit: string; razonSocial: string }
   agency: { name: string }
   footerCompanyName?: string
+  branding?: InvoicePdfBranding
+}
+
+/**
+ * Convierte color en hex "#RRGGBB" o HSL "H S% L%" → rgb(r, g, b)
+ * normalizado [0,1]. Si formato inválido o omitido, devuelve null y el
+ * caller cae al color default.
+ *
+ * La UI Mi Empresa guarda HSL nativo (Tailwind CSS variables format) pero
+ * algunos tenants legacy guardan hex. Aceptamos ambos.
+ */
+function parseColor(input?: string): { r: number; g: number; b: number } | null {
+  if (!input) return null
+  const trimmed = input.trim()
+
+  // Hex: #RRGGBB o #RGB
+  const hexMatch = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(trimmed)
+  if (hexMatch) {
+    let hex = hexMatch[1]
+    if (hex.length === 3) hex = hex.split("").map((c) => c + c).join("")
+    const num = parseInt(hex, 16)
+    return {
+      r: ((num >> 16) & 0xff) / 255,
+      g: ((num >> 8) & 0xff) / 255,
+      b: (num & 0xff) / 255,
+    }
+  }
+
+  // HSL Tailwind format: "222 89% 55%" o "222, 89%, 55%"
+  const hslMatch = /^([\d.]+)[\s,]+([\d.]+)%[\s,]+([\d.]+)%$/.exec(trimmed)
+  if (hslMatch) {
+    const h = parseFloat(hslMatch[1])
+    const s = parseFloat(hslMatch[2]) / 100
+    const l = parseFloat(hslMatch[3]) / 100
+    return hslToRgbNorm(h, s, l)
+  }
+
+  return null
+}
+
+// HSL [0-360, 0-1, 0-1] → RGB [0-1] normalizado
+function hslToRgbNorm(h: number, s: number, l: number): { r: number; g: number; b: number } {
+  const c = (1 - Math.abs(2 * l - 1)) * s
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1))
+  const m = l - c / 2
+  let r = 0, g = 0, b = 0
+  if (h < 60) [r, g, b] = [c, x, 0]
+  else if (h < 120) [r, g, b] = [x, c, 0]
+  else if (h < 180) [r, g, b] = [0, c, x]
+  else if (h < 240) [r, g, b] = [0, x, c]
+  else if (h < 300) [r, g, b] = [x, 0, c]
+  else [r, g, b] = [c, 0, x]
+  return { r: r + m, g: g + m, b: b + m }
 }
 
 const fmt = (n: number) =>
@@ -38,7 +105,7 @@ const fmtDate = (s?: string | null) => {
 }
 
 export async function renderInvoicePdf(params: InvoicePdfParams): Promise<Uint8Array> {
-  const { invoice, emisor, agency, footerCompanyName } = params
+  const { invoice, emisor, agency, footerCompanyName, branding } = params
 
   const pdfDoc = await PDFDocument.create()
   const page = pdfDoc.addPage(PageSizes.A4) // 595 × 842 pt
@@ -50,7 +117,25 @@ export async function renderInvoicePdf(params: InvoicePdfParams): Promise<Uint8A
   const black = rgb(0, 0, 0)
   const gray = rgb(0.45, 0.45, 0.45)
   const light = rgb(0.92, 0.92, 0.92)
-  const orange = rgb(0.85, 0.33, 0.1)
+  // Pendientes 4.5 — primary color override per-tenant. Default = naranja Vibook.
+  // Acepta hex (#RRGGBB) o HSL Tailwind ("H S% L%"). El field se sigue
+  // llamando primaryColorHex por compat retroactiva con el call-site.
+  const customPrimary = parseColor(branding?.primaryColorHex)
+  const orange = customPrimary
+    ? rgb(customPrimary.r, customPrimary.g, customPrimary.b)
+    : rgb(0.85, 0.33, 0.1)
+
+  // Embebemos el logo arriba si el tenant lo configuró. Si falla el embed
+  // (PNG corrupto, formato no soportado, etc.) seguimos sin logo — no
+  // rompemos la generación del PDF por un asset opcional.
+  let logoImage: Awaited<ReturnType<typeof pdfDoc.embedPng>> | null = null
+  if (branding?.logoPngBytes) {
+    try {
+      logoImage = await pdfDoc.embedPng(branding.logoPngBytes)
+    } catch (err) {
+      console.warn("[invoice-pdf] No se pudo embeber logo del tenant:", err)
+    }
+  }
 
   const L = 40
   const R = width - 40
@@ -73,6 +158,21 @@ export async function renderInvoicePdf(params: InvoicePdfParams): Promise<Uint8A
     receptorCondicionIva: invoice.receptor_condicion_iva,
   })
   const fmtMoney = (value: number) => formatInvoiceMoney(value, invoice.moneda)
+
+  // LOGO (si el tenant lo configuró, va arriba del header naranja)
+  if (logoImage) {
+    const logoMaxH = 36
+    const ratio = logoImage.width / logoImage.height
+    const logoH = Math.min(logoMaxH, logoImage.height)
+    const logoW = logoH * ratio
+    page.drawImage(logoImage, {
+      x: L,
+      y: y - logoH,
+      width: logoW,
+      height: logoH,
+    })
+    y -= logoH + 8
+  }
 
   // HEADER
   rect(L, y - 54, W, 56, orange)
@@ -232,6 +332,14 @@ export async function renderInvoicePdf(params: InvoicePdfParams): Promise<Uint8A
 
   // FOOTER
   const company = footerCompanyName || agency.name
+  // Pendientes 4.5 — T&Cs override del tenant. Si configuró un texto largo,
+  // lo imprimimos arriba del footer line. Trunca a primeras 2 líneas para
+  // no comer todo el espacio del PDF.
+  if (branding?.termsText) {
+    const trimmed = branding.termsText.trim().slice(0, 200)
+    line(L, 50, R, 50, gray, 0.2)
+    text(trimmed, L, 40, 6, regular, gray)
+  }
   line(L, 35, R, 35, gray, 0.3)
   text(`Comprobante generado por ${company} - Sistema de Gestion`, L, 22, 7, regular, gray)
   text("Verificá en: www.afip.gob.ar/fe/qr", R - 160, 22, 7, regular, gray)

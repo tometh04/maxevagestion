@@ -141,15 +141,15 @@ export function EditListOrderDialog({
         <DialogHeader>
           <DialogTitle>Editar Orden de Listas</DialogTitle>
           <DialogDescription>
-            Arrastra las listas para reordenarlas. El orden se aplicará al kanban de CRM Manychat.
+            Arrastra las listas para reordenarlas. El orden se aplicará al kanban de CRM Ventas.
           </DialogDescription>
         </DialogHeader>
 
         <div className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
           <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
             <div className="flex items-center gap-2 mb-3">
-              <div className="flex items-center justify-center h-6 w-6 rounded-md bg-blue-500/10">
-                <ListOrdered className="h-3.5 w-3.5 text-blue-500" />
+              <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                <ListOrdered className="h-3.5 w-3.5 text-primary" />
               </div>
               <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Orden de Listas</h4>
             </div>

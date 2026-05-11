@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { DashboardFilters, DashboardFiltersState } from "./dashboard-filters"
 import { SalesBySellerChart } from "./sales-by-seller-chart"
@@ -112,6 +112,19 @@ export function DashboardPageClient({
   const [destinationsAllData, setDestinationsAllData] = useState<any[]>([])
   const [cashflowData, setCashflowData] = useState<any[]>([])
   const [hiddenKpis, setHiddenKpis] = useState<Set<DashboardKpiId>>(new Set())
+  // Counter usado por el botón "Actualizar" para forzar refetch sin
+  // duplicar con el auto-refresh del cambio de filtros (ver useEffect abajo).
+  const [refreshTrigger, setRefreshTrigger] = useState(0)
+  // Bug 2026-05-06 (post-fix #5 que NO funcionó): aún con refreshTrigger
+  // counter, observamos doble ejecución de fetchDashboardData (8 → 16
+  // requests) al click "Actualizar" sin tocar filtros. Causa probable:
+  // re-render compensatorio del componente padre/child que dispara el
+  // useEffect 2 veces. Defense-in-depth: dedup temporal + AbortController.
+  // Si llega una llamada en <150ms de la previa, la ignoramos. Y abortamos
+  // el fetch in-flight previo si arranca uno nuevo (libera el client de
+  // esperar respuestas obsoletas; el server sigue procesando el viejo).
+  const lastFetchTimeRef = useRef(0)
+  const inFlightCtrlRef = useRef<AbortController | null>(null)
 
   // [perf-instrumentation] Loguea cuándo el page client component se monta
   // (relativo al page load del browser). Se correlaciona con CLICK del sidebar
@@ -145,6 +158,22 @@ export function DashboardPageClient({
   }, [])
 
   const fetchDashboardData = useCallback(async () => {
+    // Dedup: si la última invocación fue hace <150ms, ignoramos.
+    // Esto cubre el caso (no resuelto) donde el useEffect dispara 2x por
+    // un re-render que no detectamos. Solo afecta llamadas casi simultáneas;
+    // un nuevo cambio de filtro o click después del settle SIEMPRE pasa.
+    const now = performance.now()
+    if (now - lastFetchTimeRef.current < 150) {
+      return
+    }
+    lastFetchTimeRef.current = now
+
+    // Abortar fetch previo in-flight para liberar al client de esperar
+    // respuestas obsoletas. El server sigue procesando, pero no cuelga la UI.
+    inFlightCtrlRef.current?.abort()
+    const ctrl = new AbortController()
+    inFlightCtrlRef.current = ctrl
+
     setLoading(true)
     setLoadingProgress(0)
     // Tracker de progreso: incrementa por cada fetch que termina (sea ok o error).
@@ -194,8 +223,9 @@ export function DashboardPageClient({
       // Fetch en paralelo. Cache controlado por header Cache-Control de cada
       // endpoint (private, max-age=30, stale-while-revalidate=60). El botón
       // "Actualizar" del header re-monta el componente y fuerza re-fetch.
-      const fetchOptions = {
-        cache: "default" as RequestCache
+      const fetchOptions: RequestInit = {
+        cache: "default" as RequestCache,
+        signal: ctrl.signal,
       }
       
       // Deudores: llamamos directamente al endpoint /api/accounting/debts-sales
@@ -208,6 +238,14 @@ export function DashboardPageClient({
       debtsSalesSearchParams.set("dateTo", filters.dateTo)
       if (filters.sellerId && filters.sellerId !== "ALL") {
         debtsSalesSearchParams.set("sellerId", filters.sellerId)
+      }
+      // Bug 2026-05-06: el KPI Deudores ignoraba el filtro de agencia. En
+      // tenants multi-agencia (Lozada = Rosario + Madero) el filtro funcionaba
+      // para Ventas/Margen/Cashflow/Operadores PERO Deudores siempre sumaba
+      // todas las agencias. Asimétrico con `operatorsDebtParams` que sí lo
+      // pasa. Multi-tenant correcto = filtro de agencia se respeta SIEMPRE.
+      if (filters.agencyId && filters.agencyId !== "ALL") {
+        debtsSalesSearchParams.set("agencyId", filters.agencyId)
       }
 
       const operatorsDebtParams = new URLSearchParams()
@@ -342,20 +380,41 @@ export function DashboardPageClient({
       setDestinationsData(destinationsData.destinations || [])
       setDestinationsAllData(destinationsAllData.destinations || [])
       setCashflowData(cashflowData.cashflow || [])
-    } catch (error) {
+    } catch (error: any) {
+      // Si fue abort por nueva invocación, NO loguear ni cambiar loading
+      // (otro fetch ya está in-flight, el state se va a setear ahí).
+      if (error?.name === "AbortError") {
+        return
+      }
       console.error("Error fetching dashboard data:", error)
     } finally {
-      // Forzar 100% al cierre para que el bar no se quede estancado en
-      // un valor intermedio si alguna fetch hizo throw antes del finally.
-      setLoadingProgress(100)
-      setLoading(false)
+      // Solo cambiar loading si el ctrl actual sigue siendo el más reciente.
+      // Si fue abortado y reemplazado por otro, el otro se encargará.
+      if (inFlightCtrlRef.current === ctrl) {
+        setLoadingProgress(100)
+        setLoading(false)
+        inFlightCtrlRef.current = null
+      }
     }
   }, [filters])
 
+  // Bug 2026-05-06 round 3: doble fetch al cambiar filtro + click Actualizar.
+  // El round 2 (refreshTrigger counter + dedup ms + AbortController) NO eliminó
+  // el problema. Causa raíz observada en prod:
+  //   t=0.00  click filtro → child setLocalFilters (no commit todavía, debounce 500ms)
+  //   t=0.05  click Actualizar → setRefreshTrigger(1) → useEffect dispara
+  //   t=0.50  debounce settle → child onChange → parent setFilters → useEffect
+  //           dispara OTRA VEZ porque filters.X cambió
+  // Total: 2 disparos separados por ~450ms. El dedup de 150ms no los protege.
+  //
+  // Fix definitivo: el useEffect SOLO depende de `refreshTrigger`. Cualquier
+  // cambio de filtro también incrementa refreshTrigger via callback custom
+  // (handleFiltersChange abajo), garantizando un único disparo del effect
+  // por cualquier mutación.
   useEffect(() => {
     fetchDashboardData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.dateFrom, filters.dateTo, filters.agencyId, filters.sellerId])
+  }, [refreshTrigger])
 
   return (
     <div className="space-y-4">
@@ -367,7 +426,7 @@ export function DashboardPageClient({
             Vista general del negocio
           </p>
         </div>
-        <Button onClick={fetchDashboardData} disabled={loading} variant="outline" size="sm" className="w-full sm:w-auto">
+        <Button onClick={() => setRefreshTrigger((t) => t + 1)} disabled={loading} variant="outline" size="sm" className="w-full sm:w-auto">
           <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? "animate-spin" : ""}`} />
           Actualizar
         </Button>
@@ -388,7 +447,20 @@ export function DashboardPageClient({
         sellers={sellers}
         value={filters}
         defaultValue={defaultFilters}
-        onChange={setFilters}
+        onChange={(next) => {
+          // Bug fix round 3: unificar el trigger del fetch.
+          // Cualquier cambio real de filtros también incrementa refreshTrigger
+          // → el useEffect [refreshTrigger] dispara 1 vez. Si solo el botón
+          // Actualizar también incrementa refreshTrigger, el efecto dispara
+          // 1 vez por button O por filter change, nunca 2x.
+          const changed =
+            next.dateFrom !== filters.dateFrom ||
+            next.dateTo !== filters.dateTo ||
+            next.agencyId !== filters.agencyId ||
+            next.sellerId !== filters.sellerId
+          setFilters(next)
+          if (changed) setRefreshTrigger((t) => t + 1)
+        }}
       />
 
       {/* KPIs - Stripe style */}

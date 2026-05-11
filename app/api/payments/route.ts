@@ -115,7 +115,7 @@ export async function POST(request: Request) {
     const supabase = await createServerClient()
 
     // Verificar acceso al módulo de caja
-    if (!canAccessModule(user.role, "cash")) {
+    if (!canAccessModule(user.role as any, "cash")) {
       return NextResponse.json({ error: "No tiene permisos para acceder a este módulo" }, { status: 403 })
     }
 
@@ -663,24 +663,49 @@ export async function POST(request: Request) {
           supabase
         )
         
-        // 8. Actualizar payment con referencia al ledger_movement
+        // 8. Actualizar payment con referencia al ledger_movement (CRÍTICO)
+        //
+        // Bug fix 2026-05-07 (caso Santi op 35a1ef37): si este UPDATE fallaba,
+        // el código solo logueaba "⚠️ RETRY FAILED" y seguía como si nada,
+        // dejando un payment status=PAID sin ledger_movement_id (huérfano).
+        // Después del fallo se creaba o no el cash_movement con otro silencio,
+        // la UI mostraba el cobro como pagado y la contabilidad quedaba MAL.
+        //
+        // Ahora: si después del retry el link falla, hacemos rollback
+        // completo (borrar ledger_movement + payment) y devolvemos 500.
+        // El usuario ve un error claro y puede retomar; el sistema queda
+        // consistente.
         const { error: linkError } = await (supabase.from("payments") as any)
           .update({ ledger_movement_id: ledgerMovementId })
           .eq("id", payment.id)
 
         if (linkError) {
-          console.error("⚠️ CRITICAL: Failed to link ledger_movement_id to payment:", linkError)
-          console.error("  Payment ID:", payment.id, "Ledger Movement ID:", ledgerMovementId)
-          // Intentar con retry
+          console.error("⚠️ Failed to link ledger_movement_id to payment, retrying:", linkError)
           const { error: retryError } = await (supabase.from("payments") as any)
             .update({ ledger_movement_id: ledgerMovementId })
             .eq("id", payment.id)
           if (retryError) {
-            console.error("⚠️ RETRY FAILED: ledger_movement_id NOT linked to payment. Orphan risk!")
+            console.error("⚠️ CRITICAL: link retry failed — rolling back payment + ledger:", {
+              paymentId: payment.id, ledgerMovementId, error: retryError,
+            })
+            await (supabase.from("ledger_movements") as any).delete().eq("id", ledgerMovementId)
+            await (supabase.from("payments") as any).delete().eq("id", payment.id)
+            return NextResponse.json(
+              {
+                error: "No se pudo vincular el pago al libro mayor. La operación se revirtió por completo, reintentá. Si vuelve a fallar avisá a soporte.",
+              },
+              { status: 500 }
+            )
           }
         }
 
-        // 9. Crear cash_movement para que aparezca en la vista de caja
+        // 9. Crear cash_movement para que aparezca en la vista de caja (CRÍTICO)
+        //
+        // Mismo problema histórico: cashMovementError caía en console.warn y
+        // se ignoraba. Ahora: si falla, rollback completo (borrar ledger,
+        // borrar payment) y 500. agency_id se pasa explícito (defensivo —
+        // el trigger autofill_cash_movements_agency_id lo cubre, pero
+        // asegurar evita race conditions del schema cache de PostgREST).
         const { data: defaultCashBox } = await (supabase.from("cash_boxes") as any)
           .select("id")
           .eq("currency", currency)
@@ -703,10 +728,21 @@ export async function POST(request: Request) {
             movement_date: date_paid || new Date().toISOString().split("T")[0],
             notes: notes || null,
             is_touristic: true,
+            agency_id: agencyId,
           })
 
         if (cashMovementError) {
-          console.warn(`⚠️ Error creando cash_movement para pago ${payment.id}:`, cashMovementError)
+          console.error("⚠️ CRITICAL: cash_movement insert failed — rolling back:", {
+            paymentId: payment.id, ledgerMovementId, error: cashMovementError,
+          })
+          await (supabase.from("ledger_movements") as any).delete().eq("id", ledgerMovementId)
+          await (supabase.from("payments") as any).delete().eq("id", payment.id)
+          return NextResponse.json(
+            {
+              error: `No se pudo crear el movimiento de caja: ${cashMovementError.message}. La operación se revirtió, reintentá.`,
+            },
+            { status: 500 }
+          )
         }
 
         // 10. Si es pago a operador, marcar operator_payment como PAID
@@ -952,11 +988,12 @@ export async function POST(request: Request) {
         // Resolver agency_id y file_code de la operación (las variables del scope
         // interno de creación del cash_movement no están accesibles acá).
         const { data: opForAlert } = await (supabase.from("operations") as any)
-          .select("agency_id, file_code")
+          .select("agency_id, org_id, file_code")
           .eq("id", operation_id)
           .maybeSingle()
 
         const alertAgencyId = opForAlert?.agency_id || null
+        const alertOrgId = opForAlert?.org_id || null
         const opCode = opForAlert?.file_code || operation_id.slice(0, 8)
 
         if (!alertAgencyId) {
@@ -987,6 +1024,7 @@ export async function POST(request: Request) {
 
             if (!existingAlert) {
               await (supabase.from("alerts") as any).insert({
+                org_id: alertOrgId, // P0 2026-05-10: required tras tighten policy mig 5
                 agency_id: alertAgencyId,
                 user_id: user.id,
                 operation_id,
@@ -1703,22 +1741,58 @@ export async function PATCH(request: Request) {
       updateData.operator_id = linkedOperatorId
       updateData.operator_payment_id = linkedOperatorPaymentId
     }
-    // Marcar como PAID si se solicita
-    if (markAsPaid) {
-      updateData.status = "PAID"
-    }
     // Solo resetear ledger_movement_id si el pago tenía uno (evita error de schema cache)
     if (wasPaid && existingPayment.ledger_movement_id) {
       updateData.ledger_movement_id = null
     }
 
-    const { error: updateError } = await (supabase.from("payments") as any)
+    // BUG #3 audit forense 2026-05-05: si el user solicita `markAsPaid=true`
+    // tenemos que aplicar un guard CAS (Compare-And-Set) para evitar que dos
+    // requests concurrentes pasen el `if (wasPaid || markAsPaid)` simultáneamente
+    // y dupliquen ledger_movements + cash_movements + counterparts.
+    //
+    // El CAS se hace en el UPDATE final con un filtro `.eq("status", "PENDING")`,
+    // todo en una sola operación atómica. Si dos requests corren a la vez, solo
+    // uno hace match (Postgres serializa); el otro recibe `count: 0` rows
+    // afectadas y devolvemos 409.
+    //
+    // (Antes intentábamos un guard intermedio status='PROCESSING' pero el CHECK
+    // constraint payments_status_check solo permite ('PENDING','PAID','OVERDUE').
+    // El UPDATE atómico con filtro de status logra el mismo efecto sin agregar
+    // un estado transient al enum.)
+    if (markAsPaid) {
+      updateData.status = "PAID"
+    }
+
+    let updateQuery = (supabase.from("payments") as any)
       .update(updateData)
       .eq("id", paymentId)
+
+    // Solo aplicamos CAS cuando estamos transitando PENDING → PAID (caso Yamil).
+    // En edición de un pago ya PAID el bloque previo (línea 1648+) ya revirtió
+    // los movimientos; ahí no necesitamos CAS porque no hay transición de status.
+    if (markAsPaid && !wasPaid) {
+      updateQuery = updateQuery.eq("status", "PENDING")
+    }
+
+    const { data: updatedRows, error: updateError, count } = await updateQuery
+      .select("id", { count: "exact" })
 
     if (updateError) {
       console.error("Error updating payment:", updateError)
       return NextResponse.json({ error: `Error al actualizar pago: ${updateError.message}` }, { status: 500 })
+    }
+
+    // CAS check: si esperabamos transicionar PENDING → PAID y no afectamos filas,
+    // significa que otra request ya lo marcó como PAID. Devolvemos 409.
+    if (markAsPaid && !wasPaid && (!updatedRows || updatedRows.length === 0)) {
+      return NextResponse.json(
+        {
+          error: "Este pago ya fue marcado como pagado por otra operación. Refrescá la página.",
+          already_paid: true,
+        },
+        { status: 409 }
+      )
     }
 
     // 4. Si el pago estaba PAID o se está marcando como PAID, crear/recrear movimientos contables
@@ -1814,10 +1888,24 @@ export async function PATCH(request: Request) {
           supabase
         )
 
-        // Vincular nuevo ledger_movement al pago
-        await (supabase.from("payments") as any)
+        // Vincular nuevo ledger_movement al pago (CRÍTICO).
+        // Bug fix 2026-05-07: si este UPDATE falla en silencio, el pago queda
+        // PAID pero `ledger_movement_id` apunta al viejo (ya borrado) o queda
+        // null. Resultado: pago huérfano. Ahora si falla hacemos rollback del
+        // ledger nuevo y devolvemos 500.
+        const { error: linkErr } = await (supabase.from("payments") as any)
           .update({ ledger_movement_id: newLedgerMovementId })
           .eq("id", paymentId)
+        if (linkErr) {
+          console.error("⚠️ CRITICAL: PATCH no pudo vincular nuevo ledger al payment — rollback:", {
+            paymentId, newLedgerMovementId, error: linkErr,
+          })
+          await (supabase.from("ledger_movements") as any).delete().eq("id", newLedgerMovementId)
+          return NextResponse.json(
+            { error: "No se pudo vincular el pago al libro mayor. Reintentá; si vuelve a fallar avisá a soporte." },
+            { status: 500 }
+          )
+        }
 
         // Marcar operator_payment como PAID si aplica
         if (existingPayment.payer_type === "OPERATOR" && linkedOperatorPaymentId) {
@@ -1876,10 +1964,27 @@ export async function PATCH(request: Request) {
             movement_date: finalDatePaid,
             notes: finalNotes || null,
             is_touristic: true,
+            agency_id: agencyId,
           })
 
         if (cashInsertError) {
-          console.warn(`⚠️ Error recreando cash_movement para pago ${paymentId}:`, cashInsertError)
+          // Bug fix 2026-05-07: antes era console.warn — el endpoint devolvía
+          // 200 al cliente y la UI mostraba el cobro como editado, pero la
+          // caja quedaba sin el movimiento. Ahora rollback: borrar el ledger
+          // recién creado, desvincularlo del payment, y devolver 500.
+          console.error("⚠️ CRITICAL: PATCH cash_movement insert falló — rollback:", {
+            paymentId, newLedgerMovementId, error: cashInsertError,
+          })
+          await (supabase.from("payments") as any)
+            .update({ ledger_movement_id: null })
+            .eq("id", paymentId)
+          await (supabase.from("ledger_movements") as any).delete().eq("id", newLedgerMovementId)
+          return NextResponse.json(
+            {
+              error: `No se pudo crear el movimiento de caja: ${cashInsertError.message}. La edición se revirtió, reintentá.`,
+            },
+            { status: 500 }
+          )
         }
 
         await createPaymentCounterpartMovement({

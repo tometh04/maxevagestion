@@ -7,8 +7,8 @@ type ShellProps = {
 
 export function DataTableShell({ children, className }: ShellProps) {
   return (
-    <div className={cn("overflow-x-auto rounded-lg border border-slate-800/80", className)}>
-      <table className="min-w-full divide-y divide-slate-800/60 text-sm">
+    <div className={cn("overflow-x-auto rounded-lg border border-border", className)}>
+      <table className="min-w-full divide-y divide-muted-foreground/60 text-sm">
         {children}
       </table>
     </div>
@@ -17,7 +17,7 @@ export function DataTableShell({ children, className }: ShellProps) {
 
 export function DataTableHead({ children, className }: ShellProps) {
   return (
-    <thead className={cn("bg-slate-900/60 text-xs font-medium uppercase tracking-wider text-slate-500", className)}>
+    <thead className={cn("bg-card text-xs font-medium uppercase tracking-wider text-muted-foreground", className)}>
       {children}
     </thead>
   )
@@ -25,7 +25,7 @@ export function DataTableHead({ children, className }: ShellProps) {
 
 export function DataTableBody({ children, className }: ShellProps) {
   return (
-    <tbody className={cn("divide-y divide-slate-800/40 bg-slate-950/40", className)}>
+    <tbody className={cn("divide-y divide-border bg-muted/40", className)}>
       {children}
     </tbody>
   )
@@ -37,7 +37,7 @@ export function DataTableRow({ children, className, onClick, muted }: RowProps) 
     <tr
       onClick={onClick}
       className={cn(
-        "transition odd:bg-slate-950/40 even:bg-slate-900/20 hover:bg-slate-800/40",
+        "transition odd:bg-muted/40 even:bg-muted/30 hover:bg-muted/40",
         onClick && "cursor-pointer",
         muted && "opacity-70",
         className,

@@ -20,15 +20,15 @@ interface Indicator {
 }
 
 const statusDot: Record<string, string> = {
-  green: "bg-green-500",
-  yellow: "bg-yellow-500",
-  red: "bg-red-500",
+  green: "bg-success",
+  yellow: "bg-accent-coral",
+  red: "bg-destructive",
 }
 
 const statusBorder: Record<string, string> = {
-  green: "border-l-green-500",
-  yellow: "border-l-yellow-500",
-  red: "border-l-red-500",
+  green: "border-l-success",
+  yellow: "border-l-accent-coral",
+  red: "border-l-destructive",
 }
 
 export function HealthSettings() {
@@ -85,9 +85,9 @@ export function HealthSettings() {
       </div>
 
       {/* Status general */}
-      <Card className={`border-l-4 ${statusBorder[overallStatus] || "border-l-gray-500"}`}>
+      <Card className={`border-l-4 ${statusBorder[overallStatus] || "border-l-muted-foreground"}`}>
         <CardContent className="flex items-center gap-3 py-4 px-4">
-          <div className={`h-3 w-3 rounded-full ${statusDot[overallStatus] || "bg-gray-500"} animate-pulse`} />
+          <div className={`h-3 w-3 rounded-full ${statusDot[overallStatus] || "bg-muted-foreground"} animate-pulse`} />
           <div>
             <p className="font-medium text-sm">{overallLabel}</p>
             {checkedAt && (
@@ -109,7 +109,7 @@ export function HealthSettings() {
           {indicators.map((indicator) => (
             <Card
               key={indicator.id}
-              className={`border-l-4 ${statusBorder[indicator.status] || "border-l-gray-500"}`}
+              className={`border-l-4 ${statusBorder[indicator.status] || "border-l-muted-foreground"}`}
             >
               <CardContent className="py-3 px-4">
                 <div className="flex items-start justify-between mb-1">

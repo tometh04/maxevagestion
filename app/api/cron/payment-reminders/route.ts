@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { generatePaymentReminders } from "@/lib/alerts/payment-reminders"
+import { checkCronAuth } from "@/lib/cron/auth"
 
 /**
  * Endpoint para cron jobs - Generar recordatorios de pagos
@@ -8,10 +9,9 @@ import { generatePaymentReminders } from "@/lib/alerts/payment-reminders"
  */
 export async function POST(request: Request) {
   try {
-    const authHeader = request.headers.get("authorization")
-    const cronSecret = process.env.CRON_SECRET
-    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const auth = checkCronAuth(request, "payment-reminders")
+    if (!auth.authorized) {
+      return NextResponse.json({ error: "Unauthorized", reason: auth.reason }, { status: 401 })
     }
 
     const result = await generatePaymentReminders()

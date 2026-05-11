@@ -510,8 +510,11 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Comisiones</h1>
+      {/* Bug fix 2026-05-06: el h1 "Comisiones" estaba duplicado — la
+          page parent (app/(dashboard)/commissions/page.tsx:15) ya
+          renderiza el h1 + descripción. Acá solo dejamos el botón
+          "Objetivos de vendedores" alineado a la derecha. */}
+      <div className="flex items-center justify-end">
         <Link
           href="/commissions/objectives"
           className="inline-flex items-center gap-1.5 rounded-full border border-border/60 px-3 py-1.5 text-xs font-medium hover:bg-muted/50 transition-colors"
@@ -544,8 +547,8 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
             {/* Total Pendiente USD */}
             <div className="rounded-xl border border-border/40 p-5">
               <div className="flex items-center gap-2 mb-2">
-                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-warning/10">
-                  <DollarSign className="h-3.5 w-3.5 text-warning" />
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-accent-coral/10">
+                  <DollarSign className="h-3.5 w-3.5 text-accent-coral" />
                 </div>
                 <p className="text-xs font-medium text-muted-foreground">Pendiente USD</p>
               </div>
@@ -557,8 +560,8 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
             {/* Total Pendiente ARS */}
             <div className="rounded-xl border border-border/40 p-5">
               <div className="flex items-center gap-2 mb-2">
-                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-warning/10">
-                  <DollarSign className="h-3.5 w-3.5 text-warning" />
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-accent-coral/10">
+                  <DollarSign className="h-3.5 w-3.5 text-accent-coral" />
                 </div>
                 <p className="text-xs font-medium text-muted-foreground">Pendiente ARS</p>
               </div>
@@ -682,7 +685,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
                             </TableCell>
                             <TableCell className="font-medium">{group.sellerName}</TableCell>
                             <TableCell className="text-center">
-                              <Badge className="bg-warning/10 text-warning border-0">
+                              <Badge className="bg-accent-coral/10 text-accent-coral border-0">
                                 {group.count}
                               </Badge>
                             </TableCell>
@@ -719,7 +722,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
                                     {" - "}
                                     {c.operation?.destination || "Sin destino"}
                                     {hasPartial && (
-                                      <Badge className="ml-2 bg-blue-500/10 text-blue-500 border-0 text-[10px]">
+                                      <Badge className="ml-2 bg-primary/10 text-primary border-0 text-[10px]">
                                         Pago parcial
                                       </Badge>
                                     )}
@@ -1006,7 +1009,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
                                 ? format(new Date(c.operation.departure_date), "dd/MM/yyyy", { locale: es })
                                 : "Sin fecha"}
                               {hasPartial && (
-                                <span className="ml-2 text-blue-500">
+                                <span className="ml-2 text-primary">
                                   (Pagado: {fmtCurrency(c.amount_paid || 0, cur)} | Restante: {fmtCurrency(remaining, cur)})
                                 </span>
                               )}
@@ -1050,9 +1053,9 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
 
             {/* Mixed currency warning */}
             {selectedCurrency === null && selectedCommissionIds.size === 0 && (
-              <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
-                <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
-                <p className="text-xs text-amber-700 dark:text-amber-400">
+              <div className="flex items-center gap-2 p-3 rounded-lg bg-accent-coral/5 dark:bg-accent-coral/20 border border-accent-coral/15 dark:border-accent-coral">
+                <AlertTriangle className="h-4 w-4 text-accent-coral shrink-0" />
+                <p className="text-xs text-accent-coral dark:text-accent-coral">
                   Selecciona comisiones de una sola moneda para realizar el pago.
                 </p>
               </div>

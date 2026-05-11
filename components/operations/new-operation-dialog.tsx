@@ -215,30 +215,55 @@ export function NewOperationDialog({
   
   // Estado para clientes
   const [customers, setCustomers] = useState<Array<{ id: string; first_name: string; last_name: string }>>([])
+  const customersRef = React.useRef(customers)
   const [loadingCustomers, setLoadingCustomers] = useState(false)
   const [showNewCustomerDialog, setShowNewCustomerDialog] = useState(false)
+
+  useEffect(() => {
+    customersRef.current = customers
+  }, [customers])
+
+  const upsertCustomers = React.useCallback((incoming: Array<{ id: string; first_name: string; last_name: string }>) => {
+    setCustomers((prev) => {
+      let changed = false
+      const byId = new Map(prev.map((customer) => [customer.id, customer]))
+
+      for (const customer of incoming) {
+        const existing = byId.get(customer.id)
+        if (
+          !existing ||
+          existing.first_name !== customer.first_name ||
+          existing.last_name !== customer.last_name
+        ) {
+          changed = true
+          byId.set(customer.id, customer)
+        }
+      }
+
+      return changed ? Array.from(byId.values()) : prev
+    })
+  }, [])
+
+  const toCustomerOptions = React.useCallback((items: Array<{ id: string; first_name: string; last_name: string }>) => {
+    return items.slice(0, 50).map((customer) => ({
+      value: customer.id,
+      label: `${customer.first_name} ${customer.last_name}`.trim(),
+    }))
+  }, [])
 
   // Sincronizar operadores cuando cambian
   useEffect(() => {
     setLocalOperators(operators)
   }, [operators])
 
-  // Cargar configuración de operaciones
-  useEffect(() => {
-    if (open) {
-      loadSettings()
-      loadCustomers()
-    }
-  }, [open])
-
   // Cargar lista de clientes
-  const loadCustomers = async () => {
+  const loadCustomers = React.useCallback(async () => {
     setLoadingCustomers(true)
     try {
       const response = await fetch('/api/customers?limit=200&context=selector')
       if (response.ok) {
         const data = await response.json()
-        setCustomers((data.customers || []).map((c: any) => ({
+        upsertCustomers((data.customers || []).map((c: any) => ({
           id: c.id,
           first_name: c.first_name,
           last_name: c.last_name,
@@ -254,9 +279,41 @@ export function NewOperationDialog({
     } finally {
       setLoadingCustomers(false)
     }
-  }
+  }, [toast, upsertCustomers])
 
-  const loadSettings = async () => {
+  const searchCustomers = React.useCallback(async (query: string): Promise<ComboboxOption[]> => {
+    const trimmedQuery = query.trim()
+
+    if (!trimmedQuery) {
+      return toCustomerOptions(customersRef.current)
+    }
+
+    const params = new URLSearchParams({
+      limit: "50",
+      context: "selector",
+      search: trimmedQuery,
+    })
+
+    try {
+      const response = await fetch(`/api/customers?${params.toString()}`)
+      if (!response.ok) return []
+
+      const data = await response.json()
+      const remoteCustomers = (data.customers || []).map((customer: any) => ({
+        id: customer.id,
+        first_name: customer.first_name,
+        last_name: customer.last_name,
+      }))
+
+      upsertCustomers(remoteCustomers)
+      return toCustomerOptions(remoteCustomers)
+    } catch (error) {
+      console.error("Error searching customers:", error)
+      return []
+    }
+  }, [toCustomerOptions, upsertCustomers])
+
+  const loadSettings = React.useCallback(async () => {
     try {
       const response = await fetch('/api/operations/settings')
       if (response.ok) {
@@ -271,7 +328,15 @@ export function NewOperationDialog({
         variant: "destructive",
       })
     }
-  }
+  }, [toast])
+
+  // Cargar configuración de operaciones
+  useEffect(() => {
+    if (open) {
+      loadSettings()
+      loadCustomers()
+    }
+  }, [open, loadSettings, loadCustomers])
 
   // Estados disponibles (estándar + personalizados)
   const availableStatuses = React.useMemo(() => {
@@ -613,7 +678,7 @@ export function NewOperationDialog({
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col flex-1 overflow-hidden min-h-0">
-        <div className="px-6 py-6 space-y-7 overflow-y-auto min-h-0 flex-1">
+        <div className="flex-1 overflow-y-auto min-h-0 px-6 py-6 space-y-7">
 
         {/* Mostrar error del API */}
         {apiError && (
@@ -700,8 +765,8 @@ export function NewOperationDialog({
             {/* Section: Cliente */}
             <div>
               <div className="flex items-center gap-2 mb-4">
-                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-info/10">
-                  <User className="h-3.5 w-3.5 text-info" />
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-accent-teal/10">
+                  <User className="h-3.5 w-3.5 text-accent-teal" />
                 </div>
                 <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Cliente</h4>
               </div>
@@ -728,17 +793,7 @@ export function NewOperationDialog({
                                   : ""
                                 : ""
                             }
-                            searchFn={async (query) => {
-                              const filtered = query
-                                ? customers.filter(c =>
-                                    `${c.first_name} ${c.last_name}`.toLowerCase().includes(query.toLowerCase())
-                                  )
-                                : customers
-                              return filtered.slice(0, 50).map(c => ({
-                                value: c.id,
-                                label: `${c.first_name} ${c.last_name}`,
-                              }))
-                            }}
+                            searchFn={searchCustomers}
                           />
                         </div>
                         <Button
@@ -849,9 +904,17 @@ export function NewOperationDialog({
                         )}
                       />
                     </div>
+                    {/* Bug #12: el label decía "Comisión vendedor principal: X%" pero
+                        X era el default_commission_percentage del seller (el CAP del
+                        split), no el input live del primario. Cuando el seller no tenía
+                        default cargado, mostraba "0.00%" y confundía. Renombrado a
+                        "Cap del vendedor principal" y ocultado cuando = 0. */}
                     <div className={`text-xs ${exceedsPrincipal ? "text-destructive font-medium" : "text-muted-foreground"}`}>
-                      Suma: {sum.toFixed(2)}% · Comisión vendedor principal: {principalPct.toFixed(2)}%
-                      {exceedsPrincipal && " — la suma no puede superar la comisión del principal"}
+                      Suma: {sum.toFixed(2)}%
+                      {principalPct > 0 && (
+                        <> · Cap del vendedor principal: {principalPct.toFixed(2)}%</>
+                      )}
+                      {exceedsPrincipal && " — la suma no puede superar el cap del principal"}
                     </div>
                   </div>
                 )
@@ -1113,7 +1176,7 @@ export function NewOperationDialog({
               {/* Sub-group: Ruta */}
               <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
                 <div className="flex items-center gap-2 mb-1">
-                  <MapPin className="h-4 w-4 text-emerald-500" />
+                  <MapPin className="h-4 w-4 text-success" />
                   <span className="text-xs font-medium text-muted-foreground">Ruta del Viaje</span>
                 </div>
             <div className="grid gap-x-6 gap-y-5 md:grid-cols-2">
@@ -1248,7 +1311,7 @@ export function NewOperationDialog({
               {/* Sub-group: Pasajeros */}
               <div className="rounded-xl border border-border/40 bg-muted/20 p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Users className="h-4 w-4 text-blue-500" />
+                  <Users className="h-4 w-4 text-primary" />
                   <span className="text-xs font-medium text-muted-foreground">Pasajeros</span>
                 </div>
             <div className="grid gap-x-6 gap-y-5 md:grid-cols-3">
@@ -1318,8 +1381,8 @@ export function NewOperationDialog({
             {/* Section: Financiero */}
             <div>
               <div className="flex items-center gap-2 mb-4">
-                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-warning/10">
-                  <DollarSign className="h-3.5 w-3.5 text-warning" />
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-accent-coral/10">
+                  <DollarSign className="h-3.5 w-3.5 text-accent-coral" />
                 </div>
                 <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Financiero</h4>
               </div>
@@ -1328,7 +1391,7 @@ export function NewOperationDialog({
                 {/* Sub-card: Estado & Monedas */}
                 <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
                   <div className="flex items-center gap-1.5 mb-1">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5 text-warning"><circle cx="12" cy="12" r="8"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5 text-accent-coral"><circle cx="12" cy="12" r="8"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                     <span className="text-xs font-medium text-foreground/70">Estado & Monedas</span>
                   </div>
                   <FormField
@@ -1442,7 +1505,7 @@ export function NewOperationDialog({
                 {/* Sub-card: Montos */}
                 <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
                   <div className="flex items-center gap-1.5 mb-1">
-                    <DollarSign className="h-3.5 w-3.5 text-emerald-500" />
+                    <DollarSign className="h-3.5 w-3.5 text-success" />
                     <span className="text-xs font-medium text-foreground/70">Montos</span>
                   </div>
                   <FormField
@@ -1512,15 +1575,15 @@ export function NewOperationDialog({
             {/* Section: Códigos de Reserva */}
             <div>
               <div className="flex items-center gap-2 mb-4">
-                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-violet-500/10">
-                  <Ticket className="h-3.5 w-3.5 text-violet-500" />
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-accent-violet/10">
+                  <Ticket className="h-3.5 w-3.5 text-accent-violet" />
                 </div>
                 <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Códigos de reserva</h4>
               </div>
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-3">
                   <div className="flex items-center gap-1.5 mb-1">
-                    <Plane className="h-3.5 w-3.5 text-sky-500" />
+                    <Plane className="h-3.5 w-3.5 text-accent-teal" />
                     <span className="text-xs font-medium text-foreground/70">Aéreo</span>
                   </div>
                   <FormField
@@ -1561,7 +1624,7 @@ export function NewOperationDialog({
 
                 <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-3">
                   <div className="flex items-center gap-1.5 mb-1">
-                    <Building2 className="h-3.5 w-3.5 text-violet-500" />
+                    <Building2 className="h-3.5 w-3.5 text-accent-violet" />
                     <span className="text-xs font-medium text-foreground/70">Hotel</span>
                   </div>
                   <FormField
@@ -1718,7 +1781,7 @@ export function NewOperationDialog({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-warning" />
+              <AlertCircle className="h-5 w-5 text-accent-coral" />
               Verificación de Moneda
             </AlertDialogTitle>
             <AlertDialogDescription className="text-base">

@@ -111,8 +111,11 @@ export const cashMovementsPipeline: PipelineFn = async (
       rollbackLog
     )
 
-    if (inserted) successRows++
-    else errors.push({ rowNumber, message: "Falló insert cash_movement (DB)" })
+    if (inserted?.id) successRows++
+    else errors.push({
+      rowNumber,
+      message: `Falló insert cash_movement (DB): ${inserted?.error ?? "sin detalle"}`,
+    })
   }
 
   return {

@@ -335,7 +335,7 @@ export function TeamsPageClient() {
               {/* Líder */}
               {team.leader && (
                 <div className="flex items-center gap-2 mb-4 p-2 bg-muted/50 rounded">
-                  <Crown className="h-4 w-4 text-amber-500" />
+                  <Crown className="h-4 w-4 text-accent-coral" />
                   <Avatar className="h-6 w-6">
                     <AvatarImage src={team.leader.avatar_url} />
                     <AvatarFallback className="text-xs">
@@ -442,8 +442,8 @@ export function TeamsPageClient() {
             {/* Miembros */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-2 mb-3">
-                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-blue-500/10">
-                  <Crown className="h-3.5 w-3.5 text-blue-500" />
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                  <Crown className="h-3.5 w-3.5 text-primary" />
                 </div>
                 <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Miembros</h4>
               </div>

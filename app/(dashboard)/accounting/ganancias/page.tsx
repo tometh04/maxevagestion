@@ -84,12 +84,12 @@ export default function GananciasPage() {
             <Card>
               <CardContent className="pt-6">
                 <div className="flex items-center gap-2 mb-1">
-                  <TrendingUp className="h-4 w-4 text-green-500" />
+                  <TrendingUp className="h-4 w-4 text-success" />
                   <span className="text-xs text-muted-foreground">Ingresos (Márgenes)</span>
                 </div>
-                <p className="text-lg font-bold text-green-600">{formatMoney(data.ingresos.margin_usd, "USD")}</p>
+                <p className="text-lg font-bold text-success">{formatMoney(data.ingresos.margin_usd, "USD")}</p>
                 {data.ingresos.margin_ars > 0 && (
-                  <p className="text-sm text-green-500">+ {formatMoney(data.ingresos.margin_ars)}</p>
+                  <p className="text-sm text-success">+ {formatMoney(data.ingresos.margin_ars)}</p>
                 )}
                 <p className="text-xs text-muted-foreground">{data.ingresos.operations_count} operaciones</p>
               </CardContent>
@@ -97,12 +97,12 @@ export default function GananciasPage() {
             <Card>
               <CardContent className="pt-6">
                 <div className="flex items-center gap-2 mb-1">
-                  <TrendingDown className="h-4 w-4 text-red-500" />
+                  <TrendingDown className="h-4 w-4 text-destructive" />
                   <span className="text-xs text-muted-foreground">Gastos + Comisiones</span>
                 </div>
-                <p className="text-lg font-bold text-red-600">{formatMoney(data.gastos.total_usd, "USD")}</p>
+                <p className="text-lg font-bold text-destructive">{formatMoney(data.gastos.total_usd, "USD")}</p>
                 {data.gastos.total_ars > 0 && (
-                  <p className="text-sm text-red-500">+ {formatMoney(data.gastos.total_ars)}</p>
+                  <p className="text-sm text-destructive">+ {formatMoney(data.gastos.total_ars)}</p>
                 )}
                 <p className="text-xs text-muted-foreground">Comisiones: {formatMoney(data.gastos.comisiones, "USD")}</p>
               </CardContent>
@@ -110,10 +110,10 @@ export default function GananciasPage() {
             <Card>
               <CardContent className="pt-6">
                 <div className="flex items-center gap-2 mb-1">
-                  <DollarSign className="h-4 w-4 text-purple-500" />
+                  <DollarSign className="h-4 w-4 text-accent-violet" />
                   <span className="text-xs text-muted-foreground">Resultado antes de Imp.</span>
                 </div>
-                <p className={`text-lg font-bold ${data.resultado.profit_before_tax_usd >= 0 ? "text-green-600" : "text-red-600"}`}>
+                <p className={`text-lg font-bold ${data.resultado.profit_before_tax_usd >= 0 ? "text-success" : "text-destructive"}`}>
                   {formatMoney(data.resultado.profit_before_tax_usd, "USD")}
                 </p>
                 {data.resultado.profit_before_tax_ars !== 0 && (
@@ -121,15 +121,15 @@ export default function GananciasPage() {
                 )}
               </CardContent>
             </Card>
-            <Card className="border-orange-200 bg-orange-50">
+            <Card className="border-accent-coral/15 bg-accent-coral/5">
               <CardContent className="pt-6">
                 <div className="flex items-center gap-2 mb-1">
-                  <Percent className="h-4 w-4 text-orange-600" />
+                  <Percent className="h-4 w-4 text-accent-coral" />
                   <span className="text-xs text-muted-foreground">Provisión Ganancias ({data.provision.rate}%)</span>
                 </div>
-                <p className="text-lg font-bold text-orange-700">{formatMoney(data.provision.estimated_usd, "USD")}</p>
+                <p className="text-lg font-bold text-accent-coral">{formatMoney(data.provision.estimated_usd, "USD")}</p>
                 {data.provision.estimated_ars > 0 && (
-                  <p className="text-sm text-orange-600">+ {formatMoney(data.provision.estimated_ars)}</p>
+                  <p className="text-sm text-accent-coral">+ {formatMoney(data.provision.estimated_ars)}</p>
                 )}
                 <p className="text-xs text-muted-foreground">
                   Ret. sufridas: {formatMoney(data.provision.retenciones_sufridas)}
@@ -149,46 +149,46 @@ export default function GananciasPage() {
                 <div className="flex justify-between py-2 border-b">
                   <span className="text-sm font-medium">Ingresos (márgenes de operaciones)</span>
                   <div className="text-right">
-                    <p className="font-medium text-green-600">{formatMoney(data.ingresos.margin_usd, "USD")}</p>
-                    {data.ingresos.margin_ars > 0 && <p className="text-sm text-green-500">{formatMoney(data.ingresos.margin_ars)}</p>}
+                    <p className="font-medium text-success">{formatMoney(data.ingresos.margin_usd, "USD")}</p>
+                    {data.ingresos.margin_ars > 0 && <p className="text-sm text-success">{formatMoney(data.ingresos.margin_ars)}</p>}
                   </div>
                 </div>
                 <div className="flex justify-between py-2 border-b">
                   <span className="text-sm">- Gastos operativos</span>
                   <div className="text-right">
-                    <p className="font-medium text-red-600">- {formatMoney(data.gastos.total_usd, "USD")}</p>
-                    {data.gastos.total_ars > 0 && <p className="text-sm text-red-500">- {formatMoney(data.gastos.total_ars)}</p>}
+                    <p className="font-medium text-destructive">- {formatMoney(data.gastos.total_usd, "USD")}</p>
+                    {data.gastos.total_ars > 0 && <p className="text-sm text-destructive">- {formatMoney(data.gastos.total_ars)}</p>}
                   </div>
                 </div>
                 <div className="flex justify-between py-2 border-b">
                   <span className="text-sm">- Comisiones vendedores</span>
-                  <p className="font-medium text-red-600">- {formatMoney(data.gastos.comisiones, "USD")}</p>
+                  <p className="font-medium text-destructive">- {formatMoney(data.gastos.comisiones, "USD")}</p>
                 </div>
                 <div className="flex justify-between py-2 border-b bg-muted/30 px-2 rounded">
                   <span className="text-sm font-bold">= Resultado antes de impuestos</span>
-                  <p className={`font-bold ${data.resultado.profit_before_tax_usd >= 0 ? "text-green-700" : "text-red-700"}`}>
+                  <p className={`font-bold ${data.resultado.profit_before_tax_usd >= 0 ? "text-success" : "text-destructive"}`}>
                     {formatMoney(data.resultado.profit_before_tax_usd, "USD")}
                   </p>
                 </div>
                 <div className="flex justify-between py-2 border-b">
                   <span className="text-sm">× Alícuota Ganancias ({data.provision.rate}%)</span>
-                  <p className="font-medium text-orange-600">= {formatMoney(data.provision.estimated_usd, "USD")}</p>
+                  <p className="font-medium text-accent-coral">= {formatMoney(data.provision.estimated_usd, "USD")}</p>
                 </div>
                 <div className="flex justify-between py-2 border-b">
                   <span className="text-sm">- Retenciones de Ganancias sufridas</span>
-                  <p className="font-medium text-green-600">- {formatMoney(data.provision.retenciones_sufridas)}</p>
+                  <p className="font-medium text-success">- {formatMoney(data.provision.retenciones_sufridas)}</p>
                 </div>
                 <div className="flex justify-between py-3 font-bold text-lg">
                   <span>= Provisión Neta Estimada</span>
-                  <p className="text-orange-700">{formatMoney(data.provision.neto_ars)}</p>
+                  <p className="text-accent-coral">{formatMoney(data.provision.neto_ars)}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="border-yellow-200 bg-yellow-50">
+          <Card className="border-accent-coral/15 bg-accent-coral/5">
             <CardContent className="pt-6">
-              <p className="text-sm text-yellow-800">
+              <p className="text-sm text-accent-coral">
                 <strong>Nota:</strong> Esta es una estimación simplificada para provisión interna.
                 La DDJJ formal de Ganancias requiere ajustes por inflación, diferencias de cambio,
                 deducciones especiales y otros conceptos que debe calcular el contador.

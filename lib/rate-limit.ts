@@ -93,11 +93,6 @@ export const RATE_LIMIT_CONFIGS = {
     maxRequests: 10,
     windowMs: 60 * 1000, // 1 minuto
   },
-  // Trello Webhook: 100 requests por minuto por IP
-  TRELLO_WEBHOOK: {
-    maxRequests: 100,
-    windowMs: 60 * 1000, // 1 minuto
-  },
   // APIs generales: 100 requests por minuto por usuario
   GENERAL: {
     maxRequests: 100,

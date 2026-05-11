@@ -57,6 +57,7 @@ export interface QuotationPresentationData {
   currency: string
   pricing_mode: QuotationPricingMode
   status: string
+  package_description?: string | null
   notes?: string | null
   terms_and_conditions?: string | null
   payment_methods?: string[] | null
@@ -295,6 +296,7 @@ export function normalizeQuotationForPresentation(quotation: any): QuotationPres
     currency: quotation.currency || "USD",
     pricing_mode: normalizeQuotationPricingMode(quotation.pricing_mode),
     status: quotation.status || "DRAFT",
+    package_description: quotation.package_description || null,
     notes: quotation.notes || null,
     terms_and_conditions: quotation.terms_and_conditions || null,
     payment_methods: Array.isArray(quotation.payment_methods) ? quotation.payment_methods : null,

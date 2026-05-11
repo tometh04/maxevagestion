@@ -90,11 +90,11 @@ export function TopSellersCard({ agencyId, sellerId, dateFrom, dateTo }: TopSell
   const getRankIcon = (index: number) => {
     switch (index) {
       case 0:
-        return <Trophy className="h-3 w-3 text-amber-500" />
+        return <Trophy className="h-3 w-3 text-accent-coral" />
       case 1:
-        return <Medal className="h-3 w-3 text-gray-400" />
+        return <Medal className="h-3 w-3 text-muted-foreground" />
       case 2:
-        return <Award className="h-3 w-3 text-amber-700" />
+        return <Award className="h-3 w-3 text-accent-coral" />
       default:
         return <span className="text-[10px] font-medium text-muted-foreground w-3 text-center">{index + 1}</span>
     }
@@ -103,11 +103,11 @@ export function TopSellersCard({ agencyId, sellerId, dateFrom, dateTo }: TopSell
   const getRankBg = (index: number) => {
     switch (index) {
       case 0:
-        return "bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800"
+        return "bg-accent-coral/10 dark:bg-accent-coral/20 border-accent-coral/30 dark:border-accent-coral/40"
       case 1:
-        return "bg-gray-50 dark:bg-gray-900/50 border-gray-200 dark:border-gray-700"
+        return "bg-muted dark:bg-card/60 border-border dark:border-border"
       case 2:
-        return "bg-amber-50/50 dark:bg-amber-950/10 border-amber-100 dark:border-amber-900"
+        return "bg-accent-coral/5 dark:bg-accent-coral/10 border-accent-coral/15 dark:border-accent-coral/25"
       default:
         return ""
     }
@@ -169,7 +169,7 @@ export function TopSellersCard({ agencyId, sellerId, dateFrom, dateTo }: TopSell
                   </p>
                 </div>
                 <div className="text-right shrink-0">
-                  <p className="font-semibold text-amber-600 dark:text-amber-500">
+                  <p className="font-semibold text-accent-coral dark:text-accent-coral">
                     {formatCurrency(seller.totalSales)}
                   </p>
                 </div>

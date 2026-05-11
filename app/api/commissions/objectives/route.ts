@@ -92,9 +92,44 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Tipo de recompensa inválido" }, { status: 400 })
     }
 
+    // P0 2026-05-10: resolver org_id explícito para INSERT (NOT NULL post-mig
+    // 20260510000002). Cadena de fallbacks:
+    //   1. agency_id pasado → org de esa agency
+    //   2. users.org_id directo (si está populado)
+    //   3. organization_members del user (fallback si users.org_id es NULL — común en data legacy)
+    let resolvedOrgId = (user as any).org_id as string | null
+    if (agency_id) {
+      const { data: agencyRow, error: agencyErr } = await supabase
+        .from("agencies")
+        .select("org_id")
+        .eq("id", agency_id)
+        .maybeSingle()
+      if (agencyErr || !agencyRow || !(agencyRow as any).org_id) {
+        return NextResponse.json({ error: "Agency inválida o sin org asociada" }, { status: 400 })
+      }
+      resolvedOrgId = (agencyRow as any).org_id
+    }
+    if (!resolvedOrgId) {
+      // Fallback: primera org del user en organization_members
+      const { data: memberRow } = await supabase
+        .from("organization_members")
+        .select("organization_id")
+        .eq("user_id", (user as any).auth_id)
+        .eq("status", "ACTIVE")
+        .limit(1)
+        .maybeSingle()
+      if (memberRow && (memberRow as any).organization_id) {
+        resolvedOrgId = (memberRow as any).organization_id
+      }
+    }
+    if (!resolvedOrgId) {
+      return NextResponse.json({ error: "No se pudo resolver el org_id del usuario" }, { status: 400 })
+    }
+
     const { data, error } = await supabase
       .from("seller_objectives")
       .insert({
+        org_id: resolvedOrgId,
         agency_id: agency_id || null,
         name,
         description: description || null,

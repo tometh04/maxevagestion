@@ -108,34 +108,34 @@ export default function LibroIvaPage() {
             <Card>
               <CardContent className="pt-6">
                 <div className="flex items-center gap-2 mb-1">
-                  <TrendingDown className="h-4 w-4 text-red-500" />
+                  <TrendingDown className="h-4 w-4 text-destructive" />
                   <span className="text-xs text-muted-foreground">Débito Fiscal</span>
                 </div>
-                <p className="text-xl font-bold text-red-600">{formatMoney(data.totals.posicion_iva.debito_fiscal)}</p>
+                <p className="text-xl font-bold text-destructive">{formatMoney(data.totals.posicion_iva.debito_fiscal)}</p>
                 <p className="text-xs text-muted-foreground">IVA Ventas</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="pt-6">
                 <div className="flex items-center gap-2 mb-1">
-                  <TrendingUp className="h-4 w-4 text-green-500" />
+                  <TrendingUp className="h-4 w-4 text-success" />
                   <span className="text-xs text-muted-foreground">Crédito Fiscal</span>
                 </div>
-                <p className="text-xl font-bold text-green-600">{formatMoney(data.totals.posicion_iva.credito_fiscal)}</p>
+                <p className="text-xl font-bold text-success">{formatMoney(data.totals.posicion_iva.credito_fiscal)}</p>
                 <p className="text-xs text-muted-foreground">IVA Compras</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="pt-6">
                 <div className="flex items-center gap-2 mb-1">
-                  <FileText className="h-4 w-4 text-blue-500" />
+                  <FileText className="h-4 w-4 text-primary" />
                   <span className="text-xs text-muted-foreground">Percepciones a Favor</span>
                 </div>
-                <p className="text-xl font-bold text-blue-600">{formatMoney(data.totals.posicion_iva.percepciones)}</p>
+                <p className="text-xl font-bold text-primary">{formatMoney(data.totals.posicion_iva.percepciones)}</p>
                 <p className="text-xs text-muted-foreground">IVA sufridas</p>
               </CardContent>
             </Card>
-            <Card className={data.totals.posicion_iva.saldo > 0 ? "border-red-200 bg-red-50" : "border-green-200 bg-green-50"}>
+            <Card className={data.totals.posicion_iva.saldo > 0 ? "border-destructive/15 bg-destructive/5" : "border-success/15 bg-success/5"}>
               <CardContent className="pt-6">
                 <div className="flex items-center gap-2 mb-1">
                   <Calculator className="h-4 w-4" />
@@ -143,7 +143,7 @@ export default function LibroIvaPage() {
                     {data.totals.posicion_iva.saldo > 0 ? "IVA a Pagar" : "Saldo a Favor"}
                   </span>
                 </div>
-                <p className={`text-xl font-bold ${data.totals.posicion_iva.saldo > 0 ? "text-red-700" : "text-green-700"}`}>
+                <p className={`text-xl font-bold ${data.totals.posicion_iva.saldo > 0 ? "text-destructive" : "text-success"}`}>
                   {formatMoney(Math.abs(data.totals.posicion_iva.saldo))}
                 </p>
                 <p className="text-xs text-muted-foreground">Débito - Crédito - Percepciones</p>
@@ -155,7 +155,7 @@ export default function LibroIvaPage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
-                <Badge className="bg-green-100 text-green-700">Ventas</Badge>
+                <Badge className="bg-success/10 text-success">Ventas</Badge>
                 Libro IVA Ventas — {data.libro_ventas?.length || 0} comprobantes
               </CardTitle>
               <CardDescription>Facturas emitidas con CAE de AFIP</CardDescription>
@@ -187,14 +187,14 @@ export default function LibroIvaPage() {
                           <TableCell className="text-sm">{inv.receptor_doc_nro}</TableCell>
                           <TableCell className="text-sm">{inv.receptor_nombre}</TableCell>
                           <TableCell className="text-right text-sm">{formatMoney(inv.imp_neto)}</TableCell>
-                          <TableCell className="text-right text-sm text-orange-600">{formatMoney(inv.imp_iva)}</TableCell>
+                          <TableCell className="text-right text-sm text-accent-coral">{formatMoney(inv.imp_iva)}</TableCell>
                           <TableCell className="text-right text-sm font-medium">{formatMoney(inv.imp_total)}</TableCell>
                         </TableRow>
                       ))}
                       <TableRow className="bg-muted/50 font-bold">
                         <TableCell colSpan={5}>TOTAL VENTAS</TableCell>
                         <TableCell className="text-right">{formatMoney(data.totals.ventas.neto)}</TableCell>
-                        <TableCell className="text-right text-orange-600">{formatMoney(data.totals.ventas.iva)}</TableCell>
+                        <TableCell className="text-right text-accent-coral">{formatMoney(data.totals.ventas.iva)}</TableCell>
                         <TableCell className="text-right">{formatMoney(data.totals.ventas.total)}</TableCell>
                       </TableRow>
                     </TableBody>
@@ -208,7 +208,7 @@ export default function LibroIvaPage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
-                <Badge className="bg-blue-100 text-blue-700">Compras</Badge>
+                <Badge className="bg-primary/10 text-primary">Compras</Badge>
                 Libro IVA Compras — {data.libro_compras?.length || 0} comprobantes
               </CardTitle>
               <CardDescription>Facturas recibidas de operadores</CardDescription>
@@ -241,16 +241,16 @@ export default function LibroIvaPage() {
                           <TableCell className="text-sm">{inv.emitter_cuit}</TableCell>
                           <TableCell className="text-sm">{inv.emitter_name || inv.operators?.name || "-"}</TableCell>
                           <TableCell className="text-right text-sm">{formatMoney(inv.net_amount)}</TableCell>
-                          <TableCell className="text-right text-sm text-green-600">{formatMoney(inv.iva_amount)}</TableCell>
-                          <TableCell className="text-right text-sm text-blue-600">{formatMoney((Number(inv.perception_iva) || 0) + (Number(inv.perception_iibb) || 0))}</TableCell>
+                          <TableCell className="text-right text-sm text-success">{formatMoney(inv.iva_amount)}</TableCell>
+                          <TableCell className="text-right text-sm text-primary">{formatMoney((Number(inv.perception_iva) || 0) + (Number(inv.perception_iibb) || 0))}</TableCell>
                           <TableCell className="text-right text-sm font-medium">{formatMoney(inv.total_amount)}</TableCell>
                         </TableRow>
                       ))}
                       <TableRow className="bg-muted/50 font-bold">
                         <TableCell colSpan={5}>TOTAL COMPRAS</TableCell>
                         <TableCell className="text-right">{formatMoney(data.totals.compras.neto)}</TableCell>
-                        <TableCell className="text-right text-green-600">{formatMoney(data.totals.compras.iva)}</TableCell>
-                        <TableCell className="text-right text-blue-600">{formatMoney(data.totals.compras.percepciones_iva + data.totals.compras.percepciones_iibb)}</TableCell>
+                        <TableCell className="text-right text-success">{formatMoney(data.totals.compras.iva)}</TableCell>
+                        <TableCell className="text-right text-primary">{formatMoney(data.totals.compras.percepciones_iva + data.totals.compras.percepciones_iibb)}</TableCell>
                         <TableCell className="text-right">{formatMoney(data.totals.compras.total)}</TableCell>
                       </TableRow>
                     </TableBody>

@@ -12,7 +12,6 @@ export const CACHE_TTL = {
   AGENCIES: 60 * 60, // 1 hora
   OPERATORS: 60 * 60, // 1 hora
   DASHBOARD_KPIS: 5 * 60, // 5 minutos
-  TRELLO_CONFIG: 10 * 60, // 10 minutos
   USER_AGENCIES: 5 * 60, // 5 minutos - agencias del usuario
 } as const
 
@@ -21,7 +20,6 @@ export const CACHE_TAGS = {
   AGENCIES: 'agencies',
   OPERATORS: 'operators',
   DASHBOARD: 'dashboard',
-  TRELLO: 'trello',
 } as const
 
 /**
@@ -78,25 +76,6 @@ export async function getCachedDashboardKPIs<T>(
     {
       tags: [CACHE_TAGS.DASHBOARD],
       revalidate: options?.revalidate ?? CACHE_TTL.DASHBOARD_KPIS,
-    }
-  )()
-}
-
-/**
- * Obtener configuración de Trello con caché
- */
-export async function getCachedTrelloConfig<T>(
-  fetchFn: () => Promise<T>,
-  options?: { revalidate?: number }
-): Promise<T> {
-  return unstable_cache(
-    async () => {
-      return await fetchFn()
-    },
-    ['trello-config'],
-    {
-      tags: [CACHE_TAGS.TRELLO],
-      revalidate: options?.revalidate ?? CACHE_TTL.TRELLO_CONFIG,
     }
   )()
 }

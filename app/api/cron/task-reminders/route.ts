@@ -1,17 +1,16 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { sendPushToUser } from "@/lib/push"
+import { checkCronAuth } from "@/lib/cron/auth"
 
 export async function POST(request: Request) {
   const startedAt = new Date()
   console.log(`[task-reminders cron] STARTED at ${startedAt.toISOString()}`)
 
   try {
-    const authHeader = request.headers.get("authorization")
-    const cronSecret = process.env.CRON_SECRET
-    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
-      console.warn(`[task-reminders cron] UNAUTHORIZED — missing/invalid Bearer token`)
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const auth = checkCronAuth(request, "task-reminders")
+    if (!auth.authorized) {
+      return NextResponse.json({ error: "Unauthorized", reason: auth.reason }, { status: 401 })
     }
 
     // SaaS multi-tenant: cron debe ver tareas de TODAS las orgs. createServerClient

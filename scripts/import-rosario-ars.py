@@ -18,9 +18,18 @@ from datetime import datetime
 # ============================================================
 # CONFIG
 # ============================================================
-SB_URL = "https://pmqvplyyxiobkllapgjp.supabase.co"
-SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBtcXZwbHl5eGlvYmtsbGFwZ2pwIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NDA5MTI5NCwiZXhwIjoyMDc5NjY3Mjk0fQ.VBeE3W9HNeTc4FQs_QCU9uD-EHDtPpGZVaPQS5nNp3c"
-ROSARIO_AGENCY_ID = "66563aeb-4e8b-40ee-a622-b39defb380dd"
+import os
+
+# Security P0: env vars en vez de JWT hardcodeada. Setear antes de correr:
+#   export SB_URL="https://pmqvplyyxiobkllapgjp.supabase.co"
+#   export SB_KEY="$SUPABASE_SERVICE_ROLE_KEY"
+SB_URL = os.environ.get("SB_URL") or os.environ.get("SUPABASE_URL")
+SB_KEY = os.environ.get("SB_KEY") or os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+if not SB_URL or not SB_KEY:
+    raise SystemExit(
+        "ERROR: faltan env vars SB_URL y SB_KEY (o SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY)."
+    )
+ROSARIO_AGENCY_ID = os.environ.get("ROSARIO_AGENCY_ID", "66563aeb-4e8b-40ee-a622-b39defb380dd")
 TC = 1500.0  # Exchange rate ARS/USD
 CSV_PATH = "/Users/tomiisanchezz/Downloads/Import Sistema - Rosario ARS (1).csv"
 

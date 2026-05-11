@@ -438,7 +438,7 @@ export function BulkPaymentDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden">
+      <DialogContent className="max-w-6xl">
         <DialogHeader>
           <DialogTitle>Cargar Pago Masivo</DialogTitle>
           <DialogDescription>
@@ -446,7 +446,7 @@ export function BulkPaymentDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="px-6 py-5 space-y-6 max-h-[75vh] overflow-y-auto">
+        <div className="flex-1 overflow-y-auto min-h-0 px-6 py-5 space-y-6">
           {/* Paso 1: Seleccionar Operador */}
           <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-3">
             <div className="flex items-center gap-1.5">
@@ -477,7 +477,7 @@ export function BulkPaymentDialog({
           {selectedOperatorId && (
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-3">
               <div className="flex items-center gap-1.5">
-                <DollarSign className="h-3.5 w-3.5 text-emerald-500" />
+                <DollarSign className="h-3.5 w-3.5 text-success" />
                 <span className="text-xs font-medium text-foreground/70">Paso 2: Moneda</span>
               </div>
               <Select
@@ -628,7 +628,7 @@ export function BulkPaymentDialog({
                                 <div className="text-xs">Pagado</div>
                               </div>
                             </TableCell>
-                            <TableCell className="font-medium text-warning text-right">
+                            <TableCell className="font-medium text-accent-coral text-right">
                               <div className="space-y-1">
                                 <div>{formatCurrency(remaining, payment.currency)}</div>
                                 <div className="text-xs">Pendiente</div>
@@ -660,12 +660,12 @@ export function BulkPaymentDialog({
                                     max={Math.round(remaining * 1.10 * 100) / 100}
                                     value={amountToPay}
                                     onChange={(e) => handleAmountChange(payment.id, e.target.value)}
-                                    className={`w-32 ${amountToPay > remaining ? 'border-warning text-warning' : ''}`}
+                                    className={`w-32 ${amountToPay > remaining ? 'border-accent-coral text-accent-coral' : ''}`}
                                     placeholder="0.00"
                                   />
                                   <div className="text-xs text-muted-foreground">
                                     {amountToPay > remaining ? (
-                                      <span className="text-warning font-medium">
+                                      <span className="text-accent-coral font-medium">
                                         +{formatCurrency(amountToPay - remaining, payment.currency)} extra (afecta costo)
                                       </span>
                                     ) : (
@@ -692,7 +692,7 @@ export function BulkPaymentDialog({
           {canShowPaymentForm && (
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
-                <CreditCard className="h-3.5 w-3.5 text-warning" />
+                <CreditCard className="h-3.5 w-3.5 text-accent-coral" />
                 <span className="text-xs font-medium text-foreground/70">Paso 4: Información del Pago</span>
               </div>
 
