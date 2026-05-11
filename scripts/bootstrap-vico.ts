@@ -52,7 +52,7 @@ const SHARED_PASSWORD = "VicoTravel2026"
 type UserSpec = { email: string; name: string; role: string }
 
 const USERS: UserSpec[] = [
-  { email: "e.maineri@vicotravelgroup.com", name: "Enzo Maineri", role: "ORG_OWNER" },
+  { email: "e.maineri@vicotravelgroup.com", name: "Enzo Maineri", role: "SUPER_ADMIN" },
   { email: "a.lagos@vicotravelgroup.com", name: "Andres Lagos", role: "ADMIN" },
   { email: "m.cassano@vicotravelgroup.com", name: "Manuela Cassano", role: "CONTABLE" },
   { email: "f.gudino@vicotravelgroup.com", name: "Florencia Gudiño", role: "SELLER" },
