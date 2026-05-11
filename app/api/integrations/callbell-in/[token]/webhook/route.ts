@@ -25,14 +25,27 @@ export async function POST(
 
   const body = await request.text()
   const signature = request.headers.get("x-callbell-signature") || ""
-  let secret: string
-  try {
-    secret = decryptSecret(integ.webhook_secret)
-  } catch {
-    return NextResponse.json({ error: "Server error" }, { status: 500 })
-  }
-  if (!verifyHmac("sha256", body, signature, secret)) {
-    return NextResponse.json({ error: "Invalid signature" }, { status: 401 })
+
+  // Callbell webhook UI does NOT expose a signing-secret field as of 2026-05.
+  // Their platform does not sign outbound webhooks → no `x-callbell-signature`
+  // header arrives in production. Primary auth is the 128-bit token in the URL
+  // path (looked up server-side against org_integrations.webhook_token, scoped
+  // to integration='callbell-in'). If/when Callbell adds signing, this branch
+  // verifies it — until then we skip and log a warning for visibility.
+  if (signature) {
+    let secret: string
+    try {
+      secret = decryptSecret(integ.webhook_secret)
+    } catch {
+      return NextResponse.json({ error: "Server error" }, { status: 500 })
+    }
+    if (!verifyHmac("sha256", body, signature, secret)) {
+      return NextResponse.json({ error: "Invalid signature" }, { status: 401 })
+    }
+  } else {
+    console.warn(
+      `[callbell-in] webhook for org=${integ.org_id} received without x-callbell-signature — relying on URL token auth (expected for Callbell, which does not sign)`
+    )
   }
 
   let event: CallbellWebhookEvent
