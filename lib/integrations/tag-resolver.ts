@@ -9,7 +9,9 @@ import type { Database } from "@/lib/supabase/types"
 export function normalizeTagLabel(input: string): string {
   return input
     .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
+    // Combining diacritical marks block (U+0300..U+036F). Avoid `\p{...}u` flag
+    // which requires ES2018+ regex target; explicit unicode range works on ES5+.
+    .replace(/[̀-ͯ]/g, "")
     .replace(/\s+/g, " ")
     .trim()
     .toUpperCase()
