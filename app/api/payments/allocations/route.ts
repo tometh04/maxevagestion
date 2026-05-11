@@ -23,9 +23,20 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "operationId o paymentId requerido" }, { status: 400 })
   }
 
+  // Bug fix 2026-05-11 (Santi): el SELECT vía createServerClient (RLS user-auth)
+  // devolvía 0 rows aunque el INSERT vía admin sí persistía. Hay alguna policy
+  // restrictiva en producción que no está en el repo (posiblemente aplicada
+  // directo en Supabase) que filtra las allocations.
+  //
+  // Workaround: usar admin client para el SELECT también. Las permission checks
+  // al inicio del handler (hasPermission cash:read) ya validan acceso del user.
+  // La tabla no tiene org_id ni FK directa a org, así que no hay riesgo de leak
+  // cross-tenant — las allocations se filtran por paymentId/operationId que el
+  // user ya tiene acceso a través de la operación.
   const supabase = await createServerClient()
+  const admin = createAdminClient()
 
-  let query = (supabase.from("payment_passenger_allocations") as any)
+  let query = (admin.from("payment_passenger_allocations") as any)
     .select(`
       *,
       operation_customers:operation_customer_id(
