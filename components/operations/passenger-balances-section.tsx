@@ -47,6 +47,7 @@ interface OperationCustomer {
   operation_id: string
   customer_id: string
   role: "MAIN" | "COMPANION"
+  expected_amount?: number | null
   customers: Customer
 }
 
@@ -99,6 +100,83 @@ export function PassengerBalancesSection({
   const [allocAmounts, setAllocAmounts] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
 
+  // Bug fix Santi 2026-05-11: expected_amount editable per pasajero. Si NULL,
+  // fallback al even-split del restante (saleAmount - sum(explicits)) / count(null).
+  // Estado local para edición optimista; al guardar se sincroniza con DB.
+  const [editingPassengerId, setEditingPassengerId] = useState<string | null>(null)
+  const [editingExpected, setEditingExpected] = useState<string>("")
+  const [localExpected, setLocalExpected] = useState<Record<string, number | null>>(() => {
+    const init: Record<string, number | null> = {}
+    customers.forEach((c) => {
+      init[c.id] = c.expected_amount != null ? Number(c.expected_amount) : null
+    })
+    return init
+  })
+  const [savingExpectedId, setSavingExpectedId] = useState<string | null>(null)
+
+  const getExpectedAmount = (opCustomerId: string): number => {
+    const explicit = localExpected[opCustomerId]
+    if (explicit != null) return Number(explicit)
+    // Even-split del restante
+    const explicitSum = Object.values(localExpected).reduce<number>(
+      (sum, v) => sum + (v != null ? Number(v) : 0),
+      0
+    )
+    const remaining = saleAmount - explicitSum
+    const noExplicitCount = customers.filter((c) => localExpected[c.id] == null).length
+    return noExplicitCount > 0 ? Math.max(0, remaining / noExplicitCount) : 0
+  }
+
+  const startEditingExpected = (c: OperationCustomer) => {
+    setEditingPassengerId(c.id)
+    setEditingExpected(
+      localExpected[c.id] != null ? String(localExpected[c.id]) : ""
+    )
+  }
+
+  const cancelEditingExpected = () => {
+    setEditingPassengerId(null)
+    setEditingExpected("")
+  }
+
+  const saveExpected = async (opCustomerId: string) => {
+    const raw = editingExpected.trim()
+    const valueToSave: number | null = raw === "" ? null : Number(raw)
+    if (valueToSave !== null && (!Number.isFinite(valueToSave) || valueToSave < 0)) {
+      toast.error("El monto debe ser un número >= 0")
+      return
+    }
+
+    setSavingExpectedId(opCustomerId)
+    // Optimistic update
+    const prev = localExpected[opCustomerId]
+    setLocalExpected((cur) => ({ ...cur, [opCustomerId]: valueToSave }))
+
+    try {
+      const res = await fetch(
+        `/api/operations/${operationId}/customers/${opCustomerId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ expected_amount: valueToSave }),
+        }
+      )
+      const data = await res.json()
+      if (!res.ok || data.error) {
+        throw new Error(data.error || "Error al guardar")
+      }
+      toast.success("Monto actualizado")
+      setEditingPassengerId(null)
+      setEditingExpected("")
+    } catch (err: any) {
+      // Revertir
+      setLocalExpected((cur) => ({ ...cur, [opCustomerId]: prev ?? null }))
+      toast.error(err.message || "Error al guardar")
+    } finally {
+      setSavingExpectedId(null)
+    }
+  }
+
   // Fetch existing allocations
   const fetchAllocations = useCallback(async () => {
     try {
@@ -129,7 +207,8 @@ export function PassengerBalancesSection({
       .reduce((sum, a) => sum + Number(a.amount), 0)
   }
 
-  // Amount per passenger (split evenly by default)
+  // Amount per passenger: SOLO usado en el dialog de Asignar para el placeholder.
+  // El "A pagar" de la tabla usa getExpectedAmount(c.id) que respeta expected_amount custom.
   const amountPerPassenger = customers.length > 0 ? saleAmount / customers.length : saleAmount
 
   // Total allocated en la moneda de la operación (no mezcla monedas)
@@ -280,8 +359,11 @@ export function PassengerBalancesSection({
                 <TableBody>
                   {customers.map((c) => {
                     const paid = getPassengerPaid(c.id)
-                    const balance = amountPerPassenger - paid
+                    const expected = getExpectedAmount(c.id)
+                    const balance = expected - paid
                     const isFullyPaid = balance <= 0.01
+                    const isEditing = editingPassengerId === c.id
+                    const hasCustomAmount = localExpected[c.id] != null
 
                     return (
                       <TableRow key={c.id}>
@@ -299,7 +381,40 @@ export function PassengerBalancesSection({
                           </div>
                         </TableCell>
                         <TableCell className="text-xs text-right font-mono">
-                          {formatMoney(amountPerPassenger)}
+                          {isEditing ? (
+                            <div className="flex items-center justify-end gap-1">
+                              <span className="text-muted-foreground">{currency === "USD" ? "USD" : "$"}</span>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                autoFocus
+                                value={editingExpected}
+                                onChange={(e) => setEditingExpected(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") saveExpected(c.id)
+                                  if (e.key === "Escape") cancelEditingExpected()
+                                }}
+                                onBlur={() => saveExpected(c.id)}
+                                disabled={savingExpectedId === c.id}
+                                placeholder="Vacío = even-split"
+                                className="h-7 w-[140px] text-xs text-right font-mono"
+                              />
+                              {savingExpectedId === c.id && <Loader2 className="h-3 w-3 animate-spin" />}
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => startEditingExpected(c)}
+                              className="inline-flex items-center gap-1.5 hover:underline cursor-pointer w-full justify-end"
+                              title={hasCustomAmount ? "Click para editar el monto" : "Click para definir un monto custom (vacío = even-split)"}
+                            >
+                              {formatMoney(expected)}
+                              {!hasCustomAmount && (
+                                <span className="text-[9px] text-muted-foreground opacity-60">(split)</span>
+                              )}
+                            </button>
+                          )}
                         </TableCell>
                         <TableCell className="text-xs text-right font-mono font-medium text-success">
                           {formatMoney(paid)}
