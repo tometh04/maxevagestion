@@ -1,0 +1,27 @@
+{
+  "date": "2026-05-08T13:35:07.363Z",
+  "prodUrl": "https://pmqvplyyxiobkllapgjp.supabase.co",
+  "lozadaOrgId": "1b326d20-d133-4112-a798-f54b5af7e7cb",
+  "counts": {
+    "organizations_total": 22,
+    "leads_lozada_total": 3054,
+    "leads_lozada_NEW": 2491,
+    "leads_lozada_IN_PROGRESS": 558,
+    "leads_lozada_QUOTED": 0,
+    "leads_lozada_WON": 5,
+    "leads_lozada_LOST": 0,
+    "operations_lozada": 816,
+    "customers_lozada": 687,
+    "payments_lozada": 2960,
+    "ledger_movements_lozada": 5449,
+    "agencies_lozada": 3,
+    "users_lozada": 19
+  },
+  "tables_to_be_added": {
+    "lead_tag_categories_exists": false,
+    "lead_tags_exists": false,
+    "lead_tag_assignments_exists": false,
+    "lead_funnels_exists": false,
+    "webhook_event_log_exists": false
+  }
+}

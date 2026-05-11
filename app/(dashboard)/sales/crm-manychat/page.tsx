@@ -3,12 +3,13 @@ import { createServerClient } from "@/lib/supabase/server"
 import { getScopedAgenciesForUser } from "@/lib/permissions-api"
 import { CRMManychatPageClient } from "@/components/sales/crm-manychat-page-client"
 import { canAccessModule } from "@/lib/permissions"
+import { AdvancedCRMKanban } from "./_components/advanced-crm-kanban"
 
 export const dynamic = "force-dynamic"
 
 export default async function CRMManychatPage() {
   const { user } = await getCurrentUser()
-  
+
   // Verificar permiso de acceso
   const userRole = user.role as any
   if (!canAccessModule(userRole, "leads")) {
@@ -20,6 +21,24 @@ export default async function CRMManychatPage() {
         </div>
       </div>
     )
+  }
+
+  // Routing condicional por crm_mode
+  if (user.org_id) {
+    const supabaseForOrg = await createServerClient()
+    const { data: org } = await supabaseForOrg
+      .from("organizations")
+      .select("crm_mode")
+      .eq("id", user.org_id)
+      .single()
+
+    if (org?.crm_mode === "advanced") {
+      return (
+        <div className="p-6 h-full">
+          <AdvancedCRMKanban orgId={user.org_id} />
+        </div>
+      )
+    }
   }
 
   const supabase = await createServerClient()
