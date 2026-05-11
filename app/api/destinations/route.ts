@@ -9,13 +9,21 @@ import { normalizeDestinationName, toTitleCase, findBestMatch } from "@/lib/dest
  */
 export async function GET(request: Request) {
   try {
-    await getCurrentUser()
+    const { user } = await getCurrentUser()
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
     const query = searchParams.get("q") || ""
 
+    // P0 2026-05-10: destinations son per-tenant (mig 20260510000004).
+    // RLS además filtra, pero scopear explícito en API es defense-in-depth.
+    const userOrgId = (user as any).org_id as string | null
+    if (!userOrgId) {
+      return NextResponse.json({ destinations: [] })
+    }
+
     let dbQuery = (supabase.from("destinations") as any)
       .select("id, name, name_normalized, country")
+      .eq("org_id", userOrgId)
       .eq("is_active", true)
       .order("name", { ascending: true })
       .limit(50)
@@ -51,12 +59,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "El nombre es requerido" }, { status: 400 })
     }
 
+    // P0 2026-05-10: destinations per-tenant. Resolver org_id obligatorio.
+    const userOrgId = (user as any).org_id as string | null
+    if (!userOrgId) {
+      return NextResponse.json({ error: "Usuario sin org asignada" }, { status: 400 })
+    }
+
     const normalized = normalizeDestinationName(name)
     const titleCased = toTitleCase(name)
 
-    // Check if already exists (fuzzy)
+    // Check if already exists (fuzzy) — scopeado a la org del user
     const { data: existing } = await (supabase.from("destinations") as any)
       .select("id, name, name_normalized")
+      .eq("org_id", userOrgId)
       .eq("is_active", true)
 
     if (existing && existing.length > 0) {
@@ -69,6 +84,7 @@ export async function POST(request: Request) {
     // Create new
     const { data: newDest, error } = await (supabase.from("destinations") as any)
       .insert({
+        org_id: userOrgId,
         name: titleCased,
         name_normalized: normalized,
         country: country || null,
