@@ -251,11 +251,19 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "paymentId requerido" }, { status: 400 })
   }
 
-  const supabase = await createServerClient()
+  // Bug fix 2026-05-11: misma RLS fantasma que en GET. El DELETE vía
+  // createServerClient retornaba status 200 pero no eliminaba nada (RLS
+  // ocultaba los rows). Usamos admin client después del permission check.
+  const admin = createAdminClient()
 
-  await (supabase.from("payment_passenger_allocations") as any)
+  const { error } = await (admin.from("payment_passenger_allocations") as any)
     .delete()
     .eq("payment_id", paymentId)
+
+  if (error) {
+    console.error("[Allocations DELETE] error:", error)
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
 
   return NextResponse.json({ success: true })
 }
