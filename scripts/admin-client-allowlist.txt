@@ -66,3 +66,9 @@ app/admin/orgs/[id]/page.tsx                                             # PLATF
 app/admin/metrics/page.tsx                                               # PLATFORM_ADMIN — métricas globales.
 app/admin/audit/page.tsx                                                 # PLATFORM_ADMIN — security_audit_log reader.
 app/api/admin/orgs/[id]/route.ts                                         # PLATFORM_ADMIN — plan/status update cross-org.
+
+# VICO Callbell integration (Tasks 9-11) — webhooks server-to-server + cron.
+# No hay session de user; el endpoint identifica la org via webhook_token en URL.
+app/api/integrations/manychat/[token]/webhook/route.ts                   # WEBHOOK_S2S — ManyChat bot pega, no hay user session.
+app/api/integrations/callbell-in/[token]/webhook/route.ts                # WEBHOOK_S2S — Callbell pega, no hay user session.
+app/api/cron/callbell-reconcile/route.ts                                 # CRON — reconcile cada 30 min, sin user session.
