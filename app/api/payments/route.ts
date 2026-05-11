@@ -180,8 +180,15 @@ export async function POST(request: Request) {
     }
 
     // Detección de pago duplicado: pagos similares (misma op/operador, mismo monto, misma moneda,
-    // misma dirección) creados en los últimos 7 días. Si encuentra coincidencia y el caller no
-    // pasó force=true, retorna 409 con la lista para que el frontend muestre alerta y permita confirmar.
+    // misma dirección, MISMA fecha) creados en los últimos 7 días. Si encuentra coincidencia y el
+    // caller no pasó force=true, retorna 409 con la lista para que el frontend muestre alerta y
+    // permita confirmar.
+    //
+    // Bug 2026-05-11 reportado por Santi: el match anterior solo usaba amount/currency/direction/op
+    // sin fecha, lo que false-positiveaba cuotas iguales (3 transferencias de USD 1520 en días
+    // distintos para la misma operación). Ahora exigimos también que coincida la fecha — date_paid
+    // si ambos están pagados, o date_due si están pendientes. Así cuotas en fechas distintas no
+    // se flagean, y solo se detecta el caso real (doble click / network retry mismo día).
     if (!forceCreate) {
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
       let dupQ = (supabase.from("payments") as any)
@@ -200,6 +207,14 @@ export async function POST(request: Request) {
       } else {
         // Sin operation_id ni operator_id no hay forma de detectar duplicados (caso raro). Skip.
         dupQ = null
+      }
+      // Match por fecha: cuotas en fechas distintas NO son duplicados
+      if (dupQ) {
+        if (date_paid) {
+          dupQ = dupQ.eq("date_paid", date_paid)
+        } else if (date_due) {
+          dupQ = dupQ.eq("date_due", date_due)
+        }
       }
       if (dupQ) {
         const { data: duplicates } = await dupQ.limit(5)
