@@ -45,7 +45,13 @@ describeOrSkip("Advanced mode tenant isolation — Lozada untouched", () => {
     expect((data as { crm_mode: string } | null)?.crm_mode).toBe("legacy")
   })
 
-  it("All non-test orgs are in crm_mode='legacy' (only test orgs may be advanced)", async () => {
+  it("Only allow-listed orgs are in crm_mode='advanced' (Lozada and others stay legacy)", async () => {
+    // Allow-list de orgs que están legítimamente en advanced mode.
+    // Agregar acá cuando un tenant nuevo va live en advanced.
+    const ALLOW_LIST_ADVANCED = new Set<string>([
+      "VICO Travel Group", // onboarded 2026-05-08
+    ])
+
     const { data, error } = await admin
       .from("organizations")
       .select("id, name, crm_mode")
@@ -56,17 +62,17 @@ describeOrSkip("Advanced mode tenant isolation — Lozada untouched", () => {
       name: string
       crm_mode: string
     }>
-    // Only orgs with TEST_ in their name are allowed to be 'advanced' (test fixtures)
-    const realAdvanced = advancedOrgs.filter(
-      (o) => !o.name.startsWith("TEST_")
+    // TEST_ orgs (fixtures) are also allowed transitorily.
+    const unexpected = advancedOrgs.filter(
+      (o) => !o.name.startsWith("TEST_") && !ALLOW_LIST_ADVANCED.has(o.name)
     )
-    if (realAdvanced.length > 0) {
+    if (unexpected.length > 0) {
       console.error(
-        "❌ Real (non-test) orgs in advanced mode:",
-        realAdvanced.map((o) => `${o.name} (${o.id})`)
+        "❌ Orgs en advanced mode que NO están en allow-list:",
+        unexpected.map((o) => `${o.name} (${o.id})`)
       )
     }
-    expect(realAdvanced.length).toBe(0)
+    expect(unexpected.length).toBe(0)
   })
 
   it("Lozada has 0 rows in lead_tag_categories", async () => {
