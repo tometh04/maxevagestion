@@ -121,30 +121,52 @@ export function PassengerBalancesSection({
     (p) => p.payer_type === "CUSTOMER" && p.direction === "INCOME" && p.status === "PAID"
   )
 
-  // Calculate per-passenger totals from allocations
+  // Calculate per-passenger paid totals from allocations, in OP currency only.
+  // Allocations en otra moneda no cuentan acá (hasta que tengamos conversión via exchange_rate).
   const getPassengerPaid = (opCustomerId: string) => {
     return allocations
-      .filter((a) => a.operation_customer_id === opCustomerId)
+      .filter((a) => a.operation_customer_id === opCustomerId && (a.currency || currency) === currency)
       .reduce((sum, a) => sum + Number(a.amount), 0)
   }
 
   // Amount per passenger (split evenly by default)
   const amountPerPassenger = customers.length > 0 ? saleAmount / customers.length : saleAmount
 
-  // Total allocated across all passengers
-  const totalAllocated = allocations.reduce((sum, a) => sum + Number(a.amount), 0)
+  // Total allocated en la moneda de la operación (no mezcla monedas)
+  const totalAllocated = allocations
+    .filter((a) => (a.currency || currency) === currency)
+    .reduce((sum, a) => sum + Number(a.amount), 0)
 
-  // Total of all customer payments
-  const totalCustomerPaid = customerPayments.reduce((sum, p) => sum + Number(p.amount), 0)
+  // Total de pagos por moneda (cada pago suma a su propia moneda, NO mezcla USD+ARS)
+  // Bug fix 2026-05-11 (Santi): antes se sumaba sum(amount) ignorando currency,
+  // dando "USD 203.000" cuando eran USD 3.000 + ARS 200.000.
+  const paidByCurrency = customerPayments.reduce<Record<string, number>>((acc, p) => {
+    const c = p.currency || currency
+    acc[c] = (acc[c] || 0) + Number(p.amount || 0)
+    return acc
+  }, {})
 
-  // Unallocated amount
-  const unallocated = totalCustomerPaid - totalAllocated
+  // Unallocated por moneda
+  const allocatedByCurrency = allocations.reduce<Record<string, number>>((acc, a) => {
+    const c = a.currency || currency
+    acc[c] = (acc[c] || 0) + Number(a.amount || 0)
+    return acc
+  }, {})
+  const unallocatedByCurrency: Record<string, number> = {}
+  Object.entries(paidByCurrency).forEach(([c, paid]) => {
+    const allocated = allocatedByCurrency[c] || 0
+    const diff = paid - allocated
+    if (diff > 0.01) unallocatedByCurrency[c] = diff
+  })
 
-  const formatMoney = (amount: number) =>
-    `${currency === "USD" ? "USD" : "$"} ${Number(amount || 0).toLocaleString("es-AR", {
+  const formatMoney = (amount: number, ccyOverride?: string) => {
+    const ccy = ccyOverride || currency
+    const symbol = ccy === "USD" ? "USD" : "$"
+    return `${symbol} ${Number(amount || 0).toLocaleString("es-AR", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     })}`
+  }
 
   // Open allocation dialog for a specific payment
   const openAllocDialog = (payment: Payment) => {
@@ -308,13 +330,19 @@ export function PassengerBalancesSection({
                 </TableBody>
               </Table>
 
-              {/* Unallocated notice */}
-              {unallocated > 0.01 && (
-                <div className="mt-3 rounded-lg border border-accent-coral/15 bg-accent-coral/5 dark:bg-accent-coral/20 dark:border-accent-coral/30 p-3 flex items-center gap-2">
-                  <DollarSign className="h-4 w-4 text-accent-coral" />
-                  <span className="text-xs text-accent-coral dark:text-accent-coral">
-                    {formatMoney(unallocated)} sin asignar a pasajeros — asigná los pagos para llevar control individual.
-                  </span>
+              {/* Unallocated notice — desglosado por moneda para no mezclar USD con ARS */}
+              {Object.keys(unallocatedByCurrency).length > 0 && (
+                <div className="mt-3 rounded-lg border border-accent-coral/15 bg-accent-coral/5 dark:bg-accent-coral/20 dark:border-accent-coral/30 p-3 flex items-start gap-2">
+                  <DollarSign className="h-4 w-4 text-accent-coral mt-0.5 flex-shrink-0" />
+                  <div className="text-xs text-accent-coral dark:text-accent-coral space-y-0.5">
+                    <p>Sin asignar a pasajeros:</p>
+                    {Object.entries(unallocatedByCurrency).map(([ccy, amount]) => (
+                      <p key={ccy} className="font-mono">
+                        · {formatMoney(amount, ccy)}
+                      </p>
+                    ))}
+                    <p className="opacity-80">Asigná los pagos para llevar control individual.</p>
+                  </div>
                 </div>
               )}
             </>
@@ -361,7 +389,7 @@ export function PassengerBalancesSection({
                       </TableCell>
                       <TableCell className="text-xs">{p.method}</TableCell>
                       <TableCell className="text-xs text-right font-mono font-medium">
-                        {formatMoney(Number(p.amount))}
+                        {formatMoney(Number(p.amount), p.currency)}
                       </TableCell>
                       <TableCell className="text-xs">
                         {paymentAllocs.length === 0 ? (
@@ -381,7 +409,7 @@ export function PassengerBalancesSection({
                                   {cust
                                     ? `${cust.customers.first_name} ${cust.customers.last_name}`
                                     : "?"}{" "}
-                                  ({formatMoney(Number(a.amount))})
+                                  ({formatMoney(Number(a.amount), a.currency)})
                                 </Badge>
                               )
                             })}
@@ -413,8 +441,13 @@ export function PassengerBalancesSection({
           <DialogHeader>
             <DialogTitle>Asignar Pago a Pasajeros</DialogTitle>
             <DialogDescription>
-              Distribuí {allocatingPayment ? formatMoney(Number(allocatingPayment.amount)) : ""}{" "}
+              Distribuí {allocatingPayment ? formatMoney(Number(allocatingPayment.amount), allocatingPayment.currency) : ""}{" "}
               entre los pasajeros de la operación.
+              {allocatingPayment && allocatingPayment.currency !== currency && (
+                <span className="block mt-1 text-accent-coral">
+                  ⚠ Este pago está en {allocatingPayment.currency} y la operación en {currency}. Los montos se contabilizan por separado.
+                </span>
+              )}
             </DialogDescription>
           </DialogHeader>
 
@@ -451,7 +484,7 @@ export function PassengerBalancesSection({
                     )}
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className="text-xs text-muted-foreground">{currency === "USD" ? "USD" : "$"}</span>
+                    <span className="text-xs text-muted-foreground">{(allocatingPayment?.currency || currency) === "USD" ? "USD" : "$"}</span>
                     <Input
                       type="number"
                       step="0.01"
@@ -485,7 +518,7 @@ export function PassengerBalancesSection({
               <div className="flex justify-between text-xs">
                 <span className="text-muted-foreground">Monto del pago:</span>
                 <span className="font-mono font-medium">
-                  {allocatingPayment ? formatMoney(Number(allocatingPayment.amount)) : "—"}
+                  {allocatingPayment ? formatMoney(Number(allocatingPayment.amount), allocatingPayment.currency) : "—"}
                 </span>
               </div>
               <div className="flex justify-between text-xs">
@@ -499,14 +532,14 @@ export function PassengerBalancesSection({
                       : ""
                   }`}
                 >
-                  {formatMoney(dialogTotal)}
+                  {formatMoney(dialogTotal, allocatingPayment?.currency)}
                 </span>
               </div>
               {allocatingPayment && dialogTotal < Number(allocatingPayment.amount) - 0.01 && (
                 <div className="flex justify-between text-xs">
                   <span className="text-accent-coral">Sin asignar:</span>
                   <span className="font-mono text-accent-coral">
-                    {formatMoney(Number(allocatingPayment.amount) - dialogTotal)}
+                    {formatMoney(Number(allocatingPayment.amount) - dialogTotal, allocatingPayment.currency)}
                   </span>
                 </div>
               )}
