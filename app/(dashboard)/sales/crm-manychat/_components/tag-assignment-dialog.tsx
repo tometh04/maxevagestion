@@ -20,7 +20,7 @@ type Tag = {
 type Category = {
   id: string
   name: string
-  color: string
+  color: string | null
   cardinality: string
   tags: Tag[]
 }
@@ -104,16 +104,12 @@ export function TagAssignmentDialog({ open, onOpenChange, orgId, leadId, onSaved
 
     const toRemove = allTagIds.filter((id) => !assigned.has(id))
 
-    const ops: Promise<unknown>[] = []
-
     if (toRemove.length > 0) {
-      ops.push(
-        supabase
-          .from("lead_tag_assignments")
-          .delete()
-          .eq("lead_id", leadId)
-          .in("tag_id", toRemove)
-      )
+      await supabase
+        .from("lead_tag_assignments")
+        .delete()
+        .eq("lead_id", leadId)
+        .in("tag_id", toRemove)
     }
 
     if (assigned.size > 0) {
@@ -122,14 +118,10 @@ export function TagAssignmentDialog({ open, onOpenChange, orgId, leadId, onSaved
         lead_id: leadId,
         tag_id,
       }))
-      ops.push(
-        supabase
-          .from("lead_tag_assignments")
-          .upsert(upsertRows, { onConflict: "lead_id,tag_id" })
-      )
+      await supabase
+        .from("lead_tag_assignments")
+        .upsert(upsertRows, { onConflict: "lead_id,tag_id" })
     }
-
-    await Promise.all(ops)
 
     setSaving(false)
     onSaved?.()

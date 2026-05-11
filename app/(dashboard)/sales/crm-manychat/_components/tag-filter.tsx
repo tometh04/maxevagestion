@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 type Category = {
   id: string
   name: string
-  color: string
+  color: string | null
   tags: Array<{ id: string; label: string }>
 }
 
