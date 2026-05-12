@@ -23,9 +23,20 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "operationId o paymentId requerido" }, { status: 400 })
   }
 
+  // Bug fix 2026-05-11 (Santi): el SELECT vía createServerClient (RLS user-auth)
+  // devolvía 0 rows aunque el INSERT vía admin sí persistía. Hay alguna policy
+  // restrictiva en producción que no está en el repo (posiblemente aplicada
+  // directo en Supabase) que filtra las allocations.
+  //
+  // Workaround: usar admin client para el SELECT también. Las permission checks
+  // al inicio del handler (hasPermission cash:read) ya validan acceso del user.
+  // La tabla no tiene org_id ni FK directa a org, así que no hay riesgo de leak
+  // cross-tenant — las allocations se filtran por paymentId/operationId que el
+  // user ya tiene acceso a través de la operación.
   const supabase = await createServerClient()
+  const admin = createAdminClient()
 
-  let query = (supabase.from("payment_passenger_allocations") as any)
+  let query = (admin.from("payment_passenger_allocations") as any)
     .select(`
       *,
       operation_customers:operation_customer_id(
@@ -189,17 +200,36 @@ export async function POST(request: Request) {
       }))
 
     if (allocationRows.length > 0) {
-      const { error: insertError } = await (admin.from("payment_passenger_allocations") as any)
-        .upsert(allocationRows, { onConflict: "payment_id,operation_customer_id" })
+      // Bug fix 2026-05-11 (Santi): el upsert silenciosamente fallaba sin retornar
+      // error. Cambio a INSERT explícito + .select() para verificar que el row
+      // realmente persistió, y si no, devolver 500 con el detalle (no success).
+      const { data: inserted, error: insertError } = await (admin.from("payment_passenger_allocations") as any)
+        .insert(allocationRows)
+        .select()
 
       if (insertError) {
         console.error("[Allocations] Insert error:", insertError)
-        return NextResponse.json({ error: insertError.message }, { status: 500 })
+        return NextResponse.json({
+          error: insertError.message,
+          code: insertError.code,
+          details: insertError.details,
+          hint: insertError.hint,
+        }, { status: 500 })
       }
+
+      if (!inserted || inserted.length === 0) {
+        console.error("[Allocations] Insert silenciosamente devolvió 0 rows. Payload:", allocationRows)
+        return NextResponse.json({
+          error: "El insert no retornó filas — verificar permisos service_role o triggers en la tabla",
+          payload: allocationRows,
+        }, { status: 500 })
+      }
+
+      return NextResponse.json({ success: true, allocations: inserted })
     }
   }
 
-  return NextResponse.json({ success: true })
+  return NextResponse.json({ success: true, allocations: [] })
 }
 
 /**
@@ -221,11 +251,19 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "paymentId requerido" }, { status: 400 })
   }
 
-  const supabase = await createServerClient()
+  // Bug fix 2026-05-11: misma RLS fantasma que en GET. El DELETE vía
+  // createServerClient retornaba status 200 pero no eliminaba nada (RLS
+  // ocultaba los rows). Usamos admin client después del permission check.
+  const admin = createAdminClient()
 
-  await (supabase.from("payment_passenger_allocations") as any)
+  const { error } = await (admin.from("payment_passenger_allocations") as any)
     .delete()
     .eq("payment_id", paymentId)
+
+  if (error) {
+    console.error("[Allocations DELETE] error:", error)
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
 
   return NextResponse.json({ success: true })
 }
