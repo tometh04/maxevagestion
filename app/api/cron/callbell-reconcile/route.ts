@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/lib/supabase/types"
 import { createAdminClient } from "@/lib/supabase/server"
 import { reconcileAllAdvancedOrgs } from "@/lib/integrations/callbell/reconcile"
+import { checkCronAuth } from "@/lib/cron/auth"
 
 /**
  * Endpoint para Railway Cron — reconcilia el estado entre Callbell y Vibook
@@ -19,10 +20,12 @@ import { reconcileAllAdvancedOrgs } from "@/lib/integrations/callbell/reconcile"
  * usuario logueado y necesita ver todas las orgs).
  */
 export async function POST(request: Request) {
-  const authHeader = request.headers.get("authorization")
-  const cronSecret = process.env.CRON_SECRET
-  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const auth = checkCronAuth(request, "callbell-reconcile")
+  if (!auth.authorized) {
+    return NextResponse.json(
+      { error: "Unauthorized", reason: auth.reason },
+      { status: 401 }
+    )
   }
 
   const start = Date.now()
