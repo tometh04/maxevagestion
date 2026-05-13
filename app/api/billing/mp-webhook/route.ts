@@ -91,6 +91,8 @@ export async function POST(request: Request) {
   // 4. Fetch estado fresh
   let preapproval: any
   let paymentEvent: MPPaymentEvent | undefined
+  let paymentDetails: any
+  let consumedCheckoutEventId: string | null = null
   try {
     if (type === "subscription_authorized_payment") {
       const preapprovalId = body?.preapproval_id || body?.data?.preapproval_id
@@ -104,28 +106,33 @@ export async function POST(request: Request) {
         status: body?.status || "pending",
       }
     } else if (type === "payment") {
-      // MP no linkea el payment al preapproval directamente. Estrategia:
-      // fetchear el payment → tomar payer.email → buscar preapproval de ese payer.
-      const payment = await fetchPayment(String(resolvedId))
-      const payerEmail = payment?.payer?.email
-      if (!payerEmail) {
-        return NextResponse.json({ ok: true, warning: "payment sin payer.email" })
+      // payment no siempre trae preapproval_id en el payload del webhook.
+      // Priorizamos subscription_id del payment (si existe). Fallback: payer.email.
+      paymentDetails = await fetchPayment(String(resolvedId))
+      const subscriptionId = paymentDetails?.point_of_interaction?.transaction_data?.subscription_id
+      if (subscriptionId) {
+        preapproval = await fetchPreapproval(String(subscriptionId))
+      } else {
+        const payerEmail = paymentDetails?.payer?.email
+        if (!payerEmail) {
+          return NextResponse.json({ ok: true, warning: "payment sin payer.email ni subscription_id" })
+        }
+        const found = await searchPreapprovalsByPayerEmail(payerEmail, 5)
+        // Elegir la más recientemente modificada.
+        const candidate = [...found].sort((a, b) => {
+          const ta = a.last_modified ? new Date(a.last_modified).getTime() : 0
+          const tb = b.last_modified ? new Date(b.last_modified).getTime() : 0
+          return tb - ta
+        })[0]
+        if (!candidate) {
+          return NextResponse.json({ ok: true, warning: "no preapproval para payer_email" })
+        }
+        preapproval = candidate
       }
-      const found = await searchPreapprovalsByPayerEmail(payerEmail, 5)
-      // Elegir la más recientemente modificada.
-      const candidate = [...found].sort((a, b) => {
-        const ta = a.last_modified ? new Date(a.last_modified).getTime() : 0
-        const tb = b.last_modified ? new Date(b.last_modified).getTime() : 0
-        return tb - ta
-      })[0]
-      if (!candidate) {
-        return NextResponse.json({ ok: true, warning: "no preapproval para payer_email" })
-      }
-      preapproval = candidate
       paymentEvent = {
         type: "subscription_authorized_payment",
-        status: payment.status || "pending",
-        transaction_amount: payment.transaction_amount ?? undefined,
+        status: paymentDetails?.status || "pending",
+        transaction_amount: paymentDetails?.transaction_amount ?? undefined,
       }
     } else {
       preapproval = await fetchPreapproval(String(resolvedId))
@@ -148,6 +155,27 @@ export async function POST(request: Request) {
       .eq("mp_preapproval_id", preapproval.id)
       .maybeSingle()
     if (byId) orgId = byId.id
+  }
+  if (!orgId && type === "payment") {
+    // Fallback para flow preapproval_plan sin external_reference:
+    // matchear por mp_preapproval_plan_id contra el último CHECKOUT_INITIATED pending.
+    const planId = paymentDetails?.point_of_interaction?.transaction_data?.plan_id
+    if (planId) {
+      const { data: initiated } = await admin
+        .from("billing_events")
+        .select("id, org_id")
+        .eq("event_type", "CHECKOUT_INITIATED")
+        .eq("status", "pending")
+        .contains("payload", { mp_preapproval_plan_id: planId })
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (initiated?.org_id) {
+        orgId = initiated.org_id
+        consumedCheckoutEventId = initiated.id
+      }
+    }
   }
   if (!orgId) {
     // Primer webhook del flow preapproval_plan — la org aún no tiene el id
@@ -204,6 +232,12 @@ export async function POST(request: Request) {
       status: preapproval.status,
       payload: { preapproval, payment_event: paymentEvent },
     })
+  }
+  if (consumedCheckoutEventId) {
+    await admin
+      .from("billing_events")
+      .update({ status: "consumed" })
+      .eq("id", consumedCheckoutEventId)
   }
 
   // Audit: cambios de status críticos en subscription. CANCELLED o

@@ -90,6 +90,7 @@ export async function POST(
   if (billingMethod === "MP") {
     const effective = calculateEffectivePrice(body.base_price_ars, discount)
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://app.vibook.ai"
+    const backUrl = `${appUrl}/onboarding/billing/return`
     try {
       // Custom plan template — reusable si el admin crea otro custom con
       // mismo slug+amount (ej re-trials). ensureMpPlan cachea en mp_plans.
@@ -97,7 +98,7 @@ export async function POST(
         plan: "CUSTOM",
         reason: `Vibook ${body.display_name}`, // ASCII only
         amount: effective,
-        backUrl: `${appUrl}/settings/subscription?custom=ok`,
+        backUrl,
         includeFreeTrial: false,
         orgSlug: org.slug,
       })
@@ -106,6 +107,31 @@ export async function POST(
       const initPoint = new URL(mp.init_point)
       initPoint.searchParams.set("external_reference", orgId)
       checkoutUrl = initPoint.toString()
+
+      // Persistimos CHECKOUT_INITIATED para que /api/billing/sync pueda
+      // resolver preapproval_id cuando MP no devuelve referencias en el back_url.
+      const { error: checkoutLogErr } = await admin.from("billing_events").insert({
+        org_id: orgId,
+        event_type: "CHECKOUT_INITIATED",
+        external_id: null,
+        amount_cents: Math.round(effective * 100),
+        currency: "ARS",
+        status: "pending",
+        payload: {
+          plan: "CUSTOM",
+          plan_key: mp.plan_key,
+          mp_preapproval_plan_id: mp.mp_preapproval_plan_id,
+          init_point: mp.init_point,
+          checkout_url: checkoutUrl,
+          initiated_by_user_id: user.id,
+          included_free_trial: false,
+          is_custom_plan: true,
+          custom_plan_id: created.id,
+        },
+      })
+      if (checkoutLogErr) {
+        console.error("custom-plan POST: billing_events CHECKOUT_INITIATED insert failed", checkoutLogErr)
+      }
     } catch (err: any) {
       const { error: rbErr } = await admin.from("custom_plans").delete().eq("id", created.id)
       if (rbErr) console.error("POST rollback delete failed:", rbErr)
