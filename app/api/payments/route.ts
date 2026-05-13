@@ -633,7 +633,18 @@ export async function POST(request: Request) {
         const operationCode = operation_id ? operation_id.slice(0, 8) : "N/A"
         
         // 7. Verificar que no exista un movimiento duplicado (misma operación, tipo, monto, cuenta)
-        if (operation_id) {
+        //
+        // Bug fix 2026-05-13 (Santi): este check secundario en ledger_movements NO
+        // respetaba el `forceCreate` del query param. El detector primario en payments
+        // (línea 192) sí lo respetaba. Resultado: cuando el user confirmaba "Crear igual"
+        // en el dialog, el frontend reintentaba con ?force=true → bypaseaba el primer
+        // check pero este segundo seguía bloqueando con un mensaje distinto, dejando
+        // a Santi trabado igual.
+        //
+        // Fix: ambos checks ahora respetan forceCreate. La detección primaria ya filtra
+        // por date_paid/date_due/currency/direction (más completa), así que skippear
+        // este redundante cuando el user explícitamente confirmó es seguro.
+        if (operation_id && !forceCreate) {
           const { data: existingMovements } = await (supabase.from("ledger_movements") as any)
             .select("id")
             .eq("operation_id", operation_id)
@@ -643,7 +654,10 @@ export async function POST(request: Request) {
             .limit(1)
           if (existingMovements && existingMovements.length > 0) {
             return NextResponse.json(
-              { error: "Ya existe un movimiento con el mismo monto para esta operación en esta cuenta. Verificá que no sea duplicado." },
+              {
+                error: "Ya existe un movimiento con el mismo monto para esta operación en esta cuenta. Verificá que no sea duplicado.",
+                code: "DUPLICATE_PAYMENT",
+              },
               { status: 409 }
             )
           }
