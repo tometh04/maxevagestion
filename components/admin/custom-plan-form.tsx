@@ -88,7 +88,7 @@ export function CustomPlanForm({
         setResult({ error: data.error ?? res.statusText })
       } else {
         setResult({ checkout_url: data.checkout_url ?? undefined })
-        router.refresh()
+        // NO refrescar el router: así el link queda visible hasta que el usuario navegue manualmente
       }
     } finally {
       setSubmitting(false)
