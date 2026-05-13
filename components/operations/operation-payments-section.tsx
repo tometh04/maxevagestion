@@ -21,6 +21,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
   Form,
   FormControl,
   FormField,
@@ -165,6 +175,27 @@ export function OperationPaymentsSection({
   const [markAsPaid, setMarkAsPaid] = useState(false)
   const [applyRg5617, setApplyRg5617] = useState(false)
   const [applyRg3819, setApplyRg3819] = useState(false)
+
+  // Bug fix 2026-05-13 (Santi): el detector de duplicados flagea 3 cobros
+  // de USD 1.000 el mismo día como sospechosos. La heurística es válida pero
+  // el dialog inline no permitía override. Acá guardamos el payload pendiente
+  // de confirmación + lista de duplicados detectados para mostrar AlertDialog
+  // con opción "Cancelar / Crear igual" (igual patrón que new-payment-dialog).
+  type DuplicateInfo = {
+    duplicates: Array<{
+      id: string
+      amount: number
+      currency: string
+      date_paid: string | null
+      date_due: string | null
+      created_at: string
+      reference: string | null
+      status: string
+    }>
+    pendingBody: Record<string, unknown>
+    kind: "income" | "expense"
+  }
+  const [duplicateAlert, setDuplicateAlert] = useState<DuplicateInfo | null>(null)
   const operatorNameById = new Map(operators.map((operator) => [operator.id, operator.name]))
   const customerSaleCurrency = normalizeSupportedCurrency(saleCurrency || currency)
 
@@ -534,6 +565,45 @@ export function OperationPaymentsSection({
     ? totalRegisteredOperatorPending
     : operatorCost - totalPaidToOperatorByPayments
 
+  // Helper compartido: POST a /api/payments con manejo de 409 DUPLICATE_PAYMENT.
+  // Si la primera vez recibimos 409, abrimos el AlertDialog con la lista.
+  // El user confirma → re-POST con ?force=true.
+  const submitPaymentWithDuplicateCheck = async (
+    body: Record<string, unknown>,
+    kind: "income" | "expense",
+    options: { force?: boolean; onSuccess: () => void; onError: (msg: string) => void }
+  ) => {
+    const url = options.force ? "/api/payments?force=true" : "/api/payments"
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+
+    if (response.status === 409 && !options.force) {
+      const payload = await response.json().catch(() => null)
+      if (payload?.code === "DUPLICATE_PAYMENT" && Array.isArray(payload?.duplicates)) {
+        // Mostrar AlertDialog para override
+        setDuplicateAlert({
+          duplicates: payload.duplicates,
+          pendingBody: body,
+          kind,
+        })
+        return
+      }
+      options.onError(payload?.error || "Error al registrar")
+      return
+    }
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}))
+      options.onError(error?.error || (kind === "income" ? "Error al registrar cobro" : "Error al registrar pago"))
+      return
+    }
+
+    options.onSuccess()
+  }
+
   const onSubmitIncome = async (values: PaymentFormValues) => {
     // Validar cuenta financiera
     if (!values.financial_account_id) {
@@ -545,40 +615,35 @@ export function OperationPaymentsSection({
       toast.error("Debe ingresar el tipo de cambio cuando la moneda del cobro difiere de la moneda de la operación")
       return
     }
-    
+
     setIsLoading(true)
     try {
       const { payer_type, direction, ...restValues } = values
       const datePaidStr = values.date_paid.toISOString().split("T")[0]
-      // Create payment as PAID directly (single atomic call)
-      const response = await fetch("/api/payments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          operation_id: operationId,
-          payer_type: "CUSTOMER",
-          direction: "INCOME",
-          ...restValues,
-          financial_account_id: values.financial_account_id,
-          exchange_rate: incomeNeedsExchangeRate ? values.exchange_rate : null,
-          date_paid: datePaidStr,
-          date_due: datePaidStr,
-          status: "PAID",
-          apply_rg5617: applyRg5617,
-          apply_rg3819: applyRg3819,
-        }),
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || "Error al registrar cobro")
+      const body: Record<string, unknown> = {
+        operation_id: operationId,
+        payer_type: "CUSTOMER",
+        direction: "INCOME",
+        ...restValues,
+        financial_account_id: values.financial_account_id,
+        exchange_rate: incomeNeedsExchangeRate ? values.exchange_rate : null,
+        date_paid: datePaidStr,
+        date_due: datePaidStr,
+        status: "PAID",
+        apply_rg5617: applyRg5617,
+        apply_rg3819: applyRg3819,
       }
 
-      setIncomeDialogOpen(false)
-      incomeForm.reset()
-      setApplyRg5617(false)
-      setApplyRg3819(false)
-      router.refresh()
+      await submitPaymentWithDuplicateCheck(body, "income", {
+        onSuccess: () => {
+          setIncomeDialogOpen(false)
+          incomeForm.reset()
+          setApplyRg5617(false)
+          setApplyRg3819(false)
+          router.refresh()
+        },
+        onError: (msg) => toast.error(msg),
+      })
     } catch (error) {
       console.error("Error registering income:", error)
       toast.error(error instanceof Error ? error.message : "Error al registrar cobro")
@@ -609,38 +674,64 @@ export function OperationPaymentsSection({
       toast.error("Debe ingresar el tipo de cambio para pagos en ARS")
       return
     }
-    
+
     setIsLoading(true)
     try {
       const { payer_type, direction, operator_id, ...restValues } = values
-      const response = await fetch("/api/payments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          operation_id: operationId,
-          payer_type: "OPERATOR",
-          direction: "EXPENSE",
-          operator_id: operator_id || null,
-          ...restValues,
-          financial_account_id: values.financial_account_id,
-          exchange_rate: values.currency === "ARS" ? values.exchange_rate : null,
-          date_paid: values.date_paid.toISOString().split("T")[0],
-          date_due: values.date_paid.toISOString().split("T")[0],
-          status: "PAID",
-        }),
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || "Error al registrar pago")
+      const body: Record<string, unknown> = {
+        operation_id: operationId,
+        payer_type: "OPERATOR",
+        direction: "EXPENSE",
+        operator_id: operator_id || null,
+        ...restValues,
+        financial_account_id: values.financial_account_id,
+        exchange_rate: values.currency === "ARS" ? values.exchange_rate : null,
+        date_paid: values.date_paid.toISOString().split("T")[0],
+        date_due: values.date_paid.toISOString().split("T")[0],
+        status: "PAID",
       }
 
-      setExpenseDialogOpen(false)
-      expenseForm.reset()
-      router.refresh()
+      await submitPaymentWithDuplicateCheck(body, "expense", {
+        onSuccess: () => {
+          setExpenseDialogOpen(false)
+          expenseForm.reset()
+          router.refresh()
+        },
+        onError: (msg) => toast.error(msg),
+      })
     } catch (error) {
       console.error("Error registering expense:", error)
       toast.error(error instanceof Error ? error.message : "Error al registrar pago")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // Handler cuando el user confirma "Crear igual" en el AlertDialog de duplicado.
+  // Re-postea con ?force=true para bypassear la detección.
+  const handleConfirmDuplicate = async () => {
+    if (!duplicateAlert) return
+    const { pendingBody, kind } = duplicateAlert
+    setIsLoading(true)
+    setDuplicateAlert(null)
+    try {
+      await submitPaymentWithDuplicateCheck(pendingBody, kind, {
+        force: true,
+        onSuccess: () => {
+          if (kind === "income") {
+            setIncomeDialogOpen(false)
+            incomeForm.reset()
+            setApplyRg5617(false)
+            setApplyRg3819(false)
+          } else {
+            setExpenseDialogOpen(false)
+            expenseForm.reset()
+          }
+          router.refresh()
+          toast.success(kind === "income" ? "Cobro registrado" : "Pago registrado")
+        },
+        onError: (msg) => toast.error(msg),
+      })
     } finally {
       setIsLoading(false)
     }
@@ -1721,6 +1812,53 @@ export function OperationPaymentsSection({
         </DialogContent>
       </Dialog>
       )}
+
+      {/* AlertDialog de pago duplicado — permite override "Crear igual"
+          para casos legítimos como N transferencias del mismo monto el mismo día.
+          Bug fix 2026-05-13 (Santi): antes este dialog inline tiraba toast y
+          dejaba al user trabado. */}
+      <AlertDialog
+        open={duplicateAlert !== null}
+        onOpenChange={(open) => !open && setDuplicateAlert(null)}
+      >
+        <AlertDialogContent className="max-w-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Posible pago duplicado</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  Encontramos {duplicateAlert?.duplicates.length || 0} pago
+                  {(duplicateAlert?.duplicates.length || 0) === 1 ? "" : "s"} similar
+                  {(duplicateAlert?.duplicates.length || 0) === 1 ? "" : "es"} en los últimos 7 días con el mismo monto, moneda y fecha. Revisalos antes de continuar:
+                </p>
+                <div className="rounded-md border border-border/40 bg-muted/30 p-3 space-y-2 max-h-48 overflow-y-auto">
+                  {duplicateAlert?.duplicates.map((d) => (
+                    <div key={d.id} className="text-xs space-y-0.5">
+                      <div className="font-medium text-foreground">
+                        {d.currency} {d.amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })} · {d.status}
+                      </div>
+                      <div className="text-muted-foreground">
+                        Creado {new Date(d.created_at).toLocaleString("es-AR")}
+                        {d.date_paid && ` · Pagado ${new Date(d.date_paid).toLocaleDateString("es-AR")}`}
+                        {d.reference && ` · Ref: ${d.reference}`}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-sm">
+                  Si ya verificaste que este pago no es duplicado (ej: varias transferencias del mismo monto el mismo día), podés crearlo igual.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isLoading}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDuplicate} disabled={isLoading}>
+              {isLoading ? "Creando..." : "Crear igual"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }
