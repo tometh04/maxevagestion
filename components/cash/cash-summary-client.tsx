@@ -700,7 +700,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo, cu
                                           <span className="text-muted-foreground ml-1">
                                             {(() => {
                                               const customerNames = movement.operations.operation_customers
-                                                ?.map(oc => `${oc.customers.first_name} ${oc.customers.last_name}`.trim())
+                                                ?.map(oc => oc?.customers ? `${oc.customers.first_name ?? ""} ${oc.customers.last_name ?? ""}`.trim() : "")
                                                 .filter(Boolean)
                                                 .join(", ")
                                               const parts = [customerNames, movement.operations.file_code].filter(Boolean)
@@ -888,7 +888,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo, cu
                                           <span className="text-muted-foreground ml-1">
                                             {(() => {
                                               const customerNames = movement.operations.operation_customers
-                                                ?.map(oc => `${oc.customers.first_name} ${oc.customers.last_name}`.trim())
+                                                ?.map(oc => oc?.customers ? `${oc.customers.first_name ?? ""} ${oc.customers.last_name ?? ""}`.trim() : "")
                                                 .filter(Boolean)
                                                 .join(", ")
                                               const parts = [customerNames, movement.operations.file_code].filter(Boolean)
