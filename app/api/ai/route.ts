@@ -759,14 +759,45 @@ export async function POST(request: Request) {
     const supabase = await createServerClient()
 
     const today = new Date().toISOString().split('T')[0]
-    const userContext = `Fecha: ${today} | Usuario: ${user.name || user.email} | Rol: ${user.role}`
+
+    // Fetch user's agencies for mandatory filtering
+    const { data: userAgencies } = await (supabase.from("user_agencies") as any)
+      .select("agency_id, agencies:agency_id(name)")
+      .eq("user_id", user.id)
+    const userAgencyIds: string[] = (userAgencies || []).map((ua: any) => ua.agency_id)
+    const userAgencyNames: string[] = (userAgencies || []).map((ua: any) => ua.agencies?.name || ua.agency_id)
+
+    const agencyInfo = user.role === "SUPER_ADMIN"
+      ? "SUPER_ADMIN (acceso total)"
+      : userAgencyIds.length > 0
+        ? `Agencias: ${userAgencyNames.join(", ")}`
+        : "Sin agencia asignada"
+
+    const userContext = `Fecha: ${today} | Usuario: ${user.name || user.email} | Rol: ${user.role} | ${agencyInfo}`
+
+    // Build mandatory agency security constraint for non-SUPER_ADMIN
+    let agencyConstraint = ""
+    if (user.role !== "SUPER_ADMIN") {
+      if (userAgencyIds.length > 0) {
+        const idsLiteral = userAgencyIds.map((id: string) => `'${id}'`).join(", ")
+        agencyConstraint = `\n\n🔒 SEGURIDAD — FILTRO OBLIGATORIO DE AGENCIA (NO NEGOCIABLE):
+Este usuario pertenece ÚNICAMENTE a: ${userAgencyNames.join(", ")}.
+TODA query sobre operations, leads, invoices, commission_records DEBE incluir: AND agency_id IN (${idsLiteral})
+Para financial_accounts (donde agency_id puede ser NULL para cuentas globales): AND (agency_id IN (${idsLiteral}) OR agency_id IS NULL)
+NUNCA devuelvas datos de otras agencias. Si omitís este filtro, estarás exponiendo datos confidenciales de otras organizaciones.`
+      } else {
+        agencyConstraint = "\n\n🔒 SEGURIDAD: Este usuario no tiene agencias asignadas. No mostrar ningún dato de operations, leads ni payments."
+      }
+    }
+
+    const dynamicSystemPrompt = SYSTEM_PROMPT + agencyConstraint
 
     const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       {
         type: "function",
         function: {
           name: "execute_query",
-          description: "Ejecuta una consulta SQL SELECT para obtener datos reales del sistema. Usa esto SIEMPRE para responder preguntas sobre datos, métricas, operaciones, clientes, pagos, etc.",
+          description: "Ejecuta una consulta SQL SELECT para obtener datos reales del sistema. Usa esto SIEMPRE para responder preguntas sobre datos, métricas, operaciones, clientes, pagos, etc. IMPORTANTE: Siempre aplicar el filtro de agency_id indicado en el sistema para no exponer datos de otras agencias.",
           parameters: {
             type: "object",
             properties: {
@@ -786,7 +817,7 @@ export async function POST(request: Request) {
     ]
 
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-      { role: "system", content: SYSTEM_PROMPT },
+      { role: "system", content: dynamicSystemPrompt },
       { role: "user", content: `${userContext}\n\nPregunta: ${message}` }
     ]
 
