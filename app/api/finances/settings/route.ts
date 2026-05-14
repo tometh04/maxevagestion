@@ -142,6 +142,19 @@ export async function GET(request: Request) {
       return NextResponse.json(newData)
     }
 
+    // Coerce legacy tax_regime values (Bug fix 2026-05-13 reportado por
+    // Lozada Gualeguaychú): algunas rows tienen `tax_regime = 'TRAVEL_AGENCY'`
+    // (valor legacy que ya no está en el enum del schema). Al hacer PUT,
+    // Zod rechaza con "Datos inválidos". Coercemos a 'RESPONSABLE_INSCRIPTO'
+    // (el régimen estándar para agencia de viajes AR) para que el dropdown
+    // muestre un valor válido y el guardado funcione. El backfill SQL
+    // 20260513000002 hace lo mismo en BD; este código es defense-in-depth.
+    const VALID_TAX_REGIMES = ['RESPONSABLE_INSCRIPTO', 'MONOTRIBUTISTA', 'EXENTO', 'NO_RESPONSABLE']
+    const existingRow = existing as any
+    if (existingRow && (!existingRow.tax_regime || !VALID_TAX_REGIMES.includes(existingRow.tax_regime))) {
+      existingRow.tax_regime = 'RESPONSABLE_INSCRIPTO'
+    }
+
     return NextResponse.json(existing)
   } catch (error: any) {
     console.error("Error in GET /api/finances/settings:", error)
