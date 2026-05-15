@@ -13,28 +13,23 @@ export async function GET(request: Request) {
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
-    // Get user agencies
-    const { data: userAgencies } = await supabase
-      .from("user_agencies")
-      .select("agency_id")
-      .eq("user_id", user.id)
+    // Bug fix 2026-05-15 (P0 cross-tenant): SUPER_ADMIN bypaseaba filtro
+    // → leak. Modelo SaaS: scopear siempre por org_id del user.
+    const userOrgId = (user as any).org_id as string | null
+    if (!userOrgId) {
+      return NextResponse.json({ coupons: [] })
+    }
 
-    const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
-
-    // Build query
+    // Build query — siempre scopear por org_id via JOIN inner a agencies
     let query = (supabase.from("payment_coupons") as any)
       .select(`
         *,
         operations:operation_id(id, destination, status),
         payments:payment_id(id, amount, status),
         customers:customer_id(id, first_name, last_name),
-        agencies:agency_id(id, name)
+        agencies:agency_id!inner(id, name, org_id)
       `)
-
-    // Apply permissions
-    if (user.role !== "SUPER_ADMIN" && agencyIds.length > 0) {
-      query = query.in("agency_id", agencyIds)
-    }
+      .eq("agencies.org_id", userOrgId)
 
     // Apply filters
     const status = searchParams.get("status")

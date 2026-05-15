@@ -44,13 +44,25 @@ export async function GET(request: Request) {
       `, { count: "exact" })
       .order("created_at", { ascending: false })
 
-    // P0 2026-05-10: scopear por org_id del user. Defense-in-depth además
-    // del RLS policy (mig 20260510000003). SUPER_ADMIN global ve todos
-    // (incluye rows sin org_id que son system actions).
+    // Bug fix 2026-05-15 (P0 cross-tenant): el comentario viejo decía
+    // "SUPER_ADMIN global ve todos". Pero en el modelo SaaS, SUPER_ADMIN
+    // es solo el OWNER de su org. Lozada Gualeguaychú reportaba ver datos
+    // de otros tenants en /calendar — patrón idéntico estaba acá.
+    //
+    // Fix: scopear por org_id siempre que el user tenga uno. Sin org_id
+    // (caso muy raro / huérfano), fail-safe a empty.
     const userOrgId = (user as any).org_id as string | null
-    if (user.role !== "SUPER_ADMIN" && userOrgId) {
-      query = query.eq("org_id", userOrgId)
+    if (!userOrgId) {
+      return NextResponse.json({
+        logs: [],
+        total: 0,
+        page,
+        limit,
+        totalPages: 0,
+        message: "user sin org_id",
+      })
     }
+    query = query.eq("org_id", userOrgId)
 
     // Filtros
     if (action) {
