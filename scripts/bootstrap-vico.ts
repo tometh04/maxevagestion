@@ -252,6 +252,8 @@ async function main() {
         } as any)
       if (memberErr && memberErr.code !== "23505") throw memberErr
       console.log(`    ✓ organization_members creado (role=${memberRole})`)
+      // (nota: la tabla NO tiene columna joined_at — created_at se setea
+      // automático por default value; no incluir en payload INSERT)
     } else {
       console.log(`    ✓ organization_members ya existe`)
     }
