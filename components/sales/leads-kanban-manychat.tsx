@@ -42,6 +42,16 @@ import {
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 
+// Configuración de estilos por estado conocido; futuros estados heredan el fallback
+const STATUS_CONFIG: Record<string, { label: string; activeClass: string }> = {
+  NEW:         { label: "Nuevo",       activeClass: "bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-300 dark:border-blue-700" },
+  IN_PROGRESS: { label: "En Progreso", activeClass: "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700" },
+  QUOTED:      { label: "Cotizado",    activeClass: "bg-violet-500/15 text-violet-700 dark:text-violet-400 border-violet-300 dark:border-violet-700" },
+  WON:         { label: "Ganado",      activeClass: "bg-success/15 text-success border-success/40" },
+  LOST:        { label: "Perdido",     activeClass: "bg-destructive/15 text-destructive border-destructive/30" },
+}
+const STATUS_FALLBACK = { label: "", activeClass: "bg-primary/10 text-primary border-primary/30" }
+
 // Colores de borde izquierdo por región
 const regionBorderColors: Record<string, string> = {
   ARGENTINA: "border-l-accent-teal",
@@ -170,6 +180,20 @@ export function LeadsKanbanManychat({
   const [viewMode, setViewMode] = useState<"activos" | "archivados">("activos")
   const [archivedLeads, setArchivedLeads] = useState<Lead[]>([])
   const [loadingArchived, setLoadingArchived] = useState(false)
+  const [selectedStatus, setSelectedStatus] = useState<string>("ALL")
+
+  // Estados presentes en los leads actuales (dinámico)
+  const availableStatuses = useMemo(() => {
+    const seen = new Set<string>()
+    leads.forEach(l => { if (l.status) seen.add(l.status) })
+    return Array.from(seen).sort()
+  }, [leads])
+
+  // Leads visibles según filtro de estado
+  const visibleLeads = useMemo(() => {
+    if (selectedStatus === "ALL") return leads
+    return leads.filter(l => l.status === selectedStatus)
+  }, [leads, selectedStatus])
 
   const isAdmin = currentUserRole === "ADMIN" || currentUserRole === "SUPER_ADMIN"
   const isSeller = currentUserRole === "SELLER"
@@ -501,7 +525,7 @@ export function LeadsKanbanManychat({
     // con una columna existente, se agrega a esa columna. Si no hay
     // match, crea una columna nueva con el valor original del lead.
     const normalizeKey = (s: string) => s.trim().toLowerCase()
-    leads.forEach(lead => {
+    visibleLeads.forEach(lead => {
       // Fallback: list_name (Manychat/Trello) → region (manuales) → "Sin lista"
       const rawName = (
         (lead.list_name && lead.list_name.trim()) ||
@@ -527,7 +551,7 @@ export function LeadsKanbanManychat({
       })
     })
     return grouped
-  }, [leads, listOrder])
+  }, [visibleLeads, listOrder])
 
   // Leads archivados agrupados por list_name (para la tab Archivados)
   const archivedLeadsByListName = useMemo(() => {
@@ -633,6 +657,24 @@ export function LeadsKanbanManychat({
               ))}
             </SelectContent>
           </Select>
+          {availableStatuses.length > 0 && (
+            <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+              <SelectTrigger id="status-select" className="w-[180px] bg-white/80 dark:bg-card/80">
+                <SelectValue placeholder="Todos los estados" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todos los estados</SelectItem>
+                {availableStatuses.map((status) => {
+                  const cfg = STATUS_CONFIG[status] ?? { ...STATUS_FALLBACK, label: status }
+                  return (
+                    <SelectItem key={status} value={status}>
+                      {cfg.label || status}
+                    </SelectItem>
+                  )
+                })}
+              </SelectContent>
+            </Select>
+          )}
         </div>
         {canCreateLists && (
           <div className="flex items-center gap-2">
