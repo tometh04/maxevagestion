@@ -641,23 +641,60 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
             )}
 
             {/* Error inline */}
-            {setupError && (
-              <Alert className="mb-6 border-destructive bg-destructive/10">
-                <XCircle className="h-4 w-4 text-destructive" />
-                <AlertDescription className="text-destructive text-sm space-y-1">
-                  <p className="font-medium">Error al configurar AFIP:</p>
-                  <p className="font-mono text-xs bg-destructive/10 p-2 rounded break-all">
-                    {setupError.message}
-                  </p>
-                  {certStepDone && (
-                    <div className="flex gap-3 mt-2 text-xs">
-                      <span className="text-success">✓ Certificado creado</span>
-                      <span className="text-destructive">✗ Web Service</span>
-                    </div>
-                  )}
-                </AlertDescription>
-              </Alert>
-            )}
+            {setupError && (() => {
+              // Bug fix 2026-05-15 (Enzo VICO): el setupError.message muchas veces
+              // viene como JSON crudo (response de AFIP SDK), lo cual confunde al
+              // user. Parseamos y mostramos un mensaje claro + tip si es el caso
+              // común "credenciales incorrectas".
+              const raw = setupError.message || ""
+              let humanMessage = raw
+              let isCredentialError = false
+              try {
+                // Si viene como '{"id":"...","status":"error","data":{"message":"..."}}'
+                const parsed = JSON.parse(raw)
+                if (parsed?.data?.message) {
+                  humanMessage = String(parsed.data.message)
+                } else if (parsed?.message) {
+                  humanMessage = String(parsed.message)
+                } else if (parsed?.error) {
+                  humanMessage = String(parsed.error)
+                }
+              } catch {
+                // No era JSON — usar raw tal cual
+              }
+              if (/CUIL\/CUIT incorrecto|CUIT incorrecto|usuario o clave/i.test(humanMessage)) {
+                isCredentialError = true
+              }
+
+              return (
+                <Alert className="mb-6 border-destructive bg-destructive/10">
+                  <XCircle className="h-4 w-4 text-destructive" />
+                  <AlertDescription className="text-destructive text-sm space-y-2">
+                    <p className="font-medium">Error al configurar AFIP:</p>
+                    <p className="font-mono text-xs bg-destructive/10 p-2 rounded break-words">
+                      {humanMessage}
+                    </p>
+                    {isCredentialError && (
+                      <div className="text-xs space-y-1 mt-2 p-3 rounded border border-destructive/30 bg-destructive/5">
+                        <p className="font-medium">¿Qué chequear?</p>
+                        <ol className="list-decimal list-inside space-y-0.5">
+                          <li>El mensaje de AFIP es engañoso — casi siempre el problema es la <strong>Clave Fiscal</strong>, no el CUIT.</li>
+                          <li>Probá entrar manualmente a <a href="https://auth.afip.gob.ar/" target="_blank" rel="noopener noreferrer" className="underline">auth.afip.gob.ar</a> con ese CUIT y clave. Si tampoco entrás vos, reseteala desde mi.afip.gob.ar.</li>
+                          <li>Verificá que el CUIT tenga <strong>Clave Fiscal Nivel 2 o superior</strong>.</li>
+                          <li>Las claves de AFIP son case-sensitive (mayúsculas/minúsculas importan).</li>
+                        </ol>
+                      </div>
+                    )}
+                    {certStepDone && (
+                      <div className="flex gap-3 mt-2 text-xs">
+                        <span className="text-success">✓ Certificado creado</span>
+                        <span className="text-destructive">✗ Web Service</span>
+                      </div>
+                    )}
+                  </AlertDescription>
+                </Alert>
+              )
+            })()}
 
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
