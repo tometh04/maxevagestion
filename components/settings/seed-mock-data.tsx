@@ -53,6 +53,16 @@ export function SeedMockData() {
         </div>
         <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Datos de Ejemplo (Mock Data)</h4>
       </div>
+
+      {/* SEG-001: funcionalidad deshabilitada. El endpoint fue bloqueado por seguridad
+          (child_process.exec en producción). Para seedear datos usar npm run db:seed:mock localmente. */}
+      <Alert variant="destructive">
+        <AlertDescription>
+          Esta funcionalidad está deshabilitada en producción (SEG-001). Usar{" "}
+          <code className="font-mono text-xs">npm run db:seed:mock</code> localmente.
+        </AlertDescription>
+      </Alert>
+
       <p className="text-sm text-muted-foreground">
         Genera datos de ejemplo para probar la aplicación. Esto incluye leads, operaciones, pagos, movimientos de caja,
         alertas, etc.
@@ -82,7 +92,8 @@ export function SeedMockData() {
         </ul>
       </div>
 
-      <Button size="sm" onClick={handleSeed} disabled={loading} className="w-full">
+      {/* SEG-001: botón deshabilitado — ver comentario arriba */}
+      <Button size="sm" onClick={handleSeed} disabled={true} className="w-full">
         {loading ? (
           <>
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
