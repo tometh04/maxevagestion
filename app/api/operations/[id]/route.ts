@@ -330,6 +330,28 @@ export async function PATCH(
       updateData.sale_currency = body.currency
     }
 
+    // Bug fix 2026-05-15 (reportado por Santi #6f18a299):
+    // Hay 2 modelos coexistiendo para comisiones compartidas:
+    //   - LEGACY: operations.commission_split (un solo número 0-100 = % del principal)
+    //   - NUEVO: operations.commission_pct_primary + commission_pct_secondary (% absolutos)
+    // El edit dialog tiene inputs SOLO para los nuevos. El display de la UI
+    // lee SOLO el legacy. → editar los nuevos no impactaba el display.
+    //
+    // Fix: cuando el PATCH recibe los pct_primary/secondary, derivar el
+    // commission_split proporcional y guardarlo también. Mantiene legacy sync.
+    if (
+      updateData.commission_pct_primary != null &&
+      updateData.commission_pct_secondary != null
+    ) {
+      const p = Number(updateData.commission_pct_primary)
+      const s = Number(updateData.commission_pct_secondary)
+      const total = p + s
+      if (Number.isFinite(total) && total > 0) {
+        // commission_split = % de la comisión total que va al principal
+        updateData.commission_split = Math.round((p / total) * 100 * 100) / 100
+      }
+    }
+
     const oldSaleAmount = currentOp.sale_amount_total
     const oldOperatorCost = currentOp.operator_cost
     const newSaleAmount = updateData.sale_amount_total ?? oldSaleAmount
