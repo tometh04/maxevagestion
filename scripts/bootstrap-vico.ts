@@ -4,9 +4,14 @@
  * One-off, idempotente. Crea TODA la infra de VICO en Vibook:
  *   1. Org "VICO Travel Group"
  *   2. Agency "VICO Travel Group"
- *   3. 10 users (auth + public.users + user_agencies)
+ *   3. 10 users (auth + public.users + user_agencies + organization_members)
  *   4. crm_mode = 'advanced' + seed (4 categorías + 60 tags + 7 funnels)
  *   5. org_integrations (manychat + callbell-in + callbell-out)
+ *
+ * NOTA 2026-05-15: organization_members es CRÍTICO. Sin esa fila los users
+ * no pueden hacer NADA (la RLS tenant_isolation usa user_org_ids() que lee
+ * de organization_members). Antes este paso faltaba — fix retroactivo y
+ * agregado al bootstrap.
  *
  * Uso:
  *   CALLBELL_API_TOKEN='<token>' npx tsx scripts/bootstrap-vico.ts
@@ -214,6 +219,41 @@ async function main() {
         .insert({ user_id: appUserId, agency_id: agencyId } as any)
       if (linkErr && linkErr.code !== "23505") throw linkErr
       console.log(`    ✓ linkeado a agency`)
+    }
+
+    // organization_members link (Bug fix 2026-05-15 reportado por Enzo):
+    // Sin esta fila, la RLS tenant_isolation rechaza TODO write/read
+    // tenant-aware del user. Antes de este fix, los users del bootstrap
+    // veían pantallas vacías y los toasts de "guardado" eran false
+    // success (el cliente swallowaba el error del 500).
+    //
+    // organization_members.user_id es FK a auth.users(id), no a public.users.
+    // Mapeo de role: SUPER_ADMIN/ORG_OWNER → OWNER, resto 1:1.
+    const memberRole = (() => {
+      const r = (spec.role || "VIEWER").toUpperCase()
+      if (r === "SUPER_ADMIN" || r === "ORG_OWNER") return "OWNER"
+      if (r === "ADMIN" || r === "CONTABLE" || r === "SELLER" || r === "VIEWER") return r
+      return "VIEWER"
+    })()
+    const { data: existingMember } = await admin
+      .from("organization_members")
+      .select("user_id")
+      .eq("organization_id", orgId)
+      .eq("user_id", authUserId)
+      .maybeSingle()
+    if (!existingMember) {
+      const { error: memberErr } = await admin
+        .from("organization_members")
+        .insert({
+          organization_id: orgId,
+          user_id: authUserId,
+          role: memberRole,
+          status: "ACTIVE",
+        } as any)
+      if (memberErr && memberErr.code !== "23505") throw memberErr
+      console.log(`    ✓ organization_members creado (role=${memberRole})`)
+    } else {
+      console.log(`    ✓ organization_members ya existe`)
     }
   }
 
