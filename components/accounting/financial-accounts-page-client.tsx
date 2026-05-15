@@ -33,7 +33,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Plus, Trash2, AlertTriangle, Building2, ArrowRightLeft } from "lucide-react"
+import { Plus, Trash2, AlertTriangle, Building2, ArrowRightLeft, Pencil } from "lucide-react"
 import { TransferAccountDialog } from "./transfer-account-dialog"
 import { toast } from "sonner"
 import { useRouter, useSearchParams } from "next/navigation"
@@ -105,6 +105,83 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
   const [transferToId, setTransferToId] = useState("")
   const [deleteStep, setDeleteStep] = useState<"confirm" | "transfer">("confirm")
   const [isDeleting, setIsDeleting] = useState(false)
+
+  // Edit dialog state — editar nombre y/o ajustar saldo de una cuenta.
+  // El saldo se ajusta vía PATCH que crea un ledger_movement de tipo
+  // INCOME/EXPENSE (no se UPDATE-a un campo, sino que se preserva la
+  // contabilidad de doble entrada).
+  const [editAccountOpen, setEditAccountOpen] = useState(false)
+  const [editingAccount, setEditingAccount] = useState<any>(null)
+  const [editName, setEditName] = useState("")
+  const [editTargetBalance, setEditTargetBalance] = useState("")
+  const [editReason, setEditReason] = useState("")
+  const [isEditing, setIsEditing] = useState(false)
+
+  const openEditAccount = (account: any) => {
+    setEditingAccount(account)
+    setEditName(account.name || "")
+    setEditTargetBalance(String(account.current_balance ?? 0))
+    setEditReason("")
+    setEditAccountOpen(true)
+  }
+
+  const handleEditSave = async () => {
+    if (!editingAccount) return
+    const trimmedName = editName.trim()
+    if (!trimmedName) {
+      toast.error("El nombre no puede estar vacío")
+      return
+    }
+    const targetNum = Number(editTargetBalance)
+    if (!Number.isFinite(targetNum)) {
+      toast.error("El saldo debe ser un número válido")
+      return
+    }
+    const currentBal = Number(editingAccount.current_balance ?? 0)
+    const balanceChanged = Math.abs(targetNum - currentBal) > 0.01
+    const nameChanged = trimmedName !== (editingAccount.name || "")
+    if (!balanceChanged && !nameChanged) {
+      toast.info("Sin cambios")
+      setEditAccountOpen(false)
+      return
+    }
+
+    setIsEditing(true)
+    try {
+      const payload: Record<string, unknown> = {}
+      if (nameChanged) payload.name = trimmedName
+      if (balanceChanged) {
+        payload.target_balance = targetNum
+        payload.adjustment_reason = editReason.trim() || undefined
+      }
+      const res = await fetch(`/api/accounting/financial-accounts/${editingAccount.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      const data = await res.json()
+      if (!res.ok || data.error) {
+        throw new Error(data.error || "Error al guardar cambios")
+      }
+
+      const parts: string[] = []
+      if (data.updated_name) parts.push(`nombre actualizado`)
+      if (data.adjustment) {
+        const sign = (data.adjustment.delta ?? 0) >= 0 ? "+" : ""
+        parts.push(`saldo ajustado (${sign}${data.adjustment.delta})`)
+      }
+      toast.success(parts.length > 0 ? `Cuenta editada: ${parts.join(" + ")}` : "Cuenta actualizada")
+      setEditAccountOpen(false)
+      setEditingAccount(null)
+      await fetchData(true)
+      router.refresh()
+    } catch (e: any) {
+      toast.error(e?.message || "Error al guardar cambios")
+    } finally {
+      setIsEditing(false)
+    }
+  }
+
   const [formData, setFormData] = useState<any>({
     name: "",
     type: "",
@@ -904,6 +981,16 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
                             </span>
                           </TableCell>
                           <TableCell>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => openEditAccount(account)}
+                                title="Editar nombre o ajustar saldo"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
                             <Button
                               variant="ghost"
                               size="icon"
@@ -913,6 +1000,7 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -924,6 +1012,74 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
           ))}
         </div>
       )}
+
+      {/* Dialog de edición de cuenta — nombre + ajuste de saldo */}
+      <Dialog open={editAccountOpen} onOpenChange={(open) => { if (!isEditing) setEditAccountOpen(open) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar cuenta financiera</DialogTitle>
+            <DialogDescription>
+              Cambiá el nombre o ajustá el saldo. Si cambiás el saldo, se crea un movimiento de ajuste en el libro mayor (queda en el historial).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label htmlFor="edit-name">Nombre</Label>
+              <Input
+                id="edit-name"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                placeholder="Ej: Banco Galicia USD"
+                disabled={isEditing}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-muted-foreground">Saldo actual</Label>
+                <div className="h-10 px-3 py-2 rounded-md border border-border/40 bg-muted/30 text-sm tabular-nums">
+                  {editingAccount
+                    ? formatCurrency(Number(editingAccount.current_balance ?? 0), editingAccount.currency)
+                    : "—"}
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="edit-target">Nuevo saldo</Label>
+                <Input
+                  id="edit-target"
+                  type="number"
+                  step="0.01"
+                  value={editTargetBalance}
+                  onChange={(e) => setEditTargetBalance(e.target.value)}
+                  placeholder="0.00"
+                  disabled={isEditing}
+                />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="edit-reason">Motivo del ajuste (opcional, recomendado)</Label>
+              <Textarea
+                id="edit-reason"
+                value={editReason}
+                onChange={(e) => setEditReason(e.target.value)}
+                placeholder="Ej: corrección de saldo inicial, conciliación con extracto bancario..."
+                rows={2}
+                disabled={isEditing}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Si modificás el saldo, se generará un movimiento en el libro mayor con este motivo. Si no ponés motivo se registra como &quot;Ajuste manual sin motivo declarado&quot;.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditAccountOpen(false)} disabled={isEditing}>
+              Cancelar
+            </Button>
+            <Button onClick={handleEditSave} disabled={isEditing}>
+              {isEditing ? "Guardando..." : "Guardar cambios"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Dialog de transferencia */}
       <TransferAccountDialog

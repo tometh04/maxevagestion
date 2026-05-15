@@ -5,6 +5,167 @@ import { getAccountBalance, createLedgerMovement, calculateARSEquivalent, invali
 import { getExchangeRate, getLatestExchangeRate, getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
 import { canPerformAction } from "@/lib/permissions-api"
 
+/**
+ * PATCH /api/accounting/financial-accounts/[id]
+ *
+ * Permite editar:
+ *   - name: simple UPDATE de la columna
+ *   - target_balance: el saldo NO es un campo stored sino la suma de
+ *     ledger_movements. Para "fijar" el balance creamos un movimiento de
+ *     ajuste manual (INCOME o EXPENSE según signo del delta) que lleva
+ *     el balance al target deseado. Mantiene la integridad contable.
+ *
+ * El cliente puede mandar uno o ambos campos en el body. Si manda solo
+ * name, no se toca el balance. Si manda target_balance, se crea el ajuste.
+ */
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { user } = await getCurrentUser()
+    const supabase = await createServerClient()
+
+    if (!canPerformAction(user, "accounting", "write")) {
+      return NextResponse.json({ error: "No tiene permiso para editar cuentas" }, { status: 403 })
+    }
+
+    const { id } = await params
+    if (!id) {
+      return NextResponse.json({ error: "ID de cuenta requerido" }, { status: 400 })
+    }
+
+    const body = await request.json().catch(() => ({}))
+    const { name, target_balance, adjustment_reason } = body as {
+      name?: string
+      target_balance?: number | string | null
+      adjustment_reason?: string | null
+    }
+
+    // Cargar cuenta y validar tenant isolation
+    const { data: account, error: accountError } = await (supabase.from("financial_accounts") as any)
+      .select("id, name, currency, is_active, org_id")
+      .eq("id", id)
+      .single()
+
+    if (accountError || !account) {
+      return NextResponse.json({ error: "Cuenta no encontrada" }, { status: 404 })
+    }
+    if (user.org_id && account.org_id !== user.org_id) {
+      return NextResponse.json({ error: "Cuenta no encontrada" }, { status: 404 })
+    }
+    if (account.is_active === false) {
+      return NextResponse.json({ error: "No se puede editar una cuenta inactiva" }, { status: 400 })
+    }
+
+    // ──────────────────────────────────────────────────────────
+    // 1) Actualizar name (si vino en el body)
+    // ──────────────────────────────────────────────────────────
+    let updatedName: string | null = null
+    if (typeof name === "string") {
+      const trimmed = name.trim()
+      if (trimmed.length === 0) {
+        return NextResponse.json({ error: "El nombre no puede estar vacío" }, { status: 400 })
+      }
+      if (trimmed !== account.name) {
+        const { error: nameError } = await (supabase.from("financial_accounts") as any)
+          .update({ name: trimmed })
+          .eq("id", id)
+        if (nameError) {
+          console.error("Error actualizando nombre:", nameError)
+          return NextResponse.json({ error: "Error al actualizar el nombre" }, { status: 500 })
+        }
+        updatedName = trimmed
+      }
+    }
+
+    // ──────────────────────────────────────────────────────────
+    // 2) Ajuste de saldo (si vino target_balance)
+    //    Creamos un ledger_movement de tipo INCOME (delta > 0) o EXPENSE
+    //    (delta < 0) que lleva el balance al target. Mantiene double-entry.
+    // ──────────────────────────────────────────────────────────
+    let adjustmentMovementId: string | null = null
+    let oldBalance: number | null = null
+    let newBalance: number | null = null
+
+    if (target_balance !== undefined && target_balance !== null && target_balance !== "") {
+      const targetNum = Number(target_balance)
+      if (!Number.isFinite(targetNum)) {
+        return NextResponse.json({ error: "target_balance debe ser un número" }, { status: 400 })
+      }
+
+      const currentBalance = await getAccountBalance(id, supabase)
+      const delta = Number((targetNum - currentBalance).toFixed(2))
+      oldBalance = currentBalance
+
+      if (Math.abs(delta) > 0.01) {
+        const reason = (typeof adjustment_reason === "string" ? adjustment_reason.trim() : "") || "Ajuste manual sin motivo declarado"
+        const concept = `Ajuste manual de saldo (${account.name})`
+
+        // Para USD necesitamos exchange_rate para calcular ARS equivalent.
+        // Para ARS, exchange_rate queda null y amount_ars_equivalent = delta directo.
+        let exchangeRate: number | null = null
+        if (account.currency === "USD") {
+          const rateResult = await getExchangeRateWithFallback(supabase, new Date(), "financial-account-balance-adjustment")
+          exchangeRate = rateResult.rate
+        }
+        const amountAbs = Math.abs(delta)
+        const amountARS = account.currency === "ARS"
+          ? amountAbs
+          : calculateARSEquivalent(amountAbs, "USD", exchangeRate)
+
+        try {
+          const result = await createLedgerMovement(
+            {
+              operation_id: null,
+              lead_id: null,
+              type: delta > 0 ? "INCOME" : "EXPENSE",
+              concept,
+              currency: account.currency as "ARS" | "USD",
+              amount_original: amountAbs,
+              exchange_rate: account.currency === "USD" ? exchangeRate : null,
+              amount_ars_equivalent: amountARS,
+              method: "OTHER",
+              account_id: id,
+              notes: `Ajuste manual ${delta > 0 ? "+" : "-"}${amountAbs} ${account.currency}. Motivo: ${reason}. Saldo anterior: ${currentBalance.toFixed(2)} → nuevo: ${targetNum.toFixed(2)}.`,
+              created_by: user.id,
+              org_id: account.org_id,
+            },
+            supabase
+          )
+          adjustmentMovementId = result.id
+        } catch (e: any) {
+          console.error("Error creando movimiento de ajuste:", e)
+          return NextResponse.json(
+            { error: e?.message || "Error al ajustar el saldo" },
+            { status: 500 }
+          )
+        }
+      }
+
+      // Recalcular para devolver el balance final (post-ajuste)
+      invalidateBalanceCache(id)
+      newBalance = await getAccountBalance(id, supabase)
+    }
+
+    return NextResponse.json({
+      success: true,
+      updated_name: updatedName,
+      adjustment: adjustmentMovementId
+        ? {
+            movement_id: adjustmentMovementId,
+            old_balance: oldBalance,
+            new_balance: newBalance,
+            delta: oldBalance != null && newBalance != null ? Number((newBalance - oldBalance).toFixed(2)) : null,
+          }
+        : null,
+    })
+  } catch (e: any) {
+    console.error("PATCH /api/accounting/financial-accounts/[id]:", e)
+    return NextResponse.json({ error: e?.message || "Error al editar cuenta" }, { status: 500 })
+  }
+}
+
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
