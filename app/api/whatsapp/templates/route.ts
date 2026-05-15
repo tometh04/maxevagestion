@@ -8,13 +8,18 @@ export async function GET(request: Request) {
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
-    // Obtener agencias del usuario
-    const { data: userAgencies } = await supabase
-      .from("user_agencies")
-      .select("agency_id")
-      .eq("user_id", user.id)
+    // Bug fix 2026-05-15 (P0 cross-tenant): SUPER_ADMIN bypaseaba el filtro
+    // → veía templates de otros tenants. Scopear por agencias de la org.
+    const userOrgId = (user as any).org_id as string | null
+    if (!userOrgId) {
+      return NextResponse.json({ templates: [] })
+    }
 
-    const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
+    const { data: orgAgencies } = await supabase
+      .from("agencies")
+      .select("id")
+      .eq("org_id", userOrgId)
+    const orgAgencyIds = (orgAgencies || []).map((a: any) => a.id)
 
     // Query templates
     let query = (supabase.from("message_templates") as any)
@@ -22,9 +27,12 @@ export async function GET(request: Request) {
       .order("category", { ascending: true })
       .order("name", { ascending: true })
 
-    // Filtrar: templates globales (agency_id IS NULL) + templates de agencias del usuario
-    if (user.role !== "SUPER_ADMIN" && agencyIds.length > 0) {
-      query = query.or(`agency_id.in.(${agencyIds.join(",")}),agency_id.is.null`)
+    // Filtrar: templates de agencias de la org + templates globales (agency_id NULL)
+    if (orgAgencyIds.length > 0) {
+      query = query.or(`agency_id.in.(${orgAgencyIds.join(",")}),agency_id.is.null`)
+    } else {
+      // Sin agencias en la org → solo globales
+      query = query.is("agency_id", null)
     }
 
     // Filtros opcionales

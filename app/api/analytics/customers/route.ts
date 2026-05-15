@@ -14,6 +14,12 @@ export async function GET(request: Request) {
     const agencyId = searchParams.get("agencyId")
     const inactiveMonths = parseInt(searchParams.get("inactiveMonths") || "6")
 
+    // Bug fix 2026-05-15 (P0 cross-tenant): si user.org_id null o
+    // SUPER_ADMIN bypass → leak. Fail-safe + filter siempre.
+    if (!user.org_id) {
+      return NextResponse.json({ customers: [], totals: {}, message: "user sin org_id" })
+    }
+
     // Obtener agencias del usuario
     const { data: userAgencies } = await supabase
       .from("user_agencies")
@@ -26,14 +32,13 @@ export async function GET(request: Request) {
     let operationsQuery = supabase
       .from("operations")
       .select("id, agency_id")
-
-    // Multi-tenant: scope por org del usuario
-    if (user.org_id) operationsQuery = operationsQuery.eq("org_id", user.org_id)
+      .eq("org_id", user.org_id)
 
     // Filtrar por agencia
     if (agencyId && agencyId !== "ALL") {
       operationsQuery = operationsQuery.eq("agency_id", agencyId)
-    } else if (user.role !== "SUPER_ADMIN" && agencyIds.length > 0) {
+    } else if (agencyIds.length > 0) {
+      // Siempre scopear por agencias del user (sin bypass SUPER_ADMIN).
       operationsQuery = operationsQuery.in("agency_id", agencyIds)
     }
 

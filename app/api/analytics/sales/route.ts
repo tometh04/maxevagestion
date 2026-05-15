@@ -86,15 +86,21 @@ export async function GET(request: Request) {
       // FALLBACK: lógica vieja (intacta) — fetch + JS sum
       // ============================================
 
-      let query = supabase.from("operations").select("sale_amount_total, sale_currency, margin_amount, operator_cost, currency, created_at, departure_date")
+      // Bug fix 2026-05-15 (P0 cross-tenant): si user.org_id era null,
+      // el query no filtraba por nada → leak total. Ahora fail-safe.
+      if (!user.org_id) {
+        return NextResponse.json({ totals: {}, byMonth: [], message: "user sin org_id" })
+      }
 
-      // Multi-tenant: scope por org del usuario (defense-in-depth)
-      if (user.org_id) query = query.eq("org_id", user.org_id)
+      let query = supabase.from("operations").select("sale_amount_total, sale_currency, margin_amount, operator_cost, currency, created_at, departure_date")
+        .eq("org_id", user.org_id)
 
       // Apply role-based filtering
       if (user.role === "SELLER") {
         query = query.eq("seller_id", user.id)
-      } else if (agencyIds.length > 0 && user.role !== "SUPER_ADMIN") {
+      } else if (agencyIds.length > 0) {
+        // Siempre scopear por las agencias del user (ya filtradas a su org).
+        // Sin bypass de SUPER_ADMIN: en SaaS, SUPER_ADMIN es owner de la org.
         query = query.in("agency_id", agencyIds)
       }
 
