@@ -760,34 +760,57 @@ export async function POST(request: Request) {
 
     const today = new Date().toISOString().split('T')[0]
 
-    // Fetch user's agencies for mandatory filtering
-    const { data: userAgencies } = await (supabase.from("user_agencies") as any)
-      .select("agency_id, agencies:agency_id(name)")
-      .eq("user_id", user.id)
-    const userAgencyIds: string[] = (userAgencies || []).map((ua: any) => ua.agency_id)
-    const userAgencyNames: string[] = (userAgencies || []).map((ua: any) => ua.agencies?.name || ua.agency_id)
+    // Bug fix 2026-05-15 (P0 cross-tenant): AI Copilot tenía bypass
+    // "SUPER_ADMIN = acceso total" en el system prompt → el modelo
+    // podía ejecutar queries sin filtro de tenant. Lozada Gualeguaychú
+    // (SUPER_ADMIN de su org) habría visto datos de otros tenants.
+    //
+    // Fix: el constraint ahora SIEMPRE incluye org_id del user, sin
+    // excepciones. Si no tiene org_id, denegar.
+    const userOrgId = (user as any).org_id as string | null
+    if (!userOrgId) {
+      return NextResponse.json({
+        response: "No podemos procesar tu consulta porque tu usuario no está asociado a una organización. Contactá a soporte.",
+      })
+    }
 
-    const agencyInfo = user.role === "SUPER_ADMIN"
-      ? "SUPER_ADMIN (acceso total)"
+    // Fetch user's agencies (scopeadas a su org) for mandatory filtering
+    const { data: orgAgencies } = await (supabase.from("agencies") as any)
+      .select("id, name")
+      .eq("org_id", userOrgId)
+    const userAgencyIds: string[] = (orgAgencies || []).map((a: any) => a.id)
+    const userAgencyNames: string[] = (orgAgencies || []).map((a: any) => a.name || a.id)
+
+    // For SELLER, restrict further to operations the seller owns (seller_id)
+    const isSeller = user.role === "SELLER"
+
+    const agencyInfo = isSeller
+      ? `Vendedor (solo sus propias operaciones). Org: ${userOrgId}`
       : userAgencyIds.length > 0
         ? `Agencias: ${userAgencyNames.join(", ")}`
         : "Sin agencia asignada"
 
     const userContext = `Fecha: ${today} | Usuario: ${user.name || user.email} | Rol: ${user.role} | ${agencyInfo}`
 
-    // Build mandatory agency security constraint for non-SUPER_ADMIN
+    // Build mandatory security constraint — ahora siempre incluye org_id.
+    // No hay bypass para SUPER_ADMIN: en el modelo SaaS multi-tenant, todos
+    // los SUPER_ADMIN son owners de UNA org, NO platform admins.
     let agencyConstraint = ""
-    if (user.role !== "SUPER_ADMIN") {
-      if (userAgencyIds.length > 0) {
-        const idsLiteral = userAgencyIds.map((id: string) => `'${id}'`).join(", ")
-        agencyConstraint = `\n\n🔒 SEGURIDAD — FILTRO OBLIGATORIO DE AGENCIA (NO NEGOCIABLE):
-Este usuario pertenece ÚNICAMENTE a: ${userAgencyNames.join(", ")}.
-TODA query sobre operations, leads, invoices, commission_records DEBE incluir: AND agency_id IN (${idsLiteral})
-Para financial_accounts (donde agency_id puede ser NULL para cuentas globales): AND (agency_id IN (${idsLiteral}) OR agency_id IS NULL)
-NUNCA devuelvas datos de otras agencias. Si omitís este filtro, estarás exponiendo datos confidenciales de otras organizaciones.`
-      } else {
-        agencyConstraint = "\n\n🔒 SEGURIDAD: Este usuario no tiene agencias asignadas. No mostrar ningún dato de operations, leads ni payments."
-      }
+    if (userAgencyIds.length > 0) {
+      const agencyIdsLiteral = userAgencyIds.map((id: string) => `'${id}'`).join(", ")
+      agencyConstraint = `\n\n🔒 SEGURIDAD — FILTRO OBLIGATORIO MULTI-TENANT (NO NEGOCIABLE):
+Este usuario pertenece a la organización: ${userOrgId}
+Agencias de su org: ${userAgencyNames.join(", ")}
+
+TODA query DEBE incluir uno de estos filtros (según la tabla):
+- Tablas con org_id (operations, leads, payments, invoices, alerts, customers, etc): AND org_id = '${userOrgId}'
+- Tablas con agency_id (cuentas, ops, leads...): AND agency_id IN (${agencyIdsLiteral})
+- Si la tabla tiene AMBOS: usa AT LEAST org_id (es estricto a nivel tenant)
+
+${isSeller ? `EXTRA: como SELLER, agregar AND seller_id = '${user.id}' a operations y leads.\n` : ""}
+NUNCA devuelvas datos de otras organizaciones. El bypass anterior "SUPER_ADMIN ve todo" fue eliminado tras detectar leak cross-tenant.`
+    } else {
+      agencyConstraint = `\n\n🔒 SEGURIDAD: Este usuario no tiene agencias asignadas en su organización (${userOrgId}). No mostrar ningún dato.`
     }
 
     const dynamicSystemPrompt = SYSTEM_PROMPT + agencyConstraint

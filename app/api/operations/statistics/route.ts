@@ -27,10 +27,17 @@ export async function GET(request: Request) {
     const filterFrom = dateFrom ? parseISO(dateFrom) : defaultFrom
     const filterTo = dateTo ? parseISO(dateTo) : defaultTo
 
-    // Obtener agencias del usuario
+    // Bug fix 2026-05-15 (P0 cross-tenant): SUPER_ADMIN bypaseaba filter.
+    // Scopear siempre por org_id del user. Operations tiene org_id (mig 134).
+    const userOrgId = (user as any).org_id as string | null
+    if (!userOrgId) {
+      return NextResponse.json({ statistics: {}, message: "user sin org_id" })
+    }
+
+    // Obtener agencias del usuario (ya scopeadas a su org via getUserAgencyIds)
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
 
-    // Query de operaciones
+    // Query de operaciones — siempre filtrar por org_id
     let operationsQuery = (supabase.from("operations") as any)
       .select(`
         id,
@@ -47,13 +54,14 @@ export async function GET(request: Request) {
         agency_id,
         seller_id
       `)
+      .eq("org_id", userOrgId)
       .gte("departure_date", filterFrom.toISOString())
       .lte("departure_date", filterTo.toISOString())
 
-    // Filtrar por agencia
+    // Filtrar por agencia (dentro de la org). Sin bypass de SUPER_ADMIN.
     if (agencyId && agencyId !== "ALL") {
       operationsQuery = operationsQuery.eq("agency_id", agencyId)
-    } else if (user.role !== "SUPER_ADMIN" && agencyIds.length > 0) {
+    } else if (agencyIds.length > 0) {
       operationsQuery = operationsQuery.in("agency_id", agencyIds)
     }
 

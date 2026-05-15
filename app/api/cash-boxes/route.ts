@@ -9,23 +9,29 @@ export async function GET(request: Request) {
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
-    // Get user agencies
-    const { data: userAgencies } = await supabase
-      .from("user_agencies")
-      .select("agency_id")
-      .eq("user_id", user.id)
+    // Bug fix 2026-05-15 (P0 cross-tenant): SUPER_ADMIN bypaseaba el filtro
+    // → veía cash boxes de todos los tenants. Scopear siempre por org.
+    const userOrgId = (user as any).org_id as string | null
+    if (!userOrgId) {
+      return NextResponse.json({ cashBoxes: [] })
+    }
 
-    const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
+    // Get user agencies (de SU org)
+    const { data: orgAgencies } = await supabase
+      .from("agencies")
+      .select("id")
+      .eq("org_id", userOrgId)
+    const orgAgencyIds = (orgAgencies || []).map((a: any) => a.id)
 
-    // Build query
-    let query = (supabase.from("cash_boxes") as any).select("*")
+    // Build query — siempre scopear por las agencias de la org
+    let query = (supabase.from("cash_boxes") as any)
+      .select("*")
+      .in("agency_id", orgAgencyIds.length > 0 ? orgAgencyIds : ["00000000-0000-0000-0000-000000000000"])
 
     // Apply filters
     const agencyId = searchParams.get("agencyId")
-    if (agencyId && agencyId !== "ALL") {
+    if (agencyId && agencyId !== "ALL" && orgAgencyIds.includes(agencyId)) {
       query = query.eq("agency_id", agencyId)
-    } else if (user.role !== "SUPER_ADMIN" && agencyIds.length > 0) {
-      query = query.in("agency_id", agencyIds)
     }
 
     const currency = searchParams.get("currency")
