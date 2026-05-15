@@ -530,7 +530,7 @@ export function NewCustomerDialog({
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent
-          className="max-w-lg"
+          className="max-w-2xl max-h-[90vh]"
           onEscapeKeyDown={(e) => e.preventDefault()}
           onPointerDownOutside={(e) => e.preventDefault()}
         >

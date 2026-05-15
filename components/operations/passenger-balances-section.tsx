@@ -462,8 +462,8 @@ export function PassengerBalancesSection({
                                 }}
                                 onBlur={() => saveExpected(c.id)}
                                 disabled={savingExpectedId === c.id}
-                                placeholder="Vacío = even-split"
-                                className="h-7 w-[140px] text-xs text-right font-mono"
+                                placeholder="Vacío = auto"
+                                className="h-8 w-[180px] text-sm text-right font-mono"
                               />
                               {savingExpectedId === c.id && <Loader2 className="h-3 w-3 animate-spin" />}
                             </div>

@@ -167,7 +167,7 @@ export function NewPaymentDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-2xl max-h-[90vh]">
         <DialogHeader>
           <DialogTitle>Nuevo Pago</DialogTitle>
           <DialogDescription>

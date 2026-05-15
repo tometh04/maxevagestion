@@ -114,7 +114,7 @@ export function ManualOperatorPaymentDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Nueva Deuda a Operador</DialogTitle>
           <DialogDescription>
