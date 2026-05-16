@@ -33,41 +33,90 @@ const EVENT_COLORS: Record<string, string> = {
 export default async function AdminBillingPage() {
   const admin = createAdminClient() as any
   const now = new Date()
+  const nowIso = now.toISOString()
   const in7d = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
+  const in7dIso = in7d.toISOString()
+
+  // Pendientes 2026-05-16 — los filtros originales perdían dos casos comunes:
+  //   1. TRIALING con trial_ends_at PASADO (trial expirado sin convertir)
+  //      → se queda en limbo TRIALING para siempre, hay que accionar.
+  //   2. TRIALING con trial_ends_at en próximos 7 días → debería estar en
+  //      "próximos vencimientos" para hacer outreach antes de que expire.
+  // Por eso hacemos queries separadas y mergeamos en memoria.
 
   const [
-    { data: pending },
-    { data: upcoming },
+    { data: pendingExplicit },
+    { data: pendingTrialExpired },
+    { data: upcomingPaid },
+    { data: upcomingTrials },
     { data: customPlans },
     { data: events },
     { data: orgsForJoin },
   ] = await Promise.all([
+    // Cobranzas pendientes — orgs con status explícito de pago pendiente
     admin
       .from("organizations")
-      .select("id, name, subscription_status, plan, current_period_ends_at, mp_preapproval_id, updated_at")
+      .select("id, name, subscription_status, plan, current_period_ends_at, trial_ends_at, mp_preapproval_id, updated_at")
       .in("subscription_status", ["PENDING_PAYMENT", "PAST_DUE", "SUSPENDED"])
       .order("updated_at", { ascending: false })
       .limit(50),
+    // Cobranzas pendientes — trials EXPIRADOS sin convertir (acción manual)
     admin
       .from("organizations")
-      .select("id, name, subscription_status, plan, current_period_ends_at")
+      .select("id, name, subscription_status, plan, current_period_ends_at, trial_ends_at, mp_preapproval_id, updated_at")
+      .eq("subscription_status", "TRIALING")
+      .lt("trial_ends_at", nowIso)
+      .order("trial_ends_at", { ascending: true })
+      .limit(50),
+    // Próximos vencimientos — orgs pagas con period en próximos 7 días
+    admin
+      .from("organizations")
+      .select("id, name, subscription_status, plan, current_period_ends_at, trial_ends_at")
       .in("subscription_status", ["ACTIVE", "PAST_DUE"])
-      .gte("current_period_ends_at", now.toISOString())
-      .lte("current_period_ends_at", in7d.toISOString())
+      .gte("current_period_ends_at", nowIso)
+      .lte("current_period_ends_at", in7dIso)
       .order("current_period_ends_at", { ascending: true })
+      .limit(50),
+    // Próximos vencimientos — trials que vencen en próximos 7 días
+    admin
+      .from("organizations")
+      .select("id, name, subscription_status, plan, current_period_ends_at, trial_ends_at")
+      .eq("subscription_status", "TRIALING")
+      .gte("trial_ends_at", nowIso)
+      .lte("trial_ends_at", in7dIso)
+      .order("trial_ends_at", { ascending: true })
       .limit(50),
     admin
       .from("custom_plans")
       .select("id, org_id, display_name, base_price_ars, discount_percent, discount_ends_at, billing_method, created_at")
       .order("created_at", { ascending: false })
       .limit(100),
+    // Filtramos org_id IS NOT NULL: rows huérfanos = tenants borrados
+    // (FK SET NULL al delete de org) + checkouts pre-org de testeo. Son ruido
+    // en la vista operativa. Para forense quedan en la BD vía Supabase SQL.
     admin
       .from("billing_events")
       .select("id, org_id, event_type, amount_cents, currency, status, created_at")
+      .not("org_id", "is", null)
       .order("created_at", { ascending: false })
       .limit(50),
     admin.from("organizations").select("id, name"),
   ])
+
+  // Merge pending: explicit + trial_expired, dedup por id
+  const pendingMap = new Map<string, any>()
+  for (const r of (pendingExplicit ?? [])) pendingMap.set(r.id, r)
+  for (const r of (pendingTrialExpired ?? [])) {
+    if (!pendingMap.has(r.id)) pendingMap.set(r.id, r)
+  }
+  const pending = Array.from(pendingMap.values())
+
+  // Merge upcoming: paid + trials, ordenar por la fecha relevante
+  const upcomingItems = [
+    ...(upcomingPaid ?? []).map((r: any) => ({ ...r, _expiresAt: r.current_period_ends_at })),
+    ...(upcomingTrials ?? []).map((r: any) => ({ ...r, _expiresAt: r.trial_ends_at })),
+  ].sort((a, b) => (a._expiresAt ?? "").localeCompare(b._expiresAt ?? ""))
+  const upcoming = upcomingItems
 
   const orgNameMap = new Map<string, string>()
   for (const o of (orgsForJoin ?? [])) orgNameMap.set(o.id, o.name)
@@ -90,6 +139,7 @@ export default async function AdminBillingPage() {
 }
 
 function PendingSection({ rows }: { rows: any[] }) {
+  const nowMs = Date.now()
   return (
     <Card>
       <CardHeader>
@@ -111,34 +161,41 @@ function PendingSection({ rows }: { rows: any[] }) {
                 <DataTableTh>Org</DataTableTh>
                 <DataTableTh>Status</DataTableTh>
                 <DataTableTh>Plan</DataTableTh>
-                <DataTableTh>Vence</DataTableTh>
+                <DataTableTh>Vence/Vencido</DataTableTh>
                 <DataTableTh>MP preapproval</DataTableTh>
               </tr>
             </DataTableHead>
             <DataTableBody>
-              {rows.map((r) => (
-                <DataTableRow key={r.id}>
-                  <DataTableTd>
-                    <Link href={`/admin/orgs/${r.id}`} className="text-primary hover:underline">
-                      {r.name}
-                    </Link>
-                  </DataTableTd>
-                  <DataTableTd>
-                    <span className={cn("rounded px-2 py-0.5 text-xs", statusColor(r.subscription_status))}>
-                      {r.subscription_status}
-                    </span>
-                  </DataTableTd>
-                  <DataTableTd>{r.plan}</DataTableTd>
-                  <DataTableTd className="text-muted-foreground">
-                    {r.current_period_ends_at
-                      ? new Date(r.current_period_ends_at).toLocaleDateString("es-AR")
-                      : "—"}
-                  </DataTableTd>
-                  <DataTableTd className="text-xs text-muted-foreground font-mono truncate max-w-[200px]">
-                    {r.mp_preapproval_id ?? "—"}
-                  </DataTableTd>
-                </DataTableRow>
-              ))}
+              {rows.map((r) => {
+                // Para TRIALING expirado mostramos trial_ends_at; para el resto, period.
+                const refDate =
+                  r.subscription_status === "TRIALING"
+                    ? r.trial_ends_at
+                    : r.current_period_ends_at
+                const isExpired = refDate && new Date(refDate).getTime() < nowMs
+                return (
+                  <DataTableRow key={r.id}>
+                    <DataTableTd>
+                      <Link href={`/admin/orgs/${r.id}`} className="text-primary hover:underline">
+                        {r.name}
+                      </Link>
+                    </DataTableTd>
+                    <DataTableTd>
+                      <span className={cn("rounded px-2 py-0.5 text-xs", statusColor(r.subscription_status))}>
+                        {r.subscription_status}
+                        {r.subscription_status === "TRIALING" && isExpired ? " (expirado)" : ""}
+                      </span>
+                    </DataTableTd>
+                    <DataTableTd>{r.plan}</DataTableTd>
+                    <DataTableTd className={isExpired ? "text-destructive" : "text-muted-foreground"}>
+                      {refDate ? relativeTime(refDate) : "—"}
+                    </DataTableTd>
+                    <DataTableTd className="text-xs text-muted-foreground font-mono truncate max-w-[200px]">
+                      {r.mp_preapproval_id ?? "—"}
+                    </DataTableTd>
+                  </DataTableRow>
+                )
+              })}
             </DataTableBody>
           </DataTableShell>
         )}
@@ -173,22 +230,26 @@ function UpcomingSection({ rows }: { rows: any[] }) {
               </tr>
             </DataTableHead>
             <DataTableBody>
-              {rows.map((r) => (
-                <DataTableRow key={r.id}>
-                  <DataTableTd>
-                    <Link href={`/admin/orgs/${r.id}`} className="text-primary hover:underline">
-                      {r.name}
-                    </Link>
-                  </DataTableTd>
-                  <DataTableTd>
-                    <span className={cn("rounded px-2 py-0.5 text-xs", statusColor(r.subscription_status))}>
-                      {r.subscription_status}
-                    </span>
-                  </DataTableTd>
-                  <DataTableTd>{r.plan}</DataTableTd>
-                  <DataTableTd className="text-muted-foreground">{relativeTime(r.current_period_ends_at)}</DataTableTd>
-                </DataTableRow>
-              ))}
+              {rows.map((r) => {
+                // _expiresAt = trial_ends_at para TRIALING, current_period_ends_at para el resto.
+                const refDate = r._expiresAt ?? r.current_period_ends_at
+                return (
+                  <DataTableRow key={r.id}>
+                    <DataTableTd>
+                      <Link href={`/admin/orgs/${r.id}`} className="text-primary hover:underline">
+                        {r.name}
+                      </Link>
+                    </DataTableTd>
+                    <DataTableTd>
+                      <span className={cn("rounded px-2 py-0.5 text-xs", statusColor(r.subscription_status))}>
+                        {r.subscription_status}
+                      </span>
+                    </DataTableTd>
+                    <DataTableTd>{r.plan}</DataTableTd>
+                    <DataTableTd className="text-muted-foreground">{relativeTime(refDate)}</DataTableTd>
+                  </DataTableRow>
+                )
+              })}
             </DataTableBody>
           </DataTableShell>
         )}
