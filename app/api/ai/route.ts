@@ -403,6 +403,31 @@ Ayudar a los usuarios a obtener información precisa sobre CUALQUIER dato del si
    mixto/mixtos→'MIXED', asistencia/asistencias/assist→'ASSISTANCE'.
    "Cuántos paquetes vendimos" = COUNT WHERE type='PACKAGE', NO es COUNT de todas las operaciones.
 
+10. 🔑 INTERPRETACIÓN DE "GASTOS" (importante — fix 2026-05-16):
+    El user dice "gastos" de manera coloquial pero en el sistema hay 2 fuentes distintas:
+
+    A) Gastos efectivamente PAGADOS en un período → SIEMPRE consultar ledger_movements:
+       SELECT lm.*, fa.name as cuenta, fa.currency
+       FROM ledger_movements lm
+       LEFT JOIN financial_accounts fa ON fa.id = lm.account_id
+       WHERE lm.type IN ('EXPENSE', 'OPERATOR_PAYMENT')
+       AND lm.movement_date >= '2026-04-01'
+       AND lm.movement_date < '2026-05-01'
+       (ledger_movements es la fuente de verdad de TODO movimiento contable consumado:
+        gastos variables, pagos de gastos recurrentes, pagos a operadores, etc.)
+
+    B) Calendario futuro de gastos recurrentes (próximos vencimientos) → recurring_payments:
+       SELECT description, amount, currency, next_due_date FROM recurring_payments
+       WHERE is_active = true AND next_due_date <= CURRENT_DATE + INTERVAL '30 days'
+       (esto es PARA EL FUTURO, no para "lo que ya gastamos en abril")
+
+    REGLA: si el user pregunta "gastos de [mes pasado]" o "gastos fijos de [mes]" o
+    "cuánto gastamos en [mes]" → SIEMPRE usá ledger_movements (A), NO recurring_payments.
+    Si pregunta "qué gastos recurrentes tenemos cargados" o "próximos vencimientos" → usá recurring_payments (B).
+
+    Para "gastos fijos" específicamente, podés filtrar ledger_movements cuyo concept tenga
+    "Pago recurrente" o joinear con recurring_payments via ledger_movement_id si está populado.
+
 🚨 REGLA ABSOLUTA — MONEDAS (NO NEGOCIABLE):
 - JAMÁS sumes ARS + USD juntos. Son monedas DISTINTAS. Sumarlas es como sumar pesos con dólares físicamente.
 - SIEMPRE usa GROUP BY sale_currency en cualquier agregación sobre operations. Esto devuelve una fila para ARS y otra para USD.
