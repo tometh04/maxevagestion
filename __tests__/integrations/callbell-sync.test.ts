@@ -162,7 +162,7 @@ describeOrSkip("processCallbellEvent", () => {
     } as CallbellWebhookEvent
   }
 
-  it("ignores event when contact phone doesn't match any lead", async () => {
+  it("ignores funnel_changed event when contact phone doesn't match any lead", async () => {
     const ev: CallbellWebhookEvent = {
       type: "funnel_changed",
       uuid: "ignored",
@@ -178,6 +178,166 @@ describeOrSkip("processCallbellEvent", () => {
           updatedAt: new Date().toISOString(),
         },
         funnelStage: { uuid: funnelTargetCallbellUuid, name: "COTIZANDO" },
+      },
+    }
+    const result = await processCallbellEvent(admin, testOrgId, ev)
+    expect(result.handled).toBe(false)
+  })
+
+  it("creates new lead when contact_created arrives for unknown phone (with autoCreateLeads=true)", async () => {
+    const newPhone = `+5491100${Date.now().toString().slice(-7)}`
+    const ev: CallbellWebhookEvent = {
+      type: "contact_created",
+      uuid: `cb-contact-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      data: {
+        contact: {
+          uuid: "callbell-new-contact",
+          name: "Cliente Callbell Nuevo",
+          phoneNumber: newPhone,
+          email: "nuevo@example.com",
+          channel: "whatsapp",
+          tags: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      },
+    }
+    const result = await processCallbellEvent(admin, testOrgId, ev, {
+      autoCreateLeads: true,
+    })
+    expect(result.handled).toBe(true)
+    expect(result.created).toBe(true)
+    expect(result.lead_id).toBeDefined()
+
+    const { data: lead } = await admin
+      .from("leads")
+      .select(
+        "agency_id, source, status, region, destination, contact_name, contact_phone, contact_email, funnel_id, notes"
+      )
+      .eq("id", result.lead_id!)
+      .single()
+    const l = lead as {
+      agency_id: string
+      source: string
+      status: string
+      region: string
+      destination: string
+      contact_name: string
+      contact_phone: string
+      contact_email: string | null
+      funnel_id: string | null
+      notes: string | null
+    }
+    expect(l.agency_id).toBe(testAgencyId)
+    expect(l.source).toBe("Callbell")
+    expect(l.status).toBe("NEW")
+    expect(l.region).toBe("OTROS")
+    expect(l.destination).toBe("A definir")
+    expect(l.contact_name).toBe("Cliente Callbell Nuevo")
+    expect(l.contact_phone).toBe(newPhone)
+    expect(l.contact_email).toBe("nuevo@example.com")
+    expect(l.funnel_id).toBeTruthy()
+    expect(l.notes ?? "").toContain("Callbell - primer contacto")
+  })
+
+  it("creates new lead with first message in notes when message_created arrives for unknown phone (with autoCreateLeads=true)", async () => {
+    const newPhone = `+5491100${Date.now().toString().slice(-7)}1`
+    const ev: CallbellWebhookEvent = {
+      type: "message_created",
+      uuid: `cb-msg-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      data: {
+        contact: {
+          uuid: "callbell-msg-contact",
+          name: "Cliente Mensaje",
+          phoneNumber: newPhone,
+          channel: "whatsapp",
+          tags: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+        message: { text: "Hola, quiero ir a Cancun en febrero" },
+      },
+    }
+    const result = await processCallbellEvent(admin, testOrgId, ev, {
+      autoCreateLeads: true,
+    })
+    expect(result.handled).toBe(true)
+    expect(result.created).toBe(true)
+
+    const { data: lead } = await admin
+      .from("leads")
+      .select("source, notes, contact_phone")
+      .eq("id", result.lead_id!)
+      .single()
+    const l = lead as {
+      source: string
+      notes: string | null
+      contact_phone: string
+    }
+    expect(l.source).toBe("Callbell")
+    expect(l.contact_phone).toBe(newPhone)
+    expect(l.notes ?? "").toContain("Hola, quiero ir a Cancun en febrero")
+  })
+
+  it("contact_created is no-op when lead already exists", async () => {
+    const ev = makeEvent("contact_created", {})
+    const result = await processCallbellEvent(admin, testOrgId, ev)
+    expect(result.handled).toBe(true)
+    expect(result.lead_id).toBe(testLeadId)
+    expect(result.created).toBeFalsy()
+  })
+
+  it("MULTI-TENANT: does NOT create lead when autoCreateLeads is false (default for other orgs)", async () => {
+    const newPhone = `+5491100${Date.now().toString().slice(-7)}2`
+    const ev: CallbellWebhookEvent = {
+      type: "contact_created",
+      uuid: `cb-noflag-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      data: {
+        contact: {
+          uuid: "callbell-noflag-contact",
+          name: "No deberia crearse",
+          phoneNumber: newPhone,
+          channel: "whatsapp",
+          tags: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      },
+    }
+    // Sin opts.autoCreateLeads (default = false) → no debe crear
+    const result = await processCallbellEvent(admin, testOrgId, ev)
+    expect(result.handled).toBe(false)
+    expect(result.lead_id).toBeUndefined()
+
+    // Verificar que efectivamente NO se creó nada en BD
+    const { data: notCreated } = await admin
+      .from("leads")
+      .select("id")
+      .eq("org_id", testOrgId)
+      .eq("contact_phone", newPhone)
+      .maybeSingle()
+    expect(notCreated).toBeNull()
+  })
+
+  it("ignores agent_assigned when contact phone doesn't match any lead (no creation for this event type)", async () => {
+    const ev: CallbellWebhookEvent = {
+      type: "agent_assigned",
+      uuid: "agent-ignored",
+      timestamp: new Date().toISOString(),
+      data: {
+        contact: {
+          uuid: "y",
+          name: "y",
+          phoneNumber: "+5491100008888",
+          channel: "whatsapp",
+          tags: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+        agent: { uuid: "z", name: "z", email: "z@example.com" },
       },
     }
     const result = await processCallbellEvent(admin, testOrgId, ev)

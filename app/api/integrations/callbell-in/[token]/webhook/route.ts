@@ -14,7 +14,7 @@ export async function POST(
 
   const { data: integ } = await admin
     .from("org_integrations")
-    .select("org_id, webhook_secret, is_active")
+    .select("org_id, webhook_secret, is_active, config")
     .eq("integration", "callbell-in")
     .eq("webhook_token", token)
     .maybeSingle()
@@ -22,6 +22,12 @@ export async function POST(
   if (!integ || !integ.is_active) {
     return NextResponse.json({ error: "Not found" }, { status: 404 })
   }
+
+  // Multi-tenant: leads se crean solo si la org optó in (config.auto_create_leads).
+  // Pensado para tenants Callbell-only (ej. VICO). Default false = comportamiento legacy.
+  const autoCreateLeads =
+    (integ.config as { auto_create_leads?: boolean } | null)?.auto_create_leads ===
+    true
 
   const body = await request.text()
   const signature = request.headers.get("x-callbell-signature") || ""
@@ -69,6 +75,8 @@ export async function POST(
     return NextResponse.json({ status: "duplicate" }, { status: 200 })
   }
 
-  const result = await processCallbellEvent(admin, integ.org_id, event)
+  const result = await processCallbellEvent(admin, integ.org_id, event, {
+    autoCreateLeads,
+  })
   return NextResponse.json(result, { status: 200 })
 }

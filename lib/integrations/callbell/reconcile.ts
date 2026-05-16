@@ -73,6 +73,18 @@ export async function reconcileSingleOrg(
   const apiToken = decryptSecret(encrypted)
   const client = factory(apiToken)
 
+  // Multi-tenant: la flag auto_create_leads vive en `callbell-in` config (no en callbell-out).
+  // El reconcile usa callbell-out (API token), pero la creación de leads usa la misma política.
+  const { data: integIn } = await admin
+    .from("org_integrations")
+    .select("config")
+    .eq("org_id", orgId)
+    .eq("integration", "callbell-in")
+    .maybeSingle()
+  const autoCreateLeads =
+    ((integIn?.config as { auto_create_leads?: boolean } | null) ?? null)
+      ?.auto_create_leads === true
+
   // Default: si nunca sincronizamos, mirá las últimas 24h
   const since =
     lastSyncAt ?? new Date(Date.now() - 24 * 3600 * 1000).toISOString()
@@ -89,7 +101,7 @@ export async function reconcileSingleOrg(
         timestamp: new Date().toISOString(),
         data: { contact: c, funnelStage: c.funnelStage },
       }
-      await processCallbellEvent(admin, orgId, ev)
+      await processCallbellEvent(admin, orgId, ev, { autoCreateLeads })
       applied++
     }
     if (c.assignedAgent) {
@@ -99,7 +111,7 @@ export async function reconcileSingleOrg(
         timestamp: new Date().toISOString(),
         data: { contact: c, agent: c.assignedAgent },
       }
-      await processCallbellEvent(admin, orgId, ev)
+      await processCallbellEvent(admin, orgId, ev, { autoCreateLeads })
       applied++
     }
     for (const tag of c.tags ?? []) {
@@ -109,7 +121,7 @@ export async function reconcileSingleOrg(
         timestamp: new Date().toISOString(),
         data: { contact: c, tag },
       }
-      await processCallbellEvent(admin, orgId, ev)
+      await processCallbellEvent(admin, orgId, ev, { autoCreateLeads })
       applied++
     }
   }
