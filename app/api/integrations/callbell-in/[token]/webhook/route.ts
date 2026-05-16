@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { decryptSecret } from "@/lib/integrations/secrets"
 import { verifyHmac } from "@/lib/integrations/hmac"
 import { processCallbellEvent } from "@/lib/integrations/callbell/sync-handler"
+import { adaptCallbellWebhook } from "@/lib/integrations/callbell/payload-adapter"
 import type { CallbellWebhookEvent } from "@/lib/integrations/callbell/types"
 
 export async function POST(
@@ -54,11 +55,30 @@ export async function POST(
     )
   }
 
-  let event: CallbellWebhookEvent
+  let rawBody: unknown
   try {
-    event = JSON.parse(body)
+    rawBody = JSON.parse(body)
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 })
+  }
+
+  // Callbell envía payloads sin campo `type` y con shapes distintos según el
+  // tipo de evento (ver lib/integrations/callbell/payload-adapter.ts). El adapter
+  // detecta la estructura y normaliza al shape CallbellWebhookEvent.
+  const event = adaptCallbellWebhook(rawBody)
+  if (!event) {
+    console.warn(
+      `[callbell-in] payload no reconocido para org=${integ.org_id}:`,
+      typeof rawBody === "object" && rawBody
+        ? Object.keys(rawBody as object).slice(0, 8)
+        : typeof rawBody
+    )
+    // Retornamos 200 para que Callbell no marque el webhook como roto y
+    // entre en backoff. Lo descartamos silenciosamente.
+    return NextResponse.json(
+      { status: "ignored", reason: "unrecognized_payload" },
+      { status: 200 }
+    )
   }
 
   // Idempotency
