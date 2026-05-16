@@ -194,6 +194,16 @@ interface LeadDetailDialogProps {
   onConvert?: () => void
   canClaimLeads?: boolean
   onClaim?: () => void
+  /**
+   * Sección extra opcional que se renderiza dentro del dialog, encima de
+   * "Notas". Pensado para que los tenants en crm_mode='advanced' (VICO)
+   * puedan inyectar la UI de tags/funnels custom sin tocar este dialog.
+   *
+   * Si la prop NO se pasa (default Lozada y cualquier tenant legacy), el
+   * dialog se ve exactamente igual que antes. Cualquier change visual del
+   * dialog en Lozada es un BUG.
+   */
+  tagsSection?: React.ReactNode
 }
 
 export function LeadDetailDialog({
@@ -209,6 +219,7 @@ export function LeadDetailDialog({
   onConvert,
   canClaimLeads = false,
   onClaim,
+  tagsSection,
 }: LeadDetailDialogProps) {
   const [convertDialogOpen, setConvertDialogOpen] = useState(false)
   const [quotationDialogOpen, setQuotationDialogOpen] = useState(false)
@@ -763,6 +774,12 @@ export function LeadDetailDialog({
               )}
             </div>
           )}
+
+          {/* Sección de tags/funnels custom (opt-in via prop tagsSection).
+              Solo se renderiza en tenants crm_mode='advanced' (ej. VICO). Para
+              tenants legacy (Lozada y cualquier otro) la prop es undefined y
+              esta sección no se monta — comportamiento idéntico al pre-cambio. */}
+          {tagsSection && <div className="mb-1">{tagsSection}</div>}
 
           {/* Descripción/Notas */}
           <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">

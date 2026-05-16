@@ -4,25 +4,7 @@ import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
 import { TagFilter } from "./tag-filter"
-import { LeadCardAdvanced } from "./lead-card-advanced"
-
-type TagAssignment = {
-  tag: {
-    id: string
-    label: string
-    category: { name: string; color: string | null }
-  } | null
-}
-
-type Lead = {
-  id: string
-  contact_name: string
-  contact_phone: string | null
-  notes: string | null
-  funnel_id: string | null
-  assigned_seller: { name: string } | null
-  tag_assignments: TagAssignment[]
-}
+import { LeadCardAdvanced, type LeadAdvancedFull } from "./lead-card-advanced"
 
 type Funnel = {
   id: string
@@ -41,11 +23,26 @@ type CategoryForFilter = {
 type Props = {
   categories: CategoryForFilter[]
   funnels: Funnel[]
-  leads: Lead[]
+  leads: LeadAdvancedFull[]
   orgId: string
+  agencies: Array<{ id: string; name: string }>
+  sellers: Array<{ id: string; name: string }>
+  operators: Array<{
+    id: string
+    name: string
+    admin_fee_percentage?: number | null
+  }>
 }
 
-export function AdvancedKanbanClient({ categories, funnels, leads, orgId }: Props) {
+export function AdvancedKanbanClient({
+  categories,
+  funnels,
+  leads,
+  orgId,
+  agencies,
+  sellers,
+  operators,
+}: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
   const filteredLeads =
@@ -100,7 +97,14 @@ export function AdvancedKanbanClient({ categories, funnels, leads, orgId }: Prop
                   </Card>
                 ) : (
                   funnelLeads.map((lead) => (
-                    <LeadCardAdvanced key={lead.id} lead={lead} orgId={orgId} />
+                    <LeadCardAdvanced
+                      key={lead.id}
+                      lead={lead}
+                      orgId={orgId}
+                      agencies={agencies}
+                      sellers={sellers}
+                      operators={operators}
+                    />
                   ))
                 )}
               </div>

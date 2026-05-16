@@ -4,7 +4,8 @@ import { useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
-import { TagAssignmentDialog } from "./tag-assignment-dialog"
+import { LeadDetailDialog } from "@/components/sales/lead-detail-dialog"
+import { AdvancedTagsSection } from "./advanced-tags-section"
 
 type TagAssignment = {
   tag: {
@@ -14,14 +15,57 @@ type TagAssignment = {
   } | null
 }
 
-type LeadAdvanced = {
+/**
+ * Shape completo del lead en modo advanced — incluye TODOS los campos que
+ * el LeadDetailDialog (shared con Lozada) requiere para mostrar las acciones
+ * completas (cotizar, convertir a operación, editar, archivar, etc.) MÁS las
+ * tag_assignments custom del modo advanced.
+ *
+ * Tipado a propósito laxo (lo cargado en advanced-crm-kanban.tsx con select
+ * relacional largo): el LeadDetailDialog hace cast a su propio shape interno.
+ */
+export type LeadAdvancedFull = {
   id: string
   contact_name: string
   contact_phone: string | null
+  contact_email?: string | null
+  contact_instagram?: string | null
+  destination?: string
+  region?: string
+  status?: string
+  source?: string | null
+  trello_url?: string | null
+  trello_list_id?: string | null
+  trello_full_data?: Record<string, unknown> | null
+  assigned_seller_id?: string | null
+  agency_id?: string | null
+  created_at?: string | null
+  updated_at?: string | null
   notes: string | null
+  quoted_price?: number | null
+  has_deposit?: boolean | null
+  deposit_amount?: number | null
+  deposit_currency?: string | null
+  deposit_method?: string | null
+  deposit_date?: string | null
+  archived_at?: string | null
   funnel_id: string | null
+  agencies?: { name: string } | null
+  users?: { name: string; email: string } | null
   assigned_seller: { name: string } | null
   tag_assignments: TagAssignment[]
+  operations?: Array<{
+    id: string
+    file_code?: string
+    destination: string
+    status: string
+    created_at?: string
+    departure_date?: string
+    sale_amount_total?: number
+  }> | null
+  customers?: Array<{
+    customer: { id: string; first_name: string; last_name: string }
+  }> | null
 }
 
 const COLOR_MAP: Record<string, string> = {
@@ -39,21 +83,67 @@ function getColorClass(color: string): string {
 }
 
 interface LeadCardAdvancedProps {
-  lead: LeadAdvanced
+  lead: LeadAdvancedFull
   orgId: string
+  agencies: Array<{ id: string; name: string }>
+  sellers: Array<{ id: string; name: string }>
+  operators: Array<{
+    id: string
+    name: string
+    admin_fee_percentage?: number | null
+  }>
 }
 
-export function LeadCardAdvanced({ lead, orgId }: LeadCardAdvancedProps) {
+export function LeadCardAdvanced({
+  lead,
+  orgId,
+  agencies,
+  sellers,
+  operators,
+}: LeadCardAdvancedProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
 
   const tags = lead.tag_assignments
     .map((ta) => ta.tag)
     .filter((t): t is NonNullable<typeof t> => t !== null)
 
+  // Adapta el lead advanced al shape estricto que espera el LeadDetailDialog
+  // (Lozada-style). Los campos que VICO no usa quedan en placeholders sanos
+  // y NO se muestran (el dialog ya los oculta cuando son "OTROS" / "A definir").
+  // operation_customers viene como { customer: {...} }; aplanamos a { id, first_name, last_name }.
+  const leadForDialog = {
+    ...lead,
+    contact_phone: lead.contact_phone ?? "",
+    contact_email: lead.contact_email ?? null,
+    contact_instagram: lead.contact_instagram ?? null,
+    destination: lead.destination ?? "A definir",
+    region: lead.region ?? "OTROS",
+    status: lead.status ?? "NEW",
+    source: lead.source ?? "Callbell",
+    trello_url: lead.trello_url ?? null,
+    trello_list_id: lead.trello_list_id ?? null,
+    assigned_seller_id: lead.assigned_seller_id ?? null,
+    created_at: lead.created_at ?? new Date().toISOString(),
+    customers: (lead.customers ?? []).flatMap((row) =>
+      row.customer ? [row.customer] : []
+    ),
+  }
+
+  const tagsSection = (
+    <AdvancedTagsSection
+      orgId={orgId}
+      leadId={lead.id}
+      currentTags={tags}
+      onSaved={() => window.location.reload()}
+    />
+  )
+
   return (
     <>
       <Card
-        className={cn("p-3 mb-2 cursor-pointer hover:shadow-md transition-shadow duration-150")}
+        className={cn(
+          "p-3 mb-2 cursor-pointer hover:shadow-md transition-shadow duration-150"
+        )}
         onClick={() => setDialogOpen(true)}
       >
         <p className="font-medium text-sm leading-tight">{lead.contact_name}</p>
@@ -66,7 +156,10 @@ export function LeadCardAdvanced({ lead, orgId }: LeadCardAdvancedProps) {
               <Badge
                 key={tag.id}
                 variant="outline"
-                className={cn("text-[10px] px-1.5 py-0 border", getColorClass(tag.category.color ?? "gray"))}
+                className={cn(
+                  "text-[10px] px-1.5 py-0 border",
+                  getColorClass(tag.category.color ?? "gray")
+                )}
               >
                 {tag.label}
               </Badge>
@@ -79,12 +172,20 @@ export function LeadCardAdvanced({ lead, orgId }: LeadCardAdvancedProps) {
           </p>
         )}
       </Card>
-      <TagAssignmentDialog
+
+      {/* Dialog COMPLETO con paridad de Lozada (cotizar, convertir, editar, etc.)
+          + sección custom de tags inyectada como tagsSection. */}
+      <LeadDetailDialog
+        lead={leadForDialog as any}
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-        orgId={orgId}
-        leadId={lead.id}
-        onSaved={() => window.location.reload()}
+        agencies={agencies}
+        sellers={sellers}
+        operators={operators}
+        onDelete={() => window.location.reload()}
+        onArchive={() => window.location.reload()}
+        onConvert={() => window.location.reload()}
+        tagsSection={tagsSection}
       />
     </>
   )
