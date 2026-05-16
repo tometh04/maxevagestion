@@ -186,6 +186,7 @@ export function LeadCardAdvanced({
         onArchive={() => window.location.reload()}
         onConvert={() => window.location.reload()}
         tagsSection={tagsSection}
+        advancedMode
       />
     </>
   )
