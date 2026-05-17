@@ -7,6 +7,7 @@ import { AlertCircle, Clock, Tag, Activity } from "lucide-react"
 import { PageHeader } from "@/components/admin/page-header"
 import { MpSandboxBanner } from "@/components/admin/mp-sandbox-banner"
 import { EmptyState } from "@/components/admin/empty-state"
+import { EnterpriseWithoutPriceAlert } from "@/components/admin/enterprise-without-price-alert"
 import {
   DataTableShell,
   DataTableHead,
@@ -129,6 +130,11 @@ export default async function AdminBillingPage() {
       />
 
       <MpSandboxBanner />
+
+      {/* Alerta: orgs ENTERPRISE sin custom_plan ni MRR override.
+          Se invisibilizan al MRR/ARR y no aparecen en cobranzas/vencimientos
+          (sin precio configurado). Acción directa: link al detail de cada una. */}
+      <EnterpriseWithoutPriceAlert />
 
       <PendingSection rows={pending ?? []} />
       <UpcomingSection rows={upcoming ?? []} />
