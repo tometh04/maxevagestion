@@ -108,9 +108,8 @@ export function LeadCardAdvanced({
     .filter((t): t is NonNullable<typeof t> => t !== null)
 
   // Adapta el lead advanced al shape estricto que espera el LeadDetailDialog
-  // (Lozada-style). Los campos que VICO no usa quedan en placeholders sanos
-  // y NO se muestran (el dialog ya los oculta cuando son "OTROS" / "A definir").
-  // operation_customers viene como { customer: {...} }; aplanamos a { id, first_name, last_name }.
+  // (Lozada-style). Campos opcionales que el query no carga se rellenan con
+  // defaults sanos para que el tipo coincida.
   const leadForDialog = {
     ...lead,
     contact_phone: lead.contact_phone ?? "",
@@ -124,9 +123,9 @@ export function LeadCardAdvanced({
     trello_list_id: lead.trello_list_id ?? null,
     assigned_seller_id: lead.assigned_seller_id ?? null,
     created_at: lead.created_at ?? new Date().toISOString(),
-    customers: (lead.customers ?? []).flatMap((row) =>
-      row.customer ? [row.customer] : []
-    ),
+    // customers no se carga en advanced (no hay FK directa leads ↔ operation_customers).
+    // El LeadDetailDialog lo trata como opcional/null.
+    customers: null,
   }
 
   const tagsSection = (
