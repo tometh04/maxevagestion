@@ -29,7 +29,15 @@ export async function AdvancedCRMKanban({ orgId }: AdvancedCRMKanbanProps) {
       .from("leads")
       .select(
         // Campos completos del lead + relaciones que el LeadDetailDialog
-        // necesita (operations, customers, agency name, seller user info).
+        // necesita (operations, agency name, seller user info).
+        //
+        // OJO: NO incluyo `customers:operation_customers(...)` porque NO existe
+        // FK directa entre leads y operation_customers — operation_customers
+        // liga operations ↔ customers, no leads ↔ customers. PostgREST tira
+        // PGRST200 ("schema cache") y rompe toda la query → ningún lead se
+        // carga. El LeadDetailDialog acepta `customers?: ... | null`, así que
+        // omitirlo es válido. Si en algún momento queremos mostrar customers
+        // del lead, habría que ir vía operations.
         `id, contact_name, contact_phone, contact_email, contact_instagram,
          destination, region, status, source,
          trello_url, trello_list_id, trello_full_data,
@@ -42,8 +50,7 @@ export async function AdvancedCRMKanban({ orgId }: AdvancedCRMKanbanProps) {
          users:assigned_seller_id(name, email),
          assigned_seller:assigned_seller_id(name),
          tag_assignments:lead_tag_assignments(tag:tag_id(id, label, category:category_id(name, color))),
-         operations(id, file_code, destination, status, created_at, departure_date, sale_amount_total),
-         customers:operation_customers(customer:customer_id(id, first_name, last_name))`
+         operations(id, file_code, destination, status, created_at, departure_date, sale_amount_total)`
       )
       .eq("org_id", orgId)
       .not("funnel_id", "is", null)
