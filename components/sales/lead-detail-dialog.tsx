@@ -204,6 +204,14 @@ interface LeadDetailDialogProps {
    * dialog en Lozada es un BUG.
    */
   tagsSection?: React.ReactNode
+  /**
+   * Cuando true, oculta los campos `region` y `destination` cuando son
+   * placeholders sanos del modo advanced (ej. region="OTROS",
+   * destination="A definir"). En el modo advanced esos datos viven en tags,
+   * no en columnas planas de la tabla `leads`. Default false → comportamiento
+   * idéntico al de Lozada.
+   */
+  advancedMode?: boolean
 }
 
 export function LeadDetailDialog({
@@ -220,6 +228,7 @@ export function LeadDetailDialog({
   canClaimLeads = false,
   onClaim,
   tagsSection,
+  advancedMode = false,
 }: LeadDetailDialogProps) {
   const [convertDialogOpen, setConvertDialogOpen] = useState(false)
   const [quotationDialogOpen, setQuotationDialogOpen] = useState(false)
@@ -496,12 +505,18 @@ export function LeadDetailDialog({
             </DialogTitle>
           </DialogHeader>
           <div className="flex items-center gap-2 mt-2 flex-wrap">
-            <Badge
-              variant="outline"
-              className={regionColors[lead.region] ? `${regionColors[lead.region]} text-white border-0` : ""}
-            >
-              {lead.region}
-            </Badge>
+            {/* En modo advanced (VICO) la región es siempre placeholder "OTROS"
+                porque los datos de viaje viven en tags. Ocultamos para no
+                mostrar info engañosa. Para Lozada (advancedMode=false) se
+                muestra como antes. */}
+            {!(advancedMode && lead.region === "OTROS") && (
+              <Badge
+                variant="outline"
+                className={regionColors[lead.region] ? `${regionColors[lead.region]} text-white border-0` : ""}
+              >
+                {lead.region}
+              </Badge>
+            )}
             <Badge variant="outline">{statusLabels[lead.status] || lead.status}</Badge>
             <Badge variant="secondary">{lead.source}</Badge>
             {lead.trello_url && (
@@ -574,11 +589,21 @@ export function LeadDetailDialog({
                 <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Viaje</h4>
               </div>
               <div className="space-y-2">
-                {lead.destination && lead.destination !== "Sin destino" && (
-                  <div className="flex items-center gap-2.5">
-                    <MapPin className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-                    <span className="text-sm font-medium">{lead.destination}</span>
-                  </div>
+                {/* En modo advanced si destination es el placeholder "A definir"
+                    (puesto por el handler de Callbell cuando crea el lead) lo
+                    ocultamos: el destino real va a vivir en las tags. */}
+                {lead.destination &&
+                  lead.destination !== "Sin destino" &&
+                  !(advancedMode && lead.destination === "A definir") && (
+                    <div className="flex items-center gap-2.5">
+                      <MapPin className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                      <span className="text-sm font-medium">{lead.destination}</span>
+                    </div>
+                  )}
+                {advancedMode && lead.destination === "A definir" && (
+                  <p className="text-xs text-muted-foreground italic">
+                    Destino: ver etiquetas
+                  </p>
                 )}
                 {lead.agencies?.name && (
                   <div className="flex items-center gap-2.5">
