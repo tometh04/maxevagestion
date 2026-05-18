@@ -19,27 +19,49 @@ export async function PATCH(
       return NextResponse.json({ error: "No tiene permiso para modificar gastos" }, { status: 403 })
     }
 
+    // Cross-tenant fix (2026-05-18): exigir org_id explícito y filtrar al
+    // hacer el SELECT inicial — no confiar en RLS.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+    const userOrgId = (user as any).org_id as string
+
     const { id } = await params
     const supabase = await createServerClient()
+    // adminDb justificado: triggers en cash_movements/ledger_movements
+    // requieren bypass de RLS para mantener la cadena contable.
     const adminDb = createAdminClient() as any
     const body = await request.json()
 
-    // SaaS Pilar 2: fetch via server client — RLS sobre cash_movements filtra
-    // por org del user; si el id apunta a otra org, existing = null → 404.
+    // Filtro explícito por org_id (no confiar en RLS).
     const { data: existing, error: fetchError } = await (supabase.from("cash_movements") as any)
       .select("id, type, financial_account_id, ledger_movement_id, org_id")
       .eq("id", id)
       .eq("type", "EXPENSE")
+      .eq("org_id", userOrgId)
       .single()
 
     if (fetchError || !existing) {
       return NextResponse.json({ error: "Gasto no encontrado" }, { status: 404 })
     }
 
-    // Build update object (only allow safe fields to be edited)
+    // Build update object (only allow safe fields to be edited).
+    // Si category_id viene del body, validar que la categoría sea del org del user.
     const updateData: Record<string, any> = {}
     if (body.category !== undefined) updateData.category = body.category
-    if (body.category_id !== undefined) updateData.category_id = body.category_id
+    if (body.category_id !== undefined) {
+      if (body.category_id) {
+        const { data: cat } = await (supabase.from("recurring_payment_categories") as any)
+          .select("id")
+          .eq("id", body.category_id)
+          .eq("org_id", userOrgId)
+          .maybeSingle()
+        if (!cat) {
+          return NextResponse.json({ error: "Categoría no encontrada" }, { status: 404 })
+        }
+      }
+      updateData.category_id = body.category_id
+    }
     if (body.notes !== undefined) updateData.notes = body.notes
     if (body.movement_date !== undefined) updateData.movement_date = body.movement_date
 

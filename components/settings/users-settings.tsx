@@ -91,6 +91,7 @@ const roleLabels: Record<string, string> = {
   CONTABLE: "Contable",
   SELLER: "Vendedor",
   VIEWER: "Observador",
+  POST_VENTA: "Post-venta",
 }
 
 const roleColors: Record<string, string> = {
@@ -99,6 +100,7 @@ const roleColors: Record<string, string> = {
   CONTABLE: "bg-success",
   SELLER: "bg-accent-coral",
   VIEWER: "bg-muted-foreground",
+  POST_VENTA: "bg-blue-500",
 }
 
 const roleDescriptions: Record<string, string> = {
@@ -107,6 +109,7 @@ const roleDescriptions: Record<string, string> = {
   CONTABLE: "Solo módulos financieros",
   SELLER: "Solo sus propios datos",
   VIEWER: "Solo lectura",
+  POST_VENTA: "Seguimiento post-venta: ve todas las operaciones, carga vouchers y check-in",
 }
 
 export function UsersSettings() {

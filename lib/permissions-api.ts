@@ -401,7 +401,7 @@ export async function getScopedAgenciesForUser(
     q = q.eq("org_id", user.org_id)
   }
 
-  if (user.role === "SUPER_ADMIN" || user.role === "CONTABLE") {
+  if (user.role === "SUPER_ADMIN" || user.role === "CONTABLE" || user.role === "POST_VENTA") {
     const { data } = await q
     return (data || []) as Array<{ id: string; name: string }>
   }
@@ -451,7 +451,7 @@ export async function getUserAgencyIds(
     .maybeSingle()
   const orgId = (userRow as any)?.org_id as string | null | undefined
 
-  if (userRole === 'SUPER_ADMIN' || userRole === 'ORG_OWNER' || userRole === 'CONTABLE') {
+  if (userRole === 'SUPER_ADMIN' || userRole === 'ORG_OWNER' || userRole === 'CONTABLE' || userRole === 'POST_VENTA') {
     let q = supabase.from('agencies').select('id')
     if (orgId) q = q.eq('org_id', orgId)
     const { data: agencies } = await q

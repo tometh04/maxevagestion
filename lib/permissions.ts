@@ -8,7 +8,7 @@
 // modelo SaaS. SUPER_ADMIN queda como alias legacy con permisos idénticos
 // — eso permite introducir ORG_OWNER sin refactorizar 94 comparaciones
 // distribuidas por todo el código. Ambos resuelven a la misma RolePermissions.
-export type UserRole = "SUPER_ADMIN" | "ORG_OWNER" | "ADMIN" | "CONTABLE" | "SELLER" | "VIEWER"
+export type UserRole = "SUPER_ADMIN" | "ORG_OWNER" | "ADMIN" | "CONTABLE" | "SELLER" | "VIEWER" | "POST_VENTA"
 
 export type Module =
   | "dashboard"
@@ -120,6 +120,25 @@ const PERMISSIONS: Record<UserRole, RolePermissions> = {
     documents: { read: true, write: false, delete: false, export: false },
     tasks: { read: true, write: false, delete: false, export: false },
   },
+  // POST_VENTA: ve y gestiona el seguimiento post-cierre de operaciones.
+  // Puede cargar vouchers enviados, check-in realizado, y consultar requisitos
+  // de destino. Ve TODAS las operaciones (no solo las propias) para cubrir
+  // el seguimiento de todos los vendedores.
+  POST_VENTA: {
+    dashboard:  { read: true,  write: false, delete: false, export: false },
+    leads:      { read: false, write: false, delete: false, export: false },
+    operations: { read: true,  write: true,  delete: false, export: false },
+    customers:  { read: true,  write: false, delete: false, export: false },
+    operators:  { read: false, write: false, delete: false, export: false },
+    cash:       { read: false, write: false, delete: false, export: false },
+    accounting: { read: false, write: false, delete: false, export: false },
+    alerts:     { read: true,  write: true,  delete: false, export: false },
+    reports:    { read: false, write: false, delete: false, export: false },
+    commissions:{ read: false, write: false, delete: false, export: false },
+    settings:   { read: true,  write: false, delete: false, export: false }, // Para requisitos de destino
+    documents:  { read: true,  write: true,  delete: false, export: false }, // Cargar vouchers
+    tasks:      { read: true,  write: true,  delete: false, export: false },
+  },
 }
 
 /**
@@ -176,6 +195,11 @@ export function shouldShowInSidebar(role: UserRole, module: Module): boolean {
   // VIEWER ve todo excepto settings
   if (role === "VIEWER") {
     return module !== "settings"
+  }
+
+  // POST_VENTA ve operaciones, clientes, alertas, documentos, tareas y settings (requisitos de destino)
+  if (role === "POST_VENTA") {
+    return ["dashboard", "operations", "customers", "alerts", "documents", "tasks", "settings"].includes(module)
   }
 
   // SUPER_ADMIN y ADMIN ven todo
