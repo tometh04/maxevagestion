@@ -27,6 +27,10 @@ export async function POST(request: Request) {
   // FK: operation_file_code → operation_id (within org)
   // Nota: payments no tiene FK a financial_accounts — la relación se establece
   // post-facto via ledger_movements al marcar el pago como PAID.
+  //
+  // adminDb justificado (caso A): el import usa RPC `bulk_import_payments`
+  // que insertea con triggers de RLS estrictos. El SELECT inicial se hace
+  // con admin pero SIEMPRE filtrado por org_id del user. Defense-in-depth.
   const admin = createAdminClient() as any
   const { data: ops } = await admin
     .from("operations")

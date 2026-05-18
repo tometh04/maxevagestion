@@ -24,6 +24,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Body inválido", details: parsed.error.issues }, { status: 400 })
   }
 
+  // adminDb justificado (caso A): el import usa RPC `bulk_import_operations`
+  // que insertea con triggers RLS. Los SELECT iniciales se hacen con admin
+  // pero SIEMPRE filtrados por org_id del user (defense-in-depth).
   const admin = createAdminClient() as any
   const [custsRes, opsRes, sellersRes, agenciesRes] = await Promise.all([
     admin.from("customers").select("id, document_number").eq("org_id", orgId),
