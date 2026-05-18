@@ -16,6 +16,9 @@ export async function GET(request: Request) {
   const dateTo = searchParams.get("dateTo")
   const includeGroups = searchParams.get("includeGroups") === "true"
 
+  // adminDb justificado: wa_chats/wa_messages no tienen org_id directo. El
+  // scope cross-tenant se hace via device_id (wa_devices SÍ tiene org_id,
+  // filtrado por auth.orgId arriba).
   const supabase = createAdminClient() as any
 
   // Build date filters
