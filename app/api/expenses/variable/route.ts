@@ -24,7 +24,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No tiene permiso para crear gastos" }, { status: 403 })
     }
 
+    // Cross-tenant fix (2026-05-18): exigir org_id explícito y validar que
+    // financial_account_id y category_id pertenezcan al org del user.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+    const userOrgId = (user as any).org_id as string
+
     const supabase = await createServerClient()
+    // adminDb justificado: cash_movements/ledger pueden tener triggers que
+    // requieren bypass del filtro RLS para escribir asientos contables.
+    // Igual filtramos por org en todas las queries.
     const adminDb = createAdminClient() as any
     const body = await request.json()
 
@@ -53,11 +63,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "El monto debe ser mayor a 0" }, { status: 400 })
     }
 
-    // Validate financial account exists and currency matches
+    // Validate financial account exists, currency matches y pertenece al org.
     const { data: financialAccount, error: accountError } = await (supabase.from("financial_accounts") as any)
       .select("id, currency")
       .eq("id", financial_account_id)
       .eq("is_active", true)
+      .eq("org_id", userOrgId)
       .single()
 
     if (accountError || !financialAccount) {
@@ -68,14 +79,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: `La cuenta financiera debe estar en ${currency}` }, { status: 400 })
     }
 
-    // Get category name for the text category field (backward compat)
+    // Get category name for the text category field (backward compat) — scopeado por org
     let categoryName = "Gastos Variables"
     if (category_id) {
       const { data: cat } = await (supabase.from("recurring_payment_categories") as any)
         .select("name")
         .eq("id", category_id)
+        .eq("org_id", userOrgId)
         .single()
-      if (cat) categoryName = cat.name
+      if (!cat) {
+        return NextResponse.json({ error: "Categoría no encontrada" }, { status: 404 })
+      }
+      categoryName = cat.name
     }
 
     // Get default cash box
@@ -102,7 +117,7 @@ export async function POST(request: Request) {
     // caiga en la org correcta (RLS sino lo marca inaccesible en lecturas).
     const movementData: Record<string, any> = {
       user_id: user.id,
-      org_id: (user as any).org_id || null,
+      org_id: userOrgId,
       type: "EXPENSE",
       category: categoryName,
       category_id: category_id || null,
@@ -204,6 +219,12 @@ export async function POST(request: Request) {
 export async function GET(request: Request) {
   try {
     const { user } = await getCurrentUser()
+    // Cross-tenant fix (2026-05-18): no confiar en RLS, filtrar org_id explícito.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+    const userOrgId = (user as any).org_id as string
+
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
@@ -222,6 +243,7 @@ export async function GET(request: Request) {
       `)
       .eq("type", "EXPENSE")
       .eq("is_touristic", false)
+      .eq("org_id", userOrgId)
       .order("movement_date", { ascending: false })
 
     if (dateFrom) query = query.gte("movement_date", dateFrom)
@@ -237,14 +259,16 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Error al obtener gastos" }, { status: 500 })
     }
 
-    // Get categories for enrichment
+    // Get categories for enrichment (scopeado por org)
     const { data: categories } = await (supabase.from("recurring_payment_categories") as any)
       .select("id, name, color")
       .eq("is_active", true)
+      .eq("org_id", userOrgId)
 
     const categoryMap = new Map((categories || []).map((c: any) => [c.id, c]))
 
-    // Get receipt counts per expense
+    // Get receipt counts per expense. expense_receipts no tiene org_id directo;
+    // los expenseIds ya fueron filtrados por org arriba via cash_movements.
     const expenseIds = (expenses || []).map((e: any) => e.id)
     let receiptCounts = new Map<string, number>()
     if (expenseIds.length > 0) {
@@ -259,10 +283,11 @@ export async function GET(request: Request) {
       }
     }
 
-    // Get financial account names
+    // Get financial account names (scopeado por org)
     const { data: accounts } = await (supabase.from("financial_accounts") as any)
       .select("id, name, currency")
       .eq("is_active", true)
+      .eq("org_id", userOrgId)
 
     const accountMap = new Map((accounts || []).map((a: any) => [a.id, a]))
 

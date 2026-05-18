@@ -29,7 +29,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No tiene permiso para crear pagos de tarjeta" }, { status: 403 })
     }
 
+    // Cross-tenant fix (2026-05-18): exigir org_id y validar accounts.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+    const userOrgId = (user as any).org_id as string
+
     const supabase = await createServerClient()
+    // adminDb justificado: cc_payment_groups/cash_movements/ledger tienen
+    // triggers que requieren bypass de RLS. Filtramos org_id en todas las
+    // queries antes y después.
     const adminDb = createAdminClient() as any
     const body = await request.json()
 
@@ -61,11 +70,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "El monto total debe ser mayor a 0" }, { status: 400 })
     }
 
-    // Validate source account exists and currency matches
+    // Validate source account exists, currency matches y pertenece al org.
     const { data: sourceAccount, error: sourceError } = await (supabase.from("financial_accounts") as any)
       .select("id, currency, name")
       .eq("id", source_account_id)
       .eq("is_active", true)
+      .eq("org_id", userOrgId)
       .single()
 
     if (sourceError || !sourceAccount) {
@@ -79,11 +89,12 @@ export async function POST(request: Request) {
       )
     }
 
-    // Validate credit card account exists
+    // Validate credit card account exists y pertenece al org.
     const { data: ccAccount, error: ccError } = await (supabase.from("financial_accounts") as any)
       .select("id, name, type")
       .eq("id", credit_card_account_id)
       .eq("is_active", true)
+      .eq("org_id", userOrgId)
       .single()
 
     if (ccError || !ccAccount) {
@@ -146,9 +157,6 @@ export async function POST(request: Request) {
       exchangeRate = Number(userExchangeRate)
     }
 
-    // SaaS Pilar 2: inyectar org_id en el group para que quede tenant-scoped.
-    const userOrgId = (user as any).org_id || null
-
     // Create cc_payment_groups record
     const { data: group, error: groupError } = await adminDb
       .from("cc_payment_groups")
@@ -181,13 +189,16 @@ export async function POST(request: Request) {
       .maybeSingle()
     const cashBoxId = (defaultCashBox as any)?.id || null
 
-    // Get category names for enrichment
+    // Get category names for enrichment (scopeado por org).
+    // Si algún category_id viene del body pero no pertenece al org, no
+    // resolvemos y queda como "Gastos Variables" (sin leak cross-tenant).
     const categoryIds = items.map((i: any) => i.category_id).filter(Boolean)
     let categoryMap = new Map<string, string>()
     if (categoryIds.length > 0) {
       const { data: cats } = await (supabase.from("recurring_payment_categories") as any)
         .select("id, name")
         .in("id", categoryIds)
+        .eq("org_id", userOrgId)
       if (cats) {
         for (const c of cats) categoryMap.set(c.id, c.name)
       }
@@ -204,13 +215,19 @@ export async function POST(request: Request) {
 
       const concept = `Pago TC: ${item.description} (${classLabel})`
 
+      // Cross-tenant fix: solo persistir category_id si validó contra el org
+      // (categoryMap solo contiene ids del org del user).
+      const validCategoryId = item.category_id && categoryMap.has(item.category_id)
+        ? item.category_id
+        : null
+
       // Create cash_movement (tenant-scoped via org_id)
       const movementData: Record<string, any> = {
         user_id: user.id,
         org_id: userOrgId,
         type: "EXPENSE",
         category: categoryName,
-        category_id: item.category_id || null,
+        category_id: validCategoryId,
         amount: itemAmount,
         currency,
         financial_account_id: source_account_id,
@@ -309,15 +326,22 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "No tiene permiso para ver pagos de tarjeta" }, { status: 403 })
     }
 
+    // Cross-tenant fix (2026-05-18).
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+    const userOrgId = (user as any).org_id as string
+
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
     const dateFrom = searchParams.get("dateFrom")
     const dateTo = searchParams.get("dateTo")
 
-    // Fetch cc_payment_groups
+    // Fetch cc_payment_groups (scopeado por org)
     let query = (supabase.from("cc_payment_groups") as any)
       .select("*")
+      .eq("org_id", userOrgId)
       .order("payment_date", { ascending: false })
 
     if (dateFrom) query = query.gte("payment_date", dateFrom)
@@ -334,7 +358,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ groups: [] })
     }
 
-    // Get financial account names
+    // Get financial account names (scopeado por org)
     const accountIds = new Set<string>()
     for (const g of groups) {
       accountIds.add(g.credit_card_account_id)
@@ -344,14 +368,16 @@ export async function GET(request: Request) {
     const { data: accounts } = await (supabase.from("financial_accounts") as any)
       .select("id, name, currency, type")
       .in("id", Array.from(accountIds))
+      .eq("org_id", userOrgId)
 
     const accountMap = new Map((accounts || []).map((a: any) => [a.id, a]))
 
-    // Get items per group
+    // Get items per group (scopeado por org, además de cc_payment_group_id)
     const groupIds = groups.map((g: any) => g.id)
     const { data: items } = await (supabase.from("cash_movements") as any)
       .select("id, amount, currency, notes, expense_classification, cc_payment_group_id, category, category_id")
       .in("cc_payment_group_id", groupIds)
+      .eq("org_id", userOrgId)
 
     const itemsByGroup = new Map<string, any[]>()
     for (const item of items || []) {
