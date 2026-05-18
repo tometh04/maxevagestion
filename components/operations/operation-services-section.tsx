@@ -36,6 +36,7 @@ import {
   FormMessage,
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Separator } from "@/components/ui/separator"
@@ -1112,13 +1113,10 @@ export function OperationServicesSection({
             <div className="grid gap-1.5">
               <Label>Precio al cliente *</Label>
               <div className="flex gap-2">
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
+                <DecimalInput
                   placeholder="0.00"
                   value={form.sale_amount}
-                  onChange={(e) => setForm({ ...form, sale_amount: e.target.value })}
+                  onChange={(v) => setForm({ ...form, sale_amount: v })}
                   className="flex-1"
                 />
                 <Select
@@ -1140,13 +1138,10 @@ export function OperationServicesSection({
             <div className="grid gap-1.5">
               <Label>Costo al proveedor *</Label>
               <div className="flex gap-2">
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
+                <DecimalInput
                   placeholder="0.00"
                   value={form.cost_amount}
-                  onChange={(e) => setForm({ ...form, cost_amount: e.target.value })}
+                  onChange={(v) => setForm({ ...form, cost_amount: v })}
                   className="flex-1"
                 />
                 <Select
@@ -1459,7 +1454,7 @@ export function OperationServicesSection({
                     <FormItem>
                       <FormLabel>Monto</FormLabel>
                       <FormControl>
-                        <Input type="number" step="0.01" min="0" {...field} />
+                        <DecimalInput {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -1498,10 +1493,7 @@ export function OperationServicesSection({
                     <FormItem>
                       <FormLabel>Tipo de Cambio (ARS por 1 USD) *</FormLabel>
                       <FormControl>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
+                        <DecimalInput
                           placeholder="Ej: 1200"
                           {...field}
                         />

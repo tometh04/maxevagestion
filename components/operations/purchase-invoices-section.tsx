@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -666,12 +667,10 @@ export function PurchaseInvoicesSection({
               </div>
               <div>
                 <Label>Neto Gravado *</Label>
-                <Input
-                  type="number"
-                  step="0.01"
+                <DecimalInput
                   placeholder="0.00"
                   value={form.net_amount}
-                  onChange={e => setForm(prev => ({ ...prev, net_amount: e.target.value }))}
+                  onChange={v => setForm(prev => ({ ...prev, net_amount: v }))}
                 />
               </div>
               <div>
@@ -699,10 +698,10 @@ export function PurchaseInvoicesSection({
                   Percepción IVA
                   {autoPerceptions && !masterToggleOff && <Badge variant="secondary" className="ml-2 text-[10px]">auto</Badge>}
                 </Label>
-                <Input
-                  type="number" step="0.01" placeholder="0"
+                <DecimalInput
+                  placeholder="0"
                   value={form.perception_iva}
-                  onChange={e => setForm(prev => ({ ...prev, perception_iva: e.target.value }))}
+                  onChange={v => setForm(prev => ({ ...prev, perception_iva: v }))}
                   readOnly={autoPerceptions && !masterToggleOff}
                   className={autoPerceptions && !masterToggleOff ? "bg-muted" : ""}
                 />
@@ -712,10 +711,10 @@ export function PurchaseInvoicesSection({
                   Percepción IIBB
                   {autoPerceptions && !masterToggleOff && <Badge variant="secondary" className="ml-2 text-[10px]">auto</Badge>}
                 </Label>
-                <Input
-                  type="number" step="0.01" placeholder="0"
+                <DecimalInput
+                  placeholder="0"
                   value={form.perception_iibb}
-                  onChange={e => setForm(prev => ({ ...prev, perception_iibb: e.target.value }))}
+                  onChange={v => setForm(prev => ({ ...prev, perception_iibb: v }))}
                   readOnly={autoPerceptions && !masterToggleOff}
                   className={autoPerceptions && !masterToggleOff ? "bg-muted" : ""}
                 />
@@ -771,10 +770,10 @@ export function PurchaseInvoicesSection({
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Otros Impuestos</Label>
-                <Input
-                  type="number" step="0.01" placeholder="0"
+                <DecimalInput
+                  placeholder="0"
                   value={form.other_taxes}
-                  onChange={e => setForm(prev => ({ ...prev, other_taxes: e.target.value }))}
+                  onChange={v => setForm(prev => ({ ...prev, other_taxes: v }))}
                 />
               </div>
               <div>

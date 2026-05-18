@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import {
@@ -449,13 +450,10 @@ export function PassengerBalancesSection({
                           {isEditing ? (
                             <div className="flex items-center justify-end gap-1">
                               <span className="text-muted-foreground">{currency === "USD" ? "USD" : "$"}</span>
-                              <Input
-                                type="number"
-                                step="0.01"
-                                min="0"
+                              <DecimalInput
                                 autoFocus
                                 value={editingExpected}
-                                onChange={(e) => setEditingExpected(e.target.value)}
+                                onChange={(v) => setEditingExpected(v)}
                                 onKeyDown={(e) => {
                                   if (e.key === "Enter") saveExpected(c.id)
                                   if (e.key === "Escape") cancelEditingExpected()
@@ -665,16 +663,13 @@ export function PassengerBalancesSection({
                   </div>
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs text-muted-foreground">{(allocatingPayment?.currency || currency) === "USD" ? "USD" : "$"}</span>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0"
+                    <DecimalInput
                       className="h-8 w-[120px] text-xs text-right font-mono"
                       value={allocAmounts[c.id] || ""}
-                      onChange={(e) =>
+                      onChange={(v) =>
                         setAllocAmounts((prev) => ({
                           ...prev,
-                          [c.id]: e.target.value,
+                          [c.id]: v,
                         }))
                       }
                       placeholder="0.00"

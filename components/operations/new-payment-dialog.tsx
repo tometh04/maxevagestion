@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import {
   Select,
   SelectContent,
@@ -315,13 +316,7 @@ export function NewPaymentDialog({
                     <FormItem>
                       <FormLabel>Monto</FormLabel>
                       <FormControl>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0.01"
-                          placeholder="0.00"
-                          {...field}
-                        />
+                        <DecimalInput placeholder="0.00" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

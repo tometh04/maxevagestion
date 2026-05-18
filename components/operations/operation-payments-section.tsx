@@ -46,6 +46,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
 import { CalendarIcon, Plus, Loader2, Trash2, FileText, Download, MessageSquare, Pencil, CheckCircle2, CreditCard, Banknote, Landmark, StickyNote, Receipt } from "lucide-react"
@@ -1052,7 +1053,7 @@ export function OperationPaymentsSection({
                       <FormItem>
                         <FormLabel>Monto</FormLabel>
                         <FormControl>
-                          <Input type="number" step="0.01" min="0" {...field} />
+                          <DecimalInput {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -1091,10 +1092,7 @@ export function OperationPaymentsSection({
                     <FormItem>
                       <FormLabel>Tipo de Cambio (ARS por 1 USD)</FormLabel>
                       <FormControl>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
+                        <DecimalInput
                           placeholder="Ej: 1200"
                           {...field}
                         />
@@ -1348,7 +1346,7 @@ export function OperationPaymentsSection({
                         <FormItem>
                           <FormLabel>Monto</FormLabel>
                           <FormControl>
-                            <Input type="number" step="0.01" min="0" {...field} />
+                            <DecimalInput {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -1387,10 +1385,7 @@ export function OperationPaymentsSection({
                       <FormItem>
                         <FormLabel>Tipo de Cambio (ARS por 1 USD)</FormLabel>
                         <FormControl>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
+                          <DecimalInput
                             placeholder="Ej: 1200"
                             {...field}
                           />
@@ -1635,7 +1630,7 @@ export function OperationPaymentsSection({
                         <FormItem>
                           <FormLabel>Monto</FormLabel>
                           <FormControl>
-                            <Input type="number" step="0.01" min="0" {...field} />
+                            <DecimalInput {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -1675,10 +1670,7 @@ export function OperationPaymentsSection({
                       <FormItem>
                         <FormLabel>Tipo de Cambio (ARS por 1 USD)</FormLabel>
                         <FormControl>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
+                          <DecimalInput
                             placeholder="Ej: 1200"
                             {...field}
                           />
