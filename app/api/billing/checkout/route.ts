@@ -42,6 +42,9 @@ export async function POST(request: Request) {
     )
   }
 
+  // adminDb justificado (caso C billing): organizations + billing_events son
+  // escritas por webhooks de MP y por este flow. El body NUNCA acepta org_id
+  // del cliente — se usa user.org_id del session. Anti-forge.
   const admin = createAdminClient() as any
   const { data: org } = await admin
     .from("organizations")

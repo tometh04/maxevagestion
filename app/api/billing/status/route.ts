@@ -13,6 +13,8 @@ export async function GET() {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 })
   }
 
+  // adminDb justificado (caso C billing): organizations is updated by MP
+  // webhook con service_role. Read acotado por user.org_id (anti-forge).
   const admin = createAdminClient() as any
   const { data: org } = await admin
     .from("organizations")
