@@ -58,7 +58,8 @@ import {
   Eye,
   EyeOff,
   Users,
-  UserPlus2
+  UserPlus2,
+  UserCog,
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -120,6 +121,8 @@ export function UsersSettings() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [changePasswordDialogOpen, setChangePasswordDialogOpen] = useState(false)
   const [permissionsDialogOpen, setPermissionsDialogOpen] = useState(false)
+  const [changeRoleDialogOpen, setChangeRoleDialogOpen] = useState(false)
+  const [selectedRole, setSelectedRole] = useState("")
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [newPassword, setNewPassword] = useState("")
@@ -316,6 +319,37 @@ export function UsersSettings() {
     } catch (error) {
       console.error("Error saving special permissions:", error)
       toast.error("Error al guardar permisos especiales")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleChangeRole = async () => {
+    if (!selectedUser || !selectedRole) return
+
+    setSubmitting(true)
+    try {
+      const response = await fetch(`/api/settings/users/${selectedUser.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: selectedRole }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        toast.error(data.error || "Error al cambiar el rol")
+        return
+      }
+
+      toast.success(`Rol actualizado a ${roleLabels[selectedRole] || selectedRole}`)
+      setChangeRoleDialogOpen(false)
+      setSelectedUser(null)
+      setSelectedRole("")
+      loadData()
+    } catch (error) {
+      console.error("Error changing role:", error)
+      toast.error("Error al cambiar el rol")
     } finally {
       setSubmitting(false)
     }
@@ -671,6 +705,18 @@ export function UsersSettings() {
                             Permisos especiales
                           </DropdownMenuItem>
                         )}
+                        {user.role !== "SUPER_ADMIN" && (
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setSelectedUser(user)
+                              setSelectedRole(user.role)
+                              setChangeRoleDialogOpen(true)
+                            }}
+                          >
+                            <UserCog className="mr-2 h-4 w-4" />
+                            Cambiar rol
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuItem
                           onClick={() => {
                             setSelectedUser(user)
@@ -961,6 +1007,55 @@ export function UsersSettings() {
                   <KeyRound className="mr-2 h-4 w-4" />
                   Cambiar Contraseña
                 </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: cambiar rol */}
+      <Dialog open={changeRoleDialogOpen} onOpenChange={setChangeRoleDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Cambiar rol</DialogTitle>
+            <DialogDescription>
+              Cambiá el rol de <strong>{selectedUser?.name}</strong>.
+              El cambio aplica inmediatamente.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Label>Nuevo rol</Label>
+            <Select value={selectedRole} onValueChange={setSelectedRole}>
+              <SelectTrigger>
+                <SelectValue placeholder="Seleccioná un rol" />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(roleLabels)
+                  .filter(([value]) => value !== "SUPER_ADMIN")
+                  .map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      <div className="flex flex-col">
+                        <span>{label}</span>
+                        <span className="text-xs text-muted-foreground">{roleDescriptions[value]}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setChangeRoleDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleChangeRole}
+              disabled={submitting || !selectedRole || selectedRole === selectedUser?.role}
+            >
+              {submitting ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Guardando...</>
+              ) : (
+                <><UserCog className="mr-2 h-4 w-4" />Guardar cambio</>
               )}
             </Button>
           </DialogFooter>
