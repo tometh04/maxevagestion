@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/lib/supabase/types"
 import type { CallbellWebhookEvent } from "./types"
+import { extractBotSummary } from "./summary-extractor"
 
 /**
  * Procesa un evento de Callbell entrante.
@@ -240,6 +241,15 @@ export async function processCallbellEvent(
           .update({ notes: newNotes } as never)
           .eq("id", leadId)
       }
+
+      // Detectar mensaje-resumen del bot (formato fijo del v50.2) y
+      // populär destination + tags de destino/mes + presupuesto.
+      if (text) {
+        const summary = extractBotSummary(text)
+        if (summary) {
+          await applyBotSummaryToLead(admin, orgId, leadId, summary)
+        }
+      }
       break
     }
 
@@ -248,4 +258,101 @@ export async function processCallbellEvent(
   }
 
   return { handled: true, lead_id: leadId, created: createdNow }
+}
+
+/**
+ * Cuando el bot v50.2 emite su mensaje-resumen ("Perfecto, acá tenés un resumen..."),
+ * extrajimos destination/fechas/pasajeros/presupuesto en `extractBotSummary`.
+ * Acá aplicamos esos datos al lead: update de destination/region/quoted_price
+ * + asignación de tags (destino/mes) buscando por label case-insensitive
+ * contra `lead_tags` de la org.
+ *
+ * Es idempotente: si los campos ya están seteados o la tag ya está asignada,
+ * el upsert no hace daño. Si algún dato no se puede matchear (ej. destino no
+ * existe como tag), se ignora silenciosamente — la conversación queda en notas
+ * y el vendedor puede completar manualmente con "Editar".
+ */
+async function applyBotSummaryToLead(
+  admin: SupabaseClient<Database>,
+  orgId: string,
+  leadId: string,
+  summary: import("./summary-extractor").SummaryExtracted
+): Promise<void> {
+  // 1. Update destination + quoted_price si los tenemos
+  const updates: Record<string, unknown> = {}
+  if (summary.cityDestino) {
+    updates.destination = summary.cityDestino
+  }
+  if (
+    typeof summary.presupuestoNumber === "number" &&
+    summary.presupuestoNumber > 0
+  ) {
+    updates.quoted_price = summary.presupuestoNumber
+  }
+  if (Object.keys(updates).length > 0) {
+    await admin
+      .from("leads")
+      .update(updates as never)
+      .eq("id", leadId)
+  }
+
+  // 2. Asignar tag de destino — buscar tag con label que matchee (case-insensitive,
+  //    sin tildes para tolerar "Cancún" vs "CANCUN")
+  if (summary.cityDestino) {
+    const normalizedDest = normalizeForMatch(summary.cityDestino)
+    const { data: tags } = await admin
+      .from("lead_tags")
+      .select("id, label, category:category_id(name)")
+      .eq("org_id", orgId)
+    const destTag = (tags ?? []).find(
+      (t: { label: string; category: { name: string } | null }) =>
+        normalizeForMatch(t.label) === normalizedDest
+    )
+    if (destTag) {
+      await admin
+        .from("lead_tag_assignments")
+        .upsert(
+          {
+            lead_id: leadId,
+            tag_id: (destTag as { id: string }).id,
+            org_id: orgId,
+          } as never,
+          { onConflict: "lead_id,tag_id" }
+        )
+    }
+  }
+
+  // 3. Asignar tag de mes — buscar tag con label que matchee el mes detectado
+  if (summary.mesDetectado) {
+    const normalizedMes = normalizeForMatch(summary.mesDetectado)
+    const { data: tags } = await admin
+      .from("lead_tags")
+      .select("id, label, category:category_id(name)")
+      .eq("org_id", orgId)
+    const mesTag = (tags ?? []).find(
+      (t: { label: string; category: { name: string } | null }) =>
+        normalizeForMatch(t.label) === normalizedMes
+    )
+    if (mesTag) {
+      await admin
+        .from("lead_tag_assignments")
+        .upsert(
+          {
+            lead_id: leadId,
+            tag_id: (mesTag as { id: string }).id,
+            org_id: orgId,
+          } as never,
+          { onConflict: "lead_id,tag_id" }
+        )
+    }
+  }
+}
+
+/** lowercase + sin tildes + trim, para matchear "Cancún" ↔ "CANCUN". */
+function normalizeForMatch(s: string): string {
+  return s
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "") // quita tildes
+    .toLowerCase()
+    .trim()
 }
