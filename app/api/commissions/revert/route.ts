@@ -11,6 +11,12 @@ import { getCurrentUser } from "@/lib/auth"
 export async function POST(request: Request) {
   try {
     const { user } = await getCurrentUser()
+
+    // Cross-tenant fix (2026-05-18): no confiar en RLS; scopear explícito.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     const supabase = await createServerClient()
     const body = await request.json()
 
@@ -32,10 +38,11 @@ export async function POST(request: Request) {
       )
     }
 
-    // Obtener la comisión
+    // Obtener la comisión (scopeado por org)
     const { data: commission, error: commissionError } = await (supabase.from("commission_records") as any)
       .select("*, operations:operation_id(id)")
       .eq("id", commissionId)
+      .eq("org_id", (user as any).org_id)
       .single()
 
     if (commissionError || !commission) {
@@ -50,34 +57,37 @@ export async function POST(request: Request) {
       )
     }
 
-    // Buscar y eliminar el ledger_movement de tipo COMMISSION para esta operación/vendedor
+    // Buscar y eliminar el ledger_movement de tipo COMMISSION para esta operación/vendedor (scopeado por org)
     try {
       const { data: ledgerMovements } = await (supabase.from("ledger_movements") as any)
         .select("id")
         .eq("operation_id", commission.operation_id)
         .eq("type", "COMMISSION")
         .eq("seller_id", commission.seller_id)
+        .eq("org_id", (user as any).org_id)
 
       if (ledgerMovements && ledgerMovements.length > 0) {
-        // Eliminar todos los ledger_movements de comisión para esta comisión
+        // Eliminar todos los ledger_movements de comisión para esta comisión (scopeado por org)
         for (const lm of ledgerMovements) {
           await (supabase.from("ledger_movements") as any)
             .delete()
             .eq("id", lm.id)
+            .eq("org_id", (user as any).org_id)
         }
       }
     } catch (ledgerError) {
       console.warn("Warning: Error deleting ledger movements:", ledgerError)
     }
 
-    // Marcar la comisión como PENDING nuevamente
+    // Marcar la comisión como PENDING nuevamente (scopeado por org)
     const { error: updateError } = await (supabase.from("commission_records") as any)
-      .update({ 
+      .update({
         status: "PENDING",
         date_paid: null,
         updated_at: new Date().toISOString()
       })
       .eq("id", commissionId)
+      .eq("org_id", (user as any).org_id)
 
     if (updateError) {
       console.error("Error updating commission status:", updateError)
