@@ -17,6 +17,12 @@ import { resolveListNameForRegion } from "@/lib/manychat/seed-lists"
 export async function GET(request: Request) {
   try {
     const { user } = await getCurrentUser()
+
+    // Cross-tenant fix (2026-05-18): no confiar en RLS; scopear explícito.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
@@ -24,12 +30,12 @@ export async function GET(request: Request) {
     const { getUserAgencyIds } = await import("@/lib/permissions-api")
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
 
-    // Build query - NO incluir operations aquí, se cargan después manualmente
-    let query = supabase.from("leads").select(`
+    // Build query - NO incluir operations aquí, se cargan después manualmente (scopeado por org)
+    let query = (supabase.from("leads") as any).select(`
       *,
       agencies(name),
       users:assigned_seller_id(name, email)
-    `)
+    `).eq("org_id", (user as any).org_id)
 
     // Apply permissions-based filtering
     try {
@@ -94,12 +100,13 @@ export async function GET(request: Request) {
     // ADMIN/SUPER_ADMIN/CONTABLE/VIEWER no tocan esta lógica.
     if (user.role === "SELLER" && agencyIds.length > 0) {
       const existingIds = new Set(leads.map((l: any) => l.id))
-      const { data: ownLeads } = await supabase.from("leads").select(`
+      const { data: ownLeads } = await (supabase.from("leads") as any).select(`
         *,
         agencies(name),
         users:assigned_seller_id(name, email)
       `)
         .eq("assigned_seller_id", user.id)
+        .eq("org_id", (user as any).org_id)
         .in("agency_id", agencyIds)
         .is("archived_at", null)
 
@@ -116,14 +123,14 @@ export async function GET(request: Request) {
     
     if (wonLeads.length > 0) {
       const wonLeadIds = wonLeads.map((l: any) => l.id)
-      
-      // Cargar operaciones y clientes en paralelo para mejor rendimiento
+
+      // Cargar operaciones y clientes en paralelo para mejor rendimiento (scopeado por org)
       const [operationsResult, customersResult] = await Promise.all([
         // Operaciones
-        supabase
-          .from("operations")
+        (supabase.from("operations") as any)
           .select("id, file_code, destination, status, created_at, departure_date, sale_amount_total, lead_id")
-          .in("lead_id", wonLeadIds),
+          .in("lead_id", wonLeadIds)
+          .eq("org_id", (user as any).org_id),
         // Clientes (solo si hay operaciones)
         Promise.resolve({ data: null, error: null }) // Se cargará después si hay operaciones
       ])
@@ -154,14 +161,14 @@ export async function GET(request: Request) {
         // Obtener clientes solo si hay operaciones
         const operationIds = Array.from(operationsByLeadId.values()).flat().map((op: any) => op.id)
         if (operationIds.length > 0) {
-          const { data: opCustomers } = await supabase
-            .from("operation_customers")
+          const { data: opCustomers } = await (supabase.from("operation_customers") as any)
             .select(`
               operation_id,
               customers:customer_id (id, first_name, last_name)
             `)
             .in("operation_id", operationIds)
             .eq("role", "MAIN")
+            .eq("org_id", (user as any).org_id)
 
           // Asociar clientes a cada lead
           const customersByOperation = new Map<string, any[]>()
@@ -202,9 +209,9 @@ export async function GET(request: Request) {
 
     // OPTIMIZADO: Obtener count en paralelo con los datos (si es necesario)
     // Para mejor rendimiento, solo obtener count si realmente se necesita
-    let countQuery = supabase
-      .from("leads")
+    let countQuery = (supabase.from("leads") as any)
       .select("*", { count: "exact", head: true })
+      .eq("org_id", (user as any).org_id)
     
     try {
       countQuery = applyLeadsFilters(countQuery, user, agencyIds)
@@ -246,10 +253,15 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const { user } = await getCurrentUser()
-    
+
     // Verificar permiso de escritura
     if (!canPerformAction(user, "leads", "write")) {
       return NextResponse.json({ error: "No tiene permiso para crear leads" }, { status: 403 })
+    }
+
+    // Cross-tenant fix (2026-05-18): no confiar en RLS; scopear explícito.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
     }
 
     const supabase = await createServerClient()
@@ -301,6 +313,16 @@ export async function POST(request: Request) {
       }
     }
 
+    // Cross-tenant fix: validar que agency_id pertenece al org del user (defense-in-depth)
+    const { data: agencyCheck } = await (supabase.from("agencies") as any)
+      .select("id")
+      .eq("id", agency_id)
+      .eq("org_id", (user as any).org_id)
+      .single()
+    if (!agencyCheck) {
+      return NextResponse.json({ error: "Agencia inválida o no pertenece a tu organización" }, { status: 403 })
+    }
+
     // Auto-asignar list_name según la región si no se proporcionó explícitamente.
     // Antes había un mapping hardcoded (regionToListName) con nombres
     // "Leads - X" Lozada-style — eso rompía cuando un tenant renombraba sus
@@ -316,6 +338,7 @@ export async function POST(request: Request) {
 
     const leadData: Record<string, any> = {
       agency_id,
+      org_id: (user as any).org_id,
       source: source || "Other",
       status: status || "NEW",
       region,

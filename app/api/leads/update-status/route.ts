@@ -10,7 +10,13 @@ import { getCurrentUser } from "@/lib/auth"
  */
 export async function POST(request: Request) {
   try {
-    await getCurrentUser()
+    const { user } = await getCurrentUser()
+
+    // Cross-tenant fix (2026-05-18): no confiar en RLS; scopear explícito.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     const supabase = await createServerClient() as any
     const body = await request.json()
     const { leadId, status } = body
@@ -24,6 +30,7 @@ export async function POST(request: Request) {
         .from("leads")
         .update({ status, updated_at: new Date().toISOString() })
         .eq("id", leadId)
+        .eq("org_id", (user as any).org_id)
     }
 
     return NextResponse.json({ success: true })

@@ -15,16 +15,23 @@ export async function GET(
   try {
     const { user } = await getCurrentUser()
     const { id: leadId } = await params
-    
+
+    // Cross-tenant fix (2026-05-18): no confiar en RLS; scopear explícito.
+    // CRÍTICO en este endpoint: usa service role key que bypassea RLS, defense
+    // por agency_id no alcanza si los datos de un seller están en otro org.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     // Usar service role key para bypass RLS (ya validamos autenticación arriba)
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-    
+
     if (!supabaseUrl || !supabaseServiceKey) {
       console.error("❌ Faltan variables de entorno para Supabase")
       return NextResponse.json({ error: "Error de configuración del servidor" }, { status: 500 })
     }
-    
+
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
       auth: {
         autoRefreshToken: false,
@@ -32,11 +39,11 @@ export async function GET(
       },
     })
 
-    // Verificar que el lead existe y pertenece a una agencia de la org del user
-    const { data: lead, error: leadError } = await supabase
-      .from("leads")
+    // Verificar que el lead existe y pertenece al org del user (scopeado por org)
+    const { data: lead, error: leadError } = await (supabase.from("leads") as any)
       .select("id, agency_id")
       .eq("id", leadId)
+      .eq("org_id", (user as any).org_id)
       .single()
 
     if (leadError || !lead) {
@@ -49,21 +56,21 @@ export async function GET(
       return NextResponse.json({ error: "Lead no encontrado" }, { status: 404 })
     }
 
-    // Obtener documentos del lead
+    // Obtener documentos del lead (scopeados por org)
     let documents: any[] = []
-    
+
     try {
-      const result = await supabase
-        .from("documents")
+      const result = await (supabase.from("documents") as any)
         .select("*, users:uploaded_by_user_id(id, name, email)")
         .eq("lead_id", leadId)
+        .eq("org_id", (user as any).org_id)
         .order("uploaded_at", { ascending: false })
-      
+
       if (result.error) throw result.error
       documents = result.data || []
     } catch (error: any) {
       if (error.message?.includes("column") && error.message?.includes("lead_id")) {
-        return NextResponse.json({ 
+        return NextResponse.json({
           error: "La migración 027_add_lead_documents.sql no se ha ejecutado.",
           documents: []
         }, { status: 500 })
@@ -71,21 +78,21 @@ export async function GET(
       throw error
     }
 
-    // También obtener documentos de operaciones asociadas a este lead
+    // También obtener documentos de operaciones asociadas a este lead (scopeados por org)
     try {
       // Buscar operaciones que tengan este lead_id
-      const { data: operations } = await supabase
-        .from("operations")
+      const { data: operations } = await (supabase.from("operations") as any)
         .select("id")
         .eq("lead_id", leadId)
-      
+        .eq("org_id", (user as any).org_id)
+
       if (operations && operations.length > 0) {
-        const operationIds = operations.map(op => op.id)
-        
-        const { data: opDocs } = await supabase
-          .from("documents")
+        const operationIds = operations.map((op: any) => op.id)
+
+        const { data: opDocs } = await (supabase.from("documents") as any)
           .select("*, users:uploaded_by_user_id(id, name, email)")
           .in("operation_id", operationIds)
+          .eq("org_id", (user as any).org_id)
           .order("uploaded_at", { ascending: false })
         
         if (opDocs) {
