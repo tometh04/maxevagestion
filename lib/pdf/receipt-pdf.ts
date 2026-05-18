@@ -242,17 +242,13 @@ export async function generateReceiptPdf(data: ReceiptPdfData): Promise<void> {
   const companyLegajo = normalizeText(data.companyLegajo, "")
   const companyTaxId = normalizeText(data.companyTaxId, "")
   const totalContextLabel = data.receiptScope === "SERVICE" ? "Total del servicio" : "Total del paquete"
-  const historyContextLabel = data.receiptScope === "SERVICE" ? "servicio" : "paquete"
   const brandColor = hexToRgb(data.brandColor || "#f97316")
-  const brandSoft = tintColor(brandColor, 0.92)
   const brandPale = tintColor(brandColor, 0.97)
   const brandBorder = tintColor(brandColor, 0.78)
   const slateSoft: [number, number, number] = [248, 250, 252]
   const slateBorder: [number, number, number] = [226, 232, 240]
-  const emeraldSoft: [number, number, number] = [236, 253, 245]
-  const emeraldBorder: [number, number, number] = [167, 243, 208]
-  const amberSoft: [number, number, number] = [255, 247, 237]
-  const amberBorder: [number, number, number] = [253, 230, 138]
+  // Antes había emeraldSoft/Border y amberSoft/Border para los tiles de colores.
+  // Removidos junto con drawMetricTile (rediseño sobrio 2026-05-16).
   const paymentHistory = data.paymentHistory || []
   const contextItems: InfoItem[] = []
   let y = 0
@@ -285,52 +281,73 @@ export async function generateReceiptPdf(data: ReceiptPdfData): Promise<void> {
     addPageChrome(true)
   }
 
-  const addPageChrome = (repeatHeader = false) => {
+  // Header sobrio per-tenant: banda fina con brand color, logo + nombre del tenant,
+  // contacto en línea fina debajo. Pestaña "RECIBO Nº xxx" a la derecha sin texto
+  // duplicado. Antes tenía 24mm + "Recibo de pago" + "Comprobante de pago" + "RECIBO X"
+  // (3 etiquetas que decían lo mismo) → ahora 1 sola etiqueta clara.
+  const addPageChrome = (_repeatHeader = false) => {
+    // Banda fina brand color (antes 24mm + sub-banda → ahora 4mm sólida)
     doc.setFillColor(...brandColor)
-    doc.rect(0, 0, pageWidth, 24, "F")
-
-    doc.setFillColor(...brandSoft)
-    doc.rect(0, 24, pageWidth, 4, "F")
+    doc.rect(0, 0, pageWidth, 4, "F")
 
     let textStartX = margin
+    const headerTop = 10
+
     if (logoData) {
-      const logoHeight = 12
+      const logoHeight = 14
       const logoWidth = (logoData.width / logoData.height) * logoHeight
-      doc.addImage(logoData.dataUrl, logoData.format, margin, 6, logoWidth, logoHeight)
-      textStartX += logoWidth + 4
+      doc.addImage(logoData.dataUrl, logoData.format, margin, headerTop, logoWidth, logoHeight)
+      textStartX += logoWidth + 5
     }
 
-    doc.setTextColor(255, 255, 255)
+    // Nombre del tenant en negro sobrio
+    doc.setTextColor(15, 23, 42)
     doc.setFont("helvetica", "bold")
-    doc.setFontSize(15)
-    doc.text(companyName, textStartX, 11)
+    doc.setFontSize(14)
+    doc.text(companyName, textStartX, headerTop + 6)
 
-    const headerLines: string[] = doc.splitTextToSize(
-      [branchLabel, companyPhone, companyEmail].filter(Boolean).join(" | "),
-      pageWidth - textStartX - 62
-    ) as string[]
+    // Contacto en línea fina debajo del nombre (city/branch | phone | email)
+    const contactLine = [branchLabel, companyPhone, companyEmail].filter(Boolean).join(" · ")
+    if (contactLine) {
+      doc.setFont("helvetica", "normal")
+      doc.setFontSize(8)
+      doc.setTextColor(107, 114, 128)
+      const wrappedLines: string[] = doc.splitTextToSize(
+        contactLine,
+        pageWidth - textStartX - 55
+      ) as string[]
+      wrappedLines.slice(0, 2).forEach((line, idx) => {
+        doc.text(line, textStartX, headerTop + 11 + idx * 3.5)
+      })
+    }
 
-    doc.setFont("helvetica", "normal")
-    doc.setFontSize(7.5)
-    headerLines.slice(0, 2).forEach((line, index) => {
-      doc.text(line, textStartX, 16 + index * 3.7)
-    })
-
-    doc.setFillColor(255, 255, 255)
-    doc.roundedRect(pageWidth - 58, 5.5, 42, 16.5, 3, 3, "F")
-
+    // Pestaña derecha: solo "RECIBO Nº" sin redundancia
     doc.setTextColor(...brandColor)
     doc.setFont("helvetica", "bold")
-    doc.setFontSize(9.5)
-    doc.text("Recibo de pago", pageWidth - 54, 12)
+    doc.setFontSize(8.5)
+    doc.text("RECIBO Nº", pageWidth - margin, headerTop + 4, { align: "right" })
 
-    doc.setTextColor(75, 85, 99)
+    doc.setTextColor(31, 41, 55)
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(11)
+    doc.text(data.receiptNumber, pageWidth - margin, headerTop + 10, { align: "right" })
+
+    doc.setTextColor(107, 114, 128)
     doc.setFont("helvetica", "normal")
-    doc.setFontSize(6.7)
-    doc.text(`RECIBO X · ${data.receiptNumber}`, pageWidth - 54, 16)
-    doc.text("Comprobante de pago", pageWidth - 54, 19.5)
+    doc.setFontSize(7.5)
+    doc.text(
+      `Emitido el ${data.fechaFormateada}`,
+      pageWidth - margin,
+      headerTop + 14.5,
+      { align: "right" }
+    )
 
-    y = repeatHeader ? headerHeight : 37
+    // Línea divisoria fina
+    doc.setDrawColor(229, 231, 235)
+    doc.setLineWidth(0.3)
+    doc.line(margin, 32, pageWidth - margin, 32)
+
+    y = 38
   }
 
   const drawSectionHeading = (title: string, subtitle?: string) => {
@@ -435,123 +452,92 @@ export async function generateReceiptPdf(data: ReceiptPdfData): Promise<void> {
     y += cardHeight + 5
   }
 
-  const drawMetricTile = (
-    x: number,
-    top: number,
-    width: number,
-    height: number,
-    title: string,
-    value: string,
-    subtitle: string,
-    options?: {
-      fillColor?: [number, number, number]
-      borderColor?: [number, number, number]
-      titleColor?: [number, number, number]
-      valueColor?: [number, number, number]
-      subtitleColor?: [number, number, number]
-    }
-  ) => {
-    doc.setFillColor(...(options?.fillColor || slateSoft))
-    doc.setDrawColor(...(options?.borderColor || slateBorder))
-    doc.roundedRect(x, top, width, height, 4, 4, "FD")
-
-    doc.setFont("helvetica", "bold")
-    doc.setFontSize(7)
-    doc.setTextColor(...(options?.titleColor || [100, 116, 139]))
-    doc.text(title.toUpperCase(), x + 4, top + 6)
-
-    doc.setFont("helvetica", "bold")
-    doc.setFontSize(12.5)
-    doc.setTextColor(...(options?.valueColor || [15, 23, 42]))
-    doc.text(value, x + 4, top + 13)
-
-    const subtitleLines = doc.splitTextToSize(subtitle, width - 8)
-    doc.setFont("helvetica", "normal")
-    doc.setFontSize(7)
-    doc.setTextColor(...(options?.subtitleColor || [100, 116, 139]))
-    doc.text(subtitleLines.slice(0, 2), x + 4, top + 18)
-  }
-
-  const drawSummaryGrid = () => {
-    ensureSpace(56)
-
-    const tileGap = 4
-    const tileWidth = (contentWidth - tileGap) / 2
-    const tileHeight = 23
-    const summaryTop = y
+  // Resumen financiero: antes 4 tiles saturados (naranja sólido + emerald + slate + amber).
+  // Ahora: 1 card limpia con 4 filas — el monto cobrado destacado arriba, el resto en
+  // tipografía menor con divisores finos. Saldo pendiente con leve fondo brand solo si > 0.
+  const drawSummaryCard = () => {
     const sameCurrency = data.currency === receiptCurrency
+    const cardHeight = 56
+    ensureSpace(cardHeight + 4)
 
-    drawMetricTile(
-      margin,
-      summaryTop,
-      tileWidth,
-      tileHeight,
-      "Cobrado en este recibo",
-      formatCurrencyValue(receiptCurrency, receivedNow),
-      sameCurrency
-        ? `Moneda recibida: ${data.currencyName}`
-        : `Recibido: ${formatCurrencyValue(data.currency, data.amount)}`,
-      {
-        fillColor: brandColor,
-        borderColor: brandColor,
-        titleColor: [255, 255, 255],
-        valueColor: [255, 255, 255],
-        subtitleColor: [255, 245, 230],
-      }
+    // Card contenedora
+    doc.setFillColor(255, 255, 255)
+    doc.setDrawColor(229, 231, 235)
+    doc.setLineWidth(0.4)
+    doc.roundedRect(margin, y, contentWidth, cardHeight, 4, 4, "FD")
+
+    const padX = 6
+
+    // Fila 1 — Cobrado en este recibo (destacado, brand color)
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(7.5)
+    doc.setTextColor(...brandColor)
+    doc.text("COBRADO EN ESTE RECIBO", margin + padX, y + 8)
+
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(18)
+    doc.setTextColor(15, 23, 42)
+    doc.text(formatCurrencyValue(receiptCurrency, receivedNow), margin + padX, y + 17)
+
+    // Subtitle del cobro: si la moneda difiere, mostrar lo recibido en su moneda original
+    if (!sameCurrency) {
+      doc.setFont("helvetica", "normal")
+      doc.setFontSize(8)
+      doc.setTextColor(107, 114, 128)
+      doc.text(
+        `Recibido: ${formatCurrencyValue(data.currency, data.amount)}`,
+        pageWidth - margin - padX,
+        y + 17,
+        { align: "right" }
+      )
+    }
+
+    // Divisor
+    doc.setDrawColor(241, 245, 249)
+    doc.setLineWidth(0.3)
+    doc.line(margin + padX, y + 23, pageWidth - margin - padX, y + 23)
+
+    // Fila 2 — Total cobrado | Total paquete | Saldo (3 columnas finas)
+    const colWidth = (contentWidth - padX * 2) / 3
+    const colTop = y + 30
+    const drawMiniMetric = (
+      colIndex: number,
+      label: string,
+      value: string,
+      highlight: boolean
+    ) => {
+      const colX = margin + padX + colIndex * colWidth
+      doc.setFont("helvetica", "bold")
+      doc.setFontSize(6.8)
+      doc.setTextColor(107, 114, 128)
+      doc.text(label.toUpperCase(), colX, colTop)
+
+      doc.setFont("helvetica", "bold")
+      doc.setFontSize(11)
+      doc.setTextColor(...(highlight ? brandColor : [15, 23, 42] as [number, number, number]))
+      doc.text(value, colX, colTop + 6)
+    }
+
+    drawMiniMetric(0, "Total cobrado", formatCurrencyValue(receiptCurrency, data.totalPagado), false)
+    drawMiniMetric(1, totalContextLabel, formatCurrencyValue(receiptCurrency, data.totalOperacion), false)
+    drawMiniMetric(
+      2,
+      data.saldoRestante > 0 ? "Saldo pendiente" : "Saldo",
+      data.saldoRestante > 0
+        ? formatCurrencyValue(receiptCurrency, data.saldoRestante)
+        : "Pago completo",
+      data.saldoRestante > 0
     )
 
-    drawMetricTile(
-      margin + tileWidth + tileGap,
-      summaryTop,
-      tileWidth,
-      tileHeight,
-      "Total cobrado",
-      formatCurrencyValue(receiptCurrency, data.totalPagado),
-      `Suma histórica cobrada del ${historyContextLabel}`,
-      {
-        fillColor: emeraldSoft,
-        borderColor: emeraldBorder,
-        titleColor: [22, 101, 52],
-        valueColor: [22, 101, 52],
-        subtitleColor: [22, 101, 52],
-      }
-    )
+    // Banda fina con divisores entre columnas
+    doc.setDrawColor(241, 245, 249)
+    doc.setLineWidth(0.3)
+    for (let i = 1; i < 3; i++) {
+      const lineX = margin + padX + i * colWidth - 2
+      doc.line(lineX, colTop - 3, lineX, colTop + 9)
+    }
 
-    drawMetricTile(
-      margin,
-      summaryTop + tileHeight + tileGap,
-      tileWidth,
-      tileHeight,
-      totalContextLabel,
-      formatCurrencyValue(receiptCurrency, data.totalOperacion),
-      `Monto contratado tomado para el recibo`,
-      {
-        fillColor: slateSoft,
-        borderColor: slateBorder,
-        titleColor: [71, 85, 105],
-        valueColor: [15, 23, 42],
-        subtitleColor: [100, 116, 139],
-      }
-    )
-
-    drawMetricTile(
-      margin + tileWidth + tileGap,
-      summaryTop + tileHeight + tileGap,
-      tileWidth,
-      tileHeight,
-      "Saldo pendiente",
-      formatCurrencyValue(receiptCurrency, data.saldoRestante),
-      data.saldoRestante > 0 ? "Resto por abonar" : "Sin saldo pendiente",
-      {
-        fillColor: data.saldoRestante > 0 ? amberSoft : emeraldSoft,
-        borderColor: data.saldoRestante > 0 ? amberBorder : emeraldBorder,
-        titleColor: data.saldoRestante > 0 ? [146, 64, 14] : [22, 101, 52],
-        valueColor: data.saldoRestante > 0 ? [146, 64, 14] : [22, 101, 52],
-        subtitleColor: data.saldoRestante > 0 ? [146, 64, 14] : [22, 101, 52],
-      }
-    )
-
-    y += tileHeight * 2 + tileGap + 6
+    y += cardHeight + 6
   }
 
   const drawHistoryTableHeader = (top: number) => {
@@ -655,36 +641,6 @@ export async function generateReceiptPdf(data: ReceiptPdfData): Promise<void> {
     })
   }
 
-  const drawFooterNote = () => {
-    ensureSpace(18)
-
-    const fillColor = data.saldoRestante > 0 ? amberSoft : emeraldSoft
-    const borderColor = data.saldoRestante > 0 ? amberBorder : emeraldBorder
-    const textColor: [number, number, number] = data.saldoRestante > 0 ? [146, 64, 14] : [22, 101, 52]
-    const noteTitle = data.saldoRestante > 0 ? "Saldo pendiente" : "Pago completo"
-    const noteBody =
-      data.saldoRestante > 0
-        ? `Luego de este recibo quedan ${formatCurrencyValue(receiptCurrency, data.saldoRestante)} pendientes. Total cobrado al momento: ${formatCurrencyValue(receiptCurrency, data.totalPagado)}.`
-        : `Con este recibo el ${historyContextLabel} queda pago en su totalidad. Total cobrado acumulado: ${formatCurrencyValue(receiptCurrency, data.totalPagado)}.`
-    const noteLines = doc.splitTextToSize(noteBody, contentWidth - 10)
-    const cardHeight = 12 + noteLines.length * 3.7
-
-    doc.setFillColor(...fillColor)
-    doc.setDrawColor(...borderColor)
-    doc.roundedRect(margin, y, contentWidth, cardHeight, 4, 4, "FD")
-
-    doc.setFont("helvetica", "bold")
-    doc.setFontSize(9.5)
-    doc.setTextColor(...textColor)
-    doc.text(noteTitle, margin + 5, y + 7)
-
-    doc.setFont("helvetica", "normal")
-    doc.setFontSize(8.2)
-    doc.text(noteLines, margin + 5, y + 12)
-
-    y += cardHeight + 4
-  }
-
   const addFooters = () => {
     const totalPages = doc.getNumberOfPages()
     const footerLeft = [companyAddress, companyLegajo ? `Legajo ${companyLegajo}` : "", companyTaxId ? `CUIT ${companyTaxId}` : ""]
@@ -720,36 +676,42 @@ export async function generateReceiptPdf(data: ReceiptPdfData): Promise<void> {
 
   addPageChrome()
 
-  drawSectionHeading(
-    "Datos del cliente",
-    `Emitido en ${[data.agencyCity, data.fechaFormateada].filter(Boolean).join(", ")}`
-  )
+  // Sección Cliente: solo dibujar heading+card si efectivamente hay algo que mostrar.
+  // Antes se dibujaba el heading siempre y el drawInfoCard internamente filtraba items
+  // vacíos → si address/city eran "-", quedaba el header "Datos del cliente" colgando
+  // sin card debajo (bug visual reportado).
   const customerName = (data.customerName || "").trim()
   const customerLastName = (data.customerLastName || "").trim()
   const customerFullName =
     customerLastName && !customerName.toLocaleLowerCase().endsWith(customerLastName.toLocaleLowerCase())
       ? `${customerName} ${customerLastName}`.trim()
       : customerName
-  drawInfoCard(
-    normalizeText(customerFullName || data.customerName),
-    [
-      { label: "Domicilio", value: normalizeText(data.customerAddress) },
-      { label: "Localidad", value: normalizeText(data.customerCity) },
-    ],
-    {
-      fillColor: slateSoft,
-      borderColor: slateBorder,
-      titleColor: brandColor,
-    }
-  )
+  const customerItems: InfoItem[] = [
+    { label: "Pasajeros", value: normalizeText(data.passengerNamesText, "") },
+    { label: "Domicilio", value: normalizeText(data.customerAddress, "") },
+    { label: "Localidad", value: normalizeText(data.customerCity, "") },
+  ].filter((item) => item.value && item.value !== "-")
 
+  if (customerItems.length > 0 || customerFullName) {
+    drawSectionHeading("Cliente")
+    drawInfoCard(
+      normalizeText(customerFullName || data.customerName),
+      customerItems,
+      {
+        fillColor: slateSoft,
+        borderColor: slateBorder,
+        titleColor: brandColor,
+      }
+    )
+  }
+
+  // Pasajeros ya va en la sección "Cliente"; acá solo datos de la operación.
   if (data.receiptScope === "SERVICE") {
     contextItems.push(
       { label: "Servicio", value: normalizeText(data.serviceLabel) },
       { label: "Detalle", value: normalizeText(data.serviceDescription, "") },
       { label: "Operación", value: normalizeText(data.fileCode, "") },
       { label: "Destino", value: normalizeText(data.destination, "") },
-      { label: "Pasajeros", value: normalizeText(data.passengerNamesText) },
       { label: "Composición", value: buildPassengersText(data) },
       {
         label: "Fechas",
@@ -769,13 +731,12 @@ export async function generateReceiptPdf(data: ReceiptPdfData): Promise<void> {
           .filter((entry) => entry !== "-")
           .join(" · "),
       },
-      { label: "Pasajeros", value: normalizeText(data.passengerNamesText) },
       { label: "Composición", value: buildPassengersText(data) }
     )
   }
 
   drawSectionHeading(
-    data.receiptScope === "SERVICE" ? "Servicio y operación" : "Detalle de la operación"
+    data.receiptScope === "SERVICE" ? "Servicio y operación" : "Operación"
   )
   drawInfoCard(
     data.receiptScope === "SERVICE" ? "Servicio asociado" : "Operación asociada",
@@ -787,11 +748,14 @@ export async function generateReceiptPdf(data: ReceiptPdfData): Promise<void> {
     }
   )
 
-  drawSectionHeading("Resumen financiero", `Totales expresados en ${receiptCurrency}`)
-  drawSummaryGrid()
+  drawSectionHeading("Resumen financiero", `Totales en ${receiptCurrency}`)
+  drawSummaryCard()
 
-  drawHistoryTable()
-  drawFooterNote()
+  if (paymentHistory.length > 0) {
+    drawHistoryTable()
+  }
+  // drawFooterNote() removida — la info de saldo pendiente ya está en el summary card.
+  // El footer del pie (página X de Y, dirección/CUIT) sigue en addFooters().
 
   // Términos y condiciones configurables por tenant (Settings → Interface → Términos en PDFs).
   // Se renderizan en un bloque gris al pie antes del footer. Si el tenant no configuró texto,
