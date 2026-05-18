@@ -5,23 +5,29 @@ import { getCurrentUser } from "@/lib/auth"
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { user } = await getCurrentUser()
+
+    // Cross-tenant fix (2026-05-18): no confiar en RLS; scopear explícito.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     const supabase = await createServerClient()
     const { id: operatorId } = await params
 
-    // Get operator details
+    // Get operator details (scopeado por org)
     const { data: operator, error: operatorError } = await supabase
       .from("operators")
       .select("*")
       .eq("id", operatorId)
+      .eq("org_id", (user as any).org_id)
       .single()
 
     if (operatorError || !operator) {
       return NextResponse.json({ error: "Operador no encontrado" }, { status: 404 })
     }
 
-    // Get all operations for this operator
-    const { data: operations, error: operationsError } = await supabase
-      .from("operations")
+    // Get all operations for this operator (scopeado por org)
+    const { data: operations, error: operationsError } = await (supabase.from("operations") as any)
       .select(
         `
         *,
@@ -39,6 +45,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       `,
       )
       .eq("operator_id", operatorId)
+      .eq("org_id", (user as any).org_id)
       .order("created_at", { ascending: false })
 
     if (operationsError) {
@@ -89,6 +96,12 @@ export async function PATCH(
 ) {
   try {
     const { user } = await getCurrentUser()
+
+    // Cross-tenant fix (2026-05-18): no confiar en RLS; scopear explícito.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     const supabase = await createServerClient()
     const { id: operatorId } = await params
     const body = await request.json()
@@ -98,6 +111,16 @@ export async function PATCH(
     // Validations
     if (!name) {
       return NextResponse.json({ error: "El nombre es requerido" }, { status: 400 })
+    }
+
+    // Verificar que el operador pertenece al org del user
+    const { data: operatorCheck } = await (supabase.from("operators") as any)
+      .select("id")
+      .eq("id", operatorId)
+      .eq("org_id", (user as any).org_id)
+      .single()
+    if (!operatorCheck) {
+      return NextResponse.json({ error: "Operador no encontrado" }, { status: 404 })
     }
 
     // Update operator
@@ -116,6 +139,7 @@ export async function PATCH(
       .from("operators") as any)
       .update(updatePayload)
       .eq("id", operatorId)
+      .eq("org_id", (user as any).org_id)
       .select()
       .single()
 
@@ -137,14 +161,30 @@ export async function DELETE(
 ) {
   try {
     const { user } = await getCurrentUser()
+
+    // Cross-tenant fix (2026-05-18): no confiar en RLS; scopear explícito.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     const supabase = await createServerClient()
     const { id: operatorId } = await params
 
-    // Check if operator has operations
-    const { data: operations, error: checkError } = await supabase
-      .from("operations")
+    // Verificar que el operador pertenece al org del user
+    const { data: operatorCheck } = await (supabase.from("operators") as any)
+      .select("id")
+      .eq("id", operatorId)
+      .eq("org_id", (user as any).org_id)
+      .single()
+    if (!operatorCheck) {
+      return NextResponse.json({ error: "Operador no encontrado" }, { status: 404 })
+    }
+
+    // Check if operator has operations (scopeado por org)
+    const { data: operations, error: checkError } = await (supabase.from("operations") as any)
       .select("id")
       .eq("operator_id", operatorId)
+      .eq("org_id", (user as any).org_id)
       .limit(1)
 
     if (checkError) {
@@ -159,11 +199,12 @@ export async function DELETE(
       )
     }
 
-    // Delete operator
+    // Delete operator (scopeado por org)
     const { error: deleteError } = await supabase
       .from("operators")
       .delete()
       .eq("id", operatorId)
+      .eq("org_id", (user as any).org_id)
 
     if (deleteError) {
       console.error("Error deleting operator:", deleteError)
