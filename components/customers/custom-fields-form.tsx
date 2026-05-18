@@ -9,6 +9,7 @@ import {
   FormMessage,
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
@@ -110,12 +111,11 @@ export function CustomFieldsForm({ control, customFields }: CustomFieldsFormProp
                       {field.label} {field.required && '*'}
                     </FormLabel>
                     <FormControl>
-                      <Input
-                        type="number"
+                      <DecimalInput
                         placeholder={field.label}
                         {...formField}
                         value={formField.value || field.default_value || ''}
-                        onChange={(e) => formField.onChange(parseFloat(e.target.value) || '')}
+                        onChange={(v) => formField.onChange(parseFloat(v) || '')}
                       />
                     </FormControl>
                     <FormMessage />

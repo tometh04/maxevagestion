@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -298,10 +299,9 @@ export function ImportV2Client({ agencies }: Props) {
                     ? "(obligatorio)"
                     : "(fallback si falta el mes)"}
                 </Label>
-                <Input
-                  type="number"
+                <DecimalInput
                   value={manualRate}
-                  onChange={(e) => setManualRate(e.target.value)}
+                  onChange={(v) => setManualRate(v)}
                   placeholder="1450"
                 />
                 <p className="text-sm text-muted-foreground">

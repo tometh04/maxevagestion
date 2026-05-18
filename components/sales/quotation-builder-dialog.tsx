@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useMemo, useRef } from "react"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -1365,12 +1366,9 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs text-primary">Precio final a mostrar</Label>
-                    <Input
-                      type="number"
-                      min={optionCostTotal}
-                      step={0.01}
+                    <DecimalInput
                       value={option.manual_total_amount ?? ""}
-                      onChange={(e) => updateOptionManualTotal(option.id, e.target.value)}
+                      onChange={(v) => updateOptionManualTotal(option.id, v)}
                       placeholder={option.calculated_total_amount.toFixed(2)}
                       className="text-sm font-mono"
                     />
@@ -1548,13 +1546,10 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                           <Label className="text-xs text-primary">Precio venta</Label>
                           <div className="relative">
                             <DollarSign className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
-                            <Input
-                              type="number"
-                              min={0}
-                              step={0.01}
+                            <DecimalInput
                               value={item.unit_price || ""}
                               disabled={isLinkedFlightReadonly}
-                              onChange={(e) => updateItem(option.id, item.id, "unit_price", Number(e.target.value))}
+                              onChange={(v) => updateItem(option.id, item.id, "unit_price", Number(v) || 0)}
                               placeholder="0.00"
                               className="text-sm font-mono pl-7"
                             />
@@ -1564,27 +1559,20 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                           <Label className="text-xs text-accent-coral">Costo operador</Label>
                           <div className="relative">
                             <DollarSign className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
-                            <Input
-                              type="number"
-                              min={0}
-                              step={0.01}
+                            <DecimalInput
                               value={item.cost_amount || ""}
                               disabled={isLinkedFlightReadonly}
-                              onChange={(e) => updateItem(option.id, item.id, "cost_amount", Number(e.target.value))}
+                              onChange={(v) => updateItem(option.id, item.id, "cost_amount", Number(v) || 0)}
                               placeholder="0.00"
                               className="text-sm font-mono pl-7"
                             />
                           </div>
                           <div className="flex items-center gap-1 pt-0.5">
                             <span className="text-[10px] text-muted-foreground">+ admin</span>
-                            <Input
-                              type="number"
-                              min={0}
-                              max={100}
-                              step={0.5}
+                            <DecimalInput
                               value={item.admin_fee_percentage || ""}
                               disabled={isLinkedFlightReadonly}
-                              onChange={(e) => updateItem(option.id, item.id, "admin_fee_percentage", Number(e.target.value))}
+                              onChange={(v) => updateItem(option.id, item.id, "admin_fee_percentage", Number(v) || 0)}
                               placeholder="0"
                               className="h-6 text-[11px] font-mono w-16 px-1.5"
                             />
