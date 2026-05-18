@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import { Label } from "@/components/ui/label"
 import { formatArs } from "@/lib/billing/plans"
 
@@ -106,14 +107,10 @@ export function MrrOverrideCard({ orgId, currentOverride, hasCustomPlan }: Props
             <Label htmlFor="mrr-override" className="text-xs text-muted-foreground">
               Monto en ARS por mes
             </Label>
-            <Input
+            <DecimalInput
               id="mrr-override"
-              type="number"
-              min={0}
-              max={MRR_MAX_ARS}
-              step="0.01"
               value={value}
-              onChange={(e) => setValue(e.target.value)}
+              onChange={(v) => setValue(v)}
               placeholder="Ej: 719000"
             />
           </div>

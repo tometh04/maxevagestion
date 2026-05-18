@@ -123,10 +123,14 @@ export function CustomPlanForm({
         <label className="block text-sm">
           <span className="text-muted-foreground">Precio base ARS/mes</span>
           <input
-            type="number"
+            type="text"
+            inputMode="decimal"
             className="w-full border rounded px-2 py-1 bg-background"
             value={basePrice}
-            onChange={(e) => setBasePrice(e.target.value)}
+            onChange={(e) => {
+              const raw = e.target.value.replace(",", ".")
+              if (raw === "" || /^\d*\.?\d*$/.test(raw)) setBasePrice(raw)
+            }}
             placeholder="719000"
           />
         </label>
@@ -147,12 +151,14 @@ export function CustomPlanForm({
         <label className="block text-sm">
           <span className="text-muted-foreground">Descuento %</span>
           <input
-            type="number"
+            type="text"
+            inputMode="decimal"
             className="w-full border rounded px-2 py-1 bg-background"
             value={discountPct}
-            onChange={(e) => setDiscountPct(e.target.value)}
-            min={0}
-            max={100}
+            onChange={(e) => {
+              const raw = e.target.value.replace(",", ".")
+              if (raw === "" || /^\d*\.?\d*$/.test(raw)) setDiscountPct(raw)
+            }}
           />
         </label>
         <label className="block text-sm">

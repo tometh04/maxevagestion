@@ -78,10 +78,14 @@ export function ManualPaymentsSection({
             <label>
               <span className="text-muted-foreground text-xs">Monto ARS</span>
               <input
-                type="number"
+                type="text"
+                inputMode="decimal"
                 className="w-full border rounded px-2 py-1 bg-background"
                 value={form.amount_ars}
-                onChange={(e) => setForm({ ...form, amount_ars: e.target.value })}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(",", ".")
+                  if (raw === "" || /^\d*\.?\d*$/.test(raw)) setForm({ ...form, amount_ars: raw })
+                }}
               />
             </label>
             <label>

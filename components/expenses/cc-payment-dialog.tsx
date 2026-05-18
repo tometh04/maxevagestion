@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
@@ -277,12 +278,9 @@ export function CCPaymentDialog({ open, onOpenChange, onSuccess }: CCPaymentDial
                     <FormItem>
                       <FormLabel>Monto Total *</FormLabel>
                       <FormControl>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
+                        <DecimalInput
                           {...field}
-                          onChange={(e) => field.onChange(Number(e.target.value))}
+                          onChange={(v) => field.onChange(Number(v) || 0)}
                         />
                       </FormControl>
                       <FormMessage />
@@ -337,13 +335,11 @@ export function CCPaymentDialog({ open, onOpenChange, onSuccess }: CCPaymentDial
                         Tipo de Cambio (ARS por 1 USD)
                       </FormLabel>
                       <FormControl>
-                        <Input
-                          type="number"
-                          step="0.01"
+                        <DecimalInput
                           placeholder="Ej: 1200"
                           {...field}
-                          onChange={(e) =>
-                            field.onChange(e.target.value ? Number(e.target.value) : undefined)
+                          onChange={(v) =>
+                            field.onChange(v ? Number(v) : undefined)
                           }
                         />
                       </FormControl>
@@ -420,13 +416,10 @@ export function CCPaymentDialog({ open, onOpenChange, onSuccess }: CCPaymentDial
                           <FormItem>
                             <FormLabel className="text-xs">Monto *</FormLabel>
                             <FormControl>
-                              <Input
-                                type="number"
-                                step="0.01"
-                                min="0"
+                              <DecimalInput
                                 className="h-8 text-sm"
                                 {...field}
-                                onChange={(e) => field.onChange(Number(e.target.value))}
+                                onChange={(v) => field.onChange(Number(v) || 0)}
                               />
                             </FormControl>
                             <FormMessage />
