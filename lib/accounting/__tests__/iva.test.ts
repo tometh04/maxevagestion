@@ -1,6 +1,8 @@
 import {
   calculateSaleIVA,
   calculatePurchaseIVA,
+  createSaleIVA,
+  createPurchaseIVA,
   getMonthlyIVAToPay,
 } from "../iva"
 import type { SupabaseClient } from "@supabase/supabase-js"
@@ -87,6 +89,107 @@ describe("IVA Service", () => {
       const result = calculatePurchaseIVA(0)
       expect(result.net_amount).toBe(0)
       expect(result.iva_amount).toBe(0)
+    })
+  })
+
+  describe("createSaleIVA — idempotency", () => {
+    it("creates a new record via upsert when none exists", async () => {
+      const mockSingle = jest.fn().mockResolvedValue({ data: { id: "new-id" }, error: null })
+      const mockSelect = jest.fn().mockReturnValue({ single: mockSingle })
+      const mockUpsert = jest.fn().mockReturnValue({ select: mockSelect })
+      const mockSupabase = {
+        from: jest.fn().mockReturnValue({ upsert: mockUpsert }),
+      } as unknown as SupabaseClient<Database>
+
+      const result = await createSaleIVA(mockSupabase, "op-1", 10000, "ARS", "2026-01-01", 2000)
+
+      expect(result.id).toBe("new-id")
+      expect(mockUpsert).toHaveBeenCalledWith(
+        expect.objectContaining({ operation_id: "op-1" }),
+        { onConflict: "operation_id" }
+      )
+    })
+
+    it("returns existing id when upsert resolves the conflict", async () => {
+      const mockSingle = jest.fn().mockResolvedValue({ data: { id: "existing-id" }, error: null })
+      const mockSelect = jest.fn().mockReturnValue({ single: mockSingle })
+      const mockUpsert = jest.fn().mockReturnValue({ select: mockSelect })
+      const mockSupabase = {
+        from: jest.fn().mockReturnValue({ upsert: mockUpsert }),
+      } as unknown as SupabaseClient<Database>
+
+      // Second call for same operation — upsert returns the same id (UPDATE path)
+      const result = await createSaleIVA(mockSupabase, "op-1", 12000, "ARS", "2026-01-01", 3000)
+
+      expect(result.id).toBe("existing-id")
+    })
+  })
+
+  describe("createPurchaseIVA — idempotency", () => {
+    it("inserts new record when none exists for (operation, operator)", async () => {
+      const mockSingle = jest.fn().mockResolvedValue({ data: { id: "new-purch" }, error: null })
+      const mockInsertChain = { select: jest.fn().mockReturnValue({ single: mockSingle }) }
+      const mockMaybeSingle = jest.fn().mockResolvedValue({ data: null, error: null })
+      const mockIsChain = { maybeSingle: mockMaybeSingle }
+      const mockEqForOperator = jest.fn().mockReturnValue(mockIsChain)
+      const mockEqForOperation = jest.fn().mockReturnValue({ eq: mockEqForOperator })
+      const mockSelectChain = { eq: mockEqForOperation }
+
+      const mockFrom = jest.fn()
+        .mockReturnValueOnce({ select: jest.fn().mockReturnValue(mockSelectChain) }) // check
+        .mockReturnValueOnce({ insert: jest.fn().mockReturnValue(mockInsertChain) }) // insert
+
+      const mockSupabase = { from: mockFrom } as unknown as SupabaseClient<Database>
+
+      const result = await createPurchaseIVA(mockSupabase, "op-1", "operator-1", 5000, "ARS", "2026-01-01")
+
+      expect(result.id).toBe("new-purch")
+    })
+
+    it("updates existing record when (operation, operator) already has an entry", async () => {
+      const mockMaybeSingle = jest.fn().mockResolvedValue({ data: { id: "existing-purch" }, error: null })
+      const mockIsChain = { maybeSingle: mockMaybeSingle }
+      const mockEqForOperator = jest.fn().mockReturnValue(mockIsChain)
+      const mockEqForOperation = jest.fn().mockReturnValue({ eq: mockEqForOperator })
+      const mockSelectChain = { eq: mockEqForOperation }
+
+      const mockUpdateEq = jest.fn().mockResolvedValue({ error: null })
+      const mockUpdate = jest.fn().mockReturnValue({ eq: mockUpdateEq })
+
+      const mockFrom = jest.fn()
+        .mockReturnValueOnce({ select: jest.fn().mockReturnValue(mockSelectChain) }) // check
+        .mockReturnValueOnce({ update: mockUpdate }) // update
+
+      const mockSupabase = { from: mockFrom } as unknown as SupabaseClient<Database>
+
+      const result = await createPurchaseIVA(mockSupabase, "op-1", "operator-1", 6000, "ARS", "2026-01-01")
+
+      expect(result.id).toBe("existing-purch")
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ operator_cost_total: 6000 })
+      )
+    })
+
+    it("handles null operator_id using IS NULL filter", async () => {
+      const mockMaybeSingle = jest.fn().mockResolvedValue({ data: null, error: null })
+      const mockIsChain = { maybeSingle: mockMaybeSingle }
+      const mockIs = jest.fn().mockReturnValue(mockIsChain)
+      const mockEqForOperation = jest.fn().mockReturnValue({ is: mockIs })
+      const mockSelectChain = { eq: mockEqForOperation }
+
+      const mockSingle = jest.fn().mockResolvedValue({ data: { id: "null-op-purch" }, error: null })
+      const mockInsertChain = { select: jest.fn().mockReturnValue({ single: mockSingle }) }
+
+      const mockFrom = jest.fn()
+        .mockReturnValueOnce({ select: jest.fn().mockReturnValue(mockSelectChain) }) // check
+        .mockReturnValueOnce({ insert: jest.fn().mockReturnValue(mockInsertChain) }) // insert
+
+      const mockSupabase = { from: mockFrom } as unknown as SupabaseClient<Database>
+
+      const result = await createPurchaseIVA(mockSupabase, "op-1", null, 3000, "ARS", "2026-01-01")
+
+      expect(mockIs).toHaveBeenCalledWith("operator_id", null)
+      expect(result.id).toBe("null-op-purch")
     })
   })
 

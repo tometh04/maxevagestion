@@ -128,6 +128,14 @@ export interface CreateLedgerMovementParams {
    * `org_id IN user_org_ids()` rechaza NULL).
    */
   org_id?: string | null
+  /**
+   * Clave de idempotencia opcional. Cuando se provee:
+   *   - Si ya existe un movimiento con esa key, devuelve su ID sin crear uno nuevo.
+   *   - Si hay race condition (23505), resuelve igual leyendo el registro existente.
+   * Formato sugerido: "<contexto>:<id>:<tipo>", p.ej. "payment:uuid:INCOME".
+   * Los movimientos sin key (legacy, manuales) no participan del constraint.
+   */
+  idempotency_key?: string | null
 }
 
 /**
@@ -204,6 +212,21 @@ export async function createLedgerMovement(
     )
   }
 
+  // Idempotencia opt-in: si el caller provee una key, devolvemos el movimiento
+  // existente en lugar de crear un duplicado. La DB tiene un UNIQUE INDEX parcial
+  // sobre idempotency_key (solo filas con valor no-null), que actúa como red de
+  // seguridad ante race conditions.
+  if (params.idempotency_key) {
+    const { data: existing } = await (supabase.from("ledger_movements") as any)
+      .select("id")
+      .eq("idempotency_key", params.idempotency_key)
+      .maybeSingle()
+
+    if (existing) {
+      return { id: existing.id }
+    }
+  }
+
   const ledgerTable = supabase.from("ledger_movements") as any
 
   const { data, error } = await ledgerTable
@@ -230,11 +253,25 @@ export async function createLedgerMovement(
       movement_date: params.movement_date
         ? new Date(params.movement_date).toISOString()
         : new Date().toISOString(),
+      idempotency_key: params.idempotency_key || null,
     })
     .select("id")
     .single()
 
   if (error) {
+    // Race condition: dos requests concurrentes pasaron el check previo y ambas intentaron
+    // insertar con la misma key. El perdedor recibe 23505 — resolvemos leyendo el ganador.
+    if (error.code === "23505" && params.idempotency_key) {
+      const { data: existing } = await (supabase.from("ledger_movements") as any)
+        .select("id")
+        .eq("idempotency_key", params.idempotency_key)
+        .maybeSingle()
+
+      if (existing) {
+        return { id: existing.id }
+      }
+    }
+
     console.error("❌ Error insertando ledger_movement:", {
       error: error.message,
       code: error.code,

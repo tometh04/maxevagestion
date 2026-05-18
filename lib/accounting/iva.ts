@@ -126,9 +126,9 @@ export function calculatePurchaseIVA(
 }
 
 /**
- * Crear registro de IVA de venta (Débito Fiscal)
- * Calcula IVA sobre la ganancia (margen) = sale_amount_total - operator_cost_total
- * Soporta múltiples alícuotas según tipo de servicio turístico
+ * Crear o actualizar registro de IVA de venta (Débito Fiscal).
+ * Operación idempotente: si ya existe un registro para la operación lo actualiza
+ * en lugar de crear un duplicado (UNIQUE constraint en iva_sales.operation_id).
  */
 export async function createSaleIVA(
   supabase: SupabaseClient<Database>,
@@ -143,22 +143,25 @@ export async function createSaleIVA(
     calculateSaleIVA(saleAmountTotal, operatorCostTotal, serviceType)
 
   const { data, error } = await (supabase.from("iva_sales") as any)
-    .insert({
-      operation_id: operationId,
-      sale_amount_total: saleAmountTotal,
-      net_amount,
-      iva_amount,
-      currency,
-      sale_date: saleDate,
-      iva_rate: iva_rate,
-      service_type: service_type,
-      is_exempt: is_exempt,
-    })
+    .upsert(
+      {
+        operation_id: operationId,
+        sale_amount_total: saleAmountTotal,
+        net_amount,
+        iva_amount,
+        currency,
+        sale_date: saleDate,
+        iva_rate,
+        service_type,
+        is_exempt,
+      },
+      { onConflict: "operation_id" }
+    )
     .select("id")
     .single()
 
   if (error) {
-    console.error("Error creating sale IVA:", error)
+    console.error("Error upserting sale IVA:", error)
     throw new Error(`Error creando IVA de venta: ${error.message}`)
   }
 
@@ -166,7 +169,11 @@ export async function createSaleIVA(
 }
 
 /**
- * Crear registro de IVA de compra (Crédito Fiscal)
+ * Crear o actualizar registro de IVA de compra (Crédito Fiscal).
+ * Operación idempotente: si ya existe un registro para (operation_id, operator_id)
+ * lo actualiza en lugar de crear un duplicado.
+ * Constraint DB de respaldo: índice parcial UNIQUE(operation_id, operator_id)
+ * WHERE operator_id IS NOT NULL, y UNIQUE(operation_id) WHERE operator_id IS NULL.
  */
 export async function createPurchaseIVA(
   supabase: SupabaseClient<Database>,
@@ -179,6 +186,39 @@ export async function createPurchaseIVA(
 ): Promise<{ id: string }> {
   const { net_amount, iva_amount, iva_rate } = calculatePurchaseIVA(operatorCostTotal, purchaseIVARate)
 
+  // Check if a record already exists for this (operation, operator) pair
+  let existingQuery = (supabase.from("iva_purchases") as any)
+    .select("id")
+    .eq("operation_id", operationId)
+
+  if (operatorId) {
+    existingQuery = existingQuery.eq("operator_id", operatorId)
+  } else {
+    existingQuery = existingQuery.is("operator_id", null)
+  }
+
+  const { data: existing } = await existingQuery.maybeSingle()
+
+  if (existing) {
+    const { error } = await (supabase.from("iva_purchases") as any)
+      .update({
+        operator_cost_total: operatorCostTotal,
+        net_amount,
+        iva_amount,
+        currency,
+        purchase_date: purchaseDate,
+        iva_rate,
+      })
+      .eq("id", existing.id)
+
+    if (error) {
+      console.error("Error updating purchase IVA:", error)
+      throw new Error(`Error actualizando IVA de compra: ${error.message}`)
+    }
+
+    return { id: existing.id }
+  }
+
   const { data, error } = await (supabase.from("iva_purchases") as any)
     .insert({
       operation_id: operationId,
@@ -188,7 +228,7 @@ export async function createPurchaseIVA(
       iva_amount,
       currency,
       purchase_date: purchaseDate,
-      iva_rate: iva_rate,
+      iva_rate,
     })
     .select("id")
     .single()
