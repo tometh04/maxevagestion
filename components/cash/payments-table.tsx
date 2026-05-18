@@ -9,14 +9,26 @@ import { es } from "date-fns/locale"
 import { DataTable } from "@/components/ui/data-table"
 import { DataTableColumnHeader } from "@/components/ui/data-table-column-header"
 import { ServerPagination } from "@/components/ui/server-pagination"
-import { MoreHorizontal, Info } from "lucide-react"
+import { MoreHorizontal, Info, Trash2, Loader2 } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { toast } from "sonner"
 import { MarkPaidDialog } from "@/components/payments/mark-paid-dialog"
 import { PaymentInfoDialog } from "@/components/payments/payment-info-dialog"
 import Link from "next/link"
@@ -103,6 +115,10 @@ export function PaymentsTable({
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null)
   const [infoDialogOpen, setInfoDialogOpen] = useState(false)
   const [infoPayment, setInfoPayment] = useState<Payment | null>(null)
+  // Estado para eliminar pago (2026-05-18, Tomi pidió esta opción en /cash):
+  // antes solo se podía borrar desde dentro del detalle de la operación.
+  const [paymentToDelete, setPaymentToDelete] = useState<Payment | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
   
   // Estado de paginación server-side
   const [page, setPage] = useState(1)
@@ -321,6 +337,14 @@ export function PaymentsTable({
                     Marcar como pagado
                   </DropdownMenuItem>
                 )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                  onClick={() => setPaymentToDelete(payment)}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Eliminar pago
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           )
@@ -397,6 +421,75 @@ export function PaymentsTable({
         payment={infoPayment}
         type="customer"
       />
+
+      {/* Eliminar pago — pedido por Tomi 2026-05-18. El endpoint DELETE
+          /api/payments?paymentId=X ya existía pero solo se llamaba desde
+          el detalle de la operación. Ahora también desde /cash. */}
+      <AlertDialog
+        open={paymentToDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setPaymentToDelete(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar pago</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>
+                  Vas a eliminar este pago de{" "}
+                  <span className="font-semibold">
+                    {paymentToDelete?.currency} {paymentToDelete?.amount?.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                  </span>
+                  {paymentToDelete?.operations?.file_code && (
+                    <> de la operación <span className="font-mono text-xs">{paymentToDelete.operations.file_code}</span></>
+                  )}
+                  .
+                </p>
+                {paymentToDelete?.status === "PAID" && (
+                  <p className="text-destructive">
+                    ⚠️ Este pago ya está marcado como pagado. Al eliminarlo también se borra el movimiento de caja asociado.
+                  </p>
+                )}
+                <p className="text-muted-foreground text-xs">Esta acción no se puede deshacer.</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={async (e) => {
+                e.preventDefault()
+                if (!paymentToDelete) return
+                setIsDeleting(true)
+                try {
+                  const res = await fetch(`/api/payments?paymentId=${paymentToDelete.id}`, {
+                    method: "DELETE",
+                  })
+                  if (res.ok) {
+                    toast.success("Pago eliminado")
+                    setPaymentToDelete(null)
+                    onRefresh?.()
+                    if (useServerPagination) fetchPayments()
+                  } else {
+                    const err = await res.json().catch(() => ({}))
+                    toast.error(err?.error ?? `Error ${res.status}: no se pudo eliminar`)
+                  }
+                } catch (err: any) {
+                  toast.error(err?.message || "Error al eliminar el pago")
+                } finally {
+                  setIsDeleting(false)
+                }
+              }}
+            >
+              {isDeleting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }
