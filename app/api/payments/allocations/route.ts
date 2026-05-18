@@ -15,6 +15,12 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Sin permisos" }, { status: 403 })
   }
 
+  // Cross-tenant fix (2026-05-18): exigir org_id explícito.
+  if (!(user as any).org_id) {
+    return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+  }
+  const userOrgId = (user as any).org_id as string
+
   const { searchParams } = new URL(request.url)
   const operationId = searchParams.get("operationId")
   const paymentId = searchParams.get("paymentId")
@@ -28,13 +34,38 @@ export async function GET(request: Request) {
   // restrictiva en producción que no está en el repo (posiblemente aplicada
   // directo en Supabase) que filtra las allocations.
   //
-  // Workaround: usar admin client para el SELECT también. Las permission checks
-  // al inicio del handler (hasPermission cash:read) ya validan acceso del user.
-  // La tabla no tiene org_id ni FK directa a org, así que no hay riesgo de leak
-  // cross-tenant — las allocations se filtran por paymentId/operationId que el
-  // user ya tiene acceso a través de la operación.
+  // adminDb justificado: la tabla payment_passenger_allocations sufre el
+  // problema RLS fantasma (SELECT/DELETE devuelven 0 rows aún con permiso).
+  // Defense-in-depth: pre-validar que el paymentId/operationId pertenezcan al
+  // org del user via createServerClient (filtro org_id explícito) ANTES de
+  // pasar a admin.
   const supabase = await createServerClient()
   const admin = createAdminClient()
+
+  // Pre-validar payment_ids contra org del user
+  let allowedPaymentIds: string[] = []
+  if (paymentId) {
+    const { data: paymentRow } = await (supabase.from("payments") as any)
+      .select("id")
+      .eq("id", paymentId)
+      .eq("org_id", userOrgId)
+      .maybeSingle()
+    if (!paymentRow) {
+      return NextResponse.json({ allocations: [] })
+    }
+    allowedPaymentIds = [paymentId]
+  } else if (operationId) {
+    const { data: payments } = await (supabase
+      .from("payments") as any)
+      .select("id")
+      .eq("operation_id", operationId)
+      .eq("org_id", userOrgId)
+
+    if (!payments || payments.length === 0) {
+      return NextResponse.json({ allocations: [] })
+    }
+    allowedPaymentIds = payments.map((p: any) => p.id)
+  }
 
   let query = (admin.from("payment_passenger_allocations") as any)
     .select(`
@@ -46,25 +77,7 @@ export async function GET(request: Request) {
         customers:customer_id(id, first_name, last_name, email)
       )
     `)
-
-  if (paymentId) {
-    query = query.eq("payment_id", paymentId)
-  }
-
-  if (operationId) {
-    // Get all payment IDs for this operation first
-    const { data: payments } = await supabase
-      .from("payments")
-      .select("id")
-      .eq("operation_id", operationId)
-
-    if (!payments || payments.length === 0) {
-      return NextResponse.json({ allocations: [] })
-    }
-
-    const paymentIds = payments.map((p: any) => p.id)
-    query = query.in("payment_id", paymentIds)
-  }
+    .in("payment_id", allowedPaymentIds)
 
   const { data: allocations, error } = await query.order("created_at", { ascending: true })
 
@@ -89,6 +102,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Sin permisos" }, { status: 403 })
   }
 
+  // Cross-tenant fix (2026-05-18): exigir org_id y validar payment.
+  if (!(user as any).org_id) {
+    return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+  }
+  const userOrgId = (user as any).org_id as string
+
   const body = await request.json()
   const { paymentId, allocations } = body
 
@@ -102,11 +121,12 @@ export async function POST(request: Request) {
 
   const supabase = await createServerClient()
 
-  // Verify payment exists and get its amount
-  const { data: payment, error: paymentError } = await supabase
-    .from("payments")
+  // Verify payment exists, belongs to org, and get its amount
+  const { data: payment, error: paymentError } = await (supabase
+    .from("payments") as any)
     .select("id, amount, currency, operation_id")
     .eq("id", paymentId)
+    .eq("org_id", userOrgId)
     .single()
 
   if (paymentError || !payment) {
@@ -244,6 +264,12 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "Sin permisos" }, { status: 403 })
   }
 
+  // Cross-tenant fix (2026-05-18): exigir org_id.
+  if (!(user as any).org_id) {
+    return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+  }
+  const userOrgId = (user as any).org_id as string
+
   const { searchParams } = new URL(request.url)
   const paymentId = searchParams.get("paymentId")
 
@@ -251,9 +277,21 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "paymentId requerido" }, { status: 400 })
   }
 
+  // Validar que el payment pertenezca al org del user antes del DELETE.
+  const supabase = await createServerClient()
+  const { data: paymentRow } = await (supabase.from("payments") as any)
+    .select("id")
+    .eq("id", paymentId)
+    .eq("org_id", userOrgId)
+    .maybeSingle()
+  if (!paymentRow) {
+    return NextResponse.json({ error: "Pago no encontrado" }, { status: 404 })
+  }
+
   // Bug fix 2026-05-11: misma RLS fantasma que en GET. El DELETE vía
   // createServerClient retornaba status 200 pero no eliminaba nada (RLS
-  // ocultaba los rows). Usamos admin client después del permission check.
+  // ocultaba los rows). adminDb justificado: usado solo tras pre-validar
+  // paymentId contra org del user.
   const admin = createAdminClient()
 
   const { error } = await (admin.from("payment_passenger_allocations") as any)

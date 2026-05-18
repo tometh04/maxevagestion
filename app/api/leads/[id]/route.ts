@@ -27,13 +27,20 @@ export async function DELETE(
       return NextResponse.json({ error: "No tiene permiso para eliminar leads" }, { status: 403 })
     }
 
+    // Cross-tenant fix (2026-05-18): exigir org_id explícito.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+    const userOrgId = (user as any).org_id as string
+
     const supabase = await createServerClient()
 
-    // Get current lead
-    const { data: currentLead } = await supabase
-      .from("leads")
+    // Get current lead — filtro org_id explícito, no confiar en RLS
+    const { data: currentLead } = await (supabase
+      .from("leads") as any)
       .select("*, agencies(name)")
       .eq("id", id)
+      .eq("org_id", userOrgId)
       .single()
 
     if (!currentLead) {
@@ -47,10 +54,11 @@ export async function DELETE(
     // Única restricción de integridad: no se puede eliminar si está vinculado a una operación.
 
     // Check if lead is linked to an operation
-    const { data: operations } = await supabase
-      .from("operations")
+    const { data: operations } = await (supabase
+      .from("operations") as any)
       .select("id")
       .eq("lead_id", id)
+      .eq("org_id", userOrgId)
       .limit(1)
 
     if (operations && operations.length > 0) {
@@ -60,13 +68,14 @@ export async function DELETE(
       )
     }
 
-    // Delete lead — admin client para cascada sobre FKs, pero acotado por
-    // org_id conocido (SaaS Pilar 2: defensa-en-profundidad, cierra race
-    // conditions donde el lead podría mutar de org entre el SELECT y el DELETE).
+    // Delete lead — admin client para cascada sobre FKs, acotado SIEMPRE por
+    // org_id validado arriba (defense-in-depth).
+    // adminDb justificado: cascada FK puede tener triggers que requieren bypass.
     const adminClient = createAdminClient()
-    let deleteQuery = (adminClient.from("leads") as any).delete().eq("id", id)
-    if (lead.org_id) deleteQuery = deleteQuery.eq("org_id", lead.org_id)
-    const { error } = await deleteQuery
+    const { error } = await (adminClient.from("leads") as any)
+      .delete()
+      .eq("id", id)
+      .eq("org_id", userOrgId)
 
     if (error) {
       console.error("Error deleting lead:", error)
@@ -113,13 +122,20 @@ export async function PATCH(
       return NextResponse.json({ error: "No tiene permiso para editar leads" }, { status: 403 })
     }
 
+    // Cross-tenant fix (2026-05-18): exigir org_id explícito.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+    const userOrgId = (user as any).org_id as string
+
     const supabase = await createServerClient()
 
-    // Get current lead
-    const { data: currentLead } = await supabase
-      .from("leads")
+    // Get current lead — filtro org_id explícito
+    const { data: currentLead } = await (supabase
+      .from("leads") as any)
       .select("*")
       .eq("id", id)
+      .eq("org_id", userOrgId)
       .single()
 
     if (!currentLead) {
@@ -127,6 +143,10 @@ export async function PATCH(
     }
 
     const lead = currentLead as any
+
+    // Body anti-forge: no aceptar org_id ni agency_id del body
+    delete body.org_id
+    delete body.agency_id
 
     // Propiedad total: una vez en el sistema, el lead es nuestro.
     // Cualquier usuario con permiso puede editar cualquier campo de cualquier lead,
@@ -149,6 +169,7 @@ export async function PATCH(
         .select("seller_id")
         .eq("list_name", body.list_name)
         .eq("agency_id", lead.agency_id)
+        .eq("org_id", userOrgId)
         .maybeSingle()
 
       if (targetList?.seller_id) {
@@ -174,14 +195,13 @@ export async function PATCH(
       updateData.deposit_account_id = null
     }
 
-    // SaaS Pilar 2: admin client para cross-org read after write, pero
-    // acotado por org_id conocido del lead que ya validamos via RLS arriba.
+    // adminDb justificado: cross-org read after write para devolver el lead
+    // enriquecido. UPDATE acotado por org_id validado arriba.
     const adminClient = createAdminClient()
-    let updateQuery = (adminClient.from("leads") as any)
+    const { error } = await (adminClient.from("leads") as any)
       .update(updateData)
       .eq("id", id)
-    if (lead.org_id) updateQuery = updateQuery.eq("org_id", lead.org_id)
-    const { error } = await updateQuery
+      .eq("org_id", userOrgId)
 
     if (error) {
       console.error("Error updating lead:", error)
@@ -306,6 +326,7 @@ export async function PATCH(
     const { data: updatedLead } = await (adminClient.from("leads") as any)
       .select("*, agencies(name), users:assigned_seller_id(name, email)")
       .eq("id", id)
+      .eq("org_id", userOrgId)
       .single()
 
     return NextResponse.json({ success: true, lead: updatedLead })
