@@ -37,8 +37,21 @@ import type { CallbellWebhookEvent, CallbellContact } from "./types"
 export function adaptCallbellWebhook(
   raw: unknown
 ): CallbellWebhookEvent | null {
-  if (!raw || typeof raw !== "object") return null
+  if (raw === null || raw === undefined) return null
+
+  // Caso "wrapper array" — algunos webhook delivery systems envuelven el evento
+  // en un array `[{...}]`. Si llega así, procesamos el primer item.
+  if (Array.isArray(raw)) {
+    if (raw.length === 0) return null
+    return adaptCallbellWebhook(raw[0])
+  }
+
+  if (typeof raw !== "object") return null
   const body = raw as Record<string, unknown>
+
+  // Log defensivo: si el payload tiene shape inesperado, deja un trace de los
+  // top-level keys para diagnosticar (Railway logs).
+  const logKeys = Object.keys(body).slice(0, 12)
 
   // Caso 1: ya viene en formato "rico" CallbellWebhookEvent (tests, curl manual).
   if (
@@ -94,7 +107,59 @@ export function adaptCallbellWebhook(
     }
   }
 
-  // Caso 4: payload no reconocido — devolvemos null, el route loguea y retorna 400/200
+  // Caso 4: fallback permisivo — si tiene contact.phoneNumber en cualquier sub-key
+  // ("contact", "data.contact", etc.), tratamos como message_created (sin text)
+  // o contact_created según haya text. Cubre variantes de Callbell que no documenta.
+  const contactCandidate =
+    (body.contact && typeof body.contact === "object"
+      ? (body.contact as Record<string, unknown>)
+      : null) ??
+    (body.data &&
+    typeof body.data === "object" &&
+    (body.data as Record<string, unknown>).contact &&
+    typeof (body.data as Record<string, unknown>).contact === "object"
+      ? ((body.data as Record<string, unknown>).contact as Record<
+          string,
+          unknown
+        >)
+      : null)
+
+  if (
+    contactCandidate &&
+    typeof contactCandidate.phoneNumber === "string"
+  ) {
+    const messageText =
+      typeof body.text === "string" ? body.text : undefined
+    return {
+      type: messageText ? "message_created" : "contact_created",
+      uuid:
+        typeof body.uuid === "string"
+          ? body.uuid
+          : `cb-fallback-${Date.now()}`,
+      timestamp:
+        typeof body.createdAt === "string"
+          ? body.createdAt
+          : new Date().toISOString(),
+      data: {
+        contact: normalizeContact(contactCandidate),
+        ...(messageText
+          ? {
+              message: {
+                text: messageText,
+                status: body.status,
+                from: body.from,
+                to: body.to,
+              },
+            }
+          : {}),
+      },
+    }
+  }
+
+  // Caso 5: payload no reconocido — log y devolvemos null
+  console.warn(
+    `[callbell-adapter] payload no reconocido. top-level keys: ${JSON.stringify(logKeys)}`
+  )
   return null
 }
 
