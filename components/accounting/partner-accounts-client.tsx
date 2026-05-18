@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
@@ -348,14 +349,10 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
                   </div>
                   <div>
                     <Label>Porcentaje de Ganancias (%)</Label>
-                    <Input
-                      type="number"
+                    <DecimalInput
                       value={partnerProfitPercentage}
-                      onChange={(e) => setPartnerProfitPercentage(e.target.value)}
+                      onChange={(v) => setPartnerProfitPercentage(v)}
                       placeholder="0.00"
-                      min="0"
-                      max="100"
-                      step="0.01"
                     />
                     <p className="text-xs text-muted-foreground mt-1">
                       Porcentaje que recibe este socio de las ganancias mensuales (0-100)
@@ -430,13 +427,10 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label>Monto</Label>
-                    <Input
-                      type="number"
+                    <DecimalInput
                       value={withdrawalAmount}
-                      onChange={(e) => setWithdrawalAmount(e.target.value)}
+                      onChange={(v) => setWithdrawalAmount(v)}
                       placeholder="0.00"
-                      min="0"
-                      step="0.01"
                     />
                   </div>
                   <div>
@@ -490,11 +484,9 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
                 {needsExchangeRate && (
                   <div>
                     <Label>Tipo de Cambio *</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
+                    <DecimalInput
                       value={withdrawalExchangeRate}
-                      onChange={(e) => setWithdrawalExchangeRate(e.target.value)}
+                      onChange={(v) => setWithdrawalExchangeRate(v)}
                       placeholder="Ej: 1200"
                     />
                     <p className="text-xs text-muted-foreground mt-1">

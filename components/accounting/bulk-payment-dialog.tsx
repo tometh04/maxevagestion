@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -653,13 +654,9 @@ export function BulkPaymentDialog({
                             <TableCell className="text-right">
                               {isSelected ? (
                                 <div className="space-y-1 flex flex-col items-end">
-                                  <Input
-                                    type="number"
-                                    step="0.01"
-                                    min="0"
-                                    max={Math.round(remaining * 1.10 * 100) / 100}
+                                  <DecimalInput
                                     value={amountToPay}
-                                    onChange={(e) => handleAmountChange(payment.id, e.target.value)}
+                                    onChange={(v) => handleAmountChange(payment.id, v)}
                                     className={`w-32 ${amountToPay > remaining ? 'border-accent-coral text-accent-coral' : ''}`}
                                     placeholder="0.00"
                                   />
@@ -734,11 +731,9 @@ export function BulkPaymentDialog({
                 {needsExchangeRate() && (
                   <div>
                     <Label>Tipo de Cambio *</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
+                    <DecimalInput
                       value={exchangeRate}
-                      onChange={(e) => setExchangeRate(e.target.value)}
+                      onChange={(v) => setExchangeRate(v)}
                       placeholder="Ej: 1200"
                     />
                     <p className="text-xs text-muted-foreground mt-1">
@@ -792,11 +787,9 @@ export function BulkPaymentDialog({
                   <div className="grid gap-3 md:grid-cols-2 pl-6">
                     <div>
                       <Label className="text-xs">Porcentaje de bonificación (%)</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
+                      <DecimalInput
                         value={bonusPercentage}
-                        onChange={(e) => setBonusPercentage(e.target.value)}
+                        onChange={(v) => setBonusPercentage(v)}
                         placeholder="1.45"
                         onFocus={(e) => e.target.select()}
                       />

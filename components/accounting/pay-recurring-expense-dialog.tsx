@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import {
   Form,
   FormControl,
@@ -275,12 +276,9 @@ export function PayRecurringExpenseDialog({
                   <FormItem>
                     <FormLabel>Tipo de Cambio *</FormLabel>
                     <FormControl>
-                      <Input
-                        type="number"
-                        step="0.01"
+                      <DecimalInput
                         placeholder="Ej: 1200"
                         {...field}
-                        onChange={(e) => field.onChange(parseFloat(e.target.value) || "")}
                       />
                     </FormControl>
                     <p className="text-xs text-muted-foreground">

@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import {
   Select,
   SelectContent,
@@ -276,13 +277,7 @@ export function ManualPaymentDialog({
                     <FormItem>
                       <FormLabel>Monto</FormLabel>
                       <FormControl>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0.01"
-                          placeholder="0.00"
-                          {...field}
-                        />
+                        <DecimalInput placeholder="0.00" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -320,14 +315,10 @@ export function ManualPaymentDialog({
                     <FormItem>
                       <FormLabel>Tipo de Cambio (USD/ARS)</FormLabel>
                       <FormControl>
-                        <Input
-                          type="number"
-                          step="0.0001"
-                          min="0.0001"
+                        <DecimalInput
                           placeholder="1500.00"
                           {...field}
                           value={field.value || ""}
-                          onChange={(e) => field.onChange(parseFloat(e.target.value) || undefined)}
                         />
                       </FormControl>
                       <FormDescription>
