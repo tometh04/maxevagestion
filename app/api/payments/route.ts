@@ -277,12 +277,18 @@ export async function POST(request: Request) {
       }
     }
 
+    // 🔴 Fix cross-tenant (2026-05-18): guard de org_id obligatorio.
+    if (!user.org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     // SELLER: verificar que la operación le pertenece
     if (user.role === "SELLER" && operation_id) {
       const { data: operationOwnership } = await (supabase.from("operations") as any)
         .select("id")
         .eq("id", operation_id)
         .eq("seller_id", user.id)
+        .eq("org_id", user.org_id) // defensive: scope por org también para SELLER
         .maybeSingle()
 
       if (!operationOwnership) {
@@ -292,11 +298,14 @@ export async function POST(request: Request) {
 
     let operationData: any = null
     if (operation_id) {
+      // Fetch + validación de org_id en la misma query: si la operación no
+      // pertenece al org del user, el .single() devuelve PGRST116 (no row).
       const { data: operation, error: operationError } = await (supabase.from("operations") as any)
         .select(`
           seller_id,
           operator_id,
           agency_id,
+          org_id,
           sale_currency,
           currency,
           destination,
@@ -305,6 +314,7 @@ export async function POST(request: Request) {
           )
         `)
         .eq("id", operation_id)
+        .eq("org_id", user.org_id)
         .single()
 
       if (operationError || !operation) {
@@ -1411,10 +1421,17 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "No tienes permisos para eliminar pagos" }, { status: 403 })
     }
 
-    // 1. Obtener el pago con su ledger_movement_id
+    // 🔴 Fix cross-tenant (2026-05-18): scope obligatorio por org.
+    // Sin este check, cualquier user con un paymentId ajeno podía DELETE-arlo.
+    if (!user.org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
+    // 1. Obtener el pago con su ledger_movement_id — filtrado por org del user
     const { data: payment, error: fetchError } = await (supabase.from("payments") as any)
       .select("*, operation_id")
       .eq("id", paymentId)
+      .eq("org_id", user.org_id)
       .single()
 
     if (fetchError || !payment) {
@@ -1641,10 +1658,18 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "paymentId es requerido" }, { status: 400 })
     }
 
-    // 1. Obtener pago actual
+    // 🔴 Fix cross-tenant (2026-05-18): scope obligatorio por org.
+    // Sin este check, cualquier ADMIN/CONTABLE con un paymentId ajeno
+    // podía editar/marcar como pagado un payment de otra org.
+    if (!user.org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
+    // 1. Obtener pago actual — filtrado por org del user
     const { data: existingPayment, error: fetchError } = await (supabase.from("payments") as any)
       .select("*")
       .eq("id", paymentId)
+      .eq("org_id", user.org_id)
       .single()
 
     if (fetchError || !existingPayment) {
