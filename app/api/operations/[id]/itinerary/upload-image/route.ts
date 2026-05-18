@@ -16,15 +16,17 @@ export async function POST(
 
     const { id: operationId } = await params
 
-    // P0 2026-05-10: verificar que el user PUEDE LEER la operation con su
-    // client (que respeta RLS) ANTES de usar adminClient para upload. Si el
-    // SELECT retorna la row, RLS confirmó que el user tiene acceso al tenant
-    // de esa operation — usamos eso como gate sin requerir users.org_id
-    // explícitamente populado (más compatible con users legacy).
+    // Cross-tenant fix (2026-05-18): RLS no protegía como creíamos, agregamos
+    // filtro explícito por org_id. El comment previo decía "RLS confirmó que
+    // el user tiene acceso" — falso.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
     const userClient = await createServerClient()
     const { data: opRow, error: opErr } = await (userClient.from("operations") as any)
       .select("id")
       .eq("id", operationId)
+      .eq("org_id", (user as any).org_id)
       .maybeSingle()
     if (opErr || !opRow) {
       return NextResponse.json({ error: "Operación no encontrada o sin acceso" }, { status: 404 })

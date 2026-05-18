@@ -86,10 +86,16 @@ export async function PATCH(
     const { id: operationId, serviceId } = await params
     const supabase = await createServerClient()
 
+    // Cross-tenant fix (2026-05-18): scopear fetch por org del user.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     // Verificar operación
     const { data: operation, error: opError } = await (supabase.from("operations") as any)
       .select("id, seller_id, status, agency_id, file_code, destination, departure_date")
       .eq("id", operationId)
+      .eq("org_id", (user as any).org_id)
       .single()
 
     if (opError || !operation) {
@@ -246,10 +252,16 @@ export async function DELETE(
     const { id: operationId, serviceId } = await params
     const supabase = await createServerClient()
 
+    // Cross-tenant fix (2026-05-18): scopear fetch por org del user.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     // Verificar que la operación existe y el usuario tiene acceso
     const { data: operation, error: opError } = await (supabase.from("operations") as any)
-      .select("id, seller_id, status")
+      .select("id, seller_id, status, org_id")
       .eq("id", operationId)
+      .eq("org_id", (user as any).org_id)
       .single()
 
     if (opError || !operation) {

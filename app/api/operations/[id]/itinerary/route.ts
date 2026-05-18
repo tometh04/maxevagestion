@@ -8,15 +8,21 @@ import { canPerformAction } from "@/lib/permissions-api"
  * org_id — un agregado de Pilar 2c. Hasta que se migre la tabla, la defensa
  * está en código: validamos vía server client que la operation parent
  * pertenece al user (operations SÍ tiene RLS tenant_isolation).
+ *
+ * Cross-tenant fix (2026-05-18): además del fetch RLS, scopeamos por org_id
+ * explícito — no confiamos en RLS solo.
  */
 async function verifyOperationBelongsToUser(
   supabase: any,
-  operationId: string
+  operationId: string,
+  orgId: string | null
 ): Promise<boolean> {
+  if (!orgId) return false
   const { data: operation } = await supabase
     .from("operations")
     .select("id")
     .eq("id", operationId)
+    .eq("org_id", orgId)
     .maybeSingle()
   return !!operation
 }
@@ -35,7 +41,7 @@ export async function GET(
     const { id: operationId } = await params
     const supabase = await createServerClient()
 
-    if (!(await verifyOperationBelongsToUser(supabase, operationId))) {
+    if (!(await verifyOperationBelongsToUser(supabase, operationId, (user as any).org_id))) {
       return NextResponse.json({ error: "Operación no encontrada" }, { status: 404 })
     }
 
@@ -69,7 +75,7 @@ export async function POST(
     const body = await request.json()
     const supabase = await createServerClient()
 
-    if (!(await verifyOperationBelongsToUser(supabase, operationId))) {
+    if (!(await verifyOperationBelongsToUser(supabase, operationId, (user as any).org_id))) {
       return NextResponse.json({ error: "Operación no encontrada" }, { status: 404 })
     }
 

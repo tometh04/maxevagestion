@@ -46,6 +46,12 @@ export async function GET(
     const supabase = await createServerClient()
     const { id: operationId } = await params
 
+    // Cross-tenant fix (2026-05-18): exigir org_id y scopear el fetch para
+    // que ADMIN/CONTABLE/SUPER_ADMIN de otra org no puedan leer la op por id.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     // Get operation with related data (INTEGRADO: clientes incluidos en la misma query)
     const { data: operation, error: operationError } = await supabase
       .from("operations")
@@ -82,6 +88,7 @@ export async function GET(
         )
       `)
       .eq("id", operationId)
+      .eq("org_id", (user as any).org_id)
       .single()
 
   if (operationError || !operation) {
@@ -152,11 +159,18 @@ export async function PATCH(
     const { id: operationId } = await params
     const body = await request.json()
 
+    // Cross-tenant fix (2026-05-18): exigir org_id y scopear el fetch para
+    // bloquear PATCH desde otra org (defense-in-depth sobre RLS).
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     // Get current operation to check permissions and compare values
     const { data: currentOperation } = await supabase
       .from("operations")
       .select("*")
       .eq("id", operationId)
+      .eq("org_id", (user as any).org_id)
       .single()
 
     if (!currentOperation) {
@@ -764,11 +778,17 @@ export async function DELETE(
     const rateLimitBlock = enforceUserRateLimit(user.id, "/api/operations/[id]:DELETE", "WRITE")
     if (rateLimitBlock) return rateLimitBlock
 
+    // Cross-tenant fix (2026-05-18): exigir org_id y scopear el fetch.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     // Get operation data before deletion
     const { data: operation } = await supabase
       .from("operations")
       .select("*, lead_id")
       .eq("id", operationId)
+      .eq("org_id", (user as any).org_id)
       .single()
 
     if (!operation) {
