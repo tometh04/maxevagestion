@@ -3,6 +3,7 @@ import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canPerformAction } from "@/lib/permissions-api"
 import { getExchangeRate } from "@/lib/accounting/exchange-rates"
+import { getOrgAgencyIds } from "@/lib/organizations"
 
 /**
  * Transfiere dinero entre cajas
@@ -40,10 +41,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No se puede transferir a la misma caja" }, { status: 400 })
     }
 
+    // Cross-tenant fix (2026-05-18): scopear ambas boxes por agencies del org.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+    const orgAgencyIds = (await getOrgAgencyIds((user as any).org_id)) || []
+    if (orgAgencyIds.length === 0) {
+      return NextResponse.json({ error: "Cajas no encontradas" }, { status: 404 })
+    }
+
     // Get both boxes
     const { data: boxes } = await (supabase.from("cash_boxes") as any)
       .select("*")
       .in("id", [from_box_id, to_box_id])
+      .in("agency_id", orgAgencyIds)
 
     if (!boxes || boxes.length !== 2) {
       return NextResponse.json({ error: "Una o ambas cajas no fueron encontradas" }, { status: 404 })
