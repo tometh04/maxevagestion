@@ -1,18 +1,18 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { isPlatformAdmin } from "@/lib/auth/platform"
+import { logSecurityEvent } from "@/lib/security/audit"
 
 // POST - Eliminar seed data (NO elimina leads ni datos reales)
 export async function POST(request: Request) {
   try {
     const { user } = await getCurrentUser()
-    
-    // Solo SUPER_ADMIN puede ejecutar esto
-    if (user.role !== "SUPER_ADMIN") {
-      return NextResponse.json({ error: "Solo el administrador puede ejecutar esta acción" }, { status: 403 })
-    }
-
     const supabase = await createServerClient()
+
+    if (!(await isPlatformAdmin(supabase, user.id))) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
     const deletedCounts: Record<string, number> = {}
 
 
@@ -130,6 +130,15 @@ export async function POST(request: Request) {
     // - whatsapp_templates (configuración)
     // - documents de leads (datos reales)
 
+
+    logSecurityEvent({
+      eventType: "ADMIN_CLEAR_SEED_DATA",
+      severity: "WARN",
+      actorUserId: user.id,
+      actorAuthId: (user as any).auth_id,
+      requestPath: "/api/admin/clear-seed-data",
+      details: { deleted: deletedCounts },
+    })
 
     return NextResponse.json({
       success: true,
