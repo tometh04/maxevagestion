@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
@@ -317,7 +318,7 @@ export function EditRecurringPaymentDialog({
                       <FormItem>
                         <FormLabel>Monto *</FormLabel>
                         <FormControl>
-                          <Input type="number" step="0.01" {...field} />
+                          <DecimalInput {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>

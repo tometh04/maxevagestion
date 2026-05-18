@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -485,16 +486,13 @@ export function UsersSettings() {
                   {newUser.role === "SELLER" && (
                     <div className="space-y-2">
                       <Label htmlFor="commission">% Comisión por defecto</Label>
-                      <Input
+                      <DecimalInput
                         id="commission"
-                        type="number"
-                        min="0"
-                        max="100"
                         value={newUser.default_commission_percentage}
-                        onChange={(e) =>
+                        onChange={(v) =>
                           setNewUser({
                             ...newUser,
-                            default_commission_percentage: parseFloat(e.target.value) || 0,
+                            default_commission_percentage: parseFloat(v) || 0,
                           })
                         }
                       />

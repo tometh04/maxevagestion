@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import {
@@ -339,12 +340,9 @@ export function NewCashMovementDialog({
                     <FormItem>
                       <FormLabel>Monto *</FormLabel>
                       <FormControl>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
+                        <DecimalInput
                           {...field}
-                          onChange={(e) => field.onChange(Number(e.target.value))}
+                          onChange={(v) => field.onChange(Number(v) || 0)}
                         />
                       </FormControl>
                       <FormMessage />

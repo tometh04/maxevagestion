@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
@@ -303,27 +304,21 @@ export function CreateJournalEntryDialog({
                         </Select>
                       </td>
                       <td className="py-1.5 px-2">
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
+                        <DecimalInput
                           placeholder="0.00"
                           value={line.debit_amount}
-                          onChange={(e) =>
-                            updateLine(index, "debit_amount", e.target.value)
+                          onChange={(v) =>
+                            updateLine(index, "debit_amount", v)
                           }
                           className="h-9 text-right text-xs font-mono"
                         />
                       </td>
                       <td className="py-1.5 px-2">
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
+                        <DecimalInput
                           placeholder="0.00"
                           value={line.credit_amount}
-                          onChange={(e) =>
-                            updateLine(index, "credit_amount", e.target.value)
+                          onChange={(v) =>
+                            updateLine(index, "credit_amount", v)
                           }
                           className="h-9 text-right text-xs font-mono"
                         />

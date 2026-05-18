@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import { Label } from "@/components/ui/label"
 import { DatePicker } from "@/components/ui/date-picker"
 import {
@@ -393,11 +394,9 @@ export function CommissionsSettings() {
                         Valor {form.watch("basis") === "FIXED_PERCENTAGE" ? "(%)" : "(Monto)"}
                       </FormLabel>
                       <FormControl>
-                        <Input
-                          type="number"
-                          step={form.watch("basis") === "FIXED_PERCENTAGE" ? "0.01" : "1"}
+                        <DecimalInput
                           {...field}
-                          onChange={(e) => field.onChange(Number(e.target.value))}
+                          onChange={(v) => field.onChange(Number(v) || 0)}
                         />
                       </FormControl>
                       <FormMessage />

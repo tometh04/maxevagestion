@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Calendar } from "@/components/ui/calendar"
@@ -330,10 +331,9 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
             <div className="space-y-1">
               <Label className="text-xs">TC del Mes (USD/ARS)</Label>
               <div className="flex gap-2">
-                <Input
-                  type="number"
+                <DecimalInput
                   value={tcInput}
-                  onChange={(e) => setTcInput(e.target.value)}
+                  onChange={(v) => setTcInput(v)}
                   placeholder="1000"
                   className="flex-1 h-8 text-xs"
                 />
@@ -762,10 +762,9 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
           </DialogHeader>
           <div className="py-4">
             <Label>Tipo de Cambio (1 USD = X ARS)</Label>
-            <Input
-              type="number"
+            <DecimalInput
               value={displayTC}
-              onChange={(e) => setDisplayTC(e.target.value)}
+              onChange={(v) => setDisplayTC(v)}
               placeholder="Ej: 1000"
               className="mt-2"
             />

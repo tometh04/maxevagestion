@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -590,14 +591,7 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
                     <FormItem>
                       <FormLabel>Monto *</FormLabel>
                       <FormControl>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          placeholder="0.00"
-                          {...field}
-                          onChange={(e) => field.onChange(Number(e.target.value))}
-                        />
+                        <DecimalInput placeholder="0.00" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

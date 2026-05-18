@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { toast } from "sonner"
@@ -69,13 +70,10 @@ export function AgencyApprovalRulesForm({ agencyId }: { agencyId: string }) {
             {ROLES.map((role) => (
               <div key={role} className="grid grid-cols-2 gap-3 items-center">
                 <Label>{role}</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  step={1000}
+                <DecimalInput
                   placeholder="Vacío = ilimitado"
                   value={rules[role] ?? ""}
-                  onChange={(e) => setRules({ ...rules, [role]: e.target.value })}
+                  onChange={(v) => setRules({ ...rules, [role]: v })}
                 />
               </div>
             ))}

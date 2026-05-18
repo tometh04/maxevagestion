@@ -30,6 +30,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
@@ -1017,14 +1018,10 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
                           </div>
                           <div className="flex items-center gap-2">
                             {isSelected ? (
-                              <Input
-                                type="number"
-                                step="0.01"
-                                min="0.01"
-                                max={remaining}
+                              <DecimalInput
                                 value={payAmounts[c.id] ?? remaining}
-                                onChange={(e) => {
-                                  const val = parseFloat(e.target.value) || 0
+                                onChange={(v) => {
+                                  const val = parseFloat(v) || 0
                                   setPayAmounts((prev) => ({ ...prev, [c.id]: Math.min(val, remaining) }))
                                 }}
                                 className="h-8 w-28 text-sm text-right tabular-nums"
