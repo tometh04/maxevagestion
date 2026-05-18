@@ -23,6 +23,9 @@ type OrgRow = {
   contact_phone: string | null
   created_at: string
   profile_completion: number
+  trial_ends_at: string | null
+  current_period_ends_at: string | null
+  mp_preapproval_id: string | null
 }
 
 type Props = {
@@ -32,13 +35,61 @@ type Props = {
   buildSortHref: (col: string) => string
 }
 
+// Tags con border + bg para que sean reconocibles a vuelo de ojo.
+// ACTIVE pedido por Tomi (2026-05-16): "tag verde" — antes era bg-success/15 muy
+// soft, casi imperceptible. Ahora con border verde para que salte.
 const STATUS_COLOR: Record<string, string> = {
-  TRIAL:   "bg-primary/15 text-primary",
-  ACTIVE:  "bg-success/15 text-success",
-  PAST_DUE: "bg-accent-coral/15 text-accent-coral",
-  PENDING_PAYMENT: "bg-accent-coral/15 text-accent-coral",
-  CANCELLED: "bg-muted-foreground/15 text-muted-foreground",
-  SUSPENDED: "bg-destructive/15 text-destructive",
+  TRIAL:           "bg-primary/15 text-primary border border-primary/30",
+  TRIALING:        "bg-primary/15 text-primary border border-primary/30",
+  ACTIVE:          "bg-success/20 text-success border border-success/40 font-medium",
+  PAST_DUE:        "bg-accent-coral/15 text-accent-coral border border-accent-coral/30",
+  PENDING_PAYMENT: "bg-accent-coral/15 text-accent-coral border border-accent-coral/30",
+  CANCELLED:       "bg-muted-foreground/15 text-muted-foreground border border-border/60",
+  SUSPENDED:       "bg-destructive/15 text-destructive border border-destructive/30",
+}
+
+// "Vence" = cuándo termina el período/trial actual.
+// "Próximo cobro" = cuándo MP intentará cobrar de nuevo.
+// Para PRO+MP esos son básicamente la misma fecha. Para CANCELLED no hay
+// próximo cobro. Para TRIALING, vence el trial y el primer cobro arranca
+// ese mismo día.
+function getVencimiento(o: OrgRow): string | null {
+  if (o.subscription_status === "TRIALING" || o.subscription_status === "TRIAL") {
+    return o.trial_ends_at
+  }
+  return o.current_period_ends_at
+}
+
+function getProximoCobro(o: OrgRow): string | null {
+  if (o.subscription_status === "CANCELLED" || o.subscription_status === "SUSPENDED") {
+    return null
+  }
+  return getVencimiento(o)
+}
+
+function isDateSoon(iso: string | null, days = 7): boolean {
+  if (!iso) return false
+  const diffMs = new Date(iso).getTime() - Date.now()
+  return diffMs >= 0 && diffMs <= days * 86_400_000
+}
+
+function isDatePast(iso: string | null): boolean {
+  if (!iso) return false
+  return new Date(iso).getTime() < Date.now()
+}
+
+function formatDateRelative(iso: string | null): string {
+  if (!iso) return "—"
+  const diffMs = new Date(iso).getTime() - Date.now()
+  const days = Math.round(diffMs / 86_400_000)
+  if (days === 0) return "hoy"
+  if (days > 0 && days < 30) return `en ${days}d`
+  if (days < 0 && days > -30) return `hace ${-days}d`
+  return new Date(iso).toLocaleDateString("es-AR", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  })
 }
 
 export function OrgsTable({ orgs, sort, dir, buildSortHref }: Props) {
@@ -83,6 +134,8 @@ export function OrgsTable({ orgs, sort, dir, buildSortHref }: Props) {
             </Link>
           </DataTableTh>
           <DataTableTh>Contacto</DataTableTh>
+          <DataTableTh>Vence</DataTableTh>
+          <DataTableTh>Próximo cobro</DataTableTh>
           <DataTableTh>
             <Link
               href={buildSortHref("created_at")}
@@ -135,6 +188,42 @@ export function OrgsTable({ orgs, sort, dir, buildSortHref }: Props) {
               ) : (
                 <span className="text-muted-foreground">—</span>
               )}
+            </DataTableTd>
+            <DataTableTd>
+              {(() => {
+                const vence = getVencimiento(o)
+                if (!vence) return <span className="text-muted-foreground">—</span>
+                const past = isDatePast(vence)
+                const soon = !past && isDateSoon(vence, 7)
+                return (
+                  <div
+                    className={cn(
+                      "text-xs",
+                      past ? "text-destructive font-medium" : soon ? "text-accent-coral" : "text-muted-foreground",
+                    )}
+                    title={new Date(vence).toLocaleDateString("es-AR", { day: "2-digit", month: "long", year: "numeric" })}
+                  >
+                    {formatDateRelative(vence)}
+                  </div>
+                )
+              })()}
+            </DataTableTd>
+            <DataTableTd>
+              {(() => {
+                const next = getProximoCobro(o)
+                if (!next) return <span className="text-muted-foreground">—</span>
+                // Indicador del tipo de cobro: MP auto / manual / —
+                const isManual = !!o.custom_plan_id && !o.mp_preapproval_id
+                const channelLabel = isManual ? "manual" : o.mp_preapproval_id ? "auto MP" : "—"
+                return (
+                  <div className="text-xs">
+                    <div className="text-muted-foreground">{formatDateRelative(next)}</div>
+                    <div className="text-[10px] text-muted-foreground/70 uppercase tracking-wide">
+                      {channelLabel}
+                    </div>
+                  </div>
+                )
+              })()}
             </DataTableTd>
             <DataTableTd className="text-muted-foreground">{relativeTime(o.created_at)}</DataTableTd>
           </DataTableRow>

@@ -42,9 +42,15 @@ describe("computeProfileCompletion", () => {
 })
 
 describe("profileBadgeLevel", () => {
-  it("0 → empty", () => expect(profileBadgeLevel(0)).toBe("empty"))
-  it("1-7 → partial", () => {
-    for (let i = 1; i <= 7; i++) expect(profileBadgeLevel(i)).toBe("partial")
+  // Semáforo actualizado 2026-05-16 (Tomi): el threshold viejo solo daba
+  // verde a 8/8 — inútil para triage rápido en /admin/orgs.
+  it("0-3 → empty (rojo)", () => {
+    for (let i = 0; i <= 3; i++) expect(profileBadgeLevel(i)).toBe("empty")
   })
-  it("8 → complete", () => expect(profileBadgeLevel(8)).toBe("complete"))
+  it("4-5 → partial (amarillo)", () => {
+    for (let i = 4; i <= 5; i++) expect(profileBadgeLevel(i)).toBe("partial")
+  })
+  it("6-8 → complete (verde)", () => {
+    for (let i = 6; i <= 8; i++) expect(profileBadgeLevel(i)).toBe("complete")
+  })
 })

@@ -58,12 +58,14 @@ export default async function AdminOrgsPage({
   }
 
   // Base query desde la VIEW (incluye profile_completion)
+  // 2026-05-16: agregamos trial_ends_at + current_period_ends_at para la nueva
+  // columna "Vence/Próximo cobro" en la tabla.
   let query: any = admin
     .from("organizations_with_profile_completion")
     .select(
       `id, name, slug, subscription_status, plan, custom_plan_id,
        contact_name, contact_phone, created_at, profile_completion,
-       mp_preapproval_id`,
+       mp_preapproval_id, trial_ends_at, current_period_ends_at`,
       { count: "exact" },
     )
 
