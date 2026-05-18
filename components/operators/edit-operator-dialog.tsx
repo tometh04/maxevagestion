@@ -207,6 +207,9 @@ export function EditOperatorDialog({
                 <DollarSign className="h-3.5 w-3.5 text-accent-coral" />
                 <span className="text-xs font-medium text-foreground/70">Financiero</span>
               </div>
+              {/* Bug fix 2026-05-18 (idéntico al de new-operator-dialog): type="number"
+                  bloquea coma como decimal en Chrome con locale inglés. Ver
+                  new-operator-dialog.tsx para detalle. */}
               <FormField
                 control={form.control}
                 name="credit_limit"
@@ -214,7 +217,21 @@ export function EditOperatorDialog({
                   <FormItem>
                     <FormLabel>Límite de Crédito</FormLabel>
                     <FormControl>
-                      <Input type="number" step="0.01" min="0" placeholder="0.00" {...field} />
+                      <Input
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="0.00"
+                        value={field.value ?? ""}
+                        onChange={(e) => {
+                          const raw = e.target.value.replace(",", ".")
+                          if (raw === "" || /^\d*\.?\d*$/.test(raw)) {
+                            field.onChange(raw)
+                          }
+                        }}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
+                      />
                     </FormControl>
                     <FormDescription>
                       Monto máximo de crédito permitido con este operador
@@ -231,7 +248,21 @@ export function EditOperatorDialog({
                   <FormItem>
                     <FormLabel>% Gastos administrativos default</FormLabel>
                     <FormControl>
-                      <Input type="number" step="0.5" min="0" max="100" placeholder="0" {...field} />
+                      <Input
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="0"
+                        value={field.value ?? ""}
+                        onChange={(e) => {
+                          const raw = e.target.value.replace(",", ".")
+                          if (raw === "" || /^\d*\.?\d*$/.test(raw)) {
+                            field.onChange(raw)
+                          }
+                        }}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
+                      />
                     </FormControl>
                     <FormDescription>
                       Markup que se aplica al costo del operador en cada cotización. Editable por item.
