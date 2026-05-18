@@ -20,7 +20,11 @@ const SCHEMA = {
   credit_limit: ["limite_credito", "credit_limit"],
 }
 
-const REQUIRED = ["name"]
+// 2026-05-18 (Tomi): antes REQUIRED = ["name"]. Ahora vacío + check inline
+// de "fila no vacía con algún identificador" + fallback "Sin nombre - fila N"
+// si name viene vacío pero el resto tiene datos. La DB tiene name TEXT NOT NULL,
+// por eso el fallback es necesario (sino el insert rompe).
+const REQUIRED: string[] = []
 
 export const operatorsPipeline: PipelineFn = async (
   supabase,
@@ -60,12 +64,33 @@ export const operatorsPipeline: PipelineFn = async (
       continue
     }
 
+    // Defensa: fila debe tener algún identificador, sino skipea (no creamos
+    // operadores fantasma).
+    const hasIdentifier =
+      !!row.name?.trim() ||
+      !!(row as any).cuit?.trim() ||
+      !!row.contact_name?.trim() ||
+      !!row.contact_email?.trim() ||
+      !!row.contact_phone?.trim()
+    if (!hasIdentifier) {
+      errors.push({
+        rowNumber,
+        message: "fila vacía: necesita al menos nombre, CUIT, contacto, email o teléfono",
+      })
+      continue
+    }
+
+    // Fallback de nombre si la fila no lo trae. La DB tiene NOT NULL en
+    // operators.name. Incluimos rowNumber para que sea único y no colisione
+    // en el dedupe con otras filas también sin nombre.
+    const effectiveName = row.name?.trim() || `Sin nombre - fila ${rowNumber}`
+
     const emailError = validateEmailFormat(row.contact_email ?? "")
     if (emailError) warnings.push({ rowNumber, message: emailError })
 
-    const existing = await resolveOperator(supabase, config.agencyId, row.name)
+    const existing = await resolveOperator(supabase, config.agencyId, effectiveName)
     if (existing) {
-      warnings.push({ rowNumber, message: `Operador ya existía: ${row.name}` })
+      warnings.push({ rowNumber, message: `Operador ya existía: ${effectiveName}` })
       warningRows++
       continue
     }
@@ -81,7 +106,7 @@ export const operatorsPipeline: PipelineFn = async (
       "operators",
       {
         agency_id: config.agencyId,
-        name: row.name,
+        name: effectiveName,
         contact_name: row.contact_name || null,
         contact_email: row.contact_email || null,
         contact_phone: row.contact_phone || null,
