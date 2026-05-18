@@ -79,6 +79,9 @@ export async function POST(
       return NextResponse.json({ error: "Operación no encontrada" }, { status: 404 })
     }
 
+    // adminDb justificado: itinerary_items no tiene org_id y RLS es permisiva
+    // (USING true). La validación cross-tenant la hace verifyOperationBelongsToUser
+    // arriba sobre la operation parent.
     const adminDb = createAdminClient() as any
 
     // Get max sort_order for this operation
