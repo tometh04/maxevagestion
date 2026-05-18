@@ -6,6 +6,14 @@ import { getExchangeRate, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE }
 export async function GET(request: Request) {
   try {
     const { user } = await getCurrentUser()
+
+    // 🔴 Fix cross-tenant CRÍTICO (2026-05-18, sweep /reports/*): defense-in-depth
+    // RLS no está protegiendo confiablemente; agregamos .eq("org_id", user.org_id)
+    // explícito a la query de operations.
+    if (!user.org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
@@ -15,7 +23,7 @@ export async function GET(request: Request) {
     const agencyId = searchParams.get("agencyId")
     const groupBy = searchParams.get("groupBy") || "day" // day, week, month
 
-    // Base query
+    // Base query — RLS + filtro explícito (defense-in-depth)
     let query = (supabase
       .from("operations") as any)
       .select(`
@@ -35,6 +43,7 @@ export async function GET(request: Request) {
         sellers:seller_id(id, name),
         agencies:agency_id(id, name)
       `)
+      .eq("org_id", user.org_id) // 🔴 scope multi-tenant explícito
       .not("status", "eq", "CANCELLED")
 
     // Filtros de fecha

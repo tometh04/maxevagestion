@@ -123,6 +123,15 @@ function isRecurringActiveInMonth(
 export async function GET(request: Request) {
   try {
     const { user } = await getCurrentUser()
+
+    // 🔴 Fix cross-tenant CRÍTICO (2026-05-18, sweep /reports/*): defense-in-depth
+    // RLS no está protegiendo confiablemente; agregamos .eq("org_id", user.org_id)
+    // explícito a TODAS las queries (operations, cash_movements, recurring_payments,
+    // commission_records, recurring_payment_categories).
+    if (!user.org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
@@ -157,10 +166,12 @@ export async function GET(request: Request) {
 
     // ---------------------------------------------------------------------
     // 1. Categorías (lookup id → name)
+    // RLS + filtro explícito (defense-in-depth)
     // ---------------------------------------------------------------------
     const { data: categories } = await (supabase
       .from("recurring_payment_categories") as any)
       .select("id, name")
+      .eq("org_id", user.org_id) // 🔴 scope multi-tenant explícito
 
     const categoryNameById = new Map<string, string>()
     for (const cat of (categories || []) as Array<{ id: string; name: string }>) {
@@ -172,6 +183,7 @@ export async function GET(request: Request) {
     // ---------------------------------------------------------------------
     let opsQuery = (supabase.from("operations") as any)
       .select("id, operation_date, departure_date, sale_amount_total, sale_currency, currency, margin_amount, agency_id")
+      .eq("org_id", user.org_id) // 🔴 scope multi-tenant explícito
       .gte("operation_date", fromIso)
       .lte("operation_date", toIso)
       .not("status", "eq", "CANCELLED")
@@ -191,6 +203,7 @@ export async function GET(request: Request) {
     // ---------------------------------------------------------------------
     let cashQuery = (supabase.from("cash_movements") as any)
       .select("id, amount, currency, movement_date, agency_id, category, category_id, is_touristic")
+      .eq("org_id", user.org_id) // 🔴 scope multi-tenant explícito
       .eq("type", "EXPENSE")
       .eq("is_touristic", false)
       .gte("movement_date", fromIso)
@@ -217,6 +230,7 @@ export async function GET(request: Request) {
     // ---------------------------------------------------------------------
     let recQuery = (supabase.from("recurring_payments") as any)
       .select("id, amount, currency, frequency, start_date, end_date, is_active, category_id, agency_id")
+      .eq("org_id", user.org_id) // 🔴 scope multi-tenant explícito
     if (agencyFilter) {
       recQuery = recQuery.or(
         `agency_id.is.null,agency_id.in.(${agencyFilter.join(",")})`
@@ -234,6 +248,7 @@ export async function GET(request: Request) {
     // ---------------------------------------------------------------------
     let commQuery = (supabase.from("commission_records") as any)
       .select("id, amount, status, date_calculated, agency_id, operations!inner(currency, sale_currency, agency_id)")
+      .eq("org_id", user.org_id) // 🔴 scope multi-tenant explícito
       .gte("date_calculated", fromIso)
       .lte("date_calculated", toIso)
       .neq("status", "REVERTED")
