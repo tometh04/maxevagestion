@@ -60,9 +60,14 @@ export async function GET(request: Request) {
       )
     }
 
+    // Cross-tenant fix (2026-05-18): no confiar en RLS; scopear explícito.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     // Obtener agencias del usuario
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
-    
+
     if (agencyIds.length === 0) {
       return NextResponse.json(
         { error: "No tiene agencias asignadas" },
@@ -75,6 +80,7 @@ export async function GET(request: Request) {
       .from("customer_settings")
       .select("*")
       .eq("agency_id", agencyIds[0])
+      .eq("org_id", (user as any).org_id)
       .single()
 
     if (error) {
@@ -82,6 +88,7 @@ export async function GET(request: Request) {
       if (error.code === 'PGRST116') {
         const defaultSettings = {
           agency_id: agencyIds[0],
+          org_id: (user as any).org_id,
           custom_fields: [],
           validations: {
             email: { required: true, format: 'email' },
@@ -139,7 +146,7 @@ export async function PUT(request: Request) {
     const supabase = await createServerClient()
 
     // Verificar permiso de acceso (solo ADMIN y SUPER_ADMIN)
-    if (!canAccessModule(user.role as any, "customers") || 
+    if (!canAccessModule(user.role as any, "customers") ||
         (user.role !== "ADMIN" && user.role !== "SUPER_ADMIN")) {
       return NextResponse.json(
         { error: "No tiene permiso para editar la configuración de clientes" },
@@ -147,9 +154,14 @@ export async function PUT(request: Request) {
       )
     }
 
+    // Cross-tenant fix (2026-05-18): no confiar en RLS; scopear explícito.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     // Obtener agencias del usuario
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
-    
+
     if (agencyIds.length === 0) {
       return NextResponse.json(
         { error: "No tiene agencias asignadas" },
@@ -158,7 +170,7 @@ export async function PUT(request: Request) {
     }
 
     const body = await request.json()
-    
+
     // Validar datos
     const validatedData = customerSettingsSchema.parse(body)
 
@@ -167,6 +179,7 @@ export async function PUT(request: Request) {
       .from("customer_settings")
       .select("id")
       .eq("agency_id", agencyIds[0])
+      .eq("org_id", (user as any).org_id)
       .single()
 
     const updateData = {
@@ -200,6 +213,7 @@ export async function PUT(request: Request) {
       const { data, error } = await (supabase.from("customer_settings") as any)
         .insert({
           agency_id: agencyIds[0],
+          org_id: (user as any).org_id,
           ...updateData,
           created_by: user.id,
         })

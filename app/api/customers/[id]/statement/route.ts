@@ -28,14 +28,19 @@ export async function GET(
       return NextResponse.json({ error: "No tiene permiso para ver clientes" }, { status: 403 })
     }
 
+    // Cross-tenant fix (2026-05-18): no confiar en RLS; scopear explícito.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     const supabase = await createServerClient()
     const { id: customerId } = await params
 
     // Si es SELLER con ownDataOnly, verificar que el cliente pertenece a sus operaciones
     if (isOwnDataOnly(user.role as any, "customers")) {
-      const { data: sellerOps } = await supabase
-        .from("operations")
+      const { data: sellerOps } = await (supabase.from("operations") as any)
         .select("id")
+        .eq("org_id", (user as any).org_id)
         .or(`seller_primary_id.eq.${user.id},seller_secondary_id.eq.${user.id}`)
 
       const sellerOpIds = (sellerOps || []).map((op: any) => op.id)
@@ -44,10 +49,10 @@ export async function GET(
         return NextResponse.json({ error: "No tiene permiso para ver este cliente" }, { status: 403 })
       }
 
-      const { data: customerInSellerOps } = await supabase
-        .from("operation_customers")
+      const { data: customerInSellerOps } = await (supabase.from("operation_customers") as any)
         .select("operation_id")
         .eq("customer_id", customerId)
+        .eq("org_id", (user as any).org_id)
         .in("operation_id", sellerOpIds)
 
       if (!customerInSellerOps || customerInSellerOps.length === 0) {
@@ -55,27 +60,29 @@ export async function GET(
       }
     }
 
-    // Obtener cliente
+    // Obtener cliente (scopeado por org)
     const { data: customer, error: customerError } = await (supabase.from("customers") as any)
       .select(`
         *,
         agencies:agency_id (id, name, address, phone, email, logo_url)
       `)
       .eq("id", customerId)
+      .eq("org_id", (user as any).org_id)
       .single()
 
     if (customerError || !customer) {
       return NextResponse.json({ error: "Cliente no encontrado" }, { status: 404 })
     }
 
-    // Obtener operaciones del cliente
+    // Obtener operaciones del cliente (scopeado por org)
     const { data: operationCustomers } = await (supabase.from("operation_customers") as any)
       .select("operation_id")
       .eq("customer_id", customerId)
+      .eq("org_id", (user as any).org_id)
 
     const operationIds = (operationCustomers || []).map((oc: any) => oc.operation_id)
 
-    // Obtener pagos de esas operaciones
+    // Obtener pagos de esas operaciones (scopeado por org)
     let payments: any[] = []
     if (operationIds.length > 0) {
       const { data: paymentsData } = await (supabase.from("payments") as any)
@@ -84,6 +91,7 @@ export async function GET(
           operations:operation_id (id, destination, departure_date)
         `)
         .in("operation_id", operationIds)
+        .eq("org_id", (user as any).org_id)
         .order("date_due", { ascending: true })
 
       payments = paymentsData || []
