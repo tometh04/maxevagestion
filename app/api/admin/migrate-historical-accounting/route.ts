@@ -1,29 +1,26 @@
 /**
  * API Route: Migrar Datos Históricos Contables
- * 
- * Solo accesible para SUPER_ADMIN
- * Genera IVA y operator_payments para operaciones existentes que no los tienen
+ *
+ * Solo accesible para platform admins (tabla platform_admins).
+ * Genera IVA y operator_payments para operaciones existentes que no los tienen.
  */
 
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { isPlatformAdmin } from "@/lib/auth/platform"
+import { logSecurityEvent } from "@/lib/security/audit"
 import { createSaleIVA, createPurchaseIVA } from "@/lib/accounting/iva"
 import { createOperatorPayment, calculateDueDate } from "@/lib/accounting/operator-payments"
 
 export async function POST(request: Request) {
   try {
     const { user } = await getCurrentUser()
-
-    // Solo SUPER_ADMIN puede ejecutar esta migración
-    if (user.role !== "SUPER_ADMIN") {
-      return NextResponse.json(
-        { error: "No tienes permiso para ejecutar esta migración" },
-        { status: 403 }
-      )
-    }
-
     const supabase = await createServerClient()
+
+    if (!(await isPlatformAdmin(supabase, user.id))) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
 
 
     // 1. Migrar IVA
@@ -128,6 +125,15 @@ export async function POST(request: Request) {
         console.error(`Error procesando operación ${operation.id}:`, error.message)
       }
     }
+
+    logSecurityEvent({
+      eventType: "ADMIN_MIGRATE_HISTORICAL_ACCOUNTING",
+      severity: "INFO",
+      actorUserId: user.id,
+      actorAuthId: (user as any).auth_id,
+      requestPath: "/api/admin/migrate-historical-accounting",
+      details: { ivaCreated, ivaErrors, paymentsCreated, paymentsErrors },
+    })
 
     return NextResponse.json({
       success: true,
