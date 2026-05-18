@@ -109,7 +109,7 @@ const roleDescriptions: Record<string, string> = {
   CONTABLE: "Solo módulos financieros",
   SELLER: "Solo sus propios datos",
   VIEWER: "Solo lectura",
-  POST_VENTA: "Seguimiento post-venta: ve todas las operaciones, carga vouchers y check-in",
+  POST_VENTA: "Seguimiento post-cierre de operaciones",
 }
 
 export function UsersSettings() {
@@ -777,6 +777,13 @@ export function UsersSettings() {
                     <p>✓ Solo lectura en todo</p>
                     <p>✗ No puede crear ni editar</p>
                     <p>✗ Sin acceso a configuración</p>
+                  </>
+                )}
+                {role === "POST_VENTA" && (
+                  <>
+                    <p>✓ Ve todas las operaciones de la agencia</p>
+                    <p>✓ Carga vouchers, check-in y documentos</p>
+                    <p>✗ Sin acceso a caja, contabilidad ni leads</p>
                   </>
                 )}
               </div>
