@@ -22,6 +22,12 @@ export async function GET(request: Request) {
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
+    // Cross-tenant fix (2026-05-18): exigir org_id y validar que las accounts
+    // pertenezcan al org. El endpoint corre SQL crudo con admin client.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     const accountId = searchParams.get("accountId")
     const accountIds = searchParams.get("accountIds") // Comma-separated para batch
     const dateFrom = searchParams.get("dateFrom")
@@ -31,18 +37,43 @@ export async function GET(request: Request) {
     let admin: any
     try { admin = await createAdminClient() } catch { admin = supabase }
 
-    // Construir filtro de cuentas
+    // Construir filtro de cuentas — VALIDAR que los IDs pertenezcan al org.
     let accountFilter = ""
     let ids: string[] = []
 
     if (accountIds) {
-      ids = accountIds.split(",").filter(Boolean)
-      if (ids.length > 0) {
-        accountFilter = `AND account_id IN (${ids.map(id => `'${id}'`).join(",")})`
+      const requestedIds = accountIds.split(",").filter(Boolean)
+      if (requestedIds.length > 0) {
+        const { data: validAccounts } = await (supabase.from("financial_accounts") as any)
+          .select("id")
+          .in("id", requestedIds)
+          .eq("org_id", (user as any).org_id)
+        ids = ((validAccounts || []) as Array<{ id: string }>).map((a) => a.id)
+        if (ids.length > 0) {
+          accountFilter = `AND account_id IN (${ids.map(id => `'${id}'`).join(",")})`
+        }
       }
     } else if (accountId && accountId !== "ALL") {
+      const { data: validAccount } = await (supabase.from("financial_accounts") as any)
+        .select("id")
+        .eq("id", accountId)
+        .eq("org_id", (user as any).org_id)
+        .maybeSingle()
+      if (!validAccount) {
+        return NextResponse.json({ income: 0, expenses: 0 })
+      }
       accountFilter = `AND account_id = '${accountId}'`
       ids = [accountId]
+    } else {
+      // ALL: scopear a accounts del org del user
+      const { data: orgAccounts } = await (supabase.from("financial_accounts") as any)
+        .select("id")
+        .eq("org_id", (user as any).org_id)
+      ids = ((orgAccounts || []) as Array<{ id: string }>).map((a) => a.id)
+      if (ids.length === 0) {
+        return NextResponse.json({ income: 0, expenses: 0 })
+      }
+      accountFilter = `AND account_id IN (${ids.map(id => `'${id}'`).join(",")})`
     }
 
     // Construir filtro de fechas con offset AR (fix bug "movimientos fuera de rango")

@@ -15,9 +15,15 @@ export async function POST(
   const supabase = await createServerClient()
   const admin = createAdminClient() as any
 
+  // Cross-tenant fix (2026-05-18): scopear el fetch del pago por org.
+  if (!(user as any).org_id) {
+    return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+  }
+
   const { data: payment } = await (supabase.from("operator_payments") as any)
     .select("*, operation:operation_id(agency_id)")
     .eq("id", id)
+    .eq("org_id", (user as any).org_id)
     .single()
 
   if (!payment) return NextResponse.json({ error: "Pago a operador no encontrado" }, { status: 404 })
@@ -50,6 +56,7 @@ export async function POST(
       approved_at: new Date().toISOString(),
     })
     .eq("id", id)
+    .eq("org_id", (user as any).org_id)
     .eq("approval_status", "PENDING_APPROVAL")
     .select()
     .single()

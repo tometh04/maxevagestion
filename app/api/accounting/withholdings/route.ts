@@ -15,12 +15,18 @@ export async function GET(request: Request) {
     const type = searchParams.get("type") // PERCEPCION_IVA, PERCEPCION_IIBB, etc
     const direction = searchParams.get("direction") // SUFFERED, PRACTICED
 
+    // Cross-tenant fix (2026-05-18): exigir org_id.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     let query = (supabase.from("tax_withholdings") as any)
       .select(`
         *,
         operations:operation_id (id, file_code, destination),
         operators:operator_id (id, name)
       `)
+      .eq("org_id", (user as any).org_id)
       .order("withholding_date", { ascending: false })
 
     if (taxPeriod) query = query.eq("tax_period", taxPeriod)
@@ -69,6 +75,11 @@ export async function POST(request: Request) {
     const supabase = await createServerClient()
     const body = await request.json()
 
+    // Cross-tenant fix (2026-05-18): inyectar org_id del user en el insert.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     const { data, error } = await (supabase.from("tax_withholdings") as any)
       .insert({
         type: body.type,
@@ -85,6 +96,7 @@ export async function POST(request: Request) {
         withholding_date: body.withholding_date || new Date().toISOString().split("T")[0],
         status: "PENDING",
         notes: body.notes || null,
+        org_id: (user as any).org_id,
         created_by: user.id,
       })
       .select("*")

@@ -16,6 +16,12 @@ export async function GET(request: Request) {
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
+    // Cross-tenant fix (2026-05-18): exigir org_id explícito. RLS sola no
+    // protege en producción según los leaks reportados.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     const limit = Math.min(parseInt(searchParams.get("limit") || "200"), 500)
     const offset = parseInt(searchParams.get("offset") || "0")
     const dateFrom = searchParams.get("dateFrom") || undefined
@@ -29,8 +35,8 @@ export async function GET(request: Request) {
     // SaaS Pilar 2: RLS tenant_isolation en ledger_movements acota por org_id
     // del JWT. No necesitamos admin client — el server client respeta la
     // policy y el agency-filter post-query queda como defensa adicional.
-    let query = supabase
-      .from("ledger_movements")
+    let query = (supabase
+      .from("ledger_movements") as any)
       .select(
         `id, type, concept, currency, amount_original, amount_ars_equivalent, exchange_rate, movement_date, created_at, seller_id, operation_id, affects_balance,
          reversed_at, reverses_movement_id, reversed_by_movement_id, reversal_reason,
@@ -38,6 +44,8 @@ export async function GET(request: Request) {
          users:created_by (name)`,
         { count: "exact" }
       )
+      // Cross-tenant fix: scopear ledger_movements por org del user.
+      .eq("org_id", (user as any).org_id)
 
     // IMPORTANTE: filtros ANTES de order/range para que funcione la paginación
     // dateType:
@@ -46,7 +54,9 @@ export async function GET(request: Request) {
     //   y restringir ledger_movements.operation_id IN (...). Movimientos sin
     //   operation_id (asientos manuales) quedan fuera cuando se filtra por OPERACION.
     if (dateType === "OPERACION" && (dateFrom || dateTo)) {
-      let opQuery = (supabase.from("operations") as any).select("id")
+      let opQuery = (supabase.from("operations") as any)
+        .select("id")
+        .eq("org_id", (user as any).org_id)
       if (dateFrom) opQuery = opQuery.gte("operation_date", dateFrom)
       if (dateTo) opQuery = opQuery.lte("operation_date", dateTo)
       const { data: matchingOps } = await opQuery.limit(5000)
