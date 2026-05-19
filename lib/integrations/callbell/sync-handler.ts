@@ -250,6 +250,20 @@ export async function processCallbellEvent(
           await applyBotSummaryToLead(admin, orgId, leadId, summary)
         }
       }
+
+      // Detectar campañas activas (Mundial / F1) — el cliente las elige con
+      // opción 4/5 del menú y el bot deriva directo sin emitir resumen. En esos
+      // casos queremos popular `destination` con el nombre de la campaña + tag.
+      const messageFrom = (event.data as { message?: { from?: string } }).message?.from
+      const isFromClient =
+        typeof messageFrom === "string" &&
+        !messageFrom.startsWith(VICO_BOT_NUMBERS_PREFIX)
+      if (text && isFromClient) {
+        const campaign = detectCampaignFromClientMessage(text)
+        if (campaign) {
+          await applyCampaignToLead(admin, orgId, leadId, campaign)
+        }
+      }
       break
     }
 
@@ -355,4 +369,83 @@ function normalizeForMatch(s: string): string {
     .replace(/[̀-ͯ]/g, "") // quita tildes
     .toLowerCase()
     .trim()
+}
+
+// VICO bot numbers (mensajes desde estos = el bot al cliente, NO el cliente al bot).
+// El "5" o "4" de la opción del menú lo manda el cliente — el bot está en "549...".
+const VICO_BOT_NUMBERS_PREFIX = "5492617"
+
+/**
+ * Detecta si el mensaje del cliente corresponde a una campaña activa
+ * (Mundial = opción 4, F1 = opción 5). Devuelve el nombre canónico de la
+ * campaña o null si no matchea.
+ *
+ * Tolera variaciones: "5", "Quiero info del paquete F1", "info F1", "formula 1",
+ * "qatar", "mundial", "wc", etc.
+ */
+function detectCampaignFromClientMessage(rawText: string): string | null {
+  const t = normalizeForMatch(rawText)
+  // Texto único "4" o "5" como respuesta al menú
+  if (t === "4") return "Mundial"
+  if (t === "5") return "Formula 1"
+  // Keywords explícitos
+  if (/\b(mundial|qatar|world\s*cup|wc)\b/.test(t)) return "Mundial"
+  if (/\b(f1|formula\s*1|formula\s*uno|gp|grand\s*prix)\b/.test(t)) {
+    return "Formula 1"
+  }
+  return null
+}
+
+/**
+ * Cuando detectamos que el cliente eligió campaña Mundial/F1, populamos
+ * `leads.destination` con el nombre canónico + asignamos la tag de destino
+ * correspondiente (si existe en `lead_tags`).
+ *
+ * Idempotente: solo actualiza destination si está vacío o en placeholder
+ * "A definir" — no pisa datos reales que el vendedor haya completado.
+ */
+async function applyCampaignToLead(
+  admin: SupabaseClient<Database>,
+  orgId: string,
+  leadId: string,
+  campaign: string
+): Promise<void> {
+  // Solo update destination si está en placeholder (no pisar dato real)
+  const { data: currentLead } = await admin
+    .from("leads")
+    .select("destination")
+    .eq("id", leadId)
+    .maybeSingle()
+  const currentDest =
+    (currentLead as { destination: string } | null)?.destination ?? ""
+  const isPlaceholder =
+    !currentDest || /^a definir$/i.test(currentDest) || /^otros$/i.test(currentDest)
+  if (isPlaceholder) {
+    await admin
+      .from("leads")
+      .update({ destination: campaign } as never)
+      .eq("id", leadId)
+  }
+
+  // Buscar tag con label que matchee la campaña (case-insensitive)
+  const normalizedCampaign = normalizeForMatch(campaign)
+  const { data: tags } = await admin
+    .from("lead_tags")
+    .select("id, label")
+    .eq("org_id", orgId)
+  const tag = (tags ?? []).find(
+    (t: { label: string }) => normalizeForMatch(t.label) === normalizedCampaign
+  )
+  if (tag) {
+    await admin
+      .from("lead_tag_assignments")
+      .upsert(
+        {
+          lead_id: leadId,
+          tag_id: (tag as { id: string }).id,
+          org_id: orgId,
+        } as never,
+        { onConflict: "lead_id,tag_id" }
+      )
+  }
 }
