@@ -47,16 +47,25 @@ export async function GET(request: Request) {
     const dateTo = searchParams.get("dateTo")
     const dateType = (searchParams.get("dateType") ?? "OPERATION").toUpperCase()
 
+    // Columnas reales según lib/supabase/types.ts.
+    // 2026-05-19 fix: la versión inicial pedía exchange_rate / notes /
+    // commission_percentage que NO existen → endpoint rompía con
+    // "column operations.exchange_rate does not exist".
     let query: any = supabase
       .from("operations")
       .select(`
-        id, file_code, type, status, created_at, updated_at,
+        id, file_code, type, status, product_type,
+        created_at, updated_at, operation_date,
         destination, origin, departure_date, return_date,
+        checkin_date, checkout_date,
         adults, children, infants,
         sale_amount_total, sale_currency, currency,
-        operator_cost, exchange_rate,
-        commission_percentage, commission_split_pct_primary, commission_split_pct_secondary,
-        notes,
+        operator_cost, operator_cost_currency,
+        margin_amount, margin_percentage,
+        billing_margin_amount, billing_margin_percentage,
+        commission_split, commission_pct_primary, commission_pct_secondary,
+        airline_name, hotel_name,
+        reservation_code_air, reservation_code_hotel,
         sellers:seller_id(name, email),
         sellers_secondary:seller_secondary_id(name, email),
         operators:operator_id(name),
@@ -110,29 +119,40 @@ export async function GET(request: Request) {
     const rows = (data ?? []) as any[]
     const truncated = rows.length === LIMIT_HARD
 
-    // Construir CSV con TODAS las columnas pedidas por Tomi (2026-05-19)
+    // Construir CSV con TODAS las columnas relevantes de operations.
+    // 2026-05-19 v2: alineado con columnas reales de la tabla (typed en
+    // lib/supabase/types.ts). La v1 incluía columnas inexistentes
+    // (exchange_rate, notes, commission_percentage) que rompían el SELECT.
     const headers = [
       "id",
       "file_code",
       "tipo",
+      "product_type",
       "status",
       "creada",
       "actualizada",
+      "fecha_operacion",
       "destino",
       "origen",
       "fecha_salida",
       "fecha_regreso",
+      "fecha_checkin",
+      "fecha_checkout",
       "adultos",
       "menores",
       "infantes",
       "monto_venta",
       "moneda_venta",
-      "moneda_costo",
+      "moneda_general",
       "costo_operador",
-      "tipo_cambio",
-      "comision_pct",
+      "moneda_costo_operador",
+      "margen_monto",
+      "margen_pct",
+      "billing_margen_monto",
+      "billing_margen_pct",
       "comision_split_pct_primario",
-      "comision_split_pct_secundario",
+      "comision_pct_primario",
+      "comision_pct_secundario",
       "vendedor_primario",
       "vendedor_primario_email",
       "vendedor_secundario",
@@ -143,7 +163,10 @@ export async function GET(request: Request) {
       "cliente_principal",
       "todos_los_pasajeros",
       "lead_contact_name",
-      "notas",
+      "aerolinea",
+      "hotel",
+      "codigo_reserva_aereo",
+      "codigo_reserva_hotel",
     ]
 
     const csvRows: string[] = [headers.join(",")]
@@ -175,13 +198,17 @@ export async function GET(request: Request) {
         op.id,
         op.file_code,
         op.type,
+        op.product_type,
         op.status,
         op.created_at,
         op.updated_at,
+        op.operation_date,
         op.destination,
         op.origin,
         op.departure_date,
         op.return_date,
+        op.checkin_date,
+        op.checkout_date,
         op.adults,
         op.children,
         op.infants,
@@ -189,10 +216,14 @@ export async function GET(request: Request) {
         op.sale_currency,
         op.currency,
         op.operator_cost,
-        op.exchange_rate,
-        op.commission_percentage,
-        op.commission_split_pct_primary,
-        op.commission_split_pct_secondary,
+        op.operator_cost_currency,
+        op.margin_amount,
+        op.margin_percentage,
+        op.billing_margin_amount,
+        op.billing_margin_percentage,
+        op.commission_split,
+        op.commission_pct_primary,
+        op.commission_pct_secondary,
         op.sellers?.name,
         op.sellers?.email,
         op.sellers_secondary?.name,
@@ -203,7 +234,10 @@ export async function GET(request: Request) {
         customerName(main?.customers),
         passengers,
         op.leads?.contact_name,
-        op.notes,
+        op.airline_name,
+        op.hotel_name,
+        op.reservation_code_air,
+        op.reservation_code_hotel,
       ].map(csvEscape)
 
       csvRows.push(row.join(","))
