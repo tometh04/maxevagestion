@@ -86,18 +86,41 @@ export default async function SubscriptionPage({
 
     if (customPlan) {
       let checkoutUrl: string | null = null
-      if (
-        customPlan.billing_method === "MP" &&
-        org.subscription_status !== "ACTIVE" &&
-        org.mp_preapproval_id
-      ) {
-        try {
-          const mp = await fetchPreapproval(org.mp_preapproval_id)
-          if (mp?.init_point && mp?.status !== "authorized") {
-            checkoutUrl = mp.init_point
+
+      // Bug fix 2026-05-18 (Tomi reportó VICO): la lógica vieja solo refrescaba
+      // el checkoutUrl si org.mp_preapproval_id YA existía. Pero el preapproval_id
+      // se setea SOLO DESPUÉS de que el cliente acepta el checkout — antes de eso
+      // es NULL. Catch-22: si no aceptó nunca, nunca le mostraban el link.
+      //
+      // Ahora cubre los dos casos:
+      //   1. mp_preapproval_id existe pero no está authorized → fetch fresh init_point
+      //   2. mp_preapproval_id NULL → recuperar checkout_url del último
+      //      billing_events CHECKOUT_INITIATED que el POST de custom-plan persistió.
+      if (customPlan.billing_method === "MP") {
+        if (org.mp_preapproval_id) {
+          try {
+            const mp = await fetchPreapproval(org.mp_preapproval_id)
+            if (mp?.init_point && mp?.status !== "authorized") {
+              checkoutUrl = mp.init_point
+            }
+          } catch {
+            // Si MP no responde, el owner puede reintentar recargando la página.
           }
-        } catch {
-          // Si MP no responde, el owner puede reintentar recargando la página.
+        } else {
+          // Sin preapproval_id: buscar el último CHECKOUT_INITIATED para esta org
+          // con is_custom_plan=true en el payload.
+          const { data: lastCheckout } = await admin
+            .from("billing_events")
+            .select("payload")
+            .eq("org_id", org.id)
+            .eq("event_type", "CHECKOUT_INITIATED")
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle()
+          const payload = (lastCheckout as any)?.payload
+          if (payload?.checkout_url && payload?.is_custom_plan) {
+            checkoutUrl = payload.checkout_url
+          }
         }
       }
 
