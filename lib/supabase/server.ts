@@ -5,8 +5,25 @@ import { cookies } from 'next/headers'
 
 /**
  * Cliente Supabase con SERVICE_ROLE_KEY — bypasea RLS completamente.
- * Usar SOLO en server actions / API routes para operaciones de escritura críticas
- * (ledger_movements, operator_payments, commissions, etc.)
+ *
+ * ⚠️  MULTI-TENANT: este cliente NO tiene aislamiento automático por org.
+ * Cualquier query SIN `.eq("org_id", orgId)` lee/escribe datos de TODOS los tenants.
+ *
+ * Casos legítimos (sin filtro de org):
+ *   - Cron jobs — procesan todos los orgs por diseño.
+ *   - Platform admin — cross-org por definición, protegido por isPlatformAdmin().
+ *   - Auth flows (register, onboarding) — pre-session, no hay org_id todavía.
+ *   - Webhooks server-to-server — la org se resuelve vía token en la URL.
+ *   - Audit logs fire-and-forget — sin contexto de org.
+ *   - Storage uploads — bucket policies son scope separado de DB RLS.
+ *
+ * Para operaciones dentro de un tenant conocido, preferir:
+ *   import { createOrgAdminScope } from "@/lib/supabase/admin-scope"
+ *   const scope = createOrgAdminScope(user.org_id)
+ *   // → todas las queries llevan .eq("org_id", orgId) automáticamente
+ *
+ * Ver scripts/admin-client-allowlist.txt — cada archivo que usa esta función
+ * debe estar listado con su justificación.
  * NUNCA exponer este cliente al browser.
  */
 export function createAdminClient() {

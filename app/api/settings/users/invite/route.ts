@@ -24,7 +24,7 @@ export async function POST(request: Request) {
     }
 
     // Validar rol (SUPER_ADMIN solo por registro, no por invitación — el owner de la org es SUPER_ADMIN)
-    const validRoles = ["ADMIN", "CONTABLE", "SELLER", "VIEWER"]
+    const validRoles = ["ADMIN", "CONTABLE", "SELLER", "VIEWER", "POST_VENTA"]
     if (!validRoles.includes(role)) {
       return NextResponse.json({ error: "Rol inválido" }, { status: 400 })
     }

@@ -58,7 +58,8 @@ import {
   Eye,
   EyeOff,
   Users,
-  UserPlus2
+  UserPlus2,
+  UserCog,
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -77,6 +78,7 @@ interface User {
   can_view_agency_operations_support?: boolean
   can_add_services_on_agency_operations?: boolean
   created_at: string
+  email_confirmed_at?: string | null
   user_agencies?: Array<{ agency_id: string; agencies: { name: string } }>
 }
 
@@ -91,6 +93,7 @@ const roleLabels: Record<string, string> = {
   CONTABLE: "Contable",
   SELLER: "Vendedor",
   VIEWER: "Observador",
+  POST_VENTA: "Post-venta",
 }
 
 const roleColors: Record<string, string> = {
@@ -99,6 +102,7 @@ const roleColors: Record<string, string> = {
   CONTABLE: "bg-success",
   SELLER: "bg-accent-coral",
   VIEWER: "bg-muted-foreground",
+  POST_VENTA: "bg-blue-500",
 }
 
 const roleDescriptions: Record<string, string> = {
@@ -107,6 +111,7 @@ const roleDescriptions: Record<string, string> = {
   CONTABLE: "Solo módulos financieros",
   SELLER: "Solo sus propios datos",
   VIEWER: "Solo lectura",
+  POST_VENTA: "Seguimiento post-cierre de operaciones",
 }
 
 export function UsersSettings() {
@@ -117,6 +122,8 @@ export function UsersSettings() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [changePasswordDialogOpen, setChangePasswordDialogOpen] = useState(false)
   const [permissionsDialogOpen, setPermissionsDialogOpen] = useState(false)
+  const [changeRoleDialogOpen, setChangeRoleDialogOpen] = useState(false)
+  const [selectedRole, setSelectedRole] = useState("")
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [newPassword, setNewPassword] = useState("")
@@ -313,6 +320,56 @@ export function UsersSettings() {
     } catch (error) {
       console.error("Error saving special permissions:", error)
       toast.error("Error al guardar permisos especiales")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleActivateUser = async (user: User) => {
+    try {
+      toast.info("Activando acceso...")
+      const response = await fetch(`/api/settings/users/${user.id}/activate`, {
+        method: "POST",
+      })
+      const data = await response.json()
+      if (response.ok) {
+        toast.success(data.message || "Acceso activado correctamente")
+        loadData()
+      } else {
+        toast.error(data.error || "Error al activar el usuario")
+      }
+    } catch (error) {
+      console.error("Error activating user:", error)
+      toast.error("Error al activar el usuario")
+    }
+  }
+
+  const handleChangeRole = async () => {
+    if (!selectedUser || !selectedRole) return
+
+    setSubmitting(true)
+    try {
+      const response = await fetch(`/api/settings/users/${selectedUser.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: selectedRole }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        toast.error(data.error || "Error al cambiar el rol")
+        return
+      }
+
+      toast.success(`Rol actualizado a ${roleLabels[selectedRole] || selectedRole}`)
+      setChangeRoleDialogOpen(false)
+      setSelectedUser(null)
+      setSelectedRole("")
+      loadData()
+    } catch (error) {
+      console.error("Error changing role:", error)
+      toast.error("Error al cambiar el rol")
     } finally {
       setSubmitting(false)
     }
@@ -625,17 +682,25 @@ export function UsersSettings() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    {user.is_active ? (
-                      <Badge variant="outline" className="text-success border-success">
-                        <CheckCircle2 className="mr-1 h-3 w-3" />
-                        Activo
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-destructive border-destructive">
-                        <XCircle className="mr-1 h-3 w-3" />
-                        Inactivo
-                      </Badge>
-                    )}
+                    <div className="flex flex-col gap-1">
+                      {user.is_active ? (
+                        <Badge variant="outline" className="text-success border-success">
+                          <CheckCircle2 className="mr-1 h-3 w-3" />
+                          Activo
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-destructive border-destructive">
+                          <XCircle className="mr-1 h-3 w-3" />
+                          Inactivo
+                        </Badge>
+                      )}
+                      {user.email_confirmed_at === null && (
+                        <Badge variant="outline" className="text-amber-600 border-amber-400 text-[10px]">
+                          <Mail className="mr-1 h-3 w-3" />
+                          Email pendiente
+                        </Badge>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell className="text-right">
                     <DropdownMenu>
@@ -645,19 +710,26 @@ export function UsersSettings() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => handleToggleActive(user)}>
-                          {user.is_active ? (
-                            <>
-                              <XCircle className="mr-2 h-4 w-4" />
-                              Desactivar
-                            </>
-                          ) : (
-                            <>
-                              <CheckCircle2 className="mr-2 h-4 w-4" />
-                              Activar
-                            </>
-                          )}
-                        </DropdownMenuItem>
+                        {user.email_confirmed_at === null ? (
+                          <DropdownMenuItem onClick={() => handleActivateUser(user)}>
+                            <CheckCircle2 className="mr-2 h-4 w-4 text-success" />
+                            Activar acceso
+                          </DropdownMenuItem>
+                        ) : (
+                          <DropdownMenuItem onClick={() => handleToggleActive(user)}>
+                            {user.is_active ? (
+                              <>
+                                <XCircle className="mr-2 h-4 w-4" />
+                                Desactivar
+                              </>
+                            ) : (
+                              <>
+                                <CheckCircle2 className="mr-2 h-4 w-4" />
+                                Activar
+                              </>
+                            )}
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuItem onClick={() => handleResendInvite(user)}>
                           <Mail className="mr-2 h-4 w-4" />
                           Reenviar invitación
@@ -666,6 +738,18 @@ export function UsersSettings() {
                           <DropdownMenuItem onClick={() => handleOpenPermissions(user)}>
                             <Shield className="mr-2 h-4 w-4" />
                             Permisos especiales
+                          </DropdownMenuItem>
+                        )}
+                        {user.role !== "SUPER_ADMIN" && (
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setSelectedUser(user)
+                              setSelectedRole(user.role)
+                              setChangeRoleDialogOpen(true)
+                            }}
+                          >
+                            <UserCog className="mr-2 h-4 w-4" />
+                            Cambiar rol
                           </DropdownMenuItem>
                         )}
                         <DropdownMenuItem
@@ -774,6 +858,13 @@ export function UsersSettings() {
                     <p>✓ Solo lectura en todo</p>
                     <p>✗ No puede crear ni editar</p>
                     <p>✗ Sin acceso a configuración</p>
+                  </>
+                )}
+                {role === "POST_VENTA" && (
+                  <>
+                    <p>✓ Ve todas las operaciones de la agencia</p>
+                    <p>✓ Carga vouchers, check-in y documentos</p>
+                    <p>✗ Sin acceso a caja, contabilidad ni leads</p>
                   </>
                 )}
               </div>
@@ -951,6 +1042,55 @@ export function UsersSettings() {
                   <KeyRound className="mr-2 h-4 w-4" />
                   Cambiar Contraseña
                 </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: cambiar rol */}
+      <Dialog open={changeRoleDialogOpen} onOpenChange={setChangeRoleDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Cambiar rol</DialogTitle>
+            <DialogDescription>
+              Cambiá el rol de <strong>{selectedUser?.name}</strong>.
+              El cambio aplica inmediatamente.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Label>Nuevo rol</Label>
+            <Select value={selectedRole} onValueChange={setSelectedRole}>
+              <SelectTrigger>
+                <SelectValue placeholder="Seleccioná un rol" />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(roleLabels)
+                  .filter(([value]) => value !== "SUPER_ADMIN")
+                  .map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      <div className="flex flex-col">
+                        <span>{label}</span>
+                        <span className="text-xs text-muted-foreground">{roleDescriptions[value]}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setChangeRoleDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleChangeRole}
+              disabled={submitting || !selectedRole || selectedRole === selectedUser?.role}
+            >
+              {submitting ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Guardando...</>
+              ) : (
+                <><UserCog className="mr-2 h-4 w-4" />Guardar cambio</>
               )}
             </Button>
           </DialogFooter>
