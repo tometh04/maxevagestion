@@ -139,6 +139,14 @@ export async function processCallbellEvent(
     lead = created as { id: string; notes: string | null }
     createdNow = true
 
+    // Defaults: todo lead nuevo via Callbell arranca con ORIGEN = DERIVACION DE
+    // TRAFICO + TEMPERATURA = TEMPLADO. Se upgradea cuando:
+    //  - El cliente pickea opción del menú (applyMenuOptionToLead reemplaza)
+    //  - O el bot emite resumen completo (applyBotSummaryToLead → CALIENTE)
+    // Estas asignaciones son silenciosas si las tags/categorías no existen.
+    await assignTagInCategory(admin, orgId, lead.id, "DERIVACION DE TRAFICO", "origen")
+    await assignTagInCategory(admin, orgId, lead.id, "TEMPLADO", "temperatura")
+
     // contact_created no tiene más que hacer, ya creamos el lead.
     if (event.type === "contact_created") {
       return { handled: true, lead_id: lead.id, created: true }
