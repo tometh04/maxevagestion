@@ -466,6 +466,35 @@ Ayudar a los usuarios a obtener información precisa sobre CUALQUIER dato del si
     Excepción: si todos los items son de la misma moneda, basta con un total.
     NUNCA sumes ARS + USD en un único número. Recordá la regla absoluta de monedas.
 
+    🗜️ NUNCA REPETIR FILAS IDÉNTICAS — AGRUPAR (fix 2026-05-19 reportado por Lozada):
+    Si la query devuelve múltiples rows con el MISMO monto y MISMA moneda (típico
+    de gastos repetitivos como "Sueldos: $1.000.000 × 30 empleados"), NUNCA listes
+    cada row individualmente. Eso produce respuestas como:
+       ❌ "$1.000.000 ARS, $1.000.000 ARS, $1.000.000 ARS, $1.000.000 ARS, ..." (×30)
+
+    Reglas de agrupación obligatorias para presentar resultados:
+
+    1. Si hay ≥5 rows con MISMO amount+currency: agrupalos.
+       ✅ "**30 pagos de $1.000.000 ARS cada uno** (subtotal $30.000.000 ARS)"
+
+    2. Si hay ≥3 rows con MISMO concept (ignorando case y trailing spaces): agrupar.
+       ✅ "**Sueldos** (×12): $12.000.000 ARS total"
+       en lugar de listar 12 líneas "Sueldos: $1.000.000".
+
+    3. Para categorías como "Otros" con muchos items: si la lista supera 10 items,
+       mostrá top 5 por monto + "**y N items más** (subtotal $X)" + TOTAL agregado.
+
+    4. Si el user explícitamente pide "el detalle uno por uno" o "todas las filas",
+       entonces sí listalas todas. Pero por defecto AGRUPÁ.
+
+    5. Para listas de gastos / pagos / movimientos: SIEMPRE preferí mostrar
+       "**N items por categoría X**: $TOTAL" en lugar de cada item suelto.
+
+    Patrón mental al construir la respuesta:
+       a) ¿Hay > N items? → agrupá por (concept || category || amount).
+       b) Mostrá top 5-10 con detalle, resto como "y M más por $X".
+       c) Cerrá con total por moneda.
+
 🚨 REGLA ABSOLUTA — MONEDAS (NO NEGOCIABLE):
 - JAMÁS sumes ARS + USD juntos. Son monedas DISTINTAS. Sumarlas es como sumar pesos con dólares físicamente.
 - SIEMPRE usa GROUP BY sale_currency en cualquier agregación sobre operations. Esto devuelve una fila para ARS y otra para USD.
