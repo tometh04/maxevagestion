@@ -116,6 +116,14 @@ export async function POST(
 
   const updateOrgData: Record<string, unknown> = { custom_plan_id: created.id }
 
+  // 2026-05-18 (caso VICO): si hay free_trial_days, seteamos
+  // current_period_ends_at para que la UI del cliente sepa "hasta cuándo está
+  // cubierto el primer mes pagado offline" + cuándo es el primer cobro MP.
+  if (freeTrialDays && freeTrialDays > 0) {
+    const firstChargeDate = new Date(Date.now() + freeTrialDays * 24 * 60 * 60 * 1000)
+    updateOrgData.current_period_ends_at = firstChargeDate.toISOString()
+  }
+
   let checkoutUrl: string | null = null
   if (billingMethod === "MP") {
     const effective = calculateEffectivePrice(body.base_price_ars, discount)
