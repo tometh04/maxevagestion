@@ -251,17 +251,17 @@ export async function processCallbellEvent(
         }
       }
 
-      // Detectar campañas activas (Mundial / F1) — el cliente las elige con
-      // opción 4/5 del menú y el bot deriva directo sin emitir resumen. En esos
-      // casos queremos popular `destination` con el nombre de la campaña + tag.
+      // Detectar opción del menú del bot (1-5). El cliente responde con
+      // número o keyword → aplicamos TEMPERATURA + ORIGEN + tag de tipo +
+      // funnel correspondiente al lead.
       const messageFrom = (event.data as { message?: { from?: string } }).message?.from
       const isFromClient =
         typeof messageFrom === "string" &&
         !messageFrom.startsWith(VICO_BOT_NUMBERS_PREFIX)
       if (text && isFromClient) {
-        const campaign = detectCampaignFromClientMessage(text)
-        if (campaign) {
-          await applyCampaignToLead(admin, orgId, leadId, campaign)
+        const option = detectMenuOption(text)
+        if (option) {
+          await applyMenuOptionToLead(admin, orgId, leadId, option)
         }
       }
       break
@@ -310,56 +310,39 @@ async function applyBotSummaryToLead(
       .eq("id", leadId)
   }
 
-  // 2. Asignar tag de destino — buscar tag con label que matchee (case-insensitive,
-  //    sin tildes para tolerar "Cancún" vs "CANCUN")
+  // 2. Asignar tag de destino — categoría "destino" (cardinality=many)
   if (summary.cityDestino) {
-    const normalizedDest = normalizeForMatch(summary.cityDestino)
-    const { data: tags } = await admin
-      .from("lead_tags")
-      .select("id, label, category:category_id(name)")
-      .eq("org_id", orgId)
-    const destTag = (tags ?? []).find(
-      (t: { label: string; category: { name: string } | null }) =>
-        normalizeForMatch(t.label) === normalizedDest
+    await assignTagInCategory(
+      admin,
+      orgId,
+      leadId,
+      summary.cityDestino,
+      "destino"
     )
-    if (destTag) {
-      await admin
-        .from("lead_tag_assignments")
-        .upsert(
-          {
-            lead_id: leadId,
-            tag_id: (destTag as { id: string }).id,
-            org_id: orgId,
-          } as never,
-          { onConflict: "lead_id,tag_id" }
-        )
-    }
   }
 
-  // 3. Asignar tag de mes — buscar tag con label que matchee el mes detectado
+  // 3. Asignar tag de mes — categoría "mes" (cardinality=one)
   if (summary.mesDetectado) {
-    const normalizedMes = normalizeForMatch(summary.mesDetectado)
-    const { data: tags } = await admin
-      .from("lead_tags")
-      .select("id, label, category:category_id(name)")
-      .eq("org_id", orgId)
-    const mesTag = (tags ?? []).find(
-      (t: { label: string; category: { name: string } | null }) =>
-        normalizeForMatch(t.label) === normalizedMes
+    await assignTagInCategory(
+      admin,
+      orgId,
+      leadId,
+      summary.mesDetectado,
+      "mes"
     )
-    if (mesTag) {
-      await admin
-        .from("lead_tag_assignments")
-        .upsert(
-          {
-            lead_id: leadId,
-            tag_id: (mesTag as { id: string }).id,
-            org_id: orgId,
-          } as never,
-          { onConflict: "lead_id,tag_id" }
-        )
-    }
   }
+
+  // 4. Upgrade temperatura a CALIENTE — el cliente completó todos los datos
+  //    para cotizar (5 campos del resumen), es interés genuino.
+  //    También asegura ORIGEN si no estaba asignado.
+  await assignTagInCategory(admin, orgId, leadId, "CALIENTE", "temperatura")
+  await assignTagInCategory(
+    admin,
+    orgId,
+    leadId,
+    "DERIVACION DE TRAFICO",
+    "origen"
+  )
 }
 
 /** lowercase + sin tildes + trim, para matchear "Cancún" ↔ "CANCUN". */
@@ -376,76 +359,227 @@ function normalizeForMatch(s: string): string {
 const VICO_BOT_NUMBERS_PREFIX = "5492617"
 
 /**
- * Detecta si el mensaje del cliente corresponde a una campaña activa
- * (Mundial = opción 4, F1 = opción 5). Devuelve el nombre canónico de la
- * campaña o null si no matchea.
- *
- * Tolera variaciones: "5", "Quiero info del paquete F1", "info F1", "formula 1",
- * "qatar", "mundial", "wc", etc.
+ * Opciones del menú del bot v50.2:
+ *   1 = Quiero viajar (bot recolecta datos → emite resumen → parser corre)
+ *   2 = Consulta de viaje existente (cliente ya compró)
+ *   3 = Problema en viaje (cliente en viaje activo)
+ *   4 = Info Mundial (campaña activa)
+ *   5 = Info F1 (campaña activa)
  */
-function detectCampaignFromClientMessage(rawText: string): string | null {
+type MenuOption = "viajar" | "consulta" | "problema" | "mundial" | "f1"
+
+interface MenuMapping {
+  /** Si no es null, se setea como `leads.destination` (solo si está placeholder). */
+  destination: string | null
+  /** Tag de TEMPERATURA a asignar (categoría cardinality=one). */
+  temperatura: "CALIENTE" | "TEMPLADO" | "FRIO"
+  /** Tag de ORIGEN a asignar (categoría cardinality=one). */
+  origen: "DERIVACION DE TRAFICO"
+  /** Tag adicional en categoría "tipo" (cardinality=one) — null = no asignar. */
+  tipoTag: "VIAJE EXISTENTE" | "EN VIAJE" | null
+  /** Si no es null, mover el lead a este funnel (lookup por name case-insensitive). */
+  funnelName: "VENDIDO" | "EN VIAJE" | null
+}
+
+const MENU_MAPPING: Record<MenuOption, MenuMapping> = {
+  viajar: {
+    destination: null,
+    temperatura: "TEMPLADO", // upgrade a CALIENTE cuando el parser detecta resumen
+    origen: "DERIVACION DE TRAFICO",
+    tipoTag: null,
+    funnelName: null,
+  },
+  consulta: {
+    destination: null,
+    temperatura: "TEMPLADO",
+    origen: "DERIVACION DE TRAFICO",
+    tipoTag: "VIAJE EXISTENTE",
+    funnelName: "VENDIDO",
+  },
+  problema: {
+    destination: null,
+    temperatura: "CALIENTE",
+    origen: "DERIVACION DE TRAFICO",
+    tipoTag: "EN VIAJE",
+    funnelName: "EN VIAJE",
+  },
+  mundial: {
+    destination: "Mundial",
+    temperatura: "CALIENTE",
+    origen: "DERIVACION DE TRAFICO",
+    tipoTag: null,
+    funnelName: null,
+  },
+  f1: {
+    destination: "Formula 1",
+    temperatura: "CALIENTE",
+    origen: "DERIVACION DE TRAFICO",
+    tipoTag: null,
+    funnelName: null,
+  },
+}
+
+/**
+ * Detecta qué opción del menú eligió el cliente. Tolera:
+ * - Texto único "1"/"2"/"3"/"4"/"5"
+ * - Keywords ("quiero viajar", "ya tengo viaje", "problema", "mundial", "f1", etc.)
+ * Devuelve null si no matchea ninguna.
+ */
+function detectMenuOption(rawText: string): MenuOption | null {
   const t = normalizeForMatch(rawText)
-  // Texto único "4" o "5" como respuesta al menú
-  if (t === "4") return "Mundial"
-  if (t === "5") return "Formula 1"
+  // Respuesta exacta al menú
+  if (t === "1") return "viajar"
+  if (t === "2") return "consulta"
+  if (t === "3") return "problema"
+  if (t === "4") return "mundial"
+  if (t === "5") return "f1"
   // Keywords explícitos
-  if (/\b(mundial|qatar|world\s*cup|wc)\b/.test(t)) return "Mundial"
-  if (/\b(f1|formula\s*1|formula\s*uno|gp|grand\s*prix)\b/.test(t)) {
-    return "Formula 1"
-  }
+  if (/\b(mundial|qatar|world\s*cup|wc)\b/.test(t)) return "mundial"
+  if (/\b(f1|formula\s*1|formula\s*uno|gp|grand\s*prix)\b/.test(t)) return "f1"
+  if (/\b(estoy\s+en\s+viaje|problema\s+en\s+viaje|emergencia|en\s+el\s+viaje)\b/.test(t)) return "problema"
+  if (/\b(consulta\s+(de|sobre)|ya\s+tengo\s+(mi\s+)?viaje|tengo\s+un\s+viaje)\b/.test(t)) return "consulta"
+  if (/\b(quiero\s+viajar|busco\s+viaje|busco\s+cotizar|quiero\s+cotizar)\b/.test(t)) return "viajar"
   return null
 }
 
 /**
- * Cuando detectamos que el cliente eligió campaña Mundial/F1, populamos
- * `leads.destination` con el nombre canónico + asignamos la tag de destino
- * correspondiente (si existe en `lead_tags`).
- *
- * Idempotente: solo actualiza destination si está vacío o en placeholder
- * "A definir" — no pisa datos reales que el vendedor haya completado.
+ * Aplica el mapping de la opción al lead: destination + TEMPERATURA + ORIGEN
+ * + tag de tipo + funnel. Idempotente: las asignaciones de tag respetan
+ * cardinality (categoría one → reemplaza, many → upsert). Destination y
+ * funnel se actualizan siempre (sobrescriben).
  */
-async function applyCampaignToLead(
+async function applyMenuOptionToLead(
   admin: SupabaseClient<Database>,
   orgId: string,
   leadId: string,
-  campaign: string
+  option: MenuOption
 ): Promise<void> {
-  // Solo update destination si está en placeholder (no pisar dato real)
-  const { data: currentLead } = await admin
-    .from("leads")
-    .select("destination")
-    .eq("id", leadId)
-    .maybeSingle()
-  const currentDest =
-    (currentLead as { destination: string } | null)?.destination ?? ""
-  const isPlaceholder =
-    !currentDest || /^a definir$/i.test(currentDest) || /^otros$/i.test(currentDest)
-  if (isPlaceholder) {
-    await admin
+  const mapping = MENU_MAPPING[option]
+
+  // 1. Destination — solo si placeholder
+  if (mapping.destination) {
+    const { data: lead } = await admin
       .from("leads")
-      .update({ destination: campaign } as never)
+      .select("destination")
       .eq("id", leadId)
+      .maybeSingle()
+    const currentDest =
+      (lead as { destination: string } | null)?.destination ?? ""
+    const isPlaceholder =
+      !currentDest ||
+      /^a definir$/i.test(currentDest) ||
+      /^otros$/i.test(currentDest)
+    if (isPlaceholder) {
+      await admin
+        .from("leads")
+        .update({ destination: mapping.destination } as never)
+        .eq("id", leadId)
+    }
+    // Tag de destino correspondiente (categoría destino, cardinality=many → upsert)
+    await assignTagInCategory(admin, orgId, leadId, mapping.destination.toUpperCase(), "destino")
   }
 
-  // Buscar tag con label que matchee la campaña (case-insensitive)
-  const normalizedCampaign = normalizeForMatch(campaign)
+  // 2. TEMPERATURA (cardinality=one)
+  await assignTagInCategory(admin, orgId, leadId, mapping.temperatura, "temperatura")
+
+  // 3. ORIGEN (cardinality=one)
+  await assignTagInCategory(admin, orgId, leadId, mapping.origen, "origen")
+
+  // 4. Tag de TIPO (cardinality=one)
+  if (mapping.tipoTag) {
+    await assignTagInCategory(admin, orgId, leadId, mapping.tipoTag, "tipo")
+  }
+
+  // 5. Funnel — siempre sobrescribe (la opción es el indicador más confiable)
+  if (mapping.funnelName) {
+    await setLeadFunnelByName(admin, orgId, leadId, mapping.funnelName)
+  }
+}
+
+/**
+ * Asigna una tag al lead respetando cardinality de la categoría:
+ * - cardinality=one: borra otras asignaciones de la misma categoría antes de insertar
+ * - cardinality=many: upsert (idempotente)
+ * Si la tag o categoría no existen, no hace nada (silencioso).
+ */
+async function assignTagInCategory(
+  admin: SupabaseClient<Database>,
+  orgId: string,
+  leadId: string,
+  tagLabel: string,
+  categoryName: string
+): Promise<void> {
+  // Buscar categoría por nombre
+  const { data: cat } = await admin
+    .from("lead_tag_categories")
+    .select("id, cardinality")
+    .eq("org_id", orgId)
+    .ilike("name", categoryName)
+    .maybeSingle()
+  if (!cat) return
+  const category = cat as { id: string; cardinality: string }
+
+  // Buscar tag por label dentro de la categoría
+  const normalizedLabel = normalizeForMatch(tagLabel)
   const { data: tags } = await admin
     .from("lead_tags")
     .select("id, label")
     .eq("org_id", orgId)
+    .eq("category_id", category.id)
   const tag = (tags ?? []).find(
-    (t: { label: string }) => normalizeForMatch(t.label) === normalizedCampaign
+    (t: { label: string }) => normalizeForMatch(t.label) === normalizedLabel
   )
-  if (tag) {
+  if (!tag) return
+  const tagId = (tag as { id: string }).id
+
+  // Si cardinality=one, borrar otras asignaciones del lead en esa categoría
+  if (category.cardinality === "one") {
+    const allTagIdsInCategory = (tags ?? []).map(
+      (t: { id: string }) => t.id
+    )
+    const otherTagIds = allTagIdsInCategory.filter((id) => id !== tagId)
+    if (otherTagIds.length > 0) {
+      await admin
+        .from("lead_tag_assignments")
+        .delete()
+        .eq("lead_id", leadId)
+        .in("tag_id", otherTagIds)
+    }
+  }
+
+  // Insertar (idempotente con onConflict)
+  await admin
+    .from("lead_tag_assignments")
+    .upsert(
+      {
+        lead_id: leadId,
+        tag_id: tagId,
+        org_id: orgId,
+      } as never,
+      { onConflict: "lead_id,tag_id" }
+    )
+}
+
+/**
+ * Cambia el funnel del lead por nombre. Lookup case-insensitive.
+ * Si no existe, no hace nada.
+ */
+async function setLeadFunnelByName(
+  admin: SupabaseClient<Database>,
+  orgId: string,
+  leadId: string,
+  funnelName: string
+): Promise<void> {
+  const { data: funnel } = await admin
+    .from("lead_funnels")
+    .select("id")
+    .eq("org_id", orgId)
+    .ilike("name", funnelName)
+    .maybeSingle()
+  if (funnel) {
     await admin
-      .from("lead_tag_assignments")
-      .upsert(
-        {
-          lead_id: leadId,
-          tag_id: (tag as { id: string }).id,
-          org_id: orgId,
-        } as never,
-        { onConflict: "lead_id,tag_id" }
-      )
+      .from("leads")
+      .update({ funnel_id: (funnel as { id: string }).id } as never)
+      .eq("id", leadId)
   }
 }
