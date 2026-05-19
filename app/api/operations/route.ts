@@ -25,6 +25,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No tiene permiso para crear operaciones" }, { status: 403 })
     }
 
+    // Cross-tenant fix (2026-05-18): exigir org_id para crear operaciones.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     // Rate limit por usuario: creación de operación dispara side effects
     // contables (ledger, IVA, operator_payments). Evita doble-submit/bot.
     const rateLimitBlock = enforceUserRateLimit(user.id, "/api/operations:POST", "WRITE")
@@ -79,11 +84,25 @@ export async function POST(request: Request) {
       hotel_name,
     } = body
 
+    // Cross-tenant fix (2026-05-18): validar que la agency_id pertenezca a la org del user.
+    // Sin esto, un user de org A podría crear operaciones en una agency de org B.
+    if (agency_id) {
+      const { data: agencyCheck } = await (supabase.from("agencies") as any)
+        .select("id")
+        .eq("id", agency_id)
+        .eq("org_id", (user as any).org_id)
+        .maybeSingle()
+      if (!agencyCheck) {
+        return NextResponse.json({ error: "Agencia no encontrada" }, { status: 404 })
+      }
+    }
+
     // Obtener configuración de operaciones
     const { data: operationSettings } = await supabase
       .from("operation_settings")
       .select("*")
       .eq("agency_id", agency_id)
+      .eq("org_id", (user as any).org_id)
       .maybeSingle()
 
     const settingsData = operationSettings as any

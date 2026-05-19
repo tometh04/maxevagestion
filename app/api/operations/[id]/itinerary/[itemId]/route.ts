@@ -7,14 +7,21 @@ import { canPerformAction } from "@/lib/permissions-api"
  * SaaS Pilar 2: itinerary_items tiene RLS permisiva (USING true) y no tiene
  * org_id (gap de Pilar 1 — ver Pilar 2c). La defensa va por código: al
  * recibir itemId, leemos el item (sin RLS útil), luego verificamos que la
- * operation parent esté en la org del user (operations sí tiene RLS).
- * Si la operation no es visible con el server client → item no es del user.
+ * operation parent esté en la org del user.
+ *
+ * Cross-tenant fix (2026-05-18): RLS no protegía como creíamos; agregamos
+ * filtro explícito por org_id (defense-in-depth).
  */
 async function verifyItemBelongsToUser(
   supabase: any,
   adminDb: any,
-  itemId: string
+  itemId: string,
+  orgId: string | null
 ): Promise<{ ok: true } | { ok: false; response: NextResponse }> {
+  if (!orgId) {
+    return { ok: false, response: NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 }) }
+  }
+
   const { data: item } = await adminDb
     .from("itinerary_items")
     .select("id, operation_id")
@@ -29,6 +36,7 @@ async function verifyItemBelongsToUser(
     .from("operations")
     .select("id")
     .eq("id", item.operation_id)
+    .eq("org_id", orgId)
     .maybeSingle()
 
   if (!operation) {
@@ -54,7 +62,7 @@ export async function PATCH(
     const supabase = await createServerClient()
     const adminDb = createAdminClient() as any
 
-    const check = await verifyItemBelongsToUser(supabase, adminDb, itemId)
+    const check = await verifyItemBelongsToUser(supabase, adminDb, itemId, (user as any).org_id)
     if (!check.ok) return check.response
 
     const { id, operation_id, created_at, ...updateData } = body
@@ -92,7 +100,7 @@ export async function DELETE(
     const supabase = await createServerClient()
     const adminDb = createAdminClient() as any
 
-    const check = await verifyItemBelongsToUser(supabase, adminDb, itemId)
+    const check = await verifyItemBelongsToUser(supabase, adminDb, itemId, (user as any).org_id)
     if (!check.ok) return check.response
 
     const { error } = await adminDb

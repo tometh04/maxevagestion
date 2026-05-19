@@ -12,6 +12,19 @@ export async function GET(
     const { id: operationId } = await params
     const supabase = await createServerClient()
 
+    // Cross-tenant fix (2026-05-18): validar que la operación sea del org del user.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+    const { data: opOwner } = await (supabase.from("operations") as any)
+      .select("id")
+      .eq("id", operationId)
+      .eq("org_id", (user as any).org_id)
+      .maybeSingle()
+    if (!opOwner) {
+      return NextResponse.json({ error: "Operación no encontrada" }, { status: 404 })
+    }
+
     const { data, error } = await supabase
       .from("operation_customers")
       .select(`
@@ -60,6 +73,20 @@ export async function POST(
 
     if (!customer_id) {
       return NextResponse.json({ error: "customer_id es requerido" }, { status: 400 })
+    }
+
+    // Cross-tenant fix (2026-05-18): validar que la operación sea del org del user
+    // antes de permitir agregar un cliente a ella.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+    const { data: opOwner } = await (supabase.from("operations") as any)
+      .select("id")
+      .eq("id", operationId)
+      .eq("org_id", (user as any).org_id)
+      .maybeSingle()
+    if (!opOwner) {
+      return NextResponse.json({ error: "Operación no encontrada" }, { status: 404 })
     }
 
     // Verificar que no exista ya

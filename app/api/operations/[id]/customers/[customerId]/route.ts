@@ -17,6 +17,19 @@ export async function DELETE(
     const { id: operationId, customerId: operationCustomerId } = await params
     const supabase = await createServerClient()
 
+    // Cross-tenant fix (2026-05-18): validar que la operación sea del org del user.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+    const { data: opOwner } = await (supabase.from("operations") as any)
+      .select("id")
+      .eq("id", operationId)
+      .eq("org_id", (user as any).org_id)
+      .maybeSingle()
+    if (!opOwner) {
+      return NextResponse.json({ error: "Operación no encontrada" }, { status: 404 })
+    }
+
     // Eliminar la relación
     const { error } = await (supabase.from("operation_customers") as any)
       .delete()
@@ -49,6 +62,19 @@ export async function PATCH(
     const { id: operationId, customerId: operationCustomerId } = await params
     const supabase = await createServerClient()
     const body = await request.json()
+
+    // Cross-tenant fix (2026-05-18): validar que la operación sea del org del user.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+    const { data: opOwner } = await (supabase.from("operations") as any)
+      .select("id")
+      .eq("id", operationId)
+      .eq("org_id", (user as any).org_id)
+      .maybeSingle()
+    if (!opOwner) {
+      return NextResponse.json({ error: "Operación no encontrada" }, { status: 404 })
+    }
 
     const updates: Record<string, unknown> = {}
 

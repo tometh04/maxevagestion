@@ -19,25 +19,34 @@ export async function DELETE(
       return NextResponse.json({ error: "No tiene permiso para eliminar pagos de tarjeta" }, { status: 403 })
     }
 
+    // Cross-tenant fix (2026-05-18): exigir org_id explícito, no confiar en RLS.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+    const userOrgId = (user as any).org_id as string
+
     const { id } = await params
     const supabase = await createServerClient()
+    // adminDb justificado: la cascade delete tiene que pasar por
+    // expense_receipts/ledger_movements/cash_movements que pueden estar
+    // protegidos por triggers/RLS estrictos. Validamos org_id en cada delete.
     const adminDb = createAdminClient() as any
 
-    // SaaS Pilar 2: fetch via server client — RLS filtra por org; si el
-    // group pertenece a otra org, fetch falla y devolvemos 404.
     const { data: group, error: fetchError } = await (supabase.from("cc_payment_groups") as any)
       .select("id, source_account_id, org_id")
       .eq("id", id)
+      .eq("org_id", userOrgId)
       .single()
 
     if (fetchError || !group) {
       return NextResponse.json({ error: "Pago de tarjeta no encontrado" }, { status: 404 })
     }
 
-    // Get all cash_movements in this group (RLS acota)
+    // Get all cash_movements in this group (filtro explícito org)
     const { data: movements } = await (supabase.from("cash_movements") as any)
       .select("id, ledger_movement_id, financial_account_id")
       .eq("cc_payment_group_id", id)
+      .eq("org_id", userOrgId)
 
     if (movements && movements.length > 0) {
       const movementIds = movements.map((m: any) => m.id)

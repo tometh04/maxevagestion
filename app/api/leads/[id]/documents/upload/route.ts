@@ -12,16 +12,22 @@ export async function POST(
   try {
     const { user } = await getCurrentUser()
     const { id: leadId } = await params
-    
+
+    // Cross-tenant fix (2026-05-18): no confiar en RLS; scopear explícito.
+    // CRÍTICO: este endpoint usa service role que bypassea RLS.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     // Usar service role key para bypass RLS (ya validamos autenticación arriba)
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-    
+
     if (!supabaseUrl || !supabaseServiceKey) {
       console.error("❌ Faltan variables de entorno para Supabase")
       return NextResponse.json({ error: "Error de configuración del servidor" }, { status: 500 })
     }
-    
+
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
       auth: {
         autoRefreshToken: false,
@@ -29,11 +35,11 @@ export async function POST(
       },
     })
 
-    // Verificar que el lead existe y pertenece a agencia de la org del user
-    const { data: lead, error: leadError } = await supabase
-      .from("leads")
+    // Verificar que el lead existe y pertenece al org del user (scopeado por org)
+    const { data: lead, error: leadError } = await (supabase.from("leads") as any)
       .select("id, agency_id")
       .eq("id", leadId)
+      .eq("org_id", (user as any).org_id)
       .single()
 
     if (leadError || !lead) {
@@ -134,13 +140,14 @@ export async function POST(
     }
     const fileUrl = urlData.publicUrl
 
-    // Crear registro del documento
+    // Crear registro del documento (con org_id)
     const { data: document, error: docError } = await (supabase.from("documents") as any)
       .insert({
         lead_id: leadId,
         type: documentType as any,
         file_url: fileUrl,
         uploaded_by_user_id: user.id,
+        org_id: (user as any).org_id,
       })
       .select()
       .single()
@@ -179,6 +186,7 @@ export async function POST(
           const { error: updateError } = await (supabase.from("documents") as any)
             .update({ scanned_data: scannedData })
             .eq("id", document.id)
+            .eq("org_id", (user as any).org_id)
           
           if (updateError) {
             console.error("❌ Error actualizando scanned_data:", updateError)

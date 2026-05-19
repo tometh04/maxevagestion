@@ -23,10 +23,19 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Faltan parámetros dateFrom y dateTo" }, { status: 400 })
     }
 
+    // Cross-tenant fix (2026-05-18): exigir org_id — este endpoint usa
+    // execute_readonly_query (SQL crudo) sobre los accountIds que devuelve
+    // el primer query. Si no filtramos las accounts por org, podríamos
+    // calcular balances con accounts ajenas.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     // Obtener cuentas financieras de efectivo y caja de ahorro
     let query = (supabase.from("financial_accounts") as any)
       .select("id, currency, initial_balance, type, chart_account_id")
       .in("type", ["CASH_ARS", "CASH_USD", "SAVINGS_ARS", "SAVINGS_USD"])
+      .eq("org_id", (user as any).org_id)
     if (accountId) {
       query = query.eq("id", accountId)
     } else if (agencyId) {

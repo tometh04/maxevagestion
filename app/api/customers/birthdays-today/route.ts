@@ -12,6 +12,11 @@ export async function GET() {
       return NextResponse.json({ error: "No tiene permiso para ver clientes" }, { status: 403 })
     }
 
+    // Cross-tenant fix (2026-05-18): no confiar en RLS; scopear explícito.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     const supabase = await createServerClient()
 
     // Obtener día y mes actual
@@ -19,10 +24,10 @@ export async function GET() {
     const month = today.getMonth() + 1
     const day = today.getDate()
 
-    // Buscar clientes con cumpleaños hoy
-    // Nota: La tabla customers NO tiene agency_id, los clientes se relacionan con agencias a través de operations
+    // Buscar clientes con cumpleaños hoy (scopeado por org)
     let query = (supabase.from("customers") as any)
       .select("id, first_name, last_name, phone, date_of_birth")
+      .eq("org_id", (user as any).org_id)
       .not("date_of_birth", "is", null)
       .not("phone", "is", null)
 
@@ -42,9 +47,9 @@ export async function GET() {
 
     // Si es SELLER con ownDataOnly, filtrar solo clientes de sus operaciones
     if (isOwnDataOnly(user.role as any, "customers")) {
-      const { data: sellerOps } = await supabase
-        .from("operations")
+      const { data: sellerOps } = await (supabase.from("operations") as any)
         .select("id")
+        .eq("org_id", (user as any).org_id)
         .or(`seller_primary_id.eq.${user.id},seller_secondary_id.eq.${user.id}`)
 
       const sellerOpIds = (sellerOps || []).map((op: any) => op.id)
@@ -53,10 +58,10 @@ export async function GET() {
         return NextResponse.json({ customers: [] })
       }
 
-      const { data: opCustomers } = await supabase
-        .from("operation_customers")
+      const { data: opCustomers } = await (supabase.from("operation_customers") as any)
         .select("customer_id")
         .in("operation_id", sellerOpIds)
+        .eq("org_id", (user as any).org_id)
 
       const sellerCustomerIds = new Set((opCustomers || []).map((oc: any) => oc.customer_id))
       birthdayCustomers = birthdayCustomers.filter((c: any) => sellerCustomerIds.has(c.id))

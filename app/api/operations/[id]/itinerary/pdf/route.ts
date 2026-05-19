@@ -31,9 +31,14 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await getCurrentUser()
+    const { user } = await getCurrentUser()
     const { id: operationId } = await params
     const supabase = await createServerClient()
+
+    // Cross-tenant fix (2026-05-18): scopear operation fetch por org del user.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
 
     // Fetch organization settings for PDF branding
     const { data: orgSettings } = await (supabase.from("organization_settings") as any)
@@ -49,7 +54,7 @@ export async function GET(
     const companyTaxId = getOrgSetting('tax_id', '')
     const companyLogo = getOrgSetting('brand_logo', '')
 
-    // Fetch operation with customers
+    // Fetch operation with customers (scopeada por org)
     const { data: operation } = await (supabase.from("operations") as any)
       .select(`
         *,
@@ -59,6 +64,7 @@ export async function GET(
         )
       `)
       .eq("id", operationId)
+      .eq("org_id", (user as any).org_id)
       .single()
 
     if (!operation) {

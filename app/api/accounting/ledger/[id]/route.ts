@@ -26,11 +26,14 @@ export async function PATCH(
       return NextResponse.json({ error: "affects_balance debe ser boolean" }, { status: 400 })
     }
 
-    // SaaS Pilar 2: RLS en ledger_movements acota por org_id del JWT.
-    // Ya no usamos admin client — movement solo visible si pertenece a la org.
+    // Cross-tenant fix (2026-05-18): RLS no protegía; scopear explícito por org.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
     const { data: movement, error: fetchError } = await (supabase.from("ledger_movements") as any)
       .select("id, account_id, affects_balance")
       .eq("id", id)
+      .eq("org_id", (user as any).org_id)
       .single()
 
     if (fetchError || !movement) {
@@ -40,6 +43,7 @@ export async function PATCH(
     const { data: updatedMovement, error: updateError } = await (supabase.from("ledger_movements") as any)
       .update({ affects_balance: body.affects_balance })
       .eq("id", id)
+      .eq("org_id", (user as any).org_id)
       .select("id, account_id, affects_balance")
       .single()
 

@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Plus, Trash2, AlertTriangle, Building2, ArrowRightLeft, Pencil } from "lucide-react"
@@ -858,11 +859,9 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
                 {formData.type !== "ASSETS" && (
                   <div>
                     <Label>Saldo Inicial</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
+                    <DecimalInput
                       value={formData.initial_balance}
-                      onChange={(e) => setFormData({ ...formData, initial_balance: parseFloat(e.target.value) || 0 })}
+                      onChange={(v) => setFormData({ ...formData, initial_balance: parseFloat(v) || 0 })}
                       placeholder="0"
                     />
                   </div>
@@ -1044,12 +1043,10 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
               </div>
               <div>
                 <Label htmlFor="edit-target">Nuevo saldo</Label>
-                <Input
+                <DecimalInput
                   id="edit-target"
-                  type="number"
-                  step="0.01"
                   value={editTargetBalance}
-                  onChange={(e) => setEditTargetBalance(e.target.value)}
+                  onChange={(v) => setEditTargetBalance(v)}
                   placeholder="0.00"
                   disabled={isEditing}
                 />

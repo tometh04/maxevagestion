@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -423,14 +424,21 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[95vw] sm:max-w-lg max-h-[95vh]">
+      {/* Bug fix 2026-05-18 (Andres VICO): el dialog tenía max-h-[95vh]
+          pero sin overflow-y-auto adentro → el contenido se desbordaba sin
+          scroll y forzaba a los usuarios a hacer zoom out del navegador.
+          Solución: flex flex-col en DialogContent + wrapper interno con
+          flex-1 overflow-y-auto, así el footer queda fijo al pie y el
+          contenido scrollea entre header y footer. */}
+      <DialogContent className="max-w-[95vw] sm:max-w-lg max-h-[95vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Nuevo Pago</DialogTitle>
           <DialogDescription>Crear un pago para una operación</DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col flex-1 min-h-0">
+            <div className="flex-1 overflow-y-auto space-y-5 -mr-2 pr-2">
             {/* Detalle */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
@@ -590,14 +598,7 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
                     <FormItem>
                       <FormLabel>Monto *</FormLabel>
                       <FormControl>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          placeholder="0.00"
-                          {...field}
-                          onChange={(e) => field.onChange(Number(e.target.value))}
-                        />
+                        <DecimalInput placeholder="0.00" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -830,8 +831,9 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
                 </div>
               )}
             </div>
+            </div>{/* fin wrapper scrollable */}
 
-            <DialogFooter>
+            <DialogFooter className="pt-4 border-t border-border/40 mt-2">
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancelar
               </Button>

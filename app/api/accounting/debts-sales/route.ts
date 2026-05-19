@@ -89,8 +89,12 @@ export async function GET(request: Request) {
     })
 
     // Get all payments for these operations (chunked: .in() revienta URL con >300 UUIDs).
+    // Defense-in-depth (2026-05-18): aunque los operation_ids ya vienen del filtro
+    // de applyCustomersFilters (scoped al org del user), agregamos .eq("org_id")
+    // explícito a la query de payments por la regla canónica de no confiar en RLS.
     let paymentsByOperation: Record<string, { paidUsd: number; currency: string }> = {}
-    if (allOperationIds.length > 0) {
+    if (allOperationIds.length > 0 && (user as any).org_id) {
+      const userOrgId = (user as any).org_id as string
       const chunkSize = 200
       for (let i = 0; i < allOperationIds.length; i += chunkSize) {
         const chunk = allOperationIds.slice(i, i + chunkSize)
@@ -98,6 +102,7 @@ export async function GET(request: Request) {
           .from("payments")
           .select("operation_id, amount, amount_usd, currency, exchange_rate, status, direction")
           .in("operation_id", chunk)
+          .eq("org_id", userOrgId)
           .eq("direction", "INCOME")
           .eq("payer_type", "CUSTOMER")
 

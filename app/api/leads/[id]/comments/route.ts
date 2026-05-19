@@ -16,20 +16,25 @@ export async function GET(
       return NextResponse.json({ error: "No tiene permiso para ver comentarios" }, { status: 403 })
     }
 
+    // Cross-tenant fix (2026-05-18): no confiar en RLS; scopear explícito.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     const supabase = await createServerClient()
 
-    // Verificar que el lead existe
-    const { data: lead } = await supabase
-      .from("leads")
+    // Verificar que el lead existe y pertenece al org del user
+    const { data: lead } = await (supabase.from("leads") as any)
       .select("id")
       .eq("id", leadId)
+      .eq("org_id", (user as any).org_id)
       .maybeSingle()
 
     if (!lead) {
       return NextResponse.json({ error: "Lead no encontrado" }, { status: 404 })
     }
 
-    // Obtener comentarios con información del usuario
+    // Obtener comentarios con información del usuario (scopeado por org)
     const { data: comments, error } = await (supabase.from("lead_comments") as any)
       .select(`
         id,
@@ -44,6 +49,7 @@ export async function GET(
         )
       `)
       .eq("lead_id", leadId)
+      .eq("org_id", (user as any).org_id)
       .order("created_at", { ascending: false })
 
     if (error) {
@@ -73,28 +79,34 @@ export async function POST(
       return NextResponse.json({ error: "No tiene permiso para crear comentarios" }, { status: 403 })
     }
 
+    // Cross-tenant fix (2026-05-18): no confiar en RLS; scopear explícito.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     if (!comment || !comment.trim()) {
       return NextResponse.json({ error: "El comentario no puede estar vacío" }, { status: 400 })
     }
 
     const supabase = await createServerClient()
 
-    // Verificar que el lead existe
-    const { data: lead } = await supabase
-      .from("leads")
+    // Verificar que el lead existe y pertenece al org del user
+    const { data: lead } = await (supabase.from("leads") as any)
       .select("id")
       .eq("id", leadId)
+      .eq("org_id", (user as any).org_id)
       .maybeSingle()
 
     if (!lead) {
       return NextResponse.json({ error: "Lead no encontrado" }, { status: 404 })
     }
 
-    // Crear el comentario
+    // Crear el comentario (con org_id)
     const { data: newComment, error } = await (supabase.from("lead_comments") as any)
       .insert({
         lead_id: leadId,
         user_id: user.id,
+        org_id: (user as any).org_id,
         comment: comment.trim(),
       })
       .select(`

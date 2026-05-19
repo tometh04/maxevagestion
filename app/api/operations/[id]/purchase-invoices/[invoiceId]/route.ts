@@ -15,6 +15,19 @@ export async function PATCH(
     const body = await request.json()
     const supabase = await createServerClient()
 
+    // Cross-tenant fix (2026-05-18): validar operación del org del user.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+    const { data: opOwner } = await (supabase.from("operations") as any)
+      .select("id")
+      .eq("id", operationId)
+      .eq("org_id", (user as any).org_id)
+      .maybeSingle()
+    if (!opOwner) {
+      return NextResponse.json({ error: "Operación no encontrada" }, { status: 404 })
+    }
+
     const updateData: any = { updated_at: new Date().toISOString() }
     const allowedFields = [
       "invoice_type", "invoice_number", "invoice_date",
@@ -114,9 +127,23 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; invoiceId: string }> }
 ) {
   try {
-    await getCurrentUser()
+    const { user } = await getCurrentUser()
     const { id: operationId, invoiceId } = await params
     const supabase = await createServerClient()
+
+    // Cross-tenant fix (2026-05-18): validar operación del org del user antes
+    // de borrar la factura.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+    const { data: opOwner } = await (supabase.from("operations") as any)
+      .select("id")
+      .eq("id", operationId)
+      .eq("org_id", (user as any).org_id)
+      .maybeSingle()
+    if (!opOwner) {
+      return NextResponse.json({ error: "Operación no encontrada" }, { status: 404 })
+    }
 
     // Delete associated tax withholdings first
     await (supabase.from("tax_withholdings") as any)

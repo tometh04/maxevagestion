@@ -17,7 +17,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No autorizado" }, { status: 403 })
     }
 
-    // 1. Obtener todos los pagos pagados
+    // Cross-tenant fix (2026-05-18): exigir org_id y filtrar pagos por org.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
+    // 1. Obtener todos los pagos pagados del org del user
     const { data: paidPayments, error: paymentsError } = await supabase
       .from("payments")
       .select(`
@@ -39,6 +44,7 @@ export async function POST(request: Request) {
         )
       `)
       .eq("status", "PAID")
+      .eq("org_id", (user as any).org_id)
       .neq("source", "OPERATOR_BULK")
       .not("date_paid", "is", null)
 
@@ -55,11 +61,12 @@ export async function POST(request: Request) {
       })
     }
 
-    // 2. Obtener todos los cash_movements existentes con payment_id
-    const { data: existingMovements, error: movementsError } = await supabase
-      .from("cash_movements")
+    // 2. Obtener todos los cash_movements existentes con payment_id (del org)
+    const { data: existingMovements, error: movementsError } = await (supabase
+      .from("cash_movements") as any)
       .select("payment_id")
       .not("payment_id", "is", null)
+      .eq("org_id", (user as any).org_id)
 
     if (movementsError) {
       console.error("Error obteniendo movimientos:", movementsError)
@@ -105,29 +112,31 @@ export async function POST(request: Request) {
           agencyId = (userAgencies as any)?.[0]?.agency_id
         }
 
-        // Obtener cash_box_id por defecto
+        // Obtener cash_box_id por defecto (scopeado por org)
         let cashBoxId = null
         if (agencyId) {
-          const { data: defaultCashBox } = await supabase
-            .from("cash_boxes")
+          const { data: defaultCashBox } = await (supabase
+            .from("cash_boxes") as any)
             .select("id")
             .eq("agency_id", agencyId)
             .eq("currency", paymentData.currency)
             .eq("is_default", true)
             .eq("is_active", true)
+            .eq("org_id", (user as any).org_id)
             .maybeSingle()
 
           cashBoxId = (defaultCashBox as any)?.id || null
         }
 
-        // Si no hay cash_box, intentar obtener uno sin agency_id
+        // Si no hay cash_box, intentar obtener uno del org sin filtrar por agency
         if (!cashBoxId) {
-          const { data: defaultCashBox } = await supabase
-            .from("cash_boxes")
+          const { data: defaultCashBox } = await (supabase
+            .from("cash_boxes") as any)
             .select("id")
             .eq("currency", paymentData.currency)
             .eq("is_default", true)
             .eq("is_active", true)
+            .eq("org_id", (user as any).org_id)
             .maybeSingle()
 
           cashBoxId = (defaultCashBox as any)?.id || null

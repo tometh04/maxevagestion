@@ -44,15 +44,19 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "No autorizado" }, { status: 403 })
     }
 
-    // SaaS Pilar 2: RLS en invoices/tax_withholdings/financial_settings acota por org_id del JWT.
+    // Cross-tenant fix (2026-05-18): no confiar en RLS; scopear explícito.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
     const year = parseInt(searchParams.get("year") || new Date().getFullYear().toString())
     const month = parseInt(searchParams.get("month") || (new Date().getMonth() + 1).toString())
 
-    // Load IIBB settings
+    // Load IIBB settings (scopeado por org)
     const { data: taxSettings } = await (supabase.from("financial_settings") as any)
       .select("iibb_jurisdiction, iibb_rate, iibb_convenio_multilateral, iibb_jurisdictions")
+      .eq("org_id", (user as any).org_id)
       .limit(1)
       .maybeSingle()
 
@@ -68,6 +72,7 @@ export async function GET(request: Request) {
     // Get all invoices issued in the period (base imponible = facturación)
     const { data: invoices } = await (supabase.from("invoices") as any)
       .select("id, imp_neto, imp_total, imp_iva, moneda, cotizacion, created_at, receptor_nombre")
+      .eq("org_id", (user as any).org_id)
       .gte("created_at", startOfDayAR(startDate))
       .lte("created_at", endOfDayAR(endDate))
       .eq("status", "authorized")
@@ -79,6 +84,7 @@ export async function GET(request: Request) {
       .eq("type", "PERCEPCION_IIBB")
       .eq("direction", "SUFFERED")
       .eq("tax_period", taxPeriod)
+      .eq("org_id", (user as any).org_id)
 
     // Get IIBB retenciones sufridas in the period (credit)
     const { data: retencionesIibb } = await (supabase.from("tax_withholdings") as any)
@@ -86,6 +92,7 @@ export async function GET(request: Request) {
       .eq("type", "RETENCION_IIBB")
       .eq("direction", "SUFFERED")
       .eq("tax_period", taxPeriod)
+      .eq("org_id", (user as any).org_id)
 
     // Calculate base imponible (total facturado en ARS)
     let baseImponibleARS = 0

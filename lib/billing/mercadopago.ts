@@ -64,8 +64,14 @@ export interface CreatePreapprovalParams {
   payerEmail: string
   /** URL absoluta a la que redirigir después del pago. */
   backUrl: string
-  /** Si true, incluye free_trial 7 días. Default true para flow estándar. */
+  /** Si true, incluye free_trial 7 días. Default true para flow estándar.
+   *  Si freeTrialDays está seteado, este flag se ignora (gana freeTrialDays). */
   includeFreeTrial?: boolean
+  /** 2026-05-18 (caso VICO): cantidad custom de días de free_trial antes del
+   *  primer cobro. Útil para clientes que ya pagaron offline el primer mes
+   *  y queremos diferir el cobro automático hasta una fecha específica.
+   *  Si seteado a > 0, sobreescribe includeFreeTrial. */
+  freeTrialDays?: number
   /** Opcional: start_date ISO para reactivaciones. MP no cobra antes de esta fecha. */
   startDate?: string
   /** Requerido si plan === 'CUSTOM'. Monto en ARS. */
@@ -112,7 +118,10 @@ export async function createPreapproval(params: CreatePreapprovalParams): Promis
     transaction_amount: amount,
     currency_id: "ARS",
   }
-  if (includeFreeTrial) {
+  // freeTrialDays (custom, ej 25 días) tiene prioridad sobre includeFreeTrial (legacy 7d hardcoded).
+  if (typeof params.freeTrialDays === "number" && params.freeTrialDays > 0) {
+    autoRecurring.free_trial = { frequency: params.freeTrialDays, frequency_type: "days" }
+  } else if (includeFreeTrial) {
     autoRecurring.free_trial = { frequency: 7, frequency_type: "days" }
   }
   if (params.startDate) {
@@ -277,8 +286,11 @@ export interface CreatePreapprovalPlanParams {
   amount: number
   /** URL absoluta de retorno post-pago. */
   backUrl: string
-  /** Si true incluye free_trial 7 días. */
+  /** Si true incluye free_trial 7 días. Ignorado si freeTrialDays > 0. */
   includeFreeTrial: boolean
+  /** 2026-05-18 (caso VICO): días custom de free_trial antes del primer cobro.
+   *  Si > 0 sobreescribe includeFreeTrial. */
+  freeTrialDays?: number
 }
 
 export interface PreapprovalPlanResult {
@@ -305,7 +317,9 @@ export async function createPreapprovalPlan(
     transaction_amount: params.amount,
     currency_id: "ARS",
   }
-  if (params.includeFreeTrial) {
+  if (typeof params.freeTrialDays === "number" && params.freeTrialDays > 0) {
+    autoRecurring.free_trial = { frequency: params.freeTrialDays, frequency_type: "days" }
+  } else if (params.includeFreeTrial) {
     autoRecurring.free_trial = { frequency: 7, frequency_type: "days" }
   }
 

@@ -147,7 +147,44 @@ export async function POST(request: Request) {
       notes,
       apply_rg5617,
       apply_rg3819,
+      idempotency_key, // UUID generado por el cliente al montar el form (Stripe-style)
     } = body
+
+    // ============================================================
+    // Idempotency check (Bug fix 2026-05-13 reportado por Santi):
+    // Doble submit / retry de red / Enter por costumbre podía crear
+    // 2 payments idénticos. El cliente ahora manda idempotency_key
+    // (UUID generado al montar el form). Si ya existe un payment con
+    // ese key → devolvemos el payment existente sin re-insertar.
+    //
+    // Tanto el primer POST como el retry con ?force=true mandan el
+    // MISMO key, así que el retry idempotente respeta el override.
+    // El key se regenera al cerrar el dialog → próximo cobro = nuevo key.
+    //
+    // Si el cliente no manda idempotency_key (clientes legacy, cron,
+    // bulk imports) la lógica vieja sigue funcionando normal.
+    // ============================================================
+    const isValidUuid = (s: unknown): s is string =>
+      typeof s === "string" &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s)
+
+    if (isValidUuid(idempotency_key)) {
+      const { data: existingByKey } = await (supabase.from("payments") as any)
+        .select("id, amount, currency, status, direction, payer_type, operation_id, operator_id, date_paid, date_due, created_at")
+        .eq("idempotency_key", idempotency_key)
+        .maybeSingle()
+
+      if (existingByKey) {
+        // Replay idempotente: el cliente ya creó este payment exitosamente
+        // en un intento anterior (probablemente perdió la respuesta por red,
+        // o doble click). No insertamos otra vez — devolvemos el existente.
+        return NextResponse.json({
+          success: true,
+          idempotent_replay: true,
+          payment: existingByKey,
+        })
+      }
+    }
 
     const finalStatus = status || "PENDING"
     const providedExchangeRateNumber = coercePositiveNumber(providedExchangeRate)
@@ -240,12 +277,18 @@ export async function POST(request: Request) {
       }
     }
 
+    // 🔴 Fix cross-tenant (2026-05-18): guard de org_id obligatorio.
+    if (!user.org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     // SELLER: verificar que la operación le pertenece
     if (user.role === "SELLER" && operation_id) {
       const { data: operationOwnership } = await (supabase.from("operations") as any)
         .select("id")
         .eq("id", operation_id)
         .eq("seller_id", user.id)
+        .eq("org_id", user.org_id) // defensive: scope por org también para SELLER
         .maybeSingle()
 
       if (!operationOwnership) {
@@ -255,11 +298,14 @@ export async function POST(request: Request) {
 
     let operationData: any = null
     if (operation_id) {
+      // Fetch + validación de org_id en la misma query: si la operación no
+      // pertenece al org del user, el .single() devuelve PGRST116 (no row).
       const { data: operation, error: operationError } = await (supabase.from("operations") as any)
         .select(`
           seller_id,
           operator_id,
           agency_id,
+          org_id,
           sale_currency,
           currency,
           destination,
@@ -268,6 +314,7 @@ export async function POST(request: Request) {
           )
         `)
         .eq("id", operation_id)
+        .eq("org_id", user.org_id)
         .single()
 
       if (operationError || !operation) {
@@ -511,6 +558,11 @@ export async function POST(request: Request) {
     if (needsApproval) {
       paymentData.approval_status = "PENDING_APPROVAL"
     }
+    // Guardar idempotency_key si vino y es válido. Permite que retries del cliente
+    // recuperen este payment sin crear duplicados (ver lookup al inicio del handler).
+    if (isValidUuid(idempotency_key)) {
+      paymentData.idempotency_key = idempotency_key
+    }
 
     const { data: payment, error: paymentError } = await (supabase.from("payments") as any)
       .insert(paymentData)
@@ -518,6 +570,21 @@ export async function POST(request: Request) {
       .single()
 
     if (paymentError) {
+      // Race condition: si dos POSTs llegan en paralelo con el mismo idempotency_key,
+      // el constraint UNIQUE rechaza uno. Lo detectamos y devolvemos el ganador.
+      if (paymentError.code === "23505" && paymentError.message?.includes("idempotency_key") && isValidUuid(idempotency_key)) {
+        const { data: winner } = await (supabase.from("payments") as any)
+          .select("id, amount, currency, status, direction, payer_type, operation_id, operator_id, date_paid, date_due, created_at")
+          .eq("idempotency_key", idempotency_key)
+          .maybeSingle()
+        if (winner) {
+          return NextResponse.json({
+            success: true,
+            idempotent_replay: true,
+            payment: winner,
+          })
+        }
+      }
       console.error("Error creating payment:", paymentError)
       return NextResponse.json({ error: `Error al crear pago: ${paymentError.message}` }, { status: 500 })
     }
@@ -1126,12 +1193,25 @@ export async function GET(request: Request) {
     const limit = Math.min(requestedLimit, 200)
     const offset = (page - 1) * limit
 
+    // 🔴 FIX CRÍTICO CROSS-TENANT (2026-05-18, Tomi reportó VICO viendo
+    // pagos ajenos): este endpoint NO filtraba por org_id. Cualquier user
+    // no-SELLER (ADMIN, SUPER_ADMIN, CONTABLE, etc) veía TODOS los pagos
+    // de TODAS las orgs. Defense-in-depth: org_id obligatorio + 400 si
+    // el user no tiene org (edge case que no debería pasar pero por las dudas).
+    if (!user.org_id) {
+      return NextResponse.json(
+        { error: "Usuario sin organización asociada" },
+        { status: 400 }
+      )
+    }
+
     // SELLER: solo ve pagos de sus operaciones
     let allowedOperationIds: string[] | null = null
     if (user.role === "SELLER") {
       const { data: sellerOps } = await (supabase.from("operations") as any)
         .select("id")
         .eq("seller_id", user.id)
+        .eq("org_id", user.org_id) // defensive: aún para SELLER scope por org
       allowedOperationIds = (sellerOps || []).map((op: any) => op.id)
       if (!allowedOperationIds || allowedOperationIds.length === 0) {
         return NextResponse.json({
@@ -1179,6 +1259,10 @@ export async function GET(request: Request) {
       )
     `, { count: "exact" })
       .neq("source", "OPERATOR_BULK")
+      // 🔴 Filtro multi-tenant CRÍTICO (2026-05-18): payments.org_id es columna
+      // post-migration P0. Sin este .eq, cualquier user no-SELLER ve pagos
+      // ajenos. Defense-in-depth además del SELLER filter.
+      .eq("org_id", user.org_id)
 
     if (operationId) {
       query = query.eq("operation_id", operationId)
@@ -1337,10 +1421,17 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "No tienes permisos para eliminar pagos" }, { status: 403 })
     }
 
-    // 1. Obtener el pago con su ledger_movement_id
+    // 🔴 Fix cross-tenant (2026-05-18): scope obligatorio por org.
+    // Sin este check, cualquier user con un paymentId ajeno podía DELETE-arlo.
+    if (!user.org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
+    // 1. Obtener el pago con su ledger_movement_id — filtrado por org del user
     const { data: payment, error: fetchError } = await (supabase.from("payments") as any)
       .select("*, operation_id")
       .eq("id", paymentId)
+      .eq("org_id", user.org_id)
       .single()
 
     if (fetchError || !payment) {
@@ -1567,10 +1658,18 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "paymentId es requerido" }, { status: 400 })
     }
 
-    // 1. Obtener pago actual
+    // 🔴 Fix cross-tenant (2026-05-18): scope obligatorio por org.
+    // Sin este check, cualquier ADMIN/CONTABLE con un paymentId ajeno
+    // podía editar/marcar como pagado un payment de otra org.
+    if (!user.org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
+    // 1. Obtener pago actual — filtrado por org del user
     const { data: existingPayment, error: fetchError } = await (supabase.from("payments") as any)
       .select("*")
       .eq("id", paymentId)
+      .eq("org_id", user.org_id)
       .single()
 
     if (fetchError || !existingPayment) {

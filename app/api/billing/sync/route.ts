@@ -47,6 +47,9 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}))
   const bodyPreapprovalId = (body?.preapproval_id as string | undefined)?.trim() || null
 
+  // adminDb justificado (caso C billing): organizations + billing_events son
+  // escritas por webhook MP. body.preapproval_id se valida contra
+  // external_reference de MP para evitar claim de preapproval ajeno.
   const admin = createAdminClient() as any
 
   // Fetch org actual — sirve para idempotency, preservación y fallback.

@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import {
   Select,
   SelectContent,
@@ -866,13 +867,12 @@ export function NewOperationDialog({
                           <FormItem>
                             <FormLabel>Comisión vendedor principal (%)</FormLabel>
                             <FormControl>
-                              <Input
-                                type="number"
-                                min={0}
-                                max={100}
-                                step={0.01}
+                              <DecimalInput
                                 value={field.value ?? halfDefault}
-                                onChange={(e) => field.onChange(Number(e.target.value))}
+                                onChange={(v) => field.onChange(Number(v))}
+                                onBlur={field.onBlur}
+                                name={field.name}
+                                ref={field.ref}
                                 onFocus={(e) => e.target.select()}
                                 disabled={!canEdit}
                               />
@@ -888,13 +888,12 @@ export function NewOperationDialog({
                           <FormItem>
                             <FormLabel>Comisión vendedor secundario (%)</FormLabel>
                             <FormControl>
-                              <Input
-                                type="number"
-                                min={0}
-                                max={100}
-                                step={0.01}
+                              <DecimalInput
                                 value={field.value ?? halfDefault}
-                                onChange={(e) => field.onChange(Number(e.target.value))}
+                                onChange={(v) => field.onChange(Number(v))}
+                                onBlur={field.onBlur}
+                                name={field.name}
+                                ref={field.ref}
                                 onFocus={(e) => e.target.select()}
                                 disabled={!canEdit}
                               />
@@ -1046,12 +1045,9 @@ export function NewOperationDialog({
                         {/* Fila 2: Costo + Moneda - más espacio */}
                         <div>
                             <label className="text-xs font-medium mb-1.5 block">Costo *</label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
+                      <DecimalInput
                         value={op.cost || ""}
-                        onChange={(e) => updateOperator(index, "cost", e.target.value === "" ? 0 : Number(e.target.value))}
+                        onChange={(v) => updateOperator(index, "cost", v === "" ? 0 : Number(v))}
                         onFocus={(e) => e.target.select()}
                         placeholder="0.00"
                               className="h-9 text-base font-medium"
@@ -1516,13 +1512,10 @@ export function NewOperationDialog({
                       <FormItem>
                         <FormLabel>Monto de Venta Total *</FormLabel>
                         <FormControl>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
+                          <DecimalInput
                             {...field}
                             value={field.value || ""}
-                            onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
+                            onChange={(v) => field.onChange(v === "" ? 0 : Number(v))}
                             onFocus={(e) => e.target.select()}
                           />
                         </FormControl>
@@ -1538,13 +1531,10 @@ export function NewOperationDialog({
                         <FormItem>
                           <FormLabel>Costo de Operador *</FormLabel>
                           <FormControl>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              min="0"
+                            <DecimalInput
                               {...field}
                               value={field.value || ""}
-                              onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
+                              onChange={(v) => field.onChange(v === "" ? 0 : Number(v))}
                               onFocus={(e) => e.target.select()}
                             />
                           </FormControl>

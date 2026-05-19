@@ -156,6 +156,66 @@ El sistema es **multi-tenant**. Cada cliente es una `organization` que puede ten
 - Tablas con `agency_id` heredan el scope de la org automáticamente
 - El admin super-panel (`app/admin/`) tiene acceso cross-org
 
+#### 🔴 REGLA DE ORO MULTI-TENANT — Defense-in-depth, NO confiar en RLS
+
+**Contexto histórico (2026-05-18)**: durante una sesión se descubrió que la
+función `user_org_ids()` que sostiene las políticas RLS de Supabase estaba
+rota o desactualizada (causa probable: mismatch de casing en `status`,
+reescritura manual sin versionar). Resultado: múltiples endpoints user-facing
+filtraban data solo "por RLS" y leakeaban data cross-tenant (un tenant veía
+pagos/operaciones/reportes de otros). Se cerraron ~50 endpoints agregando
+filtro explícito.
+
+**Reglas obligatorias para CUALQUIER endpoint nuevo o modificado**:
+
+1. **TODA query a tablas con datos por tenant DEBE tener `.eq("org_id", user.org_id)` explícito**. NO confiar en que RLS lo haga. Tablas afectadas (no exhaustivo): `payments`, `operations`, `customers`, `operators`, `operator_payments`, `cash_movements`, `ledger_movements`, `financial_accounts`, `alerts`, `commission_records`, `leads`, `invoices`, `purchase_invoices`, `recurring_payments`, `recurring_payment_categories`, `tax_withholdings`, `financial_settings`, `organization_settings`.
+
+2. **Guard obligatorio al inicio de cada handler user-facing**:
+   ```ts
+   const { user } = await getCurrentUser()
+   if (!user.org_id) {
+     return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+   }
+   ```
+
+3. **PATCH/DELETE/GET por id**: agregar `.eq("org_id", user.org_id)` al SELECT inicial del recurso. Si no pertenece al org del user, devolver 404 enmascarado (NO 403 "no tenés acceso" — eso confirma que existe).
+
+4. **Body de PATCH**: nunca aceptar `org_id` ni `agency_id` del body sin validar. Hacer `delete body.org_id` antes del UPDATE, o validar contra `user.org_id` y rechazar si no matchea.
+
+5. **Tabla legacy con `agency_id` (no `org_id` directo)**: usar helper `getOrgAgencyIds(orgId)` de `lib/organizations.ts` para pre-fetchar las agency_ids del org del user y filtrar con `.in("agency_id", agencyIds)`.
+
+6. **NUNCA usar `createAdminClient()` en endpoints user-facing**. El admin client usa SERVICE ROLE KEY que bypassea RLS. Reservado para:
+   - `/api/cron/*` (procesos automáticos)
+   - `/api/admin/*` (platform admin panel con guard `isPlatformAdmin`)
+   - `/api/webhooks/*` (webhooks externos sin user logueado)
+   - `/api/billing/mp-webhook` (webhook MP)
+   - Helpers internos de libs (con comment justificando el bypass)
+
+7. **Endpoints `/api/admin/*` cross-org**: validar siempre con `isPlatformAdmin(supabase, user.id)` ANTES de cualquier query.
+
+8. **Comentarios "RLS scopea automáticamente" o similar**: tratarlos como bug. Reemplazar por filtro explícito + comentario "Cross-tenant fix: filtro explícito, no confiar en RLS".
+
+**Patrón canónico**:
+```ts
+import { getCurrentUser } from "@/lib/auth"
+import { createServerClient } from "@/lib/supabase/server"
+
+export async function GET(req: Request) {
+  const { user } = await getCurrentUser()
+  if (!user.org_id) {
+    return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+  }
+  const supabase = await createServerClient()
+  const { data } = await supabase
+    .from("payments")
+    .select("*")
+    .eq("org_id", user.org_id)  // ← OBLIGATORIO
+  return NextResponse.json({ data })
+}
+```
+
+**En code review**: rechazar PRs que tocan endpoints user-facing sin este patrón.
+
 ### 2. Billing / SaaS (MercadoPago)
 
 **Planes** (fuente de verdad: `lib/billing/plans.ts`):

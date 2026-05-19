@@ -25,6 +25,8 @@ export async function POST(request: Request) {
   }
 
   // FK resolution: account_name → financial_account_id
+  // adminDb justificado (caso A): RPC `bulk_import_cash_movements` insertea
+  // con triggers RLS. SELECT pre-FK filtrado por org_id (defense-in-depth).
   const admin = createAdminClient() as any
   const { data: accounts } = await admin.from("financial_accounts").select("id, name").eq("org_id", orgId)
   const byName = new Map<string, string>((accounts ?? []).map((a: any) => [a.name, a.id]))

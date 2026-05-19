@@ -12,6 +12,15 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "No autorizado" }, { status: 403 })
     }
 
+    // 🔴 Fix cross-tenant CRÍTICO (2026-05-18, sweep /reports/*): este endpoint
+    // confiaba en RLS para scope por org, pero RLS evidentemente NO está
+    // protegiendo (mismo síntoma reportado en /api/payments y /upcoming-due).
+    // Defense-in-depth: agregamos .eq("org_id", user.org_id) explícito en
+    // cash_movements y financial_accounts.
+    if (!user.org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
@@ -21,12 +30,14 @@ export async function GET(request: Request) {
     const agencyId = searchParams.get("agencyId") || "ALL"
 
     // Obtener movimientos de caja con información de operaciones para filtrar por agencia
+    // RLS + filtro explícito (defense-in-depth)
     let query = (supabase
       .from("cash_movements") as any)
       .select(`
         *,
         operations:operation_id(agency_id)
       `)
+      .eq("org_id", user.org_id) // 🔴 scope multi-tenant explícito
       .order("movement_date", { ascending: true })
 
     if (dateFrom) {
@@ -173,6 +184,7 @@ export async function GET(request: Request) {
     })
 
     // Obtener balances actuales de todas las cuentas financieras
+    // RLS + filtro explícito (defense-in-depth)
     let accountsQuery = (supabase.from("financial_accounts") as any)
       .select(`
         id,
@@ -183,6 +195,7 @@ export async function GET(request: Request) {
         agency_id,
         agencies:agency_id(id, name)
       `)
+      .eq("org_id", user.org_id) // 🔴 scope multi-tenant explícito
       .eq("is_active", true)
 
     // Filtrar por agencia si es necesario

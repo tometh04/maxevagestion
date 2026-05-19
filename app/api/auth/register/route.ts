@@ -34,6 +34,13 @@ function slugify(input: string): string {
 }
 
 export async function POST(req: Request) {
+  // adminDb justificado (caso C auth flow, 2026-05-18):
+  // - No hay user logueado todavía. createServerClient devolvería un cliente
+  //   anónimo que no puede crear auth users ni inserts privilegiadas.
+  // - Necesita supabase.auth.admin.createUser (solo service role).
+  // - El handler nunca acepta org_id ni agency_id del body — los IDs los
+  //   genera el server al crear org/agency. No hay risk de privilege escalation
+  //   via body forge.
   let createdAuthUserId: string | null = null
   let admin: ReturnType<typeof createAdminClient> | null = null
 

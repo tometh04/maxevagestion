@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Palette, Image, Building2, Upload, X, Pencil, Trash2, FileText, Scale } from "lucide-react"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
@@ -588,15 +589,11 @@ export function InterfaceSettings() {
             <Label htmlFor="policy_deposit_retention_percent" className="text-xs">
               Retención por cancelación (%)
             </Label>
-            <Input
+            <DecimalInput
               id="policy_deposit_retention_percent"
-              type="number"
-              min="0"
-              max="100"
-              step="0.5"
               value={policies.deposit_retention_percent}
-              onChange={(e) =>
-                setPolicies((p) => ({ ...p, deposit_retention_percent: e.target.value }))
+              onChange={(v) =>
+                setPolicies((p) => ({ ...p, deposit_retention_percent: v }))
               }
               placeholder="p.ej. 30"
             />

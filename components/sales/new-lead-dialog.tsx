@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import { DestinationCombobox } from "@/components/ui/destination-combobox"
 import { getLeadRegionForDestination } from "@/lib/destinations"
 import { Label } from "@/components/ui/label"
@@ -560,14 +561,11 @@ export function NewLeadDialog({
                     <FormItem>
                       <FormLabel>Precio Cotizado</FormLabel>
                       <FormControl>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
+                        <DecimalInput
                           placeholder="0.00"
                           {...field}
                           value={field.value || ""}
-                          onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : null)}
+                          onChange={(v) => field.onChange(v ? Number(v) : null)}
                         />
                       </FormControl>
                       <FormMessage />
@@ -607,14 +605,11 @@ export function NewLeadDialog({
                       <FormItem>
                         <FormLabel>Monto del Depósito</FormLabel>
                         <FormControl>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
+                          <DecimalInput
                             placeholder="0.00"
                             {...field}
                             value={field.value || ""}
-                            onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : null)}
+                            onChange={(v) => field.onChange(v ? Number(v) : null)}
                           />
                         </FormControl>
                         <FormMessage />

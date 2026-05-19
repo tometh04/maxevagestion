@@ -30,6 +30,13 @@ export async function POST(request: Request) {
     const supabase = await createServerClient()
     const body = await request.json()
 
+    // Cross-tenant fix (2026-05-18): exigir org_id. Este endpoint procesa
+    // bulk payments por id — sin scopear, un user podría pagar deudas
+    // ajenas pasando IDs enumerados.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     const {
       payments,
       payment_account_id,
@@ -79,6 +86,7 @@ export async function POST(request: Request) {
     const { data: paymentAccount, error: accountError } = await (supabase.from("financial_accounts") as any)
       .select("*")
       .eq("id", payment_account_id)
+      .eq("org_id", (user as any).org_id)
       .single()
 
     if (accountError || !paymentAccount) {
@@ -129,6 +137,7 @@ export async function POST(request: Request) {
       const { data: operatorPayment, error: opError } = await (supabase.from("operator_payments") as any)
         .select("*")
         .eq("id", operator_payment_id)
+        .eq("org_id", (user as any).org_id)
         .single()
 
       if (opError || !operatorPayment) {
@@ -169,6 +178,7 @@ export async function POST(request: Request) {
       const { data: operation } = await (supabase.from("operations") as any)
         .select("seller_id, operator_id, agency_id")
         .eq("id", operation_id)
+        .eq("org_id", (user as any).org_id)
         .single()
 
       toProcess.push({

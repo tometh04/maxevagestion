@@ -38,10 +38,18 @@ export async function GET(
     const { id: operationId } = await params
     const supabase = await createServerClient()
 
+    // Cross-tenant fix (2026-05-18): scopear fetch por org. Sin esto un
+    // SUPER_ADMIN cruza orgs porque resolveOperationAccessScope retorna
+    // "full" inmediatamente sin checkear org.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     // Verificar que la operación existe y el usuario tiene acceso
     const { data: operation, error: opError } = await (supabase.from("operations") as any)
       .select("id, agency_id, seller_id, file_code, departure_date")
       .eq("id", operationId)
+      .eq("org_id", (user as any).org_id)
       .single()
 
     if (opError || !operation) {
@@ -92,10 +100,16 @@ export async function POST(
     const { id: operationId } = await params
     const supabase = await createServerClient()
 
+    // Cross-tenant fix (2026-05-18): scopear fetch por org del user.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     // Verificar que la operación existe y el usuario tiene acceso
     const { data: operation, error: opError } = await (supabase.from("operations") as any)
       .select("id, agency_id, seller_id, file_code, departure_date, destination, status")
       .eq("id", operationId)
+      .eq("org_id", (user as any).org_id)
       .single()
 
     if (opError || !operation) {

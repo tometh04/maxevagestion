@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
@@ -260,12 +261,9 @@ export function TransferAccountDialog({
                     <FormItem>
                       <FormLabel>Monto *</FormLabel>
                       <FormControl>
-                        <Input
-                          type="number"
-                          step="0.01"
+                        <DecimalInput
                           placeholder="0.00"
                           {...field}
-                          onChange={(e) => field.onChange(e.target.value)}
                           onFocus={(e) => e.target.select()}
                         />
                       </FormControl>
@@ -316,12 +314,13 @@ export function TransferAccountDialog({
                       <FormItem>
                         <FormLabel>Tipo de Cambio *</FormLabel>
                         <FormControl>
-                          <Input
-                            type="number"
-                            step="0.01"
+                          <DecimalInput
                             placeholder="Ej: 1450"
                             value={field.value ?? ""}
-                            onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                            onChange={(v) => field.onChange(v ? Number(v) : undefined)}
+                            onBlur={field.onBlur}
+                            name={field.name}
+                            ref={field.ref}
                             onFocus={(e) => e.target.select()}
                           />
                         </FormControl>

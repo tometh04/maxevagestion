@@ -24,6 +24,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Body inválido", details: parsed.error.issues }, { status: 400 })
   }
 
+  // adminDb justificado (caso A): el import usa supabase.auth.admin.inviteUserByEmail
+  // (requiere service_role) y RPC `bulk_import_users`. Los SELECT pre-FK
+  // filtrados por org_id del user (defense-in-depth).
   const admin = createAdminClient() as any
 
   // FK: agency_name → agency_id

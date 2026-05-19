@@ -41,7 +41,22 @@ export function CustomPlanOwnerView({
   const hasDiscount = plan.discount_percent > 0 && !!plan.discount_ends_at
 
   const isActive = org.subscription_status === "ACTIVE"
-  const isPendingMp = !isActive && plan.billing_method === "MP" && !!checkoutUrl
+  // Bug fix 2026-05-18 (Tomi reportó VICO): antes isPendingMp era
+  // `!isActive && billing_method === "MP" && checkoutUrl`. Pero VICO había
+  // sido marcada ACTIVE manualmente (pagaron primer mes por transferencia)
+  // SIN aceptar el preapproval MP → quedó en limbo: status=ACTIVE pero
+  // mp_preapproval_id=NULL. La UI mostraba "Cobro automático activo" lo
+  // cual era falso (no tienen suscripción MP) y NO mostraba botón para
+  // que aceptaran el checkout.
+  //
+  // Ahora distinguimos:
+  //   - isMpFullyActive: ACTIVE con preapproval real → mostrar "Cobro automático activo"
+  //   - needsMpActivation: billing_method=MP sin preapproval → mostrar botón checkout
+  //     (independiente de si subscription_status es ACTIVE o no)
+  const isMpFullyActive = isActive && plan.billing_method === "MP" && !!org.mp_preapproval_id
+  const needsMpActivation =
+    plan.billing_method === "MP" && !org.mp_preapproval_id && !!checkoutUrl
+  const isPendingMp = needsMpActivation
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-6 max-w-3xl">
@@ -118,16 +133,27 @@ export function CustomPlanOwnerView({
             )}
           </div>
 
-          {isPendingMp && checkoutUrl && (
-            <a
-              href={checkoutUrl}
-              className="block text-center text-sm font-semibold px-4 py-3 rounded bg-primary text-white hover:bg-primary transition"
-            >
-              Suscribirme y pagar con MercadoPago →
-            </a>
+          {needsMpActivation && checkoutUrl && (
+            <div className="space-y-2">
+              {isActive && (
+                <div className="text-xs rounded-md border border-accent-coral/40 bg-accent-coral/10 px-3 py-2 text-accent-coral">
+                  ⚠️ Tu plan está activo (pagaste primer período) pero todavía no
+                  autorizaste el cobro automático en MercadoPago. Para que los
+                  próximos meses se cobren solos, completá el checkout abajo.
+                </div>
+              )}
+              <a
+                href={checkoutUrl}
+                className="block text-center text-sm font-semibold px-4 py-3 rounded bg-primary text-white hover:bg-primary transition"
+              >
+                {isActive
+                  ? "Activar cobro automático con MercadoPago →"
+                  : "Suscribirme y pagar con MercadoPago →"}
+              </a>
+            </div>
           )}
 
-          {isActive && plan.billing_method === "MP" && (
+          {isMpFullyActive && (
             <div className="text-xs text-muted-foreground border-t pt-3">
               Cobro automático activo vía MercadoPago.
               {org.current_period_ends_at && (

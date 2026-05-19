@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canPerformAction } from "@/lib/permissions-api"
+import { getOrgAgencyIds } from "@/lib/organizations"
 
 export async function GET(
   request: Request,
@@ -13,12 +14,23 @@ export async function GET(
     const { id } = await params
     const boxId = id
 
+    // Cross-tenant fix (2026-05-18): cash_boxes no tiene org_id, scopear vía
+    // agencies del org del user.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+    const orgAgencyIds = (await getOrgAgencyIds((user as any).org_id)) || []
+    if (orgAgencyIds.length === 0) {
+      return NextResponse.json({ error: "Caja no encontrada" }, { status: 404 })
+    }
+
     const { data: cashBox, error } = await (supabase.from("cash_boxes") as any)
       .select(`
         *,
         agencies:agency_id(id, name)
       `)
       .eq("id", boxId)
+      .in("agency_id", orgAgencyIds)
       .single()
 
     if (error || !cashBox) {
@@ -59,10 +71,20 @@ export async function PATCH(
     const boxId = id
     const body = await request.json()
 
-    // Get current cash box
+    // Cross-tenant fix (2026-05-18): validar org via agencies.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+    const orgAgencyIds = (await getOrgAgencyIds((user as any).org_id)) || []
+    if (orgAgencyIds.length === 0) {
+      return NextResponse.json({ error: "Caja no encontrada" }, { status: 404 })
+    }
+
+    // Get current cash box (scopeada por agencies del org)
     const { data: currentBox } = await (supabase.from("cash_boxes") as any)
       .select("*")
       .eq("id", boxId)
+      .in("agency_id", orgAgencyIds)
       .single()
 
     if (!currentBox) {

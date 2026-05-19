@@ -86,6 +86,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Faltan campos requeridos" }, { status: 400 })
     }
 
+    // Cross-tenant fix (2026-05-18): validar que la agency_id pertenezca al
+    // org del user, para evitar que un user de org A cree cash boxes en
+    // una agency de org B.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+    const { data: agencyCheck } = await (supabase.from("agencies") as any)
+      .select("id")
+      .eq("id", agency_id)
+      .eq("org_id", (user as any).org_id)
+      .maybeSingle()
+    if (!agencyCheck) {
+      return NextResponse.json({ error: "Agencia no encontrada" }, { status: 404 })
+    }
+
     // If this is set as default, unset other defaults for this agency
     if (is_default) {
       await (supabase.from("cash_boxes") as any)

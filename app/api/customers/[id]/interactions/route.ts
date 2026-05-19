@@ -35,17 +35,23 @@ export async function GET(
   try {
     const { id: customerId } = await params
     const { user } = await getCurrentUser()
+
+    // Cross-tenant fix (2026-05-18): no confiar en RLS; scopear explícito.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
     // Obtener agencias del usuario
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
 
-    // Verificar que el cliente existe y pertenece a las agencias
+    // Verificar que el cliente existe y pertenece al org del user
     const { data: customer, error: customerError } = await (supabase.from("customers") as any)
       .select("id")
       .eq("id", customerId)
-      .in("agency_id", agencyIds)
+      .eq("org_id", (user as any).org_id)
       .single()
 
     if (customerError || !customer) {
@@ -60,11 +66,11 @@ export async function GET(
     const limit = parseInt(searchParams.get("limit") || "50", 10)
     const offset = parseInt(searchParams.get("offset") || "0", 10)
 
-    // Query base - simplificada
+    // Query base - simplificada (scopeado por agencyIds del org)
     let query = (supabase.from("customer_interactions") as any)
       .select(`*`)
       .eq("customer_id", customerId)
-      .in("agency_id", agencyIds)
+      .in("agency_id", agencyIds.length > 0 ? agencyIds : ["00000000-0000-0000-0000-000000000000"])
       .order("created_at", { ascending: false })
 
     // Filtros
@@ -89,7 +95,7 @@ export async function GET(
     const { data: stats } = await (supabase.from("customer_interactions") as any)
       .select("interaction_type")
       .eq("customer_id", customerId)
-      .in("agency_id", agencyIds)
+      .in("agency_id", agencyIds.length > 0 ? agencyIds : ["00000000-0000-0000-0000-000000000000"])
 
     const statsByType: Record<string, number> = {}
     ;(stats || []).forEach((s: any) => {
@@ -120,6 +126,12 @@ export async function POST(
   try {
     const { id: customerId } = await params
     const { user } = await getCurrentUser()
+
+    // Cross-tenant fix (2026-05-18): no confiar en RLS; scopear explícito.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     const supabase = await createServerClient()
 
     // Obtener agencias del usuario
@@ -132,11 +144,11 @@ export async function POST(
       )
     }
 
-    // Verificar que el cliente existe y pertenece a las agencias
+    // Verificar que el cliente existe y pertenece al org del user
     const { data: customer, error: customerError } = await (supabase.from("customers") as any)
       .select("id, agency_id")
       .eq("id", customerId)
-      .in("agency_id", agencyIds)
+      .eq("org_id", (user as any).org_id)
       .single()
 
     if (customerError || !customer) {

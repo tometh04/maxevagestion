@@ -177,12 +177,14 @@ export function applyOperationsFilters(
     return query.eq("seller_id", user.id)
   }
 
-  // ADMIN / SUPER_ADMIN / VIEWER / CONTABLE: filtrar por agencias de su org
+  // ADMIN / SUPER_ADMIN / VIEWER / CONTABLE: filtrar por agencias de su org.
+  // 🔴 Fix cross-tenant (2026-05-18): si no tiene agency_ids, ANTES devolvía
+  // query sin filtro → leak cross-tenant. Ahora limit(0) para que no
+  // devuelva nada (el endpoint que llame esto deberá lidiar con 0 resultados).
   if (agencyIds.length > 0) {
-    query = query.in("agency_id", agencyIds)
+    return query.in("agency_id", agencyIds)
   }
-
-  return query
+  return query.limit(0)
 }
 
 /**
@@ -212,9 +214,13 @@ export async function applyCustomersFilters(
     .maybeSingle()
   const orgId = (userRow as any)?.org_id as string | null | undefined
 
-  if (orgId) {
-    query = query.eq('org_id', orgId)
+  // 🔴 Fix cross-tenant (2026-05-18): si el user no tiene org_id, ANTES la
+  // función devolvía la query sin filtrar → leak cross-tenant (cualquier
+  // user sin org veía clientes de TODAS las orgs). Ahora throw error.
+  if (!orgId) {
+    throw new Error("Usuario sin organización asociada — no se pueden filtrar clientes")
   }
+  query = query.eq('org_id', orgId)
 
   // SUPER_ADMIN, ADMIN y VIEWER ven TODOS los clientes de su org (sin restricción adicional)
   if (userRole === "SUPER_ADMIN" || userRole === "ADMIN" || userRole === "VIEWER") {
@@ -401,7 +407,7 @@ export async function getScopedAgenciesForUser(
     q = q.eq("org_id", user.org_id)
   }
 
-  if (user.role === "SUPER_ADMIN" || user.role === "CONTABLE") {
+  if (user.role === "SUPER_ADMIN" || user.role === "CONTABLE" || user.role === "POST_VENTA") {
     const { data } = await q
     return (data || []) as Array<{ id: string; name: string }>
   }
@@ -451,7 +457,7 @@ export async function getUserAgencyIds(
     .maybeSingle()
   const orgId = (userRow as any)?.org_id as string | null | undefined
 
-  if (userRole === 'SUPER_ADMIN' || userRole === 'ORG_OWNER' || userRole === 'CONTABLE') {
+  if (userRole === 'SUPER_ADMIN' || userRole === 'ORG_OWNER' || userRole === 'CONTABLE' || userRole === 'POST_VENTA') {
     let q = supabase.from('agencies').select('id')
     if (orgId) q = q.eq('org_id', orgId)
     const { data: agencies } = await q

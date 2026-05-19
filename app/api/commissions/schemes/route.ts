@@ -28,15 +28,22 @@ const createSchemeSchema = z.object({
 export async function GET() {
   try {
     const { user } = await getCurrentUser()
+
+    // Cross-tenant fix (2026-05-18): no confiar en RLS; scopear explícito.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     const supabase = await createServerClient()
 
     // Obtener agencias del usuario
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
 
-    // Query - simplificada
+    // Query (scopeado por org + agency)
     const { data: schemes, error } = await (supabase.from("commission_rules") as any)
       .select(`*`)
-      .in("agency_id", agencyIds)
+      .in("agency_id", agencyIds.length > 0 ? agencyIds : ["00000000-0000-0000-0000-000000000000"])
+      .eq("org_id", (user as any).org_id)
       .eq("is_active", true)
       .order("is_default", { ascending: false })
       .order("name", { ascending: true })
@@ -63,7 +70,6 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const { user } = await getCurrentUser()
-    const supabase = await createServerClient()
 
     // Verificar permisos
     if (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
@@ -73,9 +79,16 @@ export async function POST(request: Request) {
       )
     }
 
+    // Cross-tenant fix (2026-05-18): no confiar en RLS; scopear explícito.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
+    const supabase = await createServerClient()
+
     // Obtener agencias del usuario
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
-    
+
     if (agencyIds.length === 0) {
       return NextResponse.json(
         { error: "No tiene agencias asignadas" },
@@ -86,17 +99,19 @@ export async function POST(request: Request) {
     const body = await request.json()
     const validatedData = createSchemeSchema.parse(body)
 
-    // Si es default, quitar default de otros
+    // Si es default, quitar default de otros (scopeado por org + agency)
     if (validatedData.is_default) {
       await (supabase.from("commission_rules") as any)
         .update({ is_default: false })
         .eq("agency_id", agencyIds[0])
+        .eq("org_id", (user as any).org_id)
     }
 
-    // Crear esquema
+    // Crear esquema (con org_id)
     const { data: scheme, error } = await (supabase.from("commission_rules") as any)
       .insert({
         agency_id: agencyIds[0],
+        org_id: (user as any).org_id,
         ...validatedData,
         created_by: user.id,
       })

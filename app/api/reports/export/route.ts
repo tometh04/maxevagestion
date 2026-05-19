@@ -7,6 +7,15 @@ import { es } from "date-fns/locale"
 export async function GET(request: Request) {
   try {
     const { user } = await getCurrentUser()
+
+    // 🔴 Fix cross-tenant CRÍTICO (2026-05-18, sweep /reports/*): defense-in-depth
+    // RLS no está protegiendo confiablemente; agregamos .eq("org_id", user.org_id)
+    // explícito a TODAS las queries de tablas con org_id (operations, customers,
+    // payments).
+    if (!user.org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
@@ -29,6 +38,7 @@ export async function GET(request: Request) {
 
     switch (reportType) {
       case "operations": {
+        // RLS + filtro explícito (defense-in-depth)
         let query = (supabase.from("operations") as any)
           .select(`
             *,
@@ -36,6 +46,7 @@ export async function GET(request: Request) {
             operators:operator_id (name),
             agencies:agency_id (name)
           `)
+          .eq("org_id", user.org_id) // 🔴 scope multi-tenant explícito
           .order("departure_date", { ascending: false })
 
         if (dateFrom) query = query.gte("departure_date", dateFrom)
@@ -82,8 +93,10 @@ export async function GET(request: Request) {
       }
 
       case "customers": {
+        // RLS + filtro explícito (defense-in-depth)
         let query = (supabase.from("customers") as any)
           .select(`*, agencies:agency_id (name)`)
+          .eq("org_id", user.org_id) // 🔴 scope multi-tenant explícito
           .order("created_at", { ascending: false })
 
         if (agencyId && agencyId !== "ALL") {
@@ -130,12 +143,14 @@ export async function GET(request: Request) {
 
         if (effectiveAgencyIds && effectiveAgencyIds.length > 0) {
           // Traer op ids acotados a agencias del user (chunked por si son muchos)
+          // RLS + filtro explícito (defense-in-depth)
           agencyScopedOpIds = []
           const chunkSize = 200
           for (let i = 0; i < effectiveAgencyIds.length; i += chunkSize) {
             const chunk = effectiveAgencyIds.slice(i, i + chunkSize)
             const { data: ops } = await (supabase.from("operations") as any)
               .select("id")
+              .eq("org_id", user.org_id) // 🔴 scope multi-tenant explícito
               .in("agency_id", chunk)
             if (ops) agencyScopedOpIds.push(...ops.map((o: any) => o.id))
           }
@@ -147,11 +162,13 @@ export async function GET(request: Request) {
           }
         }
 
+        // RLS + filtro explícito (defense-in-depth)
         let query = (supabase.from("payments") as any)
           .select(`
             *,
             operations:operation_id (destination, agencies:agency_id (name))
           `)
+          .eq("org_id", user.org_id) // 🔴 scope multi-tenant explícito
           .neq("source", "OPERATOR_BULK")
           .order("date_due", { ascending: false })
 
@@ -165,8 +182,10 @@ export async function GET(request: Request) {
           const allPayments: any[] = []
           for (let i = 0; i < agencyScopedOpIds.length; i += chunkSize) {
             const chunkIds = agencyScopedOpIds.slice(i, i + chunkSize)
+            // RLS + filtro explícito (defense-in-depth)
             let chunkQuery = (supabase.from("payments") as any)
               .select(`*, operations:operation_id (destination, agencies:agency_id (name))`)
+              .eq("org_id", user.org_id) // 🔴 scope multi-tenant explícito
               .neq("source", "OPERATOR_BULK")
               .in("operation_id", chunkIds)
               .order("date_due", { ascending: false })
