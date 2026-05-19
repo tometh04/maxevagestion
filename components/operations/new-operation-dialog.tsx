@@ -200,7 +200,12 @@ export function NewOperationDialog({
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
   const [useMultipleOperators, setUseMultipleOperators] = useState(false)
-  const [operatorList, setOperatorList] = useState<Array<{operator_id: string, cost: number, cost_currency: "ARS" | "USD", product_type?: "FLIGHT" | "HOTEL" | "PACKAGE" | "CRUISE" | "TRANSFER" | "MIXED", notes?: string}>>([])
+  // 2026-05-19 (Andres VICO): cost se guarda como STRING (no number) para
+  // soportar tipeo de decimales con coma o punto. Si lo convertimos a number
+  // en cada onChange, "154." → Number("154.") = 154 → display "154" →
+  // el usuario nunca puede escribir el punto + 34. Resultado: solo redondos.
+  // El cast a number sucede solo al sumar/submit con parseFloat.
+  const [operatorList, setOperatorList] = useState<Array<{operator_id: string, cost: string, cost_currency: "ARS" | "USD", product_type?: "FLIGHT" | "HOTEL" | "PACKAGE" | "CRUISE" | "TRANSFER" | "MIXED", notes?: string}>>([])
   const [settings, setSettings] = useState<OperationSettings | null>(null)
   const [apiError, setApiError] = useState<string | null>(null)
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
@@ -438,8 +443,11 @@ export function NewOperationDialog({
     }
   }, [settings, form])
 
-  // Calcular costo total de operadores
-  const totalOperatorCost = operatorList.reduce((sum, op) => sum + (op.cost || 0), 0)
+  // Calcular costo total de operadores. cost es string → parseFloat al sumar.
+  const totalOperatorCost = operatorList.reduce(
+    (sum, op) => sum + (parseFloat(op.cost as any) || 0),
+    0
+  )
   const saleAmount = form.watch("sale_amount_total")
   const calculatedMargin = saleAmount - totalOperatorCost
   const calculatedMarginPercent = saleAmount > 0 ? (calculatedMargin / saleAmount) * 100 : 0
@@ -450,11 +458,13 @@ export function NewOperationDialog({
       form.setValue("operator_cost", totalOperatorCost)
       // Asegurar que cost_currency tenga un valor por defecto (usar moneda de la operación)
       const formCurrency = form.getValues("sale_currency") || form.getValues("currency") || "USD"
+      // Convertir cost string → number aquí (al pasar al form RHF/zod).
       const operatorsWithDefaults = operatorList.map(op => ({
         ...op,
+        cost: parseFloat(op.cost as any) || 0,
         cost_currency: (op.cost_currency || formCurrency) as "ARS" | "USD"
       }))
-      form.setValue("operators", operatorsWithDefaults)
+      form.setValue("operators", operatorsWithDefaults as any)
     } else if (!useMultipleOperators) {
       form.setValue("operators", undefined)
     }
@@ -462,7 +472,7 @@ export function NewOperationDialog({
 
   const addOperator = () => {
     const currentCurrency = (form.getValues("sale_currency") || form.getValues("currency") || "USD") as "ARS" | "USD"
-    setOperatorList([...operatorList, { operator_id: "", cost: 0, cost_currency: currentCurrency, product_type: undefined }])
+    setOperatorList([...operatorList, { operator_id: "", cost: "", cost_currency: currentCurrency, product_type: undefined }])
   }
 
   const removeOperator = (index: number) => {
@@ -1053,8 +1063,8 @@ export function NewOperationDialog({
                         <div>
                             <label className="text-xs font-medium mb-1.5 block">Costo *</label>
                       <DecimalInput
-                        value={op.cost || ""}
-                        onChange={(v) => updateOperator(index, "cost", v === "" ? 0 : Number(v))}
+                        value={op.cost}
+                        onChange={(v) => updateOperator(index, "cost", v)}
                         onFocus={(e) => e.target.select()}
                         placeholder="0.00"
                               className="h-9 text-base font-medium"
