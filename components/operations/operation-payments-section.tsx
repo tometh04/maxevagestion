@@ -1003,8 +1003,11 @@ export function OperationPaymentsSection({
       </Card>
 
       {/* Dialog para registrar cobro (INCOME) */}
+      {/* Bug fix 2026-05-19 (Andres VICO): dialog se cortaba sin scroll →
+          tenían que hacer zoom out. Mismo patrón aplicado en
+          components/payments/new-payment-dialog.tsx. */}
       <Dialog open={incomeDialogOpen} onOpenChange={setIncomeDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[95vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Registrar Cobro</DialogTitle>
             <DialogDescription>
@@ -1013,7 +1016,8 @@ export function OperationPaymentsSection({
           </DialogHeader>
 
           <Form {...incomeForm}>
-            <form onSubmit={incomeForm.handleSubmit(onSubmitIncome)} className="px-6 py-5 space-y-5">
+            <form onSubmit={incomeForm.handleSubmit(onSubmitIncome)} className="flex flex-col flex-1 min-h-0">
+              <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5 -mr-2 pr-2">
               {/* Sub-card: Método y Monto */}
               <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
                 <div className="flex items-center gap-1.5">
@@ -1267,7 +1271,9 @@ export function OperationPaymentsSection({
                 )}
               />
 
-              <DialogFooter>
+              </div>{/* fin wrapper scrollable */}
+
+              <DialogFooter className="px-6 py-3 border-t border-border/40">
                 <Button type="button" variant="outline" onClick={() => setIncomeDialogOpen(false)}>
                   Cancelar
                 </Button>
@@ -1297,7 +1303,7 @@ export function OperationPaymentsSection({
             setMarkAsPaid(false)
           }
         }}>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-md max-h-[95vh] flex flex-col">
             <DialogHeader>
               <DialogTitle>Editar Pago</DialogTitle>
               <DialogDescription>
@@ -1306,7 +1312,8 @@ export function OperationPaymentsSection({
             </DialogHeader>
 
             <Form {...editForm}>
-              <form onSubmit={editForm.handleSubmit(onSubmitEdit)} className="px-6 py-5 space-y-5">
+              <form onSubmit={editForm.handleSubmit(onSubmitEdit)} className="flex flex-col flex-1 min-h-0">
+                <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5 -mr-2 pr-2">
                 {/* Sub-card: Método y Monto */}
                 <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
                   <div className="flex items-center gap-1.5">
@@ -1527,7 +1534,9 @@ export function OperationPaymentsSection({
                   )}
                 />
 
-                <DialogFooter>
+                </div>{/* fin wrapper scrollable */}
+
+                <DialogFooter className="px-6 py-3 border-t border-border/40">
                   <Button type="button" variant="outline" onClick={() => {
                     setEditDialogOpen(false)
                     setEditingPayment(null)
@@ -1553,7 +1562,7 @@ export function OperationPaymentsSection({
 
       {(userRole === "ADMIN" || userRole === "SUPER_ADMIN") && (
         <Dialog open={expenseDialogOpen} onOpenChange={setExpenseDialogOpen}>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="max-w-lg max-h-[95vh] flex flex-col">
             <DialogHeader>
               <DialogTitle>Registrar Pago a Operador</DialogTitle>
               <DialogDescription>
@@ -1562,7 +1571,8 @@ export function OperationPaymentsSection({
             </DialogHeader>
             
             <Form {...expenseForm}>
-              <form onSubmit={expenseForm.handleSubmit(onSubmitExpense)} className="px-6 py-5 space-y-5">
+              <form onSubmit={expenseForm.handleSubmit(onSubmitExpense)} className="flex flex-col flex-1 min-h-0">
+                <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5 -mr-2 pr-2">
                 {/* Operador */}
                 <FormField
                   control={expenseForm.control}
@@ -1784,7 +1794,9 @@ export function OperationPaymentsSection({
                 )}
               />
 
-              <DialogFooter>
+              </div>{/* fin wrapper scrollable */}
+
+              <DialogFooter className="px-6 py-3 border-t border-border/40">
                 <Button type="button" variant="outline" onClick={() => setExpenseDialogOpen(false)}>
                   Cancelar
                 </Button>
