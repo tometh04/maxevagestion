@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
@@ -92,6 +92,12 @@ interface LeadCardAdvancedProps {
     name: string
     admin_fee_percentage?: number | null
   }>
+  /** Callback cuando el user arranca a arrastrar esta card. */
+  onDragStart?: () => void
+  /** Callback cuando suelta (drop o cancel). */
+  onDragEnd?: () => void
+  /** True mientras esta card está siendo arrastrada (para feedback visual). */
+  isDragging?: boolean
 }
 
 export function LeadCardAdvanced({
@@ -100,8 +106,14 @@ export function LeadCardAdvanced({
   agencies,
   sellers,
   operators,
+  onDragStart,
+  onDragEnd,
+  isDragging,
 }: LeadCardAdvancedProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
+  // Si el último click fue parte de un drag, NO abrimos el dialog. Usamos un
+  // ref porque queremos chequear sincrónicamente en onClick sin re-render.
+  const didDragRef = useRef(false)
 
   const tags = lead.tag_assignments
     .map((ta) => ta.tag)
@@ -140,10 +152,33 @@ export function LeadCardAdvanced({
   return (
     <>
       <Card
+        draggable
+        onDragStart={(e) => {
+          // Marcamos draggable y notificamos al kanban para que registre cuál
+          // es el lead arrastrado y pueda hacer el drop.
+          e.dataTransfer.effectAllowed = "move"
+          // Algunos browsers requieren setData para que el drag funcione
+          e.dataTransfer.setData("text/plain", lead.id)
+          didDragRef.current = true
+          onDragStart?.()
+        }}
+        onDragEnd={() => {
+          onDragEnd?.()
+          // Reset del flag después de un tick — onClick se dispara DESPUÉS de
+          // onDragEnd y queremos que vea el flag para no abrir el dialog.
+          setTimeout(() => {
+            didDragRef.current = false
+          }, 50)
+        }}
         className={cn(
-          "p-3 mb-2 cursor-pointer hover:shadow-md transition-shadow duration-150"
+          "p-3 mb-2 cursor-pointer hover:shadow-md transition-shadow duration-150",
+          isDragging && "opacity-40"
         )}
-        onClick={() => setDialogOpen(true)}
+        onClick={() => {
+          // Si vino de un drag, ignorar el click para no abrir el dialog.
+          if (didDragRef.current) return
+          setDialogOpen(true)
+        }}
       >
         <p className="font-medium text-sm leading-tight">{lead.contact_name}</p>
         {lead.contact_phone && (
