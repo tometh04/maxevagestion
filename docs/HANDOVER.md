@@ -118,8 +118,22 @@ Todos son **POST con `Authorization: Bearer $CRON_SECRET`**. Si curl da 401 → 
 
 ## 4. Las 7 reglas de oro al tocar código
 
-### Regla 1 — RLS no es opcional
+### Regla 1 — RLS no es opcional PERO no confíes solo en ella (defense-in-depth)
 Toda tabla nueva DEBE tener RLS habilitado y policies por `org_id`. Si una migración crea tabla sin RLS, está rota. Patrón: ver migraciones `20260429*` o cualquier `*_rls.sql` en `supabase/migrations/`.
+
+**🔴 ACTUALIZACIÓN POST-INCIDENTE 2026-05-18**: durante el lanzamiento de
+VICO se detectó que múltiples tablas tenían policies "tóxicas" con `USING (true)`
+que hacían bypass total del scope multi-tenant (ver `BUGS-TRIAGE.md` sección
+"Incidente cross-tenant 2026-05-18" + commit `fc44cebc`). La conclusión:
+
+**Defense-in-depth obligatorio**:
+1. Capa 1 — código: TODO endpoint user-facing DEBE filtrar explícito `.eq("org_id", user.org_id)`. NO asumir que RLS lo hace.
+2. Capa 2 — RLS Postgres: policies correctas (`USING (org_id IN (SELECT user_org_ids()))`).
+3. Capa 3 — documentación: esta regla, más la sección extendida en `CLAUDE.md`.
+
+El patrón canónico de endpoint user-facing está documentado en `CLAUDE.md`
+sección "Multi-Tenancy → REGLA DE ORO". Léelo antes de tocar cualquier
+endpoint nuevo.
 
 ### Regla 2 — `agency_id` siempre explícito
 RLS te scopea por `org_id`, pero un mismo tenant tiene N agencias. Cualquier query que muestre data al user (lista, KPI, reporte) DEBE filtrar también por `agency_id`. Olvidarse causa que Lozada Madero vea data de Lozada Rosario.
