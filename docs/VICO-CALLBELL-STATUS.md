@@ -2,7 +2,7 @@
 
 > **Cómo usar este doc**: fuente de verdad del proyecto VICO. Cada cambio relevante actualiza la sección correspondiente + agrega entry al §11 (Historial). Pensado para que cualquier sesión nueva pueda retomar sin perder contexto.
 >
-> **Última actualización**: 2026-05-19 (PR #53 mergeado — Mundial/F1 detection + Diego fix LIVE)
+> **Última actualización**: 2026-05-19 (PRs #53-#57 mergeados + filtro contact.createdAt agregado tras flood de 84 falsos positivos)
 
 ---
 
@@ -23,12 +23,18 @@
 ### Leads reales actuales en BD VICO
 
 ```
-Diego  (+5492323534418) → cliente real, opción 5 → destination="Formula 1", tag FORMULA 1
-Tomas  (+5492954602920) → tu test, destino=Cancún, $1500 USD, tags CANCUN+SEPTIEMBRE
-Daniel (+5492995189991) → cliente real, llegó por rapid-fire → ⚠️ 5 leads duplicados (bug separado)
+Diego  (+5492323534418) → opción 5 → destination="Formula 1", tag FORMULA 1, CALIENTE
+Tomas  (+5492954602920) → tu test, destino=Cancún, $1500 USD, CANCUN+SEPTIEMBRE, CALIENTE
+Jorge  (+5493434059095) → opción 4 → destination="Mundial", CALIENTE
 ```
 
-> **⚠️ Bug abierto**: `lib/integrations/callbell/sync-handler.ts` usa `.maybeSingle()` para buscar lead por phone, que falla con error PGRST116 cuando hay duplicados → crea OTRO lead. Si llegan varios eventos del mismo phone en rapid-fire, multiplica el problema. Spawn task creado para fixearlo (defensive lookup + UNIQUE constraint parcial + cleanup de los 5 Daniel).
+> **🔴 Incidente 2026-05-19 14:30**: Callbell envió 84 webhooks por mensajes en conversaciones VIEJAS (clientes pre-existentes con assignedAgent + tags ya cargadas en Callbell). Con `auto_create_leads=true` se crearon 84 leads "fantasma" en Vibook.
+>
+> **Fix aplicado**:
+> 1. `auto_create_leads` desactivado URGENT (script `disable-vico-auto-create.ts`)
+> 2. 84 leads borrados (script `cleanup-vico-flood-leads.ts` + `cleanup-vico-old-contacts.ts`)
+> 3. Filtro nuevo en handler: solo crear lead si `contact.createdAt > now - 1h` AND `contact.assignedAgent == null`
+> 4. Re-habilitar `auto_create_leads` después del deploy del filtro
 
 ---
 

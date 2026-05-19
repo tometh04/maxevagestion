@@ -79,6 +79,33 @@ export async function processCallbellEvent(
       return { handled: false }
     }
 
+    // FILTRO CONVERSACIONES VIEJAS: Callbell envía webhooks por cualquier
+    // mensaje, incluso en conversaciones de meses atrás. Sin este filtro,
+    // se crean leads "fantasma" para clientes pre-existentes que ya son
+    // gestionados por agentes humanos en Callbell.
+    //
+    // Regla: solo crear lead si el contacto en Callbell es REALMENTE nuevo:
+    //  - contact.createdAt está dentro de la última hora (cliente recién creó conversación)
+    //  - Y contact.assignedAgent es null/undefined (todavía no fue derivado a humano)
+    //
+    // Si alguno de estos falla, el contacto ya estaba en gestión y NO debe
+    // tornarse en lead nuevo en Vibook.
+    const cbCreatedAtRaw = (contact as { createdAt?: string }).createdAt
+    if (cbCreatedAtRaw) {
+      const ageMs = Date.now() - new Date(cbCreatedAtRaw).getTime()
+      const ONE_HOUR = 60 * 60 * 1000
+      if (ageMs > ONE_HOUR) {
+        // Conversación vieja → ya existía en Callbell antes que el bot/Vibook
+        return { handled: false }
+      }
+    }
+    const cbAssignedAgent = (contact as { assignedAgent?: unknown })
+      .assignedAgent
+    if (cbAssignedAgent) {
+      // Ya tiene agente humano asignado → no es lead "fresh"
+      return { handled: false }
+    }
+
     // Lookup primera agency de la org (la org puede tener varias; default = más vieja)
     const { data: agency } = await admin
       .from("agencies")
