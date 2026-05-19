@@ -53,6 +53,31 @@ export function adaptCallbellWebhook(
   // top-level keys para diagnosticar (Railway logs).
   const logKeys = Object.keys(body).slice(0, 12)
 
+  // Caso 0: el shape REAL que Callbell manda es `{event, payload, createdAt}`.
+  // El "payload" del modal de Callbell muestra solo el contenido de `body.payload`,
+  // por eso parecía no envolverlo. Detectamos el wrapper y procesamos `body.payload`
+  // como el body real, conservando `event` como type.
+  if (
+    typeof body.event === "string" &&
+    body.payload &&
+    typeof body.payload === "object"
+  ) {
+    const inner = body.payload as Record<string, unknown>
+    const eventType = body.event
+    const adaptedInner = adaptCallbellWebhook(inner)
+    if (adaptedInner) {
+      // Override type con el del wrapper (más confiable que el inferido)
+      return {
+        ...adaptedInner,
+        type: eventType as CallbellWebhookEvent["type"],
+        timestamp:
+          typeof body.createdAt === "string"
+            ? body.createdAt
+            : adaptedInner.timestamp,
+      }
+    }
+  }
+
   // Caso 1: ya viene en formato "rico" CallbellWebhookEvent (tests, curl manual).
   if (
     typeof body.type === "string" &&
