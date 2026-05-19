@@ -116,6 +116,19 @@ export async function POST(
 
   const updateOrgData: Record<string, unknown> = { custom_plan_id: created.id }
 
+  // 2026-05-19 (caso VICO): subir plan a ENTERPRISE + max_* a valores de
+  // Enterprise (ver app/api/onboarding/route.ts:10). Custom plan implica
+  // trato negociado tipo Enterprise por definición — si seguía con los
+  // límites de STARTER (50 ops/mes) se rompía la creación de operaciones
+  // al hit limit.
+  //
+  // Las columnas max_* son NOT NULL en la DB, por eso usamos 999/99/99999
+  // (≈ ilimitado en la práctica) en lugar de NULL.
+  updateOrgData.plan = "ENTERPRISE"
+  updateOrgData.max_users = 999
+  updateOrgData.max_agencies = 99
+  updateOrgData.max_operations_per_month = 99999
+
   // 2026-05-18 (caso VICO): si hay free_trial_days, seteamos
   // current_period_ends_at para que la UI del cliente sepa "hasta cuándo está
   // cubierto el primer mes pagado offline" + cuándo es el primer cobro MP.
