@@ -47,15 +47,22 @@ export async function processCallbellEvent(
   const phone = event.data.contact?.phoneNumber
   if (!phone) return { handled: false }
 
-  // Buscar lead por (org_id, contact_phone)
-  const { data: existing } = await admin
+  // Buscar lead por (org_id, contact_phone). Defensive: si hay duplicados
+  // históricos (bug previo sin UNIQUE constraint), usamos el más viejo en vez
+  // de fallar con PGRST116. Esto previene que se sigan creando más duplicados
+  // mientras existe la migration pendiente para deduplicar + agregar UNIQUE.
+  const { data: existingRows } = await admin
     .from("leads")
     .select("id, notes")
     .eq("org_id", orgId)
     .eq("contact_phone", phone)
-    .maybeSingle()
+    .order("created_at", { ascending: true })
+    .limit(1)
 
-  let lead = existing as { id: string; notes: string | null } | null
+  let lead =
+    existingRows && existingRows.length > 0
+      ? (existingRows[0] as { id: string; notes: string | null })
+      : null
   let createdNow = false
 
   if (!lead) {
