@@ -2,7 +2,7 @@
 
 > **Cómo usar este doc**: fuente de verdad del proyecto VICO. Cada cambio relevante actualiza la sección correspondiente + agrega entry al §11 (Historial). Pensado para que cualquier sesión nueva pueda retomar sin perder contexto.
 >
-> **Última actualización**: 2026-05-19 (sesión que dejó el sistema LIVE recibiendo clientes reales)
+> **Última actualización**: 2026-05-19 (PR #53 mergeado — Mundial/F1 detection + Diego fix LIVE)
 
 ---
 
@@ -14,6 +14,7 @@
 | Cadena Callbell → Vibook | ✅ **LIVE con clientes reales** | 2+ leads creados de tráfico genuino |
 | Adapter del envelope `{event, payload}` | ✅ Deployado (PR #51) | Bug del envelope fixeado el 19/05 |
 | Parser del resumen del bot → destination + tags + quoted_price | ✅ Live (PR #45) | Lead Tomas tiene destino=Cancún, $1500, tags CANCUN+SEPTIEMBRE |
+| Detección campaña Mundial/F1 (opción 4/5 del menú) | ✅ Live (PR #53) | Lead Diego ahora tiene destino="Formula 1" + tag FORMULA 1 |
 | CRM advanced con paridad de Lozada | ✅ Live (PR #39, #43) | Cotizar/convertir validado |
 | Multi-tenant aislado de Lozada | ✅ Garantizado por código | RLS + flag opt-in + queries scoped |
 | Otros 3 bots VICO (Aldana WA / Messenger / Instagram) | ❌ Siguen con prompt viejo | Falta replicar v50.2 |
@@ -22,9 +23,12 @@
 ### Leads reales actuales en BD VICO
 
 ```
-Diego  (+5492323534418) → cliente real, eligió opción 5 (info F1), derivado a agente
+Diego  (+5492323534418) → cliente real, opción 5 → destination="Formula 1", tag FORMULA 1
 Tomas  (+5492954602920) → tu test, destino=Cancún, $1500 USD, tags CANCUN+SEPTIEMBRE
+Daniel (+5492995189991) → cliente real, llegó por rapid-fire → ⚠️ 5 leads duplicados (bug separado)
 ```
+
+> **⚠️ Bug abierto**: `lib/integrations/callbell/sync-handler.ts` usa `.maybeSingle()` para buscar lead por phone, que falla con error PGRST116 cuando hay duplicados → crea OTRO lead. Si llegan varios eventos del mismo phone en rapid-fire, multiplica el problema. Spawn task creado para fixearlo (defensive lookup + UNIQUE constraint parcial + cleanup de los 5 Daniel).
 
 ---
 
@@ -58,6 +62,8 @@ Tomas  (+5492954602920) → tu test, destino=Cancún, $1500 USD, tags CANCUN+SEP
 | #45 | feat(callbell): parse bot's structured summary | Parser de los 5 emojis (🌍🌴📆👥💵) → popula destination/tags/quoted_price. |
 | #50 | fix(callbell-in): log raw body when adapter rejects | Inserta el rawBody en BD cuando adapter retorna null → permitió diagnosticar el bug del envelope. |
 | #51 | **fix(callbell-adapter): unwrap {event, payload} envelope** | **EL FIX FINAL**. Callbell envuelve eventos en `{event, payload, createdAt}` — el modal de Callbell muestra solo el inner payload por eso era invisible. Caso 0 del adapter ahora unwrappea el envelope. |
+| #52 | docs: VICO status doc — system LIVE | Doc actualizado con estado post-go-live. |
+| #53 | feat(callbell): detect Mundial/F1 campaigns from client message | Cuando el cliente elige opción 4 (Mundial) o 5 (F1) del menú del bot, lo derivamos a agente sin resumen → ahora populamos `destination` + tag de campaña. Filtra por número origen ≠ bot. Idempotente. |
 
 ---
 
