@@ -53,6 +53,8 @@ const operationSchema = z.object({
     required_error: "La fecha de salida es requerida",
   }),
   return_date: z.date().optional().nullable(),
+  // 2026-05-19 (Tomi): editar fecha real de venta para files históricos
+  operation_date: z.date().optional(),
   adults: z.coerce.number().min(1, "Debe haber al menos 1 adulto"),
   children: z.coerce.number().min(0),
   infants: z.coerce.number().min(0),
@@ -100,6 +102,7 @@ interface Operation {
   destination: string
   departure_date: string
   return_date?: string | null
+  operation_date?: string | null
   adults: number
   children: number
   infants: number
@@ -240,6 +243,7 @@ export function EditOperationDialog({
       destination: operation.destination || "",
       departure_date: operation.departure_date ? new Date(operation.departure_date) : undefined,
       return_date: operation.return_date ? new Date(operation.return_date) : null,
+      operation_date: operation.operation_date ? new Date(operation.operation_date) : undefined,
       adults: operation.adults || 1,
       children: operation.children || 0,
       infants: operation.infants || 0,
@@ -388,6 +392,8 @@ export function EditOperationDialog({
         origin: values.origin || null,
         return_date: values.return_date ? values.return_date.toISOString().split("T")[0] : null,
         departure_date: values.departure_date.toISOString().split("T")[0],
+        // 2026-05-19: fecha real de venta editable (para corregir files históricos)
+        operation_date: values.operation_date ? values.operation_date.toISOString().split("T")[0] : undefined,
         // Mantener sale_currency y operator_cost_currency sincronizados con currency
         sale_currency: values.currency,
         operator_cost_currency: values.currency,
@@ -967,6 +973,28 @@ export function EditOperationDialog({
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="operation_date"
+                render={({ field }) => (
+                  <FormItem className="flex flex-col">
+                    <FormLabel>Fecha de venta</FormLabel>
+                    <FormControl>
+                      <DateInputWithCalendar
+                        value={field.value}
+                        onChange={field.onChange}
+                        placeholder="dd/MM/yyyy"
+                        maxDate={new Date()}
+                      />
+                    </FormControl>
+                    <span className="text-[10px] text-muted-foreground">
+                      Día en que se concretó la venta. Editala si querés re-imputar el ingreso a otro mes.
+                    </span>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
               <FormField
                 control={form.control}
                 name="departure_date"

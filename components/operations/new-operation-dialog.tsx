@@ -82,6 +82,10 @@ const operationSchema = z.object({
   destination: z.string().optional(), // Validación dinámica en backend
   departure_date: z.date().optional(), // Validación dinámica en backend
   return_date: z.date().optional().nullable(),
+  // 2026-05-19 (Tomi): permite cargar files históricos con la fecha real
+  // de venta. Default = hoy. Backend valida que no sea futuro y que
+  // departure_date sea posterior.
+  operation_date: z.date().optional(),
   adults: z.coerce.number().min(1, "Debe haber al menos 1 adulto"),
   children: z.coerce.number().min(0).default(0).optional(),
   infants: z.coerce.number().min(0).default(0).optional(),
@@ -378,6 +382,7 @@ export function NewOperationDialog({
       destination: cleanedDestination,
       departure_date: undefined,
       return_date: undefined,
+      operation_date: new Date(), // Default a hoy (2026-05-19: campo nuevo)
       adults: 2,
       children: 0,
       infants: 0,
@@ -582,6 +587,8 @@ export function NewOperationDialog({
         checkin_date: null,
         checkout_date: null,
         departure_date: values.departure_date ? values.departure_date.toISOString().split("T")[0] : null,
+        // 2026-05-19: fecha real de venta (default hoy, editable para carga histórica)
+        operation_date: values.operation_date ? values.operation_date.toISOString().split("T")[0] : undefined,
         sale_currency: values.sale_currency || values.currency || "USD",
         operator_cost_currency: values.operator_cost_currency || values.currency || "USD",
         // Si hay múltiples operadores, el costo total ya está calculado en operator_cost
@@ -1262,6 +1269,28 @@ export function NewOperationDialog({
             </div>
 
             <div className="grid gap-x-6 gap-y-5 md:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="operation_date"
+                render={({ field }) => (
+                  <FormItem className="flex flex-col">
+                    <FormLabel>Fecha de venta</FormLabel>
+                    <FormControl>
+                      <DateInputWithCalendar
+                        value={field.value}
+                        onChange={field.onChange}
+                        placeholder="dd/MM/yyyy"
+                        maxDate={new Date()}
+                      />
+                    </FormControl>
+                    <span className="text-[10px] text-muted-foreground">
+                      Hoy por default. Cambiala si cargás una venta vieja para que impacte en el mes correcto.
+                    </span>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
               <FormField
                 control={form.control}
                 name="departure_date"
