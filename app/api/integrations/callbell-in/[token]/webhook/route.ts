@@ -67,14 +67,26 @@ export async function POST(
   // detecta la estructura y normaliza al shape CallbellWebhookEvent.
   const event = adaptCallbellWebhook(rawBody)
   if (!event) {
+    // Guardamos el rawBody en webhook_event_log con result='ignored' para
+    // poder diagnosticar el shape real que Callbell manda. Los logs de
+    // Railway pueden estar delayed por incidents; el log en BD es fiable.
+    const topKeys =
+      typeof rawBody === "object" && rawBody
+        ? Object.keys(rawBody as object).slice(0, 12)
+        : [typeof rawBody]
     console.warn(
       `[callbell-in] payload no reconocido para org=${integ.org_id}:`,
-      typeof rawBody === "object" && rawBody
-        ? Object.keys(rawBody as object).slice(0, 8)
-        : typeof rawBody
+      topKeys
     )
-    // Retornamos 200 para que Callbell no marque el webhook como roto y
-    // entre en backoff. Lo descartamos silenciosamente.
+    await admin.from("webhook_event_log").insert({
+      org_id: integ.org_id,
+      integration: "callbell-in",
+      event_id: `unrecognized-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      event_type: "unrecognized",
+      payload: rawBody as object,
+      result: "ignored",
+      error_detail: `top-level keys: ${JSON.stringify(topKeys)}`,
+    })
     return NextResponse.json(
       { status: "ignored", reason: "unrecognized_payload" },
       { status: 200 }
