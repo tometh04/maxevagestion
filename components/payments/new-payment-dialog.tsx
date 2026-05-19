@@ -53,6 +53,12 @@ interface Operation {
   operation_operators?: Array<{ operator_id?: string | null; operators?: { id?: string | null; name?: string | null } | null }>
   operation_services?: OperationServicePaymentRelationLike[]
   operator_payments?: OperationOperatorPaymentLike[]
+  // 2026-05-19 (Andres VICO): para poder filtrar por cliente en el dropdown.
+  operation_customers?: Array<{
+    role?: string | null
+    customers?: { first_name?: string | null; last_name?: string | null } | null
+  }>
+  leads?: { contact_name?: string | null } | null
 }
 
 interface FinancialAccount {
@@ -224,15 +230,53 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
     return financialAccounts.filter((acc) => acc.currency === watchCurrency)
   }, [financialAccounts, watchCurrency])
 
-  // Filtrar operaciones por búsqueda
+  // Helper: nombre del cliente principal + todos los pasajeros agrupados.
+  // 2026-05-19 (Andres VICO): el dropdown solo mostraba código + destino,
+  // pero con muchas operaciones a Punta Cana era imposible identificar
+  // cuál era la que buscaba el user. Ahora muestra también el cliente.
+  function getMainCustomerName(op: any): string {
+    const ocs = (op.operation_customers ?? []) as any[]
+    const main = ocs.find((oc) => (oc.role || "").toUpperCase() === "MAIN") || ocs[0]
+    if (main?.customers) {
+      const c = main.customers
+      return `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim()
+    }
+    return op.leads?.contact_name || ""
+  }
+
+  function getAllCustomerNames(op: any): string {
+    const ocs = (op.operation_customers ?? []) as any[]
+    return ocs
+      .map((oc) => {
+        const c = oc.customers
+        if (!c) return ""
+        return `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim()
+      })
+      .filter(Boolean)
+      .join(" ")
+  }
+
+  // Filtrar operaciones por búsqueda.
+  // 2026-05-19: ahora busca también por nombre/apellido de TODOS los pasajeros
+  // de la operación y por contact_name del lead. Andres reportó que era
+  // "complicado" filtrar solo por código/destino.
   const filteredOperations = useMemo(() => {
     if (!searchOp.trim()) return operations.slice(0, 50)
     const s = searchOp.toLowerCase()
-    return operations.filter(
-      (op) =>
-        (op.file_code || "").toLowerCase().includes(s) ||
-        op.destination.toLowerCase().includes(s)
-    ).slice(0, 50)
+    return operations
+      .filter((op) => {
+        const code = (op.file_code || "").toLowerCase()
+        const dest = (op.destination || "").toLowerCase()
+        const customers = getAllCustomerNames(op).toLowerCase()
+        const leadName = (op.leads?.contact_name || "").toLowerCase()
+        return (
+          code.includes(s) ||
+          dest.includes(s) ||
+          customers.includes(s) ||
+          leadName.includes(s)
+        )
+      })
+      .slice(0, 50)
   }, [operations, searchOp])
 
   // Cuando se selecciona operación, auto-setear la moneda
@@ -483,7 +527,7 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
                       <SelectContent>
                         <div className="px-2 pb-2">
                           <Input
-                            placeholder="Buscar por código o destino..."
+                            placeholder="Buscar por cliente, código, destino..."
                             value={searchOp}
                             onChange={(e) => setSearchOp(e.target.value)}
                             className="h-8 text-xs"
@@ -491,13 +535,23 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
                             onKeyDown={(e) => e.stopPropagation()}
                           />
                         </div>
-                        {filteredOperations.map((op) => (
-                          <SelectItem key={op.id} value={op.id}>
-                            <span className="font-mono text-xs">{op.file_code || op.id.slice(0, 8)}</span>
-                            {" · "}
-                            {op.destination}
-                          </SelectItem>
-                        ))}
+                        {filteredOperations.map((op) => {
+                          const mainCustomer = getMainCustomerName(op)
+                          return (
+                            <SelectItem key={op.id} value={op.id}>
+                              <div className="flex flex-col">
+                                <span className="text-sm">
+                                  {mainCustomer || "(sin cliente)"}
+                                  {" · "}
+                                  <span className="text-muted-foreground">{op.destination}</span>
+                                </span>
+                                <span className="font-mono text-[10px] text-muted-foreground">
+                                  {op.file_code || op.id.slice(0, 8)}
+                                </span>
+                              </div>
+                            </SelectItem>
+                          )
+                        })}
                         {filteredOperations.length === 0 && (
                           <div className="px-2 py-4 text-xs text-muted-foreground text-center">
                             No se encontraron operaciones
