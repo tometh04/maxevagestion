@@ -5179,6 +5179,7 @@ export type Database = {
           origin: string | null
           passengers: Json | null
           product_type: string | null
+          itr_localizador: string | null
           reservation_code_air: string | null
           reservation_code_hotel: string | null
           return_date: string | null
@@ -5222,6 +5223,7 @@ export type Database = {
           origin?: string | null
           passengers?: Json | null
           product_type?: string | null
+          itr_localizador?: string | null
           reservation_code_air?: string | null
           reservation_code_hotel?: string | null
           return_date?: string | null
@@ -5265,6 +5267,7 @@ export type Database = {
           origin?: string | null
           passengers?: Json | null
           product_type?: string | null
+          itr_localizador?: string | null
           reservation_code_air?: string | null
           reservation_code_hotel?: string | null
           return_date?: string | null

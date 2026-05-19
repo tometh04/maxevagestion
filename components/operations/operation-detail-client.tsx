@@ -393,6 +393,10 @@ export function OperationDetailClient({
                     </p>
                   </div>
                   <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">ITR Localizador</p>
+                    <p className="text-sm font-medium mt-0.5">{(operation as any).itr_localizador || "-"}</p>
+                  </div>
+                  <div>
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                       {operation.type === "ASSISTANCE" ? "Inicio Cobertura" : "📅 Salida"}
                     </p>
