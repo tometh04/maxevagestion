@@ -13,6 +13,15 @@ type CustomPlanBody = {
   base_price_ars?: number
   discount_percent?: number
   discount_duration_months?: number
+  /** 2026-05-18 (Tomi): fecha exacta de fin del descuento. Si seteada,
+   *  sobreescribe el cálculo "now() + discount_duration_months × 30d".
+   *  Útil para clientes que ya pagaron offline el primer mes. ISO date. */
+  discount_ends_at?: string | null
+  /** 2026-05-18 (Tomi, caso VICO): días que MP debe esperar antes de cobrar
+   *  el primer mes automático. Para clientes que pagaron offline el primer
+   *  mes y queremos que MP empiece a cobrar a partir de la fecha de
+   *  vencimiento del periodo ya pagado. Aplica solo si billing_method=MP. */
+  free_trial_days?: number
   features?: CustomPlanFeatures
   limits?: Record<string, unknown>
   billing_method?: "MP" | "MANUAL"
@@ -63,8 +72,29 @@ export async function POST(
     )
   }
 
-  const discountEndsAt =
-    discount > 0 ? new Date(Date.now() + duration * 30 * 24 * 60 * 60 * 1000).toISOString() : null
+  // 2026-05-18 (Tomi): si el admin manda `discount_ends_at` explícito, lo usamos.
+  // Sino, calculamos desde hoy + duration meses (comportamiento legacy).
+  // El override es útil para clientes que ya pagaron offline el primer mes
+  // y la fecha de fin del descuento debe calcularse desde el vencimiento real,
+  // no desde el día que el admin crea el custom_plan.
+  let discountEndsAt: string | null = null
+  if (discount > 0) {
+    if (body.discount_ends_at) {
+      // Validar formato ISO
+      const parsed = new Date(body.discount_ends_at)
+      if (Number.isNaN(parsed.getTime())) {
+        return NextResponse.json({ error: "discount_ends_at debe ser fecha ISO válida" }, { status: 400 })
+      }
+      discountEndsAt = parsed.toISOString()
+    } else {
+      discountEndsAt = new Date(Date.now() + duration * 30 * 24 * 60 * 60 * 1000).toISOString()
+    }
+  }
+  // freeTrialDays: si > 0, MP no cobra hasta que pasen esos días (caso VICO).
+  const freeTrialDays =
+    typeof body.free_trial_days === "number" && body.free_trial_days > 0
+      ? Math.floor(body.free_trial_days)
+      : undefined
 
   const { data: created, error: insertErr } = await admin
     .from("custom_plans")
@@ -100,6 +130,7 @@ export async function POST(
         amount: effective,
         backUrl,
         includeFreeTrial: false,
+        freeTrialDays, // 2026-05-18: diferir primer cobro N días (caso VICO)
         orgSlug: org.slug,
       })
       // mp_preapproval_id se setea en el webhook cuando el user acepta.
@@ -203,8 +234,24 @@ export async function PATCH(
     return NextResponse.json({ error: "discount_percent debe estar entre 0 y 100" }, { status: 400 })
   }
 
-  // Recalcular discount_ends_at si cambió el descuento
-  if (body.discount_percent !== undefined && body.discount_percent !== current.discount_percent) {
+  // 2026-05-18 (Tomi): aceptar `discount_ends_at` directo en el body
+  // (sobreescribe cualquier cálculo de duration). Útil para corregir fechas
+  // sin pasar por re-cálculo automático que asume start = now().
+  if (body.discount_ends_at !== undefined) {
+    if (body.discount_ends_at === null) {
+      candidate.discount_ends_at = null
+    } else {
+      const parsed = new Date(body.discount_ends_at)
+      if (Number.isNaN(parsed.getTime())) {
+        return NextResponse.json(
+          { error: "discount_ends_at debe ser fecha ISO válida o null" },
+          { status: 400 }
+        )
+      }
+      candidate.discount_ends_at = parsed.toISOString()
+    }
+  } else if (body.discount_percent !== undefined && body.discount_percent !== current.discount_percent) {
+    // Recalcular discount_ends_at automáticamente si cambió el % y no se pasó fecha explícita
     if (body.discount_percent > 0 && body.discount_duration_months) {
       candidate.discount_ends_at = new Date(
         Date.now() + body.discount_duration_months * 30 * 24 * 60 * 60 * 1000
