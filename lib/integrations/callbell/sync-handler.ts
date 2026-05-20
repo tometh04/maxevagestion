@@ -131,6 +131,14 @@ export async function processCallbellEvent(
       .maybeSingle()
     const funnelId = funnel ? (funnel as { id: string }).id : null
 
+    // Si Callbell ya tiene un agente asignado en el contacto, resolvemos a user.id
+    // y lo seteamos en el lead creado para que solo ese vendedor lo vea (RBAC).
+    const assignedSellerId = await resolveSellerIdFromAgent(
+      admin,
+      orgId,
+      (contact as unknown as { assignedAgent?: unknown }).assignedAgent
+    )
+
     // Stamp inicial. Si el evento trae texto de mensaje, lo incluimos.
     const messageText = (event.data as { message?: { text?: string } }).message
       ?.text
@@ -151,6 +159,7 @@ export async function processCallbellEvent(
         contact_phone: phone,
         contact_email: contact.email ?? null,
         funnel_id: funnelId,
+        assigned_seller_id: assignedSellerId,
         notes: stamp,
       } as never)
       .select("id, notes")
@@ -253,10 +262,12 @@ export async function processCallbellEvent(
     case "agent_assigned": {
       const agentEmail = event.data.agent?.email
       if (!agentEmail) break
+      // Case-insensitive lookup (Callbell vs Vibook pueden tener mismo email
+      // con casing distinto).
       const { data: user } = await admin
         .from("users")
         .select("id")
-        .eq("email", agentEmail)
+        .ilike("email", agentEmail)
         .eq("org_id", orgId)
         .maybeSingle()
       if (user) {
@@ -271,6 +282,31 @@ export async function processCallbellEvent(
     }
 
     case "message_created": {
+      // Sync de assignedAgent de Callbell → leads.assigned_seller_id (RBAC).
+      // Callbell auto-asigna agente apenas llega un mensaje. Mantenemos Vibook
+      // alineado para que SELLER solo vea sus leads en el CRM.
+      const cbAgent = (event.data.contact as unknown as { assignedAgent?: unknown })
+        ?.assignedAgent
+      const newSellerId = await resolveSellerIdFromAgent(admin, orgId, cbAgent)
+      if (newSellerId) {
+        // Solo actualiza si cambió (evita writes innecesarios y respeta
+        // reasignaciones manuales en Vibook si Callbell aún no las refleja).
+        const { data: currentLead } = await admin
+          .from("leads")
+          .select("assigned_seller_id")
+          .eq("id", leadId)
+          .maybeSingle()
+        const curr =
+          (currentLead as { assigned_seller_id: string | null } | null)
+            ?.assigned_seller_id ?? null
+        if (curr !== newSellerId) {
+          await admin
+            .from("leads")
+            .update({ assigned_seller_id: newSellerId } as never)
+            .eq("id", leadId)
+        }
+      }
+
       const text = (event.data as { message?: { text?: string } }).message?.text
       if (text && !createdNow) {
         // Si recién creamos el lead, el texto ya quedó en el stamp inicial.
@@ -624,4 +660,41 @@ async function setLeadFunnelByName(
       .update({ funnel_id: (funnel as { id: string }).id } as never)
       .eq("id", leadId)
   }
+}
+
+/**
+ * Resuelve el email del agente asignado en Callbell → users.id de Vibook.
+ *
+ * El campo `assignedAgent` viene en varios shapes según la versión del payload:
+ *   - string: "agent@vicotravelgroup.com" (forma más común en eventos reales)
+ *   - object: { email: "...", uuid: "...", name: "..." } (forma "rica" del tipo)
+ *   - null / undefined: sin agente asignado
+ *
+ * Esta función extrae el email con cuidado y hace lookup en `users` scopeado
+ * al org. Devuelve null si no hay agente o si el email no matchea ningún user.
+ */
+async function resolveSellerIdFromAgent(
+  admin: SupabaseClient<Database>,
+  orgId: string,
+  raw: unknown
+): Promise<string | null> {
+  if (!raw) return null
+  let email: string | null = null
+  if (typeof raw === "string") {
+    email = raw
+  } else if (typeof raw === "object" && raw !== null) {
+    const r = raw as { email?: unknown }
+    if (typeof r.email === "string") email = r.email
+  }
+  if (!email) return null
+
+  // Lookup case-insensitive (Callbell puede enviar j.ahumada@... mientras Vibook
+  // tiene J.ahumada@... — ambos son el mismo user en la práctica).
+  const { data: user } = await admin
+    .from("users")
+    .select("id")
+    .ilike("email", email)
+    .eq("org_id", orgId)
+    .maybeSingle()
+  return user ? (user as { id: string }).id : null
 }
