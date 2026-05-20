@@ -154,7 +154,7 @@ export function EditOperationDialog({
   const [customStatuses, setCustomStatuses] = useState<Array<{ value: string; label: string; color?: string }>>([])
 
   // Estado para múltiples operadores
-  type OperatorEntry = { operator_id: string; cost: number; cost_currency: "ARS" | "USD"; product_type?: string; notes?: string; id?: string }
+  type OperatorEntry = { operator_id: string; cost: string | number; cost_currency: "ARS" | "USD"; product_type?: string; notes?: string; id?: string }
   const [useMultipleOperators, setUseMultipleOperators] = useState(false)
   const [operatorList, setOperatorList] = useState<OperatorEntry[]>([])
   const [operatorsLoaded, setOperatorsLoaded] = useState(false)
@@ -322,7 +322,7 @@ export function EditOperationDialog({
   }
 
   const totalOperatorCost = useMemo(() => {
-    return operatorList.reduce((sum, op) => sum + (op.cost || 0), 0)
+    return operatorList.reduce((sum, op) => sum + (Number(op.cost) || 0), 0)
   }, [operatorList])
 
   // Actualizar operator_cost del form cuando cambia totalOperatorCost
@@ -406,7 +406,7 @@ export function EditOperationDialog({
       if (useMultipleOperators && operatorList.length > 0) {
         payload.operators = operatorList.map(op => ({
           operator_id: op.operator_id,
-          cost: op.cost,
+          cost: Number(op.cost) || 0,
           cost_currency: op.cost_currency || values.currency || "USD",
           product_type: op.product_type || null,
           notes: op.notes || null,
@@ -771,7 +771,7 @@ export function EditOperationDialog({
                           <label className="text-xs font-medium mb-1.5 block">Costo *</label>
                           <DecimalInput
                             value={op.cost || ""}
-                            onChange={(v) => updateOperatorField(index, "cost", v === "" ? 0 : Number(v))}
+                            onChange={(v) => updateOperatorField(index, "cost", v)}
                             onFocus={(e) => e.target.select()}
                             placeholder="0.00"
                             className="h-9 text-base font-medium"
@@ -1210,7 +1210,7 @@ export function EditOperationDialog({
                         <DecimalInput
                           {...field}
                           value={field.value || ""}
-                          onChange={(v) => field.onChange(v === "" ? 0 : Number(v))}
+                          onChange={(v) => field.onChange(v)}
                           onFocus={(e) => e.target.select()}
                         />
                       </FormControl>

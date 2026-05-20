@@ -82,10 +82,6 @@ const operationSchema = z.object({
   destination: z.string().optional(), // Validación dinámica en backend
   departure_date: z.date().optional(), // Validación dinámica en backend
   return_date: z.date().optional().nullable(),
-  // 2026-05-19 (Tomi): permite cargar files históricos con la fecha real
-  // de venta. Default = hoy. Backend valida que no sea futuro y que
-  // departure_date sea posterior.
-  operation_date: z.date().optional(),
   adults: z.coerce.number().min(1, "Debe haber al menos 1 adulto"),
   children: z.coerce.number().min(0).default(0).optional(),
   infants: z.coerce.number().min(0).default(0).optional(),
@@ -200,12 +196,7 @@ export function NewOperationDialog({
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
   const [useMultipleOperators, setUseMultipleOperators] = useState(false)
-  // 2026-05-19 (Andres VICO): cost se guarda como STRING (no number) para
-  // soportar tipeo de decimales con coma o punto. Si lo convertimos a number
-  // en cada onChange, "154." → Number("154.") = 154 → display "154" →
-  // el usuario nunca puede escribir el punto + 34. Resultado: solo redondos.
-  // El cast a number sucede solo al sumar/submit con parseFloat.
-  const [operatorList, setOperatorList] = useState<Array<{operator_id: string, cost: string, cost_currency: "ARS" | "USD", product_type?: "FLIGHT" | "HOTEL" | "PACKAGE" | "CRUISE" | "TRANSFER" | "MIXED", notes?: string}>>([])
+  const [operatorList, setOperatorList] = useState<Array<{operator_id: string, cost: string | number, cost_currency: "ARS" | "USD", product_type?: "FLIGHT" | "HOTEL" | "PACKAGE" | "CRUISE" | "TRANSFER" | "MIXED", notes?: string}>>([])
   const [settings, setSettings] = useState<OperationSettings | null>(null)
   const [apiError, setApiError] = useState<string | null>(null)
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
@@ -387,7 +378,6 @@ export function NewOperationDialog({
       destination: cleanedDestination,
       departure_date: undefined,
       return_date: undefined,
-      operation_date: new Date(), // Default a hoy (2026-05-19: campo nuevo)
       adults: 2,
       children: 0,
       infants: 0,
@@ -443,11 +433,8 @@ export function NewOperationDialog({
     }
   }, [settings, form])
 
-  // Calcular costo total de operadores. cost es string → parseFloat al sumar.
-  const totalOperatorCost = operatorList.reduce(
-    (sum, op) => sum + (parseFloat(op.cost as any) || 0),
-    0
-  )
+  // Calcular costo total de operadores
+  const totalOperatorCost = operatorList.reduce((sum, op) => sum + (Number(op.cost) || 0), 0)
   const saleAmount = form.watch("sale_amount_total")
   const calculatedMargin = saleAmount - totalOperatorCost
   const calculatedMarginPercent = saleAmount > 0 ? (calculatedMargin / saleAmount) * 100 : 0
@@ -458,13 +445,12 @@ export function NewOperationDialog({
       form.setValue("operator_cost", totalOperatorCost)
       // Asegurar que cost_currency tenga un valor por defecto (usar moneda de la operación)
       const formCurrency = form.getValues("sale_currency") || form.getValues("currency") || "USD"
-      // Convertir cost string → number aquí (al pasar al form RHF/zod).
       const operatorsWithDefaults = operatorList.map(op => ({
         ...op,
-        cost: parseFloat(op.cost as any) || 0,
+        cost: Number(op.cost) || 0,
         cost_currency: (op.cost_currency || formCurrency) as "ARS" | "USD"
       }))
-      form.setValue("operators", operatorsWithDefaults as any)
+      form.setValue("operators", operatorsWithDefaults)
     } else if (!useMultipleOperators) {
       form.setValue("operators", undefined)
     }
@@ -472,7 +458,7 @@ export function NewOperationDialog({
 
   const addOperator = () => {
     const currentCurrency = (form.getValues("sale_currency") || form.getValues("currency") || "USD") as "ARS" | "USD"
-    setOperatorList([...operatorList, { operator_id: "", cost: "", cost_currency: currentCurrency, product_type: undefined }])
+    setOperatorList([...operatorList, { operator_id: "", cost: 0, cost_currency: currentCurrency, product_type: undefined }])
   }
 
   const removeOperator = (index: number) => {
@@ -575,7 +561,7 @@ export function NewOperationDialog({
         // Incluir lead_id si hay un lead
         ...(lead ? { lead_id: lead.id } : {}),
         operator_id: useMultipleOperators ? null : (values.operator_id || null),
-        operators: useMultipleOperators && operatorList.length > 0 ? operatorList : undefined,
+        operators: useMultipleOperators && operatorList.length > 0 ? operatorList.map(op => ({ ...op, cost: Number(op.cost) || 0 })) : undefined,
         seller_secondary_id: values.seller_secondary_id || null,
         commission_split: values.seller_secondary_id ? (values.commission_split ?? 50) : null,
         // Overrides absolutos (29/04 — Tomi opción B): si hay secondary, persistir
@@ -597,8 +583,6 @@ export function NewOperationDialog({
         checkin_date: null,
         checkout_date: null,
         departure_date: values.departure_date ? values.departure_date.toISOString().split("T")[0] : null,
-        // 2026-05-19: fecha real de venta (default hoy, editable para carga histórica)
-        operation_date: values.operation_date ? values.operation_date.toISOString().split("T")[0] : undefined,
         sale_currency: values.sale_currency || values.currency || "USD",
         operator_cost_currency: values.operator_cost_currency || values.currency || "USD",
         // Si hay múltiples operadores, el costo total ya está calculado en operator_cost
@@ -1063,7 +1047,7 @@ export function NewOperationDialog({
                         <div>
                             <label className="text-xs font-medium mb-1.5 block">Costo *</label>
                       <DecimalInput
-                        value={op.cost}
+                        value={op.cost || ""}
                         onChange={(v) => updateOperator(index, "cost", v)}
                         onFocus={(e) => e.target.select()}
                         placeholder="0.00"
@@ -1279,28 +1263,6 @@ export function NewOperationDialog({
             </div>
 
             <div className="grid gap-x-6 gap-y-5 md:grid-cols-2">
-              <FormField
-                control={form.control}
-                name="operation_date"
-                render={({ field }) => (
-                  <FormItem className="flex flex-col">
-                    <FormLabel>Fecha de venta</FormLabel>
-                    <FormControl>
-                      <DateInputWithCalendar
-                        value={field.value}
-                        onChange={field.onChange}
-                        placeholder="dd/MM/yyyy"
-                        maxDate={new Date()}
-                      />
-                    </FormControl>
-                    <span className="text-[10px] text-muted-foreground">
-                      Hoy por default. Cambiala si cargás una venta vieja para que impacte en el mes correcto.
-                    </span>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
               <FormField
                 control={form.control}
                 name="departure_date"
@@ -1573,7 +1535,7 @@ export function NewOperationDialog({
                             <DecimalInput
                               {...field}
                               value={field.value || ""}
-                              onChange={(v) => field.onChange(v === "" ? 0 : Number(v))}
+                              onChange={(v) => field.onChange(v)}
                               onFocus={(e) => e.target.select()}
                             />
                           </FormControl>
