@@ -406,6 +406,7 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
     if (!duplicateAlert) return
     const values = duplicateAlert.pendingValues
     setDuplicateAlert(null)
+    setIsLoading(true)
     await submitPayment(values, { force: true })
   }
 
@@ -878,9 +879,9 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancelar</AlertDialogCancel>
-          <AlertDialogAction onClick={handleConfirmDuplicate}>
-            Crear igual
+          <AlertDialogCancel disabled={isLoading}>Cancelar</AlertDialogCancel>
+          <AlertDialogAction onClick={handleConfirmDuplicate} disabled={isLoading}>
+            {isLoading ? "Creando..." : "Crear igual"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
