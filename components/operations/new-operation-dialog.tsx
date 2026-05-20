@@ -196,7 +196,7 @@ export function NewOperationDialog({
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
   const [useMultipleOperators, setUseMultipleOperators] = useState(false)
-  const [operatorList, setOperatorList] = useState<Array<{operator_id: string, cost: number, cost_currency: "ARS" | "USD", product_type?: "FLIGHT" | "HOTEL" | "PACKAGE" | "CRUISE" | "TRANSFER" | "MIXED", notes?: string}>>([])
+  const [operatorList, setOperatorList] = useState<Array<{operator_id: string, cost: string | number, cost_currency: "ARS" | "USD", product_type?: "FLIGHT" | "HOTEL" | "PACKAGE" | "CRUISE" | "TRANSFER" | "MIXED", notes?: string}>>([])
   const [settings, setSettings] = useState<OperationSettings | null>(null)
   const [apiError, setApiError] = useState<string | null>(null)
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
@@ -434,7 +434,7 @@ export function NewOperationDialog({
   }, [settings, form])
 
   // Calcular costo total de operadores
-  const totalOperatorCost = operatorList.reduce((sum, op) => sum + (op.cost || 0), 0)
+  const totalOperatorCost = operatorList.reduce((sum, op) => sum + (Number(op.cost) || 0), 0)
   const saleAmount = form.watch("sale_amount_total")
   const calculatedMargin = saleAmount - totalOperatorCost
   const calculatedMarginPercent = saleAmount > 0 ? (calculatedMargin / saleAmount) * 100 : 0
@@ -447,6 +447,7 @@ export function NewOperationDialog({
       const formCurrency = form.getValues("sale_currency") || form.getValues("currency") || "USD"
       const operatorsWithDefaults = operatorList.map(op => ({
         ...op,
+        cost: Number(op.cost) || 0,
         cost_currency: (op.cost_currency || formCurrency) as "ARS" | "USD"
       }))
       form.setValue("operators", operatorsWithDefaults)
@@ -560,7 +561,7 @@ export function NewOperationDialog({
         // Incluir lead_id si hay un lead
         ...(lead ? { lead_id: lead.id } : {}),
         operator_id: useMultipleOperators ? null : (values.operator_id || null),
-        operators: useMultipleOperators && operatorList.length > 0 ? operatorList : undefined,
+        operators: useMultipleOperators && operatorList.length > 0 ? operatorList.map(op => ({ ...op, cost: Number(op.cost) || 0 })) : undefined,
         seller_secondary_id: values.seller_secondary_id || null,
         commission_split: values.seller_secondary_id ? (values.commission_split ?? 50) : null,
         // Overrides absolutos (29/04 — Tomi opción B): si hay secondary, persistir
@@ -1047,7 +1048,7 @@ export function NewOperationDialog({
                             <label className="text-xs font-medium mb-1.5 block">Costo *</label>
                       <DecimalInput
                         value={op.cost || ""}
-                        onChange={(v) => updateOperator(index, "cost", v === "" ? 0 : Number(v))}
+                        onChange={(v) => updateOperator(index, "cost", v)}
                         onFocus={(e) => e.target.select()}
                         placeholder="0.00"
                               className="h-9 text-base font-medium"
@@ -1534,7 +1535,7 @@ export function NewOperationDialog({
                             <DecimalInput
                               {...field}
                               value={field.value || ""}
-                              onChange={(v) => field.onChange(v === "" ? 0 : Number(v))}
+                              onChange={(v) => field.onChange(v)}
                               onFocus={(e) => e.target.select()}
                             />
                           </FormControl>
