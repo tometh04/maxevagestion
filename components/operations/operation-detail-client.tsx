@@ -132,6 +132,19 @@ interface OperationDetailClientProps {
     operator_id: string
     operators?: { id: string; name: string } | null
   }>
+  operationLegs?: Array<{
+    id: string
+    order_index: number
+    destination: string
+    departure_date: string | null
+    reservation_code_air: string | null
+    airline_name: string | null
+    itr_localizador: string | null
+    hotel_name: string | null
+    reservation_code_hotel: string | null
+    checkin_date: string | null
+    checkout_date: string | null
+  }>
 }
 
 export function OperationDetailClient({
@@ -150,6 +163,7 @@ export function OperationDetailClient({
   operationServices = [],
   operatorPayments = [],
   operationOperators = [],
+  operationLegs = [],
 }: OperationDetailClientProps) {
   const router = useRouter()
   const [editDialogOpen, setEditDialogOpen] = useState(false)
@@ -396,6 +410,26 @@ export function OperationDetailClient({
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">ITR Localizador</p>
                     <p className="text-sm font-medium mt-0.5">{(operation as any).itr_localizador || "-"}</p>
                   </div>
+                  {operationLegs.length > 0 && (
+                    <div className="col-span-full mt-2">
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Tramos del viaje</p>
+                      <div className="space-y-2">
+                        {operationLegs.map((leg, index) => (
+                          <div key={leg.id} className="rounded-lg border border-border/40 bg-muted/10 p-3 text-sm">
+                            <p className="font-medium mb-1.5">Tramo {index + 1} — {leg.destination}</p>
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                              {leg.departure_date && <span className="text-muted-foreground">Salida: <span className="text-foreground">{leg.departure_date}</span></span>}
+                              {leg.reservation_code_air && <span className="text-muted-foreground">Cód. Aéreo: <span className="text-foreground">{leg.reservation_code_air}{leg.airline_name ? ` · ${leg.airline_name}` : ""}</span></span>}
+                              {leg.itr_localizador && <span className="text-muted-foreground">ITR: <span className="text-foreground">{leg.itr_localizador}</span></span>}
+                              {leg.hotel_name && <span className="text-muted-foreground">Hotel: <span className="text-foreground">{leg.hotel_name}{leg.reservation_code_hotel ? ` · ${leg.reservation_code_hotel}` : ""}</span></span>}
+                              {leg.checkin_date && <span className="text-muted-foreground">Check-in: <span className="text-foreground">{leg.checkin_date}</span></span>}
+                              {leg.checkout_date && <span className="text-muted-foreground">Check-out: <span className="text-foreground">{leg.checkout_date}</span></span>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <div>
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                       {operation.type === "ASSISTANCE" ? "Inicio Cobertura" : "📅 Salida"}
@@ -892,6 +926,7 @@ export function OperationDetailClient({
           sellers={sellers}
           operators={operators}
           userRole={userRole}
+          operationLegs={operationLegs}
         />
       )}
     </div>

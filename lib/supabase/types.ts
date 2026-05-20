@@ -4715,6 +4715,73 @@ export type Database = {
           },
         ]
       }
+      operation_legs: {
+        Row: {
+          id: string
+          operation_id: string
+          agency_id: string
+          order_index: number
+          destination: string
+          departure_date: string | null
+          reservation_code_air: string | null
+          airline_name: string | null
+          itr_localizador: string | null
+          hotel_name: string | null
+          reservation_code_hotel: string | null
+          checkin_date: string | null
+          checkout_date: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          operation_id: string
+          agency_id: string
+          order_index?: number
+          destination: string
+          departure_date?: string | null
+          reservation_code_air?: string | null
+          airline_name?: string | null
+          itr_localizador?: string | null
+          hotel_name?: string | null
+          reservation_code_hotel?: string | null
+          checkin_date?: string | null
+          checkout_date?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          operation_id?: string
+          agency_id?: string
+          order_index?: number
+          destination?: string
+          departure_date?: string | null
+          reservation_code_air?: string | null
+          airline_name?: string | null
+          itr_localizador?: string | null
+          hotel_name?: string | null
+          reservation_code_hotel?: string | null
+          checkin_date?: string | null
+          checkout_date?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "operation_legs_operation_id_fkey"
+            columns: ["operation_id"]
+            referencedRelation: "operations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "operation_legs_agency_id_fkey"
+            columns: ["agency_id"]
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       operation_operators: {
         Row: {
           cost: number
