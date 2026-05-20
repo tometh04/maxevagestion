@@ -120,7 +120,50 @@ export function NewLeadDialog({
     },
   })
 
+  // Bug fix 2026-05-20 (reportado por Martí Lozada vía WhatsApp):
+  // Martí cargaba consultas desde el switcher "Rosario" pero los leads
+  // quedaban en Madero. Causa: react-hook-form solo aplica `defaultValues`
+  // al MONTAR el componente. Si el dialog se reabre con un `defaultAgencyId`
+  // distinto al de la primera apertura (porque el user cambió el switcher
+  // de agencia del header sin cerrar la página), el form sigue con el
+  // valor viejo. Reset al abrir lo arregla.
+  //
+  // En el caso real: defaultAgencyId del server = agencyIds[0] = "Madero"
+  // (primera alfabéticamente). El dialog se abría siempre con Madero
+  // preseleccionada y Martí no se daba cuenta porque el campo "Agencia"
+  // del form está abajo. 18 de 20 leads creados en una hora quedaron en
+  // Madero por este motivo. Combinado con el banner visible (abajo), el
+  // bug queda cerrado.
+  useEffect(() => {
+    if (open) {
+      form.reset({
+        agency_id: defaultAgencyId || "",
+        source: "Other",
+        status: "NEW",
+        region: "ARGENTINA",
+        destination: "",
+        contact_name: "",
+        contact_phone: "",
+        contact_email: "",
+        contact_instagram: "",
+        assigned_seller_id: defaultSellerId || null,
+        list_name: REGION_TO_LIST["ARGENTINA"],
+        notes: "",
+        quoted_price: null,
+        has_deposit: false,
+        deposit_amount: null,
+        deposit_currency: null,
+        deposit_method: null,
+        deposit_date: null,
+      })
+    }
+    // form omitido a propósito de las deps: form.reset es estable de RHF
+    // y agregarlo causa loops infinitos en algunas versiones.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, defaultAgencyId, defaultSellerId])
+
   const watchedAgencyId = form.watch("agency_id")
+  const selectedAgencyName = agencies.find((a) => a.id === watchedAgencyId)?.name
 
   const watchedRegion = form.watch("region")
   const watchedDestination = form.watch("destination")
@@ -251,6 +294,26 @@ export function NewLeadDialog({
         <Form {...form}>
           <form onSubmit={form.handleSubmit(handleSubmit)} className="flex flex-col overflow-hidden flex-1">
             <div className="px-6 py-5 space-y-5 overflow-y-auto flex-1">
+            {/* Banner agencia seleccionada
+                Bug fix 2026-05-20: imposible no ver en qué agencia se está
+                creando el lead. Si no hay agencia (caso "ALL" o empty),
+                aparece en rojo pidiendo seleccionar abajo. */}
+            {selectedAgencyName ? (
+              <div className="rounded-lg border border-primary/50 bg-primary/10 px-3 py-2 text-sm flex items-center gap-2">
+                <MapPin className="h-4 w-4 text-primary" />
+                <span>
+                  Creando lead en agencia: <strong>{selectedAgencyName}</strong>
+                </span>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm flex items-center gap-2">
+                <MapPin className="h-4 w-4 text-destructive" />
+                <span className="text-destructive">
+                  No hay agencia seleccionada. Elegila en el campo "Agencia" más abajo.
+                </span>
+              </div>
+            )}
+
             {/* Contacto */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
