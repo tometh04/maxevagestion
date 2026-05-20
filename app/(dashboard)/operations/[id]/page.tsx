@@ -102,6 +102,13 @@ export default async function OperationDetailPage({
     .eq("operation_id", id)
     .order("created_at", { ascending: true })
 
+  // Get stopovers / legs for this operation
+  const { data: operationLegs } = await (supabase
+    .from("operation_legs") as any)
+    .select("id, order_index, destination, departure_date, reservation_code_air, airline_name, itr_localizador, hotel_name, reservation_code_hotel, checkin_date, checkout_date")
+    .eq("operation_id", id)
+    .order("order_index", { ascending: true })
+
   // Get commission records for this operation
   const { data: commissionRecords } = await (supabase
     .from("commission_records") as any)
@@ -156,6 +163,7 @@ export default async function OperationDetailPage({
       operationServices={operationServices || []}
       operatorPayments={operatorPayments || []}
       operationOperators={operationOperators || []}
+      operationLegs={operationLegs || []}
     />
   )
 }

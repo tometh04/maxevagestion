@@ -67,12 +67,11 @@ const DecimalInput = React.forwardRef<HTMLInputElement, DecimalInputProps>(
       allowNegative = false,
       maxDecimals,
       placeholder = "0.00",
+      onBlur: onBlurProp,
       ...rest
     },
     ref,
   ) => {
-    // Build the regex that validates partial input as the user types.
-    // We allow empty string, and digits with optional decimal point.
     const buildRegex = React.useCallback((): RegExp => {
       const sign = allowNegative ? "-?" : ""
       if (typeof maxDecimals === "number" && maxDecimals >= 0) {
@@ -81,25 +80,49 @@ const DecimalInput = React.forwardRef<HTMLInputElement, DecimalInputProps>(
       return new RegExp(`^${sign}\\d*\\.?\\d*$`)
     }, [allowNegative, maxDecimals])
 
+    const toStr = (v: string | number | null | undefined): string =>
+      v === null || v === undefined ? "" : String(v)
+
+    const [localValue, setLocalValue] = React.useState<string>(() => toStr(value))
+
+    // While the user is typing, the parent often converts "3137." → Number(v) → 3137
+    // and feeds 3137 back as the value prop — which would eat the decimal point.
+    // We block external syncs during active editing to prevent this.
+    const isTypingRef = React.useRef(false)
+
+    React.useEffect(() => {
+      if (isTypingRef.current) return
+      setLocalValue(toStr(value))
+    }, [value])
+
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       const raw = e.target.value.replace(",", ".")
       if (raw === "" || raw === "-" || buildRegex().test(raw)) {
+        isTypingRef.current = true
+        setLocalValue(raw)
         onChange?.(raw)
       }
     }
 
-    // Coerce value to string for the controlled input. react-hook-form may
-    // hand us numbers, null, or undefined depending on the field's defaults.
-    const displayValue =
-      value === null || value === undefined ? "" : String(value)
+    const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+      isTypingRef.current = false
+      // Normalize: strip trailing "." when user stops editing
+      if (localValue.endsWith(".")) {
+        const clean = localValue.slice(0, -1)
+        setLocalValue(clean)
+        onChange?.(clean)
+      }
+      onBlurProp?.(e)
+    }
 
     return (
       <Input
         type="text"
         inputMode="decimal"
         placeholder={placeholder}
-        value={displayValue}
+        value={localValue}
         onChange={handleChange}
+        onBlur={handleBlur}
         ref={ref}
         {...rest}
       />
