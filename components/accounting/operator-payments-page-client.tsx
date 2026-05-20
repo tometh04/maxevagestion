@@ -674,6 +674,7 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
         onOpenChange={setBulkPaymentOpen}
         operators={operators}
         agencies={agencies}
+        selectedAgencyId={agencyFilter !== "ALL" ? agencyFilter : undefined}
       />
 
       {/* Manual Operator Payment Dialog */}

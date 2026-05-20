@@ -533,6 +533,67 @@ export async function POST(request: Request) {
       }
     }
 
+    // Pre-INSERT validation for PAID payments.
+    // These checks used to run AFTER the INSERT, which left orphaned payments (status=PAID,
+    // no ledger_movement) when they failed. The orphaned payment then appeared as a
+    // "duplicate" on the user's next attempt → they clicked "Crear igual" → second payment
+    // created. Moving these checks here prevents the orphan entirely.
+    let preValidatedAccount: { id: string; name: string; currency: string; is_active: boolean } | null = null
+    if (finalStatus === "PAID" && !needsApproval) {
+      const preCheckLedgerType = direction === "INCOME"
+        ? "INCOME"
+        : (payer_type === "OPERATOR" ? "OPERATOR_PAYMENT" : "EXPENSE")
+
+      const { data: preAcct, error: preAcctError } = await (supabase.from("financial_accounts") as any)
+        .select("id, name, currency, is_active")
+        .eq("id", financial_account_id)
+        .single()
+
+      if (preAcctError || !preAcct || !preAcct.is_active) {
+        return NextResponse.json({ error: "La cuenta financiera seleccionada no existe o no está activa" }, { status: 400 })
+      }
+
+      if (preAcct.currency !== currency) {
+        return NextResponse.json({ error: `La cuenta financiera debe estar en ${currency}` }, { status: 400 })
+      }
+
+      if (direction === "EXPENSE" || payer_type === "OPERATOR") {
+        const balanceCheck = await validateSufficientBalance(
+          financial_account_id,
+          parseFloat(amount),
+          currency as "ARS" | "USD",
+          supabase
+        )
+        if (!balanceCheck.valid) {
+          return NextResponse.json(
+            { error: balanceCheck.error || "Saldo insuficiente en cuenta para realizar el pago" },
+            { status: 400 }
+          )
+        }
+      }
+
+      if (operation_id && !forceCreate) {
+        const { data: existingMovements } = await (supabase.from("ledger_movements") as any)
+          .select("id")
+          .eq("operation_id", operation_id)
+          .eq("type", preCheckLedgerType)
+          .eq("amount_original", parseFloat(amount))
+          .eq("account_id", financial_account_id)
+          .limit(1)
+        if (existingMovements && existingMovements.length > 0) {
+          return NextResponse.json(
+            {
+              error: "Ya existe un movimiento con el mismo monto para esta operación en esta cuenta. Verificá que no sea duplicado.",
+              code: "DUPLICATE_PAYMENT",
+            },
+            { status: 409 }
+          )
+        }
+      }
+
+      preValidatedAccount = preAcct
+    }
+
     // 1. Crear el pago en tabla payments
     // IMPORTANTE: Si status no se especifica, crear como PENDING para evitar crear movimientos contables duplicados
     // Los movimientos contables se crearán cuando se marque como PAID
@@ -651,84 +712,23 @@ export async function POST(request: Request) {
           ? parseFloat(amount) 
           : calculateARSEquivalent(parseFloat(amount), "USD", exchangeRate)
 
-        // 4. Usar la cuenta financiera proporcionada por el frontend
+        // 4. Usar la cuenta ya pre-validada antes del INSERT (evita pagos huérfanos)
         const accountId = financial_account_id
-        
-        // Validar que la cuenta existe y está activa
-        const { data: selectedAccount, error: accountCheckError } = await (supabase.from("financial_accounts") as any)
-          .select("id, name, currency, is_active")
-          .eq("id", accountId)
-          .single()
-
-        if (accountCheckError || !selectedAccount || !selectedAccount.is_active) {
-          return NextResponse.json({ error: "La cuenta financiera seleccionada no existe o no está activa" }, { status: 400 })
-        }
-
-        // Validar que la moneda de la cuenta coincide
-        if (selectedAccount.currency !== currency) {
-          return NextResponse.json({ error: `La cuenta financiera debe estar en ${currency}` }, { status: 400 })
-        }
-
-        // Validar saldo suficiente para egresos (NUNCA permitir saldo negativo)
-        if (direction === "EXPENSE" || payer_type === "OPERATOR") {
-          const amountToCheck = parseFloat(amount)
-          const balanceCheck = await validateSufficientBalance(
-            accountId,
-            amountToCheck,
-            currency as "ARS" | "USD",
-            supabase
-          )
-          
-          if (!balanceCheck.valid) {
-            return NextResponse.json(
-              { error: balanceCheck.error || "Saldo insuficiente en cuenta para realizar el pago" },
-              { status: 400 }
-            )
-          }
-        }
+        // preValidatedAccount is guaranteed non-null here: the pre-INSERT block above ran
+        // the same validations and would have returned early on any failure.
+        const selectedAccount = preValidatedAccount!
 
         // 5. Mapear método de pago a método de ledger
         const ledgerMethod = mapPaymentMethodToLedgerMethod(method)
 
         // 6. Determinar tipo de ledger movement
-        const ledgerType = direction === "INCOME" 
-          ? "INCOME" 
+        const ledgerType = direction === "INCOME"
+          ? "INCOME"
           : (payer_type === "OPERATOR" ? "OPERATOR_PAYMENT" : "EXPENSE")
 
         // 6.1. Obtener nombre del pasajero principal para el concepto
         const passengerName = operation_id ? await getMainPassengerName(operation_id, supabase) : null
         const operationCode = operation_id ? operation_id.slice(0, 8) : "N/A"
-        
-        // 7. Verificar que no exista un movimiento duplicado (misma operación, tipo, monto, cuenta)
-        //
-        // Bug fix 2026-05-13 (Santi): este check secundario en ledger_movements NO
-        // respetaba el `forceCreate` del query param. El detector primario en payments
-        // (línea 192) sí lo respetaba. Resultado: cuando el user confirmaba "Crear igual"
-        // en el dialog, el frontend reintentaba con ?force=true → bypaseaba el primer
-        // check pero este segundo seguía bloqueando con un mensaje distinto, dejando
-        // a Santi trabado igual.
-        //
-        // Fix: ambos checks ahora respetan forceCreate. La detección primaria ya filtra
-        // por date_paid/date_due/currency/direction (más completa), así que skippear
-        // este redundante cuando el user explícitamente confirmó es seguro.
-        if (operation_id && !forceCreate) {
-          const { data: existingMovements } = await (supabase.from("ledger_movements") as any)
-            .select("id")
-            .eq("operation_id", operation_id)
-            .eq("type", ledgerType)
-            .eq("amount_original", parseFloat(amount))
-            .eq("account_id", accountId)
-            .limit(1)
-          if (existingMovements && existingMovements.length > 0) {
-            return NextResponse.json(
-              {
-                error: "Ya existe un movimiento con el mismo monto para esta operación en esta cuenta. Verificá que no sea duplicado.",
-                code: "DUPLICATE_PAYMENT",
-              },
-              { status: 409 }
-            )
-          }
-        }
 
         // Crear movimiento PRINCIPAL en libro mayor (ledger_movements) usando la cuenta seleccionada
         // Este es el ÚNICO movimiento que afecta el balance de la cuenta financiera seleccionada
