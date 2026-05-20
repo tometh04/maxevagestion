@@ -37,3 +37,21 @@ CREATE INDEX IF NOT EXISTS idx_leads_chatsell_full_data
 
 COMMENT ON COLUMN leads.chatsell_full_data IS
   'Payload completo recibido vía webhook de Chatsell. Incluye event_id, nombre, telefono, destino, calidad, conversation_url y metadata custom. Útil para auditoría y debugging.';
+
+-- 3. Agregar 'Chatsell' al CHECK constraint de leads.source
+-- Patrón idéntico al de Callbell (mig 20260516000001).
+ALTER TABLE leads DROP CONSTRAINT IF EXISTS leads_source_check;
+
+ALTER TABLE leads ADD CONSTRAINT leads_source_check
+  CHECK (source IN (
+    'Instagram',
+    'WhatsApp',
+    'Meta Ads',
+    'Other',
+    'Trello',
+    'Manychat',
+    'Referido',
+    'Cliente',
+    'Callbell',
+    'Chatsell'
+  ));

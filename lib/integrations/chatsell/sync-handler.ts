@@ -130,62 +130,15 @@ export async function processChatsellLead(
     action = "created"
   }
 
-  // 2. Aplicar tag de calidad (requiere CRM advanced mode con lead_tags)
-  // Si el tenant no usa lead_tags todavía, fallamos silenciosamente porque
-  // la info de calidad ya está en notes + chatsell_full_data.
-  try {
-    await applyQualityTag(admin, orgId, leadId, normalized.quality_tag)
-  } catch (tagErr) {
-    console.warn(
-      `[chatsell] No se pudo aplicar tag de calidad (CRM legacy?). Lead ${leadId} igual quedó creado. Detalle:`,
-      tagErr
-    )
-  }
+  // Nota: NO aplicamos tags acá. lead_tags tiene un schema con
+  // category_id FK obligatoria + label + color_override (no name/color),
+  // y solo aplica a tenants en CRM advanced mode. Para Chatsell, la
+  // calidad ya está visible para el vendedor en:
+  //   - notes (texto estructurado con "🔥 caliente" / "❄️ frío")
+  //   - status (IN_PROGRESS para caliente, NEW para frío)
+  //   - chatsell_full_data.calidad (raw para queries / dashboards)
+  // Si en el futuro el tenant quiere tags automáticos, hacemos otra
+  // iteración acoplada al estado de lead_tag_categories de ese tenant.
 
   return { action, lead_id: leadId }
-}
-
-/**
- * Aplica el tag de calidad al lead. Crea el tag si no existe en el org.
- * Usa lead_tags (CRM advanced mode, migration 20260508000001).
- */
-async function applyQualityTag(
-  admin: any,
-  orgId: string,
-  leadId: string,
-  tagName: string
-): Promise<void> {
-  // 1. Buscar o crear el tag a nivel org
-  let { data: tag } = await admin
-    .from("lead_tags")
-    .select("id")
-    .eq("org_id", orgId)
-    .eq("name", tagName)
-    .maybeSingle()
-
-  if (!tag) {
-    const color = tagName.includes("Caliente") ? "#ef4444" : "#3b82f6" // red-500 / blue-500
-    const { data: created, error: createErr } = await admin
-      .from("lead_tags")
-      .insert({ org_id: orgId, name: tagName, color })
-      .select("id")
-      .single()
-    if (createErr) throw createErr
-    tag = created
-  }
-
-  if (!tag) return
-
-  // 2. Asignar tag al lead (idempotente: PK compuesto evita duplicados)
-  const { error: assignErr } = await admin
-    .from("lead_tag_assignments")
-    .upsert(
-      {
-        lead_id: leadId,
-        tag_id: tag.id,
-        org_id: orgId,
-      },
-      { onConflict: "lead_id,tag_id", ignoreDuplicates: true }
-    )
-  if (assignErr) throw assignErr
 }
