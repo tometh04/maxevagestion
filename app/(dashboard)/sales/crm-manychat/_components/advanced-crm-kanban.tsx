@@ -1,4 +1,5 @@
 import { createServerClient } from "@/lib/supabase/server"
+import { getCurrentUser } from "@/lib/auth"
 import { AdvancedKanbanClient } from "./advanced-kanban-client"
 
 interface AdvancedCRMKanbanProps {
@@ -7,6 +8,14 @@ interface AdvancedCRMKanbanProps {
 
 export async function AdvancedCRMKanban({ orgId }: AdvancedCRMKanbanProps) {
   const supabase = await createServerClient()
+  const { user } = await getCurrentUser()
+
+  // RBAC: roles operacionales (SELLER, POST_VENTA) ven solo sus propios leads.
+  // ADMIN/SUPER_ADMIN/CONTABLE/VIEWER ven todos. Patrón estándar Vibook.
+  const role = (user as { role?: string } | null)?.role
+  const userId = (user as { id?: string } | null)?.id
+  const restrictToOwnLeads =
+    (role === "SELLER" || role === "POST_VENTA") && !!userId
 
   // En modo advanced (VICO) cargamos todo lo que el LeadDetailDialog necesita
   // para alcanzar paridad con Lozada legacy (cotizar, convertir a operación,
@@ -25,37 +34,42 @@ export async function AdvancedCRMKanban({ orgId }: AdvancedCRMKanbanProps) {
       .eq("org_id", orgId)
       .order("display_order", { ascending: true }),
 
-    supabase
-      .from("leads")
-      .select(
-        // Campos completos del lead + relaciones que el LeadDetailDialog
-        // necesita (operations, agency name, seller user info).
-        //
-        // OJO: NO incluyo `customers:operation_customers(...)` porque NO existe
-        // FK directa entre leads y operation_customers — operation_customers
-        // liga operations ↔ customers, no leads ↔ customers. PostgREST tira
-        // PGRST200 ("schema cache") y rompe toda la query → ningún lead se
-        // carga. El LeadDetailDialog acepta `customers?: ... | null`, así que
-        // omitirlo es válido. Si en algún momento queremos mostrar customers
-        // del lead, habría que ir vía operations.
-        `id, contact_name, contact_phone, contact_email, contact_instagram,
-         destination, region, status, source,
-         trello_url, trello_list_id, trello_full_data,
-         assigned_seller_id, agency_id,
-         created_at, updated_at, notes,
-         quoted_price, has_deposit, deposit_amount, deposit_currency,
-         deposit_method, deposit_date,
-         archived_at, funnel_id,
-         agencies(name),
-         users:assigned_seller_id(name, email),
-         assigned_seller:assigned_seller_id(name),
-         tag_assignments:lead_tag_assignments(tag:tag_id(id, label, category:category_id(name, color))),
-         operations(id, file_code, destination, status, created_at, departure_date, sale_amount_total)`
-      )
-      .eq("org_id", orgId)
-      .not("funnel_id", "is", null)
-      .order("updated_at", { ascending: false })
-      .limit(500),
+    (async () => {
+      let q = supabase
+        .from("leads")
+        .select(
+          // Campos completos del lead + relaciones que el LeadDetailDialog
+          // necesita (operations, agency name, seller user info).
+          //
+          // OJO: NO incluyo `customers:operation_customers(...)` porque NO existe
+          // FK directa entre leads y operation_customers — operation_customers
+          // liga operations ↔ customers, no leads ↔ customers. PostgREST tira
+          // PGRST200 ("schema cache") y rompe toda la query → ningún lead se
+          // carga. El LeadDetailDialog acepta `customers?: ... | null`, así que
+          // omitirlo es válido. Si en algún momento queremos mostrar customers
+          // del lead, habría que ir vía operations.
+          `id, contact_name, contact_phone, contact_email, contact_instagram,
+           destination, region, status, source,
+           trello_url, trello_list_id, trello_full_data,
+           assigned_seller_id, agency_id,
+           created_at, updated_at, notes,
+           quoted_price, has_deposit, deposit_amount, deposit_currency,
+           deposit_method, deposit_date,
+           archived_at, funnel_id,
+           agencies(name),
+           users:assigned_seller_id(name, email),
+           assigned_seller:assigned_seller_id(name),
+           tag_assignments:lead_tag_assignments(tag:tag_id(id, label, category:category_id(name, color))),
+           operations(id, file_code, destination, status, created_at, departure_date, sale_amount_total)`
+        )
+        .eq("org_id", orgId)
+        .not("funnel_id", "is", null)
+      // RBAC: SELLER solo ve leads asignados a él.
+      if (restrictToOwnLeads) {
+        q = q.eq("assigned_seller_id", userId!)
+      }
+      return q.order("updated_at", { ascending: false }).limit(500)
+    })(),
 
     supabase
       .from("lead_tag_categories")
