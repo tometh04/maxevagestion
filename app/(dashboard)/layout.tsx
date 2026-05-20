@@ -6,6 +6,7 @@ import { TaskShortcutProvider } from "@/components/tasks/task-shortcut-provider"
 import { PushNotificationManager } from "@/components/notifications/push-notification-manager"
 import { TrialBanner } from "@/components/trial-banner"
 import { PerfNavLogger } from "@/components/perf-nav-logger"
+import { TawkWidget } from "@/components/integrations/tawk-widget"
 import {
   SidebarInset,
   SidebarProvider,
@@ -89,6 +90,10 @@ export default async function DashboardLayout({
         />
         <PushNotificationManager userId={user.id} />
         <PerfNavLogger />
+        {/* Tawk.to chat widget — solo carga JS para users en la allowlist
+            (ver components/integrations/tawk-widget.tsx). Default: solo
+            mypupybox@gmail.com. Cero impacto en otros tenants. */}
+        <TawkWidget userEmail={user.email} />
       </SidebarProvider>
     </BrandProvider>
   )
