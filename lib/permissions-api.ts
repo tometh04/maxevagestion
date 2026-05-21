@@ -7,6 +7,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/lib/supabase/types"
 import { isOwnDataOnly, hasPermission, type UserRole, type Module, type Permission } from "./permissions"
+import { checkResolvedPermission, checkOwnDataOnly, type ResolvedPermissionsMatrix } from "./permissions-agency"
 
 type SupportOperationsUser = {
   role: string
@@ -67,14 +68,35 @@ export function applyRoleFilters<T>(
 }
 
 /**
- * Verifica si un usuario puede realizar una acción específica
+ * Verifica si un usuario puede realizar una acción específica.
+ *
+ * Si se pasa resolvedMatrix (permisos dinámicos por agencia), se usa esa.
+ * Sin matrix → fallback a permisos estáticos de lib/permissions.ts.
+ * SUPER_ADMIN y ORG_OWNER siempre retornan true sin importar la matrix.
  */
 export function canPerformAction(
   user: { role: string; id: string },
   module: Module,
-  permission: Permission
+  permission: Permission,
+  resolvedMatrix?: ResolvedPermissionsMatrix
 ): boolean {
+  if (user.role === "SUPER_ADMIN" || user.role === "ORG_OWNER") return true
+  if (resolvedMatrix) return checkResolvedPermission(resolvedMatrix, module, permission)
   return hasPermission(user.role as UserRole, module, permission)
+}
+
+/**
+ * Verifica si el usuario solo puede ver sus propios datos en el módulo.
+ * Acepta matrix dinámica opcional; sin ella usa el static default.
+ */
+export function isOwnDataOnlyResolved(
+  user: { role: string },
+  module: Module,
+  resolvedMatrix?: ResolvedPermissionsMatrix
+): boolean {
+  if (user.role === "SUPER_ADMIN" || user.role === "ORG_OWNER") return false
+  if (resolvedMatrix) return checkOwnDataOnly(resolvedMatrix, module)
+  return isOwnDataOnly(user.role as UserRole, module)
 }
 
 export function hasAgencyOperationsSupportView(user: SupportOperationsUser): boolean {

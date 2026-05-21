@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { canPerformAction } from "@/lib/permissions-api"
+import { canPerformAction, getUserAgencyIds } from "@/lib/permissions-api"
+import { resolveUserPermissions } from "@/lib/permissions-agency"
 
 /**
  * POST /api/cash/sync-movements
@@ -12,14 +13,15 @@ export async function POST(request: Request) {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
 
-    // Solo admins pueden ejecutar esta acción
-    if (!canPerformAction(user.role as any, "cash", "write")) {
-      return NextResponse.json({ error: "No autorizado" }, { status: 403 })
-    }
-
     // Cross-tenant fix (2026-05-18): exigir org_id y filtrar pagos por org.
     if (!(user as any).org_id) {
       return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
+    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
+    const perms = await resolveUserPermissions(supabase as any, user.id, (user as any).org_id, user.role, agencyIds)
+    if (!canPerformAction(user, "cash", "write", perms)) {
+      return NextResponse.json({ error: "No autorizado" }, { status: 403 })
     }
 
     // 1. Obtener todos los pagos pagados del org del user

@@ -14,6 +14,7 @@ import { AfipSettings } from "@/components/settings/afip-settings"
 import { InterfaceSettings } from "@/components/settings/interface-settings"
 import { AuditSettings } from "@/components/settings/audit-settings"
 import { AgencyApprovalRulesForm } from "@/components/settings/agency-approval-rules-form"
+import { PermissionsMatrix } from "@/components/settings/permissions-matrix"
 import { OperatorsTable, Operator } from "@/components/operators/operators-table"
 import { NewOperatorDialog } from "@/components/operators/new-operator-dialog"
 import { Button } from "@/components/ui/button"
@@ -24,6 +25,8 @@ interface SettingsPageClientProps {
   agencies: Array<{ id: string; name: string }>
   firstAgencyId: string | null
   userRole: string
+  initialPermissionsMatrix?: Record<string, Record<string, { read: boolean; write: boolean; delete: boolean; export: boolean; ownDataOnly: boolean }>>
+  initialPermissionsCustomized?: Record<string, string[]>
 }
 
 function OperatorsTab() {
@@ -79,7 +82,7 @@ function OperatorsTab() {
   )
 }
 
-export function SettingsPageClient({ defaultTab, agencies, firstAgencyId, userRole }: SettingsPageClientProps) {
+export function SettingsPageClient({ defaultTab, agencies, firstAgencyId, userRole, initialPermissionsMatrix, initialPermissionsCustomized }: SettingsPageClientProps) {
   const searchParams = useSearchParams()
   const router = useRouter()
   const tabFromUrl = searchParams.get("tab") || defaultTab
@@ -104,6 +107,7 @@ export function SettingsPageClient({ defaultTab, agencies, firstAgencyId, userRo
         */}
         <TabsTrigger value="requirements">Requisitos Destino</TabsTrigger>
         <TabsTrigger value="afip">Facturación AFIP</TabsTrigger>
+        <TabsTrigger value="permisos">Permisos de Roles</TabsTrigger>
         <TabsTrigger value="auditoria">Auditoría</TabsTrigger>
       </TabsList>
       <TabsContent value="interface" className="mt-6">
@@ -145,6 +149,25 @@ export function SettingsPageClient({ defaultTab, agencies, firstAgencyId, userRo
       </TabsContent>
       <TabsContent value="afip" className="mt-6">
         <AfipSettings agencies={agencies} defaultAgencyId={firstAgencyId} />
+      </TabsContent>
+      <TabsContent value="permisos" className="mt-6">
+        <div className="space-y-4">
+          <div>
+            <h3 className="text-base font-semibold">Matriz de permisos por rol</h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              Configurá qué puede ver y hacer cada rol en tu agencia.
+              Los cambios aplican solo a esta agencia y tienen prioridad sobre los valores predeterminados del sistema.
+              SUPER_ADMIN y ORG_OWNER siempre tienen acceso completo.
+            </p>
+          </div>
+          <PermissionsMatrix
+            agencies={agencies}
+            initialAgencyId={firstAgencyId}
+            initialMatrix={initialPermissionsMatrix ?? {}}
+            initialCustomized={initialPermissionsCustomized ?? {}}
+            readOnly={userRole !== "SUPER_ADMIN" && userRole !== "ORG_OWNER" && userRole !== "ADMIN"}
+          />
+        </div>
       </TabsContent>
       <TabsContent value="auditoria" className="mt-6">
         <AuditSettings />
