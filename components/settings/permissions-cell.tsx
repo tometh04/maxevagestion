@@ -59,11 +59,20 @@ export function PermissionsCell({ perms, onChange, isModified, readOnly }: Permi
           </div>
         ))}
       </div>
-      {perms.ownDataOnly && (
-        <span className="text-[9px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full">
-          solo propios
+      <div className="flex items-center gap-1 mt-0.5">
+        <Checkbox
+          checked={perms.ownDataOnly}
+          onCheckedChange={() => {
+            if (!readOnly) onChange({ ...perms, ownDataOnly: !perms.ownDataOnly })
+          }}
+          disabled={readOnly || !perms.read}
+          className="h-3 w-3"
+          aria-label="Solo datos propios"
+        />
+        <span className={`text-[9px] ${perms.ownDataOnly ? "text-muted-foreground" : "text-muted-foreground/50"}`}>
+          propios
         </span>
-      )}
+      </div>
     </div>
   )
 }

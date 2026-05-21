@@ -2,7 +2,8 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
-import { applyCustomersFilters, getUserAgencyIds } from "@/lib/permissions-api"
+import { applyCustomersFilters, getUserAgencyIds, canPerformAction } from "@/lib/permissions-api"
+import { resolveUserPermissions } from "@/lib/permissions-agency"
 import { checkDuplicateCustomer, sendCustomerNotifications } from "@/lib/customers/customer-service"
 
 export const dynamic = 'force-dynamic'
@@ -13,13 +14,18 @@ export async function GET(request: Request) {
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
-    // Verificar permiso de acceso
-    if (!canAccessModule(user.role as any, "customers")) {
-      return NextResponse.json({ error: "No tiene permiso para ver clientes" }, { status: 403 })
-    }
-
     // Get user agencies (ya tiene caché interno)
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
+    const perms = (user as any).org_id
+      ? await resolveUserPermissions(supabase as any, user.id, (user as any).org_id, user.role, agencyIds)
+      : null
+
+    const canRead = perms
+      ? canPerformAction(user, "customers", "read", perms)
+      : canAccessModule(user.role as any, "customers")
+    if (!canRead) {
+      return NextResponse.json({ error: "No tiene permiso para ver clientes" }, { status: 403 })
+    }
 
     // Build base query — .select() FIRST so applyCustomersFilters can chain .eq() etc.
     const context = searchParams.get("context") || undefined
@@ -157,13 +163,17 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const { user } = await getCurrentUser()
-    
-    // Verificar permiso de escritura
-    if (!canAccessModule(user.role as any, "customers")) {
-      return NextResponse.json({ error: "No tiene permiso para crear clientes" }, { status: 403 })
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
     }
 
     const supabase = await createServerClient()
+    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
+    const perms = await resolveUserPermissions(supabase as any, user.id, (user as any).org_id, user.role, agencyIds)
+
+    if (!canPerformAction(user, "customers", "write", perms)) {
+      return NextResponse.json({ error: "No tiene permiso para crear clientes" }, { status: 403 })
+    }
     const body = await request.json()
 
     const {
