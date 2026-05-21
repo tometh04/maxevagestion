@@ -571,7 +571,7 @@ export function OperationsTable({
             const operatorPaid = row.original.operator_paid_amount || 0
             return (
               <div className="text-xs text-accent-teal font-medium text-right">
-                {row.original.currency} {Math.round(operatorPaid).toLocaleString("es-AR")}
+                {row.original.currency} {operatorPaid.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
             )
           },
@@ -587,7 +587,7 @@ export function OperationsTable({
             const pendingCalc = operatorPending ?? Math.max(0, operatorCost - (row.original.operator_paid_amount || 0))
             return (
               <div className="text-xs text-destructive font-medium text-right">
-                {row.original.currency} {Math.round(pendingCalc).toLocaleString("es-AR")}
+                {row.original.currency} {pendingCalc.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
             )
           },
