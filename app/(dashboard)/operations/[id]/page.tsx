@@ -86,10 +86,13 @@ export default async function OperationDetailPage({
     .eq("operation_id", id)
     .order("created_at", { ascending: true })
 
-  // Get linked operator debts to keep operator selector aligned with payable breakdown
+  // Get linked operator debts to keep operator selector aligned with payable breakdown.
+  // Bug fix 2026-05-21 (VICO): agregamos `currency` al SELECT — lo necesita el
+  // dropdown desglosado de "Registrar Pago a Operador" para mostrar la moneda
+  // de cada deuda pendiente en su label (ej. "Tower — USD 6.760 pendiente").
   const { data: operatorPayments } = await (supabase
     .from("operator_payments") as any)
-    .select("id, operator_id, amount, paid_amount, status, operators:operator_id(id, name)")
+    .select("id, operator_id, amount, paid_amount, currency, status, operators:operator_id(id, name)")
     .eq("operation_id", id)
     .order("created_at", { ascending: true })
 

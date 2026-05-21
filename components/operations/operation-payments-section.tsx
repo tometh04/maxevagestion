@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -86,6 +86,16 @@ const paymentSchema = z.object({
   payer_type: z.enum(["CUSTOMER", "OPERATOR"]),
   direction: z.enum(["INCOME", "EXPENSE"]),
   operator_id: z.string().optional(),
+  /**
+   * Bug fix 2026-05-21 (VICO): operación con DOS líneas de operation_operators
+   * para el mismo operator_id (Tower con 13.574 + Tower con 6.760) generaba
+   * 2 operator_payments distintas, pero el dropdown solo mostraba "Tower" una
+   * vez. El pago se asociaba a UNA de las deudas y la otra quedaba PENDING.
+   * Ahora el dropdown muestra cada deuda desglosada; el form guarda
+   * operator_payment_id; el backend (ya soportado vía findMatchingOperatorPayment)
+   * asocia el pago a la deuda específica seleccionada.
+   */
+  operator_payment_id: z.string().optional(),
   method: z.string().min(1, "Método es requerido"),
   amount: z.coerce.number().min(0.01, "Monto debe ser mayor a 0"),
   currency: z.enum(["ARS", "USD"]),
@@ -195,10 +205,65 @@ export function OperationPaymentsSection({
     }>
     pendingBody: Record<string, unknown>
     kind: "income" | "expense"
+    message?: string
   }
   const [duplicateAlert, setDuplicateAlert] = useState<DuplicateInfo | null>(null)
   const operatorNameById = new Map(operators.map((operator) => [operator.id, operator.name]))
   const customerSaleCurrency = normalizeSupportedCurrency(saleCurrency || currency)
+
+  /**
+   * Bug fix 2026-05-21 (VICO): deudas a operador desglosadas — una entry
+   * por cada operator_payment con saldo pendiente. Resuelve el caso donde
+   * un mismo operator aparece en >1 operation_operators (Tower x2 con
+   * costos distintos) y el dropdown legacy lo colapsaba a una sola entry.
+   *
+   * Cada item:
+   *   - id: operator_payment.id (lo que va al backend)
+   *   - operatorId / name: para fallback y agrupación visual
+   *   - pending: amount - paid_amount (cuánto falta cubrir)
+   *   - amount/currency: para mostrar en label
+   *
+   * Se ordena por (operator name asc, monto pending desc) para mantener
+   * agrupado visualmente cuando hay varias deudas del mismo operador.
+   */
+  const openOperatorDebts = useMemo(() => {
+    const out: Array<{
+      id: string
+      operatorId: string | null
+      name: string
+      pending: number
+      amount: number
+      currency: string
+    }> = []
+    for (const op of operatorPayments || []) {
+      const amt = Number((op as any).amount || 0)
+      const paid = Number((op as any).paid_amount || 0)
+      const pending = amt - paid
+      if (pending <= 0.005) continue // ya cubierta (tolerancia centavos)
+      const id = (op as any).id
+      const operatorId = (op as any).operator_id || null
+      if (!id) continue
+      const name =
+        (op as any).operators?.name?.trim() ||
+        (operatorId ? operatorNameById.get(operatorId) : null) ||
+        "Operador"
+      out.push({
+        id,
+        operatorId,
+        name,
+        pending,
+        amount: amt,
+        currency: (op as any).currency || "USD",
+      })
+    }
+    return out.sort((a, b) => {
+      const byName = a.name.localeCompare(b.name)
+      return byName !== 0 ? byName : b.pending - a.pending
+    })
+    // operatorNameById se reconstruye en cada render con `operators` prop,
+    // y operatorPayments también es prop — usamos deps primitivas/refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [operatorPayments, operators])
 
   // Cargar cuentas financieras cuando se abre cualquier diálogo
   useEffect(() => {
@@ -355,17 +420,26 @@ export function OperationPaymentsSection({
   })
 
   useEffect(() => {
-    const currentOperatorId = expenseForm.getValues("operator_id")
+    const currentOperatorPaymentId = expenseForm.getValues("operator_payment_id")
 
-    if (operators.length === 1) {
-      expenseForm.setValue("operator_id", operators[0].id, { shouldValidate: true })
+    // Bug fix 2026-05-21 (VICO): auto-seleccionar la única deuda si solo
+    // hay una pendiente — replica el UX legacy (cuando había 1 operador
+    // se preseleccionaba) pero ahora basado en la deuda específica.
+    if (openOperatorDebts.length === 1) {
+      const only = openOperatorDebts[0]
+      expenseForm.setValue("operator_payment_id", only.id, { shouldValidate: true })
+      expenseForm.setValue("operator_id", only.operatorId || "", { shouldValidate: true })
       return
     }
 
-    if (currentOperatorId && !operators.some((operator) => operator.id === currentOperatorId)) {
+    // Si la deuda seleccionada ya no está disponible (cambió la prop),
+    // limpiar el form
+    if (currentOperatorPaymentId && !openOperatorDebts.some((d) => d.id === currentOperatorPaymentId)) {
+      expenseForm.setValue("operator_payment_id", "", { shouldValidate: true })
       expenseForm.setValue("operator_id", "", { shouldValidate: true })
     }
-  }, [expenseForm, operators])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openOperatorDebts.length])
 
   const editForm = useForm<EditPaymentFormValues>({
     resolver: zodResolver(editPaymentSchema),
@@ -583,12 +657,15 @@ export function OperationPaymentsSection({
 
     if (response.status === 409 && !options.force) {
       const payload = await response.json().catch(() => null)
-      if (payload?.code === "DUPLICATE_PAYMENT" && Array.isArray(payload?.duplicates)) {
-        // Mostrar AlertDialog para override
+      if (payload?.code === "DUPLICATE_PAYMENT") {
+        // Mostrar AlertDialog para override.
+        // Hay dos variantes: con lista de duplicates (check en tabla payments)
+        // o sin lista (check en ledger_movements). Ambas permiten forzar con "Crear igual".
         setDuplicateAlert({
-          duplicates: payload.duplicates,
+          duplicates: Array.isArray(payload?.duplicates) ? payload.duplicates : [],
           pendingBody: body,
           kind,
+          message: payload?.error,
         })
         return
       }
@@ -654,14 +731,27 @@ export function OperationPaymentsSection({
   }
 
   const onSubmitExpense = async (values: PaymentFormValues) => {
-    if (operators.length === 0) {
+    if (openOperatorDebts.length === 0) {
       toast.error(NO_BASE_OPERATOR_DEBT_MESSAGE)
       return
     }
 
-    if (!values.operator_id) {
-      expenseForm.setError("operator_id", { message: "Debe seleccionar un operador" })
+    // Bug fix 2026-05-21 (VICO): requerir operator_payment_id (no solo operator_id).
+    // El dropdown desglosado garantiza que el user eligió una deuda específica.
+    if (!values.operator_payment_id) {
+      expenseForm.setError("operator_payment_id", { message: "Debe seleccionar una deuda a saldar" })
       return
+    }
+
+    if (!values.operator_id) {
+      // Fallback defensivo: derivar del operator_payment elegido si no se setteó
+      const debt = openOperatorDebts.find((d) => d.id === values.operator_payment_id)
+      if (debt?.operatorId) {
+        values = { ...values, operator_id: debt.operatorId }
+      } else {
+        expenseForm.setError("operator_id", { message: "No se pudo determinar el operador" })
+        return
+      }
     }
 
     // Validar cuenta financiera
@@ -678,12 +768,15 @@ export function OperationPaymentsSection({
 
     setIsLoading(true)
     try {
-      const { payer_type, direction, operator_id, ...restValues } = values
+      const { payer_type, direction, operator_id, operator_payment_id, ...restValues } = values
       const body: Record<string, unknown> = {
         operation_id: operationId,
         payer_type: "OPERATOR",
         direction: "EXPENSE",
         operator_id: operator_id || null,
+        // Bug fix 2026-05-21 (VICO): linkear al operator_payment específico
+        // (el backend ya lo soporta vía findMatchingOperatorPayment).
+        operator_payment_id: operator_payment_id || null,
         ...restValues,
         financial_account_id: values.financial_account_id,
         exchange_rate: values.currency === "ARS" ? values.exchange_rate : null,
@@ -1573,25 +1666,51 @@ export function OperationPaymentsSection({
             <Form {...expenseForm}>
               <form onSubmit={expenseForm.handleSubmit(onSubmitExpense)} className="flex flex-col flex-1 min-h-0">
                 <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5 -mr-2 pr-2">
-                {/* Operador */}
+                {/* Operador / Deuda pendiente
+                    Bug fix 2026-05-21 (VICO): cuando una operación tiene
+                    múltiples operation_operators del mismo operador (Tower
+                    con vuelo + Tower con paquete, ej.), aparecen como
+                    deudas separadas. El user elige cuál saldar. Si solo hay
+                    una deuda por operator, se ve como antes (solo cambia
+                    el value interno a operator_payment.id).
+
+                    Cuando se elige una deuda, también seteamos operator_id
+                    en el form (para compat con código aguas abajo y para
+                    que el rate-limit/duplicado funcione igual). */}
                 <FormField
                   control={expenseForm.control}
-                  name="operator_id"
+                  name="operator_payment_id"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Operador</FormLabel>
-                      {operators.length === 0 ? (
+                      <FormLabel>Deuda a saldar</FormLabel>
+                      {openOperatorDebts.length === 0 ? (
                         <p className="text-sm text-muted-foreground">{NO_BASE_OPERATOR_DEBT_MESSAGE}</p>
                       ) : (
-                        <Select onValueChange={field.onChange} value={field.value}>
+                        <Select
+                          onValueChange={(value) => {
+                            field.onChange(value)
+                            // Mantener operator_id sincronizado con la deuda elegida
+                            const debt = openOperatorDebts.find((d) => d.id === value)
+                            expenseForm.setValue("operator_id", debt?.operatorId || "", { shouldValidate: true })
+                            // UX: autofill del monto pendiente para acelerar el flow
+                            // (el user puede cambiarlo si paga parcial)
+                            if (debt) {
+                              expenseForm.setValue("amount", debt.pending, { shouldValidate: false })
+                              expenseForm.setValue("currency", debt.currency as any, { shouldValidate: false })
+                            }
+                          }}
+                          value={field.value}
+                        >
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue placeholder="Seleccionar operador" />
+                              <SelectValue placeholder="Seleccionar deuda" />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {operators.map((op) => (
-                              <SelectItem key={op.id} value={op.id}>{op.name}</SelectItem>
+                            {openOperatorDebts.map((debt) => (
+                              <SelectItem key={debt.id} value={debt.id}>
+                                {debt.name} — {debt.currency} {debt.pending.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} pendiente
+                              </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
@@ -1800,7 +1919,7 @@ export function OperationPaymentsSection({
                 <Button type="button" variant="outline" onClick={() => setExpenseDialogOpen(false)}>
                   Cancelar
                 </Button>
-                <Button type="submit" disabled={isLoading || operators.length === 0}>
+                <Button type="submit" disabled={isLoading || openOperatorDebts.length === 0}>
                   {isLoading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -1830,25 +1949,31 @@ export function OperationPaymentsSection({
             <AlertDialogTitle>Posible pago duplicado</AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-3">
-                <p>
-                  Encontramos {duplicateAlert?.duplicates.length || 0} pago
-                  {(duplicateAlert?.duplicates.length || 0) === 1 ? "" : "s"} similar
-                  {(duplicateAlert?.duplicates.length || 0) === 1 ? "" : "es"} en los últimos 7 días con el mismo monto, moneda y fecha. Revisalos antes de continuar:
-                </p>
-                <div className="rounded-md border border-border/40 bg-muted/30 p-3 space-y-2 max-h-48 overflow-y-auto">
-                  {duplicateAlert?.duplicates.map((d) => (
-                    <div key={d.id} className="text-xs space-y-0.5">
-                      <div className="font-medium text-foreground">
-                        {d.currency} {d.amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })} · {d.status}
-                      </div>
-                      <div className="text-muted-foreground">
-                        Creado {new Date(d.created_at).toLocaleString("es-AR")}
-                        {d.date_paid && ` · Pagado ${new Date(d.date_paid).toLocaleDateString("es-AR")}`}
-                        {d.reference && ` · Ref: ${d.reference}`}
-                      </div>
+                {(duplicateAlert?.duplicates.length ?? 0) > 0 ? (
+                  <>
+                    <p>
+                      Encontramos {duplicateAlert?.duplicates.length} pago
+                      {duplicateAlert?.duplicates.length === 1 ? "" : "s"} similar
+                      {duplicateAlert?.duplicates.length === 1 ? "" : "es"} en los últimos 7 días con el mismo monto, moneda y fecha. Revisalos antes de continuar:
+                    </p>
+                    <div className="rounded-md border border-border/40 bg-muted/30 p-3 space-y-2 max-h-48 overflow-y-auto">
+                      {duplicateAlert?.duplicates.map((d) => (
+                        <div key={d.id} className="text-xs space-y-0.5">
+                          <div className="font-medium text-foreground">
+                            {d.currency} {d.amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })} · {d.status}
+                          </div>
+                          <div className="text-muted-foreground">
+                            Creado {new Date(d.created_at).toLocaleString("es-AR")}
+                            {d.date_paid && ` · Pagado ${new Date(d.date_paid).toLocaleDateString("es-AR")}`}
+                            {d.reference && ` · Ref: ${d.reference}`}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </>
+                ) : (
+                  <p>{duplicateAlert?.message || "Ya existe un movimiento contable con el mismo monto para esta operación en esta cuenta."}</p>
+                )}
                 <p className="text-sm">
                   Si ya verificaste que este pago no es duplicado (ej: varias transferencias del mismo monto el mismo día), podés crearlo igual.
                 </p>
