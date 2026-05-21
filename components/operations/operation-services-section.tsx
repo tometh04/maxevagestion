@@ -21,6 +21,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -259,6 +269,10 @@ export function OperationServicesSection({
   // ── Estado pagos de servicios ─────────────────────────────────────────────
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false)
+  const [duplicateServicePayment, setDuplicateServicePayment] = useState<{
+    body: Record<string, unknown>
+    message?: string
+  } | null>(null)
   const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null)
   const [downloadingReceiptId, setDownloadingReceiptId] = useState<string | null>(null)
   const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([])
@@ -628,27 +642,42 @@ export function OperationServicesSection({
       return
     }
 
+    const paymentBody: Record<string, unknown> = {
+      operation_id: operationId,
+      operation_service_id: values.operation_service_id,
+      payer_type: values.payer_type,
+      direction: values.direction,
+      method: values.method,
+      amount: values.amount,
+      currency: values.currency,
+      financial_account_id: values.financial_account_id,
+      exchange_rate: requiresManualExchangeRate ? values.exchange_rate : null,
+      date_paid: values.date_paid.toISOString().split("T")[0],
+      date_due: values.date_paid.toISOString().split("T")[0],
+      status: "PAID",
+      notes: values.notes,
+    }
+    await submitServicePayment(paymentBody)
+  }
+
+  const submitServicePayment = async (body: Record<string, unknown>, force = false) => {
     setIsSubmittingPayment(true)
     try {
-      const res = await fetch("/api/payments", {
+      const url = force ? "/api/payments?force=true" : "/api/payments"
+      const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          operation_id: operationId,
-          operation_service_id: values.operation_service_id,
-          payer_type: values.payer_type,
-          direction: values.direction,
-          method: values.method,
-          amount: values.amount,
-          currency: values.currency,
-          financial_account_id: values.financial_account_id,
-          exchange_rate: requiresManualExchangeRate ? values.exchange_rate : null,
-          date_paid: values.date_paid.toISOString().split("T")[0],
-          date_due: values.date_paid.toISOString().split("T")[0],
-          status: "PAID",
-          notes: values.notes,
-        }),
+        body: JSON.stringify(body),
       })
+
+      if (res.status === 409 && !force) {
+        const payload = await res.json().catch(() => null)
+        if (payload?.code === "DUPLICATE_PAYMENT") {
+          setDuplicateServicePayment({ body, message: payload?.error })
+          return
+        }
+        throw new Error(payload?.error || "Error al registrar el pago")
+      }
 
       if (!res.ok) {
         const error = await res.json()
@@ -1626,6 +1655,40 @@ export function OperationServicesSection({
           </Form>
         </DialogContent>
       </Dialog>
+
+      {/* AlertDialog de pago duplicado en servicio — permite override "Crear igual" */}
+      <AlertDialog
+        open={duplicateServicePayment !== null}
+        onOpenChange={(open) => !open && setDuplicateServicePayment(null)}
+      >
+        <AlertDialogContent className="max-w-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Posible pago duplicado</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>{duplicateServicePayment?.message || "Ya existe un movimiento contable con el mismo monto para esta operación en esta cuenta."}</p>
+                <p className="text-sm">
+                  Si ya verificaste que este pago no es duplicado, podés crearlo igual.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSubmittingPayment}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                if (!duplicateServicePayment) return
+                const body = duplicateServicePayment.body
+                setDuplicateServicePayment(null)
+                await submitServicePayment(body, true)
+              }}
+              disabled={isSubmittingPayment}
+            >
+              {isSubmittingPayment ? "Creando..." : "Crear igual"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }
