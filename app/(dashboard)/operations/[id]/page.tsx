@@ -133,19 +133,24 @@ export default async function OperationDetailPage({
       }))
   }
 
-  // Get sellers for edit dialog
+  // Get sellers for edit dialog.
+  // 🔴 CROSS-TENANT FIX (2026-05-21): filtro explícito por org_id —
+  // ver CLAUDE.md regla de oro multi-tenant.
   const { data: sellersData } = await supabase
     .from("users")
     .select("id, name")
     .in("role", ["SELLER", "ADMIN", "SUPER_ADMIN"])
     .eq("is_active", true)
+    .eq("org_id", (user as any).org_id)
     .order("name")
   const sellers = (sellersData || []) as Array<{ id: string; name: string }>
 
-  // Get operators for edit dialog
+  // Get operators for edit dialog.
+  // 🔴 CROSS-TENANT FIX (2026-05-21): filtro explícito por org_id.
   const { data: operatorsData } = await supabase
     .from("operators")
     .select("id, name")
+    .eq("org_id", (user as any).org_id)
     .order("name")
   const operators = (operatorsData || []) as Array<{ id: string; name: string }>
 

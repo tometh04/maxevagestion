@@ -19,13 +19,16 @@ export default async function DebtsSalesPage() {
 
   const supabase = await createServerClient()
 
-  // Get sellers for filters
+  // Get sellers for filters.
+  // 🔴 CROSS-TENANT FIX (2026-05-21): filtro explícito por org_id —
+  // mismo bug que crm-manychat/page.tsx, ver CLAUDE.md regla de oro.
   let sellersQuery = supabase
     .from("users")
     .select("id, name")
     .in("role", ["SELLER", "ADMIN", "SUPER_ADMIN"])
     .eq("is_active", true)
-  
+    .eq("org_id", (user as any).org_id)
+
   if (user.role === "SELLER") {
     sellersQuery = sellersQuery.eq("id", user.id)
   }
