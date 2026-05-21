@@ -16,6 +16,9 @@ export async function AdvancedCRMKanban({ orgId }: AdvancedCRMKanbanProps) {
   const userId = (user as { id?: string } | null)?.id
   const restrictToOwnLeads =
     (role === "SELLER" || role === "POST_VENTA") && !!userId
+  // Solo ADMIN/SUPER_ADMIN ven el filtro de vendedor (CONTABLE/VIEWER no
+  // necesitan filtrar por seller; ya ven todo en read-only).
+  const canFilterBySeller = role === "ADMIN" || role === "SUPER_ADMIN"
 
   // En modo advanced (VICO) cargamos todo lo que el LeadDetailDialog necesita
   // para alcanzar paridad con Lozada legacy (cotizar, convertir a operación,
@@ -123,6 +126,7 @@ export async function AdvancedCRMKanban({ orgId }: AdvancedCRMKanbanProps) {
           admin_fee_percentage?: number | null
         }>
       }
+      canFilterBySeller={canFilterBySeller}
     />
   )
 }

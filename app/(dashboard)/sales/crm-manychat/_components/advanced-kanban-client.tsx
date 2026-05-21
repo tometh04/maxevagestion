@@ -3,6 +3,13 @@
 import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { TagFilter } from "./tag-filter"
 import { LeadCardAdvanced, type LeadAdvancedFull } from "./lead-card-advanced"
 
@@ -32,7 +39,14 @@ type Props = {
     name: string
     admin_fee_percentage?: number | null
   }>
+  /** True solo si el usuario es ADMIN/SUPER_ADMIN. Renderiza el filtro
+   *  de vendedor para que pueda inspeccionar el pipeline de cada seller.
+   *  SELLERs nunca lo ven — ya tienen los leads filtrados a sus propios. */
+  canFilterBySeller?: boolean
 }
+
+const ALL_SELLERS = "__all__"
+const UNASSIGNED = "__unassigned__"
 
 export function AdvancedKanbanClient({
   categories,
@@ -42,23 +56,39 @@ export function AdvancedKanbanClient({
   agencies,
   sellers,
   operators,
+  canFilterBySeller = false,
 }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  // Filtro de vendedor (solo para admin). Por default "todos".
+  const [sellerFilter, setSellerFilter] = useState<string>(ALL_SELLERS)
   // Estado local para drag-and-drop optimista — cuando el user dropea, mutamos
   // local PRIMERO y después confirmamos con PATCH. Si falla, rollback.
   const [leads, setLeads] = useState(initialLeads)
   const [draggedLeadId, setDraggedLeadId] = useState<string | null>(null)
   const [dragOverFunnel, setDragOverFunnel] = useState<string | null>(null)
 
-  const filteredLeads =
-    selected.size === 0
-      ? leads
-      : leads.filter((lead) => {
-          const leadTagIds = lead.tag_assignments
-            .map((ta) => ta.tag?.id)
-            .filter((id): id is string => id !== undefined)
-          return Array.from(selected).every((tagId) => leadTagIds.includes(tagId))
-        })
+  // Filtro combinado: tags + vendedor.
+  const filteredLeads = leads.filter((lead) => {
+    // Tag filter (AND entre tags seleccionados)
+    if (selected.size > 0) {
+      const leadTagIds = lead.tag_assignments
+        .map((ta) => ta.tag?.id)
+        .filter((id): id is string => id !== undefined)
+      const tagOk = Array.from(selected).every((tagId) =>
+        leadTagIds.includes(tagId)
+      )
+      if (!tagOk) return false
+    }
+    // Seller filter (solo si el admin lo activó)
+    if (canFilterBySeller && sellerFilter !== ALL_SELLERS) {
+      if (sellerFilter === UNASSIGNED) {
+        if (lead.assigned_seller_id) return false
+      } else {
+        if (lead.assigned_seller_id !== sellerFilter) return false
+      }
+    }
+    return true
+  })
 
   async function handleDrop(funnelId: string) {
     const leadId = draggedLeadId
@@ -103,12 +133,36 @@ export function AdvancedKanbanClient({
         </p>
       </div>
 
-      {/* Tag filter */}
-      {categories.length > 0 && (
-        <div className="mb-4">
+      {/* Filtros: tags + (solo admin) vendedor */}
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        {categories.length > 0 && (
           <TagFilter categories={categories} selected={selected} onChange={setSelected} />
-        </div>
-      )}
+        )}
+        {canFilterBySeller && sellers.length > 0 && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Vendedor:</span>
+            <Select value={sellerFilter} onValueChange={setSellerFilter}>
+              <SelectTrigger className="h-8 w-[200px] text-xs">
+                <SelectValue placeholder="Todos" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_SELLERS}>Todos los vendedores</SelectItem>
+                <SelectItem value={UNASSIGNED}>Sin asignar</SelectItem>
+                {sellers.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {sellerFilter !== ALL_SELLERS && (
+              <Badge variant="secondary" className="text-xs">
+                {filteredLeads.length} leads
+              </Badge>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Kanban columns */}
       <div className="flex gap-4 overflow-x-auto pb-4 flex-1 items-start">
