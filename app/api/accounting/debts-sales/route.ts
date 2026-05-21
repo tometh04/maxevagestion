@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { canAccessModule } from "@/lib/permissions"
+import { resolveUserPermissions, assertPermission } from "@/lib/permissions-agency"
 import { getUserAgencyIds } from "@/lib/permissions-api"
 import { applyCustomersFilters } from "@/lib/permissions-api"
 import { buildExchangeRateMap, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
@@ -23,13 +23,14 @@ export async function GET(request: Request) {
     const dateToFilter = searchParams.get("dateTo") // YYYY-MM-DD
     const dateType = (searchParams.get("dateType") || "SALIDA").toUpperCase() // SALIDA (departure_date) | CREACION (created_at)
 
-    // Verificar permiso de acceso (accounting en vez de customers)
-    if (!canAccessModule(user.role as any, "accounting")) {
+    // Get user agencies + resolver permisos dinámicos
+    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
+    const perms = (user as any).org_id
+      ? await resolveUserPermissions(supabase as any, user.id, (user as any).org_id, user.role, agencyIds)
+      : null
+    if (!assertPermission(user.role, perms, "accounting", "read")) {
       return NextResponse.json({ error: "No tiene permiso para ver esta sección" }, { status: 403 })
     }
-
-    // Get user agencies
-    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
 
     // Build base query — .select() FIRST so applyCustomersFilters can chain .eq()
     //

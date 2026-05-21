@@ -1,9 +1,17 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { canAccessModule } from "@/lib/permissions"
+import { getUserAgencyIds } from "@/lib/permissions-api"
+import { resolveUserPermissions, assertPermission } from "@/lib/permissions-agency"
 
 export const dynamic = 'force-dynamic'
+
+async function resolvePerms(user: any, supabase: any) {
+  const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
+  return user.org_id
+    ? resolveUserPermissions(supabase as any, user.id, user.org_id, user.role, agencyIds)
+    : Promise.resolve(null)
+}
 
 /**
  * GET /api/accounting/monthly-exchange-rates
@@ -12,14 +20,14 @@ export const dynamic = 'force-dynamic'
 export async function GET(request: Request) {
   try {
     const { user } = await getCurrentUser()
-    
-    if (!canAccessModule(user.role as any, "accounting")) {
+    const supabase = await createServerClient()
+    const perms = await resolvePerms(user, supabase)
+    if (!assertPermission(user.role, perms, "accounting", "read")) {
       return NextResponse.json({ error: "No autorizado" }, { status: 403 })
     }
 
-    const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
-    
+
     const year = parseInt(searchParams.get("year") || new Date().getFullYear().toString())
     const month = parseInt(searchParams.get("month") || (new Date().getMonth() + 1).toString())
 
@@ -48,14 +56,14 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const { user } = await getCurrentUser()
-    
-    if (!canAccessModule(user.role as any, "accounting")) {
+    const supabase = await createServerClient()
+    const perms = await resolvePerms(user, supabase)
+    if (!assertPermission(user.role, perms, "accounting", "write")) {
       return NextResponse.json({ error: "No autorizado" }, { status: 403 })
     }
 
-    const supabase = await createServerClient()
     const body = await request.json()
-    
+
     const { year, month, usd_to_ars_rate } = body
 
     if (!year || !month || !usd_to_ars_rate) {

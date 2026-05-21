@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
-import { canAccessModule } from "@/lib/permissions"
 import { createServerClient } from "@/lib/supabase/server"
+import { getUserAgencyIds } from "@/lib/permissions-api"
+import { resolveUserPermissions, assertPermission } from "@/lib/permissions-agency"
 import { getJournalEntryWithLines } from "@/lib/accounting/journal-entries"
 
 /**
@@ -14,13 +15,15 @@ export async function GET(
 ) {
   try {
     const { user } = await getCurrentUser()
-
-    if (!canAccessModule(user.role as any, "accounting")) {
-      return NextResponse.json({ error: "Sin permisos" }, { status: 403 })
-    }
-
     const { id } = await params
     const supabase = await createServerClient()
+    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
+    const perms = (user as any).org_id
+      ? await resolveUserPermissions(supabase as any, user.id, (user as any).org_id, user.role, agencyIds)
+      : null
+    if (!assertPermission(user.role, perms, "accounting", "read")) {
+      return NextResponse.json({ error: "Sin permisos" }, { status: 403 })
+    }
 
     const entry = await getJournalEntryWithLines(id, supabase)
 

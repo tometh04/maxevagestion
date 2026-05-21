@@ -231,6 +231,30 @@ export async function loadFullAgencyMatrix(
 }
 
 /**
+ * Helper para API routes: dada la matrix ya resuelta, verifica un permiso.
+ * Patrón recomendado cuando la ruta ya llamó resolveUserPermissions():
+ *
+ *   const agencyIds = await getUserAgencyIds(supabase, user.id, user.role)
+ *   const perms = await resolveUserPermissions(supabase, user.id, org_id, user.role, agencyIds)
+ *   if (!assertPermission(user.role, perms, "accounting", "read")) return 403
+ *
+ * Incluye el bypass de SUPER_ADMIN/ORG_OWNER y el fallback estático cuando
+ * no hay matrix (org_id null / dev mode).
+ */
+export function assertPermission(
+  role: string,
+  matrix: ResolvedPermissionsMatrix | null,
+  module: string,
+  permission: "read" | "write" | "delete" | "export"
+): boolean {
+  if (role === "SUPER_ADMIN" || role === "ORG_OWNER") return true
+  if (matrix) return checkResolvedPermission(matrix, module, permission)
+  // Fallback estático (sin importar permissions-api para evitar circular dep)
+  const defaults = buildDefaultMatrix(role as UserRole)
+  return defaults[module]?.[permission] === true
+}
+
+/**
  * Retorna los módulos que tienen permisos customizados en DB (difieren del default)
  * para una agencia y rol dados. Útil para mostrar badge "Personalizado" en la UI.
  */

@@ -3,23 +3,21 @@ import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
 import { getUserAgencyIds } from "@/lib/permissions-api"
+import { resolveUserPermissions, assertPermission } from "@/lib/permissions-agency"
 
 export async function GET(request: Request) {
   try {
     const { user } = await getCurrentUser()
-
-    const { canAccessModule } = await import("@/lib/permissions")
-    if (!canAccessModule(user.role as any, "accounting")) {
-      return NextResponse.json({ error: "No tiene permiso para ver contabilidad" }, { status: 403 })
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
     }
 
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
-
-    // Cross-tenant fix (2026-05-18): exigir org_id explícito. RLS sola no
-    // protege en producción según los leaks reportados.
-    if (!(user as any).org_id) {
-      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
+    const perms = await resolveUserPermissions(supabase as any, user.id, (user as any).org_id, user.role, agencyIds)
+    if (!assertPermission(user.role, perms, "accounting", "read")) {
+      return NextResponse.json({ error: "No tiene permiso para ver contabilidad" }, { status: 403 })
     }
 
     const limit = Math.min(parseInt(searchParams.get("limit") || "200"), 500)
