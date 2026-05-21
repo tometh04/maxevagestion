@@ -12,6 +12,12 @@ export interface OperationOperatorPaymentLike extends OperationOperatorRelationL
   id?: string | null
   amount?: number | string | null
   paid_amount?: number | string | null
+  /**
+   * Bug fix 2026-05-21 (VICO): el dropdown desglosado de "Registrar Pago
+   * a Operador" muestra la moneda de cada deuda en su label. Opcional
+   * porque algunos callers no traen el field (UNUSED en esos contextos).
+   */
+  currency?: string | null
   status?: "PENDING" | "PAID" | "OVERDUE" | string | null
 }
 

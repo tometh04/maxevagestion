@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
+import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 import * as z from "zod"
 import {
   Dialog,
@@ -303,9 +304,13 @@ export function EditOperationDialog({
       type: (operation.type as any) || "PACKAGE",
       origin: operation.origin || "",
       destination: operation.destination || "",
-      departure_date: operation.departure_date ? new Date(operation.departure_date) : undefined,
-      return_date: operation.return_date ? new Date(operation.return_date) : null,
-      operation_date: operation.operation_date ? new Date(operation.operation_date) : undefined,
+      // Bug fix 2026-05-21 (VICO/Enzo): parseDateOnlyLocal evita el shift
+      // de timezone que hacía `new Date("YYYY-MM-DD")` (interpretado como
+      // UTC midnight → en Argentina renderea como día anterior).
+      // Ver lib/utils/date-only.ts.
+      departure_date: parseDateOnlyLocal(operation.departure_date),
+      return_date: parseDateOnlyLocal(operation.return_date) ?? null,
+      operation_date: parseDateOnlyLocal(operation.operation_date),
       adults: operation.adults || 1,
       children: operation.children || 0,
       infants: operation.infants || 0,
@@ -344,8 +349,9 @@ export function EditOperationDialog({
         type: (operation.type as any) || "PACKAGE",
         origin: operation.origin || "",
         destination: operation.destination || "",
-        departure_date: operation.departure_date ? new Date(operation.departure_date) : undefined,
-        return_date: operation.return_date ? new Date(operation.return_date) : null,
+        // Bug fix 2026-05-21 (VICO): parseDateOnlyLocal evita shift UTC.
+        departure_date: parseDateOnlyLocal(operation.departure_date),
+        return_date: parseDateOnlyLocal(operation.return_date) ?? null,
         adults: operation.adults || 1,
         children: operation.children || 0,
         infants: operation.infants || 0,
