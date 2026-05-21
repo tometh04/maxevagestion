@@ -424,14 +424,16 @@ export function NewOperationDialog({
         operators: [],
       })
     }
-  }, [open, lead, cleanedDestination, defaultAgencyId, defaultSellerId, agencies, settings?.default_status, form])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, lead?.id, cleanedDestination, defaultAgencyId, defaultSellerId, settings?.default_status])
 
   // Actualizar estado por defecto cuando se carga la configuración
   useEffect(() => {
     if (settings?.default_status) {
       form.setValue('status', settings.default_status)
     }
-  }, [settings, form])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings?.default_status])
 
   // Calcular costo total de operadores
   const totalOperatorCost = operatorList.reduce((sum, op) => sum + (Number(op.cost) || 0), 0)
@@ -454,7 +456,8 @@ export function NewOperationDialog({
     } else if (!useMultipleOperators) {
       form.setValue("operators", undefined)
     }
-  }, [operatorList, useMultipleOperators, totalOperatorCost, form])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [operatorList, useMultipleOperators, totalOperatorCost])
 
   const addOperator = () => {
     const currentCurrency = (form.getValues("sale_currency") || form.getValues("currency") || "USD") as "ARS" | "USD"
