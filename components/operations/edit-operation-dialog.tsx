@@ -310,7 +310,18 @@ export function EditOperationDialog({
     },
   })
 
-  // Reset form when operation changes
+  // Reset form when operation changes.
+  // Bug fix 2026-05-21 (reportado por Enzo Maineri / VICO):
+  // Antes la dep era [operation, form, operationCurrency]. `operation` viene
+  // como prop del parent (OperationsTable) y se construye en cada render
+  // (split del array filtrado, etc.) → la *referencia* cambia aunque los
+  // datos no. Eso disparaba este useEffect en cada render → form.reset() →
+  // re-render → loop infinito → React error #185 "Maximum update depth".
+  //
+  // Fix: comparar por operation.id (string estable) en vez de la ref del
+  // objeto. Si el id no cambió, los datos son del mismo lead — no hace falta
+  // resetear el form (preserva ediciones in-flight del user).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (operation) {
       form.reset({
@@ -336,7 +347,7 @@ export function EditOperationDialog({
         itr_localizador: operation.itr_localizador || null,
       })
     }
-  }, [operation, form, operationCurrency])
+  }, [operation?.id, operationCurrency])
 
   // Watch values for margin calculation
   const saleAmount = form.watch("sale_amount_total")
@@ -394,12 +405,16 @@ export function EditOperationDialog({
     return operatorList.reduce((sum, op) => sum + (Number(op.cost) || 0), 0)
   }, [operatorList])
 
-  // Actualizar operator_cost del form cuando cambia totalOperatorCost
+  // Actualizar operator_cost del form cuando cambia totalOperatorCost.
+  // Bug fix 2026-05-21: antes `form` estaba en deps. RHF expone un nuevo
+  // objeto-ish en algunos casos → useEffect corre cada render → setValue
+  // dispara render → loop. form.setValue es estable, no hace falta dep.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (useMultipleOperators && operatorList.length > 0) {
       form.setValue("operator_cost", totalOperatorCost)
     }
-  }, [totalOperatorCost, useMultipleOperators, operatorList.length, form])
+  }, [totalOperatorCost, useMultipleOperators, operatorList.length])
 
   // Función para crear nuevo operador
   const handleCreateOperator = async () => {
