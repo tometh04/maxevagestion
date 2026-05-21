@@ -56,6 +56,18 @@ interface CRMManychatPageClientProps {
   defaultSellerId?: string
   currentUserId?: string
   currentUserRole?: string
+  /**
+   * Feature flags per-tenant (organization_settings). Defaults false.
+   * Pedido por LOZADA VIAJES GUALEGUAYCHÚ 2026-05-21:
+   * - enableRegionFilter: muestra dropdown adicional para filtrar leads por región
+   *   (ARGENTINA/CARIBE/BRASIL/EUROPA/EEUU/OTROS/CRUCEROS) en el Kanban.
+   * - enableListStatusSync: al arrastrar un lead entre listas, infiere status
+   *   por keyword en el nombre de la lista (ver lib/leads/infer-status-from-list.ts)
+   *   y actualiza status del lead automáticamente — sin que el user tenga que
+   *   editar manualmente.
+   */
+  enableRegionFilter?: boolean
+  enableListStatusSync?: boolean
 }
 
 export function CRMManychatPageClient({
@@ -67,6 +79,8 @@ export function CRMManychatPageClient({
   defaultSellerId,
   currentUserId,
   currentUserRole,
+  enableRegionFilter = false,
+  enableListStatusSync = false,
 }: CRMManychatPageClientProps) {
   const [leads, setLeads] = useState<Lead[]>(initialLeads)
   const [newLeadDialogOpen, setNewLeadDialogOpen] = useState(false)
@@ -353,6 +367,8 @@ export function CRMManychatPageClient({
               onUpdateLead={handleUpdateLead}
               currentUserId={currentUserId}
               currentUserRole={currentUserRole}
+              enableRegionFilter={enableRegionFilter}
+              enableListStatusSync={enableListStatusSync}
             />
           ) : (
             <div className="flex items-center justify-center p-8">
