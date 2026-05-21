@@ -9,25 +9,29 @@ export default async function CustomerDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  await getCurrentUser() // gate auth (RLS scopea la org en queries siguientes)
+  // 🔴 CROSS-TENANT FIX (2026-05-21): filtros explícitos por org_id —
+  // ver CLAUDE.md regla de oro. RLS está rota; no confiar.
+  const { user } = await getCurrentUser()
+  const userOrgId = (user as any).org_id
   const supabase = await createServerClient()
 
-  // Get customer
+  // Get customer — scope a la org del user (404 enmascarado si pertenece a otro tenant)
   const { data: customer, error: customerError } = await (supabase.from("customers") as any)
     .select("*")
     .eq("id", id)
+    .eq("org_id", userOrgId)
     .single()
 
   if (customerError || !customer) {
     notFound()
   }
 
-  // operation_customers + operations + relaciones (single query, no duplicate)
+  // operation_customers + operations — scope adicional por org_id del operation
   const { data: operationCustomers, error: operationCustomersError } = await supabase
     .from("operation_customers")
     .select(`
       *,
-      operations:operation_id(
+      operations:operation_id!inner(
         *,
         sellers:seller_id(id, name),
         operators:operator_id(id, name),
@@ -35,6 +39,7 @@ export default async function CustomerDetailPage({
       )
     `)
     .eq("customer_id", id)
+    .eq("operations.org_id", userOrgId)
 
   if (operationCustomersError) {
     console.error("[CustomerDetailPage] operation_customers fetch error:", operationCustomersError)
@@ -43,7 +48,7 @@ export default async function CustomerDetailPage({
   // Operation IDs for payments and documents
   const operationIds = (operationCustomers || []).map((oc: any) => oc.operation_id).filter(Boolean)
 
-  // Pagos vinculados a operaciones del cliente
+  // Pagos vinculados a operaciones del cliente — scope por org_id
   let payments: any[] = []
   if (operationIds.length > 0) {
     const { data: paymentsData, error: paymentsError } = await supabase
@@ -58,6 +63,7 @@ export default async function CustomerDetailPage({
       `)
       .in("operation_id", operationIds)
       .eq("payer_type", "CUSTOMER")
+      .eq("org_id", userOrgId)
       .order("date_due", { ascending: true })
     if (paymentsError) {
       console.error("[CustomerDetailPage] payments fetch error:", paymentsError)
@@ -65,13 +71,14 @@ export default async function CustomerDetailPage({
     payments = paymentsData || []
   }
 
-  // Documentos: del cliente directo + de sus operaciones
+  // Documentos: del cliente directo + de sus operaciones — todos scoped por org
   let documents: any[] = []
 
   const { data: customerDocs, error: customerDocsError } = await supabase
     .from("documents")
     .select("*")
     .eq("customer_id", id)
+    .eq("org_id", userOrgId)
     .order("uploaded_at", { ascending: false })
 
   if (customerDocsError) {
@@ -86,6 +93,7 @@ export default async function CustomerDetailPage({
       .from("documents")
       .select("*")
       .in("operation_id", operationIds)
+      .eq("org_id", userOrgId)
       .order("uploaded_at", { ascending: false })
 
     if (operationDocsError) {
@@ -117,7 +125,8 @@ export default async function CustomerDetailPage({
       .filter((op: any) => op !== null && op !== undefined)
   }
 
-  // Fallback: si la relación devolvió null pero tenemos IDs, fetch directo
+  // Fallback: si la relación devolvió null pero tenemos IDs, fetch directo.
+  // 🔴 CROSS-TENANT FIX (2026-05-21): scope por org_id también.
   if (operations.length === 0 && operationIds.length > 0) {
     const { data: directOperations, error: directOpsError } = await supabase
       .from("operations")
@@ -128,6 +137,7 @@ export default async function CustomerDetailPage({
         agencies:agency_id(id, name)
       `)
       .in("id", operationIds)
+      .eq("org_id", userOrgId)
       .order("created_at", { ascending: false })
 
     if (directOpsError) {
