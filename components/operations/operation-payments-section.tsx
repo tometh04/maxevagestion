@@ -86,6 +86,9 @@ const paymentSchema = z.object({
   payer_type: z.enum(["CUSTOMER", "OPERATOR"]),
   direction: z.enum(["INCOME", "EXPENSE"]),
   operator_id: z.string().optional(),
+  // Si el operador tiene >1 liquidación pendiente, el user debe elegir cuál.
+  // Si tiene 1 sola, el backend la resuelve sola (queda como string vacío).
+  operator_payment_id: z.string().optional(),
   method: z.string().min(1, "Método es requerido"),
   amount: z.coerce.number().min(0.01, "Monto debe ser mayor a 0"),
   currency: z.enum(["ARS", "USD"]),
@@ -366,6 +369,49 @@ export function OperationPaymentsSection({
       expenseForm.setValue("operator_id", "", { shouldValidate: true })
     }
   }, [expenseForm, operators])
+
+  // Liquidaciones pendientes del operador actualmente seleccionado en el dialog
+  // de pago. Si hay >1, el user debe elegir cuál pagar (sino el backend agarra
+  // la primera y mete todo ahí — bug histórico).
+  const watchedExpenseOperatorId = expenseForm.watch("operator_id")
+  const watchedExpensePaymentId = expenseForm.watch("operator_payment_id")
+  const pendingLiquidacionesForSelectedOperator = (() => {
+    if (!watchedExpenseOperatorId) return []
+    return (operatorPayments ?? []).filter((op) => {
+      if (op.operator_id !== watchedExpenseOperatorId) return false
+      const amount = Number(op.amount ?? 0)
+      const paid = Number(op.paid_amount ?? 0)
+      return amount - paid > 0.005
+    })
+  })()
+  const needsLiquidacionPick =
+    pendingLiquidacionesForSelectedOperator.length > 1
+
+  // Si se cambia de operador, limpiar la liquidación elegida (la del operador
+  // anterior ya no aplica).
+  useEffect(() => {
+    expenseForm.setValue("operator_payment_id", "", { shouldValidate: false })
+  }, [watchedExpenseOperatorId, expenseForm])
+
+  // Cuando el user elige una liquidación, autocompletar monto + moneda con
+  // el saldo pendiente de esa cuota (UX: el caso típico es "pagar la cuota").
+  useEffect(() => {
+    if (!watchedExpensePaymentId) return
+    const liq = (operatorPayments ?? []).find(
+      (op) => op.id === watchedExpensePaymentId
+    )
+    if (!liq) return
+    const amount = Number(liq.amount ?? 0)
+    const paid = Number(liq.paid_amount ?? 0)
+    const pending = Math.max(0, amount - paid)
+    if (pending > 0) {
+      expenseForm.setValue("amount", pending, { shouldValidate: true })
+    }
+    const liqCurrency = (liq as unknown as { currency?: string }).currency
+    if (liqCurrency === "ARS" || liqCurrency === "USD") {
+      expenseForm.setValue("currency", liqCurrency, { shouldValidate: true })
+    }
+  }, [watchedExpensePaymentId, operatorPayments, expenseForm])
 
   const editForm = useForm<EditPaymentFormValues>({
     resolver: zodResolver(editPaymentSchema),
@@ -664,6 +710,15 @@ export function OperationPaymentsSection({
       return
     }
 
+    // Si el operador tiene >1 liquidación pendiente, exigir que se elija una.
+    // Sino el backend agarra la primera por orden y mete todo ahí (bug histórico).
+    if (needsLiquidacionPick && !values.operator_payment_id) {
+      expenseForm.setError("operator_payment_id", {
+        message: "Este operador tiene varias cuotas pendientes — elegí cuál pagar",
+      })
+      return
+    }
+
     // Validar cuenta financiera
     if (!values.financial_account_id) {
       toast.error("Debe seleccionar una cuenta financiera")
@@ -678,12 +733,17 @@ export function OperationPaymentsSection({
 
     setIsLoading(true)
     try {
-      const { payer_type, direction, operator_id, ...restValues } = values
+      const { payer_type, direction, operator_id, operator_payment_id, ...restValues } = values
       const body: Record<string, unknown> = {
         operation_id: operationId,
         payer_type: "OPERATOR",
         direction: "EXPENSE",
         operator_id: operator_id || null,
+        // Si el frontend resolvió cuál liquidación, mandala explícita; el
+        // backend en /api/payments la usa como `operatorPaymentId` y aplica
+        // el pago a esa cuota específica (sin caer en el "primer match" del
+        // findMatchingOperatorPayment).
+        operator_payment_id: operator_payment_id || null,
         ...restValues,
         financial_account_id: values.financial_account_id,
         exchange_rate: values.currency === "ARS" ? values.exchange_rate : null,
@@ -1600,6 +1660,51 @@ export function OperationPaymentsSection({
                     </FormItem>
                   )}
                 />
+
+                {/* Liquidación a pagar — visible solo si el operador tiene
+                    >1 cuota pendiente. Para evitar el bug donde se imputaba
+                    todo el pago a la primera cuota. */}
+                {needsLiquidacionPick && (
+                  <FormField
+                    control={expenseForm.control}
+                    name="operator_payment_id"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>
+                          Liquidación{" "}
+                          <span className="text-xs text-muted-foreground">
+                            (este operador tiene {pendingLiquidacionesForSelectedOperator.length} cuotas pendientes)
+                          </span>
+                        </FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value ?? ""}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Seleccionar liquidación" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {pendingLiquidacionesForSelectedOperator.map((liq) => {
+                              const amount = Number(liq.amount ?? 0)
+                              const paid = Number(liq.paid_amount ?? 0)
+                              const pending = Math.max(0, amount - paid)
+                              const liqAny = liq as unknown as { currency?: string; due_date?: string }
+                              const curr = liqAny.currency ?? "USD"
+                              const due = liqAny.due_date
+                                ? new Date(liqAny.due_date).toLocaleDateString("es-AR")
+                                : "sin fecha"
+                              return (
+                                <SelectItem key={liq.id as string} value={liq.id as string}>
+                                  Vence {due} — {curr} {pending.toFixed(2)} pendiente
+                                </SelectItem>
+                              )
+                            })}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
 
                 {/* Sub-card: Método y Monto */}
                 <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
