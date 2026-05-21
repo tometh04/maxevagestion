@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
+import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 import * as z from "zod"
 import {
   Dialog,
@@ -214,12 +215,23 @@ export function EditOperationDialog({
     return [...standardStatusOptions, ...customStatuses.map(s => ({ value: s.value, label: s.label, color: s.color || "bg-muted-foreground" }))]
   }, [customStatuses])
 
-  // Sincronizar operadores cuando cambian
+  // Sincronizar operadores cuando cambian.
+  // Bug fix 2026-05-21 (segunda iteración): antes la dep era [operators].
+  // El parent puede pasar un nuevo array en cada render (ref distinta aunque
+  // el contenido sea el mismo) → setLocalOperators corre cada render →
+  // posible contribución al loop infinito. Estabilizo usando el "shape"
+  // del array (cantidad + ids concatenados) como dep — es un string
+  // primitivo, JS lo compara por valor.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     setLocalOperators(operators)
-  }, [operators])
+  }, [operators?.length, operators?.map((o) => o.id).join(",")])
 
-  // Inicializar tramos desde la prop al abrir el dialog
+  // Inicializar tramos desde la prop al abrir el dialog.
+  // Bug fix 2026-05-21: idem arriba. `operationLegs` puede venir como nuevo
+  // array por render del parent. Sólo inicializar cuando el dialog se abre
+  // (open passa false→true), no cada vez que la referencia cambia.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!open) return
     setLegList(
@@ -237,7 +249,7 @@ export function EditOperationDialog({
         checkout_date: l.checkout_date || "",
       }))
     )
-  }, [open, operationLegs])
+  }, [open, operationLegs?.length, operationLegs?.map((l) => l.id || "").join(",")])
 
   // Cargar operation_operators existentes al abrir el dialog
   useEffect(() => {
@@ -292,9 +304,13 @@ export function EditOperationDialog({
       type: (operation.type as any) || "PACKAGE",
       origin: operation.origin || "",
       destination: operation.destination || "",
-      departure_date: operation.departure_date ? new Date(operation.departure_date) : undefined,
-      return_date: operation.return_date ? new Date(operation.return_date) : null,
-      operation_date: operation.operation_date ? new Date(operation.operation_date) : undefined,
+      // Bug fix 2026-05-21 (VICO/Enzo): parseDateOnlyLocal evita el shift
+      // de timezone que hacía `new Date("YYYY-MM-DD")` (interpretado como
+      // UTC midnight → en Argentina renderea como día anterior).
+      // Ver lib/utils/date-only.ts.
+      departure_date: parseDateOnlyLocal(operation.departure_date),
+      return_date: parseDateOnlyLocal(operation.return_date) ?? null,
+      operation_date: parseDateOnlyLocal(operation.operation_date),
       adults: operation.adults || 1,
       children: operation.children || 0,
       infants: operation.infants || 0,
@@ -310,7 +326,18 @@ export function EditOperationDialog({
     },
   })
 
-  // Reset form when operation changes
+  // Reset form when operation changes.
+  // Bug fix 2026-05-21 (reportado por Enzo Maineri / VICO):
+  // Antes la dep era [operation, form, operationCurrency]. `operation` viene
+  // como prop del parent (OperationsTable) y se construye en cada render
+  // (split del array filtrado, etc.) → la *referencia* cambia aunque los
+  // datos no. Eso disparaba este useEffect en cada render → form.reset() →
+  // re-render → loop infinito → React error #185 "Maximum update depth".
+  //
+  // Fix: comparar por operation.id (string estable) en vez de la ref del
+  // objeto. Si el id no cambió, los datos son del mismo lead — no hace falta
+  // resetear el form (preserva ediciones in-flight del user).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (operation) {
       form.reset({
@@ -322,8 +349,9 @@ export function EditOperationDialog({
         type: (operation.type as any) || "PACKAGE",
         origin: operation.origin || "",
         destination: operation.destination || "",
-        departure_date: operation.departure_date ? new Date(operation.departure_date) : undefined,
-        return_date: operation.return_date ? new Date(operation.return_date) : null,
+        // Bug fix 2026-05-21 (VICO): parseDateOnlyLocal evita shift UTC.
+        departure_date: parseDateOnlyLocal(operation.departure_date),
+        return_date: parseDateOnlyLocal(operation.return_date) ?? null,
         adults: operation.adults || 1,
         children: operation.children || 0,
         infants: operation.infants || 0,
@@ -336,7 +364,7 @@ export function EditOperationDialog({
         itr_localizador: operation.itr_localizador || null,
       })
     }
-  }, [operation, form, operationCurrency])
+  }, [operation?.id, operationCurrency])
 
   // Watch values for margin calculation
   const saleAmount = form.watch("sale_amount_total")
@@ -394,12 +422,16 @@ export function EditOperationDialog({
     return operatorList.reduce((sum, op) => sum + (Number(op.cost) || 0), 0)
   }, [operatorList])
 
-  // Actualizar operator_cost del form cuando cambia totalOperatorCost
+  // Actualizar operator_cost del form cuando cambia totalOperatorCost.
+  // Bug fix 2026-05-21: antes `form` estaba en deps. RHF expone un nuevo
+  // objeto-ish en algunos casos → useEffect corre cada render → setValue
+  // dispara render → loop. form.setValue es estable, no hace falta dep.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (useMultipleOperators && operatorList.length > 0) {
       form.setValue("operator_cost", totalOperatorCost)
     }
-  }, [totalOperatorCost, useMultipleOperators, operatorList.length, form])
+  }, [totalOperatorCost, useMultipleOperators, operatorList.length])
 
   // Función para crear nuevo operador
   const handleCreateOperator = async () => {

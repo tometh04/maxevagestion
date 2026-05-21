@@ -4,6 +4,7 @@ import { getScopedAgenciesForUser } from "@/lib/permissions-api"
 import { CRMManychatPageClient } from "@/components/sales/crm-manychat-page-client"
 import { canAccessModule } from "@/lib/permissions"
 import { AdvancedCRMKanban } from "./_components/advanced-crm-kanban"
+import { getOrgFeatureFlags } from "@/lib/settings/org-features"
 
 export const dynamic = "force-dynamic"
 
@@ -115,6 +116,15 @@ export default async function CRMManychatPage() {
     console.error("Error fetching CRM Ventas leads:", leadsError)
   }
 
+  // Feature flags per-tenant (organization_settings key/value).
+  // Defaults: false → comportamiento legacy preservado para todos los
+  // tenants. Solo activos para tenants que tengan los settings prendidos.
+  // Doc: lib/settings/org-features.ts
+  const featureFlags = await getOrgFeatureFlags(supabase, user.org_id ?? null, [
+    "features.region_filter_in_kanban",
+    "features.list_name_to_status_sync",
+  ])
+
   return (
     <CRMManychatPageClient
       initialLeads={leads || []}
@@ -125,6 +135,8 @@ export default async function CRMManychatPage() {
       defaultSellerId={user.role === "SELLER" ? user.id : undefined}
       currentUserId={user.id}
       currentUserRole={user.role}
+      enableRegionFilter={featureFlags["features.region_filter_in_kanban"]}
+      enableListStatusSync={featureFlags["features.list_name_to_status_sync"]}
     />
   )
 }

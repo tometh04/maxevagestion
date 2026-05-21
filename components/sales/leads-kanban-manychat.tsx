@@ -114,6 +114,19 @@ interface LeadsKanbanManychatProps {
   onUpdateLead?: (leadId: string, updates: Partial<Lead>) => void
   currentUserId?: string
   currentUserRole?: string
+  /**
+   * Feature flag per-tenant: muestra dropdown de filtro por Región.
+   * Default false (preserva UI legacy). Pedido por LOZADA VIAJES
+   * GUALEGUAYCHÚ 2026-05-21.
+   */
+  enableRegionFilter?: boolean
+  /**
+   * Feature flag per-tenant: al arrastrar un lead entre listas, infiere
+   * status desde el nombre de la lista destino (keyword matching) y
+   * lo actualiza junto con list_name. Default false (status independiente,
+   * comportamiento legacy). Pedido por LOZADA VIAJES GUALEGUAYCHÚ.
+   */
+  enableListStatusSync?: boolean
 }
 
 // Wrapper sortable para cada columna del Kanban
@@ -160,7 +173,9 @@ export function LeadsKanbanManychat({
   onRefresh,
   onUpdateLead,
   currentUserId,
-  currentUserRole
+  currentUserRole,
+  enableRegionFilter = false,
+  enableListStatusSync = false,
 }: LeadsKanbanManychatProps) {
   const [listOrder, setListOrder] = useState<ListInfo[]>([])
   const [loading, setLoading] = useState(true)
@@ -181,6 +196,11 @@ export function LeadsKanbanManychat({
   const [archivedLeads, setArchivedLeads] = useState<Lead[]>([])
   const [loadingArchived, setLoadingArchived] = useState(false)
   const [selectedStatus, setSelectedStatus] = useState<string>("ALL")
+  // 2026-05-21 (Gualeguaychú): nuevo filtro opcional por Región.
+  // Solo se renderea el dropdown si enableRegionFilter es true. El state
+  // existe siempre para mantener hooks estables, pero si el flag está
+  // off, "ALL" no aplica filtro alguno.
+  const [selectedRegion, setSelectedRegion] = useState<string>("ALL")
 
   // Estados presentes en los leads actuales (dinámico)
   const availableStatuses = useMemo(() => {
@@ -189,11 +209,22 @@ export function LeadsKanbanManychat({
     return Array.from(seen).sort()
   }, [leads])
 
-  // Leads visibles según filtro de estado
+  // Regiones presentes en los leads actuales (dinámico, sólo si flag prendido)
+  const availableRegions = useMemo(() => {
+    const seen = new Set<string>()
+    leads.forEach((l) => { if (l.region) seen.add(l.region) })
+    return Array.from(seen).sort()
+  }, [leads])
+
+  // Leads visibles según filtros (status + opcional region)
   const visibleLeads = useMemo(() => {
-    if (selectedStatus === "ALL") return leads
-    return leads.filter(l => l.status === selectedStatus)
-  }, [leads, selectedStatus])
+    let out = leads
+    if (selectedStatus !== "ALL") out = out.filter((l) => l.status === selectedStatus)
+    if (enableRegionFilter && selectedRegion !== "ALL") {
+      out = out.filter((l) => l.region === selectedRegion)
+    }
+    return out
+  }, [leads, selectedStatus, enableRegionFilter, selectedRegion])
 
   const isAdmin = currentUserRole === "ADMIN" || currentUserRole === "SUPER_ADMIN"
   const isSeller = currentUserRole === "SELLER"
@@ -300,9 +331,27 @@ export function LeadsKanbanManychat({
       patchBody.assigned_seller_id = targetList.seller_id
     }
 
+    // Feature flag per-tenant (organization_settings):
+    // features.list_name_to_status_sync. Si está prendido, inferimos el
+    // status desde el nombre de la lista destino (keyword matching) y lo
+    // incluimos en el PATCH. Si la heurística no matchea ninguna keyword
+    // o el status inferido coincide con el actual, no se envía status
+    // (no-op silencioso). Pedido por LOZADA VIAJES GUALEGUAYCHÚ 2026-05-21.
+    let inferredStatus: string | null = null
+    if (enableListStatusSync) {
+      const { inferStatusFromListName } = await import("@/lib/leads/infer-status-from-list")
+      inferredStatus = inferStatusFromListName(targetListName)
+      if (inferredStatus && inferredStatus !== lead.status) {
+        patchBody.status = inferredStatus
+      } else {
+        inferredStatus = null // no se enviará — solo rollback de list_name si falla
+      }
+    }
+
     // Guardar estado previo para rollback
     const previousListName = lead.list_name
     const previousSellerId = lead.assigned_seller_id
+    const previousStatus = lead.status
     const movedLeadId = draggedLead
 
     // OPTIMISTIC: Actualizar UI inmediatamente (updated_at fresco → sube al tope de la columna)
@@ -310,9 +359,14 @@ export function LeadsKanbanManychat({
       list_name: targetListName,
       updated_at: new Date().toISOString(),
       ...(targetList?.seller_id ? { assigned_seller_id: targetList.seller_id } : {}),
+      ...(inferredStatus ? { status: inferredStatus as any } : {}),
     })
     setDraggedLead(null)
-    toast.success(`Lead movido a "${targetListName}"`)
+    toast.success(
+      inferredStatus
+        ? `Lead movido a "${targetListName}" — estado: ${inferredStatus}`
+        : `Lead movido a "${targetListName}"`
+    )
 
     // API call en background
     try {
@@ -323,13 +377,21 @@ export function LeadsKanbanManychat({
       })
       if (!response.ok) {
         const data = await response.json()
-        // Rollback
-        onUpdateLead?.(movedLeadId, { list_name: previousListName, assigned_seller_id: previousSellerId })
+        // Rollback completo (list + seller + status)
+        onUpdateLead?.(movedLeadId, {
+          list_name: previousListName,
+          assigned_seller_id: previousSellerId,
+          ...(inferredStatus ? { status: previousStatus as any } : {}),
+        })
         toast.error(data.error || "Error al mover lead")
       }
     } catch (error) {
-      // Rollback
-      onUpdateLead?.(movedLeadId, { list_name: previousListName, assigned_seller_id: previousSellerId })
+      // Rollback completo (incluye status si se había inferido)
+      onUpdateLead?.(movedLeadId, {
+        list_name: previousListName,
+        assigned_seller_id: previousSellerId,
+        ...(inferredStatus ? { status: previousStatus as any } : {}),
+      })
       toast.error("Error al mover lead")
     }
   }
@@ -672,6 +734,26 @@ export function LeadsKanbanManychat({
                     </SelectItem>
                   )
                 })}
+              </SelectContent>
+            </Select>
+          )}
+          {/* Filtro por Región — opt-in per-tenant via organization_settings
+              (features.region_filter_in_kanban). Pedido por LOZADA VIAJES
+              GUALEGUAYCHÚ 2026-05-21: permite filtrar leads por destino
+              regional (Caribe, Europa, etc.) para enfocarse en un mercado
+              a la vez cuando hay muchos leads. */}
+          {enableRegionFilter && availableRegions.length > 0 && (
+            <Select value={selectedRegion} onValueChange={setSelectedRegion}>
+              <SelectTrigger id="region-select" className="w-[180px] bg-white/80 dark:bg-card/80">
+                <SelectValue placeholder="Todas las regiones" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todas las regiones</SelectItem>
+                {availableRegions.map((region) => (
+                  <SelectItem key={region} value={region}>
+                    {region}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           )}

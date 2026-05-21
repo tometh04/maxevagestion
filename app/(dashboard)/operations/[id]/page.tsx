@@ -86,13 +86,13 @@ export default async function OperationDetailPage({
     .eq("operation_id", id)
     .order("created_at", { ascending: true })
 
-  // Get linked operator debts to keep operator selector aligned with payable breakdown
+  // Get linked operator debts to keep operator selector aligned with payable breakdown.
   // currency + due_date son necesarios para mostrar el dropdown de liquidaciones
   // cuando un operador tiene >1 cuota pendiente (evita el bug donde el monto se
-  // imputaba todo a la primera cuota).
+  // imputaba todo a la primera cuota — fix 2026-05-21).
   const { data: operatorPayments } = await (supabase
     .from("operator_payments") as any)
-    .select("id, operator_id, amount, paid_amount, status, currency, due_date, operators:operator_id(id, name)")
+    .select("id, operator_id, amount, paid_amount, currency, due_date, status, operators:operator_id(id, name)")
     .eq("operation_id", id)
     .order("due_date", { ascending: true })
 
