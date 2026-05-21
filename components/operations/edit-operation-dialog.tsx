@@ -214,12 +214,23 @@ export function EditOperationDialog({
     return [...standardStatusOptions, ...customStatuses.map(s => ({ value: s.value, label: s.label, color: s.color || "bg-muted-foreground" }))]
   }, [customStatuses])
 
-  // Sincronizar operadores cuando cambian
+  // Sincronizar operadores cuando cambian.
+  // Bug fix 2026-05-21 (segunda iteración): antes la dep era [operators].
+  // El parent puede pasar un nuevo array en cada render (ref distinta aunque
+  // el contenido sea el mismo) → setLocalOperators corre cada render →
+  // posible contribución al loop infinito. Estabilizo usando el "shape"
+  // del array (cantidad + ids concatenados) como dep — es un string
+  // primitivo, JS lo compara por valor.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     setLocalOperators(operators)
-  }, [operators])
+  }, [operators?.length, operators?.map((o) => o.id).join(",")])
 
-  // Inicializar tramos desde la prop al abrir el dialog
+  // Inicializar tramos desde la prop al abrir el dialog.
+  // Bug fix 2026-05-21: idem arriba. `operationLegs` puede venir como nuevo
+  // array por render del parent. Sólo inicializar cuando el dialog se abre
+  // (open passa false→true), no cada vez que la referencia cambia.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!open) return
     setLegList(
@@ -237,7 +248,7 @@ export function EditOperationDialog({
         checkout_date: l.checkout_date || "",
       }))
     )
-  }, [open, operationLegs])
+  }, [open, operationLegs?.length, operationLegs?.map((l) => l.id || "").join(",")])
 
   // Cargar operation_operators existentes al abrir el dialog
   useEffect(() => {
