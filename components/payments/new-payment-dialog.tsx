@@ -134,6 +134,7 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
   const [duplicateAlert, setDuplicateAlert] = useState<{
     duplicates: Array<{ id: string; amount: number; currency: string; date_paid: string | null; date_due: string | null; created_at: string; reference: string | null; status: string }>
     pendingValues: PaymentFormValues
+    message?: string
   } | null>(null)
 
   const today = new Date().toISOString().split("T")[0]
@@ -371,8 +372,14 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
       if (!createResponse.ok) {
         const error = await createResponse.json().catch(() => ({}))
         // 409 con code DUPLICATE_PAYMENT → mostrar alerta y dejar que el user decida.
-        if (createResponse.status === 409 && error?.code === "DUPLICATE_PAYMENT" && Array.isArray(error.duplicates)) {
-          setDuplicateAlert({ duplicates: error.duplicates, pendingValues: values })
+        // Hay dos variantes: con lista de duplicates (check en tabla payments) o
+        // sin lista (check en ledger_movements). Ambas permiten forzar la creación.
+        if (createResponse.status === 409 && error?.code === "DUPLICATE_PAYMENT") {
+          setDuplicateAlert({
+            duplicates: Array.isArray(error.duplicates) ? error.duplicates : [],
+            pendingValues: values,
+            message: error.error,
+          })
           return
         }
         throw new Error(error.error || "Error al crear pago")
@@ -909,23 +916,29 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
           <AlertDialogTitle>Posible pago duplicado</AlertDialogTitle>
           <AlertDialogDescription asChild>
             <div className="space-y-3">
-              <p>
-                Encontramos {duplicateAlert?.duplicates.length || 0} pago{(duplicateAlert?.duplicates.length || 0) === 1 ? "" : "s"} similar{(duplicateAlert?.duplicates.length || 0) === 1 ? "" : "es"} en los últimos 7 días con el mismo monto y moneda. Revisalos antes de continuar:
-              </p>
-              <div className="rounded-md border border-border/40 bg-muted/30 p-3 space-y-2 max-h-48 overflow-y-auto">
-                {duplicateAlert?.duplicates.map((d) => (
-                  <div key={d.id} className="text-xs space-y-0.5">
-                    <div className="font-medium text-foreground">
-                      {d.currency} {d.amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })} · {d.status}
-                    </div>
-                    <div className="text-muted-foreground">
-                      Creado {new Date(d.created_at).toLocaleString("es-AR")}
-                      {d.date_paid && ` · Pagado ${new Date(d.date_paid).toLocaleDateString("es-AR")}`}
-                      {d.reference && ` · Ref: ${d.reference}`}
-                    </div>
+              {(duplicateAlert?.duplicates.length ?? 0) > 0 ? (
+                <>
+                  <p>
+                    Encontramos {duplicateAlert?.duplicates.length} pago{duplicateAlert?.duplicates.length === 1 ? "" : "s"} similar{duplicateAlert?.duplicates.length === 1 ? "" : "es"} en los últimos 7 días con el mismo monto y moneda. Revisalos antes de continuar:
+                  </p>
+                  <div className="rounded-md border border-border/40 bg-muted/30 p-3 space-y-2 max-h-48 overflow-y-auto">
+                    {duplicateAlert?.duplicates.map((d) => (
+                      <div key={d.id} className="text-xs space-y-0.5">
+                        <div className="font-medium text-foreground">
+                          {d.currency} {d.amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })} · {d.status}
+                        </div>
+                        <div className="text-muted-foreground">
+                          Creado {new Date(d.created_at).toLocaleString("es-AR")}
+                          {d.date_paid && ` · Pagado ${new Date(d.date_paid).toLocaleDateString("es-AR")}`}
+                          {d.reference && ` · Ref: ${d.reference}`}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </>
+              ) : (
+                <p>{duplicateAlert?.message || "Ya existe un movimiento contable con el mismo monto para esta operación en esta cuenta."}</p>
+              )}
               <p className="text-sm">
                 Si ya verificaste que este pago no es duplicado, podés crearlo igual.
               </p>
