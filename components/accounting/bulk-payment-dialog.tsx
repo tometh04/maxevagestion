@@ -75,6 +75,7 @@ interface BulkPaymentDialogProps {
   onOpenChange: (open: boolean) => void
   operators: Operator[]
   agencies: Array<{ id: string; name: string }>
+  selectedAgencyId?: string
 }
 
 function formatCurrency(amount: number, currency: string = "ARS"): string {
@@ -90,6 +91,7 @@ export function BulkPaymentDialog({
   onOpenChange,
   operators,
   agencies,
+  selectedAgencyId,
 }: BulkPaymentDialogProps) {
   const router = useRouter()
   
@@ -177,10 +179,11 @@ export function BulkPaymentDialog({
       try {
         const params = new URLSearchParams()
         params.append("operatorId", selectedOperatorId)
-        // NO filtrar por agencia para el pago masivo - mostrar TODAS las deudas del operador
-        // El usuario verá todas las deudas pendientes del operador en todas las agencias
+        if (selectedAgencyId && selectedAgencyId !== "ALL") {
+          params.append("agencyId", selectedAgencyId)
+        }
 
-        console.log("[BulkPayment] Fetching payments for operator:", selectedOperatorId)
+        console.log("[BulkPayment] Fetching payments for operator:", selectedOperatorId, "agency:", selectedAgencyId || "ALL")
         const response = await fetch(`/api/accounting/operator-payments?${params.toString()}`)
         if (!response.ok) throw new Error("Error al obtener pagos")
 
@@ -219,7 +222,7 @@ export function BulkPaymentDialog({
     }
 
     fetchPendingPayments()
-  }, [open, selectedOperatorId, selectedCurrency, agencies])
+  }, [open, selectedOperatorId, selectedCurrency, agencies, selectedAgencyId])
 
   // Actualizar moneda de pago cuando cambia la moneda seleccionada
   useEffect(() => {

@@ -373,15 +373,24 @@ export async function generateReceiptPdf(data: ReceiptPdfData): Promise<void> {
 
   const measureInfoCardHeight = (items: InfoItem[]) => {
     const innerWidth = contentWidth - 10
-    let height = 16
+    let height = 16 // padding título + top
+    const DIVIDER_SPACING = 4.5 // mantener en sync con drawInfoCard
 
-    items.forEach((item) => {
+    items.forEach((item, index) => {
       const valueLines = doc.splitTextToSize(item.value, innerWidth)
       const noteLines = item.note ? doc.splitTextToSize(item.note, innerWidth) : []
-      height += 4 + valueLines.length * 3.7 + noteLines.length * 3.2
+      // Label uppercase + lines del value + lines del note
+      height += 3.7 + valueLines.length * 3.7 + noteLines.length * 3.2
+      // Bug fix 2026-05-19 (Maxi): el cálculo viejo NO sumaba el espacio del
+      // divisor entre items. Con 5 items eran 4 divisores × 4.5 ≈ 18px
+      // sin contar. Resultado: la siguiente sección ("Resumen financiero")
+      // se montaba arriba del último item ("3 adultos").
+      if (index < items.length - 1) {
+        height += DIVIDER_SPACING
+      }
     })
 
-    return Math.max(height + 2, 26)
+    return Math.max(height + 4, 26)
   }
 
   const drawInfoCard = (

@@ -288,8 +288,8 @@ export async function PATCH(
       }
     }
 
-    // Extraer operators del body para no enviarlo a la tabla operations
-    const { operators: incomingOperators, ...bodyWithoutOperators } = body
+    // Extraer operators y legs del body para no enviarlos a la tabla operations
+    const { operators: incomingOperators, legs: incomingLegs, ...bodyWithoutOperators } = body
     const normalizedIncomingOperators = normalizeIncomingOperators(
       incomingOperators,
       currentOp.operator_cost_currency || currentOp.sale_currency || currentOp.currency || "USD"
@@ -416,6 +416,43 @@ export async function PATCH(
     if (updateError || !operation) {
       console.error("Error updating operation:", updateError)
       return NextResponse.json({ error: "Error al actualizar operación" }, { status: 400 })
+    }
+
+    // ============================================
+    // SINCRONIZAR TRAMOS DEL VIAJE (operation_legs)
+    // ============================================
+    if (Array.isArray(incomingLegs)) {
+      try {
+        await (supabase.from("operation_legs") as any)
+          .delete()
+          .eq("operation_id", operationId)
+
+        if (incomingLegs.length > 0) {
+          const legsToInsert = incomingLegs.map((leg: any, i: number) => ({
+            operation_id: operationId,
+            agency_id: currentOp.agency_id,
+            order_index: i,
+            destination: leg.destination,
+            departure_date: leg.departure_date || null,
+            reservation_code_air: leg.reservation_code_air || null,
+            airline_name: leg.airline_name || null,
+            itr_localizador: leg.itr_localizador || null,
+            hotel_name: leg.hotel_name || null,
+            reservation_code_hotel: leg.reservation_code_hotel || null,
+            checkin_date: leg.checkin_date || null,
+            checkout_date: leg.checkout_date || null,
+          }))
+          const { error: legsError } = await (supabase.from("operation_legs") as any)
+            .insert(legsToInsert)
+          if (legsError) {
+            console.error("Error guardando tramos:", legsError)
+            auditWarnings.push("No se pudieron guardar los tramos del viaje")
+          }
+        }
+      } catch (error) {
+        console.error("Error sincronizando operation_legs:", error)
+        auditWarnings.push("Fallo inesperado sincronizando tramos del viaje")
+      }
     }
 
     const op = operation as any
