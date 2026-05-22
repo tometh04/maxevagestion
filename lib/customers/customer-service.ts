@@ -3,7 +3,17 @@ import { sendEmail } from "@/lib/email/email-service"
 import { createWhatsAppMessage } from "@/lib/whatsapp/whatsapp-service"
 
 /**
- * Verifica si existe un cliente duplicado según los campos configurados
+ * Verifica si existe un cliente duplicado según los campos configurados.
+ *
+ * 2026-05-22 (VICO/Andrés):
+ * - Bug multi-tenant fixeado: antes "verificábamos todos los clientes"
+ *   sin filtro por org. Un cliente con email x@y.com en Org A bloqueaba
+ *   la creación en Org B Y leakeaba el `duplicateCustomer` cross-tenant.
+ *   Ahora orgId es obligatorio para chequear, y se filtra por
+ *   .eq("org_id", orgId).
+ * - Se devuelve `matchedField` para que el caller pueda mostrar un
+ *   mensaje más claro al user ("ya existe cliente con ese teléfono"
+ *   en vez de "ya existe un cliente con estos datos").
  */
 export async function checkDuplicateCustomer(
   supabase: SupabaseClient,
@@ -13,50 +23,60 @@ export async function checkDuplicateCustomer(
     document_number?: string
   },
   checkFields: string[],
-  agencyId?: string
-): Promise<{ isDuplicate: boolean; duplicateCustomer?: any }> {
-  if (checkFields.length === 0) {
+  orgId: string | null | undefined
+): Promise<{
+  isDuplicate: boolean
+  duplicateCustomer?: any
+  matchedField?: "email" | "phone" | "document_number"
+}> {
+  if (checkFields.length === 0 || !orgId) {
     return { isDuplicate: false }
   }
 
-  const conditions: string[] = []
-
-  if (checkFields.includes('email') && customerData.email) {
-    conditions.push(`email.eq.${customerData.email}`)
+  // Chequeamos campo por campo en queries separadas (no .or(...) ambiguo)
+  // para poder devolver qué campo específicamente matcheó.
+  const fieldChecks: Array<{
+    field: "email" | "phone" | "document_number"
+    value: string
+  }> = []
+  if (checkFields.includes("email") && customerData.email) {
+    fieldChecks.push({ field: "email", value: customerData.email })
+  }
+  if (checkFields.includes("phone") && customerData.phone) {
+    fieldChecks.push({ field: "phone", value: customerData.phone })
+  }
+  if (checkFields.includes("document_number") && customerData.document_number) {
+    fieldChecks.push({ field: "document_number", value: customerData.document_number })
   }
 
-  if (checkFields.includes('phone') && customerData.phone) {
-    conditions.push(`phone.eq.${customerData.phone}`)
-  }
-
-  if (checkFields.includes('document_number') && customerData.document_number) {
-    conditions.push(`document_number.eq.${customerData.document_number}`)
-  }
-
-  if (conditions.length === 0) {
+  if (fieldChecks.length === 0) {
     return { isDuplicate: false }
   }
 
-  let query = supabase
-    .from("customers")
-    .select("*")
-    .or(conditions.join(','))
+  for (const { field, value } of fieldChecks) {
+    const { data, error } = await supabase
+      .from("customers")
+      .select("*")
+      .eq(field, value)
+      .eq("org_id", orgId) // Multi-tenant: defense-in-depth, no confiar en RLS.
+      .limit(1)
+      .maybeSingle()
 
-  // Si hay agency_id, filtrar por agencia (si aplica)
-  // Nota: customers no tiene agency_id directo, pero podemos filtrar por operaciones
-  // Por ahora, verificamos todos los clientes
+    if (error && error.code !== "PGRST116") {
+      console.error("Error checking duplicate customer:", error)
+      continue
+    }
 
-  const { data, error } = await query.limit(1).maybeSingle()
-
-  if (error && error.code !== 'PGRST116') {
-    console.error("Error checking duplicate customer:", error)
-    return { isDuplicate: false }
+    if (data) {
+      return {
+        isDuplicate: true,
+        duplicateCustomer: data,
+        matchedField: field,
+      }
+    }
   }
 
-  return {
-    isDuplicate: !!data,
-    duplicateCustomer: data || undefined,
-  }
+  return { isDuplicate: false }
 }
 
 /**

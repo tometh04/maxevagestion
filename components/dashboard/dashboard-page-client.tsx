@@ -545,10 +545,11 @@ export function DashboardPageClient({
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
+                    <HelpCircle className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground cursor-help" />
                   </TooltipTrigger>
                   <TooltipContent className="max-w-xs">
-                    <p className="text-xs">Total adeudado por clientes. Calculado como: monto de venta menos pagos recibidos, convertido a USD usando tipo de cambio histórico.</p>
+                    <p className="text-xs font-medium mb-1">Lo que tus clientes te deben.</p>
+                    <p className="text-xs">Suma de ventas pendientes de cobrar (monto vendido − pagos ya recibidos), convertido a USD con tipo de cambio histórico de cada operación. Se respeta el rango de fechas y el resto de los filtros del dashboard.</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -571,10 +572,11 @@ export function DashboardPageClient({
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
+                    <HelpCircle className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground cursor-help" />
                   </TooltipTrigger>
                   <TooltipContent className="max-w-xs">
-                    <p className="text-xs">Total pendiente de pago a operadores. Incluye pagos parciales: monto total menos monto pagado, convertido a USD.</p>
+                    <p className="text-xs font-medium mb-1">Lo que vos le debés a tus operadores.</p>
+                    <p className="text-xs">Suma de pagos pendientes a operadores (monto de la deuda − parte ya pagada), convertido a USD. Para ver el desglose, entrá a Operadores y abrí cualquiera de la lista.</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
