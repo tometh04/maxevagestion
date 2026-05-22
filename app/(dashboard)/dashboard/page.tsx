@@ -8,6 +8,7 @@ import { createServerClient } from "@/lib/supabase/server"
 import { getAfipServiceForOrg } from "@/lib/afip/afip-service"
 import { Skeleton } from "@/components/ui/skeleton"
 import { makeTimer } from "@/lib/perf-log"
+import { OnboardingChecklist } from "@/components/onboarding/onboarding-checklist"
 
 const DashboardPageClient = dynamic(
   () =>
@@ -127,6 +128,7 @@ export default async function DashboardPage() {
 
   return (
     <>
+      <OnboardingChecklist userEmail={user.email} />
       {afipNotConfigured && user.org_id && (
         <AfipNotConfiguredBanner orgId={user.org_id} />
       )}
