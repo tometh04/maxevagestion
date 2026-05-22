@@ -197,6 +197,7 @@ export function DocumentsSection({
       VOUCHER: "Voucher",
       INVOICE: "Factura",
       PAYMENT_PROOF: "Comprobante de Pago",
+      SETTLEMENT: "Liquidación",
       OTHER: "Otro",
     }
     return labels[type] || type
@@ -232,6 +233,7 @@ export function DocumentsSection({
                       <SelectItem value="VOUCHER">Voucher</SelectItem>
                       <SelectItem value="INVOICE">Factura</SelectItem>
                       <SelectItem value="PAYMENT_PROOF">Comprobante de Pago</SelectItem>
+                      <SelectItem value="SETTLEMENT">Liquidación</SelectItem>
                       <SelectItem value="OTHER">Otro</SelectItem>
                     </SelectContent>
                   </Select>

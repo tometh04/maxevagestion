@@ -84,6 +84,10 @@ export async function POST(request: Request) {
       reservation_code_hotel,
       airline_name,
       hotel_name,
+      // Pedido VICO 2026-05-22: el campo itr_localizador ya existe en BD
+      // (migration 128) pero el endpoint POST no lo aceptaba en create.
+      // Solo se podía setear vía PATCH (edit). Ahora aceptamos en ambos.
+      itr_localizador,
     } = body
 
     // Cross-tenant fix (2026-05-18): validar que la agency_id pertenezca a la org del user.
@@ -298,6 +302,7 @@ export async function POST(request: Request) {
       reservation_code_hotel: reservation_code_hotel || null,
       airline_name: airline_name || null,
       hotel_name: hotel_name || null,
+      itr_localizador: itr_localizador || null,
     }
 
     // ============================================
