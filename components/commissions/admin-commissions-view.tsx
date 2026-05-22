@@ -39,6 +39,8 @@ import { useToast } from "@/hooks/use-toast"
 import { CommissionsSettings } from "@/components/settings/commissions-settings"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
+// Fix UTC shift en fechas DATE (VICO 2026-05-22)
+import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 import {
   DollarSign,
   Users,
@@ -730,7 +732,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
                                   </TableCell>
                                   <TableCell className="text-center text-sm text-muted-foreground">
                                     {c.operation?.departure_date
-                                      ? format(new Date(c.operation.departure_date), "dd/MM/yyyy", { locale: es })
+                                      ? (parseDateOnlyLocal(c.operation.departure_date) ? format(parseDateOnlyLocal(c.operation.departure_date)!, "dd/MM/yyyy", { locale: es }) : "-")
                                       : "-"}
                                   </TableCell>
                                   <TableCell className="text-right text-sm tabular-nums">
@@ -899,7 +901,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
                       <TableRow key={c.id}>
                         <TableCell className="text-sm">
                           {c.date_paid
-                            ? format(new Date(c.date_paid), "dd/MM/yyyy", { locale: es })
+                            ? (parseDateOnlyLocal(c.date_paid) ? format(parseDateOnlyLocal(c.date_paid)!, "dd/MM/yyyy", { locale: es }) : "-")
                             : "-"}
                         </TableCell>
                         <TableCell className="text-sm font-medium">
@@ -1007,7 +1009,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
                             </p>
                             <p className="text-xs text-muted-foreground">
                               {c.operation?.departure_date
-                                ? format(new Date(c.operation.departure_date), "dd/MM/yyyy", { locale: es })
+                                ? (parseDateOnlyLocal(c.operation.departure_date) ? format(parseDateOnlyLocal(c.operation.departure_date)!, "dd/MM/yyyy", { locale: es }) : "-")
                                 : "Sin fecha"}
                               {hasPartial && (
                                 <span className="ml-2 text-primary">

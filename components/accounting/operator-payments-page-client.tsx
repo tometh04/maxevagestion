@@ -34,6 +34,8 @@ import {
 } from "@/components/ui/select"
 import { format, parseISO } from "date-fns"
 import { es } from "date-fns/locale"
+// Fix UTC shift en fechas DATE (VICO 2026-05-22)
+import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 import { AlertTriangle, X } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { DecimalInput } from "@/components/ui/decimal-input"
@@ -215,10 +217,10 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
   })
 
   const overdueCount = payments.filter((p) => {
-    const isOverdue = p.status === "OVERDUE" || (p.status === "PENDING" && new Date(p.due_date) < new Date())
+    const isOverdue = p.status === "OVERDUE" || (p.status === "PENDING" && (parseDateOnlyLocal(p.due_date) ?? new Date(8640000000000000)) < new Date())
     return isOverdue
   }).length
-  const pendingCount = payments.filter((p) => p.status === "PENDING" && new Date(p.due_date) >= new Date()).length
+  const pendingCount = payments.filter((p) => p.status === "PENDING" && (parseDateOnlyLocal(p.due_date) ?? new Date(0)) >= new Date()).length
 
   // Calcular deuda real (amount - paid_amount) separada por moneda
   const unpaidPayments = payments.filter((p) => p.status === "PENDING" || p.status === "OVERDUE")
@@ -277,7 +279,7 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
       operatorSummary[operatorId].totalPending += pendingAmount
       operatorSummary[operatorId].count += 1
 
-      if (payment.status === "OVERDUE" || (payment.status === "PENDING" && new Date(payment.due_date) < new Date())) {
+      if (payment.status === "OVERDUE" || (payment.status === "PENDING" && (parseDateOnlyLocal(payment.due_date) ?? new Date(8640000000000000)) < new Date())) {
         operatorSummary[operatorId].overdueCount += 1
       }
     })
@@ -301,7 +303,7 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
       const amount = parseFloat(payment.amount || "0") || 0
       const paidAmount = parseFloat(payment.paid_amount || "0") || 0
       const pendingAmount = amount - paidAmount
-      const isOverdue = payment.status === "OVERDUE" || (payment.status === "PENDING" && new Date(payment.due_date) < new Date())
+      const isOverdue = payment.status === "OVERDUE" || (payment.status === "PENDING" && (parseDateOnlyLocal(payment.due_date) ?? new Date(8640000000000000)) < new Date())
       const displayStatus = isOverdue ? "Vencido" : statusLabels[payment.status] || payment.status
 
       return {
@@ -313,7 +315,7 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
         "Monto Pagado": paidAmount,
         "Pendiente": pendingAmount,
         "Fecha Vencimiento": payment.due_date
-          ? format(new Date(payment.due_date), "dd/MM/yyyy", { locale: es })
+          ? (parseDateOnlyLocal(payment.due_date) ? format(parseDateOnlyLocal(payment.due_date)!, "dd/MM/yyyy", { locale: es }) : "-")
           : "-",
         Estado: displayStatus,
         "Fecha Pago": payment.paid_at
@@ -546,7 +548,7 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                 {sortedPayments.map((payment) => {
                   const isOverdue =
                     payment.status === "PENDING" &&
-                    new Date(payment.due_date) < new Date()
+                    (parseDateOnlyLocal(payment.due_date) ?? new Date(8640000000000000)) < new Date()
                   const displayStatus = isOverdue ? "OVERDUE" : payment.status
                   const paidAmount = parseFloat(payment.paid_amount || "0") || 0
                   const isPartial = paidAmount > 0 && paidAmount < parseFloat(payment.amount || "0")
@@ -613,7 +615,7 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          {format(new Date(payment.due_date), "dd/MM/yyyy", { locale: es })}
+                          {parseDateOnlyLocal(payment.due_date) ? format(parseDateOnlyLocal(payment.due_date)!, "dd/MM/yyyy", { locale: es }) : "-"}
                           {isOverdue && (
                             <AlertTriangle className="h-4 w-4 text-destructive" />
                           )}

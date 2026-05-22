@@ -1,6 +1,8 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
+// Fix UTC shift en fechas DATE (VICO 2026-05-22)
+import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
@@ -281,7 +283,7 @@ export function MarkPaidDialog({
                 <div className="font-medium">{payment.method}</div>
                 <div className="text-muted-foreground">Vencimiento:</div>
                 <div className="font-medium">
-                  {new Date(payment.date_due).toLocaleDateString("es-AR")}
+                  {parseDateOnlyLocal(payment.date_due)?.toLocaleDateString("es-AR") ?? "-"}
                 </div>
               </div>
             </div>

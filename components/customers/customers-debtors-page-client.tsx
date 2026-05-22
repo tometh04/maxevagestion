@@ -27,6 +27,8 @@ import {
 } from "@/components/ui/table"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
+// Fix UTC shift (VICO 2026-05-22)
+import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 import { extractCustomerName } from "@/lib/customers/utils"
 import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
 import { DateTypeFilter, type DateTypeOption } from "@/components/ui/date-type-filter"
@@ -407,7 +409,7 @@ export function DebtsSalesPageClient() {
                                 <TableCell>{op.destination}</TableCell>
                                 <TableCell>
                                   {op.departure_date
-                                    ? format(new Date(op.departure_date), "dd/MM/yyyy", { locale: es })
+                                    ? (parseDateOnlyLocal(op.departure_date) ? format(parseDateOnlyLocal(op.departure_date)!, "dd/MM/yyyy", { locale: es }) : "-")
                                     : "-"}
                                 </TableCell>
                                 <TableCell className="text-right">
