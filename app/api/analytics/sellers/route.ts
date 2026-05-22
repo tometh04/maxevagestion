@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { buildExchangeRateMap, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
+import { parseOperationDateField } from "@/lib/analytics/date-filter"
 
 // Forzar ruta dinámica (usa cookies para autenticación)
 export const dynamic = 'force-dynamic'
@@ -14,6 +15,11 @@ export async function GET(request: Request) {
     const dateFrom = searchParams.get("dateFrom")
     const dateTo = searchParams.get("dateTo")
     const agencyId = searchParams.get("agencyId")
+    // 2026-05-22 (VICO): dateField permite elegir columna. Si !=
+    // "created_at", desactivamos el RPC fast-path (que solo entiende
+    // created_at) y caemos al fallback JS que usa dateField.
+    const dateField = parseOperationDateField(searchParams.get("dateField"))
+    const useRpcFastPath = dateField === "created_at"
 
     // Validate date format ANTES del fast-path RPC
     if (dateFrom && !/^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) {
@@ -46,7 +52,12 @@ export async function GET(request: Request) {
       // Reemplaza el fetch + JS reduce por GROUP BY SUM en SQL.
       // Si la RPC falla por cualquier motivo, cae al código viejo abajo.
       // Validado side-by-side: 4/5 top sellers matchean exacto al centavo.
-      try {
+      //
+      // OJO: el RPC solo filtra por created_at. Si el caller pidió otro
+      // dateField (operation_date / departure_date), saltamos el RPC y
+      // caemos al fallback JS abajo que sí respeta dateField.
+      if (useRpcFastPath) {
+        try {
         const t0 = Date.now()
         const { data: rpcData, error: rpcError } = await (supabase.rpc as any)(
           "analytics_sellers_summary",
@@ -80,6 +91,7 @@ export async function GET(request: Request) {
       } catch (rpcEx: any) {
         console.warn("[analytics/sellers] RPC threw, falling back to JS:", rpcEx?.message || rpcEx)
       }
+      } // /if (useRpcFastPath)
 
       // ============================================
       // FALLBACK: lógica vieja (intacta) — fetch + JS reduce
@@ -99,13 +111,13 @@ export async function GET(request: Request) {
         query = query.in("agency_id", agencyIds)
       }
 
-      // Apply date filters using created_at (fecha de venta/carga)
+      // 2026-05-22: usar la columna que el caller eligió (default created_at).
       if (dateFrom) {
-        query = query.gte("created_at", `${dateFrom}T00:00:00.000Z`)
+        query = query.gte(dateField, `${dateFrom}T00:00:00.000Z`)
       }
 
       if (dateTo) {
-        query = query.lte("created_at", `${dateTo}T23:59:59.999Z`)
+        query = query.lte(dateField, `${dateTo}T23:59:59.999Z`)
       }
 
       if (agencyId && agencyId !== "ALL") {

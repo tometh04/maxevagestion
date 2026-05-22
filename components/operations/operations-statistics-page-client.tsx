@@ -251,6 +251,7 @@ export function OperationsStatisticsPageClient() {
                 <TooltipContent className="max-w-xs">
                   <p className="font-medium mb-1">¿Cómo funciona?</p>
                   <p className="text-xs mb-2"><strong>Estadísticas de Operaciones:</strong> Métricas sobre tus operaciones: ventas, márgenes, cobrado vs pendiente, destinos más rentables y top vendedores.</p>
+                  <p className="text-xs mb-2"><strong>Filtro Desde/Hasta:</strong> usa la <strong>fecha de salida</strong> del viaje (departure_date). Una operación cargada hoy con salida el mes que viene aparece en el rango del mes que viene, no en el de hoy. Esto es distinto al Dashboard, que por defecto filtra por fecha de carga.</p>
                   <p className="text-xs mb-2"><strong>Gráficos:</strong> Visualización de tendencias por período (días o meses según rango), distribución de cobrado vs pendiente, y análisis por destino.</p>
                   <p className="text-xs">Todos los valores se muestran en USD. Los KPIs muestran el estado financiero general de las operaciones en el período seleccionado.</p>
                 </TooltipContent>

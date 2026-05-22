@@ -122,6 +122,9 @@ export default async function DashboardPage() {
   const defaultFilters: DashboardFiltersState = {
     dateFrom: dates.dateFrom,
     dateTo: dates.dateTo,
+    // Default = CARGA (created_at). Preserva números históricos.
+    // El user puede cambiar a OPERACION o SALIDA desde el dropdown.
+    dateType: "CARGA",
     agencyId: "ALL",
     sellerId: "ALL",
   }

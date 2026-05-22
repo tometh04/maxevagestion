@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { DashboardFilters, DashboardFiltersState } from "./dashboard-filters"
+import { DashboardFilters, DashboardFiltersState, dateTypeToField } from "./dashboard-filters"
 import { SalesBySellerChart } from "./sales-by-seller-chart"
 import { DestinationsChart } from "./destinations-chart"
 import { DestinationsPieChart } from "./destinations-pie-chart"
@@ -193,6 +193,10 @@ export function DashboardPageClient({
       const params = new URLSearchParams()
       params.set("dateFrom", filters.dateFrom)
       params.set("dateTo", filters.dateTo)
+      // 2026-05-22 (VICO): mapear el dateType del filtro UI a la columna
+      // SQL real (created_at / operation_date / departure_date) y mandarlo
+      // como dateField a los endpoints de analytics. Whitelist en backend.
+      params.set("dateField", dateTypeToField(filters.dateType))
       if (filters.agencyId !== "ALL") {
         params.set("agencyId", filters.agencyId)
       }
@@ -213,6 +217,8 @@ export function DashboardPageClient({
       const prevParams = new URLSearchParams()
       prevParams.set("dateFrom", prevDateFrom.toISOString().split("T")[0])
       prevParams.set("dateTo", prevDateTo.toISOString().split("T")[0])
+      // Mismo dateField que el periodo actual para que la comparación sea apples-to-apples.
+      prevParams.set("dateField", dateTypeToField(filters.dateType))
       if (filters.agencyId !== "ALL") {
         prevParams.set("agencyId", filters.agencyId)
       }
