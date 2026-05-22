@@ -195,7 +195,6 @@ export async function POST(request: Request) {
     }
 
     // Obtener configuración de clientes
-    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
     if (agencyIds.length === 0) {
       return NextResponse.json({ error: "No tiene agencias asignadas" }, { status: 403 })
     }
