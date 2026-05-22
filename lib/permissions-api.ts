@@ -144,11 +144,15 @@ export function resolveOperationAccessScope(
  * Aplica filtros de leads según el rol del usuario.
  * Multi-tenant: agencyIds ya viene acotado a la org del usuario (ver getUserAgencyIds),
  * así que filtrar por ellos también acota por org — incluso para SUPER_ADMIN.
+ *
+ * resolvedMatrix: si se pasa, los bloqueos hardcodeados por rol se omiten cuando
+ * la matrix dinámica habilita el acceso (ej: CONTABLE con leads habilitado desde UI).
  */
 export function applyLeadsFilters(
   query: any,
   user: { role: string; id: string },
-  agencyIds: string[]
+  agencyIds: string[],
+  resolvedMatrix?: ResolvedPermissionsMatrix
 ): any {
   const userRole = user.role as UserRole
 
@@ -161,12 +165,19 @@ export function applyLeadsFilters(
     return query.eq("assigned_seller_id", user.id)
   }
 
-  // CONTABLE no ve leads
+  // CONTABLE no ve leads por defecto, salvo que la matrix dinámica lo habilite
   if (userRole === "CONTABLE") {
-    throw new Error("No tiene permiso para ver leads")
+    if (!resolvedMatrix || !checkResolvedPermission(resolvedMatrix, "leads", "read")) {
+      throw new Error("No tiene permiso para ver leads")
+    }
+    // Habilitado dinámicamente: filtrar por agencias como cualquier otro rol
+    if (agencyIds.length > 0) {
+      return query.in("agency_id", agencyIds)
+    }
+    return query
   }
 
-  // ADMIN / SUPER_ADMIN / VIEWER: siempre filtrar por las agencias de su org
+  // ADMIN / SUPER_ADMIN / VIEWER / demás roles: filtrar por las agencias de su org
   if (agencyIds.length > 0) {
     query = query.in("agency_id", agencyIds)
   }

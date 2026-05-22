@@ -1,19 +1,22 @@
 import { getCurrentUser } from "@/lib/auth"
 import { createServerClient } from "@/lib/supabase/server"
-import { getScopedAgenciesForUser } from "@/lib/permissions-api"
+import { getScopedAgenciesForUser, getUserAgencyIds } from "@/lib/permissions-api"
 import { CRMManychatPageClient } from "@/components/sales/crm-manychat-page-client"
-import { canAccessModule } from "@/lib/permissions"
 import { AdvancedCRMKanban } from "./_components/advanced-crm-kanban"
 import { getOrgFeatureFlags } from "@/lib/settings/org-features"
+import { resolveUserPermissions, assertPermission } from "@/lib/permissions-agency"
 
 export const dynamic = "force-dynamic"
 
 export default async function CRMManychatPage() {
   const { user } = await getCurrentUser()
+  const supabaseForPerms = await createServerClient()
+  const agencyIdsForPerms = await getUserAgencyIds(supabaseForPerms, user.id, user.role as any)
+  const permsMatrix = user.org_id
+    ? await resolveUserPermissions(supabaseForPerms as any, user.id, user.org_id, user.role, agencyIdsForPerms)
+    : null
 
-  // Verificar permiso de acceso
-  const userRole = user.role as any
-  if (!canAccessModule(userRole, "leads")) {
+  if (!assertPermission(user.role, permsMatrix, "leads", "read")) {
     return (
       <div className="space-y-6">
         <div>

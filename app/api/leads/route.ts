@@ -39,7 +39,7 @@ export async function GET(request: Request) {
 
     // Apply permissions-based filtering
     try {
-      query = applyLeadsFilters(query, user, agencyIds)
+      query = applyLeadsFilters(query, user, agencyIds, perms)
     } catch (error: any) {
       return NextResponse.json({ error: error.message }, { status: 403 })
     }
