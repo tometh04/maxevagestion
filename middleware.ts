@@ -53,11 +53,6 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(target, 301)
   }
 
-  // Permitir webhooks de Trello sin autenticación
-  if (req.nextUrl.pathname === '/api/trello/webhook') {
-    return NextResponse.next()
-  }
-
   // Permitir webhooks de Manychat sin autenticación (usa API key en header)
   if (req.nextUrl.pathname === '/api/webhooks/manychat') {
     return NextResponse.next()
