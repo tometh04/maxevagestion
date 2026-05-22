@@ -528,7 +528,7 @@ export function OperationsTable({
           ),
           cell: ({ row }) => (
             <div className="text-xs font-medium text-right">
-              {row.original.currency} {Math.round(row.original.sale_amount_total).toLocaleString("es-AR")}
+              {row.original.currency} {row.original.sale_amount_total.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
           ),
         },
@@ -541,7 +541,7 @@ export function OperationsTable({
             const paid = row.original.paid_amount || 0
             return (
               <div className="text-xs text-success font-medium text-right">
-                {row.original.currency} {Math.round(paid).toLocaleString("es-AR")}
+                {row.original.currency} {paid.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
             )
           },
@@ -557,7 +557,7 @@ export function OperationsTable({
             const pendingCalc = pending ?? Math.max(0, total - (row.original.paid_amount || 0))
             return (
               <div className="text-xs text-accent-coral font-medium text-right">
-                {row.original.currency} {Math.round(pendingCalc).toLocaleString("es-AR")}
+                {row.original.currency} {pendingCalc.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
             )
           },
@@ -571,7 +571,7 @@ export function OperationsTable({
             const operatorPaid = row.original.operator_paid_amount || 0
             return (
               <div className="text-xs text-accent-teal font-medium text-right">
-                {row.original.currency} {Math.round(operatorPaid).toLocaleString("es-AR")}
+                {row.original.currency} {operatorPaid.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
             )
           },
@@ -587,7 +587,7 @@ export function OperationsTable({
             const pendingCalc = operatorPending ?? Math.max(0, operatorCost - (row.original.operator_paid_amount || 0))
             return (
               <div className="text-xs text-destructive font-medium text-right">
-                {row.original.currency} {Math.round(pendingCalc).toLocaleString("es-AR")}
+                {row.original.currency} {pendingCalc.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
             )
           },
@@ -600,10 +600,10 @@ export function OperationsTable({
           cell: ({ row }) => (
             <div className="text-xs text-right">
               <span className="font-medium">
-                {row.original.currency} {Math.round(row.original.margin_amount).toLocaleString("es-AR")}
+                {row.original.currency} {row.original.margin_amount.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
               <span className="text-muted-foreground ml-1">
-                {Math.round(row.original.margin_percentage)}%
+                {row.original.margin_percentage.toFixed(1)}%
               </span>
             </div>
           ),
@@ -681,10 +681,10 @@ export function OperationsTable({
               <span className="font-semibold text-muted-foreground mr-1">Totales página:</span>
               {Object.entries(totals).map(([currency, t]) => (
                 <div key={currency} className="flex flex-wrap gap-x-3 gap-y-1">
-                  <span className="font-semibold text-accent-coral">Venta: {currency} {Math.round(t.sale).toLocaleString("es-AR")}</span>
-                  <span className="text-success">Cobrado: {currency} {Math.round(t.paid).toLocaleString("es-AR")}</span>
-                  <span className="text-accent-coral">A cobrar: {currency} {Math.round(t.pending).toLocaleString("es-AR")}</span>
-                  <span className="text-success font-medium">Margen: {currency} {Math.round(t.margin).toLocaleString("es-AR")}</span>
+                  <span className="font-semibold text-accent-coral">Venta: {currency} {t.sale.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  <span className="text-success">Cobrado: {currency} {t.paid.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  <span className="text-accent-coral">A cobrar: {currency} {t.pending.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  <span className="text-success font-medium">Margen: {currency} {t.margin.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   {Object.keys(totals).length > 1 && <span className="text-muted-foreground">|</span>}
                 </div>
               ))}

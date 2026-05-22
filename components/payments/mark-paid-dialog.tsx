@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import {
   Form,
   FormControl,
@@ -239,7 +240,7 @@ export function MarkPaidDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-2xl max-h-[90vh]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <CheckCircle className="h-5 w-5 text-success" />
@@ -337,16 +338,9 @@ export function MarkPaidDialog({
                     <FormItem>
                       <FormLabel>Tipo de Cambio (ARS por 1 USD) *</FormLabel>
                       <FormControl>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
+                        <DecimalInput
                           placeholder="Ej: 1500"
                           {...field}
-                          onChange={(e) => {
-                            field.onChange(e)
-                            // Calcular equivalente en moneda de operación
-                          }}
                         />
                       </FormControl>
                       <p className="text-xs text-muted-foreground">

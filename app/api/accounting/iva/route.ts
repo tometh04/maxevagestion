@@ -9,15 +9,21 @@ export async function GET(request: Request) {
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
+    // Cross-tenant fix (2026-05-18): exigir org_id.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     const operationId = searchParams.get("operationId")
     const type = searchParams.get("type") // "purchases" para compras
 
-    // Si viene operationId, filtrar solo por esa operación
+    // Si viene operationId, filtrar solo por esa operación (scopeado por org)
     if (operationId) {
       if (type === "purchases") {
         const { data: purchasesIVA, error } = await (supabase.from("iva_purchases") as any)
           .select("*")
           .eq("operation_id", operationId)
+          .eq("org_id", (user as any).org_id)
 
         if (error) {
           console.error("Error fetching purchases IVA for operation:", error)
@@ -30,6 +36,7 @@ export async function GET(request: Request) {
         const { data: salesIVA, error } = await (supabase.from("iva_sales") as any)
           .select("*")
           .eq("operation_id", operationId)
+          .eq("org_id", (user as any).org_id)
 
         if (error) {
           console.error("Error fetching sales IVA for operation:", error)
@@ -61,6 +68,7 @@ export async function GET(request: Request) {
         operations:operation_id (id, destination, file_code, sale_amount_total, agency_id)
       `
       )
+      .eq("org_id", (user as any).org_id)
       .gte("sale_date", startDate)
       .lte("sale_date", endDate)
       .order("sale_date", { ascending: false })
@@ -80,6 +88,7 @@ export async function GET(request: Request) {
         operators:operator_id (id, name)
       `
       )
+      .eq("org_id", (user as any).org_id)
       .gte("purchase_date", startDate)
       .lte("purchase_date", endDate)
       .order("purchase_date", { ascending: false })
@@ -113,6 +122,7 @@ export async function GET(request: Request) {
       .eq("type", "PERCEPCION_IVA")
       .eq("direction", "SUFFERED")
       .eq("tax_period", taxPeriod)
+      .eq("org_id", (user as any).org_id)
 
     // Separate percepciones by currency
     const percepcionesARS = (percepciones || []).filter((p: any) => p.currency !== "USD").reduce((s: number, p: any) => s + Number(p.amount), 0)

@@ -212,8 +212,20 @@ export function AgenciesSettings() {
                 </TableRow>
               ) : agencies.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground">
-                    No hay agencias
+                  <TableCell colSpan={4} className="py-10">
+                    <div className="flex flex-col items-center text-center gap-3">
+                      <Building2 className="h-10 w-10 text-muted-foreground" />
+                      <div>
+                        <h3 className="text-base font-semibold">No hay agencias</h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Creá tu primera sucursal para empezar a operar.
+                        </p>
+                      </div>
+                      <Button size="sm" className="rounded-full mt-1" onClick={handleNew}>
+                        <Plus className="h-4 w-4 mr-2" />
+                        Crear primera agencia
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ) : (

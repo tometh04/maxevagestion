@@ -21,6 +21,12 @@ export const dynamic = "force-dynamic"
 export async function GET(request: Request) {
   try {
     const { user } = await getCurrentUser()
+
+    // Cross-tenant fix (2026-05-18): no confiar en RLS; scopear explícito.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
@@ -32,6 +38,18 @@ export async function GET(request: Request) {
 
     if (!sellerId) {
       return NextResponse.json({ error: "seller_id requerido" }, { status: 400 })
+    }
+
+    // Verificar que el seller pertenece al org del user (evita filtrar progreso de otra org)
+    if (sellerId !== user.id) {
+      const { data: sellerCheck } = await (supabase.from("users") as any)
+        .select("id")
+        .eq("id", sellerId)
+        .eq("org_id", (user as any).org_id)
+        .single()
+      if (!sellerCheck) {
+        return NextResponse.json({ error: "Seller no encontrado" }, { status: 404 })
+      }
     }
 
     // Agencia del seller (si existe), para filtrar objetivos específicos de agencia
@@ -48,12 +66,13 @@ export async function GET(request: Request) {
       // matchea objetivos sin agency_id).
     }
 
-    // Traer objetivos activos que aplican al seller:
-    //   is_active=true AND (seller_id = X OR seller_id IS NULL)
+    // Traer objetivos activos que aplican al seller (scopeado por org):
+    //   is_active=true AND org_id = user.org_id AND (seller_id = X OR seller_id IS NULL)
     //   AND (agency_id IS NULL OR agency_id IN sellerAgencyIds)
     let query = (supabase.from("seller_objectives") as any)
       .select("id, name, description, metric_type, target_value, target_currency, reward_type, reward_value, reward_currency, period_type, seller_id, agency_id")
       .eq("is_active", true)
+      .eq("org_id", (user as any).org_id)
 
     // (seller_id = X OR seller_id IS NULL)
     query = query.or(`seller_id.eq.${sellerId},seller_id.is.null`)

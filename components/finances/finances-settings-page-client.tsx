@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import { DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
 import { Badge } from "@/components/ui/badge"
 import { Save, Loader2 } from "lucide-react"
@@ -246,15 +247,13 @@ export function FinancesSettingsPageClient() {
                     Se usa cuando no hay tipo de cambio cargado para una fecha específica
                   </p>
                 </div>
-                <Input
-                  type="number"
-                  step="0.01"
+                <DecimalInput
                   className="w-32"
                   value={settings.default_usd_rate}
-                  onChange={(e) =>
+                  onChange={(v) =>
                     setSettings({
                       ...settings,
-                      default_usd_rate: parseFloat(e.target.value) || 0,
+                      default_usd_rate: parseFloat(v) || 0,
                     })
                   }
                 />
@@ -277,17 +276,13 @@ export function FinancesSettingsPageClient() {
                   <p className="text-xs text-muted-foreground mb-1">
                     Para agencias de viajes generalmente es 21% sobre el margen
                   </p>
-                  <Input
-                    type="number"
-                    step="0.5"
-                    min="0"
-                    max="27"
+                  <DecimalInput
                     className="w-32"
                     value={settings.default_iva_rate}
-                    onChange={(e) =>
+                    onChange={(v) =>
                       setSettings({
                         ...settings,
-                        default_iva_rate: parseFloat(e.target.value) || 21,
+                        default_iva_rate: parseFloat(v) || 21,
                       })
                     }
                   />
@@ -352,17 +347,13 @@ export function FinancesSettingsPageClient() {
                   <p className="text-xs text-muted-foreground mb-1">
                     Al pagar a operadores RI (0 = no retener)
                   </p>
-                  <Input
-                    type="number"
-                    step="0.5"
-                    min="0"
-                    max="100"
+                  <DecimalInput
                     className="w-32"
                     value={settings.retention_ganancias_rate}
-                    onChange={(e) =>
+                    onChange={(v) =>
                       setSettings({
                         ...settings,
-                        retention_ganancias_rate: parseFloat(e.target.value) || 0,
+                        retention_ganancias_rate: parseFloat(v) || 0,
                       })
                     }
                     disabled={!settings.withholdings_enabled}
@@ -373,17 +364,13 @@ export function FinancesSettingsPageClient() {
                   <p className="text-xs text-muted-foreground mb-1">
                     Al pagar a operadores RI (0 = no retener)
                   </p>
-                  <Input
-                    type="number"
-                    step="0.5"
-                    min="0"
-                    max="100"
+                  <DecimalInput
                     className="w-32"
                     value={settings.retention_iva_rate}
-                    onChange={(e) =>
+                    onChange={(v) =>
                       setSettings({
                         ...settings,
-                        retention_iva_rate: parseFloat(e.target.value) || 0,
+                        retention_iva_rate: parseFloat(v) || 0,
                       })
                     }
                     disabled={!settings.withholdings_enabled}
@@ -427,17 +414,13 @@ export function FinancesSettingsPageClient() {
                   <p className="text-xs text-muted-foreground mb-1">
                     Porcentaje de Ingresos Brutos aplicable
                   </p>
-                  <Input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    max="10"
+                  <DecimalInput
                     className="w-32"
                     value={settings.iibb_rate}
-                    onChange={(e) =>
+                    onChange={(v) =>
                       setSettings({
                         ...settings,
-                        iibb_rate: parseFloat(e.target.value) || 3.5,
+                        iibb_rate: parseFloat(v) || 3.5,
                       })
                     }
                   />

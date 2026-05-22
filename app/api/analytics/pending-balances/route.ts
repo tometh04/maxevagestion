@@ -48,7 +48,17 @@ export async function GET(request: Request) {
           created_at,
           agency_id
         `)
-      if (userOrgId) operationsQuery = operationsQuery.eq("org_id", userOrgId)
+      // Bug fix 2026-05-15 (P0 cross-tenant audit): si userOrgId era null
+      // (caso legacy / huérfano), el query no filtraba por org_id Y
+      // tampoco aplicaba el bypass de admin → leak total. Ahora fail-safe.
+      if (!userOrgId) {
+        return NextResponse.json({ balances: [], totals: {}, message: "user sin org_id" })
+      }
+      operationsQuery = operationsQuery.eq("org_id", userOrgId)
+
+      // Siempre filtrar por agenciasIds (ya scopeadas a la org via
+      // getUserAgencyIds). El bypass viejo "admin ve todas las agencias"
+      // está OK dentro de la org pero solo si ya filtramos por org_id arriba.
       const isAdminRole = user.role === "SUPER_ADMIN" || (user.role as string) === "ORG_OWNER"
       if (agencyIds.length > 0 && !isAdminRole) {
         operationsQuery = operationsQuery.in("agency_id", agencyIds)

@@ -23,8 +23,14 @@ export function computeProfileCompletion(
   }, 0)
 }
 
+// Umbrales semáforo del perfil tenant (8 campos totales):
+//   0-3 → rojo (empty)     — perfil pelado o casi pelado
+//   4-5 → amarillo (partial) — info parcial, falta lo básico
+//   6-8 → verde (complete)   — listo o casi listo
+// Antes: solo 0 era rojo y solo 8 era verde, el resto era amarillo →
+// llamaba "complete" solo al 100% lo cual era info inútil para triage rápido.
 export function profileBadgeLevel(completion: number): ProfileBadgeLevel {
-  if (completion === 0) return "empty"
-  if (completion === PROFILE_FIELD_COUNT) return "complete"
-  return "partial"
+  if (completion <= 3) return "empty"
+  if (completion <= 5) return "partial"
+  return "complete"
 }

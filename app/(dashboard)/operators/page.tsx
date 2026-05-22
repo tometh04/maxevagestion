@@ -20,7 +20,9 @@ export default async function OperatorsPage() {
 
   const supabase = await createServerClient()
 
-  // Fetch initial data
+  // Fetch initial data.
+  // 🔴 CROSS-TENANT FIX (2026-05-21): filtro explícito por org_id —
+  // ver CLAUDE.md regla de oro multi-tenant.
   const { data: operators } = await supabase
     .from("operators")
     .select(
@@ -43,6 +45,7 @@ export default async function OperatorsPage() {
       )
     `,
     )
+    .eq("org_id", (user as any).org_id)
     .order("name")
 
   // Calculate initial stats. Regla: separar por moneda (no mezclar ARS+USD).

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { createAdminClient } from "@/lib/supabase/server"
+import { createAdminClient, createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canPerformAction } from "@/lib/permissions-api"
 
@@ -15,6 +15,23 @@ export async function POST(
     }
 
     const { id: operationId } = await params
+
+    // Cross-tenant fix (2026-05-18): RLS no protegía como creíamos, agregamos
+    // filtro explícito por org_id. El comment previo decía "RLS confirmó que
+    // el user tiene acceso" — falso.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+    const userClient = await createServerClient()
+    const { data: opRow, error: opErr } = await (userClient.from("operations") as any)
+      .select("id")
+      .eq("id", operationId)
+      .eq("org_id", (user as any).org_id)
+      .maybeSingle()
+    if (opErr || !opRow) {
+      return NextResponse.json({ error: "Operación no encontrada o sin acceso" }, { status: 404 })
+    }
+
     const adminDb = createAdminClient()
 
     const formData = await request.formData()

@@ -403,6 +403,98 @@ Ayudar a los usuarios a obtener información precisa sobre CUALQUIER dato del si
    mixto/mixtos→'MIXED', asistencia/asistencias/assist→'ASSISTANCE'.
    "Cuántos paquetes vendimos" = COUNT WHERE type='PACKAGE', NO es COUNT de todas las operaciones.
 
+10. 🔑 INTERPRETACIÓN DE "GASTOS" (fix 2026-05-16 reportado por Maxi):
+
+    En la BD, los gastos "del mes" (consumados) están en **ledger_movements** con type EXPENSE.
+    PERO ledger_movements incluye MUCHO ruido contable que NO es gasto real del negocio.
+
+    🚫 EXCLUIR del análisis de gastos estos conceptos (son flujos internos, no gastos):
+    - "Costo de Operadores - Operación ..." → costo de venta, no gasto
+    - "Transferencia de \"X\" a \"Y\"" → transferencia entre cuentas propias
+    - "Compra de dólares - ..." → ajuste FX
+    - "Saldo transferido a cuenta ..." → cierre de cuenta
+    - "Ajuste manual de saldo (...)" → ajuste manual de balance
+    - "Pago a operador - ..." (cuando viene de operation/operator) → es OPERATOR_PAYMENT, no gasto operativo
+
+    ✅ Query CORRECTA para "gastos del mes" (filtra ruido):
+       SELECT lm.concept, lm.amount_original, lm.currency, lm.movement_date,
+              fa.name as cuenta, a.name as agencia
+       FROM ledger_movements lm
+       LEFT JOIN financial_accounts fa ON fa.id = lm.account_id
+       LEFT JOIN agencies a ON a.id = fa.agency_id
+       WHERE lm.type = 'EXPENSE'
+       AND lm.movement_date >= '2026-04-01'
+       AND lm.movement_date < '2026-05-01'
+       AND lm.concept NOT ILIKE 'Costo de Operadores%'
+       AND lm.concept NOT ILIKE 'Transferencia de%'
+       AND lm.concept NOT ILIKE 'Compra de dólares%'
+       AND lm.concept NOT ILIKE 'Saldo transferido%'
+       AND lm.concept NOT ILIKE 'Ajuste manual de saldo%'
+       ORDER BY lm.movement_date DESC
+
+    📅 Para "gastos FIJOS" o "gastos RECURRENTES" del mes:
+       En la práctica son la INTERSECCIÓN entre ledger_movements y recurring_payments.
+       Pero hoy NO HAY un FK directo (algunos sistemas lo tienen, otros no).
+       Estrategia:
+       1) Primero buscá los EXPENSE filtrados como arriba.
+       2) Si la cuenta de Lozada/usuario NO tiene recurring_payments cargados, decile al
+          user que "los gastos no están categorizados como fijos vs variables — te muestro
+          todos los EXPENSE del mes" + listalos.
+       3) NUNCA respondas "no se registraron gastos" sin antes intentar la query general.
+
+    📋 Calendario FUTURO de gastos recurrentes (próximos vencimientos) → recurring_payments:
+       SELECT description, amount, currency, next_due_date FROM recurring_payments
+       WHERE is_active = true AND next_due_date <= CURRENT_DATE + INTERVAL '30 days'
+       (esto NO es "lo que ya gastamos", es lo que VAMOS a pagar)
+
+    REGLA DE ORO: si el user pregunta "gastos de [mes pasado/actual]", "cuánto gastamos",
+    "gastos fijos de abril", etc. → ALWAYS consultar ledger_movements con los filtros
+    de exclusión. Si devuelve 0 rows reales, DECIR "no encontré gastos operativos en ese
+    mes" pero mostrar igual los conteos de operation costs y transferencias para que el
+    user sepa qué SÍ hubo (algo así como "hay 242 movimientos contables EXPENSE pero
+    todos son costos de operaciones / transferencias, no gastos del negocio").
+
+    🧮 SIEMPRE CERRAR CON TOTAL POR MONEDA (fix 2026-05-16 reportado por Maxi):
+    Cuando listes items monetarios (gastos, ventas, pagos, cobros, comisiones, etc.),
+    SIEMPRE terminá la respuesta con el total agregado por moneda. NUNCA omitas el total.
+
+    Formato sugerido al final de la lista:
+       📊 **Total**:
+       • ARS: $9.775.366,61
+       • USD: USD 180,00
+
+    Excepción: si todos los items son de la misma moneda, basta con un total.
+    NUNCA sumes ARS + USD en un único número. Recordá la regla absoluta de monedas.
+
+    🗜️ NUNCA REPETIR FILAS IDÉNTICAS — AGRUPAR (fix 2026-05-19 reportado por Lozada):
+    Si la query devuelve múltiples rows con el MISMO monto y MISMA moneda (típico
+    de gastos repetitivos como "Sueldos: $1.000.000 × 30 empleados"), NUNCA listes
+    cada row individualmente. Eso produce respuestas como:
+       ❌ "$1.000.000 ARS, $1.000.000 ARS, $1.000.000 ARS, $1.000.000 ARS, ..." (×30)
+
+    Reglas de agrupación obligatorias para presentar resultados:
+
+    1. Si hay ≥5 rows con MISMO amount+currency: agrupalos.
+       ✅ "**30 pagos de $1.000.000 ARS cada uno** (subtotal $30.000.000 ARS)"
+
+    2. Si hay ≥3 rows con MISMO concept (ignorando case y trailing spaces): agrupar.
+       ✅ "**Sueldos** (×12): $12.000.000 ARS total"
+       en lugar de listar 12 líneas "Sueldos: $1.000.000".
+
+    3. Para categorías como "Otros" con muchos items: si la lista supera 10 items,
+       mostrá top 5 por monto + "**y N items más** (subtotal $X)" + TOTAL agregado.
+
+    4. Si el user explícitamente pide "el detalle uno por uno" o "todas las filas",
+       entonces sí listalas todas. Pero por defecto AGRUPÁ.
+
+    5. Para listas de gastos / pagos / movimientos: SIEMPRE preferí mostrar
+       "**N items por categoría X**: $TOTAL" en lugar de cada item suelto.
+
+    Patrón mental al construir la respuesta:
+       a) ¿Hay > N items? → agrupá por (concept || category || amount).
+       b) Mostrá top 5-10 con detalle, resto como "y M más por $X".
+       c) Cerrá con total por moneda.
+
 🚨 REGLA ABSOLUTA — MONEDAS (NO NEGOCIABLE):
 - JAMÁS sumes ARS + USD juntos. Son monedas DISTINTAS. Sumarlas es como sumar pesos con dólares físicamente.
 - SIEMPRE usa GROUP BY sale_currency en cualquier agregación sobre operations. Esto devuelve una fila para ARS y otra para USD.
@@ -759,14 +851,68 @@ export async function POST(request: Request) {
     const supabase = await createServerClient()
 
     const today = new Date().toISOString().split('T')[0]
-    const userContext = `Fecha: ${today} | Usuario: ${user.name || user.email} | Rol: ${user.role}`
+
+    // Bug fix 2026-05-15 (P0 cross-tenant): AI Copilot tenía bypass
+    // "SUPER_ADMIN = acceso total" en el system prompt → el modelo
+    // podía ejecutar queries sin filtro de tenant. Lozada Gualeguaychú
+    // (SUPER_ADMIN de su org) habría visto datos de otros tenants.
+    //
+    // Fix: el constraint ahora SIEMPRE incluye org_id del user, sin
+    // excepciones. Si no tiene org_id, denegar.
+    const userOrgId = (user as any).org_id as string | null
+    if (!userOrgId) {
+      return NextResponse.json({
+        response: "No podemos procesar tu consulta porque tu usuario no está asociado a una organización. Contactá a soporte.",
+      })
+    }
+
+    // Fetch user's agencies (scopeadas a su org) for mandatory filtering
+    const { data: orgAgencies } = await (supabase.from("agencies") as any)
+      .select("id, name")
+      .eq("org_id", userOrgId)
+    const userAgencyIds: string[] = (orgAgencies || []).map((a: any) => a.id)
+    const userAgencyNames: string[] = (orgAgencies || []).map((a: any) => a.name || a.id)
+
+    // For SELLER, restrict further to operations the seller owns (seller_id)
+    const isSeller = user.role === "SELLER"
+
+    const agencyInfo = isSeller
+      ? `Vendedor (solo sus propias operaciones). Org: ${userOrgId}`
+      : userAgencyIds.length > 0
+        ? `Agencias: ${userAgencyNames.join(", ")}`
+        : "Sin agencia asignada"
+
+    const userContext = `Fecha: ${today} | Usuario: ${user.name || user.email} | Rol: ${user.role} | ${agencyInfo}`
+
+    // Build mandatory security constraint — ahora siempre incluye org_id.
+    // No hay bypass para SUPER_ADMIN: en el modelo SaaS multi-tenant, todos
+    // los SUPER_ADMIN son owners de UNA org, NO platform admins.
+    let agencyConstraint = ""
+    if (userAgencyIds.length > 0) {
+      const agencyIdsLiteral = userAgencyIds.map((id: string) => `'${id}'`).join(", ")
+      agencyConstraint = `\n\n🔒 SEGURIDAD — FILTRO OBLIGATORIO MULTI-TENANT (NO NEGOCIABLE):
+Este usuario pertenece a la organización: ${userOrgId}
+Agencias de su org: ${userAgencyNames.join(", ")}
+
+TODA query DEBE incluir uno de estos filtros (según la tabla):
+- Tablas con org_id (operations, leads, payments, invoices, alerts, customers, etc): AND org_id = '${userOrgId}'
+- Tablas con agency_id (cuentas, ops, leads...): AND agency_id IN (${agencyIdsLiteral})
+- Si la tabla tiene AMBOS: usa AT LEAST org_id (es estricto a nivel tenant)
+
+${isSeller ? `EXTRA: como SELLER, agregar AND seller_id = '${user.id}' a operations y leads.\n` : ""}
+NUNCA devuelvas datos de otras organizaciones. El bypass anterior "SUPER_ADMIN ve todo" fue eliminado tras detectar leak cross-tenant.`
+    } else {
+      agencyConstraint = `\n\n🔒 SEGURIDAD: Este usuario no tiene agencias asignadas en su organización (${userOrgId}). No mostrar ningún dato.`
+    }
+
+    const dynamicSystemPrompt = SYSTEM_PROMPT + agencyConstraint
 
     const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       {
         type: "function",
         function: {
           name: "execute_query",
-          description: "Ejecuta una consulta SQL SELECT para obtener datos reales del sistema. Usa esto SIEMPRE para responder preguntas sobre datos, métricas, operaciones, clientes, pagos, etc.",
+          description: "Ejecuta una consulta SQL SELECT para obtener datos reales del sistema. Usa esto SIEMPRE para responder preguntas sobre datos, métricas, operaciones, clientes, pagos, etc. IMPORTANTE: Siempre aplicar el filtro de agency_id indicado en el sistema para no exponer datos de otras agencias.",
           parameters: {
             type: "object",
             properties: {
@@ -786,7 +932,7 @@ export async function POST(request: Request) {
     ]
 
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-      { role: "system", content: SYSTEM_PROMPT },
+      { role: "system", content: dynamicSystemPrompt },
       { role: "user", content: `${userContext}\n\nPregunta: ${message}` }
     ]
 

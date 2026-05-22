@@ -111,12 +111,15 @@ export default async function ContabilidadPage() {
   const supabase = await createServerClient()
   t.mark("createServerClient")
 
-  // Get sellers for DebtsSales
+  // Get sellers for DebtsSales.
+  // 🔴 CROSS-TENANT FIX (2026-05-21): filtro explícito por org_id —
+  // ver CLAUDE.md regla de oro multi-tenant.
   let sellersQuery = supabase
     .from("users")
     .select("id, name")
     .in("role", ["SELLER", "ADMIN", "SUPER_ADMIN"])
     .eq("is_active", true)
+    .eq("org_id", (user as any).org_id)
 
   if (user.role === "SELLER") {
     sellersQuery = sellersQuery.eq("id", user.id)

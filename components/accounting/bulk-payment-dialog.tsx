@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -74,6 +75,7 @@ interface BulkPaymentDialogProps {
   onOpenChange: (open: boolean) => void
   operators: Operator[]
   agencies: Array<{ id: string; name: string }>
+  selectedAgencyId?: string
 }
 
 function formatCurrency(amount: number, currency: string = "ARS"): string {
@@ -89,6 +91,7 @@ export function BulkPaymentDialog({
   onOpenChange,
   operators,
   agencies,
+  selectedAgencyId,
 }: BulkPaymentDialogProps) {
   const router = useRouter()
   
@@ -176,10 +179,11 @@ export function BulkPaymentDialog({
       try {
         const params = new URLSearchParams()
         params.append("operatorId", selectedOperatorId)
-        // NO filtrar por agencia para el pago masivo - mostrar TODAS las deudas del operador
-        // El usuario verá todas las deudas pendientes del operador en todas las agencias
+        if (selectedAgencyId && selectedAgencyId !== "ALL") {
+          params.append("agencyId", selectedAgencyId)
+        }
 
-        console.log("[BulkPayment] Fetching payments for operator:", selectedOperatorId)
+        console.log("[BulkPayment] Fetching payments for operator:", selectedOperatorId, "agency:", selectedAgencyId || "ALL")
         const response = await fetch(`/api/accounting/operator-payments?${params.toString()}`)
         if (!response.ok) throw new Error("Error al obtener pagos")
 
@@ -218,7 +222,7 @@ export function BulkPaymentDialog({
     }
 
     fetchPendingPayments()
-  }, [open, selectedOperatorId, selectedCurrency, agencies])
+  }, [open, selectedOperatorId, selectedCurrency, agencies, selectedAgencyId])
 
   // Actualizar moneda de pago cuando cambia la moneda seleccionada
   useEffect(() => {
@@ -653,13 +657,9 @@ export function BulkPaymentDialog({
                             <TableCell className="text-right">
                               {isSelected ? (
                                 <div className="space-y-1 flex flex-col items-end">
-                                  <Input
-                                    type="number"
-                                    step="0.01"
-                                    min="0"
-                                    max={Math.round(remaining * 1.10 * 100) / 100}
+                                  <DecimalInput
                                     value={amountToPay}
-                                    onChange={(e) => handleAmountChange(payment.id, e.target.value)}
+                                    onChange={(v) => handleAmountChange(payment.id, v)}
                                     className={`w-32 ${amountToPay > remaining ? 'border-accent-coral text-accent-coral' : ''}`}
                                     placeholder="0.00"
                                   />
@@ -734,11 +734,9 @@ export function BulkPaymentDialog({
                 {needsExchangeRate() && (
                   <div>
                     <Label>Tipo de Cambio *</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
+                    <DecimalInput
                       value={exchangeRate}
-                      onChange={(e) => setExchangeRate(e.target.value)}
+                      onChange={(v) => setExchangeRate(v)}
                       placeholder="Ej: 1200"
                     />
                     <p className="text-xs text-muted-foreground mt-1">
@@ -792,11 +790,9 @@ export function BulkPaymentDialog({
                   <div className="grid gap-3 md:grid-cols-2 pl-6">
                     <div>
                       <Label className="text-xs">Porcentaje de bonificación (%)</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
+                      <DecimalInput
                         value={bonusPercentage}
-                        onChange={(e) => setBonusPercentage(e.target.value)}
+                        onChange={(v) => setBonusPercentage(v)}
                         placeholder="1.45"
                         onFocus={(e) => e.target.select()}
                       />

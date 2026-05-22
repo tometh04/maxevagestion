@@ -6,18 +6,23 @@ import { generateMessagesFromAlerts } from "@/lib/whatsapp/alert-messages"
 export async function POST(request: Request) {
   try {
     const { user } = await getCurrentUser()
+
+    // Cross-tenant fix (2026-05-18): no confiar en RLS; scopear explícito.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     const supabase = await createServerClient()
     const body = await request.json()
-    
+
     const { operationId } = body
 
     if (!operationId) {
       return NextResponse.json({ error: "operationId es requerido" }, { status: 400 })
     }
 
-    // Obtener la operación con sus clientes
-    const { data: operationData, error: opError } = await supabase
-      .from("operations")
+    // Obtener la operación con sus clientes (scopeado por org)
+    const { data: operationData, error: opError } = await (supabase.from("operations") as any)
       .select(`
         *,
         operation_customers(
@@ -26,6 +31,7 @@ export async function POST(request: Request) {
         )
       `)
       .eq("id", operationId)
+      .eq("org_id", (user as any).org_id)
       .single()
 
     if (opError || !operationData) {
@@ -49,6 +55,7 @@ export async function POST(request: Request) {
         alertsToCreate.push({
           operation_id: operationId,
           user_id: operation.seller_id,
+          org_id: (user as any).org_id,
           type: "UPCOMING_TRIP",
           description: `Check-in próximo: ${operation.destination} - Salida ${operation.departure_date}`,
           date_due: checkInAlertDate.toISOString().split("T")[0],
@@ -67,6 +74,7 @@ export async function POST(request: Request) {
         alertsToCreate.push({
           operation_id: operationId,
           user_id: operation.seller_id,
+          org_id: (user as any).org_id,
           type: "UPCOMING_TRIP",
           description: `Check-out próximo: ${operation.destination} - Regreso ${operation.return_date}`,
           date_due: checkOutAlertDate.toISOString().split("T")[0],
@@ -100,6 +108,7 @@ export async function POST(request: Request) {
           alertsToCreate.push({
             operation_id: operationId,
             user_id: operation.seller_id,
+            org_id: (user as any).org_id,
             type: "GENERIC",
             description: `🎂 Cumpleaños próximo: ${customer.first_name} ${customer.last_name} - ${birthDate.getDate()}/${birthDate.getMonth() + 1}`,
             date_due: birthdayAlertDate.toISOString().split("T")[0],
@@ -109,11 +118,11 @@ export async function POST(request: Request) {
       }
     }
 
-    // 4. ALERTA DE DOCUMENTOS (verificar pasaportes vencidos)
-    const { data: documentsData } = await supabase
-      .from("documents")
+    // 4. ALERTA DE DOCUMENTOS (verificar pasaportes vencidos) — scopeado por org
+    const { data: documentsData } = await (supabase.from("documents") as any)
       .select("*")
       .eq("operation_id", operationId)
+      .eq("org_id", (user as any).org_id)
       .in("type", ["PASSPORT", "DNI"])
 
     const documents = (documentsData || []) as any[]
@@ -136,6 +145,7 @@ export async function POST(request: Request) {
             alertsToCreate.push({
               operation_id: operationId,
               user_id: operation.seller_id,
+              org_id: (user as any).org_id,
               type: "PASSPORT_EXPIRY",
               description: `⚠️ Documento ${doc.type} vence el ${scannedData.expiration_date}`,
               date_due: alertDate.toISOString().split("T")[0],

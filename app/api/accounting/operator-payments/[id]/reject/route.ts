@@ -11,6 +11,11 @@ export async function POST(
   const { user } = await getCurrentUser()
   const supabase = await createServerClient()
 
+  // Cross-tenant fix (2026-05-18): scopear fetch por org.
+  if (!(user as any).org_id) {
+    return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+  }
+
   const body = await request.json().catch(() => ({}))
   const reason = (body.reason || "").trim()
   if (!reason) return NextResponse.json({ error: "Motivo requerido" }, { status: 400 })
@@ -18,6 +23,7 @@ export async function POST(
   const { data: payment } = await (supabase.from("operator_payments") as any)
     .select("*")
     .eq("id", id)
+    .eq("org_id", (user as any).org_id)
     .single()
 
   if (!payment) return NextResponse.json({ error: "Pago a operador no encontrado" }, { status: 404 })
@@ -37,6 +43,7 @@ export async function POST(
       rejection_reason: reason,
     })
     .eq("id", id)
+    .eq("org_id", (user as any).org_id)
     .eq("approval_status", "PENDING_APPROVAL")
     .select()
     .single()

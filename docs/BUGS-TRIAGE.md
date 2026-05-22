@@ -10,6 +10,48 @@
 
 ---
 
+## 🚨 Incidente cross-tenant 2026-05-18 — RESUELTO
+
+**Reporte**: Andrés/Enzo de VICO TRAVEL GROUP (tenant nuevo, lanzado 11/05) vio en `/cash → tab Pagos` y `/reports → Vencimientos` data de Lozada Rosario (otro tenant). Síntoma: filas con "Sin destino · Sin agencia" + montos millonarios que no eran de VICO.
+
+**Ventana de exposición**: 11/05 (lanzamiento VICO) → 18/05 (~7 días).
+
+**Causa raíz**: 4 tablas con policies RLS "tóxicas" haciendo bypass total:
+- `payments.tenant_isolation` (ALL, `USING true`)
+- `payment_passenger_allocations.*` (4 policies, todas `USING true`)
+- `organization_settings."Allow authenticated insert"` (INSERT, `WITH CHECK true`)
+- `journal_entries.journal_entries_insert` (INSERT, `WITH CHECK true`)
+
+Sumado a que **~50 endpoints user-facing confiaban en RLS** ("Multi-tenant: RLS scopea automáticamente") sin filtro explícito por `org_id`.
+
+**Resolución** (1 sesión, 18 commits a main):
+
+| Capa | Commits | Cobertura |
+|---|---|---|
+| **Capa 1 — código (filtro `.eq("org_id")` explícito)** | `a0e401c3`, `1f5b525d`, `c74f4869`, `434d4086`, `cb98936e`, `10aa152b`, `23163da9`, `f3ac010e`, `0dfeb4e1`, `47c021af`, `fb538ec7`, `356bbed2` | ~50 endpoints en payments, reports, operations, cash, accounting, customers, operators, alerts, commissions, leads |
+| **Capa 2 — RLS Postgres (drop policies tóxicas)** | `fc44cebc` (migration `20260518000002`) | 4 tablas |
+| **Capa 3 — Service role sweep (preventivo)** | `7a2c4bde`, `12cf0d9e`, `c16217c2`, `be6661bf`, `d1c7820d`, `468a492e` | 28 endpoints user-facing usando `createAdminClient` (clasificados A/B/C/D) |
+| **Capa 4 — Helpers compartidos** | `24412c58` | `applyCustomersFilters` y `applyOperationsFilters` ahora throw/limit(0) si falta org_id |
+| **Capa 5 — Docs** | `819b4f6d` (CLAUDE.md) | Regla canónica "Defense-in-depth always" + 8 reglas + patrón canónico |
+
+**Items P0 cubiertos por el sweep** (originalmente en este doc):
+- #1 `seller_objectives` → ✅ cubierto en commit fb58ec7 (commissions sweep)
+- #4 `audit_logs` GET sin filtro org → ✅ cubierto
+- #5 `alerts` con `org_id IS NULL` visibles cross-tenant → ✅ cubierto en commit 47c021af
+
+**Lecciones aprendidas**:
+1. **No confiar en RLS como capa única**. La función `user_org_ids()` estaba bien escrita pero las policies sobre las tablas tenían USING(true) → bypass total. RLS roto falla silenciosamente.
+2. **Cualquier endpoint sin filtro explícito por `org_id` es bug latente**, no importa si "la tabla tiene RLS". Code review debe rechazar PRs sin el patrón.
+3. **`createAdminClient()` en endpoints user-facing es deuda técnica**. Justificación requerida con comment. Reservar para cron/admin/webhook/auth flows.
+4. **Helpers compartidos como `applyCustomersFilters` deben fallar fuerte** cuando faltan inputs críticos (org_id), no devolver query sin filtro.
+
+**Pendiente post-fix**:
+- Sanity check con Enzo/Andrés de VICO en producción
+- 3 SQLs de auditoría histórica para detectar si hubo daño operativo durante la ventana de exposición
+- Eventualmente: dropear policy legacy `payments_tenant_isolation` (via user_agencies) ahora que `payments_org_isolation` está activa
+
+---
+
 ## 🔴 P0 — BLOCKERS (fix antes de entregar al dev nuevo)
 
 ### Multi-tenant data leaks

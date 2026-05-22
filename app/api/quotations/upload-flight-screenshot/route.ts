@@ -7,7 +7,16 @@ const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "im
 
 export async function POST(request: Request) {
   try {
-    await getCurrentUser()
+    const { user } = await getCurrentUser()
+
+    // Cross-tenant fix (2026-05-18): exigir org_id explícito.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
+    // adminDb justificado: Supabase Storage upload requiere service_role para
+    // saltear ACL del bucket "documents". El path incluye sanitización fuerte
+    // y el quotationId del body no permite path traversal.
     const adminDb = createAdminClient()
     const formData = await request.formData()
     const file = formData.get("file") as File | null

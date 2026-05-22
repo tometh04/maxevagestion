@@ -36,6 +36,7 @@ import { format, parseISO } from "date-fns"
 import { es } from "date-fns/locale"
 import { AlertTriangle, X } from "lucide-react"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import { DateTypeFilter, type DateTypeOption } from "@/components/ui/date-type-filter"
 
 const operatorPaymentsDateTypes: DateTypeOption[] = [
@@ -424,19 +425,17 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
             }}
           />
 
-          <Input
-            type="number"
+          <DecimalInput
             placeholder="Deuda mín."
             value={amountMinInput}
-            onChange={(e) => setAmountMinInput(e.target.value)}
+            onChange={(v) => setAmountMinInput(v)}
             className="h-8 text-xs rounded-full border-border/60 bg-background w-[120px]"
           />
 
-          <Input
-            type="number"
+          <DecimalInput
             placeholder="Deuda máx."
             value={amountMaxInput}
-            onChange={(e) => setAmountMaxInput(e.target.value)}
+            onChange={(v) => setAmountMaxInput(v)}
             className="h-8 text-xs rounded-full border-border/60 bg-background w-[120px]"
           />
 
@@ -675,6 +674,7 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
         onOpenChange={setBulkPaymentOpen}
         operators={operators}
         agencies={agencies}
+        selectedAgencyId={agencyFilter !== "ALL" ? agencyFilter : undefined}
       />
 
       {/* Manual Operator Payment Dialog */}

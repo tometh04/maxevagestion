@@ -145,6 +145,35 @@ export type Database = {
           },
         ]
       }
+      agency_settings: {
+        Row: {
+          agency_id: string
+          created_at: string
+          data: Json
+          updated_at: string
+        }
+        Insert: {
+          agency_id: string
+          created_at?: string
+          data?: Json
+          updated_at?: string
+        }
+        Update: {
+          agency_id?: string
+          created_at?: string
+          data?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agency_settings_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: true
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       alerts: {
         Row: {
           created_at: string | null
@@ -626,6 +655,7 @@ export type Database = {
       }
       cash_movements: {
         Row: {
+          agency_id: string | null
           amount: number
           cash_box_id: string | null
           category: string
@@ -644,10 +674,15 @@ export type Database = {
           operation_id: string | null
           org_id: string | null
           payment_id: string | null
+          reversal_reason: string | null
+          reversed_at: string | null
+          reversed_by_movement_id: string | null
+          reverses_movement_id: string | null
           type: string
           user_id: string
         }
         Insert: {
+          agency_id?: string | null
           amount: number
           cash_box_id?: string | null
           category: string
@@ -666,10 +701,15 @@ export type Database = {
           operation_id?: string | null
           org_id?: string | null
           payment_id?: string | null
+          reversal_reason?: string | null
+          reversed_at?: string | null
+          reversed_by_movement_id?: string | null
+          reverses_movement_id?: string | null
           type: string
           user_id: string
         }
         Update: {
+          agency_id?: string | null
           amount?: number
           cash_box_id?: string | null
           category?: string
@@ -688,10 +728,21 @@ export type Database = {
           operation_id?: string | null
           org_id?: string | null
           payment_id?: string | null
+          reversal_reason?: string | null
+          reversed_at?: string | null
+          reversed_by_movement_id?: string | null
+          reverses_movement_id?: string | null
           type?: string
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "cash_movements_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "cash_movements_cash_box_id_fkey"
             columns: ["cash_box_id"]
@@ -756,6 +807,20 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "cash_movements_reversed_by_movement_id_fkey"
+            columns: ["reversed_by_movement_id"]
+            isOneToOne: false
+            referencedRelation: "cash_movements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_movements_reverses_movement_id_fkey"
+            columns: ["reverses_movement_id"]
+            isOneToOne: false
+            referencedRelation: "cash_movements"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "cash_movements_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
@@ -763,6 +828,87 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      cash_movements_backup_2026_04_28: {
+        Row: {
+          amount: number | null
+          cash_box_id: string | null
+          category: string | null
+          category_id: string | null
+          cc_payment_group_id: string | null
+          created_at: string | null
+          currency: string | null
+          expense_classification: string | null
+          financial_account_id: string | null
+          id: string | null
+          is_touristic: boolean | null
+          ledger_movement_id: string | null
+          movement_category: string | null
+          movement_date: string | null
+          notes: string | null
+          operation_id: string | null
+          org_id: string | null
+          payment_id: string | null
+          reversal_reason: string | null
+          reversed_at: string | null
+          reversed_by_movement_id: string | null
+          reverses_movement_id: string | null
+          type: string | null
+          user_id: string | null
+        }
+        Insert: {
+          amount?: number | null
+          cash_box_id?: string | null
+          category?: string | null
+          category_id?: string | null
+          cc_payment_group_id?: string | null
+          created_at?: string | null
+          currency?: string | null
+          expense_classification?: string | null
+          financial_account_id?: string | null
+          id?: string | null
+          is_touristic?: boolean | null
+          ledger_movement_id?: string | null
+          movement_category?: string | null
+          movement_date?: string | null
+          notes?: string | null
+          operation_id?: string | null
+          org_id?: string | null
+          payment_id?: string | null
+          reversal_reason?: string | null
+          reversed_at?: string | null
+          reversed_by_movement_id?: string | null
+          reverses_movement_id?: string | null
+          type?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          amount?: number | null
+          cash_box_id?: string | null
+          category?: string | null
+          category_id?: string | null
+          cc_payment_group_id?: string | null
+          created_at?: string | null
+          currency?: string | null
+          expense_classification?: string | null
+          financial_account_id?: string | null
+          id?: string | null
+          is_touristic?: boolean | null
+          ledger_movement_id?: string | null
+          movement_category?: string | null
+          movement_date?: string | null
+          notes?: string | null
+          operation_id?: string | null
+          org_id?: string | null
+          payment_id?: string | null
+          reversal_reason?: string | null
+          reversed_at?: string | null
+          reversed_by_movement_id?: string | null
+          reverses_movement_id?: string | null
+          type?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
       }
       cash_transfers: {
         Row: {
@@ -1878,6 +2024,7 @@ export type Database = {
       }
       customers: {
         Row: {
+          agency_id: string | null
           created_at: string | null
           date_of_birth: string | null
           destination: string | null
@@ -1895,6 +2042,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          agency_id?: string | null
           created_at?: string | null
           date_of_birth?: string | null
           destination?: string | null
@@ -1912,6 +2060,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          agency_id?: string | null
           created_at?: string | null
           date_of_birth?: string | null
           destination?: string | null
@@ -1930,6 +2079,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "customers_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "customers_org_id_fkey"
             columns: ["org_id"]
             isOneToOne: false
@@ -1944,6 +2100,60 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      customers_backup_2026_04_28: {
+        Row: {
+          created_at: string | null
+          date_of_birth: string | null
+          destination: string | null
+          document_number: string | null
+          document_type: string | null
+          email: string | null
+          first_name: string | null
+          id: string | null
+          instagram_handle: string | null
+          last_name: string | null
+          nationality: string | null
+          org_id: string | null
+          phone: string | null
+          procedure_number: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          date_of_birth?: string | null
+          destination?: string | null
+          document_number?: string | null
+          document_type?: string | null
+          email?: string | null
+          first_name?: string | null
+          id?: string | null
+          instagram_handle?: string | null
+          last_name?: string | null
+          nationality?: string | null
+          org_id?: string | null
+          phone?: string | null
+          procedure_number?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          date_of_birth?: string | null
+          destination?: string | null
+          document_number?: string | null
+          document_type?: string | null
+          email?: string | null
+          first_name?: string | null
+          id?: string | null
+          instagram_handle?: string | null
+          last_name?: string | null
+          nationality?: string | null
+          org_id?: string | null
+          phone?: string | null
+          procedure_number?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
       }
       destination_requirements: {
         Row: {
@@ -3377,6 +3587,226 @@ export type Database = {
           },
         ]
       }
+      lead_funnels: {
+        Row: {
+          callbell_funnel_uuid: string | null
+          color: string | null
+          created_at: string
+          display_order: number
+          id: string
+          is_default_new: boolean
+          is_terminal: boolean
+          name: string
+          org_id: string
+          updated_at: string
+        }
+        Insert: {
+          callbell_funnel_uuid?: string | null
+          color?: string | null
+          created_at?: string
+          display_order: number
+          id?: string
+          is_default_new?: boolean
+          is_terminal?: boolean
+          name: string
+          org_id: string
+          updated_at?: string
+        }
+        Update: {
+          callbell_funnel_uuid?: string | null
+          color?: string | null
+          created_at?: string
+          display_order?: number
+          id?: string
+          is_default_new?: boolean
+          is_terminal?: boolean
+          name?: string
+          org_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_funnels_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_funnels_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations_with_profile_completion"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lead_tag_assignments: {
+        Row: {
+          assigned_at: string
+          assigned_by: string | null
+          lead_id: string
+          org_id: string
+          tag_id: string
+        }
+        Insert: {
+          assigned_at?: string
+          assigned_by?: string | null
+          lead_id: string
+          org_id: string
+          tag_id: string
+        }
+        Update: {
+          assigned_at?: string
+          assigned_by?: string | null
+          lead_id?: string
+          org_id?: string
+          tag_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_tag_assignments_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_tag_assignments_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_tag_assignments_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_tag_assignments_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations_with_profile_completion"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_tag_assignments_tag_id_fkey"
+            columns: ["tag_id"]
+            isOneToOne: false
+            referencedRelation: "lead_tags"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lead_tag_categories: {
+        Row: {
+          cardinality: string
+          color: string
+          created_at: string
+          display_order: number
+          id: string
+          name: string
+          org_id: string
+          updated_at: string
+        }
+        Insert: {
+          cardinality: string
+          color: string
+          created_at?: string
+          display_order?: number
+          id?: string
+          name: string
+          org_id: string
+          updated_at?: string
+        }
+        Update: {
+          cardinality?: string
+          color?: string
+          created_at?: string
+          display_order?: number
+          id?: string
+          name?: string
+          org_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_tag_categories_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_tag_categories_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations_with_profile_completion"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lead_tags: {
+        Row: {
+          callbell_tag_uuid: string | null
+          category_id: string
+          color_override: string | null
+          created_at: string
+          display_order: number
+          id: string
+          label: string
+          org_id: string
+          updated_at: string
+        }
+        Insert: {
+          callbell_tag_uuid?: string | null
+          category_id: string
+          color_override?: string | null
+          created_at?: string
+          display_order?: number
+          id?: string
+          label: string
+          org_id: string
+          updated_at?: string
+        }
+        Update: {
+          callbell_tag_uuid?: string | null
+          category_id?: string
+          color_override?: string | null
+          created_at?: string
+          display_order?: number
+          id?: string
+          label?: string
+          org_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_tags_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "lead_tag_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_tags_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_tags_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations_with_profile_completion"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       leads: {
         Row: {
           agency_id: string
@@ -3397,6 +3827,7 @@ export type Database = {
           estimated_departure_date: string | null
           external_id: string | null
           follow_up_date: string | null
+          funnel_id: string | null
           has_deposit: boolean | null
           id: string
           list_name: string | null
@@ -3431,6 +3862,7 @@ export type Database = {
           estimated_departure_date?: string | null
           external_id?: string | null
           follow_up_date?: string | null
+          funnel_id?: string | null
           has_deposit?: boolean | null
           id?: string
           list_name?: string | null
@@ -3465,6 +3897,7 @@ export type Database = {
           estimated_departure_date?: string | null
           external_id?: string | null
           follow_up_date?: string | null
+          funnel_id?: string | null
           has_deposit?: boolean | null
           id?: string
           list_name?: string | null
@@ -3500,6 +3933,13 @@ export type Database = {
             columns: ["deposit_account_id"]
             isOneToOne: false
             referencedRelation: "financial_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_funnel_id_fkey"
+            columns: ["funnel_id"]
+            isOneToOne: false
+            referencedRelation: "lead_funnels"
             referencedColumns: ["id"]
           },
           {
@@ -3542,6 +3982,10 @@ export type Database = {
           operator_id: string | null
           org_id: string | null
           receipt_number: string | null
+          reversal_reason: string | null
+          reversed_at: string | null
+          reversed_by_movement_id: string | null
+          reverses_movement_id: string | null
           seller_id: string | null
           type: string
         }
@@ -3568,6 +4012,10 @@ export type Database = {
           operator_id?: string | null
           org_id?: string | null
           receipt_number?: string | null
+          reversal_reason?: string | null
+          reversed_at?: string | null
+          reversed_by_movement_id?: string | null
+          reverses_movement_id?: string | null
           seller_id?: string | null
           type: string
         }
@@ -3594,6 +4042,10 @@ export type Database = {
           operator_id?: string | null
           org_id?: string | null
           receipt_number?: string | null
+          reversal_reason?: string | null
+          reversed_at?: string | null
+          reversed_by_movement_id?: string | null
+          reverses_movement_id?: string | null
           seller_id?: string | null
           type?: string
         }
@@ -3659,6 +4111,20 @@ export type Database = {
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "organizations_with_profile_completion"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ledger_movements_reversed_by_movement_id_fkey"
+            columns: ["reversed_by_movement_id"]
+            isOneToOne: false
+            referencedRelation: "ledger_movements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ledger_movements_reverses_movement_id_fkey"
+            columns: ["reverses_movement_id"]
+            isOneToOne: false
+            referencedRelation: "ledger_movements"
             referencedColumns: ["id"]
           },
           {
@@ -4249,6 +4715,73 @@ export type Database = {
           },
         ]
       }
+      operation_legs: {
+        Row: {
+          id: string
+          operation_id: string
+          agency_id: string
+          order_index: number
+          destination: string
+          departure_date: string | null
+          reservation_code_air: string | null
+          airline_name: string | null
+          itr_localizador: string | null
+          hotel_name: string | null
+          reservation_code_hotel: string | null
+          checkin_date: string | null
+          checkout_date: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          operation_id: string
+          agency_id: string
+          order_index?: number
+          destination: string
+          departure_date?: string | null
+          reservation_code_air?: string | null
+          airline_name?: string | null
+          itr_localizador?: string | null
+          hotel_name?: string | null
+          reservation_code_hotel?: string | null
+          checkin_date?: string | null
+          checkout_date?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          operation_id?: string
+          agency_id?: string
+          order_index?: number
+          destination?: string
+          departure_date?: string | null
+          reservation_code_air?: string | null
+          airline_name?: string | null
+          itr_localizador?: string | null
+          hotel_name?: string | null
+          reservation_code_hotel?: string | null
+          checkin_date?: string | null
+          checkout_date?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "operation_legs_operation_id_fkey"
+            columns: ["operation_id"]
+            referencedRelation: "operations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "operation_legs_agency_id_fkey"
+            columns: ["agency_id"]
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       operation_operators: {
         Row: {
           cost: number
@@ -4690,6 +5223,8 @@ export type Database = {
           checkin_date: string | null
           checkout_date: string | null
           children: number | null
+          commission_pct_primary: number | null
+          commission_pct_secondary: number | null
           commission_split: number | null
           created_at: string | null
           currency: string
@@ -4711,6 +5246,7 @@ export type Database = {
           origin: string | null
           passengers: Json | null
           product_type: string | null
+          itr_localizador: string | null
           reservation_code_air: string | null
           reservation_code_hotel: string | null
           return_date: string | null
@@ -4731,6 +5267,8 @@ export type Database = {
           checkin_date?: string | null
           checkout_date?: string | null
           children?: number | null
+          commission_pct_primary?: number | null
+          commission_pct_secondary?: number | null
           commission_split?: number | null
           created_at?: string | null
           currency?: string
@@ -4752,6 +5290,7 @@ export type Database = {
           origin?: string | null
           passengers?: Json | null
           product_type?: string | null
+          itr_localizador?: string | null
           reservation_code_air?: string | null
           reservation_code_hotel?: string | null
           return_date?: string | null
@@ -4772,6 +5311,8 @@ export type Database = {
           checkin_date?: string | null
           checkout_date?: string | null
           children?: number | null
+          commission_pct_primary?: number | null
+          commission_pct_secondary?: number | null
           commission_split?: number | null
           created_at?: string | null
           currency?: string
@@ -4793,6 +5334,7 @@ export type Database = {
           origin?: string | null
           passengers?: Json | null
           product_type?: string | null
+          itr_localizador?: string | null
           reservation_code_air?: string | null
           reservation_code_hotel?: string | null
           return_date?: string | null
@@ -4866,50 +5408,82 @@ export type Database = {
       operator_payments: {
         Row: {
           amount: number
+          approval_status: string
+          approved_at: string | null
+          approved_by_user_id: string | null
           created_at: string | null
+          created_by_user_id: string | null
           currency: string
           due_date: string
           id: string
+          is_legacy_settled: boolean
           ledger_movement_id: string | null
           notes: string | null
           operation_id: string | null
           operator_id: string
           org_id: string | null
           paid_amount: number | null
+          rejection_reason: string | null
           status: string
           updated_at: string | null
         }
         Insert: {
           amount: number
+          approval_status?: string
+          approved_at?: string | null
+          approved_by_user_id?: string | null
           created_at?: string | null
+          created_by_user_id?: string | null
           currency: string
           due_date: string
           id?: string
+          is_legacy_settled?: boolean
           ledger_movement_id?: string | null
           notes?: string | null
           operation_id?: string | null
           operator_id: string
           org_id?: string | null
           paid_amount?: number | null
+          rejection_reason?: string | null
           status?: string
           updated_at?: string | null
         }
         Update: {
           amount?: number
+          approval_status?: string
+          approved_at?: string | null
+          approved_by_user_id?: string | null
           created_at?: string | null
+          created_by_user_id?: string | null
           currency?: string
           due_date?: string
           id?: string
+          is_legacy_settled?: boolean
           ledger_movement_id?: string | null
           notes?: string | null
           operation_id?: string | null
           operator_id?: string
           org_id?: string | null
           paid_amount?: number | null
+          rejection_reason?: string | null
           status?: string
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "operator_payments_approved_by_user_id_fkey"
+            columns: ["approved_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "operator_payments_created_by_user_id_fkey"
+            columns: ["created_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "operator_payments_ledger_movement_id_fkey"
             columns: ["ledger_movement_id"]
@@ -4949,6 +5523,8 @@ export type Database = {
       }
       operators: {
         Row: {
+          admin_fee_percentage: number
+          agency_id: string | null
           contact_email: string | null
           contact_name: string | null
           contact_phone: string | null
@@ -4961,6 +5537,8 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          admin_fee_percentage?: number
+          agency_id?: string | null
           contact_email?: string | null
           contact_name?: string | null
           contact_phone?: string | null
@@ -4973,6 +5551,8 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          admin_fee_percentage?: number
+          agency_id?: string | null
           contact_email?: string | null
           contact_name?: string | null
           contact_phone?: string | null
@@ -4986,6 +5566,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "operators_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "operators_org_id_fkey"
             columns: ["org_id"]
             isOneToOne: false
@@ -4994,6 +5581,99 @@ export type Database = {
           },
           {
             foreignKeyName: "operators_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations_with_profile_completion"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      operators_backup_2026_04_28: {
+        Row: {
+          admin_fee_percentage: number | null
+          contact_email: string | null
+          contact_name: string | null
+          contact_phone: string | null
+          created_at: string | null
+          credit_limit: number | null
+          cuit: string | null
+          id: string | null
+          name: string | null
+          org_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          admin_fee_percentage?: number | null
+          contact_email?: string | null
+          contact_name?: string | null
+          contact_phone?: string | null
+          created_at?: string | null
+          credit_limit?: number | null
+          cuit?: string | null
+          id?: string | null
+          name?: string | null
+          org_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          admin_fee_percentage?: number | null
+          contact_email?: string | null
+          contact_name?: string | null
+          contact_phone?: string | null
+          created_at?: string | null
+          credit_limit?: number | null
+          cuit?: string | null
+          id?: string | null
+          name?: string | null
+          org_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      org_integrations: {
+        Row: {
+          config: Json
+          created_at: string
+          id: string
+          integration: string
+          is_active: boolean
+          org_id: string
+          updated_at: string
+          webhook_secret: string
+          webhook_token: string
+        }
+        Insert: {
+          config?: Json
+          created_at?: string
+          id?: string
+          integration: string
+          is_active?: boolean
+          org_id: string
+          updated_at?: string
+          webhook_secret: string
+          webhook_token: string
+        }
+        Update: {
+          config?: Json
+          created_at?: string
+          id?: string
+          integration?: string
+          is_active?: boolean
+          org_id?: string
+          updated_at?: string
+          webhook_secret?: string
+          webhook_token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "org_integrations_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "org_integrations_org_id_fkey"
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "organizations_with_profile_completion"
@@ -5155,6 +5835,7 @@ export type Database = {
           contact_name: string | null
           contact_phone: string | null
           created_at: string
+          crm_mode: string
           cuit: string | null
           current_period_ends_at: string | null
           custom_plan_id: string | null
@@ -5163,6 +5844,8 @@ export type Database = {
           has_used_trial: boolean
           id: string
           internal_notes: string | null
+          last_callbell_sync_at: string | null
+          legacy_import_until: string | null
           logo_url: string | null
           manual_mrr_override_ars: number | null
           max_agencies: number
@@ -5178,6 +5861,7 @@ export type Database = {
           subscription_status: string
           tax_category: string | null
           trial_ends_at: string | null
+          trial_reminder_sent_at: string | null
           updated_at: string
         }
         Insert: {
@@ -5192,6 +5876,7 @@ export type Database = {
           contact_name?: string | null
           contact_phone?: string | null
           created_at?: string
+          crm_mode?: string
           cuit?: string | null
           current_period_ends_at?: string | null
           custom_plan_id?: string | null
@@ -5200,6 +5885,8 @@ export type Database = {
           has_used_trial?: boolean
           id?: string
           internal_notes?: string | null
+          last_callbell_sync_at?: string | null
+          legacy_import_until?: string | null
           logo_url?: string | null
           manual_mrr_override_ars?: number | null
           max_agencies?: number
@@ -5215,6 +5902,7 @@ export type Database = {
           subscription_status?: string
           tax_category?: string | null
           trial_ends_at?: string | null
+          trial_reminder_sent_at?: string | null
           updated_at?: string
         }
         Update: {
@@ -5229,6 +5917,7 @@ export type Database = {
           contact_name?: string | null
           contact_phone?: string | null
           created_at?: string
+          crm_mode?: string
           cuit?: string | null
           current_period_ends_at?: string | null
           custom_plan_id?: string | null
@@ -5237,6 +5926,8 @@ export type Database = {
           has_used_trial?: boolean
           id?: string
           internal_notes?: string | null
+          last_callbell_sync_at?: string | null
+          legacy_import_until?: string | null
           logo_url?: string | null
           manual_mrr_override_ars?: number | null
           max_agencies?: number
@@ -5252,6 +5943,7 @@ export type Database = {
           subscription_status?: string
           tax_category?: string | null
           trial_ends_at?: string | null
+          trial_reminder_sent_at?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -5669,15 +6361,21 @@ export type Database = {
       }
       payments: {
         Row: {
+          agency_id: string | null
           amount: number
           amount_usd: number | null
+          approval_status: string
+          approved_at: string | null
+          approved_by_user_id: string | null
           created_at: string | null
+          created_by_user_id: string | null
           currency: string
           date_due: string
           date_paid: string | null
           direction: string
           exchange_rate: number | null
           id: string
+          is_legacy_import: boolean
           ledger_movement_id: string | null
           method: string
           operation_id: string
@@ -5687,20 +6385,27 @@ export type Database = {
           org_id: string | null
           payer_type: string
           reference: string | null
+          rejection_reason: string | null
           source: string
           status: string
           updated_at: string | null
         }
         Insert: {
+          agency_id?: string | null
           amount: number
           amount_usd?: number | null
+          approval_status?: string
+          approved_at?: string | null
+          approved_by_user_id?: string | null
           created_at?: string | null
+          created_by_user_id?: string | null
           currency?: string
           date_due: string
           date_paid?: string | null
           direction: string
           exchange_rate?: number | null
           id?: string
+          is_legacy_import?: boolean
           ledger_movement_id?: string | null
           method: string
           operation_id: string
@@ -5710,20 +6415,27 @@ export type Database = {
           org_id?: string | null
           payer_type: string
           reference?: string | null
+          rejection_reason?: string | null
           source?: string
           status?: string
           updated_at?: string | null
         }
         Update: {
+          agency_id?: string | null
           amount?: number
           amount_usd?: number | null
+          approval_status?: string
+          approved_at?: string | null
+          approved_by_user_id?: string | null
           created_at?: string | null
+          created_by_user_id?: string | null
           currency?: string
           date_due?: string
           date_paid?: string | null
           direction?: string
           exchange_rate?: number | null
           id?: string
+          is_legacy_import?: boolean
           ledger_movement_id?: string | null
           method?: string
           operation_id?: string
@@ -5733,11 +6445,33 @@ export type Database = {
           org_id?: string | null
           payer_type?: string
           reference?: string | null
+          rejection_reason?: string | null
           source?: string
           status?: string
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "payments_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_approved_by_user_id_fkey"
+            columns: ["approved_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_created_by_user_id_fkey"
+            columns: ["created_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "payments_ledger_movement_id_fkey"
             columns: ["ledger_movement_id"]
@@ -5788,6 +6522,93 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      payments_backup_2026_04_28: {
+        Row: {
+          amount: number | null
+          amount_usd: number | null
+          approval_status: string | null
+          approved_at: string | null
+          approved_by_user_id: string | null
+          created_at: string | null
+          created_by_user_id: string | null
+          currency: string | null
+          date_due: string | null
+          date_paid: string | null
+          direction: string | null
+          exchange_rate: number | null
+          id: string | null
+          ledger_movement_id: string | null
+          method: string | null
+          operation_id: string | null
+          operation_service_id: string | null
+          operator_id: string | null
+          operator_payment_id: string | null
+          org_id: string | null
+          payer_type: string | null
+          reference: string | null
+          rejection_reason: string | null
+          source: string | null
+          status: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          amount?: number | null
+          amount_usd?: number | null
+          approval_status?: string | null
+          approved_at?: string | null
+          approved_by_user_id?: string | null
+          created_at?: string | null
+          created_by_user_id?: string | null
+          currency?: string | null
+          date_due?: string | null
+          date_paid?: string | null
+          direction?: string | null
+          exchange_rate?: number | null
+          id?: string | null
+          ledger_movement_id?: string | null
+          method?: string | null
+          operation_id?: string | null
+          operation_service_id?: string | null
+          operator_id?: string | null
+          operator_payment_id?: string | null
+          org_id?: string | null
+          payer_type?: string | null
+          reference?: string | null
+          rejection_reason?: string | null
+          source?: string | null
+          status?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          amount?: number | null
+          amount_usd?: number | null
+          approval_status?: string | null
+          approved_at?: string | null
+          approved_by_user_id?: string | null
+          created_at?: string | null
+          created_by_user_id?: string | null
+          currency?: string | null
+          date_due?: string | null
+          date_paid?: string | null
+          direction?: string | null
+          exchange_rate?: number | null
+          id?: string | null
+          ledger_movement_id?: string | null
+          method?: string | null
+          operation_id?: string | null
+          operation_service_id?: string | null
+          operator_id?: string | null
+          operator_payment_id?: string | null
+          org_id?: string | null
+          payer_type?: string | null
+          reference?: string | null
+          rejection_reason?: string | null
+          source?: string | null
+          status?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
       }
       pdf_templates: {
         Row: {
@@ -6242,6 +7063,7 @@ export type Database = {
       }
       quotation_items: {
         Row: {
+          admin_fee_percentage: number
           airline: string | null
           checkin_date: string | null
           checkout_date: string | null
@@ -6249,7 +7071,7 @@ export type Database = {
           cost_currency: string | null
           created_at: string | null
           currency: string
-          description: string
+          description: string | null
           destination_city: string | null
           discount_amount: number | null
           discount_percentage: number | null
@@ -6287,6 +7109,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          admin_fee_percentage?: number
           airline?: string | null
           checkin_date?: string | null
           checkout_date?: string | null
@@ -6294,7 +7117,7 @@ export type Database = {
           cost_currency?: string | null
           created_at?: string | null
           currency?: string
-          description: string
+          description?: string | null
           destination_city?: string | null
           discount_amount?: number | null
           discount_percentage?: number | null
@@ -6332,6 +7155,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          admin_fee_percentage?: number
           airline?: string | null
           checkin_date?: string | null
           checkout_date?: string | null
@@ -6339,7 +7163,7 @@ export type Database = {
           cost_currency?: string | null
           created_at?: string | null
           currency?: string
-          description?: string
+          description?: string | null
           destination_city?: string | null
           discount_amount?: number | null
           discount_percentage?: number | null
@@ -6475,12 +7299,15 @@ export type Database = {
           discounts: number | null
           id: string
           infants: number | null
+          internal_notes: string | null
           lead_id: string | null
           notes: string | null
           operation_id: string | null
           operator_id: string | null
           org_id: string | null
           origin: string | null
+          package_description: string | null
+          payment_methods: string[]
           pricing_mode: string
           public_token: string | null
           quotation_number: string
@@ -6512,12 +7339,15 @@ export type Database = {
           discounts?: number | null
           id?: string
           infants?: number | null
+          internal_notes?: string | null
           lead_id?: string | null
           notes?: string | null
           operation_id?: string | null
           operator_id?: string | null
           org_id?: string | null
           origin?: string | null
+          package_description?: string | null
+          payment_methods?: string[]
           pricing_mode?: string
           public_token?: string | null
           quotation_number: string
@@ -6549,12 +7379,15 @@ export type Database = {
           discounts?: number | null
           id?: string
           infants?: number | null
+          internal_notes?: string | null
           lead_id?: string | null
           notes?: string | null
           operation_id?: string | null
           operator_id?: string | null
           org_id?: string | null
           origin?: string | null
+          package_description?: string | null
+          payment_methods?: string[]
           pricing_mode?: string
           public_token?: string | null
           quotation_number?: string
@@ -8374,6 +9207,7 @@ export type Database = {
           direction: string
           from_me: boolean
           id: string
+          is_quotation: boolean | null
           media_file_name: string | null
           media_mime_type: string | null
           media_url: string | null
@@ -8394,6 +9228,7 @@ export type Database = {
           direction: string
           from_me?: boolean
           id?: string
+          is_quotation?: boolean | null
           media_file_name?: string | null
           media_mime_type?: string | null
           media_url?: string | null
@@ -8414,6 +9249,7 @@ export type Database = {
           direction?: string
           from_me?: boolean
           id?: string
+          is_quotation?: boolean | null
           media_file_name?: string | null
           media_mime_type?: string | null
           media_url?: string | null
@@ -8450,6 +9286,57 @@ export type Database = {
           },
           {
             foreignKeyName: "wa_messages_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations_with_profile_completion"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      webhook_event_log: {
+        Row: {
+          error_detail: string | null
+          event_id: string
+          event_type: string
+          id: string
+          integration: string
+          org_id: string
+          payload: Json
+          processed_at: string
+          result: string
+        }
+        Insert: {
+          error_detail?: string | null
+          event_id: string
+          event_type: string
+          id?: string
+          integration: string
+          org_id: string
+          payload: Json
+          processed_at?: string
+          result: string
+        }
+        Update: {
+          error_detail?: string | null
+          event_id?: string
+          event_type?: string
+          id?: string
+          integration?: string
+          org_id?: string
+          payload?: Json
+          processed_at?: string
+          result?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webhook_event_log_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "webhook_event_log_org_id_fkey"
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "organizations_with_profile_completion"
@@ -8730,6 +9617,106 @@ export type Database = {
         Args: { conflicts_arr: Json[]; inserted_count: number }
         Returns: Json
       }
+      accounting_debts_sales_total: {
+        Args: {
+          p_agency_id?: string
+          p_agency_ids: string[]
+          p_date_from?: string
+          p_date_to?: string
+          p_date_type?: string
+          p_org_id: string
+          p_role: string
+          p_seller_id?: string
+          p_user_id: string
+        }
+        Returns: number
+      }
+      accounting_operator_debts_total: {
+        Args: {
+          p_agency_id?: string
+          p_agency_ids: string[]
+          p_date_from?: string
+          p_date_to?: string
+          p_org_id: string
+          p_role: string
+          p_user_id: string
+        }
+        Returns: number
+      }
+      analytics_cashflow_summary: {
+        Args: {
+          p_agency_id?: string
+          p_agency_ids: string[]
+          p_date_from?: string
+          p_date_to?: string
+          p_org_id: string
+          p_role: string
+          p_user_id: string
+        }
+        Returns: {
+          date: string
+          expense: number
+          income: number
+          net: number
+        }[]
+      }
+      analytics_destinations_summary: {
+        Args: {
+          p_agency_id?: string
+          p_agency_ids: string[]
+          p_date_from?: string
+          p_date_to?: string
+          p_limit?: number
+          p_org_id: string
+          p_role: string
+          p_user_id: string
+        }
+        Returns: {
+          avg_margin_percent: number
+          destination: string
+          operations_count: number
+          total_margin: number
+          total_sales: number
+        }[]
+      }
+      analytics_sales_summary: {
+        Args: {
+          p_agency_id?: string
+          p_agency_ids: string[]
+          p_date_from?: string
+          p_date_to?: string
+          p_org_id: string
+          p_role: string
+          p_seller_id?: string
+          p_user_id: string
+        }
+        Returns: {
+          avg_margin_percent: number
+          operations_count: number
+          total_cost_usd: number
+          total_margin_usd: number
+          total_sales_usd: number
+        }[]
+      }
+      analytics_sellers_summary: {
+        Args: {
+          p_agency_id?: string
+          p_agency_ids: string[]
+          p_date_from?: string
+          p_date_to?: string
+          p_org_id: string
+          p_role: string
+          p_user_id: string
+        }
+        Returns: {
+          avg_margin_percent: number
+          id: string
+          margin: number
+          name: string
+          operations_count: number
+          total_sales: number
+        }[]
+      }
       bulk_import_agencies: {
         Args: { p_org_id: string; p_rows: Json }
         Returns: Json
@@ -8813,8 +9800,32 @@ export type Database = {
         Args: { p_operation_id: string; p_operators: Json }
         Returns: undefined
       }
+      search_global_unaccent: {
+        Args: {
+          p_agency_ids: string[]
+          p_org_id: string
+          p_query: string
+          p_role: string
+          p_user_id: string
+        }
+        Returns: {
+          destination: string
+          email: string
+          file_code: string
+          id: string
+          passenger_name: string
+          phone: string
+          reservation_code_air: string
+          reservation_code_hotel: string
+          result_type: string
+          status: string
+          subtitle: string
+          title: string
+        }[]
+      }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
+      unaccent: { Args: { "": string }; Returns: string }
       user_org_ids: { Args: never; Returns: string[] }
     }
     Enums: {

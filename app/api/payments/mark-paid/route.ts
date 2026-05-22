@@ -65,12 +65,17 @@ export async function POST(request: Request) {
     }
 
     // Get payment to get operation_id, payer_type, etc.
+    // 🔴 CROSS-TENANT FIX (2026-05-21): scope explícito por org_id —
+    // ver CLAUDE.md regla de oro. Antes el endpoint solo filtraba por
+    // paymentId, lo que permitía marcar como PAID un payment de otro
+    // tenant si se conocía el UUID. Devolvemos 404 enmascarado.
     const paymentsSelect = supabase.from("payments") as any
     const { data: payment } = await paymentsSelect
       .select(`
         operation_id,
         operator_id,
         operator_payment_id,
+        org_id,
         amount,
         currency,
         direction,
@@ -90,6 +95,7 @@ export async function POST(request: Request) {
         )
       `)
       .eq("id", paymentId)
+      .eq("org_id", (user as any).org_id)
       .single()
 
     if (!payment) {
@@ -490,6 +496,7 @@ export async function POST(request: Request) {
         // Crear alerta de sistema para revisión manual
         try {
           await (supabase.from("alerts") as any).insert({
+            org_id: paymentData.org_id || null, // P0 2026-05-10: required tras tighten policy mig 5
             agency_id: agencyId || null,
             user_id: user.id,
             operation_id: paymentData.operation_id,

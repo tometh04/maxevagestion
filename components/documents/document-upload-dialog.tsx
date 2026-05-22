@@ -126,7 +126,7 @@ export function DocumentUploadDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[95vw] sm:max-w-[500px]">
+      <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[90vh]">
         <DialogHeader>
           <DialogTitle>Subir Documento</DialogTitle>
           <DialogDescription>

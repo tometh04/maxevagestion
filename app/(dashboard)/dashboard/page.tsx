@@ -66,11 +66,15 @@ export default async function DashboardPage() {
       ? getAfipServiceForOrg(supabase, user.org_id).then((svc) => svc === null).catch(() => false)
       : Promise.resolve(false)
 
+  // 🔴 CROSS-TENANT FIX (2026-05-21): SUPER_ADMIN en Vibook es del TENANT
+  // (no del platform). Filtro explícito por org_id obligatorio para evitar
+  // leak de users/agencies cross-tenant. Ver CLAUDE.md regla de oro.
   let sellersQuery = supabase
     .from("users")
     .select("id, name")
     .in("role", ["SELLER", "ADMIN", "SUPER_ADMIN"])
     .eq("is_active", true)
+    .eq("org_id", (user as any).org_id)
   if (userRole === "SELLER") {
     sellersQuery = sellersQuery.eq("id", user.id)
   }
@@ -80,7 +84,11 @@ export default async function DashboardPage() {
 
   if (userRole === "SUPER_ADMIN") {
     const [agenciesRes, sellersRes] = await Promise.all([
-      supabase.from("agencies").select("id, name").order("name"),
+      supabase
+        .from("agencies")
+        .select("id, name")
+        .eq("org_id", (user as any).org_id)
+        .order("name"),
       sellersQuery,
     ])
     agencies = (agenciesRes.data as any) || []

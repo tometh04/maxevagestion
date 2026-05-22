@@ -45,20 +45,30 @@ export async function getSalesThisWeek(user: User, agencyId?: string): Promise<a
  */
 export async function getTopSellers(user: User, from?: string, to?: string, limit: number = 5): Promise<any[]> {
   const supabase = await createServerClient()
-  
+
   const today = new Date()
   const defaultFrom = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split("T")[0]
   const defaultTo = today.toISOString().split("T")[0]
 
+  const { data: userAgencies } = await (supabase.from("user_agencies") as any)
+    .select("agency_id").eq("user_id", user.id)
+  const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
+
   let query = (supabase.from("operations") as any)
     .select(`
-      sale_amount_total, 
-      margin_amount, 
+      sale_amount_total,
+      margin_amount,
       seller_id,
       users:seller_id(id, name)
     `)
     .gte("created_at", from || defaultFrom)
     .lte("created_at", to || defaultTo)
+
+  if (user.role === "SELLER") {
+    query = query.eq("seller_id", user.id)
+  } else if (agencyIds.length > 0 && user.role !== "SUPER_ADMIN") {
+    query = query.in("agency_id", agencyIds)
+  }
 
   const { data: operations } = await query
 
@@ -194,13 +204,21 @@ export async function getSalesByChannel(user: User, from?: string, to?: string):
 
   const { data: wonLeads } = await leadsQuery
 
+  const { data: userAgencies } = await (supabase.from("user_agencies") as any)
+    .select("agency_id").eq("user_id", user.id)
+  const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
+
   // Obtener operaciones con leads asociados
   let opsQuery = (supabase.from("operations") as any)
     .select("sale_amount_total, margin_amount, lead_id")
     .gte("created_at", from || defaultFrom)
     .lte("created_at", to || defaultTo)
 
-  if (user.role === "SELLER") opsQuery = opsQuery.eq("seller_id", user.id)
+  if (user.role === "SELLER") {
+    opsQuery = opsQuery.eq("seller_id", user.id)
+  } else if (agencyIds.length > 0 && user.role !== "SUPER_ADMIN") {
+    opsQuery = opsQuery.in("agency_id", agencyIds)
+  }
 
   const { data: operations } = await opsQuery
 
@@ -241,13 +259,21 @@ export async function getConversionRate(user: User, from?: string, to?: string):
   const defaultFrom = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split("T")[0]
   const defaultTo = today.toISOString().split("T")[0]
 
+  const { data: userAgencies } = await (supabase.from("user_agencies") as any)
+    .select("agency_id").eq("user_id", user.id)
+  const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
+
   // Leads totales
   let totalQuery = (supabase.from("leads") as any)
     .select("id, status, assigned_seller_id")
     .gte("created_at", from || defaultFrom)
     .lte("created_at", to || defaultTo)
 
-  if (user.role === "SELLER") totalQuery = totalQuery.eq("assigned_seller_id", user.id)
+  if (user.role === "SELLER") {
+    totalQuery = totalQuery.eq("assigned_seller_id", user.id)
+  } else if (agencyIds.length > 0 && user.role !== "SUPER_ADMIN") {
+    totalQuery = totalQuery.in("agency_id", agencyIds)
+  }
 
   const { data: allLeads } = await totalQuery
 
@@ -273,7 +299,23 @@ export async function getCustomerDuePaymentsToday(user: User): Promise<any[]> {
   const supabase = await createServerClient()
   const today = new Date().toISOString().split("T")[0]
 
-  const { data: payments } = await (supabase.from("payments") as any)
+  const { data: userAgencies } = await (supabase.from("user_agencies") as any)
+    .select("agency_id").eq("user_id", user.id)
+  const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
+
+  let allowedOpIds: string[] | null = null
+  if (user.role !== "SUPER_ADMIN") {
+    let opFilter = (supabase.from("operations") as any).select("id")
+    if (user.role === "SELLER") {
+      opFilter = opFilter.eq("seller_id", user.id)
+    } else if (agencyIds.length > 0) {
+      opFilter = opFilter.in("agency_id", agencyIds)
+    }
+    const { data: allowedOps } = await opFilter
+    allowedOpIds = (allowedOps || []).map((o: any) => o.id)
+  }
+
+  let paymentsQuery = (supabase.from("payments") as any)
     .select(`
       id, amount, currency, date_due,
       operations:operation_id(
@@ -284,6 +326,12 @@ export async function getCustomerDuePaymentsToday(user: User): Promise<any[]> {
     .eq("status", "PENDING")
     .eq("direction", "INCOME")
     .eq("date_due", today)
+
+  if (allowedOpIds !== null) {
+    paymentsQuery = paymentsQuery.in("operation_id", allowedOpIds)
+  }
+
+  const { data: payments } = await paymentsQuery
 
   return (payments || []).map((p: any) => ({
     paymentId: p.id,
@@ -304,7 +352,11 @@ export async function getOperationsWithPendingPaymentBeforeTravel(user: User): P
   const supabase = await createServerClient()
   const today = new Date().toISOString().split("T")[0]
 
-  const { data: operations } = await (supabase.from("operations") as any)
+  const { data: userAgencies } = await (supabase.from("user_agencies") as any)
+    .select("agency_id").eq("user_id", user.id)
+  const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
+
+  let opsQuery = (supabase.from("operations") as any)
     .select(`
       id, file_code, destination, check_in_date, sale_amount_total,
       customers:customer_id(name, phone),
@@ -313,6 +365,14 @@ export async function getOperationsWithPendingPaymentBeforeTravel(user: User): P
     .gte("check_in_date", today)
     .order("check_in_date", { ascending: true })
     .limit(50)
+
+  if (user.role === "SELLER") {
+    opsQuery = opsQuery.eq("seller_id", user.id)
+  } else if (agencyIds.length > 0 && user.role !== "SUPER_ADMIN") {
+    opsQuery = opsQuery.in("agency_id", agencyIds)
+  }
+
+  const { data: operations } = await opsQuery
 
   const opsWithPendingPayments = (operations || []).filter((op: any) => {
     const pendingCustomerPayments = (op.payments || []).filter(
@@ -351,7 +411,11 @@ export async function getOperationsTravelingThisWeek(user: User): Promise<any[]>
   const endOfWeek = new Date(today)
   endOfWeek.setDate(today.getDate() + (7 - today.getDay()))
 
-  const { data: operations } = await (supabase.from("operations") as any)
+  const { data: userAgencies } = await (supabase.from("user_agencies") as any)
+    .select("agency_id").eq("user_id", user.id)
+  const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
+
+  let opsQuery = (supabase.from("operations") as any)
     .select(`
       id, file_code, destination, check_in_date, check_out_date, status, sale_amount_total,
       customers:customer_id(name, phone, email),
@@ -360,6 +424,14 @@ export async function getOperationsTravelingThisWeek(user: User): Promise<any[]>
     .gte("check_in_date", today.toISOString().split("T")[0])
     .lte("check_in_date", endOfWeek.toISOString().split("T")[0])
     .order("check_in_date", { ascending: true })
+
+  if (user.role === "SELLER") {
+    opsQuery = opsQuery.eq("seller_id", user.id)
+  } else if (agencyIds.length > 0 && user.role !== "SUPER_ADMIN") {
+    opsQuery = opsQuery.in("agency_id", agencyIds)
+  }
+
+  const { data: operations } = await opsQuery
 
   return (operations || []).map((op: any) => ({
     id: op.id,
@@ -413,39 +485,71 @@ export async function getFinancialHealth(user: User): Promise<any> {
   const today = new Date()
   const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
 
+  const { data: userAgencies } = await (supabase.from("user_agencies") as any)
+    .select("agency_id").eq("user_id", user.id)
+  const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
+
+  // Build allowed operation IDs for payment filtering (payments lack agency_id)
+  let allowedOpIds: string[] | null = null
+  if (user.role !== "SUPER_ADMIN") {
+    let opFilter = (supabase.from("operations") as any).select("id")
+    if (user.role === "SELLER") {
+      opFilter = opFilter.eq("seller_id", user.id)
+    } else if (agencyIds.length > 0) {
+      opFilter = opFilter.in("agency_id", agencyIds)
+    }
+    const { data: allowedOps } = await opFilter
+    allowedOpIds = (allowedOps || []).map((o: any) => o.id)
+  }
+
   // Ventas del mes
-  const { data: salesData } = await (supabase.from("operations") as any)
+  let salesQuery = (supabase.from("operations") as any)
     .select("sale_amount_total, margin_amount")
     .gte("created_at", monthStart.toISOString())
 
+  if (user.role === "SELLER") {
+    salesQuery = salesQuery.eq("seller_id", user.id)
+  } else if (agencyIds.length > 0 && user.role !== "SUPER_ADMIN") {
+    salesQuery = salesQuery.in("agency_id", agencyIds)
+  }
+
+  const { data: salesData } = await salesQuery
   const totalSales = (salesData || []).reduce((sum: number, op: any) => sum + (op.sale_amount_total || 0), 0)
   const totalMargin = (salesData || []).reduce((sum: number, op: any) => sum + (op.margin_amount || 0), 0)
 
-  // Cuentas financieras
-  const { data: accounts } = await (supabase.from("financial_accounts") as any)
+  // Cuentas financieras (agency_id puede ser NULL para cuentas globales)
+  let accountsQuery = (supabase.from("financial_accounts") as any)
     .select("name, currency, initial_balance")
+  if (agencyIds.length > 0 && user.role !== "SUPER_ADMIN") {
+    accountsQuery = accountsQuery.or(`agency_id.in.(${agencyIds.join(",")}),agency_id.is.null`)
+  }
+  const { data: accounts } = await accountsQuery
 
   // Pagos pendientes de clientes
-  const { data: pendingIncome } = await (supabase.from("payments") as any)
+  let pendingIncomeQuery = (supabase.from("payments") as any)
     .select("amount")
     .eq("status", "PENDING")
     .eq("direction", "INCOME")
-
+  if (allowedOpIds !== null) pendingIncomeQuery = pendingIncomeQuery.in("operation_id", allowedOpIds)
+  const { data: pendingIncome } = await pendingIncomeQuery
   const totalPendingIncome = (pendingIncome || []).reduce((sum: number, p: any) => sum + (p.amount || 0), 0)
 
   // Pagos pendientes a operadores
-  const { data: pendingExpense } = await (supabase.from("payments") as any)
+  let pendingExpenseQuery = (supabase.from("payments") as any)
     .select("amount")
     .eq("status", "PENDING")
     .eq("direction", "EXPENSE")
-
+  if (allowedOpIds !== null) pendingExpenseQuery = pendingExpenseQuery.in("operation_id", allowedOpIds)
+  const { data: pendingExpense } = await pendingExpenseQuery
   const totalPendingExpense = (pendingExpense || []).reduce((sum: number, p: any) => sum + (p.amount || 0), 0)
 
   // Pagos vencidos
-  const { data: overduePayments } = await (supabase.from("payments") as any)
+  let overdueQuery = (supabase.from("payments") as any)
     .select("amount, direction")
     .eq("status", "PENDING")
     .lt("date_due", today.toISOString().split("T")[0])
+  if (allowedOpIds !== null) overdueQuery = overdueQuery.in("operation_id", allowedOpIds)
+  const { data: overduePayments } = await overdueQuery
 
   const overdueIncome = (overduePayments || []).filter((p: any) => p.direction === "INCOME").reduce((sum: number, p: any) => sum + (p.amount || 0), 0)
   const overdueExpense = (overduePayments || []).filter((p: any) => p.direction === "EXPENSE").reduce((sum: number, p: any) => sum + (p.amount || 0), 0)
@@ -487,8 +591,12 @@ export async function getSharedCommissions(user: User, from?: string, to?: strin
   const today = new Date()
   const defaultFrom = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split("T")[0]
 
+  const { data: userAgencies } = await (supabase.from("user_agencies") as any)
+    .select("agency_id").eq("user_id", user.id)
+  const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
+
   // Buscar operaciones con múltiples comisiones (si existe la tabla de split)
-  const { data: operations } = await (supabase.from("operations") as any)
+  let sharedQuery = (supabase.from("operations") as any)
     .select(`
       id, file_code, destination, sale_amount_total, commission_amount,
       users:seller_id(name)
@@ -497,6 +605,14 @@ export async function getSharedCommissions(user: User, from?: string, to?: strin
     .gt("commission_amount", 0)
     .order("created_at", { ascending: false })
     .limit(50)
+
+  if (user.role === "SELLER") {
+    sharedQuery = sharedQuery.eq("seller_id", user.id)
+  } else if (agencyIds.length > 0 && user.role !== "SUPER_ADMIN") {
+    sharedQuery = sharedQuery.in("agency_id", agencyIds)
+  }
+
+  const { data: operations } = await sharedQuery
 
   return (operations || []).map((op: any) => ({
     id: op.id,
@@ -518,12 +634,20 @@ export async function getMarginByProductType(user: User, from?: string, to?: str
   const defaultFrom = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split("T")[0]
   const defaultTo = today.toISOString().split("T")[0]
 
+  const { data: userAgencies } = await (supabase.from("user_agencies") as any)
+    .select("agency_id").eq("user_id", user.id)
+  const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
+
   let query = (supabase.from("operations") as any)
     .select("product_type, sale_amount_total, margin_amount, margin_percentage")
     .gte("created_at", from || defaultFrom)
     .lte("created_at", to || defaultTo)
 
-  if (user.role === "SELLER") query = query.eq("seller_id", user.id)
+  if (user.role === "SELLER") {
+    query = query.eq("seller_id", user.id)
+  } else if (agencyIds.length > 0 && user.role !== "SUPER_ADMIN") {
+    query = query.in("agency_id", agencyIds)
+  }
 
   const { data: operations } = await query
 
@@ -552,12 +676,28 @@ export async function getMarginByProductType(user: User, from?: string, to?: str
  */
 export async function getOperatorPaymentsDueThisWeek(user: User): Promise<any[]> {
   const supabase = await createServerClient()
-  
+
   const today = new Date()
   const endOfWeek = new Date(today)
   endOfWeek.setDate(today.getDate() + 7)
 
-  const { data: payments } = await (supabase.from("payments") as any)
+  const { data: userAgencies } = await (supabase.from("user_agencies") as any)
+    .select("agency_id").eq("user_id", user.id)
+  const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
+
+  let allowedOpIds: string[] | null = null
+  if (user.role !== "SUPER_ADMIN") {
+    let opFilter = (supabase.from("operations") as any).select("id")
+    if (user.role === "SELLER") {
+      opFilter = opFilter.eq("seller_id", user.id)
+    } else if (agencyIds.length > 0) {
+      opFilter = opFilter.in("agency_id", agencyIds)
+    }
+    const { data: allowedOps } = await opFilter
+    allowedOpIds = (allowedOps || []).map((o: any) => o.id)
+  }
+
+  let paymentsQuery = (supabase.from("payments") as any)
     .select(`
       id, amount, currency, date_due,
       operations:operation_id(
@@ -570,6 +710,12 @@ export async function getOperatorPaymentsDueThisWeek(user: User): Promise<any[]>
     .gte("date_due", today.toISOString().split("T")[0])
     .lte("date_due", endOfWeek.toISOString().split("T")[0])
     .order("date_due", { ascending: true })
+
+  if (allowedOpIds !== null) {
+    paymentsQuery = paymentsQuery.in("operation_id", allowedOpIds)
+  }
+
+  const { data: payments } = await paymentsQuery
 
   return (payments || []).map((p: any) => ({
     paymentId: p.id,
@@ -591,7 +737,11 @@ export async function getOperationsWithPendingHotelPayment(user: User, days: num
   const futureDate = new Date(today)
   futureDate.setDate(today.getDate() + days)
 
-  const { data: operations } = await (supabase.from("operations") as any)
+  const { data: userAgencies } = await (supabase.from("user_agencies") as any)
+    .select("agency_id").eq("user_id", user.id)
+  const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
+
+  let hotelQuery = (supabase.from("operations") as any)
     .select(`
       id, file_code, destination, check_in_date, operator_cost,
       customers:customer_id(name),
@@ -601,6 +751,14 @@ export async function getOperationsWithPendingHotelPayment(user: User, days: num
     .gte("check_in_date", today.toISOString().split("T")[0])
     .lte("check_in_date", futureDate.toISOString().split("T")[0])
     .order("check_in_date", { ascending: true })
+
+  if (user.role === "SELLER") {
+    hotelQuery = hotelQuery.eq("seller_id", user.id)
+  } else if (agencyIds.length > 0 && user.role !== "SUPER_ADMIN") {
+    hotelQuery = hotelQuery.in("agency_id", agencyIds)
+  }
+
+  const { data: operations } = await hotelQuery
 
   const opsWithPendingHotel = (operations || []).filter((op: any) => {
     const pendingToOperator = (op.payments || []).filter(
@@ -638,13 +796,25 @@ export async function getSellerProfitability(user: User, from?: string, to?: str
   const defaultFrom = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split("T")[0]
   const defaultTo = today.toISOString().split("T")[0]
 
-  const { data: operations } = await (supabase.from("operations") as any)
+  const { data: userAgencies } = await (supabase.from("user_agencies") as any)
+    .select("agency_id").eq("user_id", user.id)
+  const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
+
+  let profitQuery = (supabase.from("operations") as any)
     .select(`
       sale_amount_total, margin_amount, margin_percentage, seller_id,
       users:seller_id(id, name)
     `)
     .gte("created_at", from || defaultFrom)
     .lte("created_at", to || defaultTo)
+
+  if (user.role === "SELLER") {
+    profitQuery = profitQuery.eq("seller_id", user.id)
+  } else if (agencyIds.length > 0 && user.role !== "SUPER_ADMIN") {
+    profitQuery = profitQuery.in("agency_id", agencyIds)
+  }
+
+  const { data: operations } = await profitQuery
 
   // Agrupar por vendedor
   const sellerStats: Record<string, any> = {}

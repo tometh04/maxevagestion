@@ -13,13 +13,23 @@ export async function GET(request: Request) {
     const effectiveChannel = requestedChannel || (requestedCustomerId ? "WHATSAPP" : "ALL")
     const safeLimit = Math.min(parseInt(searchParams.get("limit") || "2000"), 2000)
 
-    // Obtener agencias del usuario
-    const { data: userAgencies } = await supabase
-      .from("user_agencies")
-      .select("agency_id")
-      .eq("user_id", user.id)
+    // Bug fix 2026-05-15 (P0 cross-tenant): SUPER_ADMIN bypaseaba el
+    // filtro de agencias → leakeaba mensajes de otros tenants. Scopear
+    // siempre por la org del user.
+    const userOrgId = (user as any).org_id as string | null
+    if (!userOrgId) {
+      return NextResponse.json({ messages: [], counts: { PENDING: 0, SENT: 0, SKIPPED: 0 } })
+    }
 
-    const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
+    // Obtener agencias de la org del user (no via user_agencies que solo
+    // tiene los explicit links — para SUPER_ADMIN/CONTABLE traer todas las
+    // de la org)
+    const { data: orgAgencies } = await supabase
+      .from("agencies")
+      .select("id")
+      .eq("org_id", userOrgId)
+    const orgAgencyIds = (orgAgencies || []).map((a: any) => a.id)
+
     const sellerOperationIds =
       user.role === "SELLER" ? await getSellerOperationIds(supabase, user.id) : []
 
@@ -35,9 +45,9 @@ export async function GET(request: Request) {
 
     if (user.role === "SELLER") {
       query = query.or(buildSellerMessageScopeFilter(user.id, sellerOperationIds))
-    } else if (user.role !== "SUPER_ADMIN" && agencyIds.length > 0) {
-      query = query.in("agency_id", agencyIds)
-    } else if (user.role !== "SUPER_ADMIN" && agencyIds.length === 0) {
+    } else if (orgAgencyIds.length > 0) {
+      query = query.in("agency_id", orgAgencyIds)
+    } else {
       return NextResponse.json({
         messages: [],
         counts: { PENDING: 0, SENT: 0, SKIPPED: 0 },
@@ -90,9 +100,9 @@ export async function GET(request: Request) {
 
     if (user.role === "SELLER") {
       countsQuery = countsQuery.or(buildSellerMessageScopeFilter(user.id, sellerOperationIds))
-    } else if (user.role !== "SUPER_ADMIN" && agencyIds.length > 0) {
-      countsQuery = countsQuery.in("agency_id", agencyIds)
-    } else if (user.role !== "SUPER_ADMIN" && agencyIds.length === 0) {
+    } else if (orgAgencyIds.length > 0) {
+      countsQuery = countsQuery.in("agency_id", orgAgencyIds)
+    } else {
       return NextResponse.json({
         messages,
         counts: { PENDING: 0, SENT: 0, SKIPPED: 0 },

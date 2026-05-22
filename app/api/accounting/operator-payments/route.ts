@@ -16,6 +16,11 @@ export async function GET(request: Request) {
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
+    // Cross-tenant fix (2026-05-18): exigir org_id.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     const operatorId = searchParams.get("operatorId") || undefined
     const status = searchParams.get("status") || undefined
     const agencyId = searchParams.get("agencyId")
@@ -40,6 +45,8 @@ export async function GET(request: Request) {
         ledger_movements:ledger_movement_id (id, created_at, receipt_number, method, notes, account_id, financial_accounts:account_id(name))
       `
       )
+      // Cross-tenant fix: scopear por org del user.
+      .eq("org_id", (user as any).org_id)
       .order("due_date", { ascending: true })
 
     if (operatorId) {
@@ -55,7 +62,9 @@ export async function GET(request: Request) {
     // - OPERACION: pre-resolver operation_ids cuya operations.operation_date ∈ [from,to]
     //   y restringir operator_payments.operation_id IN (...). Pagos sin operación quedan fuera.
     if (dateType === "OPERACION" && (dateFrom || dateTo)) {
-      let opQuery = (supabase.from("operations") as any).select("id")
+      let opQuery = (supabase.from("operations") as any)
+        .select("id")
+        .eq("org_id", (user as any).org_id)
       if (dateFrom) opQuery = opQuery.gte("operation_date", dateFrom)
       if (dateTo) opQuery = opQuery.lte("operation_date", dateTo)
       const { data: matchingOps } = await opQuery.limit(5000)
@@ -174,6 +183,11 @@ export async function POST(request: Request) {
     const supabase = await createServerClient()
     const body = await request.json()
 
+    // Cross-tenant fix (2026-05-18): exigir org_id para POST.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     const {
       operator_id,
       amount,
@@ -191,10 +205,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "El monto debe ser mayor a 0" }, { status: 400 })
     }
 
-    // Validar que el operador existe
+    // Validar que el operador existe en el org del user
     const { data: operator, error: operatorError } = await (supabase.from("operators") as any)
       .select("id")
       .eq("id", operator_id)
+      .eq("org_id", (user as any).org_id)
       .single()
 
     if (operatorError || !operator) {
@@ -285,6 +300,11 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "Se requiere el ID del pago" }, { status: 400 })
     }
 
+    // Cross-tenant fix (2026-05-18): exigir org_id y scopear el update.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     const updateData: Record<string, any> = {}
     if (currency) updateData.currency = currency
     if (amount !== undefined) updateData.amount = parseFloat(amount)
@@ -298,6 +318,7 @@ export async function PATCH(request: Request) {
     const { data: updated, error } = await (supabase.from("operator_payments") as any)
       .update(updateData)
       .eq("id", id)
+      .eq("org_id", (user as any).org_id)
       .select()
       .single()
 

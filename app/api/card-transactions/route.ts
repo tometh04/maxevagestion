@@ -13,15 +13,15 @@ export async function GET(request: Request) {
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
-    // Get user agencies
-    const { data: userAgencies } = await supabase
-      .from("user_agencies")
-      .select("agency_id")
-      .eq("user_id", user.id)
+    // Bug fix 2026-05-15 (P0 cross-tenant): SUPER_ADMIN bypaseaba el filtro
+    // de agencia → leak. En el modelo SaaS, todos los SUPER_ADMIN son owners
+    // de su org y NO deben ver datos de otros tenants.
+    const userOrgId = (user as any).org_id as string | null
+    if (!userOrgId) {
+      return NextResponse.json({ transactions: [] })
+    }
 
-    const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
-
-    // Build query
+    // Build query — siempre scopear por org_id
     let query = supabase
       .from("card_transactions")
       .select(`
@@ -29,13 +29,9 @@ export async function GET(request: Request) {
         operations:operation_id(id, destination),
         payments:payment_id(id, amount, status),
         cash_boxes:cash_box_id(id, name),
-        agencies:agency_id(id, name)
+        agencies:agency_id!inner(id, name, org_id)
       `)
-
-    // Apply permissions
-    if (user.role !== "SUPER_ADMIN" && agencyIds.length > 0) {
-      query = query.in("agency_id", agencyIds)
-    }
+      .eq("agencies.org_id", userOrgId)
 
     // Apply filters
     const status = searchParams.get("status")

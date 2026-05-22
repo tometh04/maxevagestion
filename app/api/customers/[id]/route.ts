@@ -12,23 +12,29 @@ export async function GET(
 ) {
   try {
     const { user } = await getCurrentUser()
+
+    // Cross-tenant fix (2026-05-18): no confiar en RLS; scopear explícito.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     const supabase = await createServerClient()
     const { id: customerId } = await params
 
-    // Get customer
+    // Get customer (scopeado por org)
     const { data: customer, error: customerError } = await supabase
       .from("customers")
       .select("*")
       .eq("id", customerId)
+      .eq("org_id", (user as any).org_id)
       .single()
 
     if (customerError || !customer) {
       return NextResponse.json({ error: "Cliente no encontrado" }, { status: 404 })
     }
 
-    // Get operations for this customer
-    const { data: operationCustomers } = await supabase
-      .from("operation_customers")
+    // Get operations for this customer (scopeado por org)
+    const { data: operationCustomers } = await (supabase.from("operation_customers") as any)
       .select(`
         *,
         operations:operation_id(
@@ -39,26 +45,27 @@ export async function GET(
         )
       `)
       .eq("customer_id", customerId)
+      .eq("org_id", (user as any).org_id)
       .order("created_at", { ascending: false })
 
     // Get payments related to customer's operations
     const operationIds = (operationCustomers || []).map((oc: any) => oc.operation_id)
     let payments: any[] = []
     if (operationIds.length > 0) {
-      const { data: paymentsData } = await supabase
-        .from("payments")
+      const { data: paymentsData } = await (supabase.from("payments") as any)
         .select("*")
         .in("operation_id", operationIds)
         .eq("payer_type", "CUSTOMER")
+        .eq("org_id", (user as any).org_id)
         .order("date_due", { ascending: true })
       payments = paymentsData || []
     }
 
-    // Get documents
-    const { data: documents } = await supabase
-      .from("documents")
+    // Get documents (scopeado por org)
+    const { data: documents } = await (supabase.from("documents") as any)
       .select("*")
       .eq("customer_id", customerId)
+      .eq("org_id", (user as any).org_id)
       .order("uploaded_at", { ascending: false })
 
     return NextResponse.json({
@@ -79,10 +86,15 @@ export async function PATCH(
 ) {
   try {
     const { user } = await getCurrentUser()
-    
+
     // Verificar permiso de escritura
     if (!canAccessModule(user.role as any, "customers")) {
       return NextResponse.json({ error: "No tiene permiso para editar clientes" }, { status: 403 })
+    }
+
+    // Cross-tenant fix (2026-05-18): no confiar en RLS; scopear explícito.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
     }
 
     const supabase = await createServerClient()
@@ -99,6 +111,7 @@ export async function PATCH(
       .from("customer_settings")
       .select("*")
       .eq("agency_id", agencyIds[0])
+      .eq("org_id", (user as any).org_id)
       .maybeSingle()
 
     // Aplicar validaciones de configuración
@@ -114,12 +127,17 @@ export async function PATCH(
       }
     }
 
-    // Obtener cliente actual para notificaciones
+    // Obtener cliente actual para notificaciones (scopeado por org)
     const { data: currentCustomer } = await supabase
       .from("customers")
       .select("*")
       .eq("id", customerId)
+      .eq("org_id", (user as any).org_id)
       .single()
+
+    if (!currentCustomer) {
+      return NextResponse.json({ error: "Cliente no encontrado" }, { status: 404 })
+    }
 
     // Whitelist de campos editables (prevenir overwrite de id/agency_id/created_at)
     const allowedFields = [
@@ -139,6 +157,7 @@ export async function PATCH(
     const { data: customer, error: updateError } = await (supabase.from("customers") as any)
       .update(updateData)
       .eq("id", customerId)
+      .eq("org_id", (user as any).org_id)
       .select()
       .single()
 
@@ -177,22 +196,32 @@ export async function DELETE(
 ) {
   try {
     const { user } = await getCurrentUser()
-    
+
     // Verificar permiso de escritura
     if (!canAccessModule(user.role as any, "customers")) {
       return NextResponse.json({ error: "No tiene permiso para eliminar clientes" }, { status: 403 })
     }
 
+    // Cross-tenant fix (2026-05-18): no confiar en RLS; scopear explícito.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     const supabase = await createServerClient()
     const { id: customerId } = await params
 
-    // Obtener cliente antes de eliminar para notificaciones
+    // Obtener cliente antes de eliminar para notificaciones (scopeado por org)
     const { data: customerData } = await supabase
       .from("customers")
       .select("*")
       .eq("id", customerId)
+      .eq("org_id", (user as any).org_id)
       .single()
-    
+
+    if (!customerData) {
+      return NextResponse.json({ error: "Cliente no encontrado" }, { status: 404 })
+    }
+
     const customer = customerData as any
 
     // Obtener configuración para notificaciones
@@ -203,13 +232,13 @@ export async function DELETE(
         .from("customer_settings")
         .select("*")
         .eq("agency_id", agencyIds[0])
+        .eq("org_id", (user as any).org_id)
         .maybeSingle()
       settingsData = settings
     }
 
     // Check if customer has operations - obtener más información para mensaje detallado
-    const { data: operations, error: checkError } = await supabase
-      .from("operation_customers")
+    const { data: operations, error: checkError } = await (supabase.from("operation_customers") as any)
       .select(`
         id,
         operations:operation_id(
@@ -220,6 +249,7 @@ export async function DELETE(
         )
       `)
       .eq("customer_id", customerId)
+      .eq("org_id", (user as any).org_id)
 
     if (checkError) {
       console.error("Error checking customer operations:", checkError)
@@ -251,17 +281,19 @@ export async function DELETE(
       }
     }
 
-    // Delete customer documents first
+    // Delete customer documents first (scopeado por org)
     await supabase
       .from("documents")
       .delete()
       .eq("customer_id", customerId)
+      .eq("org_id", (user as any).org_id)
 
-    // Delete customer
+    // Delete customer (scopeado por org)
     const { error: deleteError } = await supabase
       .from("customers")
       .delete()
       .eq("id", customerId)
+      .eq("org_id", (user as any).org_id)
 
     if (deleteError) {
       console.error("Error deleting customer:", deleteError)

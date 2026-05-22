@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import {
@@ -67,7 +68,19 @@ interface NewCashMovementDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSuccess: () => void
-  operations?: Array<{ id: string; destination: string }>
+  // 2026-05-19: shape extendido. Si el caller no pasa esto, el dialog hace
+  // fetch al endpoint /api/operations cuando se abre (caso CashMovementsPage
+  // que históricamente no pasaba nada → dropdown vacío de facto).
+  operations?: Array<{
+    id: string
+    destination: string
+    file_code?: string | null
+    operation_customers?: Array<{
+      role?: string | null
+      customers?: { first_name?: string | null; last_name?: string | null } | null
+    }>
+    leads?: { contact_name?: string | null } | null
+  }>
 }
 
 export function NewCashMovementDialog({
@@ -80,6 +93,10 @@ export function NewCashMovementDialog({
   const { currency: defaultCurrency } = useDefaultCurrency()
   const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([])
   const [expenseCategories, setExpenseCategories] = useState<ExpenseCategory[]>([])
+  // 2026-05-19: ops enriquecidas + buscador. Si el caller no pasa operations
+  // (caso CashMovementsPage), las cargamos vía fetch al abrir.
+  const [fetchedOperations, setFetchedOperations] = useState<typeof operations>([])
+  const [searchOp, setSearchOp] = useState("")
 
   // Helper to get datetime-local format
   const getDefaultDateTimeLocal = () => {
@@ -121,6 +138,72 @@ export function NewCashMovementDialog({
   useEffect(() => {
     form.setValue("currency", defaultCurrency)
   }, [defaultCurrency, form])
+
+  // 2026-05-19: fetch lazy de operations si el caller no las pasa enriquecidas.
+  // Patrón espejo de new-payment-dialog.tsx — limit 500, ordenadas por
+  // created_at desc para que las más recientes aparezcan primero.
+  useEffect(() => {
+    if (!open) return
+    if (operations.length > 0) {
+      // Si el caller las pasó, usar esas (pueden venir con datos enriquecidos)
+      setFetchedOperations(operations)
+      return
+    }
+    async function fetchOps() {
+      try {
+        const res = await fetch("/api/operations?limit=500&sortBy=created_at&sortDirection=desc")
+        if (res.ok) {
+          const data = await res.json()
+          setFetchedOperations(data.operations || [])
+        }
+      } catch (err) {
+        console.error("Error fetching operations for cash movement dialog:", err)
+      }
+    }
+    fetchOps()
+  }, [open, operations])
+
+  // Helpers compartidos con new-payment-dialog (extraer a util si los repetimos en 3+ lugares).
+  function getMainCustomerName(op: any): string {
+    const ocs = (op.operation_customers ?? []) as any[]
+    const main = ocs.find((oc) => (oc.role || "").toUpperCase() === "MAIN") || ocs[0]
+    if (main?.customers) {
+      const c = main.customers
+      return `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim()
+    }
+    return op.leads?.contact_name || ""
+  }
+  function getAllCustomerNames(op: any): string {
+    const ocs = (op.operation_customers ?? []) as any[]
+    return ocs
+      .map((oc) => {
+        const c = oc.customers
+        if (!c) return ""
+        return `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim()
+      })
+      .filter(Boolean)
+      .join(" ")
+  }
+
+  const filteredOps = useMemo(() => {
+    const all = fetchedOperations || []
+    if (!searchOp.trim()) return all.slice(0, 50)
+    const s = searchOp.toLowerCase()
+    return all
+      .filter((op: any) => {
+        const code = (op.file_code || "").toLowerCase()
+        const dest = (op.destination || "").toLowerCase()
+        const customers = getAllCustomerNames(op).toLowerCase()
+        const leadName = (op.leads?.contact_name || "").toLowerCase()
+        return (
+          code.includes(s) ||
+          dest.includes(s) ||
+          customers.includes(s) ||
+          leadName.includes(s)
+        )
+      })
+      .slice(0, 50)
+  }, [fetchedOperations, searchOp])
 
   // Cargar cuentas financieras y categorías de gasto cuando se abre el dialog
   useEffect(() => {
@@ -311,12 +394,41 @@ export function NewCashMovementDialog({
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
+                        <div className="px-2 pb-2">
+                          <Input
+                            placeholder="Buscar por cliente, código, destino..."
+                            value={searchOp}
+                            onChange={(e) => setSearchOp(e.target.value)}
+                            className="h-8 text-xs"
+                            onClick={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => e.stopPropagation()}
+                          />
+                        </div>
                         <SelectItem value="none">Sin operación</SelectItem>
-                        {operations.map((operation) => (
-                          <SelectItem key={operation.id} value={operation.id}>
-                            {operation.destination}
-                          </SelectItem>
-                        ))}
+                        {filteredOps.map((operation: any) => {
+                          const mainCustomer = getMainCustomerName(operation)
+                          return (
+                            <SelectItem key={operation.id} value={operation.id}>
+                              <div className="flex flex-col">
+                                <span className="text-sm">
+                                  {mainCustomer || "(sin cliente)"}
+                                  {" · "}
+                                  <span className="text-muted-foreground">{operation.destination}</span>
+                                </span>
+                                {operation.file_code && (
+                                  <span className="font-mono text-[10px] text-muted-foreground">
+                                    {operation.file_code}
+                                  </span>
+                                )}
+                              </div>
+                            </SelectItem>
+                          )
+                        })}
+                        {filteredOps.length === 0 && fetchedOperations.length > 0 && (
+                          <div className="px-2 py-4 text-xs text-muted-foreground text-center">
+                            No se encontraron operaciones
+                          </div>
+                        )}
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -339,12 +451,9 @@ export function NewCashMovementDialog({
                     <FormItem>
                       <FormLabel>Monto *</FormLabel>
                       <FormControl>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
+                        <DecimalInput
                           {...field}
-                          onChange={(e) => field.onChange(Number(e.target.value))}
+                          onChange={(v) => field.onChange(Number(v) || 0)}
                         />
                       </FormControl>
                       <FormMessage />

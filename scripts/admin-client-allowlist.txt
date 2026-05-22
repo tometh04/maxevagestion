@@ -9,44 +9,96 @@
 #
 # Categorías:
 #   AUTH              — pre-sesión (no hay JWT todavía).
-#   LIB               — libs internas que reciben un client scoped por parámetro;
-#                       el admin interno debe migrarse en Pilar 3.
-#   RPC_BLOCKED       — routes que llaman `execute_readonly_query` (SECURITY
-#                       DEFINER); bloqueadas hasta Pilar 2c.
-#   STORAGE           — uploads a Supabase Storage; bucket policies son scope
-#                       separado de DB RLS.
-#   WRITE_VALIDATED   — writes que validan ownership vía parent RLS antes del
-#                       admin mutation (Pass 2 pattern); migrar a scoped-client
-#                       en Pilar 3.
-#   WHA_CONTROL       — tablas wha_control no existen en prod; cuando se
-#                       materialicen, agregar org_id + RLS desde cero.
-#   LEGACY_PAGE       — server component legacy; migrar en Pilar 3.
+#   BILLING           — operaciones de billing scoped por user.org_id.
+#   CRON              — jobs cross-tenant por diseño; insertos llevan org_id explícito.
 #   DEFINITION        — archivo que define/exporta `createAdminClient`.
+#   IMPORT            — bulk imports con org_id inyectado + RPC p_org_id.
+#   LIB               — libs internas fire-and-forget o cross-tenant por diseño.
+#   LEGACY_PAGE       — server component legacy; migrar en Pilar 3.
+#   PLATFORM_ADMIN    — consola de plataforma, cross-org por diseño; protegido por isPlatformAdmin().
+#   RPC_BLOCKED       — routes que llaman `execute_readonly_query` (SECURITY DEFINER); Pilar 2c.
+#   STORAGE           — uploads a Supabase Storage; bucket policies son scope separado de DB RLS.
+#   TEST_MOCK         — mock de tests, no corre en producción.
+#   WEBHOOK_S2S       — webhook server-to-server; org resuelta por token en URL.
+#   WRITE_VALIDATED   — writes que validan ownership vía parent RLS antes del admin mutation.
 
-lib/supabase/server.ts                                                   # DEFINITION — export de la función.
+# ─── DEFINITIONS ───────────────────────────────────────────────────────────────
+lib/supabase/server.ts                                                   # DEFINITION — export de createAdminClient.
+lib/supabase/admin-scope.ts                                              # DEFINITION — wrapper seguro createOrgAdminScope (SEG-003).
+lib/supabase/__mocks__/server.ts                                         # TEST_MOCK — mock de Jest; no corre en prod.
 
-lib/accounting/audit.ts                                                  # LIB — audit log fire-and-forget sin caller context. Legítimo.
-lib/security/audit.ts                                                    # LIB — security_audit_log fire-and-forget (Pilar 8). Legítimo.
-
+# ─── AUTH / ONBOARDING ─────────────────────────────────────────────────────────
 app/api/auth/register/route.ts                                           # AUTH — crea user antes de tener session.
 app/api/onboarding/route.ts                                              # AUTH — crea org/tenant antes de que el user tenga org_id (Pilar 7).
-app/api/billing/checkout/route.ts                                        # BILLING — crea preapproval MP + loguea billing_events (Pilar 9).
+app/onboarding/billing/page.tsx                                          # AUTH — page de onboarding billing, pre-suscripción.
+
+# ─── BILLING ───────────────────────────────────────────────────────────────────
+app/api/billing/checkout/route.ts                                        # BILLING — crea preapproval MP + loguea billing_events.
 app/api/billing/mp-webhook/route.ts                                      # BILLING — webhook público de MP, no hay session (Pilar 9).
+app/api/billing/mp-webhook/diagnostics/route.ts                          # BILLING — diagnóstico de webhook MP; gated por isPlatformAdmin en prod.
+app/api/billing/cancel/route.ts                                          # BILLING — cancela suscripción; scoped por user.org_id.
+app/api/billing/reactivate/route.ts                                      # BILLING — reactiva suscripción; scoped por user.org_id.
+app/api/billing/status/route.ts                                          # BILLING — lee estado de suscripción; scoped por user.org_id.
+app/api/billing/sync/route.ts                                            # BILLING — sincroniza estado MP ↔ DB; scoped por orgId.
+app/api/billing/update-card-link/route.ts                                # BILLING — actualiza link de tarjeta; scoped por user.org_id.
+app/(dashboard)/settings/subscription/page.tsx                           # BILLING — page de suscripción del tenant; scoped por user.org_id.
+lib/billing/guard.ts                                                     # BILLING — lee org via user.org_id para billing guard.
 
-app/api/accounting/ledger/stats/route.ts                                 # RPC_BLOCKED — Pilar 2c fix junto con mig 141.
-app/api/cash/daily-balance/route.ts                                      # RPC_BLOCKED — Pilar 2c fix junto con mig 141.
+# ─── PLATFORM ADMIN ────────────────────────────────────────────────────────────
+# Todos protegidos por isPlatformAdmin() — acceso cross-org por diseño.
+app/admin/billing/page.tsx                                               # PLATFORM_ADMIN — panel de billing global.
+app/admin/orgs/page.tsx                                                  # PLATFORM_ADMIN — listar todas las orgs.
+app/admin/orgs/[id]/page.tsx                                             # PLATFORM_ADMIN — detalle de org cualquiera.
+app/admin/metrics/page.tsx                                               # PLATFORM_ADMIN — métricas globales.
+app/admin/audit/page.tsx                                                 # PLATFORM_ADMIN — security_audit_log reader.
+app/api/admin/orgs/route.ts                                              # PLATFORM_ADMIN — crear org nueva.
+app/api/admin/orgs/[id]/cancel-subscription/route.ts                     # PLATFORM_ADMIN — cancelar suscripción de un tenant.
+app/api/admin/orgs/[id]/custom-plan/route.ts                             # PLATFORM_ADMIN — CRUD plan custom.
+app/api/admin/orgs/[id]/destroy/route.ts                                 # PLATFORM_ADMIN — eliminar tenant (destructivo, gated).
+app/api/admin/orgs/[id]/extend-trial/route.ts                            # PLATFORM_ADMIN — extender trial de un tenant.
+app/api/admin/orgs/[id]/manual-payment/route.ts                          # PLATFORM_ADMIN — registrar pago manual de suscripción.
+app/api/admin/orgs/[id]/mp-snapshot/route.ts                             # PLATFORM_ADMIN — snapshot de preapproval MP.
+app/api/admin/orgs/[id]/mrr-override/route.ts                            # PLATFORM_ADMIN — override MRR manual.
+app/api/admin/orgs/[id]/profile/route.ts                                 # PLATFORM_ADMIN — editar perfil de org.
+app/api/admin/orgs/[id]/seed-chart-of-accounts/route.ts                  # PLATFORM_ADMIN — seedear plan de cuentas de un tenant.
+app/api/admin/orgs/[id]/seed-manychat-lists/route.ts                     # PLATFORM_ADMIN — seedear listas Manychat de un tenant.
+app/api/admin/orgs/[id]/suspend/route.ts                                 # PLATFORM_ADMIN — suspender tenant.
+app/api/admin/orgs/[id]/unsuspend/route.ts                               # PLATFORM_ADMIN — desuspender tenant.
 
-app/api/operations/[id]/itinerary/upload-image/route.ts                  # STORAGE — solo sube archivos al bucket.
-app/api/quotations/upload-flight-screenshot/route.ts                     # STORAGE — solo sube archivos al bucket.
+# ─── CRON JOBS ─────────────────────────────────────────────────────────────────
+# Cross-tenant por diseño: procesan todos los orgs; insertos llevan org_id explícito.
+app/api/cron/alerts/route.ts                                             # CRON — generación de alertas.
+app/api/cron/apply-pricing-changes/route.ts                              # CRON — aplicar cambios de precio.
+app/api/cron/apply-pricing-changes/route.test.ts                         # TEST — tests del cron apply-pricing.
+app/api/cron/billing-reconcile/route.ts                                  # CRON — reconciliación de suscripciones MP.
+app/api/cron/callbell-reconcile/route.ts                                 # CRON — reconciliación Callbell.
+app/api/cron/classify-quotation-pdfs/route.ts                            # CRON — clasificación de PDFs de cotización.
+app/api/cron/exchange-rates/route.ts                                     # CRON — actualización de tipos de cambio.
+app/api/cron/notifications/route.ts                                      # CRON — envío de notificaciones push.
+app/api/cron/recurring-payments/route.ts                                 # CRON — cobros recurrentes.
+app/api/cron/task-reminders/route.ts                                     # CRON — recordatorios de tareas.
+app/api/cron/trial-reminders/route.ts                                    # CRON — recordatorios de fin de trial.
+app/api/cron/whatsapp/route.ts                                           # CRON — mensajes WhatsApp automáticos.
+lib/alerts/generate.ts                                                   # CRON/LIB — generación de alertas cross-tenant; insertos con org_id.
+lib/alerts/payment-reminders.ts                                          # CRON/LIB — recordatorios de pago cross-tenant; insertos con org_id.
 
-app/api/operations/[id]/itinerary/route.ts                               # WRITE_VALIDATED — validación parent-op via RLS.
-app/api/operations/[id]/itinerary/[itemId]/route.ts                      # WRITE_VALIDATED — validación parent-op via RLS.
-app/api/expenses/variable/route.ts                                       # WRITE_VALIDATED — inyecta org_id al insert.
-app/api/expenses/variable/[id]/route.ts                                  # WRITE_VALIDATED — acotado por existing.org_id.
-app/api/expenses/cc-payment/route.ts                                     # WRITE_VALIDATED — inyecta org_id en group + items.
-app/api/expenses/cc-payment/[id]/route.ts                                # WRITE_VALIDATED — acotado por group.org_id.
-app/api/leads/[id]/route.ts                                              # WRITE_VALIDATED — acotado por lead.org_id.
+# ─── IMPORT (BULK) ─────────────────────────────────────────────────────────────
+# Imports validados: role check + org_id = user.org_id + RPC con p_org_id.
+app/api/import/cash-movements/route.ts                                   # IMPORT — bulk import movimientos de caja.
+app/api/import/financial-accounts/route.ts                               # IMPORT — bulk import cuentas financieras.
+app/api/import/operations/route.ts                                       # IMPORT — bulk import operaciones.
+app/api/import/payments/route.ts                                         # IMPORT — bulk import pagos.
+app/api/import/users/route.ts                                            # IMPORT — bulk import usuarios + auth invites.
 
+# ─── WEBHOOKS SERVER-TO-SERVER ─────────────────────────────────────────────────
+# No hay user session; la org se resuelve por webhook_token en la URL.
+app/api/integrations/manychat/[token]/webhook/route.ts                   # WEBHOOK_S2S — ManyChat bot pega, org via token.
+app/api/integrations/callbell-in/[token]/webhook/route.ts                # WEBHOOK_S2S — Callbell pega, org via token.
+app/api/webhooks/manychat/route.ts                                       # WEBHOOK_S2S — legacy Manychat webhook (API key auth).
+app/api/public/quotations/[token]/route.ts                               # WEBHOOK_S2S — aceptación de cotización pública; org_id del token.
+
+# ─── WHA_CONTROL ───────────────────────────────────────────────────────────────
+# Tablas wha_control no existen en prod; cuando se materialicen, agregar org_id + RLS.
 app/api/wha-control/chats/route.ts                                       # WHA_CONTROL — tablas no existen en prod.
 app/api/wha-control/chats/[chatId]/messages/route.ts                     # WHA_CONTROL — tablas no existen en prod.
 app/api/wha-control/devices/route.ts                                     # WHA_CONTROL — tablas no existen en prod.
@@ -57,12 +109,33 @@ app/api/wha-control/devices/[id]/reconnect/route.ts                      # WHA_C
 app/api/wha-control/metrics/summary/route.ts                             # WHA_CONTROL — tablas no existen en prod.
 app/api/wha-control/metrics/timeseries/route.ts                          # WHA_CONTROL — tablas no existen en prod.
 
-app/(dashboard)/operations/[id]/page.tsx                                 # LEGACY_PAGE — server component, migrar en Pilar 3.
+# ─── RPC_BLOCKED ───────────────────────────────────────────────────────────────
+# Routes que llaman `execute_readonly_query` (SECURITY DEFINER); Pilar 2c + mig 141.
+app/api/accounting/ledger/stats/route.ts                                 # RPC_BLOCKED — Pilar 2c fix junto con mig 141.
+app/api/cash/daily-balance/route.ts                                      # RPC_BLOCKED — Pilar 2c fix junto con mig 141.
 
-# PLATFORM_ADMIN — pages/routes bajo /admin/* son consola de plataforma.
-# Acceso cross-org por diseño; protegido por isPlatformAdmin() guard.
-app/admin/orgs/page.tsx                                                  # PLATFORM_ADMIN — listar todas las orgs.
-app/admin/orgs/[id]/page.tsx                                             # PLATFORM_ADMIN — detalle de org cualquiera.
-app/admin/metrics/page.tsx                                               # PLATFORM_ADMIN — métricas globales.
-app/admin/audit/page.tsx                                                 # PLATFORM_ADMIN — security_audit_log reader.
-app/api/admin/orgs/[id]/route.ts                                         # PLATFORM_ADMIN — plan/status update cross-org.
+# ─── STORAGE ───────────────────────────────────────────────────────────────────
+app/api/operations/[id]/itinerary/upload-image/route.ts                  # STORAGE — solo sube archivos al bucket.
+app/api/quotations/upload-flight-screenshot/route.ts                     # STORAGE — solo sube archivos al bucket.
+
+# ─── WRITE_VALIDATED ───────────────────────────────────────────────────────────
+# Reads via serverClient (RLS), luego adminClient para writes con org_id validado.
+app/api/operations/[id]/itinerary/route.ts                               # WRITE_VALIDATED — validación parent-op via RLS.
+app/api/operations/[id]/itinerary/[itemId]/route.ts                      # WRITE_VALIDATED — validación parent-op via RLS.
+app/api/expenses/variable/route.ts                                       # WRITE_VALIDATED — inyecta org_id al insert.
+app/api/expenses/variable/[id]/route.ts                                  # WRITE_VALIDATED — acotado por existing.org_id.
+app/api/expenses/cc-payment/route.ts                                     # WRITE_VALIDATED — inyecta org_id en group + items.
+app/api/expenses/cc-payment/[id]/route.ts                                # WRITE_VALIDATED — acotado por group.org_id.
+app/api/leads/[id]/route.ts                                              # WRITE_VALIDATED — acotado por lead.org_id.
+app/api/payments/[id]/approve/route.ts                                   # WRITE_VALIDATED — org_id via payment ya RLS-validado.
+app/api/payments/allocations/route.ts                                    # WRITE_VALIDATED — org_id via operationId RLS-validado.
+app/api/accounting/operator-payments/[id]/approve/route.ts               # WRITE_VALIDATED — org_id via operator_payment RLS-validado.
+
+# ─── LEGACY SERVER COMPONENTS ─────────────────────────────────────────────────
+app/(dashboard)/operations/[id]/page.tsx                                 # LEGACY_PAGE — lee documentos insertados con service role; acceso validado por RLS arriba.
+
+# ─── LIBS INTERNAS ─────────────────────────────────────────────────────────────
+lib/accounting/audit.ts                                                  # LIB — audit log fire-and-forget sin caller context. Legítimo.
+lib/accounting/seed-chart-of-accounts.ts                                 # LIB — seedear plan de cuentas; recibe orgId como parámetro.
+lib/security/audit.ts                                                    # LIB — security_audit_log fire-and-forget (Pilar 8). Legítimo.
+lib/auth/platform.ts                                                     # LIB — verifica platform_admins; no requiere org context.

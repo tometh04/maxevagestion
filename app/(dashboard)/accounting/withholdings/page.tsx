@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -429,7 +430,7 @@ export default function WithholdingsPage() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Monto *</Label>
-                <Input type="number" step="0.01" placeholder="0.00" value={form.amount} onChange={e => setForm(p => ({ ...p, amount: e.target.value }))} />
+                <DecimalInput placeholder="0.00" value={form.amount} onChange={v => setForm(p => ({ ...p, amount: v }))} />
               </div>
               <div>
                 <Label>Moneda</Label>

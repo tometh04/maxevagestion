@@ -16,6 +16,20 @@ export async function GET(
     const { id: operationId } = await params
     const supabase = await createServerClient()
 
+    // Cross-tenant fix (2026-05-18): validar operación del org del user antes
+    // de listar facturas de compra.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+    const { data: opOwner } = await (supabase.from("operations") as any)
+      .select("id")
+      .eq("id", operationId)
+      .eq("org_id", (user as any).org_id)
+      .maybeSingle()
+    if (!opOwner) {
+      return NextResponse.json({ error: "Operación no encontrada" }, { status: 404 })
+    }
+
     const { data: invoices, error } = await (supabase.from("purchase_invoices") as any)
       .select(`
         *,
@@ -56,6 +70,22 @@ export async function POST(
   try {
     const { user } = await getCurrentUser()
     const { id: operationId } = await params
+
+    // Cross-tenant fix (2026-05-18): este endpoint usa service role key
+    // (bypassea RLS por completo). Validamos ownership de la operación con
+    // el server client antes de proceder.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+    const userScopedSupabase = await createServerClient()
+    const { data: opOwner } = await (userScopedSupabase.from("operations") as any)
+      .select("id")
+      .eq("id", operationId)
+      .eq("org_id", (user as any).org_id)
+      .maybeSingle()
+    if (!opOwner) {
+      return NextResponse.json({ error: "Operación no encontrada" }, { status: 404 })
+    }
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY

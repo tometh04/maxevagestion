@@ -46,6 +46,12 @@ export async function GET(
     const supabase = await createServerClient()
     const { id: operationId } = await params
 
+    // Cross-tenant fix (2026-05-18): exigir org_id y scopear el fetch para
+    // que ADMIN/CONTABLE/SUPER_ADMIN de otra org no puedan leer la op por id.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     // Get operation with related data (INTEGRADO: clientes incluidos en la misma query)
     const { data: operation, error: operationError } = await supabase
       .from("operations")
@@ -82,6 +88,7 @@ export async function GET(
         )
       `)
       .eq("id", operationId)
+      .eq("org_id", (user as any).org_id)
       .single()
 
   if (operationError || !operation) {
@@ -152,11 +159,18 @@ export async function PATCH(
     const { id: operationId } = await params
     const body = await request.json()
 
+    // Cross-tenant fix (2026-05-18): exigir org_id y scopear el fetch para
+    // bloquear PATCH desde otra org (defense-in-depth sobre RLS).
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     // Get current operation to check permissions and compare values
     const { data: currentOperation } = await supabase
       .from("operations")
       .select("*")
       .eq("id", operationId)
+      .eq("org_id", (user as any).org_id)
       .single()
 
     if (!currentOperation) {
@@ -274,8 +288,8 @@ export async function PATCH(
       }
     }
 
-    // Extraer operators del body para no enviarlo a la tabla operations
-    const { operators: incomingOperators, ...bodyWithoutOperators } = body
+    // Extraer operators y legs del body para no enviarlos a la tabla operations
+    const { operators: incomingOperators, legs: incomingLegs, ...bodyWithoutOperators } = body
     const normalizedIncomingOperators = normalizeIncomingOperators(
       incomingOperators,
       currentOp.operator_cost_currency || currentOp.sale_currency || currentOp.currency || "USD"
@@ -330,6 +344,28 @@ export async function PATCH(
       updateData.sale_currency = body.currency
     }
 
+    // Bug fix 2026-05-15 (reportado por Santi #6f18a299):
+    // Hay 2 modelos coexistiendo para comisiones compartidas:
+    //   - LEGACY: operations.commission_split (un solo número 0-100 = % del principal)
+    //   - NUEVO: operations.commission_pct_primary + commission_pct_secondary (% absolutos)
+    // El edit dialog tiene inputs SOLO para los nuevos. El display de la UI
+    // lee SOLO el legacy. → editar los nuevos no impactaba el display.
+    //
+    // Fix: cuando el PATCH recibe los pct_primary/secondary, derivar el
+    // commission_split proporcional y guardarlo también. Mantiene legacy sync.
+    if (
+      updateData.commission_pct_primary != null &&
+      updateData.commission_pct_secondary != null
+    ) {
+      const p = Number(updateData.commission_pct_primary)
+      const s = Number(updateData.commission_pct_secondary)
+      const total = p + s
+      if (Number.isFinite(total) && total > 0) {
+        // commission_split = % de la comisión total que va al principal
+        updateData.commission_split = Math.round((p / total) * 100 * 100) / 100
+      }
+    }
+
     const oldSaleAmount = currentOp.sale_amount_total
     const oldOperatorCost = currentOp.operator_cost
     const newSaleAmount = updateData.sale_amount_total ?? oldSaleAmount
@@ -380,6 +416,43 @@ export async function PATCH(
     if (updateError || !operation) {
       console.error("Error updating operation:", updateError)
       return NextResponse.json({ error: "Error al actualizar operación" }, { status: 400 })
+    }
+
+    // ============================================
+    // SINCRONIZAR TRAMOS DEL VIAJE (operation_legs)
+    // ============================================
+    if (Array.isArray(incomingLegs)) {
+      try {
+        await (supabase.from("operation_legs") as any)
+          .delete()
+          .eq("operation_id", operationId)
+
+        if (incomingLegs.length > 0) {
+          const legsToInsert = incomingLegs.map((leg: any, i: number) => ({
+            operation_id: operationId,
+            agency_id: currentOp.agency_id,
+            order_index: i,
+            destination: leg.destination,
+            departure_date: leg.departure_date || null,
+            reservation_code_air: leg.reservation_code_air || null,
+            airline_name: leg.airline_name || null,
+            itr_localizador: leg.itr_localizador || null,
+            hotel_name: leg.hotel_name || null,
+            reservation_code_hotel: leg.reservation_code_hotel || null,
+            checkin_date: leg.checkin_date || null,
+            checkout_date: leg.checkout_date || null,
+          }))
+          const { error: legsError } = await (supabase.from("operation_legs") as any)
+            .insert(legsToInsert)
+          if (legsError) {
+            console.error("Error guardando tramos:", legsError)
+            auditWarnings.push("No se pudieron guardar los tramos del viaje")
+          }
+        }
+      } catch (error) {
+        console.error("Error sincronizando operation_legs:", error)
+        auditWarnings.push("Fallo inesperado sincronizando tramos del viaje")
+      }
     }
 
     const op = operation as any
@@ -742,11 +815,17 @@ export async function DELETE(
     const rateLimitBlock = enforceUserRateLimit(user.id, "/api/operations/[id]:DELETE", "WRITE")
     if (rateLimitBlock) return rateLimitBlock
 
+    // Cross-tenant fix (2026-05-18): exigir org_id y scopear el fetch.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     // Get operation data before deletion
     const { data: operation } = await supabase
       .from("operations")
       .select("*, lead_id")
       .eq("id", operationId)
+      .eq("org_id", (user as any).org_id)
       .single()
 
     if (!operation) {

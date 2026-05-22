@@ -20,7 +20,13 @@ const SCHEMA = {
   document_type: ["tipo_documento", "document_type", "tipo_de_documento"],
 }
 
-const REQUIRED = ["first_name", "last_name", "phone"]
+// 2026-05-18 (Tomi, reportado por VICO): antes REQUIRED = [first_name,
+// last_name, phone] generaba el error "El campo 'phone' es requerido"
+// para clientes sin teléfono (caso común en imports reales de catálogo).
+// Tomi pidió "no me dejes nada como campo requerido a la hora de importar".
+// Ahora REQUIRED queda vacío y reemplazamos por la defensa mínima
+// "fila no vacía con al menos un identificador" (ver más abajo).
+const REQUIRED: string[] = []
 
 export const customersPipeline: PipelineFn = async (
   supabase,
@@ -52,12 +58,30 @@ export const customersPipeline: PipelineFn = async (
       row[field] = rawRow[idx]?.trim() ?? ""
     })
 
-    // Validaciones
+    // Validaciones — REQUIRED quedó vacío (2026-05-18). Mantenemos la call
+    // por si alguna vez se reactiva un required específico; con array vacío
+    // es no-op.
     const requiredErrors = validateRequiredFields(row, REQUIRED)
     if (requiredErrors.length > 0) {
       requiredErrors.forEach(e =>
         errors.push({ rowNumber, field: e.field, message: e.message })
       )
+      continue
+    }
+
+    // Defensa mínima: la fila debe tener AL MENOS un identificador. Sin esto,
+    // un CSV con filas en blanco generaría inserts vacíos.
+    const hasIdentifier =
+      !!row.first_name?.trim() ||
+      !!row.last_name?.trim() ||
+      !!row.email?.trim() ||
+      !!row.phone?.trim() ||
+      !!row.document_number?.trim()
+    if (!hasIdentifier) {
+      errors.push({
+        rowNumber,
+        message: "fila vacía: necesita al menos nombre, apellido, email, teléfono o documento",
+      })
       continue
     }
 
@@ -90,14 +114,17 @@ export const customersPipeline: PipelineFn = async (
       continue
     }
 
+    // Nullify empty strings — si las columnas son nullable los acepta;
+    // si tienen NOT NULL constraint en DB, va a fallar con error claro
+    // en lugar de pasar "" como string vacío que es más raro de debuguear.
     const inserted = await executeInsert(
       supabase,
       "customers",
       {
         agency_id: config.agencyId,
-        first_name: row.first_name,
-        last_name: row.last_name,
-        phone: row.phone,
+        first_name: row.first_name || null,
+        last_name: row.last_name || null,
+        phone: row.phone || null,
         email: row.email || null,
         document_number: row.document_number || null,
         document_type: row.document_type || null,

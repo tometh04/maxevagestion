@@ -12,6 +12,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -220,13 +221,10 @@ export function PaymentPlanGenerator({
             <div className="grid gap-x-5 gap-y-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="downPayment">Anticipo / Seña</Label>
-                <Input
+                <DecimalInput
                   id="downPayment"
-                  type="number"
-                  min="0"
-                  max={totalAmount}
                   value={downPayment}
-                  onChange={(e) => setDownPayment(Number(e.target.value))}
+                  onChange={(v) => setDownPayment(Number(v) || 0)}
                   placeholder="0"
                 />
               </div>
@@ -306,10 +304,9 @@ export function PaymentPlanGenerator({
                           />
                         </TableCell>
                         <TableCell className="text-right">
-                          <Input
-                            type="number"
+                          <DecimalInput
                             value={payment.amount}
-                            onChange={(e) => updatePaymentAmount(index, Number(e.target.value))}
+                            onChange={(v) => updatePaymentAmount(index, Number(v) || 0)}
                             className="w-28 text-right"
                           />
                         </TableCell>

@@ -20,6 +20,15 @@ export async function GET(request: Request) {
   const supabase = await createServerClient()
   const { searchParams } = new URL(request.url)
 
+  // 🔴 Fix cross-tenant CRÍTICO (2026-05-18, Tomi reportó VICO viendo
+  // vencimientos ajenos): este endpoint confiaba en RLS para scope por org,
+  // pero RLS evidentemente no está funcionando (mismo síntoma que /api/payments).
+  // Defense-in-depth: agregamos .eq("org_id", user.org_id) explícito a las
+  // dos queries (payments + operator_payments).
+  if (!user.org_id) {
+    return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+  }
+
   const daysParam = parseInt(searchParams.get("days") || "7", 10)
   const days = Math.max(1, Math.min(daysParam, 90))
   const agencyId = searchParams.get("agencyId")
@@ -34,7 +43,6 @@ export async function GET(request: Request) {
   // LIMIT 500: ORDER BY date_due ascending pone los más urgentes primero;
   // el corte cae en pagos lejanos. Combinado con idx_payments_pending_due
   // (mig 20260427000009) deja el query en O(log n).
-  // Multi-tenant: RLS de payments scopea por org_id automáticamente.
   let customerQuery = supabase
     .from("payments")
     .select(
@@ -42,6 +50,7 @@ export async function GET(request: Request) {
        operation:operation_id (id, file_code, destination, agency_id, seller_id,
          operation_customers(customer:customer_id(first_name, last_name)))`,
     )
+    .eq("org_id", user.org_id) // 🔴 scope multi-tenant explícito
     .eq("payer_type", "CUSTOMER")
     .in("status", ["PENDING", "OVERDUE"])
     .lte("date_due", limitStr)
@@ -56,6 +65,7 @@ export async function GET(request: Request) {
        operator:operator_id (id, name),
        operation:operation_id (id, file_code, destination, agency_id, seller_id)`,
     )
+    .eq("org_id", user.org_id) // 🔴 scope multi-tenant explícito
     .in("status", ["PENDING", "OVERDUE"])
     .lte("due_date", limitStr)
     .order("due_date", { ascending: true })

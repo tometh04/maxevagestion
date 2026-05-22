@@ -15,6 +15,10 @@ export default async function OperationDetailPage({
   const supabase = await createServerClient()
 
   // Get operation with related data (INTEGRADO: clientes incluidos en la misma query)
+  // 🔴 CROSS-TENANT FIX (2026-05-21): scope por org_id antes del SELECT.
+  // Antes solo se filtraba por id → si el user conocía un UUID de operation
+  // de otro tenant, veía toda la data. resolveOperationAccessScope abajo
+  // chequea, pero ya leakeaba al SELECT-ear. 404 enmascarado.
   const { data: operation, error: operationError } = await supabase
     .from("operations")
     .select(`
@@ -31,6 +35,7 @@ export default async function OperationDetailPage({
       operation_operators(*, operators:operator_id(id, name))
     `)
     .eq("id", id)
+    .eq("org_id", (user as any).org_id)
     .single()
 
   if (operationError || !operation) {
@@ -65,11 +70,18 @@ export default async function OperationDetailPage({
     operationCustomers,
   })
 
+  // 🔴 CROSS-TENANT DEFENSE (2026-05-21): aunque la operation ya está
+  // scoped arriba, los siguientes queries usan operation_id como filtro
+  // primary. Si por alguna razón el filtro de op no detuvo (race / typo
+  // futuro), .eq("org_id") en cada query es defense-in-depth.
+  const userOrgId = (user as any).org_id
+
   // Get payments
   const { data: payments } = await supabase
     .from("payments")
     .select("*")
     .eq("operation_id", id)
+    .eq("org_id", userOrgId)
     .order("date_due", { ascending: true })
 
   // Get alerts
@@ -77,6 +89,7 @@ export default async function OperationDetailPage({
     .from("alerts")
     .select("*")
     .eq("operation_id", id)
+    .eq("org_id", userOrgId)
     .order("date_due", { ascending: true })
 
   // Get operation services (servicios adicionales: asiento, transfer, visa, etc.)
@@ -84,29 +97,46 @@ export default async function OperationDetailPage({
     .from("operation_services") as any)
     .select("id, service_type, description, operator_id, operator_payment_id, sale_amount, cost_amount, sale_currency, cost_currency, generates_commission, operators:operator_id(id, name)")
     .eq("operation_id", id)
+    .eq("org_id", userOrgId)
     .order("created_at", { ascending: true })
 
-  // Get linked operator debts to keep operator selector aligned with payable breakdown
+  // Get linked operator debts to keep operator selector aligned with payable breakdown.
+  // Bug fix 2026-05-21 (VICO): agregamos `currency` al SELECT — lo necesita el
+  // dropdown desglosado de "Registrar Pago a Operador" para mostrar la moneda
+  // de cada deuda pendiente en su label (ej. "Tower — USD 6.760 pendiente").
   const { data: operatorPayments } = await (supabase
     .from("operator_payments") as any)
-    .select("id, operator_id, amount, paid_amount, status, operators:operator_id(id, name)")
+    .select("id, operator_id, amount, paid_amount, currency, status, operators:operator_id(id, name)")
     .eq("operation_id", id)
+    .eq("org_id", userOrgId)
     .order("created_at", { ascending: true })
 
   // Get operators assigned to the operation (may include operators without operator_payment)
   // Needed so the "Pagar a operador" dialog can list ALL assigned operators,
   // not only the ones that already have a pending operator_payment.
+  // operation_operators tiene org_id (migration 20260331000134).
   const { data: operationOperators } = await (supabase
     .from("operation_operators") as any)
     .select("operator_id, operators:operator_id(id, name)")
     .eq("operation_id", id)
+    .eq("org_id", userOrgId)
     .order("created_at", { ascending: true })
+
+  // Get stopovers / legs for this operation. operation_legs NO tiene
+  // org_id (mig 129) — scopeamos por agency_id que sí tiene NOT NULL.
+  const { data: operationLegs } = await (supabase
+    .from("operation_legs") as any)
+    .select("id, order_index, destination, departure_date, reservation_code_air, airline_name, itr_localizador, hotel_name, reservation_code_hotel, checkin_date, checkout_date")
+    .eq("operation_id", id)
+    .eq("agency_id", op.agency_id)
+    .order("order_index", { ascending: true })
 
   // Get commission records for this operation
   const { data: commissionRecords } = await (supabase
     .from("commission_records") as any)
     .select("percentage, seller_id, amount")
     .eq("operation_id", id)
+    .eq("org_id", userOrgId)
 
   // Get agencies for edit dialog
   let agencies: Array<{ id: string; name: string }> = []
@@ -123,19 +153,24 @@ export default async function OperationDetailPage({
       }))
   }
 
-  // Get sellers for edit dialog
+  // Get sellers for edit dialog.
+  // 🔴 CROSS-TENANT FIX (2026-05-21): filtro explícito por org_id —
+  // ver CLAUDE.md regla de oro multi-tenant.
   const { data: sellersData } = await supabase
     .from("users")
     .select("id, name")
     .in("role", ["SELLER", "ADMIN", "SUPER_ADMIN"])
     .eq("is_active", true)
+    .eq("org_id", (user as any).org_id)
     .order("name")
   const sellers = (sellersData || []) as Array<{ id: string; name: string }>
 
-  // Get operators for edit dialog
+  // Get operators for edit dialog.
+  // 🔴 CROSS-TENANT FIX (2026-05-21): filtro explícito por org_id.
   const { data: operatorsData } = await supabase
     .from("operators")
     .select("id, name")
+    .eq("org_id", (user as any).org_id)
     .order("name")
   const operators = (operatorsData || []) as Array<{ id: string; name: string }>
 
@@ -156,6 +191,7 @@ export default async function OperationDetailPage({
       operationServices={operationServices || []}
       operatorPayments={operatorPayments || []}
       operationOperators={operationOperators || []}
+      operationLegs={operationLegs || []}
     />
   )
 }

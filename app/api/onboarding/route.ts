@@ -40,6 +40,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Ya pertenecés a una organización" }, { status: 409 })
   }
 
+  // adminDb justificado (caso C onboarding):
+  // - El user todavía no tiene org_id, así que createServerClient con RLS
+  //   no podría INSERT en organizations (no hay tenant context).
+  // - Necesita actualizar public.users.org_id (RLS estricta).
+  // - Body no acepta org_id arbitrario: lo genera el server.
+  // - Idempotency guard arriba previene crear segunda org.
   const admin = createAdminClient() as any
   const limits = PLAN_LIMITS[plan]
 

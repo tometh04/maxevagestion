@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast"
 // Card imports removed - using modern border/rounded divs
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import { Label } from "@/components/ui/label"
 import { Loader2, ArrowLeft, Plus, Trash2, Calculator, ExternalLink, AlertTriangle } from "lucide-react"
 import {
@@ -1299,12 +1300,9 @@ export default function NewInvoicePage() {
                             <Loader2 className="h-3 w-3 inline ml-2 animate-spin" />
                           )}
                         </Label>
-                        <Input
-                          type="number"
+                        <DecimalInput
                           value={exchangeRate}
-                          onChange={(e) => handleExchangeRateChange(parseFloat(e.target.value) || 1)}
-                          min={1}
-                          step={0.01}
+                          onChange={(v) => handleExchangeRateChange(parseFloat(v) || 1)}
                           placeholder="Ej: 1500"
                         />
                         {cotizacionAfip && (
@@ -1391,12 +1389,9 @@ export default function NewInvoicePage() {
                       </div>
                       <div>
                         <Label>{amountEntryMode === 'FINAL' ? 'Precio Final' : 'Precio Unit.'}</Label>
-                        <Input
-                          type="number"
+                        <DecimalInput
                           value={item.precio_unitario}
-                          onChange={(e) => updateItem(index, 'precio_unitario', parseFloat(e.target.value) || 0)}
-                          min={0}
-                          step={0.01}
+                          onChange={(v) => updateItem(index, 'precio_unitario', parseFloat(v) || 0)}
                         />
                       </div>
                       <div>

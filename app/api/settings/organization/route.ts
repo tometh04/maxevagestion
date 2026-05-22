@@ -89,6 +89,21 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: error.message }, { status: 500 })
     }
 
+    // Bug fix 2026-05-16 (Tomi): "edité el nombre de la empresa y no se
+    // actualizó en el admin". El nombre vivía en 3 lugares desincronizados:
+    // organization_settings.company_name (este endpoint), organizations.name
+    // (lo que mostraba el admin) y agencies.name. Cuando se guarda company_name,
+    // ahora también actualiza organizations.name para mantenerlos en sync.
+    if (key === 'company_name' && typeof value === 'string' && value.trim()) {
+      const { error: orgUpdateError } = await (supabase.from('organizations') as any)
+        .update({ name: value.trim() })
+        .eq('id', user.org_id)
+      if (orgUpdateError) {
+        console.warn('No se pudo sincronizar organizations.name:', orgUpdateError.message)
+        // No abortamos — el settings ya se guardó. Solo loguemos.
+      }
+    }
+
     return Response.json({ data })
   } catch (error: any) {
     if (error?.digest?.startsWith('NEXT_REDIRECT')) throw error

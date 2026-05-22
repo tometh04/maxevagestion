@@ -14,6 +14,11 @@ export async function GET(
     const { id: operationId } = await params
     const supabase = await createServerClient()
 
+    // Cross-tenant fix (2026-05-18): scopear fetch por org del user.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     // Obtener operación con datos relacionados
     const { data: operation, error } = await (supabase.from("operations") as any)
       .select(`
@@ -23,6 +28,7 @@ export async function GET(
         operators:operator_id (id, name, contact_phone, contact_email)
       `)
       .eq("id", operationId)
+      .eq("org_id", (user as any).org_id)
       .single()
 
     if (error || !operation) {

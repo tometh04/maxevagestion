@@ -14,10 +14,19 @@ export const dynamic = "force-dynamic"
  */
 export async function GET(request: Request) {
   const { user } = await getCurrentUser()
+
+  // 🔴 Fix cross-tenant CRÍTICO (2026-05-18, sweep /reports/*): defense-in-depth
+  // RLS no está protegiendo confiablemente; agregamos .eq("org_id", user.org_id)
+  // explícito a la query de purchase_invoices.
+  if (!user.org_id) {
+    return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+  }
+
   const supabase = await createServerClient()
   const { searchParams } = new URL(request.url)
   const agencyId = searchParams.get("agencyId")
 
+  // RLS + filtro explícito (defense-in-depth)
   let query = supabase
     .from("purchase_invoices")
     .select(
@@ -26,6 +35,7 @@ export async function GET(request: Request) {
        operator:operator_id (id, name, cuit),
        operation:operation_id (id, file_code, destination, agency_id, seller_id)`,
     )
+    .eq("org_id", user.org_id) // 🔴 scope multi-tenant explícito
     .neq("status", "PAID")
     .order("invoice_date", { ascending: true })
     .limit(500)

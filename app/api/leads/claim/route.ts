@@ -19,6 +19,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No autorizado" }, { status: 403 })
     }
 
+    // Cross-tenant fix (2026-05-18): no confiar en RLS; scopear explícito.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     const { leadId } = await request.json()
 
     if (!leadId) {
@@ -27,11 +32,11 @@ export async function POST(request: Request) {
 
     const supabase = await createServerClient()
 
-    // 1. Obtener el lead
-    const { data: lead, error: leadError } = await supabase
-      .from("leads")
+    // 1. Obtener el lead (scopeado por org)
+    const { data: lead, error: leadError } = await (supabase.from("leads") as any)
       .select("id, agency_id, assigned_seller_id, external_id, source")
       .eq("id", leadId)
+      .eq("org_id", (user as any).org_id)
       .single()
 
     if (leadError || !lead) {
@@ -71,6 +76,7 @@ export async function POST(request: Request) {
         .from("leads") as any)
         .update(updateData)
         .eq("id", leadId)
+        .eq("org_id", (user as any).org_id)
 
       if (updateError) {
         console.error("❌ Error updating lead:", updateError)
@@ -84,7 +90,7 @@ export async function POST(request: Request) {
       })
     }
 
-    // 4. Lead de cualquier otro origen — solo actualizar assigned_seller_id en BD
+    // 4. Lead de cualquier otro origen — solo actualizar assigned_seller_id en BD (scopeado por org)
     const { error: updateError } = await (supabase
       .from("leads") as any)
       .update({
@@ -92,6 +98,7 @@ export async function POST(request: Request) {
         updated_at: new Date().toISOString(),
       })
       .eq("id", leadId)
+      .eq("org_id", (user as any).org_id)
 
     if (updateError) {
       console.error("❌ Error updating lead:", updateError)

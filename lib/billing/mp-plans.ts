@@ -26,6 +26,8 @@ export interface EnsureMpPlanInput {
   amount: number
   backUrl: string
   includeFreeTrial: boolean
+  /** 2026-05-18: free_trial custom en días (sobreescribe includeFreeTrial si > 0). */
+  freeTrialDays?: number
   /** Solo para CUSTOM. */
   orgSlug?: string
 }
@@ -47,11 +49,16 @@ export async function ensureMpPlan(
   admin: SupabaseClient,
   input: EnsureMpPlanInput
 ): Promise<EnsureMpPlanResult> {
+  // freeTrialDays se incorpora a la cache key: planes con distintos días de trial
+  // son planes DIFERENTES en MP, no podemos reusar el mismo template.
+  const trialKeyPart = input.freeTrialDays && input.freeTrialDays > 0
+    ? `_T${input.freeTrialDays}D`
+    : ""
   const plan_key = buildPlanKey({
     plan: input.plan,
     orgSlug: input.orgSlug,
     amount: input.amount,
-  })
+  }) + trialKeyPart
 
   const { data: existing } = await (admin as any)
     .from("mp_plans")
@@ -73,6 +80,7 @@ export async function ensureMpPlan(
     amount: input.amount,
     backUrl: input.backUrl,
     includeFreeTrial: input.includeFreeTrial,
+    freeTrialDays: input.freeTrialDays,
   })
 
   await (admin as any).from("mp_plans").insert({

@@ -83,3 +83,9 @@ next-env.d.ts
 
 # Graphify knowledge graph (local-only working data)
 graphify-out/
+
+# Supabase CLI temp state
+supabase/.temp/
+
+# KB export para Tawk (local-only)
+scripts/out/

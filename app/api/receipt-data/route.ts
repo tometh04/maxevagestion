@@ -210,9 +210,17 @@ export async function GET(request: NextRequest) {
       }))
     }
 
-    const { data: orgSettingsData } = await (supabase.from("organization_settings") as any).select(
-      "key, value"
-    )
+    // 🔴 Fix cross-tenant leak (2026-05-16, Tomi): antes este SELECT no filtraba
+    // por org_id. Resultado: cualquier tenant emitía recibos con company_name,
+    // address, CUIT, etc. del PRIMER tenant que hubiera cargado esas keys (Lozada).
+    // Ej: VICO emitía recibos firmados "Lozada Rosario · Corrientes 631 · CUIT 20-...".
+    // Ahora scopeamos por user.org_id como corresponde en multi-tenant.
+    if (!user.org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+    const { data: orgSettingsData } = await (supabase.from("organization_settings") as any)
+      .select("key, value")
+      .eq("org_id", user.org_id)
     const getOrg = (key: string, fallback: string) =>
       orgSettingsData?.find((setting: any) => setting.key === key)?.value || fallback
 

@@ -4,31 +4,37 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**MAXEVA GESTION** is a comprehensive travel agency management system (ERP) built with Next.js 14+ App Router, TypeScript, Supabase (PostgreSQL), and shadcn/ui. The system manages the complete business flow: leads from Manychat → operations → payments → accounting → commissions.
+**vibook** (codename interno: MAXEVA GESTION) is a comprehensive travel agency management SaaS (ERP) built with Next.js 15+, TypeScript, Supabase (PostgreSQL), and shadcn/ui. The system manages the complete business flow: leads from Manychat → operations → payments → accounting → commissions.
 
-**Status**: ~98% complete, production-ready with some improvements pending.
+- **Dominio producción**: `app.vibook.ai`
+- **Modelo de negocio**: Multi-tenant SaaS con planes PRO ($119.000 ARS/mes, 7 días trial) y Enterprise. Pagos vía MercadoPago preapproval.
+- **Status**: Production-ready en Railway.
 
 ## Development Commands
 
 ```bash
 # Development
-npm run dev              # Start dev server on port 3044
+npm run dev              # Start dev server on port 3067
 npm start               # Start production server on port 3005
 
 # Build
 npm run build           # Build for production
-npm run lint            # Run ESLint
+npm run lint            # Run ESLint + check:admin-client
 
 # Testing
 npm run test            # Run Jest tests
 npm run test:watch      # Run tests in watch mode
 npm run test:coverage   # Run tests with coverage report
+npm run test:isolation  # Run isolation tests (--runInBand)
 
 # Database
 npm run db:generate     # Generate TypeScript types from Supabase schema
 npm run db:seed         # Seed database with initial data
 npm run db:seed:mock    # Seed database with mock data for testing
 npm run db:check        # Verify tables exist in database
+
+# Scripts de utilidad
+npm run limpieza:masiva # Limpieza masiva pre-importación de datos
 ```
 
 ## Architecture Overview
@@ -42,11 +48,18 @@ npm run db:check        # Verify tables exist in database
 - **External Integrations**:
   - OpenAI GPT-4o (OCR for documents, AI Copilot)
   - Manychat (Instagram/WhatsApp lead capture via webhook)
+  - MercadoPago (suscripciones SaaS vía preapproval)
+  - Callbell (mensajería WhatsApp/Instagram)
+  - AFIP (facturación electrónica argentina)
+  - Emilia / vibook.ai search API (búsqueda de vuelos, hoteles)
+  - Amadeus API (búsqueda IATA aeropuertos/ciudades)
+  - Geoapify (fallback búsqueda de hoteles por destino)
+  - Resend (emails transaccionales)
 
 ### Project Structure
 
 ```
-maxevagestion/
+vibook/
 ├── app/
 │   ├── (auth)/              # Authentication pages (login, reset-password, etc.)
 │   ├── (dashboard)/         # Protected dashboard pages
@@ -59,8 +72,23 @@ maxevagestion/
 │   │   ├── accounting/      # Ledger, IVA, financial accounts, operator payments
 │   │   ├── alerts/          # Automated alert system
 │   │   ├── reports/         # Business reports and analytics
+│   │   ├── commissions/     # Commission views
+│   │   ├── payments/        # Payment management
+│   │   ├── expenses/        # Expense tracking
+│   │   ├── finances/        # Financial overview
+│   │   ├── calendar/        # Calendar view
+│   │   ├── emilia/          # Emilia AI travel search
+│   │   ├── messages/        # Internal messaging
+│   │   ├── notifications/   # Notification center
+│   │   ├── resources/       # Resources section
+│   │   ├── tools/           # Internal tools
+│   │   ├── ayuda/           # Help / support
 │   │   ├── my/              # Seller-specific views (commissions, balance)
-│   │   └── settings/        # System configuration
+│   │   └── settings/        # System configuration (including subscription)
+│   ├── admin/               # Super-admin panel (orgs, billing, metrics, audit)
+│   ├── cotizacion/          # Public quotation page
+│   ├── onboarding/          # Onboarding flow for new orgs
+│   ├── paywall/             # Paywall page (subscription required)
 │   ├── api/                 # Next.js API routes
 │   └── layout.tsx           # Root layout
 ├── components/
@@ -68,25 +96,148 @@ maxevagestion/
 │   ├── dashboard/           # Dashboard-specific components
 │   ├── sales/               # Sales and leads components
 │   ├── cash/                # Cash and payment components
-│   └── settings/            # Settings components
+│   ├── billing/             # Subscription / billing components
+│   ├── settings/            # Settings components
+│   └── [module]/            # One folder per dashboard module
 ├── lib/
-│   ├── accounting/          # Accounting logic (ledger, IVA, FX, commissions)
+│   ├── accounting/          # Accounting logic (ledger, IVA, FX)
+│   ├── afip/                # AFIP facturación electrónica
 │   ├── ai/                  # AI Copilot tools and context
+│   ├── airports/            # Airport/IATA search (Amadeus)
 │   ├── alerts/              # Alert generation logic
+│   ├── billing/             # SaaS billing (plans, MP, guard, state machine)
 │   ├── commissions/         # Commission calculation
-│   ├── permissions.ts       # Role-based permission system
-│   ├── auth.ts              # Authentication utilities
+│   ├── crm-presets/         # CRM preset configurations
+│   ├── cron/                # Cron job utilities
+│   ├── customers/           # Customer logic
+│   ├── documents/           # Document handling / OCR
+│   ├── email/               # Email sending (Resend)
+│   ├── emilia/              # Emilia travel search API client
+│   ├── hotels/              # Hotel search logic
+│   ├── import/              # Data import utilities
+│   ├── integrations/        # Third-party integrations (Callbell, webhooks)
+│   ├── invoices/            # Invoice generation
+│   ├── manychat/            # Manychat lead capture
+│   ├── notifications/       # Push / in-app notifications
+│   ├── operations/          # Operations business logic
+│   ├── payments/            # Payment processing logic
+│   ├── pdf/                 # PDF generation
+│   ├── quotations/          # Quotation logic
+│   ├── receipts/            # Receipt generation
+│   ├── security/            # Security utilities
 │   ├── supabase/            # Supabase clients (client.ts, server.ts, types.ts)
-│   └── manychat/            # Manychat integration (lead capture)
+│   ├── support/             # Support / help logic
+│   ├── tasks/               # Internal task management
+│   ├── utils/               # General utilities
+│   ├── wha-control/         # WhatsApp control panel logic
+│   ├── whatsapp/            # WhatsApp messaging
+│   ├── audit.ts             # Audit log helpers
+│   ├── auth.ts              # Authentication utilities
+│   ├── cache.ts             # Server-side cache helpers
+│   ├── currency.ts          # Currency formatting
+│   ├── destinations.ts      # Destination data
+│   ├── organizations.ts     # Multi-tenant org/agency scoping
+│   ├── permissions.ts       # Role-based permission system
+│   ├── permissions-api.ts   # API-level permission helpers
+│   ├── push.ts              # Web push notifications (VAPID)
+│   ├── rate-limit.ts        # API rate limiting
+│   └── validation.ts        # Input validation helpers
 ├── supabase/migrations/     # Database migration SQL files
 └── scripts/                 # Utility scripts (seed, verify-tables, etc.)
 ```
 
 ## Key Architectural Patterns
 
-### 1. Role-Based Access Control (RBAC)
+### 1. Multi-Tenancy (Organizations)
 
-**Roles** (defined in `lib/permissions.ts`):
+El sistema es **multi-tenant**. Cada cliente es una `organization` que puede tener una o más `agencies`. Los usuarios pertenecen a una org vía `organization_members`.
+
+- Queries de negocio se scopean por `org_id` → `agency_ids` (helper: `lib/organizations.ts`)
+- Tablas con `agency_id` heredan el scope de la org automáticamente
+- El admin super-panel (`app/admin/`) tiene acceso cross-org
+
+#### 🔴 REGLA DE ORO MULTI-TENANT — Defense-in-depth, NO confiar en RLS
+
+**Contexto histórico (2026-05-18)**: durante una sesión se descubrió que la
+función `user_org_ids()` que sostiene las políticas RLS de Supabase estaba
+rota o desactualizada (causa probable: mismatch de casing en `status`,
+reescritura manual sin versionar). Resultado: múltiples endpoints user-facing
+filtraban data solo "por RLS" y leakeaban data cross-tenant (un tenant veía
+pagos/operaciones/reportes de otros). Se cerraron ~50 endpoints agregando
+filtro explícito.
+
+**Reglas obligatorias para CUALQUIER endpoint nuevo o modificado**:
+
+1. **TODA query a tablas con datos por tenant DEBE tener `.eq("org_id", user.org_id)` explícito**. NO confiar en que RLS lo haga. Tablas afectadas (no exhaustivo): `payments`, `operations`, `customers`, `operators`, `operator_payments`, `cash_movements`, `ledger_movements`, `financial_accounts`, `alerts`, `commission_records`, `leads`, `invoices`, `purchase_invoices`, `recurring_payments`, `recurring_payment_categories`, `tax_withholdings`, `financial_settings`, `organization_settings`.
+
+2. **Guard obligatorio al inicio de cada handler user-facing**:
+   ```ts
+   const { user } = await getCurrentUser()
+   if (!user.org_id) {
+     return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+   }
+   ```
+
+3. **PATCH/DELETE/GET por id**: agregar `.eq("org_id", user.org_id)` al SELECT inicial del recurso. Si no pertenece al org del user, devolver 404 enmascarado (NO 403 "no tenés acceso" — eso confirma que existe).
+
+4. **Body de PATCH**: nunca aceptar `org_id` ni `agency_id` del body sin validar. Hacer `delete body.org_id` antes del UPDATE, o validar contra `user.org_id` y rechazar si no matchea.
+
+5. **Tabla legacy con `agency_id` (no `org_id` directo)**: usar helper `getOrgAgencyIds(orgId)` de `lib/organizations.ts` para pre-fetchar las agency_ids del org del user y filtrar con `.in("agency_id", agencyIds)`.
+
+6. **NUNCA usar `createAdminClient()` en endpoints user-facing**. El admin client usa SERVICE ROLE KEY que bypassea RLS. Reservado para:
+   - `/api/cron/*` (procesos automáticos)
+   - `/api/admin/*` (platform admin panel con guard `isPlatformAdmin`)
+   - `/api/webhooks/*` (webhooks externos sin user logueado)
+   - `/api/billing/mp-webhook` (webhook MP)
+   - Helpers internos de libs (con comment justificando el bypass)
+
+7. **Endpoints `/api/admin/*` cross-org**: validar siempre con `isPlatformAdmin(supabase, user.id)` ANTES de cualquier query.
+
+8. **Comentarios "RLS scopea automáticamente" o similar**: tratarlos como bug. Reemplazar por filtro explícito + comentario "Cross-tenant fix: filtro explícito, no confiar en RLS".
+
+**Patrón canónico**:
+```ts
+import { getCurrentUser } from "@/lib/auth"
+import { createServerClient } from "@/lib/supabase/server"
+
+export async function GET(req: Request) {
+  const { user } = await getCurrentUser()
+  if (!user.org_id) {
+    return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+  }
+  const supabase = await createServerClient()
+  const { data } = await supabase
+    .from("payments")
+    .select("*")
+    .eq("org_id", user.org_id)  // ← OBLIGATORIO
+  return NextResponse.json({ data })
+}
+```
+
+**En code review**: rechazar PRs que tocan endpoints user-facing sin este patrón.
+
+### 2. Billing / SaaS (MercadoPago)
+
+**Planes** (fuente de verdad: `lib/billing/plans.ts`):
+- `PRO` — $119.000 ARS/mes, 7 días trial gratuito, cobro por MP preapproval
+- `ENTERPRISE` — a consultar (contact sales)
+- `STARTER` — legacy, solo backward compat, no se ofrece
+
+**Flujo de suscripción**:
+1. Checkout → `POST /api/billing/checkout` → crea preapproval en MP → redirect
+2. MP webhook → `POST /api/billing/mp-webhook` → actualiza estado en `organizations`
+3. Guard server-side → `lib/billing/guard.ts` → redirige a `/paywall` si no activo
+
+**Estados de suscripción** (`BillingSubscriptionStatus`): `TRIALING`, `ACTIVE`, `PAST_DUE`, `CANCELLED`, `SUSPENDED`, `PENDING_PAYMENT`
+
+**Defense-in-depth**:
+- Capa A: middleware (puede bypassearse, CVE-2025-29927)
+- Capa B: `assertSubscriptionActive()` en layouts/API routes (capa que realmente protege)
+- Capa C: RLS en Supabase
+
+### 3. Role-Based Access Control (RBAC)
+
+**Roles** (definidos en `lib/permissions.ts`):
 - `SUPER_ADMIN` - Full access to everything
 - `ADMIN` - Operational and financial access
 - `CONTABLE` - Accounting-focused access
@@ -98,7 +249,7 @@ maxevagestion/
 - Use `shouldShowInSidebar(role, moduleId)` for UI visibility
 - API routes MUST call `getCurrentUser()` to verify authentication
 
-### 2. Supabase Client Usage
+### 4. Supabase Client Usage
 
 **Server Components & API Routes**:
 ```typescript
@@ -114,7 +265,7 @@ const supabase = createClient()
 
 **IMPORTANT**: NEVER use service role key on the client. Always use appropriate client based on context.
 
-### 3. Accounting System
+### 5. Accounting System
 
 The system implements **double-entry bookkeeping** via `ledger_movements` table:
 
@@ -137,7 +288,7 @@ The system implements **double-entry bookkeeping** via `ledger_movements` table:
 - `lib/accounting/fx.ts` - Foreign exchange handling
 - `lib/commissions/calculate.ts` - Commission calculations
 
-### 4. Manychat Integration
+### 6. Manychat Integration
 
 **Lead Capture**:
 - Manychat (Instagram/WhatsApp flows) → Leads (via webhook `/api/webhooks/manychat`)
@@ -147,7 +298,11 @@ The system implements **double-entry bookkeeping** via `ledger_movements` table:
 
 **Configuration**: vía environment variables. Ver `lib/manychat/`.
 
-### 5. Alert System
+### 7. Callbell Integration
+
+Mensajería bidireccional WhatsApp/Instagram vía Callbell API. Webhook de entrada en `/api/webhooks/callbell`. Reconciliación diaria vía cron `callbell-reconcile`. Ver `lib/integrations/`.
+
+### 8. Alert System
 
 Automatic generation of alerts for:
 - Payment reminders (customer & operator)
@@ -204,7 +359,6 @@ export async function GET(req: Request) {
 
   const supabase = await createServerClient()
 
-  // Query logic with role-based filtering
   let query = supabase.from('table_name').select('*')
 
   if (user.role === 'SELLER') {
@@ -228,6 +382,8 @@ export async function GET(req: Request) {
 - `ADMIN`/`SUPER_ADMIN`: Can see all data
 - Apply filters BEFORE executing query
 
+**Multi-tenant scoping**: usar `getOrgAgencyIds(orgId)` de `lib/organizations.ts` para filtrar por org.
+
 **Pagination**: Use `.range(from, to)` for large datasets
 
 **Joins**: Prefer single query with `.select()` joins over multiple queries
@@ -241,8 +397,9 @@ Existing test coverage:
 - `lib/alerts/__tests__/` - Alert generation
 - `lib/commissions/__tests__/` - Commission calculation
 - `lib/permissions/__tests__/` - Permission system
+- `lib/billing/__tests__/` - Billing plans, guard, MP integration, state machine
 
-Run tests before committing changes to accounting/permission logic.
+Run tests before committing changes to accounting/billing/permission logic.
 
 ## Important Implementation Notes
 
@@ -251,7 +408,7 @@ Run tests before committing changes to accounting/permission logic.
 **CURRENT STATE**: Authentication is bypassed when `DISABLE_AUTH=true` in `.env.local`
 - Located in: `middleware.ts` and `lib/auth.ts`
 - Returns mock SUPER_ADMIN user in development
-- **TODO**: REMOVE before production deployment
+- **Production**: esta variable NO debe estar seteada en Railway
 
 ### File Upload & OCR
 
@@ -294,32 +451,75 @@ Context includes complete database schema for accurate queries.
 
 Required in `.env.local`:
 ```env
+# Supabase (REQUERIDO)
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+
+# App
 NEXT_PUBLIC_APP_URL=https://app.vibook.ai    # Base URL — usada en MP checkout, WhatsApp receipts, invites
 CRON_SECRET=your_cron_secret                 # Shared con Railway Cron Services para llamar /api/cron/*
-OPENAI_API_KEY=your_openai_key  # Optional, for OCR and AI Copilot
-EMILIA_API_KEY=your_emilia_api_key           # Required for Emilia/Vibook travel search (wsk_xxx format)
+DISABLE_AUTH=true                            # DEVELOPMENT ONLY - NUNCA en producción
+
+# OpenAI (opcional, para OCR y AI Copilot)
+OPENAI_API_KEY=your_openai_key
+
+# Emilia / vibook search
+EMILIA_API_KEY=your_emilia_api_key           # Required for Emilia travel search (wsk_xxx format)
 EMILIA_API_URL=https://api.vibook.ai/search  # Optional, defaults to vibook.ai
-DISABLE_AUTH=true                # DEVELOPMENT ONLY - Remove for production
+
+# MercadoPago — suscripciones SaaS
+MERCADOPAGO_ACCESS_TOKEN=                    # Token producción (cobro real)
+MERCADOPAGO_WEBHOOK_SECRET=                  # Firma HMAC-SHA256 del webhook de MP
+MERCADOPAGO_ACCESS_TOKEN_SANDBOX=            # Sandbox para E2E testing
+MP_USE_SANDBOX=false                         # Si true, usa token sandbox
+
+# Web Push Notifications (VAPID)
+NEXT_PUBLIC_VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY=
+VAPID_EMAIL=mailto:your-email@example.com
+
+# Amadeus API — IATA airport/city search (opcional)
+AMADEUS_CLIENT_ID=
+AMADEUS_CLIENT_SECRET=
+
+# Geoapify — fallback hotel search (opcional)
+GEOAPIFY_API_KEY=
+
+# Integraciones / Webhooks
+WEBHOOK_SECRET_ENCRYPTION_KEY=              # AES-256-GCM key para integration_webhooks. Generar: openssl rand -hex 32
+CALLBELL_API_BASE_URL=https://api.callbell.eu/v1.1
 ```
 
-Ver `.env.example` y `docs/testing-railway-migration.md` para la matriz completa (Resend, MP, AFIP, VAPID, Manychat, Amadeus, Geoapify, etc.).
+Ver `.env.example` para la lista completa (Resend, AFIP, Manychat, etc.).
 
 ## Hosting & Deployment
 
-**Producción**: Railway (antes Vercel). Dominio: `app.vibook.ai`. El dominio legacy `maxevagestion.com` hace redirect 301 al nuevo.
+**Producción**: Railway. Dominio: `app.vibook.ai`. El dominio legacy `maxevagestion.com` hace redirect 301 al nuevo.
 
-**Cron jobs**: 7 Railway Cron Services independientes (uno por endpoint), cada uno corre un `curl -X POST` contra `/api/cron/<name>` con header `Authorization: Bearer $CRON_SECRET`. El archivo `vercel.json` fue removido — Railway no lo lee. Todos los endpoints `/api/cron/*` son **POST con Bearer auth** (no hay `x-vercel-cron-secret`).
+**Cron jobs**: Railway Cron Services independientes (uno por endpoint), cada uno corre `curl -X POST` contra `/api/cron/<name>` con header `Authorization: Bearer $CRON_SECRET`. Todos los endpoints `/api/cron/*` son **POST con Bearer auth**.
 
-Endpoints cron existentes (ver `app/api/cron/`): `recurring-payments`, `alerts`, `payment-reminders`, `notifications`, `whatsapp`, `task-reminders`, `exchange-rates`.
+Endpoints cron existentes (ver `app/api/cron/`):
+- `recurring-payments` — cobros recurrentes
+- `alerts` — generación de alertas
+- `payment-reminders` — recordatorios de pago
+- `notifications` — notificaciones push
+- `whatsapp` — mensajes WhatsApp automáticos
+- `task-reminders` — recordatorios de tareas
+- `exchange-rates` — actualización de tipos de cambio
+- `billing-reconcile` — reconciliación de suscripciones MP
+- `callbell-reconcile` — reconciliación Callbell
+- `trial-reminders` — recordatorios de fin de trial
+- `apply-pricing-changes` — aplicación de cambios de precios
+- `classify-quotation-pdfs` — clasificación de PDFs de cotización
 
 ## Database Schema Notes
 
 ### Core Tables
+- `organizations` - Tenants del SaaS (una por agencia cliente)
+- `organization_members` - Usuarios por organización
 - `users` - System users with roles
-- `agencies` - Multiple agencies (Rosario, Madero, etc.)
+- `agencies` - Agencias dentro de una org (Rosario, Madero, etc.)
 - `leads` - Sales leads from Manychat or manual entry
 - `operations` - Confirmed travel operations
 - `customers` - Client information
@@ -333,8 +533,11 @@ Endpoints cron existentes (ver `app/api/cron/`): `recurring-payments`, `alerts`,
 - `documents` - Uploaded documents with OCR data
 - `alerts` - Automated system alerts
 - `iva_sales` / `iva_purchases` - VAT tracking
+- `integration_webhooks` - Webhook configs de integraciones (Callbell, etc.)
 
 ### Key Relationships
+- Organizations → Agencies (one-to-many)
+- Agencies → Users (many-to-many via `organization_members`)
 - Operations → Customers (many-to-many via `operation_customers`)
 - Operations → Operators (many-to-one)
 - Operations → Payments (one-to-many)
@@ -346,7 +549,6 @@ Endpoints cron existentes (ver `app/api/cron/`): `recurring-payments`, `alerts`,
 See `ROADMAP.md` for complete list. Key items:
 
 **High Priority**:
-- Remove authentication bypass before production
 - Add rate limiting to API routes
 - Improve test coverage (currently ~20%, target 60%+)
 - Add audit logs for sensitive operations
@@ -377,13 +579,18 @@ See `ROADMAP.md` for complete list. Key items:
 
 3. **Manychat lead capture not working**
    - Verify Manychat external request action points to `/api/webhooks/manychat`
-   - Check `/api/webhooks/manychat` logs (Railway logs filtering `manychat`)
+   - Check Railway logs filtering `manychat`
    - Verify `MANYCHAT_API_KEY` env var is set correctly
 
 4. **Ledger movements not creating**
    - Check if payment status is `PAID`
    - Verify `lib/accounting/ledger.ts` functions are called
    - Check for duplicate prevention logic
+
+5. **Billing / paywall redirect loop**
+   - Verificar estado de suscripción en tabla `organizations`
+   - Revisar logs del webhook MP en `/api/billing/mp-webhook`
+   - Usar `/api/billing/mp-webhook/diagnostics` para inspeccionar estado MP
 
 **Logging**: Check console for errors. API routes log to server console, not browser.
 
@@ -392,16 +599,6 @@ See `ROADMAP.md` for complete list. Key items:
 - `README.md` - User-facing documentation
 - `CONFIGURACION_SUPABASE.md` - Supabase setup guide
 - `GUIA_TESTING.md` - End-to-end testing guide
-- `docs/testing-railway-migration.md` - QA checklist post-migración Vercel → Railway (20 flujos que dependen de env vars)
+- `docs/testing-railway-migration.md` - QA checklist post-migración Vercel → Railway
 - `ROADMAP.md` - Development roadmap and pending tasks
 - `.cursor/ESTADO-COMPLETO-PROYECTO.md` - Detailed project status analysis
-
-## graphify
-
-This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
-
-Rules:
-- ALWAYS read graphify-out/GRAPH_REPORT.md before reading any source files, running grep/glob searches, or answering codebase questions. The graph is your primary map of the codebase.
-- IF graphify-out/wiki/index.md EXISTS, navigate it instead of reading raw files
-- For cross-module "how does X relate to Y" questions, prefer `graphify query "<question>"`, `graphify path "<A>" "<B>"`, or `graphify explain "<concept>"` over grep — these traverse the graph's EXTRACTED + INFERRED edges instead of scanning files
-- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).

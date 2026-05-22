@@ -18,6 +18,10 @@ interface ToProcessItem {
   newPaidAmount: number
   isFullyPaid: boolean
   operation: any
+  // P0 2026-05-10: captured at fetch time for CAS guard against concurrent
+  // bulk runs that would otherwise double-pay the same operator_payment.
+  originalPaidAmount: any
+  originalStatus: string
 }
 
 export async function POST(request: Request) {
@@ -25,6 +29,13 @@ export async function POST(request: Request) {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
     const body = await request.json()
+
+    // Cross-tenant fix (2026-05-18): exigir org_id. Este endpoint procesa
+    // bulk payments por id — sin scopear, un user podría pagar deudas
+    // ajenas pasando IDs enumerados.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
 
     const {
       payments,
@@ -75,6 +86,7 @@ export async function POST(request: Request) {
     const { data: paymentAccount, error: accountError } = await (supabase.from("financial_accounts") as any)
       .select("*")
       .eq("id", payment_account_id)
+      .eq("org_id", (user as any).org_id)
       .single()
 
     if (accountError || !paymentAccount) {
@@ -125,6 +137,7 @@ export async function POST(request: Request) {
       const { data: operatorPayment, error: opError } = await (supabase.from("operator_payments") as any)
         .select("*")
         .eq("id", operator_payment_id)
+        .eq("org_id", (user as any).org_id)
         .single()
 
       if (opError || !operatorPayment) {
@@ -165,6 +178,7 @@ export async function POST(request: Request) {
       const { data: operation } = await (supabase.from("operations") as any)
         .select("seller_id, operator_id, agency_id")
         .eq("id", operation_id)
+        .eq("org_id", (user as any).org_id)
         .single()
 
       toProcess.push({
@@ -174,6 +188,9 @@ export async function POST(request: Request) {
         amountARS,
         newPaidAmount,
         isFullyPaid,
+        // CAS snapshot for race detection at UPDATE time
+        originalPaidAmount: operatorPayment.paid_amount,
+        originalStatus: operatorPayment.status,
         operation: operation || null,
       })
       totalDebit += amountInPaymentCurrency
@@ -366,12 +383,31 @@ export async function POST(request: Request) {
           updateData.ledger_movement_id = ledgerMovementResult.id
         }
 
-        const { error: updateError } = await (supabase.from("operator_payments") as any)
+        // P0 2026-05-10: CAS guard contra race conditions con bulk runs
+        // concurrentes. Si paid_amount cambió desde que lo leímos en validación
+        // (línea 160), otro request ya procesó este operator_payment → abort
+        // este item con error explícito, NO escribir nada.
+        // El ledger ya se creó antes (líneas ~311 y ~339) y queda como dato
+        // huérfano detectable por /api/payments/orphans — preferible a doble
+        // pago.
+        const { data: updatedRows, error: updateError } = await (supabase.from("operator_payments") as any)
           .update(updateData)
           .eq("id", operator_payment_id)
+          .eq("paid_amount", item.originalPaidAmount)
+          .eq("status", item.originalStatus)
+          .select("id")
 
         if (updateError) {
           errors.push(`Error actualizando ${operator_payment_id}: ${updateError.message}`)
+          continue
+        }
+
+        if (!updatedRows || updatedRows.length === 0) {
+          errors.push(
+            `Race condition detectada en ${operator_payment_id}: ` +
+            `otra operación modificó este pago mientras se procesaba. ` +
+            `Ledger creado quedó huérfano (visible en /api/payments/orphans).`
+          )
           continue
         }
 

@@ -231,22 +231,23 @@ export async function getTopDestinations(
 
   const { data: operations } = await query
 
-  // Group by destination
+  // Group by destination — normalize key to avoid duplicates from casing/spaces
   const destinationStats = (operations || []).reduce((acc: any, op: any) => {
-    const destination = op.destination || "Sin destino"
+    const raw = (op.destination || "Sin destino").trim()
+    const key = raw.toLowerCase()
 
-    if (!acc[destination]) {
-      acc[destination] = {
-        destination,
+    if (!acc[key]) {
+      acc[key] = {
+        destination: raw,
         totalSales: 0,
         totalMargin: 0,
         operationsCount: 0,
       }
     }
 
-    acc[destination].totalSales += op.sale_amount_total || 0
-    acc[destination].totalMargin += op.margin_amount || 0
-    acc[destination].operationsCount += 1
+    acc[key].totalSales += op.sale_amount_total || 0
+    acc[key].totalMargin += op.margin_amount || 0
+    acc[key].operationsCount += 1
 
     return acc
   }, {})
@@ -375,10 +376,22 @@ export async function getCashBalances(user: User): Promise<any[]> {
   const supabase = await createServerClient()
 
   try {
-    const { data: accounts } = await (supabase.from("financial_accounts") as any)
+    const { data: userAgencies } = await supabase
+      .from("user_agencies")
+      .select("agency_id")
+      .eq("user_id", user.id)
+    const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
+
+    let accountsQuery = (supabase.from("financial_accounts") as any)
       .select("*")
       .order("type", { ascending: true })
       .order("currency", { ascending: true })
+
+    if (agencyIds.length > 0 && user.role !== "SUPER_ADMIN") {
+      accountsQuery = accountsQuery.or(`agency_id.in.(${agencyIds.join(",")}),agency_id.is.null`)
+    }
+
+    const { data: accounts } = await accountsQuery
 
     const accountsWithBalance = await Promise.all(
       (accounts || []).map(async (account: any) => {

@@ -11,17 +11,31 @@ export async function GET(request: Request) {
     const events: any[] = []
 
     const isSeller = user.role === "SELLER"
-    const isSuperAdmin = user.role === "SUPER_ADMIN"
+
+    // ────────────────────────────────────────────────────────────
+    // Bug fix 2026-05-15 (reportado por Lozada Gualeguaychú):
+    // El código anterior tenía un bypass `isSuperAdmin = no filtrar nada`,
+    // que en el modelo SaaS multi-tenant le leakeaba operaciones/pagos/
+    // alertas/leads de TODOS los tenants a cualquier SUPER_ADMIN.
+    //
+    // En el modelo SaaS: SUPER_ADMIN es el owner de SU org, no platform
+    // admin de Vibook. getUserAgencyIds ya devuelve solo las agencias de
+    // su org (scopeado por users.org_id). Filtrar siempre por esa lista.
+    //
+    // Si agencyIds está vacío (user huérfano sin agencias) → devolver
+    // events vacío. Fail-safe vs leak.
+    // ────────────────────────────────────────────────────────────
+    if (!isSeller && agencyIds.length === 0) {
+      return NextResponse.json({ events: [] })
+    }
 
     // --- Helper to apply role-based filters to an operations query ---
     const applyOperationFilters = (query: any) => {
       if (isSeller) {
         return query.eq("seller_id", user.id)
       }
-      if (!isSuperAdmin && agencyIds.length > 0) {
-        return query.in("agency_id", agencyIds)
-      }
-      return query
+      // SUPER_ADMIN, ADMIN, CONTABLE, VIEWER: filtrar por las agencias de su org
+      return query.in("agency_id", agencyIds)
     }
 
     // Check-ins de operaciones
@@ -40,7 +54,7 @@ export async function GET(request: Request) {
           date: op.checkin_date,
           description: op.file_code || undefined,
           color: "#4F5BD5",
-          operationId: op.id, // Para poder enlazar a la operación
+          operationId: op.id,
         })
       }
     }
@@ -61,44 +75,22 @@ export async function GET(request: Request) {
           date: op.departure_date,
           description: op.file_code || undefined,
           color: "#2CA77F",
-          operationId: op.id, // Para poder enlazar a la operación
+          operationId: op.id,
         })
       }
     }
 
-    // Vencimientos de pagos — filter via operation's seller/agency
-    // First get the allowed operation IDs, then filter payments by them
-    if (isSeller || (!isSuperAdmin && agencyIds.length > 0)) {
-      let opsQuery = (supabase.from("operations") as any).select("id")
-      opsQuery = applyOperationFilters(opsQuery)
-      const { data: allowedOps } = await opsQuery
-      const allowedOpIds = (allowedOps || []).map((op: any) => op.id)
+    // Vencimientos de pagos — siempre filtrar por allowedOps de la org
+    let opsForPayments = (supabase.from("operations") as any).select("id")
+    opsForPayments = applyOperationFilters(opsForPayments)
+    const { data: allowedOpsPayments } = await opsForPayments
+    const allowedOpIdsForPayments = (allowedOpsPayments || []).map((op: any) => op.id)
 
-      if (allowedOpIds.length > 0) {
-        const { data: payments } = await (supabase.from("payments") as any)
-          .select("id, amount, currency, date_due, payer_type, operation_id, operations:operation_id(destination)")
-          .eq("status", "PENDING")
-          .in("operation_id", allowedOpIds)
-
-        if (payments) {
-          for (const payment of payments) {
-            events.push({
-              id: `payment-${payment.id}`,
-              type: "PAYMENT_DUE",
-              title: `Pago ${payment.payer_type === "CUSTOMER" ? "de cliente" : "a operador"}: ${Number(payment.amount).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${payment.currency}`,
-              date: payment.date_due,
-              description: payment.operations?.destination || undefined,
-              color: "#EC7B5F",
-              operationId: payment.operation_id, // Para poder enlazar a la operación
-            })
-          }
-        }
-      }
-    } else {
-      // SUPER_ADMIN: no filtering
+    if (allowedOpIdsForPayments.length > 0) {
       const { data: payments } = await (supabase.from("payments") as any)
         .select("id, amount, currency, date_due, payer_type, operation_id, operations:operation_id(destination)")
         .eq("status", "PENDING")
+        .in("operation_id", allowedOpIdsForPayments)
 
       if (payments) {
         for (const payment of payments) {
@@ -109,20 +101,20 @@ export async function GET(request: Request) {
             date: payment.date_due,
             description: payment.operations?.destination || undefined,
             color: "#EC7B5F",
-            operationId: payment.operation_id, // Para poder enlazar a la operación
+            operationId: payment.operation_id,
           })
         }
       }
     }
 
-    // Seguimientos de leads
+    // Seguimientos de leads — filtrar por agencias de la org
     let leadsQuery = (supabase.from("leads") as any)
       .select("id, contact_name, destination, follow_up_date, assigned_seller_id, agency_id")
       .not("follow_up_date", "is", null)
 
     if (isSeller) {
       leadsQuery = leadsQuery.eq("assigned_seller_id", user.id)
-    } else if (!isSuperAdmin && agencyIds.length > 0) {
+    } else {
       leadsQuery = leadsQuery.in("agency_id", agencyIds)
     }
 
@@ -137,42 +129,22 @@ export async function GET(request: Request) {
           date: lead.follow_up_date,
           description: lead.destination || undefined,
           color: "#8B82E8",
-          leadId: lead.id, // Para poder enlazar al lead
+          leadId: lead.id,
         })
       }
     }
 
-    // Alertas pendientes — filter via operation's seller/agency
-    if (isSeller || (!isSuperAdmin && agencyIds.length > 0)) {
-      let opsQuery = (supabase.from("operations") as any).select("id")
-      opsQuery = applyOperationFilters(opsQuery)
-      const { data: allowedOps } = await opsQuery
-      const allowedOpIds = (allowedOps || []).map((op: any) => op.id)
+    // Alertas pendientes — siempre filtrar por allowedOps de la org
+    let opsForAlerts = (supabase.from("operations") as any).select("id")
+    opsForAlerts = applyOperationFilters(opsForAlerts)
+    const { data: allowedOpsAlerts } = await opsForAlerts
+    const allowedOpIdsForAlerts = (allowedOpsAlerts || []).map((op: any) => op.id)
 
-      if (allowedOpIds.length > 0) {
-        const { data: alerts } = await (supabase.from("alerts") as any)
-          .select("id, description, date_due, type, operation_id")
-          .eq("status", "PENDING")
-          .in("operation_id", allowedOpIds)
-
-        if (alerts) {
-          for (const alert of alerts) {
-            events.push({
-              id: `alert-${alert.id}`,
-              type: "REMINDER",
-              title: alert.description,
-              date: alert.date_due.split("T")[0],
-              color: "#4F5BD5",
-              operationId: alert.operation_id || undefined,
-            })
-          }
-        }
-      }
-    } else {
-      // SUPER_ADMIN: no filtering
+    if (allowedOpIdsForAlerts.length > 0) {
       const { data: alerts } = await (supabase.from("alerts") as any)
         .select("id, description, date_due, type, operation_id")
         .eq("status", "PENDING")
+        .in("operation_id", allowedOpIdsForAlerts)
 
       if (alerts) {
         for (const alert of alerts) {

@@ -27,6 +27,15 @@ export function CustomPlanForm({
   const [basePrice, setBasePrice] = useState(String(initial?.base_price_ars ?? ""))
   const [discountPct, setDiscountPct] = useState(String(initial?.discount_percent ?? 0))
   const [discountMonths, setDiscountMonths] = useState("0")
+  // 2026-05-18 (Tomi, caso VICO): fecha exacta de fin del descuento (override
+  // del cálculo automático now()+meses). Vacío = usar duración en meses.
+  const [discountEndsAt, setDiscountEndsAt] = useState<string>(
+    initial?.discount_ends_at ? initial.discount_ends_at.slice(0, 10) : ""
+  )
+  // 2026-05-18: días que MP espera antes del primer cobro. Útil cuando el
+  // cliente ya pagó el primer mes por transferencia y queremos diferir el
+  // primer cobro automático hasta una fecha específica.
+  const [freeTrialDays, setFreeTrialDays] = useState<string>("0")
   const [billingMethod, setBillingMethod] = useState<"MP" | "MANUAL">(
     initial?.billing_method ?? "MP"
   )
@@ -50,10 +59,28 @@ export function CustomPlanForm({
     if (!Number.isFinite(disc) || disc < 0 || disc > 100)
       return "Descuento % debe estar entre 0 y 100"
     if (disc > 0) {
-      const months = Number(discountMonths)
-      if (!Number.isFinite(months) || months <= 0)
-        return "Si hay descuento, la duración (meses) debe ser > 0"
-      if (months > 24) return "Duración máxima 24 meses"
+      // Si especificó fecha de fin → no requiere meses
+      if (discountEndsAt) {
+        const parsed = new Date(discountEndsAt)
+        if (Number.isNaN(parsed.getTime())) {
+          return "Fecha de fin del descuento inválida"
+        }
+        if (parsed.getTime() < Date.now()) {
+          return "Fecha de fin del descuento debe ser futura"
+        }
+      } else {
+        const months = Number(discountMonths)
+        if (!Number.isFinite(months) || months <= 0)
+          return "Si hay descuento, ingresá fecha de fin O duración (meses)"
+        if (months > 24) return "Duración máxima 24 meses"
+      }
+    }
+    const trialDays = Number(freeTrialDays)
+    if (!Number.isFinite(trialDays) || trialDays < 0) {
+      return "Días de trial debe ser >= 0"
+    }
+    if (trialDays > 365) {
+      return "Máximo 365 días de trial"
     }
     return null
   }
@@ -70,6 +97,7 @@ export function CustomPlanForm({
     setResult(null)
     try {
       const method = isEdit ? "PATCH" : "POST"
+      const trialDays = Number(freeTrialDays)
       const res = await fetch(`/api/admin/orgs/${orgId}/custom-plan`, {
         method,
         headers: { "Content-Type": "application/json" },
@@ -78,6 +106,11 @@ export function CustomPlanForm({
           base_price_ars: Number(basePrice),
           discount_percent: Number(discountPct),
           discount_duration_months: Number(discountMonths),
+          // Si el admin pasó fecha exacta, mandala (sobreescribe el cálculo automático)
+          discount_ends_at: discountEndsAt
+            ? new Date(discountEndsAt).toISOString()
+            : undefined,
+          free_trial_days: trialDays > 0 ? Math.floor(trialDays) : undefined,
           features: { extras },
           billing_method: billingMethod,
           notes: notes || null,
@@ -88,7 +121,7 @@ export function CustomPlanForm({
         setResult({ error: data.error ?? res.statusText })
       } else {
         setResult({ checkout_url: data.checkout_url ?? undefined })
-        router.refresh()
+        // NO refrescar el router: así el link queda visible hasta que el usuario navegue manualmente
       }
     } finally {
       setSubmitting(false)
@@ -123,10 +156,14 @@ export function CustomPlanForm({
         <label className="block text-sm">
           <span className="text-muted-foreground">Precio base ARS/mes</span>
           <input
-            type="number"
+            type="text"
+            inputMode="decimal"
             className="w-full border rounded px-2 py-1 bg-background"
             value={basePrice}
-            onChange={(e) => setBasePrice(e.target.value)}
+            onChange={(e) => {
+              const raw = e.target.value.replace(",", ".")
+              if (raw === "" || /^\d*\.?\d*$/.test(raw)) setBasePrice(raw)
+            }}
             placeholder="719000"
           />
         </label>
@@ -147,12 +184,14 @@ export function CustomPlanForm({
         <label className="block text-sm">
           <span className="text-muted-foreground">Descuento %</span>
           <input
-            type="number"
+            type="text"
+            inputMode="decimal"
             className="w-full border rounded px-2 py-1 bg-background"
             value={discountPct}
-            onChange={(e) => setDiscountPct(e.target.value)}
-            min={0}
-            max={100}
+            onChange={(e) => {
+              const raw = e.target.value.replace(",", ".")
+              if (raw === "" || /^\d*\.?\d*$/.test(raw)) setDiscountPct(raw)
+            }}
           />
         </label>
         <label className="block text-sm">
@@ -164,7 +203,48 @@ export function CustomPlanForm({
             onChange={(e) => setDiscountMonths(e.target.value)}
             min={0}
             max={24}
+            disabled={!!discountEndsAt}
           />
+        </label>
+      </div>
+
+      {/* 2026-05-18 (caso VICO): permitir override de la fecha exacta del fin
+          del descuento. Útil para clientes que ya pagaron offline y el
+          descuento debe contar desde la fecha de vencimiento del periodo
+          ya pagado, no desde la fecha de creación del custom_plan. */}
+      <div className="grid grid-cols-2 gap-3">
+        <label className="block text-sm">
+          <span className="text-muted-foreground">
+            Fecha exacta fin descuento (opcional)
+          </span>
+          <input
+            type="date"
+            className="w-full border rounded px-2 py-1 bg-background"
+            value={discountEndsAt}
+            onChange={(e) => setDiscountEndsAt(e.target.value)}
+          />
+          <span className="text-[10px] text-muted-foreground">
+            Si la completás, sobreescribe el cálculo de "duración meses".
+          </span>
+        </label>
+        <label className="block text-sm">
+          <span className="text-muted-foreground">
+            Días hasta primer cobro MP (opcional)
+          </span>
+          <input
+            type="number"
+            className="w-full border rounded px-2 py-1 bg-background"
+            value={freeTrialDays}
+            onChange={(e) => setFreeTrialDays(e.target.value)}
+            min={0}
+            max={365}
+            disabled={billingMethod !== "MP"}
+          />
+          <span className="text-[10px] text-muted-foreground">
+            {billingMethod === "MP"
+              ? "Si el cliente ya pagó offline, poné los días hasta que vence ese mes."
+              : "Solo aplica si billing = MP."}
+          </span>
         </label>
       </div>
 

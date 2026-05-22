@@ -172,7 +172,7 @@ export default async function AdminOrgDetailPage({ params }: { params: Promise<{
 
       <ExtendTrialCard orgId={id} currentTrialEndsAt={org.trial_ends_at} />
 
-      <CriticalActions orgId={id} orgName={org.name} currentStatus={org.subscription_status} />
+      <CriticalActions orgId={id} orgName={org.name} orgSlug={org.slug} currentStatus={org.subscription_status} />
 
       {customPlan?.billing_method === "MANUAL" && (
         <ManualPaymentsSection orgId={id} payments={manualPayments} />

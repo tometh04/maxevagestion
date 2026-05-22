@@ -147,7 +147,44 @@ export async function POST(request: Request) {
       notes,
       apply_rg5617,
       apply_rg3819,
+      idempotency_key, // UUID generado por el cliente al montar el form (Stripe-style)
     } = body
+
+    // ============================================================
+    // Idempotency check (Bug fix 2026-05-13 reportado por Santi):
+    // Doble submit / retry de red / Enter por costumbre podía crear
+    // 2 payments idénticos. El cliente ahora manda idempotency_key
+    // (UUID generado al montar el form). Si ya existe un payment con
+    // ese key → devolvemos el payment existente sin re-insertar.
+    //
+    // Tanto el primer POST como el retry con ?force=true mandan el
+    // MISMO key, así que el retry idempotente respeta el override.
+    // El key se regenera al cerrar el dialog → próximo cobro = nuevo key.
+    //
+    // Si el cliente no manda idempotency_key (clientes legacy, cron,
+    // bulk imports) la lógica vieja sigue funcionando normal.
+    // ============================================================
+    const isValidUuid = (s: unknown): s is string =>
+      typeof s === "string" &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s)
+
+    if (isValidUuid(idempotency_key)) {
+      const { data: existingByKey } = await (supabase.from("payments") as any)
+        .select("id, amount, currency, status, direction, payer_type, operation_id, operator_id, date_paid, date_due, created_at")
+        .eq("idempotency_key", idempotency_key)
+        .maybeSingle()
+
+      if (existingByKey) {
+        // Replay idempotente: el cliente ya creó este payment exitosamente
+        // en un intento anterior (probablemente perdió la respuesta por red,
+        // o doble click). No insertamos otra vez — devolvemos el existente.
+        return NextResponse.json({
+          success: true,
+          idempotent_replay: true,
+          payment: existingByKey,
+        })
+      }
+    }
 
     const finalStatus = status || "PENDING"
     const providedExchangeRateNumber = coercePositiveNumber(providedExchangeRate)
@@ -180,8 +217,15 @@ export async function POST(request: Request) {
     }
 
     // Detección de pago duplicado: pagos similares (misma op/operador, mismo monto, misma moneda,
-    // misma dirección) creados en los últimos 7 días. Si encuentra coincidencia y el caller no
-    // pasó force=true, retorna 409 con la lista para que el frontend muestre alerta y permita confirmar.
+    // misma dirección, MISMA fecha) creados en los últimos 7 días. Si encuentra coincidencia y el
+    // caller no pasó force=true, retorna 409 con la lista para que el frontend muestre alerta y
+    // permita confirmar.
+    //
+    // Bug 2026-05-11 reportado por Santi: el match anterior solo usaba amount/currency/direction/op
+    // sin fecha, lo que false-positiveaba cuotas iguales (3 transferencias de USD 1520 en días
+    // distintos para la misma operación). Ahora exigimos también que coincida la fecha — date_paid
+    // si ambos están pagados, o date_due si están pendientes. Así cuotas en fechas distintas no
+    // se flagean, y solo se detecta el caso real (doble click / network retry mismo día).
     if (!forceCreate) {
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
       let dupQ = (supabase.from("payments") as any)
@@ -200,6 +244,14 @@ export async function POST(request: Request) {
       } else {
         // Sin operation_id ni operator_id no hay forma de detectar duplicados (caso raro). Skip.
         dupQ = null
+      }
+      // Match por fecha: cuotas en fechas distintas NO son duplicados
+      if (dupQ) {
+        if (date_paid) {
+          dupQ = dupQ.eq("date_paid", date_paid)
+        } else if (date_due) {
+          dupQ = dupQ.eq("date_due", date_due)
+        }
       }
       if (dupQ) {
         const { data: duplicates } = await dupQ.limit(5)
@@ -225,12 +277,18 @@ export async function POST(request: Request) {
       }
     }
 
+    // 🔴 Fix cross-tenant (2026-05-18): guard de org_id obligatorio.
+    if (!user.org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     // SELLER: verificar que la operación le pertenece
     if (user.role === "SELLER" && operation_id) {
       const { data: operationOwnership } = await (supabase.from("operations") as any)
         .select("id")
         .eq("id", operation_id)
         .eq("seller_id", user.id)
+        .eq("org_id", user.org_id) // defensive: scope por org también para SELLER
         .maybeSingle()
 
       if (!operationOwnership) {
@@ -240,11 +298,14 @@ export async function POST(request: Request) {
 
     let operationData: any = null
     if (operation_id) {
+      // Fetch + validación de org_id en la misma query: si la operación no
+      // pertenece al org del user, el .single() devuelve PGRST116 (no row).
       const { data: operation, error: operationError } = await (supabase.from("operations") as any)
         .select(`
           seller_id,
           operator_id,
           agency_id,
+          org_id,
           sale_currency,
           currency,
           destination,
@@ -253,6 +314,7 @@ export async function POST(request: Request) {
           )
         `)
         .eq("id", operation_id)
+        .eq("org_id", user.org_id)
         .single()
 
       if (operationError || !operation) {
@@ -471,6 +533,67 @@ export async function POST(request: Request) {
       }
     }
 
+    // Pre-INSERT validation for PAID payments.
+    // These checks used to run AFTER the INSERT, which left orphaned payments (status=PAID,
+    // no ledger_movement) when they failed. The orphaned payment then appeared as a
+    // "duplicate" on the user's next attempt → they clicked "Crear igual" → second payment
+    // created. Moving these checks here prevents the orphan entirely.
+    let preValidatedAccount: { id: string; name: string; currency: string; is_active: boolean } | null = null
+    if (finalStatus === "PAID" && !needsApproval) {
+      const preCheckLedgerType = direction === "INCOME"
+        ? "INCOME"
+        : (payer_type === "OPERATOR" ? "OPERATOR_PAYMENT" : "EXPENSE")
+
+      const { data: preAcct, error: preAcctError } = await (supabase.from("financial_accounts") as any)
+        .select("id, name, currency, is_active")
+        .eq("id", financial_account_id)
+        .single()
+
+      if (preAcctError || !preAcct || !preAcct.is_active) {
+        return NextResponse.json({ error: "La cuenta financiera seleccionada no existe o no está activa" }, { status: 400 })
+      }
+
+      if (preAcct.currency !== currency) {
+        return NextResponse.json({ error: `La cuenta financiera debe estar en ${currency}` }, { status: 400 })
+      }
+
+      if (direction === "EXPENSE" || payer_type === "OPERATOR") {
+        const balanceCheck = await validateSufficientBalance(
+          financial_account_id,
+          parseFloat(amount),
+          currency as "ARS" | "USD",
+          supabase
+        )
+        if (!balanceCheck.valid) {
+          return NextResponse.json(
+            { error: balanceCheck.error || "Saldo insuficiente en cuenta para realizar el pago" },
+            { status: 400 }
+          )
+        }
+      }
+
+      if (operation_id && !forceCreate) {
+        const { data: existingMovements } = await (supabase.from("ledger_movements") as any)
+          .select("id")
+          .eq("operation_id", operation_id)
+          .eq("type", preCheckLedgerType)
+          .eq("amount_original", parseFloat(amount))
+          .eq("account_id", financial_account_id)
+          .limit(1)
+        if (existingMovements && existingMovements.length > 0) {
+          return NextResponse.json(
+            {
+              error: "Ya existe un movimiento con el mismo monto para esta operación en esta cuenta. Verificá que no sea duplicado.",
+              code: "DUPLICATE_PAYMENT",
+            },
+            { status: 409 }
+          )
+        }
+      }
+
+      preValidatedAccount = preAcct
+    }
+
     // 1. Crear el pago en tabla payments
     // IMPORTANTE: Si status no se especifica, crear como PENDING para evitar crear movimientos contables duplicados
     // Los movimientos contables se crearán cuando se marque como PAID
@@ -496,6 +619,11 @@ export async function POST(request: Request) {
     if (needsApproval) {
       paymentData.approval_status = "PENDING_APPROVAL"
     }
+    // Guardar idempotency_key si vino y es válido. Permite que retries del cliente
+    // recuperen este payment sin crear duplicados (ver lookup al inicio del handler).
+    if (isValidUuid(idempotency_key)) {
+      paymentData.idempotency_key = idempotency_key
+    }
 
     const { data: payment, error: paymentError } = await (supabase.from("payments") as any)
       .insert(paymentData)
@@ -503,6 +631,21 @@ export async function POST(request: Request) {
       .single()
 
     if (paymentError) {
+      // Race condition: si dos POSTs llegan en paralelo con el mismo idempotency_key,
+      // el constraint UNIQUE rechaza uno. Lo detectamos y devolvemos el ganador.
+      if (paymentError.code === "23505" && paymentError.message?.includes("idempotency_key") && isValidUuid(idempotency_key)) {
+        const { data: winner } = await (supabase.from("payments") as any)
+          .select("id, amount, currency, status, direction, payer_type, operation_id, operator_id, date_paid, date_due, created_at")
+          .eq("idempotency_key", idempotency_key)
+          .maybeSingle()
+        if (winner) {
+          return NextResponse.json({
+            success: true,
+            idempotent_replay: true,
+            payment: winner,
+          })
+        }
+      }
       console.error("Error creating payment:", paymentError)
       return NextResponse.json({ error: `Error al crear pago: ${paymentError.message}` }, { status: 500 })
     }
@@ -569,70 +712,23 @@ export async function POST(request: Request) {
           ? parseFloat(amount) 
           : calculateARSEquivalent(parseFloat(amount), "USD", exchangeRate)
 
-        // 4. Usar la cuenta financiera proporcionada por el frontend
+        // 4. Usar la cuenta ya pre-validada antes del INSERT (evita pagos huérfanos)
         const accountId = financial_account_id
-        
-        // Validar que la cuenta existe y está activa
-        const { data: selectedAccount, error: accountCheckError } = await (supabase.from("financial_accounts") as any)
-          .select("id, name, currency, is_active")
-          .eq("id", accountId)
-          .single()
-
-        if (accountCheckError || !selectedAccount || !selectedAccount.is_active) {
-          return NextResponse.json({ error: "La cuenta financiera seleccionada no existe o no está activa" }, { status: 400 })
-        }
-
-        // Validar que la moneda de la cuenta coincide
-        if (selectedAccount.currency !== currency) {
-          return NextResponse.json({ error: `La cuenta financiera debe estar en ${currency}` }, { status: 400 })
-        }
-
-        // Validar saldo suficiente para egresos (NUNCA permitir saldo negativo)
-        if (direction === "EXPENSE" || payer_type === "OPERATOR") {
-          const amountToCheck = parseFloat(amount)
-          const balanceCheck = await validateSufficientBalance(
-            accountId,
-            amountToCheck,
-            currency as "ARS" | "USD",
-            supabase
-          )
-          
-          if (!balanceCheck.valid) {
-            return NextResponse.json(
-              { error: balanceCheck.error || "Saldo insuficiente en cuenta para realizar el pago" },
-              { status: 400 }
-            )
-          }
-        }
+        // preValidatedAccount is guaranteed non-null here: the pre-INSERT block above ran
+        // the same validations and would have returned early on any failure.
+        const selectedAccount = preValidatedAccount!
 
         // 5. Mapear método de pago a método de ledger
         const ledgerMethod = mapPaymentMethodToLedgerMethod(method)
 
         // 6. Determinar tipo de ledger movement
-        const ledgerType = direction === "INCOME" 
-          ? "INCOME" 
+        const ledgerType = direction === "INCOME"
+          ? "INCOME"
           : (payer_type === "OPERATOR" ? "OPERATOR_PAYMENT" : "EXPENSE")
 
         // 6.1. Obtener nombre del pasajero principal para el concepto
         const passengerName = operation_id ? await getMainPassengerName(operation_id, supabase) : null
         const operationCode = operation_id ? operation_id.slice(0, 8) : "N/A"
-        
-        // 7. Verificar que no exista un movimiento duplicado (misma operación, tipo, monto, cuenta)
-        if (operation_id) {
-          const { data: existingMovements } = await (supabase.from("ledger_movements") as any)
-            .select("id")
-            .eq("operation_id", operation_id)
-            .eq("type", ledgerType)
-            .eq("amount_original", parseFloat(amount))
-            .eq("account_id", accountId)
-            .limit(1)
-          if (existingMovements && existingMovements.length > 0) {
-            return NextResponse.json(
-              { error: "Ya existe un movimiento con el mismo monto para esta operación en esta cuenta. Verificá que no sea duplicado." },
-              { status: 409 }
-            )
-          }
-        }
 
         // Crear movimiento PRINCIPAL en libro mayor (ledger_movements) usando la cuenta seleccionada
         // Este es el ÚNICO movimiento que afecta el balance de la cuenta financiera seleccionada
@@ -988,11 +1084,12 @@ export async function POST(request: Request) {
         // Resolver agency_id y file_code de la operación (las variables del scope
         // interno de creación del cash_movement no están accesibles acá).
         const { data: opForAlert } = await (supabase.from("operations") as any)
-          .select("agency_id, file_code")
+          .select("agency_id, org_id, file_code")
           .eq("id", operation_id)
           .maybeSingle()
 
         const alertAgencyId = opForAlert?.agency_id || null
+        const alertOrgId = opForAlert?.org_id || null
         const opCode = opForAlert?.file_code || operation_id.slice(0, 8)
 
         if (!alertAgencyId) {
@@ -1023,6 +1120,7 @@ export async function POST(request: Request) {
 
             if (!existingAlert) {
               await (supabase.from("alerts") as any).insert({
+                org_id: alertOrgId, // P0 2026-05-10: required tras tighten policy mig 5
                 agency_id: alertAgencyId,
                 user_id: user.id,
                 operation_id,
@@ -1095,12 +1193,25 @@ export async function GET(request: Request) {
     const limit = Math.min(requestedLimit, 200)
     const offset = (page - 1) * limit
 
+    // 🔴 FIX CRÍTICO CROSS-TENANT (2026-05-18, Tomi reportó VICO viendo
+    // pagos ajenos): este endpoint NO filtraba por org_id. Cualquier user
+    // no-SELLER (ADMIN, SUPER_ADMIN, CONTABLE, etc) veía TODOS los pagos
+    // de TODAS las orgs. Defense-in-depth: org_id obligatorio + 400 si
+    // el user no tiene org (edge case que no debería pasar pero por las dudas).
+    if (!user.org_id) {
+      return NextResponse.json(
+        { error: "Usuario sin organización asociada" },
+        { status: 400 }
+      )
+    }
+
     // SELLER: solo ve pagos de sus operaciones
     let allowedOperationIds: string[] | null = null
     if (user.role === "SELLER") {
       const { data: sellerOps } = await (supabase.from("operations") as any)
         .select("id")
         .eq("seller_id", user.id)
+        .eq("org_id", user.org_id) // defensive: aún para SELLER scope por org
       allowedOperationIds = (sellerOps || []).map((op: any) => op.id)
       if (!allowedOperationIds || allowedOperationIds.length === 0) {
         return NextResponse.json({
@@ -1148,6 +1259,10 @@ export async function GET(request: Request) {
       )
     `, { count: "exact" })
       .neq("source", "OPERATOR_BULK")
+      // 🔴 Filtro multi-tenant CRÍTICO (2026-05-18): payments.org_id es columna
+      // post-migration P0. Sin este .eq, cualquier user no-SELLER ve pagos
+      // ajenos. Defense-in-depth además del SELLER filter.
+      .eq("org_id", user.org_id)
 
     if (operationId) {
       query = query.eq("operation_id", operationId)
@@ -1306,10 +1421,17 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "No tienes permisos para eliminar pagos" }, { status: 403 })
     }
 
-    // 1. Obtener el pago con su ledger_movement_id
+    // 🔴 Fix cross-tenant (2026-05-18): scope obligatorio por org.
+    // Sin este check, cualquier user con un paymentId ajeno podía DELETE-arlo.
+    if (!user.org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
+    // 1. Obtener el pago con su ledger_movement_id — filtrado por org del user
     const { data: payment, error: fetchError } = await (supabase.from("payments") as any)
       .select("*, operation_id")
       .eq("id", paymentId)
+      .eq("org_id", user.org_id)
       .single()
 
     if (fetchError || !payment) {
@@ -1536,10 +1658,18 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "paymentId es requerido" }, { status: 400 })
     }
 
-    // 1. Obtener pago actual
+    // 🔴 Fix cross-tenant (2026-05-18): scope obligatorio por org.
+    // Sin este check, cualquier ADMIN/CONTABLE con un paymentId ajeno
+    // podía editar/marcar como pagado un payment de otra org.
+    if (!user.org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
+    // 1. Obtener pago actual — filtrado por org del user
     const { data: existingPayment, error: fetchError } = await (supabase.from("payments") as any)
       .select("*")
       .eq("id", paymentId)
+      .eq("org_id", user.org_id)
       .single()
 
     if (fetchError || !existingPayment) {

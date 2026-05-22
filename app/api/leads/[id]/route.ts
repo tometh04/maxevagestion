@@ -27,16 +27,51 @@ export async function DELETE(
       return NextResponse.json({ error: "No tiene permiso para eliminar leads" }, { status: 403 })
     }
 
+    // Cross-tenant fix (2026-05-18): exigir org_id explícito.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+    const userOrgId = (user as any).org_id as string
+
     const supabase = await createServerClient()
 
-    // Get current lead
-    const { data: currentLead } = await supabase
-      .from("leads")
+    // Get current lead — filtro org_id explícito, no confiar en RLS
+    const { data: currentLead, error: selectError } = await (supabase
+      .from("leads") as any)
       .select("*, agencies(name)")
       .eq("id", id)
+      .eq("org_id", userOrgId)
       .single()
 
+    // Bug fix 2026-05-20 (reportado por Martí Lozada vía WhatsApp):
+    // Antes el SELECT inicial ignoraba selectError y solo chequeaba !data.
+    // Eso enmascaraba problemas de red/permisos como 404 falsos. Ahora
+    // distinguimos: error real → 500 con detalle; sin error y sin data → 404.
+    if (selectError && (selectError as any).code !== "PGRST116") {
+      // PGRST116 = "JSON object requested, multiple (or no) rows returned"
+      // que ya cubrimos en el branch de !currentLead abajo.
+      console.error("[DELETE /api/leads/:id] error en SELECT inicial:", {
+        code: (selectError as any).code,
+        message: (selectError as any).message,
+        details: (selectError as any).details,
+        hint: (selectError as any).hint,
+        leadId: id,
+        orgId: userOrgId,
+        userId: user.id,
+      })
+      return NextResponse.json(
+        { error: `Error al buscar lead: ${(selectError as any).message || "DB error"}`, code: (selectError as any).code },
+        { status: 500 }
+      )
+    }
+
     if (!currentLead) {
+      console.warn("[DELETE /api/leads/:id] lead no encontrado:", {
+        leadId: id,
+        orgId: userOrgId,
+        userId: user.id,
+        userRole: user.role,
+      })
       return NextResponse.json({ error: "Lead no encontrado" }, { status: 404 })
     }
 
@@ -47,10 +82,11 @@ export async function DELETE(
     // Única restricción de integridad: no se puede eliminar si está vinculado a una operación.
 
     // Check if lead is linked to an operation
-    const { data: operations } = await supabase
-      .from("operations")
+    const { data: operations } = await (supabase
+      .from("operations") as any)
       .select("id")
       .eq("lead_id", id)
+      .eq("org_id", userOrgId)
       .limit(1)
 
     if (operations && operations.length > 0) {
@@ -60,43 +96,96 @@ export async function DELETE(
       )
     }
 
-    // Delete lead — admin client para cascada sobre FKs, pero acotado por
-    // org_id conocido (SaaS Pilar 2: defensa-en-profundidad, cierra race
-    // conditions donde el lead podría mutar de org entre el SELECT y el DELETE).
+    // Delete lead — admin client para cascada sobre FKs, acotado SIEMPRE por
+    // org_id validado arriba (defense-in-depth).
+    // adminDb justificado: cascada FK puede tener triggers que requieren bypass.
     const adminClient = createAdminClient()
-    let deleteQuery = (adminClient.from("leads") as any).delete().eq("id", id)
-    if (lead.org_id) deleteQuery = deleteQuery.eq("org_id", lead.org_id)
-    const { error } = await deleteQuery
+    const { error } = await (adminClient.from("leads") as any)
+      .delete()
+      .eq("id", id)
+      .eq("org_id", userOrgId)
 
     if (error) {
-      console.error("Error deleting lead:", error)
-      return NextResponse.json({ error: "Error al eliminar lead" }, { status: 500 })
+      // Bug fix 2026-05-20: antes devolvíamos solo "Error al eliminar lead"
+      // genérico, lo que ocultaba la causa real al user (Martí reportó "me
+      // tira error" sin más info). Ahora logueamos todo el detalle del
+      // error de Postgres y devolvemos el mensaje útil al user para que
+      // pueda actuar (o reportarlo con info accionable).
+      const pgError = error as any
+      console.error("[DELETE /api/leads/:id] error en DELETE:", {
+        code: pgError.code,
+        message: pgError.message,
+        details: pgError.details,
+        hint: pgError.hint,
+        leadId: id,
+        orgId: userOrgId,
+        userId: user.id,
+        userRole: user.role,
+      })
+
+      // Mapear códigos SQLSTATE comunes a mensajes user-friendly en español.
+      // 23503 = FK violation (no debería pasar porque todas las hijas
+      // tienen ON DELETE CASCADE/SET NULL, pero defensive).
+      // 23505 = unique violation. 42501 = insufficient_privilege (RLS o
+      // permission gap del admin client — debería ser imposible).
+      let userMessage = "Error al eliminar lead"
+      if (pgError.code === "23503") {
+        userMessage = `Este lead tiene registros vinculados que impiden borrarlo. Detalle: ${pgError.details || pgError.message}`
+      } else if (pgError.code === "23505") {
+        userMessage = "Conflicto de unicidad al eliminar lead"
+      } else if (pgError.code === "42501") {
+        userMessage = "Sin permisos suficientes en la base de datos"
+      } else if (pgError.message) {
+        userMessage = `Error al eliminar lead: ${pgError.message}`
+      }
+
+      return NextResponse.json(
+        {
+          error: userMessage,
+          code: pgError.code || "UNKNOWN",
+        },
+        { status: 500 }
+      )
     }
 
-    // Audit log — quién borró qué lead y sus datos clave
-    logAudit(supabase, {
-      user_id: user.id,
-      user_email: user.email,
-      action: "DELETE",
-      entity_type: "lead",
-      entity_id: id,
-      details: {
-        contact_name: lead?.contact_name || null,
-        contact_phone: lead?.contact_phone || null,
-        contact_email: lead?.contact_email || null,
-        status: lead?.status || null,
-        source: lead?.source || null,
-        assigned_seller_id: lead?.assigned_seller_id || null,
-        agency_id: lead?.agency_id || null,
-        user_role: user.role,
-      },
-      ip_address: getClientIP(request) || undefined,
+    // Audit log — quién borró qué lead y sus datos clave.
+    // Bug fix 2026-05-20: antes esto era fire-and-forget sin .catch(), lo
+    // que generaba unhandled promise rejections si el audit fallaba (no
+    // bloquea el response 200 pero ensucia logs). Ahora atrapamos.
+    Promise.resolve(
+      logAudit(supabase, {
+        user_id: user.id,
+        user_email: user.email,
+        action: "DELETE",
+        entity_type: "lead",
+        entity_id: id,
+        details: {
+          contact_name: lead?.contact_name || null,
+          contact_phone: lead?.contact_phone || null,
+          contact_email: lead?.contact_email || null,
+          status: lead?.status || null,
+          source: lead?.source || null,
+          assigned_seller_id: lead?.assigned_seller_id || null,
+          agency_id: lead?.agency_id || null,
+          user_role: user.role,
+        },
+        ip_address: getClientIP(request) || undefined,
+      })
+    ).catch((auditErr) => {
+      console.error("[DELETE /api/leads/:id] audit log falló (non-blocking):", auditErr)
     })
 
     return NextResponse.json({ success: true })
   } catch (error: any) {
-    console.error("Error in DELETE /api/leads/[id]:", error)
-    return NextResponse.json({ error: error.message || "Error al eliminar lead" }, { status: 500 })
+    console.error("[DELETE /api/leads/:id] excepción no manejada:", {
+      message: error?.message,
+      stack: error?.stack,
+      name: error?.name,
+    })
+    return NextResponse.json(
+      { error: error?.message || "Error al eliminar lead" },
+      { status: 500 }
+    )
   }
 }
 
@@ -113,13 +202,20 @@ export async function PATCH(
       return NextResponse.json({ error: "No tiene permiso para editar leads" }, { status: 403 })
     }
 
+    // Cross-tenant fix (2026-05-18): exigir org_id explícito.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+    const userOrgId = (user as any).org_id as string
+
     const supabase = await createServerClient()
 
-    // Get current lead
-    const { data: currentLead } = await supabase
-      .from("leads")
+    // Get current lead — filtro org_id explícito
+    const { data: currentLead } = await (supabase
+      .from("leads") as any)
       .select("*")
       .eq("id", id)
+      .eq("org_id", userOrgId)
       .single()
 
     if (!currentLead) {
@@ -127,6 +223,10 @@ export async function PATCH(
     }
 
     const lead = currentLead as any
+
+    // Body anti-forge: no aceptar org_id ni agency_id del body
+    delete body.org_id
+    delete body.agency_id
 
     // Propiedad total: una vez en el sistema, el lead es nuestro.
     // Cualquier usuario con permiso puede editar cualquier campo de cualquier lead,
@@ -149,6 +249,7 @@ export async function PATCH(
         .select("seller_id")
         .eq("list_name", body.list_name)
         .eq("agency_id", lead.agency_id)
+        .eq("org_id", userOrgId)
         .maybeSingle()
 
       if (targetList?.seller_id) {
@@ -174,14 +275,13 @@ export async function PATCH(
       updateData.deposit_account_id = null
     }
 
-    // SaaS Pilar 2: admin client para cross-org read after write, pero
-    // acotado por org_id conocido del lead que ya validamos via RLS arriba.
+    // adminDb justificado: cross-org read after write para devolver el lead
+    // enriquecido. UPDATE acotado por org_id validado arriba.
     const adminClient = createAdminClient()
-    let updateQuery = (adminClient.from("leads") as any)
+    const { error } = await (adminClient.from("leads") as any)
       .update(updateData)
       .eq("id", id)
-    if (lead.org_id) updateQuery = updateQuery.eq("org_id", lead.org_id)
-    const { error } = await updateQuery
+      .eq("org_id", userOrgId)
 
     if (error) {
       console.error("Error updating lead:", error)
@@ -306,6 +406,7 @@ export async function PATCH(
     const { data: updatedLead } = await (adminClient.from("leads") as any)
       .select("*, agencies(name), users:assigned_seller_id(name, email)")
       .eq("id", id)
+      .eq("org_id", userOrgId)
       .single()
 
     return NextResponse.json({ success: true, lead: updatedLead })

@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
@@ -25,7 +26,7 @@ import {
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
 import { toast } from "sonner"
-import { ArrowRight, ArrowUpFromLine, ArrowDownToLine, CalendarIcon, Loader2, StickyNote } from "lucide-react"
+import { ArrowRight, ArrowUpFromLine, ArrowDownToLine, CalendarIcon, Loader2, StickyNote, Plus, ExternalLink } from "lucide-react"
 
 interface FinancialAccount {
   id: string
@@ -260,12 +261,9 @@ export function TransferAccountDialog({
                     <FormItem>
                       <FormLabel>Monto *</FormLabel>
                       <FormControl>
-                        <Input
-                          type="number"
-                          step="0.01"
+                        <DecimalInput
                           placeholder="0.00"
                           {...field}
-                          onChange={(e) => field.onChange(e.target.value)}
                           onFocus={(e) => e.target.select()}
                         />
                       </FormControl>
@@ -316,12 +314,13 @@ export function TransferAccountDialog({
                       <FormItem>
                         <FormLabel>Tipo de Cambio *</FormLabel>
                         <FormControl>
-                          <Input
-                            type="number"
-                            step="0.01"
+                          <DecimalInput
                             placeholder="Ej: 1450"
                             value={field.value ?? ""}
-                            onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                            onChange={(v) => field.onChange(v ? Number(v) : undefined)}
+                            onBlur={field.onBlur}
+                            name={field.name}
+                            ref={field.ref}
                             onFocus={(e) => e.target.select()}
                           />
                         </FormControl>
@@ -376,6 +375,18 @@ export function TransferAccountDialog({
                         )}
                       </SelectContent>
                     </Select>
+                    {fromAccountId && filteredToAccounts.length === 0 && (
+                      <a
+                        href="/accounting/financial-accounts?new=1"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline mt-1"
+                      >
+                        <Plus className="h-3 w-3" />
+                        Crear cuenta financiera
+                        <ExternalLink className="h-3 w-3 opacity-60" />
+                      </a>
+                    )}
                     <FormMessage />
                   </FormItem>
                 )}

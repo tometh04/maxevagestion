@@ -8,6 +8,12 @@ export const dynamic = 'force-dynamic'
 export async function GET(request: Request) {
   try {
     const { user } = await getCurrentUser()
+
+    // Cross-tenant fix (2026-05-18): no confiar en RLS; scopear explícito.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
@@ -36,6 +42,7 @@ export async function GET(request: Request) {
           margin_amount
         )
       `)
+      .eq("org_id", (user as any).org_id)
       .order("date_calculated", { ascending: false })
 
     // Filtrar por seller: admin puede ver todos o filtrar, seller solo ve los suyos
@@ -79,14 +86,14 @@ export async function GET(request: Request) {
       )
     }
 
-    // Fetch seller names from users table
+    // Fetch seller names from users table (scopeado por org)
     const sellerIds = Array.from(new Set((commissionRecords || []).map((cr: any) => cr.seller_id).filter(Boolean))) as string[]
     let sellersMap: Record<string, { name: string; email: string }> = {}
     if (sellerIds.length > 0) {
-      const { data: sellers } = await supabase
-        .from("users")
+      const { data: sellers } = await (supabase.from("users") as any)
         .select("id, name, email")
         .in("id", sellerIds)
+        .eq("org_id", (user as any).org_id)
       if (sellers) {
         sellersMap = Object.fromEntries(sellers.map((s: any) => [s.id, s]))
       }

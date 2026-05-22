@@ -412,7 +412,9 @@ async function findOrCreateOperator(
   operatorCache: Map<string, string>,
   supabase: SupabaseClient,
   dryRun: boolean,
-  stats: ImportStats
+  stats: ImportStats,
+  orgId: string,
+  agencyId: string
 ): Promise<string | null> {
   if (!operatorName || !operatorName.trim()) return null
 
@@ -420,7 +422,7 @@ async function findOrCreateOperator(
   const fixedName = fixOperatorName(operatorName)
   const normalized = normalizeString(fixedName)
 
-  // Buscar en cache
+  // Buscar en cache (ya filtrado por org al cargarlo)
   for (const [key, id] of operatorCache.entries()) {
     if (normalizeString(key) === normalized) return id
   }
@@ -433,10 +435,10 @@ async function findOrCreateOperator(
     return fakeId
   }
 
-  // Crear nuevo operador
+  // Crear nuevo operador en el org correcto
   const { data: newOperator, error } = await supabase
     .from('operators')
-    .insert({ name: fixedName })
+    .insert({ name: fixedName, org_id: orgId, agency_id: agencyId })
     .select('id')
     .single()
 
@@ -713,7 +715,7 @@ async function importOperations(csvFilePath: string, dryRun: boolean, clearExist
 
   const { data: agency } = await supabase
     .from('agencies')
-    .select('id, name')
+    .select('id, name, org_id')
     .ilike('name', `%${CONFIG.AGENCY_NAME}%`)
     .single()
 
@@ -725,12 +727,21 @@ async function importOperations(csvFilePath: string, dryRun: boolean, clearExist
     process.exit(1)
   }
 
-  console.log(`✅ Agencia: ${(agency as any).name} (${(agency as any).id})`)
+  const agencyId = (agency as any).id as string
+  const orgId = (agency as any).org_id as string
+
+  if (!orgId) {
+    console.error(`❌ La agencia "${(agency as any).name}" no tiene org_id. Verificá la BD.`)
+    process.exit(1)
+  }
+
+  console.log(`✅ Agencia: ${(agency as any).name} (${agencyId}) — org: ${orgId}`)
 
   // ─── Cargar caches ────────────────────────────────────────────────────────
 
   const { data: sellers } = await supabase.from('users').select('id, name, email')
-  const { data: operators } = await supabase.from('operators').select('id, name')
+  // Filtrar operadores por org_id para evitar mezcla cross-tenant
+  const { data: operators } = await supabase.from('operators').select('id, name').eq('org_id', orgId)
   const { data: customers } = await supabase.from('customers').select('id, email, first_name, last_name')
 
   const sellerCache = new Map<string, { id: string; name: string }>()
@@ -863,7 +874,7 @@ async function importOperations(csvFilePath: string, dryRun: boolean, clearExist
 
       // Operador 1
       if (row.operador_1 && row.operador_1.trim()) {
-        const opId = await findOrCreateOperator(row.operador_1, operatorCache, supabase, dryRun, stats)
+        const opId = await findOrCreateOperator(row.operador_1, operatorCache, supabase, dryRun, stats, orgId, agencyId)
         const opCost = cleanAmount(row.costo_operador_1)
         if (opId) {
           operatorsList.push({ operator_id: opId, cost: opCost, name: row.operador_1.trim() })
@@ -872,7 +883,7 @@ async function importOperations(csvFilePath: string, dryRun: boolean, clearExist
 
       // Operador 2
       if (row.operador_2 && row.operador_2.trim()) {
-        const opId = await findOrCreateOperator(row.operador_2, operatorCache, supabase, dryRun, stats)
+        const opId = await findOrCreateOperator(row.operador_2, operatorCache, supabase, dryRun, stats, orgId, agencyId)
         const opCost = cleanAmount(row.costo_operador_2)
         if (opId) {
           operatorsList.push({ operator_id: opId, cost: opCost, name: row.operador_2.trim() })
@@ -881,7 +892,7 @@ async function importOperations(csvFilePath: string, dryRun: boolean, clearExist
 
       // Operador 3
       if (row.operador_3 && row.operador_3.trim()) {
-        const opId = await findOrCreateOperator(row.operador_3, operatorCache, supabase, dryRun, stats)
+        const opId = await findOrCreateOperator(row.operador_3, operatorCache, supabase, dryRun, stats, orgId, agencyId)
         const opCost = cleanAmount(row.costo_operador_3)
         if (opId) {
           operatorsList.push({ operator_id: opId, cost: opCost, name: row.operador_3.trim() })
@@ -890,7 +901,7 @@ async function importOperations(csvFilePath: string, dryRun: boolean, clearExist
 
       // Si no hay operadores pero hay costo, crear uno genérico
       if (operatorsList.length === 0 && operatorCostTotal > 0) {
-        const genericId = await findOrCreateOperator('Operador Importado', operatorCache, supabase, dryRun, stats)
+        const genericId = await findOrCreateOperator('Operador Importado', operatorCache, supabase, dryRun, stats, orgId, agencyId)
         if (genericId) {
           operatorsList.push({ operator_id: genericId, cost: operatorCostTotal, name: 'Operador Importado' })
         }

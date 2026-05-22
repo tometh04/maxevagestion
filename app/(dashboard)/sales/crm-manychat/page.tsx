@@ -3,12 +3,14 @@ import { createServerClient } from "@/lib/supabase/server"
 import { getScopedAgenciesForUser } from "@/lib/permissions-api"
 import { CRMManychatPageClient } from "@/components/sales/crm-manychat-page-client"
 import { canAccessModule } from "@/lib/permissions"
+import { AdvancedCRMKanban } from "./_components/advanced-crm-kanban"
+import { getOrgFeatureFlags } from "@/lib/settings/org-features"
 
 export const dynamic = "force-dynamic"
 
 export default async function CRMManychatPage() {
   const { user } = await getCurrentUser()
-  
+
   // Verificar permiso de acceso
   const userRole = user.role as any
   if (!canAccessModule(userRole, "leads")) {
@@ -22,18 +24,43 @@ export default async function CRMManychatPage() {
     )
   }
 
+  // Routing condicional por crm_mode
+  if (user.org_id) {
+    const supabaseForOrg = await createServerClient()
+    const { data: org } = await supabaseForOrg
+      .from("organizations")
+      .select("crm_mode")
+      .eq("id", user.org_id)
+      .single()
+
+    if (org?.crm_mode === "advanced") {
+      return (
+        <div className="p-6 h-full">
+          <AdvancedCRMKanban orgId={user.org_id} />
+        </div>
+      )
+    }
+  }
+
   const supabase = await createServerClient()
 
   const agencies = await getScopedAgenciesForUser(supabase, user)
   const agencyIds = agencies.map((a) => a.id)
 
-  // Get sellers for filters
+  // Get sellers for filters.
+  // 🔴 CROSS-TENANT FIX (2026-05-21): bug reportado por Tomi vía WhatsApp —
+  // un org NUEVO ("Oficial Test Vibook") veía vendedores de TODOS los demás
+  // tenants (Test V7, Mateo admin, Maximiliano De Franco, etc.). Causa:
+  // query a users sin .eq("org_id", ...) confiando en RLS, pero
+  // user_org_ids() está rota / leakea (ver CLAUDE.md regla de oro).
+  // Defense-in-depth: filtro explícito por org_id del user logueado.
   let sellersQuery = supabase
     .from("users")
     .select("id, name")
     .in("role", ["SELLER", "ADMIN", "SUPER_ADMIN"])
     .eq("is_active", true)
-  
+    .eq("org_id", (user as any).org_id)
+
   if (user.role === "SELLER") {
     sellersQuery = sellersQuery.eq("id", user.id)
   }
@@ -42,8 +69,12 @@ export default async function CRMManychatPage() {
   // Get operators for conversion dialog
   // Cast a any: types.ts está stale; admin_fee_percentage agregada en migration
   // 20260427000002 pero los tipos no fueron regenerados (npm run db:generate).
+  // 🔴 CROSS-TENANT FIX (2026-05-21): mismo bug que sellers — sin filtro
+  // explícito por org_id, un tenant nuevo veía operadores de otros tenants
+  // por RLS rota. Defense-in-depth obligatorio (regla de oro CLAUDE.md).
   const { data: operators } = await (supabase.from("operators") as any)
     .select("id, name, admin_fee_percentage")
+    .eq("org_id", (user as any).org_id)
     .order("name")
 
   // Cargar TODOS los leads del tenant (cualquier source). El kanban "CRM Ventas"
@@ -96,6 +127,15 @@ export default async function CRMManychatPage() {
     console.error("Error fetching CRM Ventas leads:", leadsError)
   }
 
+  // Feature flags per-tenant (organization_settings key/value).
+  // Defaults: false → comportamiento legacy preservado para todos los
+  // tenants. Solo activos para tenants que tengan los settings prendidos.
+  // Doc: lib/settings/org-features.ts
+  const featureFlags = await getOrgFeatureFlags(supabase, user.org_id ?? null, [
+    "features.region_filter_in_kanban",
+    "features.list_name_to_status_sync",
+  ])
+
   return (
     <CRMManychatPageClient
       initialLeads={leads || []}
@@ -106,6 +146,8 @@ export default async function CRMManychatPage() {
       defaultSellerId={user.role === "SELLER" ? user.id : undefined}
       currentUserId={user.id}
       currentUserRole={user.role}
+      enableRegionFilter={featureFlags["features.region_filter_in_kanban"]}
+      enableListStatusSync={featureFlags["features.list_name_to_status_sync"]}
     />
   )
 }

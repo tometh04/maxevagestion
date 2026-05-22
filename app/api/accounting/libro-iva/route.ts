@@ -12,6 +12,10 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "No autorizado" }, { status: 403 })
     }
 
+    // Cross-tenant fix (2026-05-18): exigir org_id explícito.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
     const year = parseInt(searchParams.get("year") || new Date().getFullYear().toString())
@@ -23,7 +27,7 @@ export async function GET(request: Request) {
     const endDate = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`
 
     // ── LIBRO IVA VENTAS ──
-    // From invoices table (facturas emitidas con CAE)
+    // From invoices table (facturas emitidas con CAE) — scopeado por org
     const { data: invoices, error: invoicesError } = await (supabase.from("invoices") as any)
       .select(`
         id, cbte_tipo, pto_vta, cbte_nro, cae, cae_fch_vto,
@@ -32,6 +36,7 @@ export async function GET(request: Request) {
         moneda, cotizacion, concepto, created_at,
         invoice_items (descripcion, cantidad, precio_unitario, iva_porcentaje, tax_treatment, subtotal, iva_importe)
       `)
+      .eq("org_id", (user as any).org_id)
       .gte("created_at", startOfDayAR(startDate))
       .lte("created_at", endOfDayAR(endDate))
       .eq("status", "authorized")
@@ -41,18 +46,18 @@ export async function GET(request: Request) {
       console.error("Error querying invoices for libro IVA:", invoicesError)
     }
 
-    // Also from iva_sales (for operations without formal invoice)
+    // Also from iva_sales (scopeado por org)
     const { data: ivaSales } = await (supabase.from("iva_sales") as any)
       .select(`
         id, operation_id, sale_amount_total, net_amount, iva_amount, currency, sale_date,
         operations:operation_id (id, file_code, destination)
       `)
+      .eq("org_id", (user as any).org_id)
       .gte("sale_date", startDate)
       .lte("sale_date", endDate)
       .order("sale_date", { ascending: true })
 
     // ── LIBRO IVA COMPRAS ──
-    // From purchase_invoices (facturas de operadores)
     const { data: purchaseInvoices } = await (supabase.from("purchase_invoices") as any)
       .select(`
         id, invoice_type, invoice_number, invoice_date,
@@ -61,17 +66,19 @@ export async function GET(request: Request) {
         perception_iva, perception_iibb, other_taxes, total_amount,
         operators:operator_id (id, name)
       `)
+      .eq("org_id", (user as any).org_id)
       .gte("invoice_date", startDate)
       .lte("invoice_date", endDate)
       .order("invoice_date", { ascending: true })
 
-    // Also from iva_purchases (estimated, for operations without formal purchase invoice)
+    // iva_purchases scopeado por org
     const { data: ivaPurchases } = await (supabase.from("iva_purchases") as any)
       .select(`
         id, operation_id, operator_cost_total, net_amount, iva_amount, currency, purchase_date,
         operations:operation_id (id, file_code, destination),
         operators:operator_id (id, name)
       `)
+      .eq("org_id", (user as any).org_id)
       .gte("purchase_date", startDate)
       .lte("purchase_date", endDate)
       .order("purchase_date", { ascending: true })
@@ -82,6 +89,7 @@ export async function GET(request: Request) {
       .select("*")
       .eq("tax_period", taxPeriod)
       .eq("direction", "SUFFERED")
+      .eq("org_id", (user as any).org_id)
 
     // ── TOTALES ──
     const salesInvoices = invoices || []

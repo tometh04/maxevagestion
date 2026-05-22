@@ -17,6 +17,11 @@ export async function POST(
     return NextResponse.json({ error: "Sin permiso para reversar" }, { status: 403 })
   }
 
+  // Cross-tenant fix (2026-05-18): exigir org_id y scopear el fetch.
+  if (!(user as any).org_id) {
+    return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+  }
+
   const body = await request.json().catch(() => ({}))
   const reason = (body.reason || "").trim()
   if (!reason) return NextResponse.json({ error: "Motivo requerido" }, { status: 400 })
@@ -24,6 +29,7 @@ export async function POST(
   const { data: original } = await (supabase.from("cash_movements") as any)
     .select("*")
     .eq("id", id)
+    .eq("org_id", (user as any).org_id)
     .single()
 
   if (!original) return NextResponse.json({ error: "Movimiento no encontrado" }, { status: 404 })

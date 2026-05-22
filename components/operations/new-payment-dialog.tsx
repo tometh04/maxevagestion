@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import {
   Select,
   SelectContent,
@@ -167,7 +168,7 @@ export function NewPaymentDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-2xl max-h-[90vh]">
         <DialogHeader>
           <DialogTitle>Nuevo Pago</DialogTitle>
           <DialogDescription>
@@ -315,13 +316,7 @@ export function NewPaymentDialog({
                     <FormItem>
                       <FormLabel>Monto</FormLabel>
                       <FormControl>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0.01"
-                          placeholder="0.00"
-                          {...field}
-                        />
+                        <DecimalInput placeholder="0.00" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

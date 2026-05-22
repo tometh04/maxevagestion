@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
@@ -431,13 +432,10 @@ export default function ObjectivesPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Meta *</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
+                <DecimalInput
                   placeholder={["REVENUE_AMOUNT", "MARGIN_AMOUNT"].includes(formData.metric_type) ? "1000000" : "10"}
                   value={formData.target_value}
-                  onChange={(e) => setFormData({ ...formData, target_value: e.target.value })}
+                  onChange={(v) => setFormData({ ...formData, target_value: v })}
                 />
               </div>
 
@@ -478,13 +476,10 @@ export default function ObjectivesPage() {
 
                 <div className="space-y-2">
                   <Label>Valor *</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="0.01"
+                  <DecimalInput
                     placeholder={formData.reward_type === "BONUS_FIXED" ? "50000" : "5"}
                     value={formData.reward_value}
-                    onChange={(e) => setFormData({ ...formData, reward_value: e.target.value })}
+                    onChange={(v) => setFormData({ ...formData, reward_value: v })}
                   />
                 </div>
               </div>

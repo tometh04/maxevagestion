@@ -25,6 +25,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No tiene permiso para crear operaciones" }, { status: 403 })
     }
 
+    // Cross-tenant fix (2026-05-18): exigir org_id para crear operaciones.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     // Rate limit por usuario: creación de operación dispara side effects
     // contables (ledger, IVA, operator_payments). Evita doble-submit/bot.
     const rateLimitBlock = enforceUserRateLimit(user.id, "/api/operations:POST", "WRITE")
@@ -79,11 +84,25 @@ export async function POST(request: Request) {
       hotel_name,
     } = body
 
+    // Cross-tenant fix (2026-05-18): validar que la agency_id pertenezca a la org del user.
+    // Sin esto, un user de org A podría crear operaciones en una agency de org B.
+    if (agency_id) {
+      const { data: agencyCheck } = await (supabase.from("agencies") as any)
+        .select("id")
+        .eq("id", agency_id)
+        .eq("org_id", (user as any).org_id)
+        .maybeSingle()
+      if (!agencyCheck) {
+        return NextResponse.json({ error: "Agencia no encontrada" }, { status: 404 })
+      }
+    }
+
     // Obtener configuración de operaciones
     const { data: operationSettings } = await supabase
       .from("operation_settings")
       .select("*")
       .eq("agency_id", agency_id)
+      .eq("org_id", (user as any).org_id)
       .maybeSingle()
 
     const settingsData = operationSettings as any
@@ -1358,6 +1377,16 @@ async function generateDestinationRequirementAlerts(
   departureDate: string,
   sellerId: string
 ) {
+  // P0 2026-05-10: derivar org_id para inyectar en cada alert (mig 5 tighten)
+  const { data: opData } = await (supabase.from("operations") as any)
+    .select("org_id")
+    .eq("id", operationId)
+    .maybeSingle()
+  const operationOrgId = (opData as any)?.org_id || null
+  if (!operationOrgId) {
+    console.warn(`[generateDestinationRequirementAlerts] op ${operationId} sin org_id — skip`)
+    return
+  }
   const destLower = destination.toLowerCase()
   
   // Encontrar códigos de país que matchean con el destino
@@ -1399,6 +1428,7 @@ async function generateDestinationRequirementAlerts(
     // Solo crear alerta si la fecha de alerta es en el futuro
     if (alertDate > new Date()) {
       alertsToCreate.push({
+        org_id: operationOrgId,
         operation_id: operationId,
         user_id: sellerId,
         type: "DESTINATION_REQUIREMENT",
@@ -1447,6 +1477,16 @@ async function generateOperationAlerts(
   }
 ) {
   const { departure_date, return_date, checkin_date, checkout_date, destination, seller_id } = data
+  // P0 2026-05-10: derivar org_id para inyectar en cada alert (mig 5 tighten)
+  const { data: opData } = await (supabase.from("operations") as any)
+    .select("org_id")
+    .eq("id", operationId)
+    .maybeSingle()
+  const operationOrgId = (opData as any)?.org_id || null
+  if (!operationOrgId) {
+    console.warn(`[generateOperationAlerts] op ${operationId} sin org_id — skip`)
+    return
+  }
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   
@@ -1461,6 +1501,7 @@ async function generateOperationAlerts(
 
     if (checkInAlertDate >= today) {
       alertsToCreate.push({
+        org_id: operationOrgId,
         operation_id: operationId,
         user_id: seller_id,
         type: "UPCOMING_TRIP",
@@ -1480,6 +1521,7 @@ async function generateOperationAlerts(
 
     if (checkOutAlertDate >= today) {
       alertsToCreate.push({
+        org_id: operationOrgId,
         operation_id: operationId,
         user_id: seller_id,
         type: "UPCOMING_TRIP",
@@ -1526,6 +1568,7 @@ async function generateOperationAlerts(
 
       if (birthdayAlertDate >= today && birthdayAlertDate <= sixtyDaysFromNow) {
         alertsToCreate.push({
+          org_id: operationOrgId,
           operation_id: operationId,
           customer_id: customer.id,
           user_id: seller_id,

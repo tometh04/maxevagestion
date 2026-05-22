@@ -30,8 +30,20 @@ export async function GET(request: Request) {
     // Obtener agencias del usuario
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
 
-    // Query base de clientes - traemos TODOS los clientes (no filtramos por created_at)
-    // para que clientes existentes con operaciones en el rango aparezcan en las stats
+    // Bug fix 2026-05-15 (P0 cross-tenant): el query base traía TODOS los
+    // customers del sistema y luego filtraba en memoria. Para SUPER_ADMIN
+    // el filter de agencia hacía bypass → leak cross-tenant (mismo bug que
+    // /api/calendar/events).
+    //
+    // Fix: filtrar por org_id del user al nivel del query (no traer customers
+    // de otros orgs nunca). Si el user no tiene org_id, no devolver nada
+    // (fail-safe).
+    const userOrgId = (user as any).org_id || null
+    if (!userOrgId) {
+      return NextResponse.json({ customers: [], totals: {}, message: "user sin org_id" })
+    }
+
+    // Query base de clientes scopeada a la org
     let customersQuery = supabase
       .from("customers")
       .select(`
@@ -51,10 +63,12 @@ export async function GET(request: Request) {
             currency,
             departure_date,
             created_at,
-            agency_id
+            agency_id,
+            org_id
           )
         )
       `)
+      .eq("org_id", userOrgId)
 
     const { data: customers, error: customersError } = await customersQuery
 

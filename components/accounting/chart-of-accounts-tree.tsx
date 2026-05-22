@@ -409,9 +409,19 @@ export function ChartOfAccountsTree() {
             ))}
           </div>
         ) : accounts.length === 0 ? (
-          <p className="text-center text-muted-foreground py-8">
-            No hay cuentas en el plan de cuentas
-          </p>
+          <div className="flex flex-col items-center text-center py-10 gap-3">
+            <FolderOpen className="h-10 w-10 text-muted-foreground" />
+            <div>
+              <h3 className="text-base font-semibold">No hay cuentas en el plan de cuentas</h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                Comenzá creando tu primera cuenta contable (ej: Caja, Banco, Ventas, Gastos).
+              </p>
+            </div>
+            <Button size="sm" className="gap-1.5 rounded-full mt-1" onClick={() => openCreateDialog(null)}>
+              <Plus className="h-4 w-4" />
+              Crear primera cuenta
+            </Button>
+          </div>
         ) : (
           <div className="space-y-0.5">
             {accounts.map((account) => (

@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
+import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 import * as z from "zod"
 import {
   Dialog,
@@ -14,6 +15,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import {
   Select,
   SelectContent,
@@ -52,6 +54,8 @@ const operationSchema = z.object({
     required_error: "La fecha de salida es requerida",
   }),
   return_date: z.date().optional().nullable(),
+  // 2026-05-19 (Tomi): editar fecha real de venta para files históricos
+  operation_date: z.date().optional(),
   adults: z.coerce.number().min(1, "Debe haber al menos 1 adulto"),
   children: z.coerce.number().min(0),
   infants: z.coerce.number().min(0),
@@ -61,6 +65,7 @@ const operationSchema = z.object({
   currency: z.enum(["ARS", "USD"]),
   reservation_code_air: z.string().optional().nullable(),
   reservation_code_hotel: z.string().optional().nullable(),
+  itr_localizador: z.string().optional().nullable(),
   airline_name: z.string().optional().nullable(),
   hotel_name: z.string().optional().nullable(),
 })
@@ -99,6 +104,7 @@ interface Operation {
   destination: string
   departure_date: string
   return_date?: string | null
+  operation_date?: string | null
   adults: number
   children: number
   infants: number
@@ -112,8 +118,23 @@ interface Operation {
   margin_percentage?: number
   reservation_code_air?: string | null
   reservation_code_hotel?: string | null
+  itr_localizador?: string | null
   airline_name?: string | null
   hotel_name?: string | null
+}
+
+type LegEntry = {
+  id?: string
+  order_index: number
+  destination: string
+  departure_date: string
+  reservation_code_air: string
+  airline_name: string
+  itr_localizador: string
+  hotel_name: string
+  reservation_code_hotel: string
+  checkin_date: string
+  checkout_date: string
 }
 
 interface EditOperationDialogProps {
@@ -125,6 +146,19 @@ interface EditOperationDialogProps {
   sellers: Array<{ id: string; name: string; default_commission_percentage?: number | null }>
   operators: Array<{ id: string; name: string }>
   userRole?: string
+  operationLegs?: Array<{
+    id: string
+    order_index: number
+    destination: string
+    departure_date: string | null
+    reservation_code_air: string | null
+    airline_name: string | null
+    itr_localizador: string | null
+    hotel_name: string | null
+    reservation_code_hotel: string | null
+    checkin_date: string | null
+    checkout_date: string | null
+  }>
 }
 
 export function EditOperationDialog({
@@ -136,6 +170,7 @@ export function EditOperationDialog({
   sellers,
   operators,
   userRole,
+  operationLegs = [],
 }: EditOperationDialogProps) {
   const [isLoading, setIsLoading] = useState(false)
 
@@ -148,10 +183,11 @@ export function EditOperationDialog({
   const [customStatuses, setCustomStatuses] = useState<Array<{ value: string; label: string; color?: string }>>([])
 
   // Estado para múltiples operadores
-  type OperatorEntry = { operator_id: string; cost: number; cost_currency: "ARS" | "USD"; product_type?: string; notes?: string; id?: string }
+  type OperatorEntry = { operator_id: string; cost: string | number; cost_currency: "ARS" | "USD"; product_type?: string; notes?: string; id?: string }
   const [useMultipleOperators, setUseMultipleOperators] = useState(false)
   const [operatorList, setOperatorList] = useState<OperatorEntry[]>([])
   const [operatorsLoaded, setOperatorsLoaded] = useState(false)
+  const [legList, setLegList] = useState<LegEntry[]>([])
   const operationCurrency = (operation.sale_currency || operation.currency || "USD") as "ARS" | "USD"
   const operationCostCurrency = (operation.operator_cost_currency || operationCurrency) as "ARS" | "USD"
 
@@ -179,10 +215,41 @@ export function EditOperationDialog({
     return [...standardStatusOptions, ...customStatuses.map(s => ({ value: s.value, label: s.label, color: s.color || "bg-muted-foreground" }))]
   }, [customStatuses])
 
-  // Sincronizar operadores cuando cambian
+  // Sincronizar operadores cuando cambian.
+  // Bug fix 2026-05-21 (segunda iteración): antes la dep era [operators].
+  // El parent puede pasar un nuevo array en cada render (ref distinta aunque
+  // el contenido sea el mismo) → setLocalOperators corre cada render →
+  // posible contribución al loop infinito. Estabilizo usando el "shape"
+  // del array (cantidad + ids concatenados) como dep — es un string
+  // primitivo, JS lo compara por valor.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     setLocalOperators(operators)
-  }, [operators])
+  }, [operators?.length, operators?.map((o) => o.id).join(",")])
+
+  // Inicializar tramos desde la prop al abrir el dialog.
+  // Bug fix 2026-05-21: idem arriba. `operationLegs` puede venir como nuevo
+  // array por render del parent. Sólo inicializar cuando el dialog se abre
+  // (open passa false→true), no cada vez que la referencia cambia.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!open) return
+    setLegList(
+      (operationLegs || []).map((l, i) => ({
+        id: l.id,
+        order_index: i,
+        destination: l.destination || "",
+        departure_date: l.departure_date || "",
+        reservation_code_air: l.reservation_code_air || "",
+        airline_name: l.airline_name || "",
+        itr_localizador: l.itr_localizador || "",
+        hotel_name: l.hotel_name || "",
+        reservation_code_hotel: l.reservation_code_hotel || "",
+        checkin_date: l.checkin_date || "",
+        checkout_date: l.checkout_date || "",
+      }))
+    )
+  }, [open, operationLegs?.length, operationLegs?.map((l) => l.id || "").join(",")])
 
   // Cargar operation_operators existentes al abrir el dialog
   useEffect(() => {
@@ -237,8 +304,13 @@ export function EditOperationDialog({
       type: (operation.type as any) || "PACKAGE",
       origin: operation.origin || "",
       destination: operation.destination || "",
-      departure_date: operation.departure_date ? new Date(operation.departure_date) : undefined,
-      return_date: operation.return_date ? new Date(operation.return_date) : null,
+      // Bug fix 2026-05-21 (VICO/Enzo): parseDateOnlyLocal evita el shift
+      // de timezone que hacía `new Date("YYYY-MM-DD")` (interpretado como
+      // UTC midnight → en Argentina renderea como día anterior).
+      // Ver lib/utils/date-only.ts.
+      departure_date: parseDateOnlyLocal(operation.departure_date),
+      return_date: parseDateOnlyLocal(operation.return_date) ?? null,
+      operation_date: parseDateOnlyLocal(operation.operation_date),
       adults: operation.adults || 1,
       children: operation.children || 0,
       infants: operation.infants || 0,
@@ -248,12 +320,24 @@ export function EditOperationDialog({
       currency: operationCurrency,
       reservation_code_air: operation.reservation_code_air || null,
       reservation_code_hotel: operation.reservation_code_hotel || null,
+      itr_localizador: operation.itr_localizador || null,
       airline_name: operation.airline_name || null,
       hotel_name: operation.hotel_name || null,
     },
   })
 
-  // Reset form when operation changes
+  // Reset form when operation changes.
+  // Bug fix 2026-05-21 (reportado por Enzo Maineri / VICO):
+  // Antes la dep era [operation, form, operationCurrency]. `operation` viene
+  // como prop del parent (OperationsTable) y se construye en cada render
+  // (split del array filtrado, etc.) → la *referencia* cambia aunque los
+  // datos no. Eso disparaba este useEffect en cada render → form.reset() →
+  // re-render → loop infinito → React error #185 "Maximum update depth".
+  //
+  // Fix: comparar por operation.id (string estable) en vez de la ref del
+  // objeto. Si el id no cambió, los datos son del mismo lead — no hace falta
+  // resetear el form (preserva ediciones in-flight del user).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (operation) {
       form.reset({
@@ -265,8 +349,9 @@ export function EditOperationDialog({
         type: (operation.type as any) || "PACKAGE",
         origin: operation.origin || "",
         destination: operation.destination || "",
-        departure_date: operation.departure_date ? new Date(operation.departure_date) : undefined,
-        return_date: operation.return_date ? new Date(operation.return_date) : null,
+        // Bug fix 2026-05-21 (VICO): parseDateOnlyLocal evita shift UTC.
+        departure_date: parseDateOnlyLocal(operation.departure_date),
+        return_date: parseDateOnlyLocal(operation.return_date) ?? null,
         adults: operation.adults || 1,
         children: operation.children || 0,
         infants: operation.infants || 0,
@@ -276,9 +361,10 @@ export function EditOperationDialog({
         currency: operationCurrency,
         reservation_code_air: operation.reservation_code_air || null,
         reservation_code_hotel: operation.reservation_code_hotel || null,
+        itr_localizador: operation.itr_localizador || null,
       })
     }
-  }, [operation, form, operationCurrency])
+  }, [operation?.id, operationCurrency])
 
   // Watch values for margin calculation
   const saleAmount = form.watch("sale_amount_total")
@@ -295,6 +381,26 @@ export function EditOperationDialog({
       isPositive: margin >= 0,
     }
   }, [saleAmount, operatorCost])
+
+  // Funciones de tramos de viaje
+  const addLeg = () => {
+    setLegList([...legList, {
+      order_index: legList.length,
+      destination: "",
+      departure_date: "",
+      reservation_code_air: "",
+      airline_name: "",
+      itr_localizador: "",
+      hotel_name: "",
+      reservation_code_hotel: "",
+      checkin_date: "",
+      checkout_date: "",
+    }])
+  }
+  const removeLeg = (index: number) => setLegList(legList.filter((_, i) => i !== index))
+  const updateLegField = (index: number, field: keyof LegEntry, value: string) => {
+    setLegList(legList.map((leg, i) => i === index ? { ...leg, [field]: value } : leg))
+  }
 
   // Funciones de múltiples operadores
   const addOperator = () => {
@@ -313,15 +419,19 @@ export function EditOperationDialog({
   }
 
   const totalOperatorCost = useMemo(() => {
-    return operatorList.reduce((sum, op) => sum + (op.cost || 0), 0)
+    return operatorList.reduce((sum, op) => sum + (Number(op.cost) || 0), 0)
   }, [operatorList])
 
-  // Actualizar operator_cost del form cuando cambia totalOperatorCost
+  // Actualizar operator_cost del form cuando cambia totalOperatorCost.
+  // Bug fix 2026-05-21: antes `form` estaba en deps. RHF expone un nuevo
+  // objeto-ish en algunos casos → useEffect corre cada render → setValue
+  // dispara render → loop. form.setValue es estable, no hace falta dep.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (useMultipleOperators && operatorList.length > 0) {
       form.setValue("operator_cost", totalOperatorCost)
     }
-  }, [totalOperatorCost, useMultipleOperators, operatorList.length, form])
+  }, [totalOperatorCost, useMultipleOperators, operatorList.length])
 
   // Función para crear nuevo operador
   const handleCreateOperator = async () => {
@@ -387,6 +497,8 @@ export function EditOperationDialog({
         origin: values.origin || null,
         return_date: values.return_date ? values.return_date.toISOString().split("T")[0] : null,
         departure_date: values.departure_date.toISOString().split("T")[0],
+        // 2026-05-19: fecha real de venta editable (para corregir files históricos)
+        operation_date: values.operation_date ? values.operation_date.toISOString().split("T")[0] : undefined,
         // Mantener sale_currency y operator_cost_currency sincronizados con currency
         sale_currency: values.currency,
         operator_cost_currency: values.currency,
@@ -395,7 +507,7 @@ export function EditOperationDialog({
       if (useMultipleOperators && operatorList.length > 0) {
         payload.operators = operatorList.map(op => ({
           operator_id: op.operator_id,
-          cost: op.cost,
+          cost: Number(op.cost) || 0,
           cost_currency: op.cost_currency || values.currency || "USD",
           product_type: op.product_type || null,
           notes: op.notes || null,
@@ -404,6 +516,22 @@ export function EditOperationDialog({
         payload.operator_id = operatorList[0].operator_id || null
         payload.operator_cost = totalOperatorCost
       }
+
+      // Siempre enviar legs (array vacío = sin tramos)
+      payload.legs = legList
+        .filter(l => l.destination.trim() !== "")
+        .map((l, i) => ({
+          order_index: i,
+          destination: l.destination.trim(),
+          departure_date: l.departure_date || null,
+          reservation_code_air: l.reservation_code_air || null,
+          airline_name: l.airline_name || null,
+          itr_localizador: l.itr_localizador || null,
+          hotel_name: l.hotel_name || null,
+          reservation_code_hotel: l.reservation_code_hotel || null,
+          checkin_date: l.checkin_date || null,
+          checkout_date: l.checkout_date || null,
+        }))
 
       const response = await fetch(`/api/operations/${operation.id}`, {
         method: "PATCH",
@@ -601,13 +729,12 @@ export function EditOperationDialog({
                           <FormItem>
                             <FormLabel>Comisión vendedor principal (%)</FormLabel>
                             <FormControl>
-                              <Input
-                                type="number"
-                                min={0}
-                                max={100}
-                                step={0.01}
+                              <DecimalInput
                                 value={field.value ?? halfDefault}
-                                onChange={(e) => field.onChange(Number(e.target.value))}
+                                onChange={(v) => field.onChange(Number(v))}
+                                onBlur={field.onBlur}
+                                name={field.name}
+                                ref={field.ref}
                                 onFocus={(e) => e.target.select()}
                                 disabled={!canEdit}
                               />
@@ -623,13 +750,12 @@ export function EditOperationDialog({
                           <FormItem>
                             <FormLabel>Comisión vendedor secundario (%)</FormLabel>
                             <FormControl>
-                              <Input
-                                type="number"
-                                min={0}
-                                max={100}
-                                step={0.01}
+                              <DecimalInput
                                 value={field.value ?? halfDefault}
-                                onChange={(e) => field.onChange(Number(e.target.value))}
+                                onChange={(v) => field.onChange(Number(v))}
+                                onBlur={field.onBlur}
+                                name={field.name}
+                                ref={field.ref}
                                 onFocus={(e) => e.target.select()}
                                 disabled={!canEdit}
                               />
@@ -760,12 +886,9 @@ export function EditOperationDialog({
 
                         <div>
                           <label className="text-xs font-medium mb-1.5 block">Costo *</label>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
+                          <DecimalInput
                             value={op.cost || ""}
-                            onChange={(e) => updateOperatorField(index, "cost", e.target.value === "" ? 0 : Number(e.target.value))}
+                            onChange={(v) => updateOperatorField(index, "cost", v)}
                             onFocus={(e) => e.target.select()}
                             placeholder="0.00"
                             className="h-9 text-base font-medium"
@@ -973,6 +1096,28 @@ export function EditOperationDialog({
             <div className="grid gap-4 md:grid-cols-2">
               <FormField
                 control={form.control}
+                name="operation_date"
+                render={({ field }) => (
+                  <FormItem className="flex flex-col">
+                    <FormLabel>Fecha de venta</FormLabel>
+                    <FormControl>
+                      <DateInputWithCalendar
+                        value={field.value}
+                        onChange={field.onChange}
+                        placeholder="dd/MM/yyyy"
+                        maxDate={new Date()}
+                      />
+                    </FormControl>
+                    <span className="text-[10px] text-muted-foreground">
+                      Día en que se concretó la venta. Editala si querés re-imputar el ingreso a otro mes.
+                    </span>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
                 name="departure_date"
                 render={({ field }) => (
                   <FormItem className="flex flex-col">
@@ -1146,13 +1291,10 @@ export function EditOperationDialog({
                   <FormItem>
                     <FormLabel>Monto de Venta *</FormLabel>
                     <FormControl>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
+                      <DecimalInput
                         {...field}
                         value={field.value || ""}
-                        onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
+                        onChange={(v) => field.onChange(v === "" ? 0 : Number(v))}
                         onFocus={(e) => e.target.select()}
                       />
                     </FormControl>
@@ -1182,13 +1324,10 @@ export function EditOperationDialog({
                     <FormItem>
                       <FormLabel>Costo de Operador *</FormLabel>
                       <FormControl>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
+                        <DecimalInput
                           {...field}
                           value={field.value || ""}
-                          onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
+                          onChange={(v) => field.onChange(v)}
                           onFocus={(e) => e.target.select()}
                         />
                       </FormControl>
@@ -1245,6 +1384,24 @@ export function EditOperationDialog({
 
                 <FormField
                   control={form.control}
+                  name="itr_localizador"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>ITR Localizador</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Código de liquidación del operador"
+                          {...field}
+                          value={field.value || ""}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
                   name="airline_name"
                   render={({ field }) => (
                     <FormItem>
@@ -1279,6 +1436,113 @@ export function EditOperationDialog({
                   )}
                 />
               </div>
+            </div>
+
+            {/* Tramos del viaje (stopovers) */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <MapPin className="h-3.5 w-3.5 text-accent-violet" />
+                  <span className="text-xs font-medium text-foreground/70">Tramos del viaje</span>
+                </div>
+                <Button type="button" variant="outline" size="sm" onClick={addLeg}>
+                  <Plus className="h-4 w-4 mr-1" />
+                  Agregar tramo
+                </Button>
+              </div>
+
+              {legList.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Sin tramos. Usá "Agregar tramo" para registrar stopovers o destinos intermedios.</p>
+              ) : (
+                <div className="space-y-4">
+                  {legList.map((leg, index) => (
+                    <div key={index} className="bg-background border rounded-lg p-4 space-y-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm font-medium text-muted-foreground">Tramo #{index + 1}</span>
+                        <Button type="button" variant="ghost" size="sm" onClick={() => removeLeg(index)} className="text-destructive hover:text-destructive/80 h-7 w-7 p-0">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="text-xs font-medium mb-1.5 block">Destino *</label>
+                          <Input
+                            placeholder="Ej: Miami"
+                            value={leg.destination}
+                            onChange={(e) => updateLegField(index, "destination", e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium mb-1.5 block">Fecha de salida</label>
+                          <Input
+                            type="date"
+                            value={leg.departure_date}
+                            onChange={(e) => updateLegField(index, "departure_date", e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium mb-1.5 block">Código de reserva aéreo</label>
+                          <Input
+                            placeholder="Ej: ABC123"
+                            value={leg.reservation_code_air}
+                            onChange={(e) => updateLegField(index, "reservation_code_air", e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium mb-1.5 block">Aerolínea</label>
+                          <Input
+                            placeholder="Ej: Latam"
+                            value={leg.airline_name}
+                            onChange={(e) => updateLegField(index, "airline_name", e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium mb-1.5 block">ITR Localizador</label>
+                          <Input
+                            placeholder="Código de liquidación"
+                            value={leg.itr_localizador}
+                            onChange={(e) => updateLegField(index, "itr_localizador", e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium mb-1.5 block">Hotel</label>
+                          <Input
+                            placeholder="Ej: Sheraton Miami"
+                            value={leg.hotel_name}
+                            onChange={(e) => updateLegField(index, "hotel_name", e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium mb-1.5 block">Código de reserva hotel</label>
+                          <Input
+                            placeholder="Ej: XYZ789"
+                            value={leg.reservation_code_hotel}
+                            onChange={(e) => updateLegField(index, "reservation_code_hotel", e.target.value)}
+                          />
+                        </div>
+                        <div className="sm:col-span-2 grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-xs font-medium mb-1.5 block">Check-in</label>
+                            <Input
+                              type="date"
+                              value={leg.checkin_date}
+                              onChange={(e) => updateLegField(index, "checkin_date", e.target.value)}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-medium mb-1.5 block">Check-out</label>
+                            <Input
+                              type="date"
+                              value={leg.checkout_date}
+                              onChange={(e) => updateLegField(index, "checkout_date", e.target.value)}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <DialogFooter>

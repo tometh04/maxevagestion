@@ -12,12 +12,22 @@ export async function POST(
 ) {
   const { id } = await params
   const { user } = await getCurrentUser()
+
+  // Cross-tenant fix (2026-05-18): scopear el fetch del pago por org.
+  if (!(user as any).org_id) {
+    return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+  }
+  const userOrgId = (user as any).org_id as string
+
   const supabase = await createServerClient()
+  // adminDb justificado: alerts insert con bypass RLS (created_by_user_id puede
+  // pertenecer a otro user del mismo org).
   const admin = createAdminClient() as any
 
   const { data: payment } = await (supabase.from("payments") as any)
     .select("*, operation:operation_id(agency_id)")
     .eq("id", id)
+    .eq("org_id", userOrgId)
     .single()
 
   if (!payment) return NextResponse.json({ error: "Pago no encontrado" }, { status: 404 })
@@ -51,6 +61,7 @@ export async function POST(
       approved_at: new Date().toISOString(),
     })
     .eq("id", id)
+    .eq("org_id", userOrgId)
     .eq("approval_status", "PENDING_APPROVAL")
     .select()
     .single()

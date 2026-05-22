@@ -11,7 +11,8 @@ const NewOperationDialog = dynamic(
   { ssr: false }
 )
 import { Button } from "@/components/ui/button"
-import { Plus, HelpCircle } from "lucide-react"
+import { Plus, HelpCircle, Download, Loader2 } from "lucide-react"
+import { toast } from "sonner"
 import {
   Tooltip,
   TooltipContent,
@@ -75,6 +76,48 @@ export function OperationsPageClient({
   })
   const [newOperationDialogOpen, setNewOperationDialogOpen] = useState(false)
   const [customStatuses, setCustomStatuses] = useState<CustomStatus[]>([])
+  const [exportingCsv, setExportingCsv] = useState(false)
+
+  // 2026-05-19 (Tomi): exportar operaciones filtradas a CSV con todas las columnas.
+  async function handleExportCsv() {
+    setExportingCsv(true)
+    try {
+      const params = new URLSearchParams()
+      if (filters.status && filters.status !== "ALL") params.set("status", filters.status)
+      if (filters.sellerId && filters.sellerId !== "ALL") params.set("sellerId", filters.sellerId)
+      if (filters.agencyId && filters.agencyId !== "ALL") params.set("agencyId", filters.agencyId)
+      if (filters.dateFrom) params.set("dateFrom", filters.dateFrom)
+      if (filters.dateTo) params.set("dateTo", filters.dateTo)
+      // dateType "OPERATION" es el default del endpoint
+      const url = `/api/operations/export-csv${params.toString() ? `?${params.toString()}` : ""}`
+
+      const res = await fetch(url)
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}))
+        throw new Error(errBody?.error ?? `Error ${res.status} al generar CSV`)
+      }
+      const blob = await res.blob()
+      // Filename del Content-Disposition o fallback
+      const cd = res.headers.get("Content-Disposition") || ""
+      const match = cd.match(/filename="?([^";]+)"?/i)
+      const filename = match?.[1] ?? `operaciones-${new Date().toISOString().slice(0, 10)}.csv`
+
+      const downloadUrl = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = downloadUrl
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(downloadUrl)
+
+      toast.success(`Descargado: ${filename}`)
+    } catch (err: any) {
+      toast.error(err?.message || "Error al exportar CSV")
+    } finally {
+      setExportingCsv(false)
+    }
+  }
 
   // Cargar estados personalizados
   useEffect(() => {
@@ -139,10 +182,26 @@ export function OperationsPageClient({
               : "Gestiona todas las operaciones de viajes"}
           </p>
         </div>
-        <Button size="sm" onClick={() => setNewOperationDialogOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Nueva Operación
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleExportCsv}
+            disabled={exportingCsv}
+            title="Exporta las operaciones filtradas (todas las columnas) en CSV"
+          >
+            {exportingCsv ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="mr-2 h-4 w-4" />
+            )}
+            {exportingCsv ? "Generando..." : "Exportar CSV"}
+          </Button>
+          <Button size="sm" onClick={() => setNewOperationDialogOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Nueva Operación
+          </Button>
+        </div>
       </div>
 
       <OperationsFilters

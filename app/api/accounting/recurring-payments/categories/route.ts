@@ -16,10 +16,18 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "No autenticado" }, { status: 401 })
     }
 
-    // Obtener todas las categorías activas
+    // Bug fix 2026-05-15 (P0 cross-tenant): la tabla tiene org_id (mig 134)
+    // pero el GET traía TODAS las categorías sin filtrar → leak.
+    const userOrgId = (user as any).org_id as string | null
+    if (!userOrgId) {
+      return NextResponse.json({ categories: [] })
+    }
+
+    // Obtener categorías activas de la org del user
     const { data: categories, error } = await (supabase.from("recurring_payment_categories") as any)
       .select("*")
       .eq("is_active", true)
+      .eq("org_id", userOrgId)
       .order("name", { ascending: true })
 
     if (error) {
@@ -48,6 +56,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No tiene permiso para crear categorías" }, { status: 403 })
     }
 
+    // Bug fix 2026-05-15: el INSERT viejo no seteaba org_id → categorías
+    // quedaban globales (vistas por todos los tenants). Ahora se scopean.
+    const userOrgId = (user as any).org_id as string | null
+    if (!userOrgId) {
+      return NextResponse.json({ error: "User sin org_id" }, { status: 403 })
+    }
+
     const body = await request.json()
     const { name, description, color } = body
 
@@ -63,13 +78,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "El color debe estar en formato hex (#RRGGBB)" }, { status: 400 })
     }
 
-    // Crear categoría
+    // Crear categoría scopeada a la org del user
     const { data: category, error } = await (supabase.from("recurring_payment_categories") as any)
       .insert({
         name: name.trim(),
         description: description?.trim() || null,
         color: finalColor,
         is_active: true,
+        org_id: userOrgId,
       })
       .select("*")
       .single()

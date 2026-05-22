@@ -55,13 +55,23 @@ export async function GET(request: Request) {
 
     // Obtener agencias del usuario
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
-    
+
     if (agencyIds.length === 0) {
       return NextResponse.json(
         { error: "No tiene agencias asignadas" },
         { status: 403 }
       )
     }
+
+    // P0 2026-05-11: derivar org_id desde la agencia para satisfacer RLS
+    // tenant_isolation (mig 136). Sin esto, INSERT a operation_settings falla
+    // con WITH CHECK violation para tenants nuevos.
+    const { data: agencyRow } = await supabase
+      .from("agencies")
+      .select("org_id")
+      .eq("id", agencyIds[0])
+      .maybeSingle()
+    const orgId = (agencyRow as any)?.org_id as string | null | undefined
 
     // Obtener configuración existente
     const { data: existing, error } = await supabase
@@ -82,6 +92,7 @@ export async function GET(request: Request) {
     if (!existing) {
       const defaultSettings = {
         agency_id: agencyIds[0],
+        org_id: orgId ?? null,
         custom_statuses: [],
         workflows: {},
         auto_alerts: [
@@ -216,10 +227,19 @@ export async function PUT(request: Request) {
 
       result = data
     } else {
+      // P0 2026-05-11: derivar org_id desde agencia para RLS tenant_isolation
+      const { data: agencyRow } = await supabase
+        .from("agencies")
+        .select("org_id")
+        .eq("id", agencyIds[0])
+        .maybeSingle()
+      const orgId = (agencyRow as any)?.org_id as string | null | undefined
+
       // Crear nueva
       const { data, error } = await (supabase.from("operation_settings") as any)
         .insert({
           agency_id: agencyIds[0],
+          org_id: orgId ?? null,
           ...updateData,
           created_by: user.id,
         })

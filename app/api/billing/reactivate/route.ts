@@ -25,6 +25,7 @@ export async function POST() {
     return NextResponse.json({ error: "forbidden" }, { status: 403 })
   }
 
+  // adminDb justificado (caso C billing): organizations.
   const admin = createAdminClient() as any
   const { data: org } = await admin
     .from("organizations")

@@ -33,6 +33,12 @@ async function fetchBcraRate(): Promise<number | null> {
 export async function POST(request: Request) {
   try {
     const { user } = await getCurrentUser()
+
+    // Cross-tenant fix (2026-05-18): no confiar en RLS; scopear explícito.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     const supabase = await createServerClient()
     const body = await request.json()
 
@@ -45,7 +51,7 @@ export async function POST(request: Request) {
       )
     }
 
-    // Obtener la comisión
+    // Obtener la comisión (scopeado por org)
     const { data: commission, error: commissionError } = await (supabase.from("commission_records") as any)
       .select(
         `
@@ -54,6 +60,7 @@ export async function POST(request: Request) {
       `
       )
       .eq("id", commissionId)
+      .eq("org_id", (user as any).org_id)
       .single()
 
     if (commissionError || !commission) {
@@ -78,10 +85,11 @@ export async function POST(request: Request) {
 
     const operation = commission.operations
 
-    // Validar que la cuenta financiera existe
+    // Validar que la cuenta financiera existe (scopeada por org)
     const { data: financialAccount, error: accountError } = await (supabase.from("financial_accounts") as any)
       .select("id, name, currency, is_active")
       .eq("id", financial_account_id)
+      .eq("org_id", (user as any).org_id)
       .eq("is_active", true)
       .single()
 
@@ -188,6 +196,7 @@ export async function POST(request: Request) {
     await (supabase.from("commission_records") as any)
       .update(updateData)
       .eq("id", commissionId)
+      .eq("org_id", (user as any).org_id)
 
     // Registrar en audit trail
     try {

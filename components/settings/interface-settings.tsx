@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Palette, Image, Building2, Upload, X, Pencil, Trash2, FileText, Scale } from "lucide-react"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
@@ -26,23 +27,31 @@ const COLOR_OPTIONS = [
 // Helper: save setting (API with localStorage fallback)
 // ---------------------------------------------------------------------------
 async function saveSetting(key: string, value: string) {
-  // Always save to localStorage for immediate access
+  // Save to localStorage for immediate UX (read-after-write within the tab),
+  // but DO throw on API failure so the caller can show a real error.
   localStorage.setItem(key, value)
   if (key === "address" || key === "company_address") {
     localStorage.setItem("address", value)
     localStorage.setItem("company_address", value)
   }
 
-  try {
-    const res = await fetch("/api/settings/organization", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key, value }),
-    })
-    if (!res.ok) throw new Error("API error")
-  } catch {
-    // API failed — localStorage fallback is already saved
-    console.warn(`Failed to save ${key} to API, using localStorage fallback`)
+  // Bug fix 2026-05-15 (Enzo VICO): este catch swallowaba errores del
+  // API y el caller mostraba "Datos de la empresa guardados" cuando en
+  // realidad NO se persistía nada en la BD (solo localStorage del browser
+  // del user). Otros users de la org NO veían la data. Ahora propagamos
+  // el error.
+  const res = await fetch("/api/settings/organization", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key, value }),
+  })
+  if (!res.ok) {
+    let detail = ""
+    try {
+      const body = await res.json()
+      detail = body?.error || ""
+    } catch {}
+    throw new Error(`No se pudo guardar "${key}" en el servidor${detail ? `: ${detail}` : ` (HTTP ${res.status})`}`)
   }
 }
 
@@ -358,10 +367,13 @@ export function InterfaceSettings() {
     setSavingCompany(true)
     try {
       const entries = Object.entries(companyData)
+      // Bug fix 2026-05-15: antes con Promise.all + catch silencioso de
+      // saveSetting daba false success. Ahora saveSetting throws si el
+      // API falla → el catch acá muestra el error real al user.
       await Promise.all(entries.map(([key, value]) => saveSetting(key, value)))
       toast.success("Datos de la empresa guardados")
-    } catch {
-      toast.error("Error al guardar los datos")
+    } catch (err: any) {
+      toast.error(err?.message || "Error al guardar los datos. Tus cambios no se persistieron en el servidor.")
     } finally {
       setSavingCompany(false)
     }
@@ -577,15 +589,11 @@ export function InterfaceSettings() {
             <Label htmlFor="policy_deposit_retention_percent" className="text-xs">
               Retención por cancelación (%)
             </Label>
-            <Input
+            <DecimalInput
               id="policy_deposit_retention_percent"
-              type="number"
-              min="0"
-              max="100"
-              step="0.5"
               value={policies.deposit_retention_percent}
-              onChange={(e) =>
-                setPolicies((p) => ({ ...p, deposit_retention_percent: e.target.value }))
+              onChange={(v) =>
+                setPolicies((p) => ({ ...p, deposit_retention_percent: v }))
               }
               placeholder="p.ej. 30"
             />

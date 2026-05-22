@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import {
   Select,
   SelectContent,
@@ -195,7 +196,7 @@ export function NewOperationDialog({
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
   const [useMultipleOperators, setUseMultipleOperators] = useState(false)
-  const [operatorList, setOperatorList] = useState<Array<{operator_id: string, cost: number, cost_currency: "ARS" | "USD", product_type?: "FLIGHT" | "HOTEL" | "PACKAGE" | "CRUISE" | "TRANSFER" | "MIXED", notes?: string}>>([])
+  const [operatorList, setOperatorList] = useState<Array<{operator_id: string, cost: string | number, cost_currency: "ARS" | "USD", product_type?: "FLIGHT" | "HOTEL" | "PACKAGE" | "CRUISE" | "TRANSFER" | "MIXED", notes?: string}>>([])
   const [settings, setSettings] = useState<OperationSettings | null>(null)
   const [apiError, setApiError] = useState<string | null>(null)
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
@@ -423,17 +424,19 @@ export function NewOperationDialog({
         operators: [],
       })
     }
-  }, [open, lead, cleanedDestination, defaultAgencyId, defaultSellerId, agencies, settings?.default_status, form])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, lead?.id, cleanedDestination, defaultAgencyId, defaultSellerId, settings?.default_status])
 
   // Actualizar estado por defecto cuando se carga la configuración
   useEffect(() => {
     if (settings?.default_status) {
       form.setValue('status', settings.default_status)
     }
-  }, [settings, form])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings?.default_status])
 
   // Calcular costo total de operadores
-  const totalOperatorCost = operatorList.reduce((sum, op) => sum + (op.cost || 0), 0)
+  const totalOperatorCost = operatorList.reduce((sum, op) => sum + (Number(op.cost) || 0), 0)
   const saleAmount = form.watch("sale_amount_total")
   const calculatedMargin = saleAmount - totalOperatorCost
   const calculatedMarginPercent = saleAmount > 0 ? (calculatedMargin / saleAmount) * 100 : 0
@@ -446,13 +449,15 @@ export function NewOperationDialog({
       const formCurrency = form.getValues("sale_currency") || form.getValues("currency") || "USD"
       const operatorsWithDefaults = operatorList.map(op => ({
         ...op,
+        cost: Number(op.cost) || 0,
         cost_currency: (op.cost_currency || formCurrency) as "ARS" | "USD"
       }))
       form.setValue("operators", operatorsWithDefaults)
     } else if (!useMultipleOperators) {
       form.setValue("operators", undefined)
     }
-  }, [operatorList, useMultipleOperators, totalOperatorCost, form])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [operatorList, useMultipleOperators, totalOperatorCost])
 
   const addOperator = () => {
     const currentCurrency = (form.getValues("sale_currency") || form.getValues("currency") || "USD") as "ARS" | "USD"
@@ -559,7 +564,7 @@ export function NewOperationDialog({
         // Incluir lead_id si hay un lead
         ...(lead ? { lead_id: lead.id } : {}),
         operator_id: useMultipleOperators ? null : (values.operator_id || null),
-        operators: useMultipleOperators && operatorList.length > 0 ? operatorList : undefined,
+        operators: useMultipleOperators && operatorList.length > 0 ? operatorList.map(op => ({ ...op, cost: Number(op.cost) || 0 })) : undefined,
         seller_secondary_id: values.seller_secondary_id || null,
         commission_split: values.seller_secondary_id ? (values.commission_split ?? 50) : null,
         // Overrides absolutos (29/04 — Tomi opción B): si hay secondary, persistir
@@ -866,13 +871,12 @@ export function NewOperationDialog({
                           <FormItem>
                             <FormLabel>Comisión vendedor principal (%)</FormLabel>
                             <FormControl>
-                              <Input
-                                type="number"
-                                min={0}
-                                max={100}
-                                step={0.01}
+                              <DecimalInput
                                 value={field.value ?? halfDefault}
-                                onChange={(e) => field.onChange(Number(e.target.value))}
+                                onChange={(v) => field.onChange(Number(v))}
+                                onBlur={field.onBlur}
+                                name={field.name}
+                                ref={field.ref}
                                 onFocus={(e) => e.target.select()}
                                 disabled={!canEdit}
                               />
@@ -888,13 +892,12 @@ export function NewOperationDialog({
                           <FormItem>
                             <FormLabel>Comisión vendedor secundario (%)</FormLabel>
                             <FormControl>
-                              <Input
-                                type="number"
-                                min={0}
-                                max={100}
-                                step={0.01}
+                              <DecimalInput
                                 value={field.value ?? halfDefault}
-                                onChange={(e) => field.onChange(Number(e.target.value))}
+                                onChange={(v) => field.onChange(Number(v))}
+                                onBlur={field.onBlur}
+                                name={field.name}
+                                ref={field.ref}
                                 onFocus={(e) => e.target.select()}
                                 disabled={!canEdit}
                               />
@@ -1046,12 +1049,9 @@ export function NewOperationDialog({
                         {/* Fila 2: Costo + Moneda - más espacio */}
                         <div>
                             <label className="text-xs font-medium mb-1.5 block">Costo *</label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
+                      <DecimalInput
                         value={op.cost || ""}
-                        onChange={(e) => updateOperator(index, "cost", e.target.value === "" ? 0 : Number(e.target.value))}
+                        onChange={(v) => updateOperator(index, "cost", v)}
                         onFocus={(e) => e.target.select()}
                         placeholder="0.00"
                               className="h-9 text-base font-medium"
@@ -1093,13 +1093,14 @@ export function NewOperationDialog({
                 )}
 
                 {operatorList.length === 0 && (
-                  <div className="text-center py-8 border-2 border-dashed rounded-lg">
+                  <div className="flex flex-col items-center text-center py-8 border-2 border-dashed rounded-lg gap-3">
                     <p className="text-sm text-muted-foreground">
                       No hay operadores agregados
-                  </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Haz clic en &quot;Agregar Operador&quot; para comenzar
                     </p>
+                    <Button type="button" size="sm" variant="outline" onClick={addOperator}>
+                      <Plus className="h-4 w-4 mr-1" />
+                      Agregar Operador
+                    </Button>
                   </div>
                 )}
               </div>
@@ -1515,13 +1516,10 @@ export function NewOperationDialog({
                       <FormItem>
                         <FormLabel>Monto de Venta Total *</FormLabel>
                         <FormControl>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
+                          <DecimalInput
                             {...field}
                             value={field.value || ""}
-                            onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
+                            onChange={(v) => field.onChange(v === "" ? 0 : Number(v))}
                             onFocus={(e) => e.target.select()}
                           />
                         </FormControl>
@@ -1537,13 +1535,10 @@ export function NewOperationDialog({
                         <FormItem>
                           <FormLabel>Costo de Operador *</FormLabel>
                           <FormControl>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              min="0"
+                            <DecimalInput
                               {...field}
                               value={field.value || ""}
-                              onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
+                              onChange={(v) => field.onChange(v)}
                               onFocus={(e) => e.target.select()}
                             />
                           </FormControl>

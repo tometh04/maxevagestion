@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
+import { createServerClient, createAdminClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 
 export async function GET() {
@@ -43,7 +43,23 @@ export async function GET() {
       return NextResponse.json({ users: usersSimple || [] })
     }
 
-    return NextResponse.json({ users: users || [] })
+    // Enriquecer con email_confirmed_at desde Supabase Auth
+    // Una sola llamada a listUsers para evitar N queries individuales.
+    try {
+      const adminClient = createAdminClient() as any
+      const { data: authData } = await adminClient.auth.admin.listUsers({ perPage: 1000 })
+      const authMap = new Map((authData?.users || []).map((u: any) => [u.id, u]))
+
+      const enriched = (users || []).map((u: any) => ({
+        ...u,
+        email_confirmed_at: u.auth_id ? (authMap.get(u.auth_id) as any)?.email_confirmed_at ?? null : null,
+      }))
+
+      return NextResponse.json({ users: enriched })
+    } catch {
+      // Si falla el enriquecimiento, devolver usuarios sin ese campo
+      return NextResponse.json({ users: users || [] })
+    }
   } catch (error) {
     return NextResponse.json({ error: "Error al cargar usuarios" }, { status: 500 })
   }

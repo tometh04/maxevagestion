@@ -188,9 +188,14 @@ export async function OrgHealthCard({ orgId }: OrgHealthCardProps) {
             </span>
           </div>
           {afipHealth.status === "not-configured" && (
-            <p className="text-xs text-muted-foreground">
-              No hay integración AFIP activa en ninguna agencia. El tenant no puede facturar.
-            </p>
+            <div className="text-xs space-y-1.5">
+              <p className="text-muted-foreground">
+                No hay integración AFIP activa en ninguna agencia. El tenant no puede facturar.
+              </p>
+              <p className="text-muted-foreground">
+                Próximo paso: pedile al tenant que configure AFIP desde <span className="font-mono text-foreground">Settings → Integraciones → AFIP</span>.
+              </p>
+            </div>
           )}
           {(afipHealth.status === "warning" || afipHealth.status === "error") && (
             <div className="text-xs space-y-1">

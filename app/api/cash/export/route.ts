@@ -22,6 +22,11 @@ export async function GET(request: Request) {
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
+    // Cross-tenant fix (2026-05-18): exigir org_id.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     const dateFrom = searchParams.get("dateFrom")
     const dateTo = searchParams.get("dateTo")
     const dateType = (searchParams.get("dateType") ?? "MOVIMIENTO").toUpperCase()
@@ -29,8 +34,8 @@ export async function GET(request: Request) {
     const currency = searchParams.get("currency")
     const agencyId = searchParams.get("agencyId")
 
-    let query = supabase
-      .from("cash_movements")
+    let query = (supabase
+      .from("cash_movements") as any)
       .select(
         `
         *,
@@ -47,6 +52,8 @@ export async function GET(request: Request) {
         )
       `,
       )
+      // Cross-tenant fix: scopear export por org del user.
+      .eq("org_id", (user as any).org_id)
       .order("movement_date", { ascending: false })
 
     if (user.role === "SELLER") {
@@ -62,11 +69,12 @@ export async function GET(request: Request) {
     }
 
     if (agencyId && agencyId !== "ALL") {
-      // Filter by agency through operations
-      const { data: agencyOperations } = await supabase
-        .from("operations")
+      // Filter by agency through operations (scopeado por org)
+      const { data: agencyOperations } = await (supabase
+        .from("operations") as any)
         .select("id")
         .eq("agency_id", agencyId)
+        .eq("org_id", (user as any).org_id)
       
       const agencyOperationIds = (agencyOperations || []).map((op: any) => op.id)
       
@@ -89,7 +97,9 @@ export async function GET(request: Request) {
     // - OPERACION: pre-resolver operation_ids cuya operations.operation_date cae
     //   en [from,to] y restringir cash_movements.operation_id IN (...).
     if (dateType === "OPERACION" && (dateFrom || dateTo)) {
-      let opQuery = supabase.from("operations").select("id")
+      let opQuery = (supabase.from("operations") as any)
+        .select("id")
+        .eq("org_id", (user as any).org_id)
       if (dateFrom) opQuery = opQuery.gte("operation_date", dateFrom)
       if (dateTo) opQuery = opQuery.lte("operation_date", dateTo)
       const { data: matchingOps } = await opQuery.limit(5000)
@@ -141,7 +151,7 @@ export async function GET(request: Request) {
     ])
 
     const csvContent = [header, ...rows]
-      .map((row) => row.map((value) => escapeCsvValue(value)).join(","))
+      .map((row: any[]) => row.map((value: any) => escapeCsvValue(value)).join(","))
       .join("\n")
 
     return new NextResponse(csvContent, {

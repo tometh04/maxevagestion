@@ -15,6 +15,12 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Sin permisos" }, { status: 403 })
   }
 
+  // Cross-tenant fix (2026-05-18): exigir org_id explícito.
+  if (!(user as any).org_id) {
+    return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+  }
+  const userOrgId = (user as any).org_id as string
+
   const { searchParams } = new URL(request.url)
   const operationId = searchParams.get("operationId")
   const paymentId = searchParams.get("paymentId")
@@ -23,9 +29,45 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "operationId o paymentId requerido" }, { status: 400 })
   }
 
+  // Bug fix 2026-05-11 (Santi): el SELECT vía createServerClient (RLS user-auth)
+  // devolvía 0 rows aunque el INSERT vía admin sí persistía. Hay alguna policy
+  // restrictiva en producción que no está en el repo (posiblemente aplicada
+  // directo en Supabase) que filtra las allocations.
+  //
+  // adminDb justificado: la tabla payment_passenger_allocations sufre el
+  // problema RLS fantasma (SELECT/DELETE devuelven 0 rows aún con permiso).
+  // Defense-in-depth: pre-validar que el paymentId/operationId pertenezcan al
+  // org del user via createServerClient (filtro org_id explícito) ANTES de
+  // pasar a admin.
   const supabase = await createServerClient()
+  const admin = createAdminClient()
 
-  let query = (supabase.from("payment_passenger_allocations") as any)
+  // Pre-validar payment_ids contra org del user
+  let allowedPaymentIds: string[] = []
+  if (paymentId) {
+    const { data: paymentRow } = await (supabase.from("payments") as any)
+      .select("id")
+      .eq("id", paymentId)
+      .eq("org_id", userOrgId)
+      .maybeSingle()
+    if (!paymentRow) {
+      return NextResponse.json({ allocations: [] })
+    }
+    allowedPaymentIds = [paymentId]
+  } else if (operationId) {
+    const { data: payments } = await (supabase
+      .from("payments") as any)
+      .select("id")
+      .eq("operation_id", operationId)
+      .eq("org_id", userOrgId)
+
+    if (!payments || payments.length === 0) {
+      return NextResponse.json({ allocations: [] })
+    }
+    allowedPaymentIds = payments.map((p: any) => p.id)
+  }
+
+  let query = (admin.from("payment_passenger_allocations") as any)
     .select(`
       *,
       operation_customers:operation_customer_id(
@@ -35,25 +77,7 @@ export async function GET(request: Request) {
         customers:customer_id(id, first_name, last_name, email)
       )
     `)
-
-  if (paymentId) {
-    query = query.eq("payment_id", paymentId)
-  }
-
-  if (operationId) {
-    // Get all payment IDs for this operation first
-    const { data: payments } = await supabase
-      .from("payments")
-      .select("id")
-      .eq("operation_id", operationId)
-
-    if (!payments || payments.length === 0) {
-      return NextResponse.json({ allocations: [] })
-    }
-
-    const paymentIds = payments.map((p: any) => p.id)
-    query = query.in("payment_id", paymentIds)
-  }
+    .in("payment_id", allowedPaymentIds)
 
   const { data: allocations, error } = await query.order("created_at", { ascending: true })
 
@@ -78,6 +102,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Sin permisos" }, { status: 403 })
   }
 
+  // Cross-tenant fix (2026-05-18): exigir org_id y validar payment.
+  if (!(user as any).org_id) {
+    return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+  }
+  const userOrgId = (user as any).org_id as string
+
   const body = await request.json()
   const { paymentId, allocations } = body
 
@@ -91,11 +121,12 @@ export async function POST(request: Request) {
 
   const supabase = await createServerClient()
 
-  // Verify payment exists and get its amount
-  const { data: payment, error: paymentError } = await supabase
-    .from("payments")
+  // Verify payment exists, belongs to org, and get its amount
+  const { data: payment, error: paymentError } = await (supabase
+    .from("payments") as any)
     .select("id, amount, currency, operation_id")
     .eq("id", paymentId)
+    .eq("org_id", userOrgId)
     .single()
 
   if (paymentError || !payment) {
@@ -189,17 +220,36 @@ export async function POST(request: Request) {
       }))
 
     if (allocationRows.length > 0) {
-      const { error: insertError } = await (admin.from("payment_passenger_allocations") as any)
-        .upsert(allocationRows, { onConflict: "payment_id,operation_customer_id" })
+      // Bug fix 2026-05-11 (Santi): el upsert silenciosamente fallaba sin retornar
+      // error. Cambio a INSERT explícito + .select() para verificar que el row
+      // realmente persistió, y si no, devolver 500 con el detalle (no success).
+      const { data: inserted, error: insertError } = await (admin.from("payment_passenger_allocations") as any)
+        .insert(allocationRows)
+        .select()
 
       if (insertError) {
         console.error("[Allocations] Insert error:", insertError)
-        return NextResponse.json({ error: insertError.message }, { status: 500 })
+        return NextResponse.json({
+          error: insertError.message,
+          code: insertError.code,
+          details: insertError.details,
+          hint: insertError.hint,
+        }, { status: 500 })
       }
+
+      if (!inserted || inserted.length === 0) {
+        console.error("[Allocations] Insert silenciosamente devolvió 0 rows. Payload:", allocationRows)
+        return NextResponse.json({
+          error: "El insert no retornó filas — verificar permisos service_role o triggers en la tabla",
+          payload: allocationRows,
+        }, { status: 500 })
+      }
+
+      return NextResponse.json({ success: true, allocations: inserted })
     }
   }
 
-  return NextResponse.json({ success: true })
+  return NextResponse.json({ success: true, allocations: [] })
 }
 
 /**
@@ -214,6 +264,12 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "Sin permisos" }, { status: 403 })
   }
 
+  // Cross-tenant fix (2026-05-18): exigir org_id.
+  if (!(user as any).org_id) {
+    return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+  }
+  const userOrgId = (user as any).org_id as string
+
   const { searchParams } = new URL(request.url)
   const paymentId = searchParams.get("paymentId")
 
@@ -221,11 +277,31 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "paymentId requerido" }, { status: 400 })
   }
 
+  // Validar que el payment pertenezca al org del user antes del DELETE.
   const supabase = await createServerClient()
+  const { data: paymentRow } = await (supabase.from("payments") as any)
+    .select("id")
+    .eq("id", paymentId)
+    .eq("org_id", userOrgId)
+    .maybeSingle()
+  if (!paymentRow) {
+    return NextResponse.json({ error: "Pago no encontrado" }, { status: 404 })
+  }
 
-  await (supabase.from("payment_passenger_allocations") as any)
+  // Bug fix 2026-05-11: misma RLS fantasma que en GET. El DELETE vía
+  // createServerClient retornaba status 200 pero no eliminaba nada (RLS
+  // ocultaba los rows). adminDb justificado: usado solo tras pre-validar
+  // paymentId contra org del user.
+  const admin = createAdminClient()
+
+  const { error } = await (admin.from("payment_passenger_allocations") as any)
     .delete()
     .eq("payment_id", paymentId)
+
+  if (error) {
+    console.error("[Allocations DELETE] error:", error)
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
 
   return NextResponse.json({ success: true })
 }

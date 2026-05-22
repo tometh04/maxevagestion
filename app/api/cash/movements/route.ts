@@ -17,6 +17,11 @@ export async function POST(request: Request) {
     const supabase = await createServerClient()
     const body = await request.json()
 
+    // Cross-tenant fix (2026-05-18): exigir org_id para POST de cash movements.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     const {
       operation_id,
       cash_box_id,
@@ -38,11 +43,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Faltan campos requeridos (financial_account_id es obligatorio)" }, { status: 400 })
     }
 
-    // Validar que la cuenta financiera existe
+    // Validar que la cuenta financiera existe y es del org del user
     const { data: financialAccount, error: accountError } = await (supabase.from("financial_accounts") as any)
       .select("id, currency")
       .eq("id", financial_account_id)
       .eq("is_active", true)
+      .eq("org_id", (user as any).org_id)
       .single()
 
     if (accountError || !financialAccount) {
@@ -55,15 +61,16 @@ export async function POST(request: Request) {
 
     const amountNum = roundMoney(Number(amount))
 
-    // Get default cash box if not provided
+    // Get default cash box if not provided (scopeado por org)
     let finalCashBoxId = cash_box_id
     if (!finalCashBoxId) {
-      const { data: defaultCashBox } = await supabase
-        .from("cash_boxes")
+      const { data: defaultCashBox } = await (supabase
+        .from("cash_boxes") as any)
         .select("id")
         .eq("currency", currency)
         .eq("is_default", true)
         .eq("is_active", true)
+        .eq("org_id", (user as any).org_id)
         .maybeSingle()
       finalCashBoxId = (defaultCashBox as any)?.id || null
     }
@@ -101,9 +108,12 @@ export async function POST(request: Request) {
 
     if (operation_id) {
       try {
+        // Scopear por org del user para no permitir asociar el movimiento a
+        // una operación ajena.
         const { data: operation } = await (supabase.from("operations") as any)
           .select("seller_id, operator_id")
           .eq("id", operation_id)
+          .eq("org_id", (user as any).org_id)
           .maybeSingle()
 
         if (operation) {
@@ -212,6 +222,11 @@ export async function GET(request: Request) {
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
+    // Cross-tenant fix (2026-05-18): exigir org_id para GET cash movements.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     const dateFrom = searchParams.get("dateFrom") ?? undefined
     const dateTo = searchParams.get("dateTo") ?? undefined
     const dateType = (searchParams.get("dateType") ?? "MOVIMIENTO").toUpperCase()
@@ -234,7 +249,10 @@ export async function GET(request: Request) {
     let restrictToOperationIds: string[] | null = null
     if (customerQuery) {
       const words = customerQuery.split(/\s+/).filter(Boolean)
-      let custQ = (supabase.from("customers") as any).select("id")
+      // Cross-tenant fix (2026-05-18): scopear búsqueda de clientes por org.
+      let custQ = (supabase.from("customers") as any)
+        .select("id")
+        .eq("org_id", (user as any).org_id)
       for (const word of words) {
         custQ = custQ.or(
           `first_name.ilike.%${word}%,last_name.ilike.%${word}%,email.ilike.%${word}%,phone.ilike.%${word}%`
@@ -283,6 +301,8 @@ export async function GET(request: Request) {
       `,
         { count: "exact" }
       )
+      // Cross-tenant fix (2026-05-18): scopear lista por org del user.
+      .eq("org_id", (user as any).org_id)
       .order("movement_date", { ascending: false })
       .range(offset, offset + limit - 1)
 
@@ -305,7 +325,10 @@ export async function GET(request: Request) {
     // - OPERACION: pre-resolver operation_ids cuya operations.operation_date cae en [from,to]
     //   y restringir cash_movements.operation_id IN (...). Movimientos sin operation_id quedan fuera.
     if (dateType === "OPERACION" && (dateFrom || dateTo)) {
-      let opQuery = (supabase.from("operations") as any).select("id")
+      // Cross-tenant fix: scopear pre-resolve de operaciones por org.
+      let opQuery = (supabase.from("operations") as any)
+        .select("id")
+        .eq("org_id", (user as any).org_id)
       if (dateFrom) opQuery = opQuery.gte("operation_date", dateFrom)
       if (dateTo) opQuery = opQuery.lte("operation_date", dateTo)
       const { data: matchingOps } = await opQuery.limit(5000)
@@ -438,9 +461,17 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "No tiene permiso para eliminar movimientos" }, { status: 403 })
     }
 
+    // Cross-tenant fix (2026-05-18): exigir org_id y scopear el fetch del
+    // movimiento — sin esto, un ADMIN/CONTABLE de otra org borraría movimientos
+    // ajenos por id enumerable.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     const { data: movement, error: fetchError } = await (supabase.from("cash_movements") as any)
       .select("id, operation_id, amount, currency, type, category, movement_date, ledger_movement_id")
       .eq("id", movementId)
+      .eq("org_id", (user as any).org_id)
       .single()
 
     if (fetchError || !movement) {

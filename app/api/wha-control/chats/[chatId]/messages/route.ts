@@ -17,15 +17,29 @@ export async function GET(
   const extraChatIds = searchParams.get("chatIds")
 
 
+  // adminDb justificado: wa_messages SÍ tiene org_id (filtramos abajo).
+  // wa_chats también — pre-validamos los chatIds contra el orgId antes de
+  // listar mensajes para evitar leaks por forge de URL.
   const supabase = createAdminClient() as any
 
   // Build list of all chat IDs to query (primary + extras from merged conversations)
-  const allChatIds = [chatId]
+  const requestedChatIds = [chatId]
   if (extraChatIds) {
     const extras = extraChatIds.split(",").map((id) => id.trim()).filter(Boolean)
     for (const id of extras) {
-      if (!allChatIds.includes(id)) allChatIds.push(id)
+      if (!requestedChatIds.includes(id)) requestedChatIds.push(id)
     }
+  }
+
+  // Pre-validar que TODOS los chatIds pertenezcan al org del caller.
+  const { data: validChats } = await supabase
+    .from("wa_chats")
+    .select("id")
+    .in("id", requestedChatIds)
+    .eq("org_id", auth.orgId)
+  const allChatIds = (validChats || []).map((c: any) => c.id)
+  if (allChatIds.length === 0) {
+    return NextResponse.json({ messages: [] })
   }
 
   let query = supabase

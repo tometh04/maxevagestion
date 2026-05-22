@@ -76,7 +76,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "displayName is required" }, { status: 400 })
   }
 
+  // adminDb justificado: wa_devices se usa por panel admin de la org.
+  // El insert inyecta org_id del caller — el agencyId del body se valida abajo
+  // contra el org para evitar forge (asignar device a agency de otro tenant).
   const supabase = createAdminClient() as any
+
+  // Validar agencyId del body contra el org del caller (anti-forge)
+  if (agencyId) {
+    const { data: agencyRow } = await supabase
+      .from("agencies")
+      .select("id")
+      .eq("id", agencyId)
+      .eq("org_id", auth.orgId)
+      .maybeSingle()
+    if (!agencyRow) {
+      return NextResponse.json({ error: "Agency no pertenece al tenant" }, { status: 400 })
+    }
+  }
 
   // Create device record (SaaS: inyecta org_id del caller)
   const insertData: any = {

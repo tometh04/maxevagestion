@@ -30,7 +30,12 @@ export async function GET(
       return NextResponse.json({ error: "Sin permiso" }, { status: 403 })
     }
 
-    // Fetch operation via RLS (404 si no accesible).
+    // Cross-tenant fix (2026-05-18): scopear el fetch por org del user.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
+    // Fetch operation scopeado por org (defense-in-depth sobre RLS).
     // Nota: la tabla operations NO tiene columna customer_id — el link a
     // clientes es M:N vía operation_customers. La resolución del customer
     // MAIN se hace abajo.
@@ -38,6 +43,7 @@ export async function GET(
       .from("operations") as any)
       .select("id, file_code, destination, sale_amount_total, operator_cost, margin_amount, org_id")
       .eq("id", id)
+      .eq("org_id", (user as any).org_id)
       .single()
 
     if (opErr || !operation) {

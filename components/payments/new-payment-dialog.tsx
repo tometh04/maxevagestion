@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DecimalInput } from "@/components/ui/decimal-input"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -34,7 +35,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
-import { DollarSign, CalendarIcon, FileText, Loader2, Wallet, CheckCircle, Receipt } from "lucide-react"
+import { DollarSign, CalendarIcon, FileText, Loader2, Wallet, CheckCircle, Receipt, Plus, ExternalLink } from "lucide-react"
 import { toast } from "sonner"
 import {
   buildOpenOperationBasePayableOperators,
@@ -52,6 +53,12 @@ interface Operation {
   operation_operators?: Array<{ operator_id?: string | null; operators?: { id?: string | null; name?: string | null } | null }>
   operation_services?: OperationServicePaymentRelationLike[]
   operator_payments?: OperationOperatorPaymentLike[]
+  // 2026-05-19 (Andres VICO): para poder filtrar por cliente en el dropdown.
+  operation_customers?: Array<{
+    role?: string | null
+    customers?: { first_name?: string | null; last_name?: string | null } | null
+  }>
+  leads?: { contact_name?: string | null } | null
 }
 
 interface FinancialAccount {
@@ -127,6 +134,7 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
   const [duplicateAlert, setDuplicateAlert] = useState<{
     duplicates: Array<{ id: string; amount: number; currency: string; date_paid: string | null; date_due: string | null; created_at: string; reference: string | null; status: string }>
     pendingValues: PaymentFormValues
+    message?: string
   } | null>(null)
 
   const today = new Date().toISOString().split("T")[0]
@@ -223,15 +231,53 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
     return financialAccounts.filter((acc) => acc.currency === watchCurrency)
   }, [financialAccounts, watchCurrency])
 
-  // Filtrar operaciones por búsqueda
+  // Helper: nombre del cliente principal + todos los pasajeros agrupados.
+  // 2026-05-19 (Andres VICO): el dropdown solo mostraba código + destino,
+  // pero con muchas operaciones a Punta Cana era imposible identificar
+  // cuál era la que buscaba el user. Ahora muestra también el cliente.
+  function getMainCustomerName(op: any): string {
+    const ocs = (op.operation_customers ?? []) as any[]
+    const main = ocs.find((oc) => (oc.role || "").toUpperCase() === "MAIN") || ocs[0]
+    if (main?.customers) {
+      const c = main.customers
+      return `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim()
+    }
+    return op.leads?.contact_name || ""
+  }
+
+  function getAllCustomerNames(op: any): string {
+    const ocs = (op.operation_customers ?? []) as any[]
+    return ocs
+      .map((oc) => {
+        const c = oc.customers
+        if (!c) return ""
+        return `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim()
+      })
+      .filter(Boolean)
+      .join(" ")
+  }
+
+  // Filtrar operaciones por búsqueda.
+  // 2026-05-19: ahora busca también por nombre/apellido de TODOS los pasajeros
+  // de la operación y por contact_name del lead. Andres reportó que era
+  // "complicado" filtrar solo por código/destino.
   const filteredOperations = useMemo(() => {
     if (!searchOp.trim()) return operations.slice(0, 50)
     const s = searchOp.toLowerCase()
-    return operations.filter(
-      (op) =>
-        (op.file_code || "").toLowerCase().includes(s) ||
-        op.destination.toLowerCase().includes(s)
-    ).slice(0, 50)
+    return operations
+      .filter((op) => {
+        const code = (op.file_code || "").toLowerCase()
+        const dest = (op.destination || "").toLowerCase()
+        const customers = getAllCustomerNames(op).toLowerCase()
+        const leadName = (op.leads?.contact_name || "").toLowerCase()
+        return (
+          code.includes(s) ||
+          dest.includes(s) ||
+          customers.includes(s) ||
+          leadName.includes(s)
+        )
+      })
+      .slice(0, 50)
   }, [operations, searchOp])
 
   // Cuando se selecciona operación, auto-setear la moneda
@@ -326,8 +372,14 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
       if (!createResponse.ok) {
         const error = await createResponse.json().catch(() => ({}))
         // 409 con code DUPLICATE_PAYMENT → mostrar alerta y dejar que el user decida.
-        if (createResponse.status === 409 && error?.code === "DUPLICATE_PAYMENT" && Array.isArray(error.duplicates)) {
-          setDuplicateAlert({ duplicates: error.duplicates, pendingValues: values })
+        // Hay dos variantes: con lista de duplicates (check en tabla payments) o
+        // sin lista (check en ledger_movements). Ambas permiten forzar la creación.
+        if (createResponse.status === 409 && error?.code === "DUPLICATE_PAYMENT") {
+          setDuplicateAlert({
+            duplicates: Array.isArray(error.duplicates) ? error.duplicates : [],
+            pendingValues: values,
+            message: error.error,
+          })
           return
         }
         throw new Error(error.error || "Error al crear pago")
@@ -405,6 +457,7 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
     if (!duplicateAlert) return
     const values = duplicateAlert.pendingValues
     setDuplicateAlert(null)
+    setIsLoading(true)
     await submitPayment(values, { force: true })
   }
 
@@ -423,14 +476,21 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[95vw] sm:max-w-lg max-h-[95vh]">
+      {/* Bug fix 2026-05-18 (Andres VICO): el dialog tenía max-h-[95vh]
+          pero sin overflow-y-auto adentro → el contenido se desbordaba sin
+          scroll y forzaba a los usuarios a hacer zoom out del navegador.
+          Solución: flex flex-col en DialogContent + wrapper interno con
+          flex-1 overflow-y-auto, así el footer queda fijo al pie y el
+          contenido scrollea entre header y footer. */}
+      <DialogContent className="max-w-[95vw] sm:max-w-lg max-h-[95vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Nuevo Pago</DialogTitle>
           <DialogDescription>Crear un pago para una operación</DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col flex-1 min-h-0">
+            <div className="flex-1 overflow-y-auto space-y-5 -mr-2 pr-2">
             {/* Detalle */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
@@ -475,7 +535,7 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
                       <SelectContent>
                         <div className="px-2 pb-2">
                           <Input
-                            placeholder="Buscar por código o destino..."
+                            placeholder="Buscar por cliente, código, destino..."
                             value={searchOp}
                             onChange={(e) => setSearchOp(e.target.value)}
                             className="h-8 text-xs"
@@ -483,13 +543,23 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
                             onKeyDown={(e) => e.stopPropagation()}
                           />
                         </div>
-                        {filteredOperations.map((op) => (
-                          <SelectItem key={op.id} value={op.id}>
-                            <span className="font-mono text-xs">{op.file_code || op.id.slice(0, 8)}</span>
-                            {" · "}
-                            {op.destination}
-                          </SelectItem>
-                        ))}
+                        {filteredOperations.map((op) => {
+                          const mainCustomer = getMainCustomerName(op)
+                          return (
+                            <SelectItem key={op.id} value={op.id}>
+                              <div className="flex flex-col">
+                                <span className="text-sm">
+                                  {mainCustomer || "(sin cliente)"}
+                                  {" · "}
+                                  <span className="text-muted-foreground">{op.destination}</span>
+                                </span>
+                                <span className="font-mono text-[10px] text-muted-foreground">
+                                  {op.file_code || op.id.slice(0, 8)}
+                                </span>
+                              </div>
+                            </SelectItem>
+                          )
+                        })}
                         {filteredOperations.length === 0 && (
                           <div className="px-2 py-4 text-xs text-muted-foreground text-center">
                             No se encontraron operaciones
@@ -590,14 +660,7 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
                     <FormItem>
                       <FormLabel>Monto *</FormLabel>
                       <FormControl>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          placeholder="0.00"
-                          {...field}
-                          onChange={(e) => field.onChange(Number(e.target.value))}
-                        />
+                        <DecimalInput placeholder="0.00" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -727,6 +790,18 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
                             ))}
                           </SelectContent>
                         </Select>
+                        {filteredAccounts.length === 0 && (
+                          <a
+                            href={`/accounting/financial-accounts?new=1&currency=${watchCurrency || 'USD'}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline mt-1"
+                          >
+                            <Plus className="h-3 w-3" />
+                            Crear cuenta financiera
+                            <ExternalLink className="h-3 w-3 opacity-60" />
+                          </a>
+                        )}
                         <FormMessage />
                       </FormItem>
                     )}
@@ -818,8 +893,9 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
                 </div>
               )}
             </div>
+            </div>{/* fin wrapper scrollable */}
 
-            <DialogFooter>
+            <DialogFooter className="pt-4 border-t border-border/40 mt-2">
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancelar
               </Button>
@@ -840,23 +916,29 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
           <AlertDialogTitle>Posible pago duplicado</AlertDialogTitle>
           <AlertDialogDescription asChild>
             <div className="space-y-3">
-              <p>
-                Encontramos {duplicateAlert?.duplicates.length || 0} pago{(duplicateAlert?.duplicates.length || 0) === 1 ? "" : "s"} similar{(duplicateAlert?.duplicates.length || 0) === 1 ? "" : "es"} en los últimos 7 días con el mismo monto y moneda. Revisalos antes de continuar:
-              </p>
-              <div className="rounded-md border border-border/40 bg-muted/30 p-3 space-y-2 max-h-48 overflow-y-auto">
-                {duplicateAlert?.duplicates.map((d) => (
-                  <div key={d.id} className="text-xs space-y-0.5">
-                    <div className="font-medium text-foreground">
-                      {d.currency} {d.amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })} · {d.status}
-                    </div>
-                    <div className="text-muted-foreground">
-                      Creado {new Date(d.created_at).toLocaleString("es-AR")}
-                      {d.date_paid && ` · Pagado ${new Date(d.date_paid).toLocaleDateString("es-AR")}`}
-                      {d.reference && ` · Ref: ${d.reference}`}
-                    </div>
+              {(duplicateAlert?.duplicates.length ?? 0) > 0 ? (
+                <>
+                  <p>
+                    Encontramos {duplicateAlert?.duplicates.length} pago{duplicateAlert?.duplicates.length === 1 ? "" : "s"} similar{duplicateAlert?.duplicates.length === 1 ? "" : "es"} en los últimos 7 días con el mismo monto y moneda. Revisalos antes de continuar:
+                  </p>
+                  <div className="rounded-md border border-border/40 bg-muted/30 p-3 space-y-2 max-h-48 overflow-y-auto">
+                    {duplicateAlert?.duplicates.map((d) => (
+                      <div key={d.id} className="text-xs space-y-0.5">
+                        <div className="font-medium text-foreground">
+                          {d.currency} {d.amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })} · {d.status}
+                        </div>
+                        <div className="text-muted-foreground">
+                          Creado {new Date(d.created_at).toLocaleString("es-AR")}
+                          {d.date_paid && ` · Pagado ${new Date(d.date_paid).toLocaleDateString("es-AR")}`}
+                          {d.reference && ` · Ref: ${d.reference}`}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </>
+              ) : (
+                <p>{duplicateAlert?.message || "Ya existe un movimiento contable con el mismo monto para esta operación en esta cuenta."}</p>
+              )}
               <p className="text-sm">
                 Si ya verificaste que este pago no es duplicado, podés crearlo igual.
               </p>
@@ -864,9 +946,9 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancelar</AlertDialogCancel>
-          <AlertDialogAction onClick={handleConfirmDuplicate}>
-            Crear igual
+          <AlertDialogCancel disabled={isLoading}>Cancelar</AlertDialogCancel>
+          <AlertDialogAction onClick={handleConfirmDuplicate} disabled={isLoading}>
+            {isLoading ? "Creando..." : "Crear igual"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

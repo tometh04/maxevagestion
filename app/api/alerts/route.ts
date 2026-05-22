@@ -46,33 +46,18 @@ export async function GET(request: Request) {
       .order("date_due", { ascending: true })
       .limit(limit)
 
-    // Filter by role
+    // Bug fix 2026-05-15 (P0 cross-tenant): alerts tiene org_id (mig 5
+     // backfill 2026-05-10). SIEMPRE filtrar por org_id del user. El bypass
+    // viejo "SUPER_ADMIN ve todo" leakeaba alertas cross-tenant.
+    const userOrgId = (user as any).org_id as string | null
+    if (!userOrgId) {
+      return NextResponse.json({ alerts: [] })
+    }
+    query = query.eq("org_id", userOrgId)
+
+    // Filter by role para SELLERs
     if (user.role === "SELLER") {
       query = query.eq("user_id", user.id)
-    } else {
-      // For ADMIN/SUPER_ADMIN, filter by agency if needed
-      const { data: userAgencies } = await supabase
-        .from("user_agencies")
-        .select("agency_id")
-        .eq("user_id", user.id)
-
-      const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
-
-      if (agencyIds.length > 0 && user.role !== "SUPER_ADMIN") {
-        // Filter alerts by operations in user's agencies
-        const { data: operations } = await supabase
-          .from("operations")
-          .select("id")
-          .in("agency_id", agencyIds)
-
-        const operationIds = (operations || []).map((op: any) => op.id)
-
-        if (operationIds.length > 0) {
-          query = query.in("operation_id", operationIds)
-        } else {
-          return NextResponse.json({ alerts: [] })
-        }
-      }
     }
 
     // Apply filters

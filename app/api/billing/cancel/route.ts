@@ -27,6 +27,9 @@ export async function POST() {
     return NextResponse.json({ error: "forbidden" }, { status: 403 })
   }
 
+  // adminDb justificado (caso C billing): organizations + billing_events
+  // están escritas por webhooks de MP también. El UPDATE acotado por
+  // user.org_id (anti-forge) — no aceptamos org_id del body.
   const admin = createAdminClient() as any
   const { data: org } = await admin
     .from("organizations")

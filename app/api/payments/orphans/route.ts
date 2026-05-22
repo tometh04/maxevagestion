@@ -87,10 +87,77 @@ export async function GET() {
       .order("created_at", { ascending: false })
       .limit(500)
 
+    // P0 2026-05-10: detectar payments PAID con ledger principal pero SIN
+    // counterpart movement. Origen: catch console.error en mark-paid (línea
+    // ~422 de mark-paid/route.ts) silenciosamente comía el error de creación
+    // del counterpart, dejando Cuentas por Cobrar/Pagar sin reducir → la
+    // deuda nunca cierra aunque el payment esté marcado como PAID.
+    //
+    // Detección: counterpart se identifica via marker en notes:
+    // `counterpart_payment_id=<payment_id>`. Buscamos payments PAID que NO
+    // tengan ningún ledger_movement con ese marker para su id.
+    const { data: paidPayments } = await (supabase.from("payments") as any)
+      .select(
+        `
+        id,
+        operation_id,
+        payer_type,
+        direction,
+        method,
+        amount,
+        currency,
+        date_paid,
+        ledger_movement_id,
+        created_at,
+        operations:operation_id(id, file_code, destination)
+      `
+      )
+      .eq("status", "PAID")
+      .eq("is_legacy_import", false)
+      .not("ledger_movement_id", "is", null)
+      .not("operation_id", "is", null)
+      .in("payer_type", ["CUSTOMER", "OPERATOR"])
+      .order("created_at", { ascending: false })
+      .limit(1000)
+
+    const paymentIds = (paidPayments || []).map((p: any) => p.id)
+    const missingCounterpart: any[] = []
+
+    if (paymentIds.length > 0) {
+      // Para cada payment, buscar si existe ledger_movement con su marker.
+      // PostgREST no soporta NOT EXISTS — hacemos batch fetch y diff en JS.
+      const orConditions = paymentIds
+        .map((id: string) => `notes.ilike.%counterpart_payment_id=${id}%`)
+        .join(",")
+      const { data: counterpartRows } = await (supabase.from("ledger_movements") as any)
+        .select("notes")
+        .or(orConditions)
+        .limit(2000)
+
+      const foundIds = new Set<string>()
+      const markerRegex = /counterpart_payment_id=([0-9a-f-]{36})/gi
+      for (const row of counterpartRows || []) {
+        const matches = Array.from(String(row.notes || "").matchAll(markerRegex))
+        for (const m of matches) {
+          if (m[1]) foundIds.add(m[1])
+        }
+      }
+
+      for (const p of paidPayments || []) {
+        if (!foundIds.has(p.id)) {
+          missingCounterpart.push(p)
+        }
+      }
+    }
+
     return NextResponse.json({
       payments: orphans || [],
       operator_payments: opOrphans || [],
-      count: (orphans?.length || 0) + (opOrphans?.length || 0),
+      payments_missing_counterpart: missingCounterpart,
+      count:
+        (orphans?.length || 0) +
+        (opOrphans?.length || 0) +
+        missingCounterpart.length,
     })
   } catch (err: any) {
     console.error("[payments/orphans GET] Unexpected:", err)

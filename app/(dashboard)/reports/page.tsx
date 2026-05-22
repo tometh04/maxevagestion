@@ -36,9 +36,14 @@ export default async function ReportsPage() {
   // SUPER_ADMIN/ORG_OWNER/CONTABLE ven todas las agencias del tenant.
   const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as UserRole)
 
+  // 🔴 CROSS-TENANT FIX (2026-05-21): filtro explícito por org_id —
+  // ver CLAUDE.md regla de oro multi-tenant. El filtro por agencyIds más
+  // abajo no es suficiente: si RLS leakea, los rawSellers pueden incluir
+  // users de otros tenants antes del filter post-fetch.
   let sellersQuery = (supabase.from("users") as any)
     .select("id, name, user_agencies(agency_id)")
     .in("role", ["SELLER", "ADMIN", "SUPER_ADMIN"])
+    .eq("org_id", (user as any).org_id)
     .order("name")
 
   const { data: rawSellers } = await sellersQuery

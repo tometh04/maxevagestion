@@ -129,8 +129,8 @@ export function NewOperatorDialog({
   return (
     <>
     <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent 
-          className="max-w-lg"
+        <DialogContent
+          className="max-w-2xl max-h-[90vh] overflow-y-auto"
           onEscapeKeyDown={(e) => e.preventDefault()}
           onPointerDownOutside={(e) => e.preventDefault()}
         >
@@ -218,6 +218,14 @@ export function NewOperatorDialog({
                 <DollarSign className="h-3.5 w-3.5 text-accent-coral" />
                 <span className="text-xs font-medium text-foreground/70">Financiero</span>
               </div>
+              {/* Bug fix 2026-05-18 (reportado por Andres de VICO):
+                  type="number" respeta el locale del navegador. Cuando Chrome
+                  detecta locale inglés (frecuente en macOS) bloquea la coma
+                  como decimal con tooltip nativo "Ingresa un número" → el
+                  usuario no puede tipear ni "1,2" ni "1.2".
+                  Solución: type="text" + inputMode="decimal" (sigue mostrando
+                  teclado numérico en mobile) + normalización coma→punto antes
+                  de pasar al schema zod. */}
               <FormField
                 control={form.control}
                 name="credit_limit"
@@ -225,7 +233,22 @@ export function NewOperatorDialog({
                   <FormItem>
                     <FormLabel>Límite de Crédito</FormLabel>
                     <FormControl>
-                      <Input type="number" step="0.01" min="0" placeholder="0.00" {...field} />
+                      <Input
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="0.00"
+                        value={field.value ?? ""}
+                        onChange={(e) => {
+                          const raw = e.target.value.replace(",", ".")
+                          // Permitimos vacío, dígitos y un único punto decimal
+                          if (raw === "" || /^\d*\.?\d*$/.test(raw)) {
+                            field.onChange(raw)
+                          }
+                        }}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
+                      />
                     </FormControl>
                     <FormDescription>
                       Monto máximo de crédito permitido con este operador
@@ -242,7 +265,21 @@ export function NewOperatorDialog({
                   <FormItem>
                     <FormLabel>% Gastos administrativos default</FormLabel>
                     <FormControl>
-                      <Input type="number" step="0.5" min="0" max="100" placeholder="0" {...field} />
+                      <Input
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="0"
+                        value={field.value ?? ""}
+                        onChange={(e) => {
+                          const raw = e.target.value.replace(",", ".")
+                          if (raw === "" || /^\d*\.?\d*$/.test(raw)) {
+                            field.onChange(raw)
+                          }
+                        }}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
+                      />
                     </FormControl>
                     <FormDescription>
                       Markup que se aplica al costo del operador en cada cotización. Editable por item.

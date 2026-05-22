@@ -30,6 +30,8 @@ export default async function OperationsPage() {
 
   // PERF: las 3 queries son independientes (sellers y operators no dependen
   // de user_agencies). Paralelizamos con Promise.all para evitar waterfall.
+  // 🔴 CROSS-TENANT FIX (2026-05-21): filtro explícito por org_id en sellers
+  // y operators — ver CLAUDE.md regla de oro multi-tenant.
   const [userAgenciesRes, sellersRes, operatorsRes] = await Promise.all([
     supabase
       .from("user_agencies")
@@ -39,8 +41,13 @@ export default async function OperationsPage() {
       .from("users")
       .select("id, name")
       .in("role", ["SELLER", "ADMIN", "SUPER_ADMIN"])
-      .eq("is_active", true),
-    supabase.from("operators").select("id, name").order("name"),
+      .eq("is_active", true)
+      .eq("org_id", (user as any).org_id),
+    supabase
+      .from("operators")
+      .select("id, name")
+      .eq("org_id", (user as any).org_id)
+      .order("name"),
   ])
   t.mark("parallel queries (user_agencies + sellers + operators)")
 
