@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { canAccessModule, hasPermission } from "@/lib/permissions"
-import { getUserAgencyIds } from "@/lib/permissions-api"
+import { hasPermission } from "@/lib/permissions"
+import { getUserAgencyIds, canPerformAction } from "@/lib/permissions-api"
 import { getAccountBalance, getAccountBalancesBatch, isAccountingOnlyAccount } from "@/lib/accounting/ledger"
-import { canPerformAction } from "@/lib/permissions-api"
+import { resolveUserPermissions, assertPermission } from "@/lib/permissions-agency"
 import type { UserRole } from "@/lib/permissions"
 
 export async function GET(request: Request) {
@@ -13,19 +13,17 @@ export async function GET(request: Request) {
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
-    // Verificar permisos de acceso al módulo cash (financial accounts son parte de cash)
-    if (!canAccessModule(user.role as UserRole, "cash")) {
-      return NextResponse.json({ error: "No tiene permiso para acceder a cuentas financieras" }, { status: 403 })
-    }
-
     // Parámetro opcional: excludeAccountingOnly (excluir cuentas contables CpC/CpP)
     const excludeAccountingOnly = searchParams.get("excludeAccountingOnly") === "true"
 
-    // Obtener agencyIds del usuario para filtrar
     const userRole = user.role as UserRole
-    const agencyIds = userRole !== "SUPER_ADMIN"
-      ? await getUserAgencyIds(supabase, user.id, userRole)
-      : []
+    const agencyIds = await getUserAgencyIds(supabase, user.id, userRole)
+    const perms = (user as any).org_id
+      ? await resolveUserPermissions(supabase as any, user.id, (user as any).org_id, user.role, agencyIds)
+      : null
+    if (!assertPermission(user.role, perms, "cash", "read")) {
+      return NextResponse.json({ error: "No tiene permiso para acceder a cuentas financieras" }, { status: 403 })
+    }
 
     // Get active financial accounts with agency info
     let query = (supabase.from("financial_accounts") as any)
@@ -111,9 +109,11 @@ export async function POST(request: Request) {
   try {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
-
-    // Verificar permisos de escritura en módulo cash
-    if (!canPerformAction(user, "cash", "write")) {
+    const agencyIdsPost = await getUserAgencyIds(supabase, user.id, user.role as UserRole)
+    const permsPost = (user as any).org_id
+      ? await resolveUserPermissions(supabase as any, user.id, (user as any).org_id, user.role, agencyIdsPost)
+      : null
+    if (!canPerformAction(user, "cash", "write", permsPost ?? undefined)) {
       return NextResponse.json({ error: "No tiene permiso para crear cuentas" }, { status: 403 })
     }
 

@@ -41,7 +41,7 @@ type RolePermissions = Record<Module, ModulePermissions>
 /**
  * Matriz de permisos por rol y módulo
  */
-const SUPER_ADMIN_PERMS: RolePermissions = {
+export const SUPER_ADMIN_PERMS: RolePermissions = {
   dashboard: { read: true, write: true, delete: true, export: true },
   leads: { read: true, write: true, delete: true, export: true },
   operations: { read: true, write: true, delete: true, export: true },
@@ -57,7 +57,7 @@ const SUPER_ADMIN_PERMS: RolePermissions = {
   tasks: { read: true, write: true, delete: true, export: true },
 }
 
-const PERMISSIONS: Record<UserRole, RolePermissions> = {
+export const PERMISSIONS: Record<UserRole, RolePermissions> = {
   SUPER_ADMIN: SUPER_ADMIN_PERMS,
   ORG_OWNER: SUPER_ADMIN_PERMS, // alias — ver nota en UserRole
   ADMIN: {

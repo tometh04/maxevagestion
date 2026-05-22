@@ -11,7 +11,8 @@ import {
   mapDepositMethodToLedgerMethod,
   getAccountTypeForDeposit,
 } from "@/lib/accounting/deposit-utils"
-import { applyLeadsFilters, canPerformAction } from "@/lib/permissions-api"
+import { applyLeadsFilters, canPerformAction, getUserAgencyIds } from "@/lib/permissions-api"
+import { resolveUserPermissions } from "@/lib/permissions-agency"
 import { resolveListNameForRegion } from "@/lib/manychat/seed-lists"
 
 export async function GET(request: Request) {
@@ -26,9 +27,8 @@ export async function GET(request: Request) {
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
-    // Get user agencies (con caché)
-    const { getUserAgencyIds } = await import("@/lib/permissions-api")
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
+    const perms = await resolveUserPermissions(supabase as any, user.id, (user as any).org_id, user.role, agencyIds)
 
     // Build query - NO incluir operations aquí, se cargan después manualmente (scopeado por org)
     let query = (supabase.from("leads") as any).select(`
@@ -39,7 +39,7 @@ export async function GET(request: Request) {
 
     // Apply permissions-based filtering
     try {
-      query = applyLeadsFilters(query, user, agencyIds)
+      query = applyLeadsFilters(query, user, agencyIds, perms)
     } catch (error: any) {
       return NextResponse.json({ error: error.message }, { status: 403 })
     }
@@ -254,17 +254,18 @@ export async function POST(request: Request) {
   try {
     const { user } = await getCurrentUser()
 
-    // Verificar permiso de escritura
-    if (!canPerformAction(user, "leads", "write")) {
-      return NextResponse.json({ error: "No tiene permiso para crear leads" }, { status: 403 })
-    }
-
     // Cross-tenant fix (2026-05-18): no confiar en RLS; scopear explícito.
     if (!(user as any).org_id) {
       return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
     }
 
     const supabase = await createServerClient()
+    const agencyIdsForPerms = await getUserAgencyIds(supabase, user.id, user.role as any)
+    const perms = await resolveUserPermissions(supabase as any, user.id, (user as any).org_id, user.role, agencyIdsForPerms)
+
+    if (!canPerformAction(user, "leads", "write", perms)) {
+      return NextResponse.json({ error: "No tiene permiso para crear leads" }, { status: 403 })
+    }
     const body = await request.json()
 
     const {

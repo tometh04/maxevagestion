@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
+import { getUserAgencyIds } from "@/lib/permissions-api"
+import { resolveUserPermissions, checkResolvedPermission } from "@/lib/permissions-agency"
 import {
   createLedgerMovement,
   calculateARSEquivalent,
@@ -114,8 +116,14 @@ export async function POST(request: Request) {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
 
-    // Verificar acceso al módulo de caja
-    if (!canAccessModule(user.role as any, "cash")) {
+    // Verificar acceso al módulo de caja (con permisos dinámicos por agencia)
+    let hasCashAccess = canAccessModule(user.role as any, "cash")
+    if ((user as any).org_id) {
+      const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
+      const perms = await resolveUserPermissions(supabase as any, user.id, (user as any).org_id, user.role, agencyIds)
+      hasCashAccess = checkResolvedPermission(perms, "cash", "write")
+    }
+    if (!hasCashAccess) {
       return NextResponse.json({ error: "No tiene permisos para acceder a este módulo" }, { status: 403 })
     }
 

@@ -7,6 +7,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/lib/supabase/types"
 import { isOwnDataOnly, hasPermission, type UserRole, type Module, type Permission } from "./permissions"
+import { checkResolvedPermission, checkOwnDataOnly, type ResolvedPermissionsMatrix } from "./permissions-agency"
 
 type SupportOperationsUser = {
   role: string
@@ -67,14 +68,35 @@ export function applyRoleFilters<T>(
 }
 
 /**
- * Verifica si un usuario puede realizar una acción específica
+ * Verifica si un usuario puede realizar una acción específica.
+ *
+ * Si se pasa resolvedMatrix (permisos dinámicos por agencia), se usa esa.
+ * Sin matrix → fallback a permisos estáticos de lib/permissions.ts.
+ * SUPER_ADMIN y ORG_OWNER siempre retornan true sin importar la matrix.
  */
 export function canPerformAction(
   user: { role: string; id: string },
   module: Module,
-  permission: Permission
+  permission: Permission,
+  resolvedMatrix?: ResolvedPermissionsMatrix
 ): boolean {
+  if (user.role === "SUPER_ADMIN" || user.role === "ORG_OWNER") return true
+  if (resolvedMatrix) return checkResolvedPermission(resolvedMatrix, module, permission)
   return hasPermission(user.role as UserRole, module, permission)
+}
+
+/**
+ * Verifica si el usuario solo puede ver sus propios datos en el módulo.
+ * Acepta matrix dinámica opcional; sin ella usa el static default.
+ */
+export function isOwnDataOnlyResolved(
+  user: { role: string },
+  module: Module,
+  resolvedMatrix?: ResolvedPermissionsMatrix
+): boolean {
+  if (user.role === "SUPER_ADMIN" || user.role === "ORG_OWNER") return false
+  if (resolvedMatrix) return checkOwnDataOnly(resolvedMatrix, module)
+  return isOwnDataOnly(user.role as UserRole, module)
 }
 
 export function hasAgencyOperationsSupportView(user: SupportOperationsUser): boolean {
@@ -122,11 +144,15 @@ export function resolveOperationAccessScope(
  * Aplica filtros de leads según el rol del usuario.
  * Multi-tenant: agencyIds ya viene acotado a la org del usuario (ver getUserAgencyIds),
  * así que filtrar por ellos también acota por org — incluso para SUPER_ADMIN.
+ *
+ * resolvedMatrix: si se pasa, los bloqueos hardcodeados por rol se omiten cuando
+ * la matrix dinámica habilita el acceso (ej: CONTABLE con leads habilitado desde UI).
  */
 export function applyLeadsFilters(
   query: any,
   user: { role: string; id: string },
-  agencyIds: string[]
+  agencyIds: string[],
+  resolvedMatrix?: ResolvedPermissionsMatrix
 ): any {
   const userRole = user.role as UserRole
 
@@ -139,12 +165,19 @@ export function applyLeadsFilters(
     return query.eq("assigned_seller_id", user.id)
   }
 
-  // CONTABLE no ve leads
+  // CONTABLE no ve leads por defecto, salvo que la matrix dinámica lo habilite
   if (userRole === "CONTABLE") {
-    throw new Error("No tiene permiso para ver leads")
+    if (!resolvedMatrix || !checkResolvedPermission(resolvedMatrix, "leads", "read")) {
+      throw new Error("No tiene permiso para ver leads")
+    }
+    // Habilitado dinámicamente: filtrar por agencias como cualquier otro rol
+    if (agencyIds.length > 0) {
+      return query.in("agency_id", agencyIds)
+    }
+    return query
   }
 
-  // ADMIN / SUPER_ADMIN / VIEWER: siempre filtrar por las agencias de su org
+  // ADMIN / SUPER_ADMIN / VIEWER / demás roles: filtrar por las agencias de su org
   if (agencyIds.length > 0) {
     query = query.in("agency_id", agencyIds)
   }

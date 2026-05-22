@@ -15,6 +15,7 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { shouldShowInSidebar, type UserRole } from "@/lib/permissions"
+import { checkResolvedPermission, type ResolvedPermissionsMatrix } from "@/lib/permissions-agency"
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
 import { ThemeToggleSidebar } from "@/components/theme-toggle-sidebar"
@@ -144,6 +145,7 @@ const allNavigation: NavItem[] = [
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   userRole: UserRole
+  resolvedPermissions?: ResolvedPermissionsMatrix | null
   user: {
     name: string
     email: string
@@ -151,7 +153,7 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   }
 }
 
-export function AppSidebar({ userRole, user, ...props }: AppSidebarProps) {
+export function AppSidebar({ userRole, resolvedPermissions, user, ...props }: AppSidebarProps) {
   const pathname = usePathname()
   const [brandLogo, setBrandLogo] = useState<string | null>(null)
   const [companyName, setCompanyName] = useState<string | null>(null)
@@ -246,13 +248,23 @@ export function AppSidebar({ userRole, user, ...props }: AppSidebarProps) {
     }
   }, [])
 
+  // Verifica si un módulo debe mostrarse en el sidebar.
+  // Con permisos dinámicos: usa la matrix resuelta (checkResolvedPermission).
+  // Sin matrix (fallback): usa la lógica estática original.
+  function canShowModule(module: string): boolean {
+    if (resolvedPermissions) {
+      return checkResolvedPermission(resolvedPermissions, module, "read")
+    }
+    return shouldShowInSidebar(userRole, module as any)
+  }
+
   // Filtrar navegación según permisos
   const navigation = allNavigation
     .map((item) => {
       // Filtrar items principales por módulo
       // Si tiene subitems con módulos propios, no filtrar aquí — se filtra abajo por subitem
       if (item.module && !item.items?.some((sub) => sub.module)) {
-        if (!shouldShowInSidebar(userRole, item.module)) {
+        if (!canShowModule(item.module)) {
           return null
         }
       }
@@ -269,7 +281,7 @@ export function AppSidebar({ userRole, user, ...props }: AppSidebarProps) {
             // Si no, heredar el módulo del padre
             const moduleToCheck = subItem.module || item.module
             if (moduleToCheck) {
-              if (!shouldShowInSidebar(userRole, moduleToCheck)) {
+              if (!canShowModule(moduleToCheck)) {
                 return null
               }
             }

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
-import { canAccessModule } from "@/lib/permissions"
 import { createServerClient } from "@/lib/supabase/server"
+import { getUserAgencyIds } from "@/lib/permissions-api"
+import { resolveUserPermissions, assertPermission } from "@/lib/permissions-agency"
 import {
   listJournalEntries,
   createJournalEntry,
@@ -17,12 +18,15 @@ import {
 export async function GET(req: NextRequest) {
   try {
     const { user } = await getCurrentUser()
-
-    if (!canAccessModule(user.role as any, "accounting")) {
+    const supabase = await createServerClient()
+    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
+    const perms = (user as any).org_id
+      ? await resolveUserPermissions(supabase as any, user.id, (user as any).org_id, user.role, agencyIds)
+      : null
+    if (!assertPermission(user.role, perms, "accounting", "read")) {
       return NextResponse.json({ error: "Sin permisos" }, { status: 403 })
     }
 
-    const supabase = await createServerClient()
     const { searchParams } = new URL(req.url)
 
     const result = await listJournalEntries(supabase, {
@@ -50,13 +54,14 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const { user } = await getCurrentUser()
-
-    // Solo ADMIN, SUPER_ADMIN, CONTABLE pueden crear asientos manuales
-    if (!canAccessModule(user.role as any, "accounting")) {
+    const supabase = await createServerClient()
+    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
+    const perms = (user as any).org_id
+      ? await resolveUserPermissions(supabase as any, user.id, (user as any).org_id, user.role, agencyIds)
+      : null
+    if (!assertPermission(user.role, perms, "accounting", "write")) {
       return NextResponse.json({ error: "Sin permisos para crear asientos" }, { status: 403 })
     }
-
-    const supabase = await createServerClient()
     const body = await req.json()
 
     const { entry_date, description, lines, operation_id, currency, exchange_rate, notes } = body

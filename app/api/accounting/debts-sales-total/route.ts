@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { canAccessModule } from "@/lib/permissions"
 import { getUserAgencyIds } from "@/lib/permissions-api"
+import { resolveUserPermissions, assertPermission } from "@/lib/permissions-agency"
 
 export const dynamic = "force-dynamic"
 
@@ -35,14 +35,16 @@ export async function GET(request: Request) {
     // Deudores tiene que respetarlo.
     const agencyIdFilter = searchParams.get("agencyId")
 
-    if (!canAccessModule(user.role as any, "accounting")) {
+    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
+    const perms = (user as any).org_id
+      ? await resolveUserPermissions(supabase as any, user.id, (user as any).org_id, user.role, agencyIds)
+      : null
+    if (!assertPermission(user.role, perms, "accounting", "read")) {
       return NextResponse.json(
         { error: "No tiene permiso para ver esta sección" },
         { status: 403 }
       )
     }
-
-    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
 
     const t0 = Date.now()
     const { data, error } = await (supabase.rpc as any)(

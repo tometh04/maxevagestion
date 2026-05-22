@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { canPerformAction } from "@/lib/permissions-api"
+import { canPerformAction, getUserAgencyIds } from "@/lib/permissions-api"
+import { resolveUserPermissions } from "@/lib/permissions-agency"
 
 export async function GET(request: Request) {
   try {
@@ -107,12 +108,14 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const { user } = await getCurrentUser()
-    
-    if (!canPerformAction(user, "accounting", "write")) {
+    const supabase = await createServerClient()
+    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
+    const perms = (user as any).org_id
+      ? await resolveUserPermissions(supabase as any, user.id, (user as any).org_id, user.role, agencyIds)
+      : null
+    if (!canPerformAction(user, "accounting", "write", perms ?? undefined)) {
       return NextResponse.json({ error: "No tiene permiso para crear cuentas" }, { status: 403 })
     }
-
-    const supabase = await createServerClient()
     const body = await request.json()
 
     const {

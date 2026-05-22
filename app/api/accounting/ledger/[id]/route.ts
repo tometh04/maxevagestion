@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { canPerformAction } from "@/lib/permissions-api"
+import { canPerformAction, getUserAgencyIds } from "@/lib/permissions-api"
+import { resolveUserPermissions } from "@/lib/permissions-agency"
 import { invalidateBalanceCache } from "@/lib/accounting/ledger"
 
 export async function PATCH(
@@ -11,8 +12,11 @@ export async function PATCH(
   try {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
-
-    if (!canPerformAction(user, "accounting", "write") && !canPerformAction(user, "cash", "write")) {
+    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
+    const perms = (user as any).org_id
+      ? await resolveUserPermissions(supabase as any, user.id, (user as any).org_id, user.role, agencyIds)
+      : null
+    if (!canPerformAction(user, "accounting", "write", perms ?? undefined) && !canPerformAction(user, "cash", "write", perms ?? undefined)) {
       return NextResponse.json({ error: "No tiene permiso para modificar movimientos contables" }, { status: 403 })
     }
 

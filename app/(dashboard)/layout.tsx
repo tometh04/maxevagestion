@@ -15,6 +15,9 @@ import { BrandProvider } from "@/components/brand-provider"
 import { assertSubscriptionActive } from "@/lib/billing/guard"
 import { SubscriptionBanner } from "@/components/billing/subscription-banner"
 import { makeTimer } from "@/lib/perf-log"
+import { createServerClient } from "@/lib/supabase/server"
+import { getUserAgencyIds } from "@/lib/permissions-api"
+import { resolveUserPermissions, type ResolvedPermissionsMatrix } from "@/lib/permissions-agency"
 
 export default async function DashboardLayout({
   children,
@@ -39,8 +42,22 @@ export default async function DashboardLayout({
   ])
   t.mark("subscription+currentUser (parallel)")
   const { user } = currentUser
-  const userAgencies = await getUserAgencies(user.id)
+  const [userAgencies, supabase] = await Promise.all([
+    getUserAgencies(user.id),
+    createServerClient(),
+  ])
   t.mark("getUserAgencies")
+
+  // Cargar permisos dinámicos para el sidebar. resolveUserPermissions usa
+  // React.cache() internamente, así que en la misma request no re-fetcha.
+  const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
+  let resolvedPermissions: ResolvedPermissionsMatrix | null = null
+  if (user.org_id) {
+    resolvedPermissions = await resolveUserPermissions(
+      supabase as any, user.id, user.org_id, user.role, agencyIds
+    )
+  }
+  t.mark("resolvePermissions")
 
   const agencies = (userAgencies || []).map((ua: any) => ({
     id: ua.agency_id,
@@ -63,6 +80,7 @@ export default async function DashboardLayout({
           variant="sidebar"
           collapsible="icon"
           userRole={user.role as any}
+          resolvedPermissions={resolvedPermissions}
           user={{
             name: user.name,
             email: user.email,

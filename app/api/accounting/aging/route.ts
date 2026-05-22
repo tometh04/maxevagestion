@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { canAccessModule } from "@/lib/permissions"
-import { getUserAgencyIds } from "@/lib/permissions-api"
-import { applyCustomersFilters } from "@/lib/permissions-api"
+import { getUserAgencyIds, applyCustomersFilters } from "@/lib/permissions-api"
+import { resolveUserPermissions, assertPermission } from "@/lib/permissions-agency"
 import { getExchangeRate, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
 
 export const dynamic = "force-dynamic"
@@ -83,9 +82,11 @@ export async function GET(request: Request) {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
-
-    // Check permissions - only ADMIN, SUPER_ADMIN, CONTABLE
-    if (!canAccessModule(user.role as any, "accounting")) {
+    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
+    const perms = (user as any).org_id
+      ? await resolveUserPermissions(supabase as any, user.id, (user as any).org_id, user.role, agencyIds)
+      : null
+    if (!assertPermission(user.role, perms, "accounting", "read")) {
       return NextResponse.json({ error: "No tiene permiso para ver esta seccion" }, { status: 403 })
     }
 

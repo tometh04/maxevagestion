@@ -5,7 +5,8 @@ import { generateFileCode } from "@/lib/accounting/file-code"
 import { transferLeadToOperation, getOrCreateDefaultAccount, createLedgerMovement, calculateARSEquivalent } from "@/lib/accounting/ledger"
 import { createSaleIVA, createPurchaseIVA } from "@/lib/accounting/iva"
 import { createOperatorPayment, calculateDueDate } from "@/lib/accounting/operator-payments"
-import { canPerformAction } from "@/lib/permissions-api"
+import { canPerformAction, getUserAgencyIds } from "@/lib/permissions-api"
+import { resolveUserPermissions } from "@/lib/permissions-agency"
 import { revalidateTag, CACHE_TAGS } from "@/lib/cache"
 import { generateMessagesFromAlerts } from "@/lib/whatsapp/alert-messages"
 import { getExchangeRate, getLatestExchangeRate, getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
@@ -20,11 +21,6 @@ export async function POST(request: Request) {
   try {
     const { user } = await getCurrentUser()
 
-    // Verificar permiso de escritura
-    if (!canPerformAction(user, "operations", "write")) {
-      return NextResponse.json({ error: "No tiene permiso para crear operaciones" }, { status: 403 })
-    }
-
     // Cross-tenant fix (2026-05-18): exigir org_id para crear operaciones.
     if (!(user as any).org_id) {
       return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
@@ -36,6 +32,12 @@ export async function POST(request: Request) {
     if (rateLimitBlock) return rateLimitBlock
 
     const supabase = await createServerClient()
+    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
+    const perms = await resolveUserPermissions(supabase as any, user.id, (user as any).org_id, user.role, agencyIds)
+
+    if (!canPerformAction(user, "operations", "write", perms)) {
+      return NextResponse.json({ error: "No tiene permiso para crear operaciones" }, { status: 403 })
+    }
 
     // SaaS Pilar 7 — enforce límite de operaciones/mes del plan del tenant.
     // Si la org está SUSPENDED o alcanzó el tope del plan, 403 con motivo.
