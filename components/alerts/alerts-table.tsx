@@ -1,9 +1,17 @@
 "use client"
 
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Textarea } from "@/components/ui/textarea"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog"
 import { format, differenceInDays, isToday, isTomorrow, isBefore, startOfDay, endOfWeek, isAfter } from "date-fns"
 import { es } from "date-fns/locale"
 import Link from "next/link"
@@ -22,6 +30,7 @@ import {
   ClipboardList,
   ArrowRight,
   Clock,
+  LogIn,
 } from "lucide-react"
 
 export interface Alert {
@@ -70,9 +79,17 @@ interface AlertsTableProps {
   alerts: Alert[]
   isLoading?: boolean
   onMarkDone?: (alertId: string) => void
+  onMarkDoneWithNote?: (alertId: string, note: string) => void
   onIgnore?: (alertId: string) => void
   emptyMessage?: string
 }
+
+const CHECKIN_RESOLUTION_OPTIONS = [
+  "Check-in realizado correctamente",
+  "Aerolínea requiere check-in 24hs antes — se realizará el día previo",
+  "Check-in se realiza en aeropuerto (solo equipaje de mano)",
+  "No aplica — el viaje no incluye vuelo",
+]
 
 const typeLabels: Record<string, string> = {
   PAYMENT_DUE: "Pago Pendiente",
@@ -94,6 +111,7 @@ const typeLabels: Record<string, string> = {
   BIRTHDAY: "Cumpleanos",
   TASK_REMINDER: "Tarea",
   MISSING_INVOICE: "Sin Factura",
+  CHECKIN_REMINDER: "Check-in",
 }
 
 const statusLabels: Record<string, string> = {
@@ -112,6 +130,7 @@ function getTypeIcon(type: string) {
   if (type.includes("PASSPORT")) return <ShieldAlert className="h-3.5 w-3.5" />
   if (type.includes("BIRTHDAY")) return <Cake className="h-3.5 w-3.5" />
   if (type.includes("TASK")) return <ClipboardList className="h-3.5 w-3.5" />
+  if (type === "CHECKIN_REMINDER") return <LogIn className="h-3.5 w-3.5" />
   return <Bell className="h-3.5 w-3.5" />
 }
 
@@ -170,9 +189,28 @@ export function AlertsTable({
   alerts,
   isLoading = false,
   onMarkDone,
+  onMarkDoneWithNote,
   onIgnore,
   emptyMessage,
 }: AlertsTableProps) {
+  const [checkinDialog, setCheckinDialog] = useState<{ alertId: string } | null>(null)
+  const [selectedOption, setSelectedOption] = useState<string | null>(null)
+  const [customNote, setCustomNote] = useState("")
+
+  function openCheckinDialog(alertId: string) {
+    setCheckinDialog({ alertId })
+    setSelectedOption(null)
+    setCustomNote("")
+  }
+
+  function confirmCheckin() {
+    if (!checkinDialog) return
+    const note = selectedOption === "custom" ? customNote.trim() : (selectedOption ?? "")
+    if (!note) return
+    onMarkDoneWithNote?.(checkinDialog.alertId, note)
+    setCheckinDialog(null)
+  }
+
   // Group alerts by urgency for pending, show others ungrouped
   const groupedAlerts = useMemo((): GroupedAlerts[] => {
     const groups: Record<UrgencyLevel, Alert[]> = {
@@ -220,6 +258,7 @@ export function AlertsTable({
   }
 
   return (
+    <>
     <div className="space-y-6">
       {groupedAlerts.map(({ level, alerts: groupAlerts }) => (
         <div key={level} className="space-y-2">
@@ -360,7 +399,11 @@ export function AlertsTable({
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8 text-success hover:text-success hover:bg-success/5"
-                            onClick={() => onMarkDone?.(alert.id)}
+                            onClick={() =>
+                              alert.type === "CHECKIN_REMINDER"
+                                ? openCheckinDialog(alert.id)
+                                : onMarkDone?.(alert.id)
+                            }
                             title="Resolver"
                           >
                             <CheckCircle2 className="h-4 w-4" />
@@ -385,5 +428,75 @@ export function AlertsTable({
         </div>
       ))}
     </div>
+
+      {/* Dialog de resolución de check-in */}
+      <Dialog open={!!checkinDialog} onOpenChange={(open) => !open && setCheckinDialog(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <LogIn className="h-5 w-5" />
+              Resolver check-in
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-2 py-2">
+            <p className="text-sm text-muted-foreground mb-3">
+              ¿Qué pasó con el check-in de este viaje?
+            </p>
+
+            {CHECKIN_RESOLUTION_OPTIONS.map((option) => (
+              <button
+                key={option}
+                onClick={() => setSelectedOption(option)}
+                className={`w-full text-left text-sm px-4 py-3 rounded-lg border transition-colors ${
+                  selectedOption === option
+                    ? "border-primary bg-primary/5 text-primary font-medium"
+                    : "border-border hover:border-primary/50 hover:bg-muted/50"
+                }`}
+              >
+                {option}
+              </button>
+            ))}
+
+            <button
+              onClick={() => setSelectedOption("custom")}
+              className={`w-full text-left text-sm px-4 py-3 rounded-lg border transition-colors ${
+                selectedOption === "custom"
+                  ? "border-primary bg-primary/5 text-primary font-medium"
+                  : "border-border hover:border-primary/50 hover:bg-muted/50"
+              }`}
+            >
+              Otra nota...
+            </button>
+
+            {selectedOption === "custom" && (
+              <Textarea
+                autoFocus
+                placeholder="Escribí la nota de resolución"
+                className="mt-2 text-sm"
+                value={customNote}
+                onChange={(e) => setCustomNote(e.target.value)}
+                rows={3}
+              />
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCheckinDialog(null)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={confirmCheckin}
+              disabled={
+                !selectedOption ||
+                (selectedOption === "custom" && !customNote.trim())
+              }
+            >
+              Confirmar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }

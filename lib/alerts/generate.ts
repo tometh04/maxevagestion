@@ -227,6 +227,18 @@ export async function generateAllAlerts(settings?: AlertGenerationSettings): Pro
     console.error("Error generating accounting alerts:", error)
   }
 
+  console.log("🔄 Generating check-in reminder alerts...")
+  try {
+    const { generateCheckinAlerts } = await import("./checkin-alerts")
+    const checkinResult = await generateCheckinAlerts()
+    console.log(`   ✅ Created ${checkinResult.created} check-in reminders (${checkinResult.skipped} skipped)`)
+    if (checkinResult.errors.length > 0) {
+      console.log(`   ⚠️ ${checkinResult.errors.length} errors`)
+    }
+  } catch (error) {
+    console.error("Error generating check-in alerts:", error)
+  }
+
   console.log("✅ All alerts generated")
 }
 

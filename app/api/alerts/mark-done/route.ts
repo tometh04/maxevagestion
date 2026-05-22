@@ -13,7 +13,7 @@ export async function POST(request: Request) {
 
     const supabase = await createServerClient()
     const body = await request.json()
-    const { alertId } = body
+    const { alertId, resolution_note } = body
 
     if (!alertId) {
       return NextResponse.json({ error: "Falta alertId" }, { status: 400 })
@@ -22,6 +22,10 @@ export async function POST(request: Request) {
     const updateData: Record<string, unknown> = {
       status: "DONE",
       updated_at: new Date().toISOString(),
+    }
+
+    if (resolution_note) {
+      updateData.resolution_note = resolution_note
     }
 
     // Direct update with type assertion to bypass TypeScript strict checking
