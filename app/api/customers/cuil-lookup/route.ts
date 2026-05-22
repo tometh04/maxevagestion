@@ -19,6 +19,8 @@ export async function GET(request: Request) {
     }
 
     // Try AFIP SDK padron lookup (free, no auth required)
+    // Devolvemos `reason` para que el frontend pueda mostrar UX distinta entre
+    // "AFIP no tiene a esta persona" (consumidor final) y "el servicio se cayó".
     try {
       const url = `https://app.afipsdk.com/api/v1/padron/contribuyente/${cuilClean}`
       const res = await fetch(url, {
@@ -29,22 +31,30 @@ export async function GET(request: Request) {
         const data = await res.json()
         const nombre = data.nombre || data.razonSocial || ""
 
+        if (!nombre) {
+          // AFIP respondió pero sin nombre → CUIL no registrado en padrón
+          // (típicamente un consumidor final, no un contribuyente).
+          return NextResponse.json({
+            success: false,
+            reason: "not_found",
+            error: "AFIP no encontró datos para este CUIL (probablemente un consumidor final, no un contribuyente registrado)",
+          })
+        }
+
         // Try to split name (AFIP returns "APELLIDO NOMBRE" format)
         let firstName = ""
         let lastName = ""
-        if (nombre) {
-          // AFIP typically returns: "PEREZ JUAN CARLOS"
-          const parts = nombre.split(" ")
-          if (parts.length >= 2) {
-            lastName = parts[0]
-            firstName = parts.slice(1).join(" ")
-          } else {
-            lastName = nombre
-          }
-          // Capitalize properly
-          firstName = firstName.split(" ").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ")
-          lastName = lastName.split(" ").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ")
+        // AFIP typically returns: "PEREZ JUAN CARLOS"
+        const parts = nombre.split(" ")
+        if (parts.length >= 2) {
+          lastName = parts[0]
+          firstName = parts.slice(1).join(" ")
+        } else {
+          lastName = nombre
         }
+        // Capitalize properly
+        firstName = firstName.split(" ").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ")
+        lastName = lastName.split(" ").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ")
 
         return NextResponse.json({
           success: true,
@@ -57,12 +67,29 @@ export async function GET(request: Request) {
           }
         })
       }
+
+      // HTTP no-OK del servicio third-party (404 = no encontrado, 4xx/5xx = error)
+      if (res.status === 404) {
+        return NextResponse.json({
+          success: false,
+          reason: "not_found",
+          error: "AFIP no encontró datos para este CUIL (probablemente un consumidor final, no un contribuyente registrado)",
+        })
+      }
+      console.error(`AFIP lookup HTTP error: ${res.status} ${res.statusText}`)
+      return NextResponse.json({
+        success: false,
+        reason: "service_error",
+        error: `El servicio de consulta AFIP no respondió (HTTP ${res.status})`,
+      })
     } catch (afipError) {
       console.error("AFIP lookup error:", afipError)
+      return NextResponse.json({
+        success: false,
+        reason: "service_error",
+        error: "No se pudo conectar con el servicio de consulta AFIP",
+      })
     }
-
-    // If AFIP lookup fails, return success with no data
-    return NextResponse.json({ success: false, error: "No se encontraron datos para este CUIL" })
   } catch (error: any) {
     if (error?.digest === "NEXT_REDIRECT") throw error
     console.error("Error in CUIL lookup:", error)
