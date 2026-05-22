@@ -137,6 +137,7 @@ export default async function CRMManychatPage() {
   const featureFlags = await getOrgFeatureFlags(supabase, user.org_id ?? null, [
     "features.region_filter_in_kanban",
     "features.list_name_to_status_sync",
+    "features.created_at_filter_in_kanban",
   ])
 
   return (
@@ -151,6 +152,7 @@ export default async function CRMManychatPage() {
       currentUserRole={user.role}
       enableRegionFilter={featureFlags["features.region_filter_in_kanban"]}
       enableListStatusSync={featureFlags["features.list_name_to_status_sync"]}
+      enableCreatedAtFilter={featureFlags["features.created_at_filter_in_kanban"]}
     />
   )
 }

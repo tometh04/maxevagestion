@@ -68,6 +68,13 @@ interface CRMManychatPageClientProps {
    */
   enableRegionFilter?: boolean
   enableListStatusSync?: boolean
+  /**
+   * Pedido por LOZADA 2026-05-22:
+   * - enableCreatedAtFilter: muestra dos inputs (desde / hasta) para filtrar
+   *   leads por fecha de creación. Útil cuando el pipeline acumula y se
+   *   quiere mirar solo leads nuevos / de un rango específico.
+   */
+  enableCreatedAtFilter?: boolean
 }
 
 export function CRMManychatPageClient({
@@ -81,6 +88,7 @@ export function CRMManychatPageClient({
   currentUserRole,
   enableRegionFilter = false,
   enableListStatusSync = false,
+  enableCreatedAtFilter = false,
 }: CRMManychatPageClientProps) {
   const [leads, setLeads] = useState<Lead[]>(initialLeads)
   const [newLeadDialogOpen, setNewLeadDialogOpen] = useState(false)
@@ -369,6 +377,7 @@ export function CRMManychatPageClient({
               currentUserRole={currentUserRole}
               enableRegionFilter={enableRegionFilter}
               enableListStatusSync={enableListStatusSync}
+              enableCreatedAtFilter={enableCreatedAtFilter}
             />
           ) : (
             <div className="flex items-center justify-center p-8">
