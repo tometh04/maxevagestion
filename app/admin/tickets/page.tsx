@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { useRouter } from "next/navigation"
 import {
   LifeBuoy, RefreshCw, MessageCircle, Building2, Mail,
   Clock, ChevronDown,
@@ -59,6 +60,7 @@ function formatDate(d: string) {
 }
 
 export default function AdminTicketsPage() {
+  const router = useRouter()
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState("all")
@@ -180,7 +182,7 @@ export default function AdminTicketsPage() {
               tickets.map((ticket) => {
                 const cfg = STATUS_CONFIG[ticket.status] || STATUS_CONFIG.open
                 return (
-                  <TableRow key={ticket.id}>
+                  <TableRow key={ticket.id} className="cursor-pointer hover:bg-accent/50" onClick={() => router.push(`/admin/tickets/${ticket.id}`)}>
                     <TableCell>
                       <div>
                         <p className="font-medium text-sm">{ticket.subject}</p>

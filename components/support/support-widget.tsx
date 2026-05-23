@@ -14,6 +14,8 @@ export type WidgetView =
   | { screen: "article"; slug: string }
   | { screen: "conversations" }
   | { screen: "ticket"; conversationId?: string }
+  | { screen: "my-tickets" }
+  | { screen: "ticket-detail"; ticketId: string }
 
 export function SupportWidget() {
   const [open, setOpen] = useState(false)

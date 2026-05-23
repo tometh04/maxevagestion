@@ -9,6 +9,8 @@ import { SupportChat } from "./support-chat"
 import { SupportArticle } from "./support-article"
 import { SupportConversations } from "./support-conversations"
 import { SupportTicketForm } from "./support-ticket-form"
+import { SupportMyTickets } from "./support-my-tickets"
+import { SupportTicketDetail } from "./support-ticket-detail"
 import { useState } from "react"
 
 export type WidgetView =
@@ -17,13 +19,17 @@ export type WidgetView =
   | { screen: "article"; slug: string }
   | { screen: "conversations" }
   | { screen: "ticket"; conversationId?: string }
+  | { screen: "my-tickets" }
+  | { screen: "ticket-detail"; ticketId: string }
 
 const SCREEN_TITLES: Record<string, string> = {
   home: "Vibook",
   chat: "Chat con IA",
   article: "Artículo",
   conversations: "Historial",
-  ticket: "Soporte",
+  ticket: "Nuevo ticket",
+  "my-tickets": "Mis tickets",
+  "ticket-detail": "Ticket",
 }
 
 interface SupportPanelProps {
@@ -130,6 +136,19 @@ export function SupportPanel({ open, onClose }: SupportPanelProps) {
           <SupportTicketForm
             conversationId={view.conversationId}
             onBack={() => setView({ screen: "home" })}
+          />
+        )}
+        {view.screen === "my-tickets" && (
+          <SupportMyTickets
+            onSelect={(ticketId) =>
+              setView({ screen: "ticket-detail", ticketId })
+            }
+          />
+        )}
+        {view.screen === "ticket-detail" && (
+          <SupportTicketDetail
+            ticketId={view.ticketId}
+            onBack={() => setView({ screen: "my-tickets" })}
           />
         )}
       </div>

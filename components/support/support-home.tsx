@@ -188,6 +188,20 @@ export function SupportHome({ onNavigate }: SupportHomeProps) {
                   </div>
                   <ChevronRight className="h-4 w-4 ml-auto text-muted-foreground" />
                 </Button>
+                <Button
+                  variant="outline"
+                  className="w-full justify-start gap-3 h-auto py-2.5"
+                  onClick={() => onNavigate({ screen: "my-tickets" })}
+                >
+                  <div className="h-8 w-8 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0">
+                    <Clock className="h-4 w-4 text-blue-500" />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-sm font-medium">Mis tickets</p>
+                    <p className="text-[11px] text-muted-foreground">Ver estado y respuestas</p>
+                  </div>
+                  <ChevronRight className="h-4 w-4 ml-auto text-muted-foreground" />
+                </Button>
               </div>
 
               {/* Recent conversations */}
