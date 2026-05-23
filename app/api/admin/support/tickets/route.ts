@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
-import { createServerClient } from "@/lib/supabase/server"
+import { createServerClient, createAdminClient } from "@/lib/supabase/server"
 import { isPlatformAdmin } from "@/lib/auth/platform"
 
 export const dynamic = "force-dynamic"
@@ -13,10 +13,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
+  const admin = createAdminClient()
   const url = new URL(req.url)
   const status = url.searchParams.get("status")
 
-  let query = (supabase as any)
+  let query = (admin as any)
     .from("support_tickets")
     .select(`
       id, subject, description, status, created_at, updated_at,
@@ -40,7 +41,7 @@ export async function GET(req: NextRequest) {
 
   let usersMap: Record<string, string> = {}
   if (userIds.length > 0) {
-    const { data: users } = await (supabase as any)
+    const { data: users } = await (admin as any)
       .from("users")
       .select("auth_id, email")
       .in("auth_id", userIds)
@@ -51,7 +52,7 @@ export async function GET(req: NextRequest) {
 
   let orgsMap: Record<string, string> = {}
   if (orgIds.length > 0) {
-    const { data: orgs } = await (supabase as any)
+    const { data: orgs } = await (admin as any)
       .from("organizations")
       .select("id, name")
       .in("id", orgIds)
@@ -87,7 +88,8 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Invalid status" }, { status: 400 })
   }
 
-  const { error } = await (supabase as any)
+  const adminPatch = createAdminClient()
+  const { error } = await (adminPatch as any)
     .from("support_tickets")
     .update({ status })
     .eq("id", id)
