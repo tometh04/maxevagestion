@@ -1,18 +1,30 @@
 "use client"
 
 import { useEffect } from "react"
-import { MessageCircle, X } from "lucide-react"
+import { X, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { SupportHome } from "./support-home"
 import { SupportChat } from "./support-chat"
 import { SupportArticle } from "./support-article"
+import { SupportConversations } from "./support-conversations"
+import { SupportTicketForm } from "./support-ticket-form"
 import { useState } from "react"
 
 export type WidgetView =
   | { screen: "home" }
-  | { screen: "chat" }
+  | { screen: "chat"; conversationId?: string }
   | { screen: "article"; slug: string }
+  | { screen: "conversations" }
+  | { screen: "ticket"; conversationId?: string }
+
+const SCREEN_TITLES: Record<string, string> = {
+  home: "Vibook",
+  chat: "Chat con IA",
+  article: "Artículo",
+  conversations: "Historial",
+  ticket: "Soporte",
+}
 
 interface SupportPanelProps {
   open: boolean
@@ -46,20 +58,22 @@ export function SupportPanel({ open, onClose }: SupportPanelProps) {
   return (
     <div
       className={cn(
-        "fixed bottom-24 right-6 z-50 w-[380px] h-[560px] max-h-[80vh]",
-        "bg-background border rounded-xl shadow-2xl",
+        "fixed bottom-24 right-6 z-50 w-[400px] h-[600px] max-h-[85vh]",
+        "bg-background border rounded-2xl shadow-2xl",
         "flex flex-col overflow-hidden",
         "animate-in slide-in-from-bottom-4 fade-in duration-200"
       )}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b bg-primary text-primary-foreground rounded-t-xl">
+      <div className="flex items-center justify-between px-4 py-3 border-b bg-primary text-primary-foreground rounded-t-2xl">
         <div className="flex items-center gap-2">
-          <MessageCircle className="h-5 w-5" />
+          <div className="h-8 w-8 rounded-full bg-white/20 flex items-center justify-center">
+            <Sparkles className="h-4 w-4" />
+          </div>
           <div>
             <h3 className="font-semibold text-sm">Centro de Ayuda</h3>
-            <p className="text-xs opacity-80">
-              {view.screen === "chat" ? "Chat con IA" : "Vibook"}
+            <p className="text-[11px] opacity-80">
+              {SCREEN_TITLES[view.screen] || "Vibook"}
             </p>
           </div>
         </div>
@@ -68,7 +82,7 @@ export function SupportPanel({ open, onClose }: SupportPanelProps) {
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 px-2 text-primary-foreground hover:bg-primary/80 text-xs"
+              className="h-7 px-2 text-primary-foreground hover:bg-white/20 text-xs"
               onClick={() => setView({ screen: "home" })}
             >
               Inicio
@@ -77,7 +91,7 @@ export function SupportPanel({ open, onClose }: SupportPanelProps) {
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7 text-primary-foreground hover:bg-primary/80"
+            className="h-7 w-7 text-primary-foreground hover:bg-white/20"
             onClick={onClose}
           >
             <X className="h-4 w-4" />
@@ -88,10 +102,33 @@ export function SupportPanel({ open, onClose }: SupportPanelProps) {
       {/* Body */}
       <div className="flex-1 overflow-hidden">
         {view.screen === "home" && <SupportHome onNavigate={setView} />}
-        {view.screen === "chat" && <SupportChat />}
+        {view.screen === "chat" && (
+          <SupportChat
+            conversationId={view.conversationId}
+            onConversationCreated={(id) =>
+              setView({ screen: "chat", conversationId: id })
+            }
+            onEscalate={(convId) =>
+              setView({ screen: "ticket", conversationId: convId })
+            }
+          />
+        )}
         {view.screen === "article" && (
           <SupportArticle
             slug={view.slug}
+            onBack={() => setView({ screen: "home" })}
+          />
+        )}
+        {view.screen === "conversations" && (
+          <SupportConversations
+            onSelect={(id) =>
+              setView({ screen: "chat", conversationId: id })
+            }
+          />
+        )}
+        {view.screen === "ticket" && (
+          <SupportTicketForm
+            conversationId={view.conversationId}
             onBack={() => setView({ screen: "home" })}
           />
         )}

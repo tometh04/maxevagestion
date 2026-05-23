@@ -10,8 +10,10 @@ import { SupportArticle } from "./support-article"
 
 export type WidgetView =
   | { screen: "home" }
-  | { screen: "chat" }
+  | { screen: "chat"; conversationId?: string }
   | { screen: "article"; slug: string }
+  | { screen: "conversations" }
+  | { screen: "ticket"; conversationId?: string }
 
 export function SupportWidget() {
   const [open, setOpen] = useState(false)

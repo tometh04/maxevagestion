@@ -1,7 +1,10 @@
 "use client"
 
-import { useState, useCallback } from "react"
-import { Search, BookOpen, MessageCircle, ChevronRight, FileText } from "lucide-react"
+import { useState, useCallback, useEffect } from "react"
+import {
+  Search, BookOpen, MessageCircle, ChevronRight, FileText,
+  Clock, LifeBuoy, Sparkles, History,
+} from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -23,6 +26,27 @@ const POPULAR_ARTICLES = [
   { title: "Ver estado de caja", slug: "estado-caja" },
 ]
 
+interface RecentConversation {
+  id: string
+  title: string
+  updated_at: string
+  last_message: { content: string } | null
+}
+
+function formatDate(dateStr: string): string {
+  const d = new Date(dateStr)
+  const now = new Date()
+  const diffMs = now.getTime() - d.getTime()
+  const diffMin = Math.floor(diffMs / 60000)
+  if (diffMin < 1) return "ahora"
+  if (diffMin < 60) return `${diffMin}m`
+  const diffH = Math.floor(diffMin / 60)
+  if (diffH < 24) return `${diffH}h`
+  const diffD = Math.floor(diffH / 24)
+  if (diffD < 7) return `${diffD}d`
+  return d.toLocaleDateString("es-AR", { day: "numeric", month: "short" })
+}
+
 interface SupportHomeProps {
   onNavigate: (view: WidgetView) => void
 }
@@ -32,6 +56,14 @@ export function SupportHome({ onNavigate }: SupportHomeProps) {
   const [results, setResults] = useState<SearchResult[]>([])
   const [searching, setSearching] = useState(false)
   const [searched, setSearched] = useState(false)
+  const [recentConvos, setRecentConvos] = useState<RecentConversation[]>([])
+
+  useEffect(() => {
+    fetch("/api/support/conversations")
+      .then((res) => res.json())
+      .then((data) => setRecentConvos((data.conversations || []).slice(0, 3)))
+      .catch(() => {})
+  }, [])
 
   const handleSearch = useCallback(
     async (q: string) => {
@@ -126,23 +158,85 @@ export function SupportHome({ onNavigate }: SupportHomeProps) {
           {/* Default content — when not searching */}
           {!searched && (
             <>
-              {/* Chat CTA */}
-              <Button
-                variant="outline"
-                className="w-full justify-start gap-3 h-auto py-3"
-                onClick={() => onNavigate({ screen: "chat" })}
-              >
-                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                  <MessageCircle className="h-4 w-4 text-primary" />
+              {/* Primary CTAs */}
+              <div className="space-y-2">
+                <Button
+                  variant="outline"
+                  className="w-full justify-start gap-3 h-auto py-3 border-primary/20 hover:border-primary/40"
+                  onClick={() => onNavigate({ screen: "chat" })}
+                >
+                  <div className="h-9 w-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                    <Sparkles className="h-5 w-5 text-primary" />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-sm font-medium">Chatear con IA</p>
+                    <p className="text-[11px] text-muted-foreground">Respuestas instantáneas 24/7</p>
+                  </div>
+                  <ChevronRight className="h-4 w-4 ml-auto text-muted-foreground" />
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full justify-start gap-3 h-auto py-2.5"
+                  onClick={() => onNavigate({ screen: "ticket" })}
+                >
+                  <div className="h-8 w-8 rounded-lg bg-orange-500/10 flex items-center justify-center shrink-0">
+                    <LifeBuoy className="h-4 w-4 text-orange-500" />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-sm font-medium">Crear ticket</p>
+                    <p className="text-[11px] text-muted-foreground">Contactá al equipo de soporte</p>
+                  </div>
+                  <ChevronRight className="h-4 w-4 ml-auto text-muted-foreground" />
+                </Button>
+              </div>
+
+              {/* Recent conversations */}
+              {recentConvos.length > 0 && (
+                <div>
+                  <div className="flex items-center justify-between mb-2 px-1">
+                    <div className="flex items-center gap-2">
+                      <History className="h-4 w-4 text-muted-foreground" />
+                      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                        Conversaciones recientes
+                      </h4>
+                    </div>
+                    <button
+                      onClick={() => onNavigate({ screen: "conversations" })}
+                      className="text-[11px] text-primary hover:underline"
+                    >
+                      Ver todas
+                    </button>
+                  </div>
+                  <div className="space-y-0.5">
+                    {recentConvos.map((c) => (
+                      <button
+                        key={c.id}
+                        onClick={() =>
+                          onNavigate({ screen: "chat", conversationId: c.id })
+                        }
+                        className="w-full text-left px-3 py-2 rounded-lg hover:bg-accent transition-colors group"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm truncate group-hover:text-primary">
+                              {c.title || "Sin título"}
+                            </p>
+                            {c.last_message && (
+                              <p className="text-[11px] text-muted-foreground truncate">
+                                {c.last_message.content}
+                              </p>
+                            )}
+                          </div>
+                          <span className="text-[10px] text-muted-foreground shrink-0">
+                            {formatDate(c.updated_at)}
+                          </span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div className="text-left">
-                  <p className="text-sm font-medium">Chatear con IA</p>
-                  <p className="text-xs text-muted-foreground">
-                    Preguntale lo que necesites
-                  </p>
-                </div>
-                <ChevronRight className="h-4 w-4 ml-auto text-muted-foreground" />
-              </Button>
+              )}
 
               {/* Popular articles */}
               <div>
