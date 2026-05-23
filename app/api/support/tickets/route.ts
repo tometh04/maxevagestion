@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  let body: { subject: string; description?: string; conversationId?: string; priority?: string }
+  let body: { subject: string; description?: string; conversationId?: string }
   try {
     body = await req.json()
   } catch {
@@ -43,9 +43,8 @@ export async function POST(req: NextRequest) {
       conversation_id: body.conversationId || null,
       subject: body.subject.trim(),
       description: body.description?.trim() || null,
-      priority: body.priority || 'normal',
     })
-    .select('id, subject, status, priority, created_at')
+    .select('id, subject, status, created_at')
     .single()
 
   if (error) {
@@ -68,7 +67,7 @@ export async function GET() {
   const supabase = await createServerClient()
   const { data, error } = await (supabase as any)
     .from('support_tickets')
-    .select('id, subject, description, status, priority, created_at, updated_at, resolved_at')
+    .select('id, subject, description, status, created_at, updated_at')
     .eq('user_id', sessionUser.id)
     .order('created_at', { ascending: false })
     .limit(20)
