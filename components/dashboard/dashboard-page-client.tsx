@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { DashboardFilters, DashboardFiltersState } from "./dashboard-filters"
+import { DashboardFilters, DashboardFiltersState, dateTypeToField } from "./dashboard-filters"
 import { SalesBySellerChart } from "./sales-by-seller-chart"
 import { DestinationsChart } from "./destinations-chart"
 import { DestinationsPieChart } from "./destinations-pie-chart"
@@ -193,6 +193,10 @@ export function DashboardPageClient({
       const params = new URLSearchParams()
       params.set("dateFrom", filters.dateFrom)
       params.set("dateTo", filters.dateTo)
+      // 2026-05-22 (VICO): mapear el dateType del filtro UI a la columna
+      // SQL real (created_at / operation_date / departure_date) y mandarlo
+      // como dateField a los endpoints de analytics. Whitelist en backend.
+      params.set("dateField", dateTypeToField(filters.dateType))
       if (filters.agencyId !== "ALL") {
         params.set("agencyId", filters.agencyId)
       }
@@ -213,6 +217,8 @@ export function DashboardPageClient({
       const prevParams = new URLSearchParams()
       prevParams.set("dateFrom", prevDateFrom.toISOString().split("T")[0])
       prevParams.set("dateTo", prevDateTo.toISOString().split("T")[0])
+      // Mismo dateField que el periodo actual para que la comparación sea apples-to-apples.
+      prevParams.set("dateField", dateTypeToField(filters.dateType))
       if (filters.agencyId !== "ALL") {
         prevParams.set("agencyId", filters.agencyId)
       }
@@ -539,10 +545,11 @@ export function DashboardPageClient({
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
+                    <HelpCircle className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground cursor-help" />
                   </TooltipTrigger>
                   <TooltipContent className="max-w-xs">
-                    <p className="text-xs">Total adeudado por clientes. Calculado como: monto de venta menos pagos recibidos, convertido a USD usando tipo de cambio histórico.</p>
+                    <p className="text-xs font-medium mb-1">Lo que tus clientes te deben.</p>
+                    <p className="text-xs">Suma de ventas pendientes de cobrar (monto vendido − pagos ya recibidos), convertido a USD con tipo de cambio histórico de cada operación. Se respeta el rango de fechas y el resto de los filtros del dashboard.</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -565,10 +572,11 @@ export function DashboardPageClient({
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
+                    <HelpCircle className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground cursor-help" />
                   </TooltipTrigger>
                   <TooltipContent className="max-w-xs">
-                    <p className="text-xs">Total pendiente de pago a operadores. Incluye pagos parciales: monto total menos monto pagado, convertido a USD.</p>
+                    <p className="text-xs font-medium mb-1">Lo que vos le debés a tus operadores.</p>
+                    <p className="text-xs">Suma de pagos pendientes a operadores (monto de la deuda − parte ya pagada), convertido a USD. Para ver el desglose, entrá a Operadores y abrí cualquiera de la lista.</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>

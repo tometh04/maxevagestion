@@ -107,6 +107,17 @@ export function transitionFromMP(
         event_type: "SUBSCRIPTION_AUTHORIZED",
       }
     }
+    // Trial declarado pero ya expirado y sin pago confirmado → deuda pendiente.
+    // Evita que billing-reconcile transite TRIALING → ACTIVE prematuramente antes
+    // de que MP procese el primer cobro.
+    const hadFreeTrial = !!preapproval.auto_recurring.free_trial
+    if (hadFreeTrial) {
+      return {
+        subscription_status: "PAST_DUE",
+        current_period_ends_at: ctx?.preserved_current_period_ends_at ?? preapproval.next_payment_date ?? null,
+        event_type: "TRIAL_EXPIRED",
+      }
+    }
     return {
       subscription_status: "ACTIVE",
       current_period_ends_at: preapproval.next_payment_date ?? null,

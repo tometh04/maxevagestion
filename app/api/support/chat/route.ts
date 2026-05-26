@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
+import { createServerClient } from '@/lib/supabase/server'
 import { searchArticles, getAllArticles } from '@/lib/support/kb'
 import OpenAI from 'openai'
 
@@ -29,8 +30,12 @@ REGLAS:
 10. NUNCA respondas sobre temas que no sean el sistema Vibook.`
 
 export async function POST(req: NextRequest) {
+  let sessionUser: any
+  let appUser: any
   try {
-    await getCurrentUser()
+    const auth = await getCurrentUser()
+    sessionUser = auth.session?.user
+    appUser = auth.user
   } catch {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
@@ -45,7 +50,7 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  let body: { message: string; history?: ChatMessage[] }
+  let body: { message: string; history?: ChatMessage[]; conversationId?: string }
   try {
     body = await req.json()
   } catch {
@@ -55,12 +60,43 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  const { message, history = [] } = body
+  const { message, history = [], conversationId: incomingConvId } = body
   if (!message?.trim()) {
     return new Response(JSON.stringify({ error: 'Message required' }), {
       status: 400,
       headers: { 'Content-Type': 'application/json' },
     })
+  }
+
+  // ── Persistencia: crear/reusar conversación ──────────────────────
+  const supabase = await createServerClient()
+  let activeConvId = incomingConvId
+
+  try {
+    if (!activeConvId) {
+      const title = message.slice(0, 80)
+      const { data: conv } = await (supabase as any)
+        .from('support_conversations')
+        .insert({
+          user_id: sessionUser?.id || appUser?.auth_id,
+          org_id: appUser?.org_id,
+          title,
+          status: 'active',
+        })
+        .select('id')
+        .single()
+      if (conv) activeConvId = conv.id
+    }
+
+    if (activeConvId) {
+      await (supabase as any).from('support_messages').insert({
+        conversation_id: activeConvId,
+        role: 'user',
+        content: message,
+      })
+    }
+  } catch (err) {
+    console.error('Error persisting conversation:', err)
   }
 
   // ── RAG: buscar artículos relevantes ─────────────────────────────
@@ -121,6 +157,7 @@ export async function POST(req: NextRequest) {
       messages,
     })
 
+    let fullResponse = ''
     const readableStream = new ReadableStream({
       async start(controller) {
         const encoder = new TextEncoder()
@@ -128,10 +165,23 @@ export async function POST(req: NextRequest) {
           for await (const chunk of stream) {
             const text = chunk.choices[0]?.delta?.content
             if (text) {
+              fullResponse += text
               controller.enqueue(encoder.encode(text))
             }
           }
           controller.close()
+
+          if (activeConvId && fullResponse) {
+            (supabase as any)
+              .from('support_messages')
+              .insert({
+                conversation_id: activeConvId,
+                role: 'assistant',
+                content: fullResponse,
+              })
+              .then(() => {})
+              .catch((e: any) => console.error('Error saving assistant msg:', e))
+          }
         } catch (err) {
           console.error('Stream error:', err)
           controller.error(err)
@@ -139,13 +189,16 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    return new Response(readableStream, {
-      headers: {
-        'Content-Type': 'text/plain; charset=utf-8',
-        'Cache-Control': 'no-cache',
-        'Transfer-Encoding': 'chunked',
-      },
-    })
+    const headers: Record<string, string> = {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Cache-Control': 'no-cache',
+      'Transfer-Encoding': 'chunked',
+    }
+    if (activeConvId) {
+      headers['X-Conversation-Id'] = activeConvId
+    }
+
+    return new Response(readableStream, { headers })
   } catch (err) {
     console.error('OpenAI API error:', err)
     return new Response(

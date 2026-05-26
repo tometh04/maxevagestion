@@ -17,7 +17,7 @@ import { ServerPagination } from "@/components/ui/server-pagination"
 import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
 import Link from "next/link"
 import { CashMovementReverseButton } from "@/components/cash/cash-movement-reverse-button"
-import { Undo2 } from "lucide-react"
+import { Undo2, BookOpen } from "lucide-react"
 
 interface MovementOperation {
   id: string
@@ -220,6 +220,21 @@ export function MovementsTable({
                       </Link>
                     ) : (
                       <p className="font-medium">{movement.operations?.destination || "Manual"}</p>
+                    )}
+                    {/* 2026-05-22 (VICO): Andrés reportó que los movimientos no se
+                        ven "correlacionados" (debe/haber). La correlación existe
+                        pero en /accounting/ledger (asiento contable doble entrada),
+                        que es una vista distinta. Linkeamos directo al ledger
+                        filtrado por la operación para que pueda ver la contraparte. */}
+                    {movement.operations?.id && (
+                      <Link
+                        href={`/accounting/ledger?operationId=${movement.operations.id}`}
+                        className="text-[10px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1 hover:underline"
+                        prefetch={false}
+                      >
+                        <BookOpen className="h-3 w-3" />
+                        Ver asiento contable
+                      </Link>
                     )}
                   </div>
                 </TableCell>

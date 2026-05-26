@@ -14,6 +14,8 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
+// Fix UTC shift en fechas DATE (VICO 2026-05-22)
+import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 
@@ -86,7 +88,7 @@ export function CommissionsTable({ commissions, isLoading = false, emptyMessage 
         </TableCell>
         <TableCell>
           {comm.operations?.departure_date
-            ? format(new Date(comm.operations.departure_date), "dd/MM/yyyy", { locale: es })
+            ? (parseDateOnlyLocal(comm.operations.departure_date) ? format(parseDateOnlyLocal(comm.operations.departure_date)!, "dd/MM/yyyy", { locale: es }) : "-")
             : "-"}
         </TableCell>
         <TableCell>
@@ -108,7 +110,7 @@ export function CommissionsTable({ commissions, isLoading = false, emptyMessage 
         </TableCell>
         <TableCell>
           {comm.date_paid
-            ? format(new Date(comm.date_paid), "dd/MM/yyyy", { locale: es })
+            ? (parseDateOnlyLocal(comm.date_paid) ? format(parseDateOnlyLocal(comm.date_paid)!, "dd/MM/yyyy", { locale: es }) : "-")
             : format(new Date(comm.date_calculated), "dd/MM/yyyy", { locale: es })}
         </TableCell>
         <TableCell>

@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { fetchPreapproval } from "@/lib/billing/mercadopago"
 import { transitionFromMP, type MPPreapproval } from "@/lib/billing/state-machine"
 import { checkCronAuth } from "@/lib/cron/auth"
+import { notifyBillingSlack } from "@/lib/billing/slack-notify"
 
 /**
  * POST /api/cron/billing-reconcile
@@ -27,7 +28,7 @@ export async function POST(request: Request) {
   const admin = createAdminClient() as any
   const { data: orgs } = await admin
     .from("organizations")
-    .select("id, subscription_status, current_period_ends_at, mp_preapproval_id, mp_last_synced_at")
+    .select("id, name, subscription_status, current_period_ends_at, mp_preapproval_id, mp_last_synced_at")
     .in("subscription_status", ["TRIALING", "ACTIVE", "PAST_DUE", "PENDING_PAYMENT"])
     .not("mp_preapproval_id", "is", null)
 
@@ -74,6 +75,16 @@ export async function POST(request: Request) {
           .eq("id", org.id)
       }
 
+      if (changed) {
+        notifyBillingSlack({
+          event: "RECONCILED",
+          orgName: org.name || org.id,
+          orgId: org.id,
+          details: `Drift detectado: DB tenía ${org.subscription_status}, MP dice ${pa.status} → corregido a ${transition.subscription_status}.`,
+          severity: "warning",
+        })
+      }
+
       results.push({
         orgId: org.id,
         drifted: changed,
@@ -87,10 +98,63 @@ export async function POST(request: Request) {
     }
   }
 
+  // --- Fase 2: Detectar TRIALING expirados sin pago exitoso ---
+  // Orgs que siguen en TRIALING pero su trial_ends_at ya pasó.
+  // No tienen mecanismo automático de transición — la state machine solo
+  // evalúa lo que MP dice, y MP sigue diciendo "authorized" incluso si el
+  // trial venció y el pago falló. Fix: forzar PAST_DUE.
+  const { data: expiredTrials } = await admin
+    .from("organizations")
+    .select("id, name, subscription_status, trial_ends_at, current_period_ends_at, mp_preapproval_id")
+    .eq("subscription_status", "TRIALING")
+    .lt("trial_ends_at", new Date().toISOString())
+
+  const expiredResults: any[] = []
+  for (const org of expiredTrials || []) {
+    try {
+      await admin.from("organizations")
+        .update({
+          subscription_status: "PAST_DUE",
+          current_period_ends_at: org.trial_ends_at,
+        })
+        .eq("id", org.id)
+
+      await admin.from("billing_events").insert({
+        org_id: org.id,
+        event_type: "TRIAL_EXPIRED",
+        external_id: org.mp_preapproval_id,
+        status: "expired",
+        payload: {
+          previous_status: "TRIALING",
+          new_status: "PAST_DUE",
+          trial_ends_at: org.trial_ends_at,
+          reason: "Trial expirado sin pago exitoso — transición automática por billing-reconcile",
+        },
+      })
+
+      notifyBillingSlack({
+        event: "TRIAL_EXPIRED",
+        orgName: org.name || org.id,
+        orgId: org.id,
+        details: `Trial venció el ${new Date(org.trial_ends_at).toLocaleDateString("es-AR")}. Transición automática a PAST_DUE.`,
+        severity: "warning",
+      })
+
+      expiredResults.push({ orgId: org.id, transitioned: true, from: "TRIALING", to: "PAST_DUE" })
+    } catch (err: any) {
+      console.error("reconcile: trial expiry failed for org", org.id, err?.message)
+      expiredResults.push({ orgId: org.id, error: err?.message || String(err) })
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     processed: results.length,
     drifted_count: drifted,
     results,
+    expired_trials: {
+      processed: expiredResults.length,
+      results: expiredResults,
+    },
   })
 }

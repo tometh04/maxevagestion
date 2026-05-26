@@ -76,6 +76,22 @@ export function AlertsPageClient({ agencies, defaultFilters }: AlertsPageClientP
     [fetchAlerts],
   )
 
+  const handleMarkDoneWithNote = useCallback(
+    async (alertId: string, resolution_note: string) => {
+      try {
+        await fetch("/api/alerts/mark-done", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ alertId, resolution_note }),
+        })
+        fetchAlerts()
+      } catch (error) {
+        console.error("Error marking alert as done with note:", error)
+      }
+    },
+    [fetchAlerts],
+  )
+
   const handleBulkResolve = useCallback(async (alertIds: string[]) => {
     try {
       await Promise.all(
@@ -243,6 +259,7 @@ export function AlertsPageClient({ agencies, defaultFilters }: AlertsPageClientP
         alerts={alerts}
         isLoading={loading}
         onMarkDone={handleMarkDone}
+        onMarkDoneWithNote={handleMarkDoneWithNote}
         onIgnore={handleIgnore}
         emptyMessage="No hay alertas con los filtros seleccionados"
       />

@@ -7,6 +7,8 @@ import { PushNotificationManager } from "@/components/notifications/push-notific
 import { TrialBanner } from "@/components/trial-banner"
 import { PerfNavLogger } from "@/components/perf-nav-logger"
 import { TawkWidget } from "@/components/integrations/tawk-widget"
+import { OnboardingTour } from "@/components/onboarding/onboarding-tour"
+import { CheckinReminderModal } from "@/components/alerts/checkin-reminder-modal"
 import {
   SidebarInset,
   SidebarProvider,
@@ -112,6 +114,8 @@ export default async function DashboardLayout({
             (ver components/integrations/tawk-widget.tsx). Default: solo
             mypupybox@gmail.com. Cero impacto en otros tenants. */}
         <TawkWidget userEmail={user.email} />
+        <OnboardingTour userEmail={user.email} />
+        <CheckinReminderModal />
       </SidebarProvider>
     </BrandProvider>
   )

@@ -36,6 +36,13 @@ export interface BillingOrg {
  * Fuente única de verdad. Usado por middleware (capa A), assertSubscriptionActive
  * (capa B), y tests. Sin I/O.
  */
+/**
+ * Grace period para PAST_DUE: 3 días desde current_period_ends_at.
+ * Después de eso → bloqueado. Solo puede acceder a /settings/subscription
+ * para regularizar (el middleware y isPaywallAllowed lo permiten).
+ */
+const PAST_DUE_GRACE_DAYS = 3
+
 export function isAccessAllowed(org: BillingOrg): boolean {
   const status = org.subscription_status
   const now = Date.now()
@@ -47,14 +54,23 @@ export function isAccessAllowed(org: BillingOrg): boolean {
     return new Date(org.current_period_ends_at).getTime() > now
   }
 
+  if (status === "PAST_DUE") {
+    // Grace period: 3 días después de que venció el período.
+    // Sin current_period_ends_at → bloquear inmediatamente (dato faltante = defensivo).
+    if (!org.current_period_ends_at) return false
+    const graceDeadline =
+      new Date(org.current_period_ends_at).getTime() +
+      PAST_DUE_GRACE_DAYS * 24 * 60 * 60 * 1000
+    return now < graceDeadline
+  }
+
   if (status === "TRIAL") {
     // Legacy pre-mig157. Fallback defensivo: respetar trial_ends_at.
     if (!org.trial_ends_at) return false
     return new Date(org.trial_ends_at).getTime() > now
   }
 
-  // TRIALING, ACTIVE, PAST_DUE → acceso concedido
-  // (PAST_DUE muestra banner pero no bloquea — user está en ventana de retry MP)
+  // TRIALING, ACTIVE → acceso concedido
   return true
 }
 
@@ -96,6 +112,11 @@ export const assertSubscriptionActive = cache(async (): Promise<BillingOrg | nul
 
   const org = data as BillingOrg
   if (!isAccessAllowed(org)) {
+    // PAST_DUE bloqueado → /settings/subscription (tiene botón "Regularizar pago")
+    // Resto → /onboarding/billing (checkout estándar)
+    if (org.subscription_status === "PAST_DUE") {
+      redirect("/settings/subscription")
+    }
     redirect("/onboarding/billing")
   }
 

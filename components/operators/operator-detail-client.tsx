@@ -266,7 +266,24 @@ export function OperatorDetailClient({
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right">
-                            {op.currency} {op.operator_cost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                            <div className="flex items-center justify-end gap-1.5">
+                              {op.cost_mismatch ? (
+                                <span
+                                  title={
+                                    op.declared_cost != null
+                                      ? `Atención: la deuda registrada (${op.currency} ${op.operator_cost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}) no coincide con el costo declarado en la operación (${op.currency} ${Number(op.declared_cost).toLocaleString("es-AR", { minimumFractionDigits: 2 })}). Revisar la operación.`
+                                      : "Atención: posible inconsistencia entre costo declarado y deuda registrada"
+                                  }
+                                  className="text-amber-500 cursor-help"
+                                  aria-label="Costo inconsistente"
+                                >
+                                  ⚠
+                                </span>
+                              ) : null}
+                              <span>
+                                {op.currency} {Number(op.operator_cost).toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                              </span>
+                            </div>
                           </TableCell>
                           <TableCell>{op.sellers?.name || "-"}</TableCell>
                           <TableCell>
@@ -311,13 +328,32 @@ export function OperatorDetailClient({
                         </TableCell>
                       </TableRow>
                     ) : (
-                      pendingPayments.map((payment: any) => (
+                      pendingPayments.map((payment: any) => {
+                        const isPartial =
+                          payment.paid_amount != null &&
+                          Number(payment.paid_amount) > 0 &&
+                          payment.original_amount != null
+                        return (
                         <TableRow key={payment.id}>
                           <TableCell>
-                            {format(new Date(payment.date_due), "dd/MM/yyyy", { locale: es })}
+                            {payment.date_due
+                              ? format(new Date(payment.date_due), "dd/MM/yyyy", { locale: es })
+                              : "-"}
                           </TableCell>
                           <TableCell className="text-right">
-                            {payment.amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                            <div className="flex flex-col items-end gap-0.5">
+                              <span className="font-medium">
+                                {Number(payment.amount).toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                              </span>
+                              {isPartial && (
+                                <span
+                                  className="text-xs text-muted-foreground"
+                                  title={`Total ${payment.currency} ${Number(payment.original_amount).toLocaleString("es-AR", { minimumFractionDigits: 2 })} — pagado ${payment.currency} ${Number(payment.paid_amount).toLocaleString("es-AR", { minimumFractionDigits: 2 })}`}
+                                >
+                                  pago parcial
+                                </span>
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell>{payment.currency}</TableCell>
                           <TableCell>
@@ -335,7 +371,8 @@ export function OperatorDetailClient({
                             </Link>
                           </TableCell>
                         </TableRow>
-                      ))
+                        )
+                      })
                     )}
                   </TableBody>
                 </Table>

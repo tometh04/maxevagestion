@@ -232,20 +232,33 @@ export async function POST(request: Request) {
       }, { status: 400 })
     }
 
-    // Verificar duplicados si está habilitado
+    // Verificar duplicados si está habilitado.
+    // 2026-05-22: ahora scoped por org_id (antes leakeaba cross-tenant) y
+    // devuelve qué campo matcheó para mensajes más claros al user.
     if (settingsData?.duplicate_check_enabled) {
       const checkFields = settingsData.duplicate_check_fields || ['email', 'phone']
       const duplicateCheck = await checkDuplicateCustomer(
         supabase,
         { email, phone, document_number },
         checkFields,
-        agencyIds[0]
+        (user as any).org_id || null
       )
 
       if (duplicateCheck.isDuplicate) {
-        return NextResponse.json({ 
-          error: "Ya existe un cliente con estos datos",
-          duplicate: duplicateCheck.duplicateCustomer 
+        const fieldLabel =
+          duplicateCheck.matchedField === "phone" ? "teléfono" :
+          duplicateCheck.matchedField === "email" ? "email" :
+          duplicateCheck.matchedField === "document_number" ? "número de documento" :
+          "datos"
+        const existingName = duplicateCheck.duplicateCustomer
+          ? `${duplicateCheck.duplicateCustomer.first_name || ""} ${duplicateCheck.duplicateCustomer.last_name || ""}`.trim()
+          : null
+        return NextResponse.json({
+          error: existingName
+            ? `Ya existe un cliente con el mismo ${fieldLabel}: ${existingName}. Editá ese cliente o desactivá la validación de duplicados en Configuración → Clientes.`
+            : `Ya existe un cliente con el mismo ${fieldLabel}.`,
+          duplicate: duplicateCheck.duplicateCustomer,
+          matchedField: duplicateCheck.matchedField,
         }, { status: 409 })
       }
     }

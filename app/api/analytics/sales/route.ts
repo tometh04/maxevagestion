@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { buildExchangeRateMap, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
+import { parseOperationDateField } from "@/lib/analytics/date-filter"
 
 // Forzar ruta dinámica (usa cookies para autenticación)
 export const dynamic = 'force-dynamic'
@@ -15,6 +16,10 @@ export async function GET(request: Request) {
     const dateTo = searchParams.get("dateTo")
     const agencyId = searchParams.get("agencyId")
     const sellerId = searchParams.get("sellerId")
+    // 2026-05-22: dateField permite elegir entre created_at (carga),
+    // operation_date (venta) o departure_date (salida). Default legacy
+    // = created_at. Whitelist en lib/analytics/date-filter.ts.
+    const dateField = parseOperationDateField(searchParams.get("dateField"))
 
       // Validate date format if provided (mantener antes del fast-path RPC)
       if (dateFrom && !/^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) {
@@ -43,6 +48,10 @@ export async function GET(request: Request) {
       // cualquier motivo (RPC no existe, error, edge case raro), cae al
       // código viejo de abajo. Validado side-by-side: numbers matchean
       // exacto vs el JS sum loop.
+      //
+      // OJO: el RPC solo filtra por created_at. Si el caller pidió otro
+      // dateField, saltamos el RPC para que el fallback respete dateField.
+      if (dateField === "created_at") {
       try {
         const t0 = Date.now()
         const { data: rpcData, error: rpcError } = await (supabase.rpc as any)(
@@ -81,6 +90,7 @@ export async function GET(request: Request) {
       } catch (rpcEx: any) {
         console.warn("[analytics/sales] RPC threw, falling back to JS:", rpcEx?.message || rpcEx)
       }
+      } // /if (dateField === "created_at")
 
       // ============================================
       // FALLBACK: lógica vieja (intacta) — fetch + JS sum
@@ -115,13 +125,15 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: "Formato de fecha inválido (dateTo)" }, { status: 400 })
       }
 
-      // Apply date filters using created_at (fecha de venta/carga)
+      // 2026-05-22: usamos la columna que el caller eligió vía dateField.
+      // Default = created_at (legacy). Postgres acepta el string con tiempo
+      // tanto para columnas TIMESTAMP como DATE (descarta el time si es DATE).
       if (dateFrom) {
-        query = query.gte("created_at", `${dateFrom}T00:00:00.000Z`)
+        query = query.gte(dateField, `${dateFrom}T00:00:00.000Z`)
       }
 
       if (dateTo) {
-        query = query.lte("created_at", `${dateTo}T23:59:59.999Z`)
+        query = query.lte(dateField, `${dateTo}T23:59:59.999Z`)
       }
 
       if (agencyId && agencyId !== "ALL") {

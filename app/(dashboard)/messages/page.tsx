@@ -20,7 +20,11 @@ export default async function MessagesPage() {
   const canLoadMessages = user.role === "SUPER_ADMIN" || user.role === "SELLER" || agencyIds.length > 0
   const canLoadTemplates = user.role === "SUPER_ADMIN" || agencyIds.length > 0
 
-  // Obtener mensajes pendientes (hasta 2000 para cubrir todos los mensajes)
+  // Obtener mensajes pendientes (hasta 2000 para cubrir todos los mensajes).
+  // 🔴 CROSS-TENANT FIX (2026-05-21): SIEMPRE filtrar por org_id antes que
+  // los filtros adicionales de rol. SUPER_ADMIN en Vibook es del TENANT
+  // (no del platform — eso es isPlatformAdmin()), por lo tanto NO debe
+  // ver mensajes de otros tenants. Ver CLAUDE.md regla de oro multi-tenant.
   let messagesQuery = (supabase.from("whatsapp_messages") as any)
     .select(`
       *,
@@ -28,6 +32,7 @@ export default async function MessagesPage() {
       customers:customer_id (first_name, last_name, email),
       operations:operation_id (destination, departure_date, checkin_date, checkout_date, file_code, seller_id)
     `)
+    .eq("org_id", (user as any).org_id)
     .order("scheduled_for", { ascending: true })
     .limit(2000)
 
@@ -41,9 +46,11 @@ export default async function MessagesPage() {
 
   let templates: any[] = []
   if ((user.role === "SUPER_ADMIN" || user.role === "ADMIN") && canLoadTemplates) {
+    // 🔴 CROSS-TENANT FIX (2026-05-21): scope por org_id obligatorio.
     let templatesQuery = (supabase.from("message_templates") as any)
       .select("*")
       .eq("is_active", true)
+      .eq("org_id", (user as any).org_id)
       .order("category", { ascending: true })
 
     if (user.role !== "SUPER_ADMIN" && agencyIds.length > 0) {

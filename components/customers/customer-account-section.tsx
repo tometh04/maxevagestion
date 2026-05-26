@@ -17,6 +17,10 @@ import {
 } from "lucide-react"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
+// Fix UTC shift en fechas DATE de Postgres (bug reportado por VICO/Andrés
+// 2026-05-22): `new Date("2026-06-08")` shifteaba 1 día en zonas con
+// offset negativo. parseDateOnlyLocal parsea sin shift.
+import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 
 interface Payment {
   id: string
@@ -82,7 +86,7 @@ export function CustomerAccountSection({ customerId }: CustomerAccountSectionPro
           } else {
             totalOwedByCurrency[cur] = (totalOwedByCurrency[cur] || 0) + amt
             pendingCount++
-            if (new Date(p.date_due) < today) {
+            if ((parseDateOnlyLocal(p.date_due) ?? new Date(8640000000000000)) < today) {
               overdueCount++
             }
           }
@@ -258,8 +262,8 @@ export function CustomerAccountSection({ customerId }: CustomerAccountSectionPro
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
                           <Calendar className="h-3 w-3" />
                           {payment.status === "PAID" && payment.date_paid
-                            ? `Pagado ${format(new Date(payment.date_paid), "dd/MM/yyyy", { locale: es })}`
-                            : `Vence ${format(new Date(payment.date_due), "dd/MM/yyyy", { locale: es })}`
+                            ? `Pagado ${parseDateOnlyLocal(payment.date_paid) ? format(parseDateOnlyLocal(payment.date_paid)!, "dd/MM/yyyy", { locale: es }) : "-"}`
+                            : `Vence ${parseDateOnlyLocal(payment.date_due) ? format(parseDateOnlyLocal(payment.date_due)!, "dd/MM/yyyy", { locale: es }) : "-"}`
                           }
                           <span>•</span>
                           <span>{payment.method}</span>

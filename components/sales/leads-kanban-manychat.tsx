@@ -127,6 +127,12 @@ interface LeadsKanbanManychatProps {
    * comportamiento legacy). Pedido por LOZADA VIAJES GUALEGUAYCHÚ.
    */
   enableListStatusSync?: boolean
+  /**
+   * Feature flag per-tenant: muestra dos inputs (desde / hasta) para
+   * filtrar leads por fecha de creación. Pedido por Lozada 2026-05-22.
+   * Default false (preserva UI legacy para otros tenants).
+   */
+  enableCreatedAtFilter?: boolean
 }
 
 // Wrapper sortable para cada columna del Kanban
@@ -176,6 +182,7 @@ export function LeadsKanbanManychat({
   currentUserRole,
   enableRegionFilter = false,
   enableListStatusSync = false,
+  enableCreatedAtFilter = false,
 }: LeadsKanbanManychatProps) {
   const [listOrder, setListOrder] = useState<ListInfo[]>([])
   const [loading, setLoading] = useState(true)
@@ -202,6 +209,13 @@ export function LeadsKanbanManychat({
   // off, "ALL" no aplica filtro alguno.
   const [selectedRegion, setSelectedRegion] = useState<string>("ALL")
 
+  // 2026-05-22 (Lozada): filtro opcional por fecha de creación del lead.
+  // States en formato "yyyy-MM-dd" (input type=date). Si el flag está off
+  // o ambos vacíos, no se aplica filtro. La fecha del lead viene del
+  // momento en que lo creó el webhook de Manychat (leads.created_at).
+  const [createdAtFrom, setCreatedAtFrom] = useState<string>("")
+  const [createdAtTo, setCreatedAtTo] = useState<string>("")
+
   // Estados presentes en los leads actuales (dinámico)
   const availableStatuses = useMemo(() => {
     const seen = new Set<string>()
@@ -216,15 +230,27 @@ export function LeadsKanbanManychat({
     return Array.from(seen).sort()
   }, [leads])
 
-  // Leads visibles según filtros (status + opcional region)
+  // Leads visibles según filtros (status + opcional region + opcional fecha)
   const visibleLeads = useMemo(() => {
     let out = leads
     if (selectedStatus !== "ALL") out = out.filter((l) => l.status === selectedStatus)
     if (enableRegionFilter && selectedRegion !== "ALL") {
       out = out.filter((l) => l.region === selectedRegion)
     }
+    if (enableCreatedAtFilter && (createdAtFrom || createdAtTo)) {
+      // created_at viene como ISO 8601 ("2026-05-22T13:45:00Z"). Comparamos
+      // contra "yyyy-MM-dd" tomando solo los primeros 10 chars: zona horaria
+      // del usuario es la del input. `to` es inclusivo (≤ ese día completo).
+      out = out.filter((l) => {
+        const d = (l.created_at || "").slice(0, 10)
+        if (!d) return false
+        if (createdAtFrom && d < createdAtFrom) return false
+        if (createdAtTo && d > createdAtTo) return false
+        return true
+      })
+    }
     return out
-  }, [leads, selectedStatus, enableRegionFilter, selectedRegion])
+  }, [leads, selectedStatus, enableRegionFilter, selectedRegion, enableCreatedAtFilter, createdAtFrom, createdAtTo])
 
   const isAdmin = currentUserRole === "ADMIN" || currentUserRole === "SUPER_ADMIN"
   const isSeller = currentUserRole === "SELLER"
@@ -756,6 +782,47 @@ export function LeadsKanbanManychat({
                 ))}
               </SelectContent>
             </Select>
+          )}
+          {/* Filtro por fecha de creación — opt-in per-tenant via
+              organization_settings (features.created_at_filter_in_kanban).
+              Pedido por Lozada 2026-05-22: poder acotar leads viejos cuando
+              el pipeline acumula. La fecha la setea el webhook de Manychat
+              al insertar el lead (leads.created_at). */}
+          {enableCreatedAtFilter && (
+            <div className="flex items-center gap-1.5 bg-white/80 dark:bg-card/80 rounded-md px-2 py-1 border border-input">
+              <Label htmlFor="created-at-from" className="text-xs text-muted-foreground whitespace-nowrap">
+                Creado:
+              </Label>
+              <input
+                id="created-at-from"
+                type="date"
+                value={createdAtFrom}
+                onChange={(e) => setCreatedAtFrom(e.target.value)}
+                max={createdAtTo || undefined}
+                className="h-7 text-xs bg-transparent border-0 focus:outline-none text-foreground"
+                aria-label="Fecha desde"
+              />
+              <span className="text-xs text-muted-foreground">→</span>
+              <input
+                id="created-at-to"
+                type="date"
+                value={createdAtTo}
+                onChange={(e) => setCreatedAtTo(e.target.value)}
+                min={createdAtFrom || undefined}
+                className="h-7 text-xs bg-transparent border-0 focus:outline-none text-foreground"
+                aria-label="Fecha hasta"
+              />
+              {(createdAtFrom || createdAtTo) && (
+                <button
+                  type="button"
+                  onClick={() => { setCreatedAtFrom(""); setCreatedAtTo("") }}
+                  className="text-muted-foreground hover:text-foreground text-xs px-1"
+                  aria-label="Limpiar filtro de fecha"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
           )}
         </div>
         {canCreateLists && (

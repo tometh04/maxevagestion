@@ -27,6 +27,8 @@ import {
 } from "@/components/ui/table"
 import { format, parseISO } from "date-fns"
 import { es } from "date-fns/locale"
+// Fix UTC shift en fechas DATE (VICO 2026-05-22)
+import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 import { extractCustomerName } from "@/lib/customers/utils"
 import {
   Select,
@@ -374,7 +376,7 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
         Destino: op.destination,
         Vendedor: op.seller_name || "Sin vendedor",
         "Fecha Salida": op.departure_date
-          ? format(new Date(op.departure_date), "dd/MM/yyyy", { locale: es })
+          ? (parseDateOnlyLocal(op.departure_date) ? format(parseDateOnlyLocal(op.departure_date)!, "dd/MM/yyyy", { locale: es }) : "-")
           : "-",
         "Total Venta (USD)": op.sale_amount_total,
         "Pagado (USD)": op.paid,

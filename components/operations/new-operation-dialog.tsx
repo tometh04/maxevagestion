@@ -95,6 +95,15 @@ const operationSchema = z.object({
   reservation_code_hotel: z.string().optional().nullable(),
   airline_name: z.string().optional().nullable(),
   hotel_name: z.string().optional().nullable(),
+  // Pedido VICO 2026-05-22 (Andrés): el edit dialog tiene estos dos
+  // campos pero el create no — había que crear+editar para setearlos.
+  // operation_date = fecha de la venta (cuándo se cerró la op); puede
+  // ser distinta a created_at si se carga retroactivamente.
+  operation_date: z.date().optional().nullable(),
+  // itr_localizador = "otro localizador" de itinerario (ITR del operador,
+  // distinto al reservation_code de aero/hotel). Ya está en BD via
+  // migration 128.
+  itr_localizador: z.string().optional().nullable(),
 })
 
 type OperationFormValues = z.infer<typeof operationSchema>
@@ -391,6 +400,8 @@ export function NewOperationDialog({
       reservation_code_hotel: null,
       airline_name: null,
       hotel_name: null,
+      operation_date: null,
+      itr_localizador: null,
       operators: [],
     },
   })
@@ -421,6 +432,8 @@ export function NewOperationDialog({
         operator_cost_currency: "USD",
         reservation_code_air: null,
         reservation_code_hotel: null,
+        operation_date: null,
+        itr_localizador: null,
         operators: [],
       })
     }
@@ -586,6 +599,12 @@ export function NewOperationDialog({
         checkin_date: null,
         checkout_date: null,
         departure_date: values.departure_date ? values.departure_date.toISOString().split("T")[0] : null,
+        // operation_date = fecha de venta (cuándo se cerró la op). Puede
+        // ser distinta a created_at si se carga retroactivamente. Si el
+        // user no la setea, queda null y el backend usa created_at como
+        // fallback (comportamiento legacy preservado).
+        operation_date: values.operation_date ? values.operation_date.toISOString().split("T")[0] : null,
+        itr_localizador: values.itr_localizador || null,
         sale_currency: values.sale_currency || values.currency || "USD",
         operator_cost_currency: values.operator_cost_currency || values.currency || "USD",
         // Si hay múltiples operadores, el costo total ya está calculado en operator_cost
@@ -1259,6 +1278,51 @@ export function NewOperationDialog({
                         return options
                       }}
                     />
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            {/* Fecha de venta (operation_date) — agregado 2026-05-22 a pedido de
+                VICO Travel. Permite cargar una operación con fecha distinta a
+                hoy (ej. cargar retroactivamente una venta del mes pasado).
+                Si queda vacía, el backend usa la fecha de hoy como default
+                (comportamiento legacy preservado). */}
+            <div className="grid gap-x-6 gap-y-5 md:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="operation_date"
+                render={({ field }) => (
+                  <FormItem className="flex flex-col">
+                    <FormLabel>Fecha de Venta</FormLabel>
+                    <FormControl>
+                      <DateInputWithCalendar
+                        value={field.value || undefined}
+                        onChange={field.onChange}
+                        placeholder="dd/MM/yyyy (hoy si vacía)"
+                        maxDate={new Date()}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="itr_localizador"
+                render={({ field }) => (
+                  <FormItem className="flex flex-col">
+                    <FormLabel>Otro Localizador (ITR)</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="Localizador del operador"
+                        {...field}
+                        value={field.value || ""}
+                        onChange={(e) => field.onChange(e.target.value || null)}
+                      />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}

@@ -24,6 +24,8 @@ import { Input } from "@/components/ui/input"
 import { formatCurrency, type Currency } from "@/lib/currency"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
+// Fix UTC shift en fechas DATE (VICO 2026-05-22)
+import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 import Link from "next/link"
 import {
   Wallet,
@@ -233,14 +235,14 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
     if (histDateFrom) {
       const from = new Date(histDateFrom)
       result = result.filter(
-        (c) => c.date_paid && new Date(c.date_paid) >= from
+        (c) => c.date_paid && (parseDateOnlyLocal(c.date_paid) ?? new Date(0)) >= from
       )
     }
     if (histDateTo) {
       const to = new Date(histDateTo)
       to.setHours(23, 59, 59, 999)
       result = result.filter(
-        (c) => c.date_paid && new Date(c.date_paid) <= to
+        (c) => c.date_paid && (parseDateOnlyLocal(c.date_paid) ?? new Date(8640000000000000)) <= to
       )
     }
 
@@ -442,9 +444,9 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
                         {c.operation?.destination || "-"}
                       </TableCell>
                       <TableCell>
-                        {c.operation?.departure_date
+                        {c.operation?.departure_date && parseDateOnlyLocal(c.operation.departure_date)
                           ? format(
-                              new Date(c.operation.departure_date),
+                              parseDateOnlyLocal(c.operation.departure_date)!,
                               "dd/MM/yyyy",
                               { locale: es }
                             )
@@ -595,9 +597,9 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
                           {items.map((c) => (
                             <TableRow key={c.id}>
                               <TableCell>
-                                {c.date_paid
+                                {c.date_paid && parseDateOnlyLocal(c.date_paid)
                                   ? format(
-                                      new Date(c.date_paid),
+                                      parseDateOnlyLocal(c.date_paid)!,
                                       "dd/MM/yyyy",
                                       { locale: es }
                                     )

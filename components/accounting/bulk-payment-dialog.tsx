@@ -1,6 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
+// Fix UTC shift en fechas DATE (VICO 2026-05-22)
+import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 import Link from "next/link"
 import {
   Dialog,
@@ -580,7 +582,7 @@ export function BulkPaymentDialog({
                         const remaining = payment.amount - paidAmount
                         const isSelected = selectedPayments.has(payment.id)
                         const amountToPay = paymentAmounts[payment.id] || (isSelected ? remaining : 0)
-                        const isOverdue = !!payment.due_date && new Date(payment.due_date) < new Date()
+                        const isOverdue = !!payment.due_date && (parseDateOnlyLocal(payment.due_date) ?? new Date(8640000000000000)) < new Date()
                         const isPartial = paidAmount > 0
 
                         return (
@@ -641,11 +643,11 @@ export function BulkPaymentDialog({
                             <TableCell>
                               <div className="space-y-1">
                                 <div className="text-xs font-medium">
-                                  {new Date(payment.due_date).toLocaleDateString("es-AR", {
+                                  {parseDateOnlyLocal(payment.due_date)?.toLocaleDateString("es-AR", {
                                     day: "2-digit",
                                     month: "2-digit",
                                     year: "numeric"
-                                  })}
+                                  }) ?? "-"}
                                 </div>
                                 {isOverdue && (
                                   <Badge variant="destructive" className="text-xs">

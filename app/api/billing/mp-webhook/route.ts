@@ -8,6 +8,7 @@ import {
 } from "@/lib/billing/mercadopago"
 import { transitionFromMP, type MPPaymentEvent, type MPPreapproval } from "@/lib/billing/state-machine"
 import { logSecurityEvent } from "@/lib/security/audit"
+import { notifyBillingSlack } from "@/lib/billing/slack-notify"
 
 /**
  * POST /api/billing/mp-webhook
@@ -186,7 +187,7 @@ export async function POST(request: Request) {
   // 5. Idempotencia por last_modified
   const { data: org } = await admin
     .from("organizations")
-    .select("id, subscription_status, current_period_ends_at, mp_last_synced_at")
+    .select("id, name, subscription_status, current_period_ends_at, mp_last_synced_at")
     .eq("id", orgId)
     .maybeSingle()
   if (!org) return NextResponse.json({ ok: true, warning: "org not found" })
@@ -197,7 +198,39 @@ export async function POST(request: Request) {
     }
   }
 
-  // 6. Aplicar transición
+  // 6. Guard: no sobrescribir PAST_DUE con TRIALING/ACTIVE por race condition.
+  //
+  // Cuando MP rechaza un pago, envía DOS webhooks casi simultáneos:
+  //   a) subscription_authorized_payment (status=rejected) → PAST_DUE ✅
+  //   b) subscription_preapproval (preapproval sigue "authorized") → TRIALING ❌
+  // El segundo llega sin paymentEvent y la state machine recalcula desde el
+  // preapproval puro, perdiendo el PAST_DUE. Fix: si el webhook actual NO
+  // trae paymentEvent y la org ya está en PAST_DUE con un PAYMENT_REJECTED
+  // reciente (<24h), preservamos el PAST_DUE y no sobrescribimos.
+  if (!paymentEvent && org.subscription_status === "PAST_DUE") {
+    const { data: recentRejection } = await admin
+      .from("billing_events")
+      .select("id")
+      .eq("org_id", orgId)
+      .eq("event_type", "PAYMENT_REJECTED")
+      .gte("created_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+      .limit(1)
+      .maybeSingle()
+
+    if (recentRejection) {
+      // Actualizar solo el sync timestamp, NO el status
+      await admin.from("organizations")
+        .update({ mp_last_synced_at: preapproval.last_modified, mp_preapproval_id: preapproval.id })
+        .eq("id", orgId)
+      return NextResponse.json({
+        ok: true,
+        skipped_race_condition: true,
+        preserved_status: "PAST_DUE",
+      })
+    }
+  }
+
+  // 7. Aplicar transición
   const transition = transitionFromMP(
     preapproval as MPPreapproval,
     paymentEvent,
@@ -238,6 +271,38 @@ export async function POST(request: Request) {
       .from("billing_events")
       .update({ status: "consumed" })
       .eq("id", consumedCheckoutEventId)
+  }
+
+  // Slack: notificar eventos críticos de billing a #payments-vibook
+  if (transition.event_type === "PAYMENT_REJECTED") {
+    const amount = preapproval.auto_recurring?.transaction_amount
+    notifyBillingSlack({
+      event: "PAYMENT_REJECTED",
+      orgName: org.name || orgId,
+      orgId,
+      amount: amount ? `$${amount.toLocaleString("es-AR")}` : undefined,
+      details: `Pago rechazado por MP. Status anterior: ${org.subscription_status}. Transición a PAST_DUE.`,
+      severity: "error",
+    })
+  } else if (transition.event_type === "SUBSCRIPTION_CANCELLED") {
+    notifyBillingSlack({
+      event: "SUBSCRIPTION_CANCELLED",
+      orgName: org.name || orgId,
+      orgId,
+      details: `Suscripción cancelada. Status anterior: ${org.subscription_status}.`,
+      severity: "warning",
+    })
+  } else if (transition.event_type === "PAYMENT_APPROVED" && org.subscription_status !== "ACTIVE") {
+    notifyBillingSlack({
+      event: "BILLING_ALERT",
+      orgName: org.name || orgId,
+      orgId,
+      amount: preapproval.auto_recurring?.transaction_amount
+        ? `$${preapproval.auto_recurring.transaction_amount.toLocaleString("es-AR")}`
+        : undefined,
+      details: `Pago aprobado. Transición ${org.subscription_status} → ACTIVE.`,
+      severity: "info",
+    })
   }
 
   // Audit: cambios de status críticos en subscription. CANCELLED o

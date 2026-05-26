@@ -1,6 +1,8 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
+// Fix UTC shift en fechas DATE (VICO 2026-05-22)
+import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
@@ -363,7 +365,10 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
           amount: values.amount,
           currency: values.currency,
           method: values.method,
-          date_due: new Date(values.date_due).toISOString(),
+          // values.date_due viene como "yyyy-MM-dd" (input type=date / form string).
+          // Mandamos el string crudo: el backend lo guarda en DATE sin shift.
+          // (Antes: new Date(x).toISOString() podía restar 1 día por UTC).
+          date_due: values.date_due,
           status: "PENDING",
           notes: values.notes || null,
         }),
@@ -929,7 +934,7 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
                         </div>
                         <div className="text-muted-foreground">
                           Creado {new Date(d.created_at).toLocaleString("es-AR")}
-                          {d.date_paid && ` · Pagado ${new Date(d.date_paid).toLocaleDateString("es-AR")}`}
+                          {d.date_paid && ` · Pagado ${parseDateOnlyLocal(d.date_paid)?.toLocaleDateString("es-AR") ?? d.date_paid}`}
                           {d.reference && ` · Ref: ${d.reference}`}
                         </div>
                       </div>

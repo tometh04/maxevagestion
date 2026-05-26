@@ -14,15 +14,41 @@ import { useDebounce } from "@/hooks/use-debounce"
 import { DateTypeFilter, type DateTypeOption } from "@/components/ui/date-type-filter"
 import { format, parseISO, isValid } from "date-fns"
 
+// 2026-05-22 (VICO/Andrés): se reportó que el filtro decía "Operación"
+// pero el backend filtraba por created_at (fecha de carga al sistema).
+// Cuando se cargaba una venta retroactivamente, aparecía en el rango "hoy"
+// en vez de en su fecha real. Ahora son 3 opciones explícitas:
+//   - CARGA      → created_at (cuando se cargó la venta al sistema)
+//   - OPERACION  → operation_date (cuándo se cerró la venta con el cliente)
+//   - SALIDA     → departure_date (cuándo viaja el cliente)
+// Default = CARGA para preservar números históricos (era el comportamiento
+// implícito anterior). El user elige el otro tipo según qué corte quiere ver.
 const dashboardDateTypes: DateTypeOption[] = [
-  { value: "OPERACION", label: "Operación", shortLabel: "Op." },
+  { value: "CARGA", label: "Fecha de Carga", shortLabel: "Carga" },
+  { value: "OPERACION", label: "Fecha de Venta", shortLabel: "Venta" },
+  { value: "SALIDA", label: "Fecha de Salida", shortLabel: "Salida" },
 ]
+
+// Mapeo UI → columna SQL (whitelist en lib/analytics/date-filter.ts).
+const DATE_TYPE_TO_FIELD: Record<string, string> = {
+  CARGA: "created_at",
+  OPERACION: "operation_date",
+  SALIDA: "departure_date",
+}
 
 export interface DashboardFiltersState {
   dateFrom: string
   dateTo: string
+  // dateType es el VALOR DEL DROPDOWN (CARGA/OPERACION/SALIDA).
+  // Default vacío = legacy CARGA en el endpoint.
+  dateType: string
   agencyId: string
   sellerId: string
+}
+
+/** Mapea el `dateType` del state al nombre de columna SQL. */
+export function dateTypeToField(dateType: string | undefined): string {
+  return DATE_TYPE_TO_FIELD[dateType || ""] || "created_at"
 }
 
 interface DashboardFiltersProps {
@@ -77,10 +103,15 @@ export function DashboardFilters({
       <DateTypeFilter
         types={dashboardDateTypes}
         includeNone={false}
-        value={{ type: "OPERACION", from: toDate(filters.dateFrom), to: toDate(filters.dateTo) }}
+        value={{
+          type: filters.dateType || "CARGA",
+          from: toDate(filters.dateFrom),
+          to: toDate(filters.dateTo),
+        }}
         onChange={(v) => {
           setFilters((prev) => ({
             ...prev,
+            dateType: v.type || "CARGA",
             dateFrom: toStr(v.from),
             dateTo: toStr(v.to),
           }))

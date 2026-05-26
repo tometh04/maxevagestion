@@ -50,13 +50,20 @@ export default async function CRMManychatPage() {
   const agencies = await getScopedAgenciesForUser(supabase, user)
   const agencyIds = agencies.map((a) => a.id)
 
-  // Get sellers for filters
+  // Get sellers for filters.
+  // 🔴 CROSS-TENANT FIX (2026-05-21): bug reportado por Tomi vía WhatsApp —
+  // un org NUEVO ("Oficial Test Vibook") veía vendedores de TODOS los demás
+  // tenants (Test V7, Mateo admin, Maximiliano De Franco, etc.). Causa:
+  // query a users sin .eq("org_id", ...) confiando en RLS, pero
+  // user_org_ids() está rota / leakea (ver CLAUDE.md regla de oro).
+  // Defense-in-depth: filtro explícito por org_id del user logueado.
   let sellersQuery = supabase
     .from("users")
     .select("id, name")
     .in("role", ["SELLER", "ADMIN", "SUPER_ADMIN"])
     .eq("is_active", true)
-  
+    .eq("org_id", (user as any).org_id)
+
   if (user.role === "SELLER") {
     sellersQuery = sellersQuery.eq("id", user.id)
   }
@@ -65,8 +72,12 @@ export default async function CRMManychatPage() {
   // Get operators for conversion dialog
   // Cast a any: types.ts está stale; admin_fee_percentage agregada en migration
   // 20260427000002 pero los tipos no fueron regenerados (npm run db:generate).
+  // 🔴 CROSS-TENANT FIX (2026-05-21): mismo bug que sellers — sin filtro
+  // explícito por org_id, un tenant nuevo veía operadores de otros tenants
+  // por RLS rota. Defense-in-depth obligatorio (regla de oro CLAUDE.md).
   const { data: operators } = await (supabase.from("operators") as any)
     .select("id, name, admin_fee_percentage")
+    .eq("org_id", (user as any).org_id)
     .order("name")
 
   // Cargar TODOS los leads del tenant (cualquier source). El kanban "CRM Ventas"
@@ -126,6 +137,7 @@ export default async function CRMManychatPage() {
   const featureFlags = await getOrgFeatureFlags(supabase, user.org_id ?? null, [
     "features.region_filter_in_kanban",
     "features.list_name_to_status_sync",
+    "features.created_at_filter_in_kanban",
   ])
 
   return (
@@ -140,6 +152,7 @@ export default async function CRMManychatPage() {
       currentUserRole={user.role}
       enableRegionFilter={featureFlags["features.region_filter_in_kanban"]}
       enableListStatusSync={featureFlags["features.list_name_to_status_sync"]}
+      enableCreatedAtFilter={featureFlags["features.created_at_filter_in_kanban"]}
     />
   )
 }

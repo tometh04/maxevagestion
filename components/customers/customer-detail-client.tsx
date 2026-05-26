@@ -14,6 +14,8 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
+// Fix UTC shift (VICO 2026-05-22)
+import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 import Link from "next/link"
 import { ArrowLeft, Pencil, User, Phone, Mail, AtSign, Calendar, Globe, FileText, CreditCard, Plane, TrendingUp } from "lucide-react"
 import { DocumentsSection } from "@/components/documents/documents-section"
@@ -300,13 +302,13 @@ export function CustomerDetailClient({
                         <TableCell>
                           <div className="text-sm">
                             {op.departure_date ? (
-                            <div>{format(new Date(op.departure_date), "dd/MM/yyyy", { locale: es })}</div>
+                            <div>{parseDateOnlyLocal(op.departure_date) ? format(parseDateOnlyLocal(op.departure_date)!, "dd/MM/yyyy", { locale: es }) : "-"}</div>
                             ) : (
                               <div className="text-muted-foreground">-</div>
                             )}
                             {op.return_date && (
                               <div className="text-muted-foreground">
-                                {format(new Date(op.return_date), "dd/MM/yyyy", { locale: es })}
+                                {parseDateOnlyLocal(op.return_date) ? format(parseDateOnlyLocal(op.return_date)!, "dd/MM/yyyy", { locale: es }) : "-"}
                               </div>
                             )}
                           </div>
@@ -363,11 +365,11 @@ export function CustomerDetailClient({
                           {payment.currency} {payment.amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
                         </TableCell>
                         <TableCell>
-                          {format(new Date(payment.date_due), "dd/MM/yyyy", { locale: es })}
+                          {parseDateOnlyLocal(payment.date_due) ? format(parseDateOnlyLocal(payment.date_due)!, "dd/MM/yyyy", { locale: es }) : "-"}
                         </TableCell>
                         <TableCell>
                           {payment.date_paid
-                            ? format(new Date(payment.date_paid), "dd/MM/yyyy", { locale: es })
+                            ? (parseDateOnlyLocal(payment.date_paid) ? format(parseDateOnlyLocal(payment.date_paid)!, "dd/MM/yyyy", { locale: es }) : "-")
                             : "-"}
                         </TableCell>
                         <TableCell>{payment.method}</TableCell>

@@ -404,7 +404,11 @@ export function NewCustomerDialog({
       form.setValue("document_number", cuilClean)
       form.setValue("nationality", "Argentina")
 
-      // Intentar buscar datos del contribuyente por CUIL en AFIP
+      // Intentar buscar datos del contribuyente por CUIL en AFIP.
+      // AFIP solo tiene contribuyentes registrados (monotributo, RI, etc.).
+      // La mayoría de los clientes de una agencia de viajes son consumidores
+      // finales y NO están en padrón → en ese caso avisamos claramente que
+      // hay que cargar nombre y apellido a mano.
       try {
         const response = await fetch(`/api/customers/cuil-lookup?cuil=${cuilClean}`)
         if (response.ok) {
@@ -416,12 +420,37 @@ export function NewCustomerDialog({
             if (result.data.lastName) {
               form.setValue("last_name", result.data.lastName)
             }
-            toast.success(`CUIL generado: ${cuil} — Datos completados desde AFIP`)
+            toast.success(`CUIL generado: ${cuil} — datos completados desde AFIP`)
             return
           }
+          if (result.reason === "not_found") {
+            toast.info(
+              `CUIL generado: ${cuil}. AFIP no tiene datos de este CUIL (probablemente sea un consumidor final). Completá Nombre y Apellido a mano.`,
+              { duration: 6000 }
+            )
+            return
+          }
+          if (result.reason === "service_error") {
+            toast.warning(
+              `CUIL generado: ${cuil}. No se pudo consultar AFIP en este momento, completá Nombre y Apellido a mano.`,
+              { duration: 6000 }
+            )
+            return
+          }
+        } else {
+          toast.warning(
+            `CUIL generado: ${cuil}. La consulta a AFIP falló, completá Nombre y Apellido a mano.`,
+            { duration: 6000 }
+          )
+          return
         }
       } catch (afipError) {
         console.error("Error looking up CUIL in AFIP:", afipError)
+        toast.warning(
+          `CUIL generado: ${cuil}. No se pudo consultar AFIP, completá Nombre y Apellido a mano.`,
+          { duration: 6000 }
+        )
+        return
       }
 
       toast.success(`CUIL generado: ${cuil}`)

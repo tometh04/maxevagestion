@@ -267,6 +267,94 @@ const supabase = createClient()
 
 ### 5. Accounting System
 
+#### 🔴 REGLA: deuda al operador = `operator_payments`, NUNCA `operations.operator_cost`
+
+**Contexto histórico (2026-05-22)**: el detalle del operador en
+`app/(dashboard)/operators/[id]/page.tsx` calculaba la deuda con
+`SUM(operations.operator_cost) − SUM(payments PAID where direction=EXPENSE)`.
+Resultado en VICO/FREE WAY: USD 74.731 de saldo fantasma vs USD 6.168 real.
+Auditoría descubrió drift de cientos de miles de USD en Lozada también, sin
+que nadie lo hubiera notado.
+
+**Causa raíz**: existen DOS modelos de costo y UN modelo de pagos que se
+desincronizan en producción:
+- `operations.operator_cost` — legacy single-operator, sincronizado por
+  trigger 20260429000002 con `SUM(operation_operators.cost)` SOLO cuando
+  hay rows en `operation_operators`. Si una op se carga con costo legacy
+  sin `operation_operators`, el trigger no la toca y `operator_cost` queda
+  desactualizado vs la deuda real.
+- `operation_operators.cost` — modelo multi-operator. Lo edita el dialog
+  de edición de operación. Puede divergir de la deuda real si se editó
+  cost después de pagos parciales (el flow de payments preserva la deuda
+  vieja para no perder los pagos aplicados).
+- `payments` con `direction=EXPENSE/status=PAID` — tabla auditable de los
+  pagos hechos, pero puede tener orphans (race conditions del bulk masivo,
+  payments legacy pre-migración 084 sin paid_amount, payments creados sin
+  link a operator_payment, etc.).
+
+**Fuente de verdad ÚNICA: `operator_payments`**.
+
+Esta tabla:
+- Tiene `org_id`, `operator_id`, `operation_id`, `amount`, `paid_amount`,
+  `currency`, `status` (PENDING/PAID/OVERDUE), `due_date`.
+- Se auto-crea cuando se crea una operación (migration 010).
+- Se actualiza en **TODOS** los caminos productivos de cancelación de deuda
+  vía `applyOperatorPaymentSettlement()` o equivalente:
+  1. `POST /api/payments` — registrar pago desde detalle de operación
+  2. `POST /api/payments/mark-paid` — marcar payment EXPENSE como PAID
+  3. `POST /api/accounting/operator-payments/bulk` — pago masivo desde Finanzas
+  4. `POST /api/payments/orphans` — reconciliación de payments huérfanos
+  5. `PATCH /api/operations/[id]` — edit cost / reasignar operator
+  6. `PATCH /api/operations/[id]/services/[serviceId]` — edit servicio
+  7. `lib/accounting/recurring-payments.ts` — pagos recurrentes
+
+**Reglas obligatorias para CUALQUIER nuevo camino que cancele/genere deuda
+al operador**:
+
+1. **NUNCA inferir deuda al operador desde `operations.operator_cost` ni
+   desde la suma de `payments PAID`**. Usar `operator_payments` directo:
+   ```ts
+   const { data } = await supabase
+     .from("operator_payments")
+     .select("amount, paid_amount, currency, status")
+     .eq("operator_id", operatorId)
+     .eq("org_id", user.org_id)  // OBLIGATORIO cross-tenant
+   ```
+
+2. **Si creás un endpoint que cobra/cancela deuda al operador**, DEBE
+   actualizar `operator_payments.paid_amount` vía
+   `applyOperatorPaymentSettlement()` (helper en
+   `lib/accounting/operator-payment-settlement.ts`). Crear un `payment`
+   con `direction=EXPENSE/status=PAID` NO ALCANZA — los reports que leen
+   `operator_payments` no van a verlo y el saldo va a quedar inflado.
+
+3. **Si modificás `operations.operator_cost`** (edit operation, import,
+   backfill), asegurate de que `operation_operators` y `operator_payments`
+   queden sincronizados:
+   - `operations.operator_cost` se mantiene auto vía trigger desde
+     `operation_operators`.
+   - `operator_payments.amount` solo se ajusta si NO hay pagos aplicados
+     (ver `app/api/operations/[id]/route.ts:514` — comentario "Se
+     conservaron operator_payments existentes porque hay pagos aplicados").
+   - Si hay pagos aplicados y cambia el costo, queda drift HISTÓRICO
+     legítimo. El cron `/api/cron/audit-operator-debt-drift` lo detecta.
+
+4. **Migración de orgs al modelo nuevo** (feature flag
+   `features.operator_debt_from_operator_payments`): por defecto OFF para
+   preservar comportamiento legacy. Activar ON solo después de auditar
+   drift histórico con el cron de auditoría. VICO está ON desde 2026-05-22.
+
+5. **Test obligatorio**: cualquier PR que toque flow de pagos a operador
+   debe correr `npm run test -- operator-payment-settlement` y verificar
+   que `operator_payments.paid_amount` queda en el estado correcto post-flow.
+
+**En code review**: rechazar PRs que sumen `operations.operator_cost` o
+`payments where direction=EXPENSE` para calcular deuda al operador.
+La única excepción es la vista legacy controlada por la feature flag,
+que existe solo para no romper contabilidades de orgs sin auditar.
+
+### 5. Accounting System — implementación
+
 The system implements **double-entry bookkeeping** via `ledger_movements` table:
 
 - Every financial transaction creates TWO ledger movements (debit + credit)
