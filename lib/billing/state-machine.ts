@@ -117,9 +117,15 @@ export function transitionFromMP(
 
     // Sin paymentEvent: solo status del preapproval
     if (hasActiveFreeTrial) {
+      // Si trial_ends_at de DB es el motivo por el que el trial sigue activo
+      // (extensión admin), usarlo como current_period_ends_at — no la fecha vieja de MP.
+      const periodEnd =
+        ctx?.trial_ends_at && new Date(ctx.trial_ends_at).getTime() > Date.now()
+          ? ctx.trial_ends_at
+          : preapproval.next_payment_date ?? null
       return {
         subscription_status: "TRIALING",
-        current_period_ends_at: preapproval.next_payment_date ?? null,
+        current_period_ends_at: periodEnd,
         event_type: "SUBSCRIPTION_AUTHORIZED",
       }
     }

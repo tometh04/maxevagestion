@@ -201,7 +201,10 @@ export async function POST(request: Request) {
     updates.current_period_ends_at = transition.current_period_ends_at
   }
   if (transition.subscription_status === "TRIALING" && preapproval.next_payment_date) {
-    updates.trial_ends_at = preapproval.next_payment_date
+    // No sobreescribir extensión de admin: solo actualizar si MP tiene una fecha más adelante
+    if (!org.trial_ends_at || new Date(preapproval.next_payment_date) > new Date(org.trial_ends_at)) {
+      updates.trial_ends_at = preapproval.next_payment_date
+    }
   }
   if (chosenPlan && chosenPlan !== "CUSTOM" && chosenPlan !== org.plan) {
     updates.plan = chosenPlan

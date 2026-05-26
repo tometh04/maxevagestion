@@ -121,7 +121,7 @@ describe("transitionFromMP", () => {
 
   // --- Trial extendido (DB trial_ends_at posterior a next_payment_date de MP) ---
 
-  it("trial extendido: next_payment_date pasó pero trial_ends_at vigente → TRIALING", () => {
+  it("trial extendido: next_payment_date pasó pero trial_ends_at vigente → TRIALING (usa fecha extendida)", () => {
     const pastDate = new Date(Date.now() - 86400_000).toISOString()   // MP cree que terminó ayer
     const futureDate = new Date(Date.now() + 7 * 86400_000).toISOString() // admin extendió +7 días
     const out = transitionFromMP(
@@ -138,6 +138,7 @@ describe("transitionFromMP", () => {
       { preserved_current_period_ends_at: pastDate, trial_ends_at: futureDate }
     )
     expect(out.subscription_status).toBe("TRIALING")
+    expect(out.current_period_ends_at).toBe(futureDate) // fecha extendida, no la fecha vieja de MP
     expect(out.event_type).toBe("SUBSCRIPTION_AUTHORIZED")
   })
 
