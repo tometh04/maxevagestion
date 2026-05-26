@@ -207,19 +207,19 @@ export async function PATCH(
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    // Si se enviaron opciones nuevas, reemplazarlas sin descartar la estructura anterior hasta el final
+    // Si se enviaron opciones nuevas, reemplazar: borrar viejas primero, insertar nuevas después.
+    //
+    // Bug fix 2026-05-26: el código anterior insertaba nuevas ANTES de borrar viejas.
+    // Si hay un unique constraint en (quotation_id, option_number) — que existe en
+    // producción — el insert falla porque option_number=1 ya existe. Invertimos el
+    // orden: delete → insert. Si el insert falla, el header se restaura y el usuario
+    // puede reintentar (la cotización queda sin opciones momentáneamente, pero eso
+    // es mejor que nunca poder editar).
     if (preparedOptions) {
       let insertedOptionIds: string[] = []
 
       try {
-        const insertResult = await insertQuotationOptionsOrThrow({
-          supabase,
-          quotationId: id,
-          currency: updated.currency || "USD",
-          preparedOptions,
-        })
-        insertedOptionIds = insertResult.optionIds
-
+        // Paso 1: borrar opciones viejas y sus items (CASCADE en la FK los borra)
         if (existingOptionIds.length > 0) {
           const { error: deleteOldOptionsError } = await supabase
             .from("quotation_options")
@@ -229,7 +229,7 @@ export async function PATCH(
 
           if (deleteOldOptionsError) {
             throw new QuotationStructurePersistenceError(
-              "No se pudo reemplazar la estructura anterior de la cotización.",
+              "No se pudo eliminar la estructura anterior de la cotización.",
               "old_options_delete_failed",
               {
                 quotationId: id,
@@ -240,6 +240,7 @@ export async function PATCH(
           }
         }
 
+        // Paso 1b: limpiar ítems huérfanos (legacy sin option_id)
         const { error: orphanItemsError } = await supabase
           .from("quotation_items")
           .delete()
@@ -256,6 +257,15 @@ export async function PATCH(
             }
           )
         }
+
+        // Paso 2: insertar opciones nuevas (ya no hay conflicto de option_number)
+        const insertResult = await insertQuotationOptionsOrThrow({
+          supabase,
+          quotationId: id,
+          currency: updated.currency || "USD",
+          preparedOptions,
+        })
+        insertedOptionIds = insertResult.optionIds
       } catch (error) {
         console.error("Error persisting quotation structure during PATCH:", {
           quotationId: id,
