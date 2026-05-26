@@ -79,7 +79,7 @@ describe("transitionFromMP", () => {
     expect(out.event_type).toBe("SUBSCRIPTION_FINISHED")
   })
 
-  it("authorized with expired free_trial → ACTIVE (not TRIALING)", () => {
+  it("authorized with expired free_trial (no payment event) → PAST_DUE", () => {
     const pastDate = new Date(Date.now() - 86400_000).toISOString()
     const out = transitionFromMP(mp({
       status: "authorized",
@@ -90,6 +90,78 @@ describe("transitionFromMP", () => {
       },
       next_payment_date: pastDate,
     }))
+    expect(out.subscription_status).toBe("PAST_DUE")
+    expect(out.event_type).toBe("TRIAL_EXPIRED")
+  })
+
+  it("authorized with expired free_trial + payment approved → ACTIVE", () => {
+    const pastDate = new Date(Date.now() - 86400_000).toISOString()
+    const nextDate = new Date(Date.now() + 30 * 86400_000).toISOString()
+    const out = transitionFromMP(
+      mp({
+        status: "authorized",
+        auto_recurring: {
+          frequency: 1, frequency_type: "months",
+          transaction_amount: 119000, currency_id: "ARS",
+          free_trial: { frequency: 7, frequency_type: "days" },
+        },
+        next_payment_date: nextDate,
+      }),
+      { type: "subscription_authorized_payment", status: "approved" }
+    )
     expect(out.subscription_status).toBe("ACTIVE")
+    expect(out.current_period_ends_at).toBe(nextDate)
+  })
+
+  it("authorized without free_trial (regular sub) → ACTIVE", () => {
+    const out = transitionFromMP(mp({ status: "authorized" }))
+    expect(out.subscription_status).toBe("ACTIVE")
+    expect(out.event_type).toBe("SUBSCRIPTION_AUTHORIZED")
+  })
+
+  // --- Trial extendido (DB trial_ends_at posterior a next_payment_date de MP) ---
+
+  it("trial extendido: next_payment_date pasó pero trial_ends_at vigente → TRIALING (usa fecha extendida)", () => {
+    const pastDate = new Date(Date.now() - 86400_000).toISOString()   // MP cree que terminó ayer
+    const futureDate = new Date(Date.now() + 7 * 86400_000).toISOString() // admin extendió +7 días
+    const out = transitionFromMP(
+      mp({
+        status: "authorized",
+        auto_recurring: {
+          frequency: 1, frequency_type: "months",
+          transaction_amount: 119000, currency_id: "ARS",
+          free_trial: { frequency: 7, frequency_type: "days" },
+        },
+        next_payment_date: pastDate,
+      }),
+      undefined,
+      { preserved_current_period_ends_at: pastDate, trial_ends_at: futureDate }
+    )
+    expect(out.subscription_status).toBe("TRIALING")
+    expect(out.current_period_ends_at).toBe(futureDate) // fecha extendida, no la fecha vieja de MP
+    expect(out.event_type).toBe("SUBSCRIPTION_AUTHORIZED")
+  })
+
+  it("trial extendido: pago rechazado durante extensión vigente → TRIALING", () => {
+    const futureDate = new Date(Date.now() + 7 * 86400_000).toISOString()
+    const out = transitionFromMP(
+      mp({ status: "authorized" }),
+      { type: "subscription_authorized_payment", status: "rejected" },
+      { preserved_current_period_ends_at: futureDate, trial_ends_at: futureDate }
+    )
+    expect(out.subscription_status).toBe("TRIALING")
+    expect(out.event_type).toBe("PAYMENT_REJECTED_TRIAL_ACTIVE")
+    expect(out.current_period_ends_at).toBe(futureDate)
+  })
+
+  it("trial expirado (sin extensión): pago rechazado → PAST_DUE", () => {
+    const pastDate = new Date(Date.now() - 86400_000).toISOString()
+    const out = transitionFromMP(
+      mp({ status: "authorized" }),
+      { type: "subscription_authorized_payment", status: "rejected" },
+      { preserved_current_period_ends_at: pastDate, trial_ends_at: pastDate }
+    )
+    expect(out.subscription_status).toBe("PAST_DUE")
+    expect(out.event_type).toBe("PAYMENT_REJECTED")
   })
 })

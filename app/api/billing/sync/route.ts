@@ -55,7 +55,7 @@ export async function POST(request: Request) {
   // Fetch org actual — sirve para idempotency, preservación y fallback.
   const { data: org } = await admin
     .from("organizations")
-    .select("subscription_status, current_period_ends_at, mp_last_synced_at, plan, mp_preapproval_id")
+    .select("subscription_status, current_period_ends_at, mp_last_synced_at, plan, mp_preapproval_id, trial_ends_at")
     .eq("id", orgId)
     .maybeSingle()
 
@@ -189,6 +189,7 @@ export async function POST(request: Request) {
   // 6. State machine
   const transition = transitionFromMP(preapproval, undefined, {
     preserved_current_period_ends_at: org.current_period_ends_at,
+    trial_ends_at: org.trial_ends_at,
   })
 
   const updates: Record<string, any> = {
@@ -200,7 +201,10 @@ export async function POST(request: Request) {
     updates.current_period_ends_at = transition.current_period_ends_at
   }
   if (transition.subscription_status === "TRIALING" && preapproval.next_payment_date) {
-    updates.trial_ends_at = preapproval.next_payment_date
+    // No sobreescribir extensión de admin: solo actualizar si MP tiene una fecha más adelante
+    if (!org.trial_ends_at || new Date(preapproval.next_payment_date) > new Date(org.trial_ends_at)) {
+      updates.trial_ends_at = preapproval.next_payment_date
+    }
   }
   if (chosenPlan && chosenPlan !== "CUSTOM" && chosenPlan !== org.plan) {
     updates.plan = chosenPlan

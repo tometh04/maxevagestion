@@ -39,7 +39,7 @@ export async function POST(request: Request) {
   const { data: orgs, error } = await admin
     .from("organizations")
     .select("id, name, billing_email, trial_ends_at, trial_reminder_sent_at")
-    .eq("subscription_status", "TRIAL")
+    .in("subscription_status", ["TRIAL", "TRIALING"])
     .gte("trial_ends_at", now.toISOString())
     .lte("trial_ends_at", inTwoDays.toISOString())
     .or(`trial_reminder_sent_at.is.null,trial_reminder_sent_at.lt.${twelveHoursAgo}`)

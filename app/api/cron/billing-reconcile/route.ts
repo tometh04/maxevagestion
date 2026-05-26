@@ -28,7 +28,7 @@ export async function POST(request: Request) {
   const admin = createAdminClient() as any
   const { data: orgs } = await admin
     .from("organizations")
-    .select("id, name, subscription_status, current_period_ends_at, mp_preapproval_id, mp_last_synced_at")
+    .select("id, name, subscription_status, current_period_ends_at, mp_preapproval_id, mp_last_synced_at, trial_ends_at")
     .in("subscription_status", ["TRIALING", "ACTIVE", "PAST_DUE", "PENDING_PAYMENT"])
     .not("mp_preapproval_id", "is", null)
 
@@ -40,6 +40,7 @@ export async function POST(request: Request) {
       const pa = (await fetchPreapproval(org.mp_preapproval_id)) as MPPreapproval
       const transition = transitionFromMP(pa, undefined, {
         preserved_current_period_ends_at: org.current_period_ends_at,
+        trial_ends_at: org.trial_ends_at,
       })
 
       const changed = transition.subscription_status !== org.subscription_status
