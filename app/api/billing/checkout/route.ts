@@ -4,7 +4,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { ensureMpPlan } from "@/lib/billing/mp-plans"
 import { cancelPreapproval } from "@/lib/billing/mercadopago"
 import { mpErrorToUserMessage } from "@/lib/billing/mp-error-mapper"
-import { notifySlack } from "@/lib/billing/slack-notify"
+import { notifyBillingSlack } from "@/lib/billing/slack-notify"
 import type { PlanId } from "@/lib/billing/plans"
 import { PLANS } from "@/lib/billing/plans"
 
@@ -221,12 +221,12 @@ export async function POST(request: Request) {
 
   // Slack: notificar cuando una agencia inicia regularización (PAST_DUE → checkout nuevo)
   if (isRegularize) {
-    notifySlack(
-      `🔄 *Regularización iniciada*\n` +
-      `Agencia: ${org.name}\n` +
-      `Plan: ${planDef.name}\n` +
-      `Se canceló preapproval viejo y se generó checkout nuevo (cobro inmediato).`
-    )
+    notifyBillingSlack({
+      event: "BILLING_ALERT",
+      orgName: org.name,
+      orgId: orgId,
+      details: `Regularización iniciada. Se canceló preapproval viejo y se generó checkout nuevo (cobro inmediato). Plan: ${planDef.name}`,
+    })
   }
 
   return NextResponse.json({
