@@ -15,6 +15,7 @@ import {
 import Link from "next/link"
 import { RefreshCw, AlertTriangle, Clock, CalendarDays, CalendarClock, CheckCheck, Trash2 } from "lucide-react"
 import { isToday, isBefore, startOfDay, endOfWeek, startOfWeek, isAfter } from "date-fns"
+import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 
 interface AlertsPageClientProps {
   agencies: Array<{ id: string; name: string }>
@@ -138,7 +139,7 @@ export function AlertsPageClient({ agencies, defaultFilters }: AlertsPageClientP
 
     for (const alert of alerts) {
       if (alert.status !== "PENDING") continue
-      const due = new Date(alert.date_due)
+      const due = parseDateOnlyLocal(alert.date_due) ?? new Date(alert.date_due)
       const dueDay = startOfDay(due)
 
       if (isBefore(dueDay, todayStart)) {
@@ -185,7 +186,7 @@ export function AlertsPageClient({ agencies, defaultFilters }: AlertsPageClientP
               onClick={() => {
                 const todayStart = startOfDay(new Date())
                 const overdueIds = alerts
-                  .filter(a => a.status === "PENDING" && isBefore(startOfDay(new Date(a.date_due)), todayStart))
+                  .filter(a => a.status === "PENDING" && isBefore(startOfDay(parseDateOnlyLocal(a.date_due) ?? new Date(a.date_due)), todayStart))
                   .map(a => a.id)
                 handleBulkResolve(overdueIds)
               }}

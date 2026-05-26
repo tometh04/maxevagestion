@@ -13,6 +13,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { format, differenceInDays, isToday, isTomorrow, isBefore, startOfDay, endOfWeek, isAfter } from "date-fns"
+import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 import { es } from "date-fns/locale"
 import Link from "next/link"
 import {
@@ -313,7 +314,7 @@ export function AlertsTable({
                             {getRelativeDate(alert.date_due)}
                           </span>
                           <span className="text-muted-foreground text-xs">
-                            ({format(new Date(alert.date_due), "dd/MM/yyyy", { locale: es })})
+                            ({format(parseDateOnlyLocal(alert.date_due) ?? new Date(alert.date_due), "dd/MM/yyyy", { locale: es })})
                           </span>
                         </span>
                       </div>

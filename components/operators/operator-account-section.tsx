@@ -17,6 +17,7 @@ import {
   AlertTriangle
 } from "lucide-react"
 import { format } from "date-fns"
+import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 import { es } from "date-fns/locale"
 
 interface Payment {
@@ -81,7 +82,7 @@ export function OperatorAccountSection({ operatorId, creditLimit }: OperatorAcco
           } else {
             totalOwedByCurrency[cur] = (totalOwedByCurrency[cur] || 0) + amt
             pendingCount++
-            if (new Date(p.date_due) < today) {
+            if ((parseDateOnlyLocal(p.date_due) ?? new Date(p.date_due)) < today) {
               overdueCount++
             }
           }
@@ -278,8 +279,8 @@ export function OperatorAccountSection({ operatorId, creditLimit }: OperatorAcco
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
                           <Calendar className="h-3 w-3" />
                           {payment.status === "PAID" && payment.date_paid
-                            ? `Pagado ${format(new Date(payment.date_paid), "dd/MM/yyyy", { locale: es })}`
-                            : `Vence ${format(new Date(payment.date_due), "dd/MM/yyyy", { locale: es })}`
+                            ? `Pagado ${format(parseDateOnlyLocal(payment.date_paid) ?? new Date(payment.date_paid), "dd/MM/yyyy", { locale: es })}`
+                            : `Vence ${format(parseDateOnlyLocal(payment.date_due) ?? new Date(payment.date_due), "dd/MM/yyyy", { locale: es })}`
                           }
                           <span>•</span>
                           <span>{payment.method}</span>

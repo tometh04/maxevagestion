@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 import {
   Table,
   TableBody,
@@ -562,7 +563,7 @@ export function PassengerBalancesSection({
                     <TableRow key={p.id}>
                       <TableCell className="text-xs whitespace-nowrap">
                         {p.date_paid
-                          ? new Date(p.date_paid).toLocaleDateString("es-AR")
+                          ? (parseDateOnlyLocal(p.date_paid) ?? new Date(p.date_paid)).toLocaleDateString("es-AR")
                           : "—"}
                       </TableCell>
                       <TableCell className="text-xs">{p.method}</TableCell>

@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 import { Badge } from "@/components/ui/badge"
 import {
   Table,
@@ -1964,7 +1965,7 @@ export function OperationPaymentsSection({
                           </div>
                           <div className="text-muted-foreground">
                             Creado {new Date(d.created_at).toLocaleString("es-AR")}
-                            {d.date_paid && ` · Pagado ${new Date(d.date_paid).toLocaleDateString("es-AR")}`}
+                            {d.date_paid && ` · Pagado ${(parseDateOnlyLocal(d.date_paid) ?? new Date(d.date_paid)).toLocaleDateString("es-AR")}`}
                             {d.reference && ` · Ref: ${d.reference}`}
                           </div>
                         </div>
