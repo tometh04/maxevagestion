@@ -12,6 +12,7 @@
 
 import { cache } from "react"
 import { redirect } from "next/navigation"
+import { headers } from "next/headers"
 import { getCurrentUser } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 
@@ -115,7 +116,13 @@ export const assertSubscriptionActive = cache(async (): Promise<BillingOrg | nul
     // PAST_DUE bloqueado → /settings/subscription (tiene botón "Regularizar pago")
     // Resto → /onboarding/billing (checkout estándar)
     if (org.subscription_status === "PAST_DUE") {
-      redirect("/settings/subscription")
+      // Leer pathname desde el header que setea el middleware para evitar el
+      // loop infinito: si ya estamos en /settings/subscription no redirigir.
+      const pathname = (await headers()).get("x-pathname") ?? ""
+      if (!pathname.startsWith("/settings/subscription")) {
+        redirect("/settings/subscription")
+      }
+      return org
     }
     redirect("/onboarding/billing")
   }

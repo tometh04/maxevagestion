@@ -106,6 +106,7 @@ export async function middleware(req: NextRequest) {
   // response headers para que el browser lo vea en DevTools → Network.
   const __perfRequestHeaders = new Headers(req.headers)
   __perfRequestHeaders.set('x-perf-req-id', __perfReqId)
+  __perfRequestHeaders.set('x-pathname', req.nextUrl.pathname)
 
   let response = NextResponse.next({
     request: {
