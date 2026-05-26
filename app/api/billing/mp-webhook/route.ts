@@ -187,7 +187,7 @@ export async function POST(request: Request) {
   // 5. Idempotencia por last_modified
   const { data: org } = await admin
     .from("organizations")
-    .select("id, name, subscription_status, current_period_ends_at, mp_last_synced_at")
+    .select("id, name, subscription_status, current_period_ends_at, mp_last_synced_at, trial_ends_at")
     .eq("id", orgId)
     .maybeSingle()
   if (!org) return NextResponse.json({ ok: true, warning: "org not found" })
@@ -234,7 +234,10 @@ export async function POST(request: Request) {
   const transition = transitionFromMP(
     preapproval as MPPreapproval,
     paymentEvent,
-    { preserved_current_period_ends_at: org.current_period_ends_at }
+    {
+      preserved_current_period_ends_at: org.current_period_ends_at,
+      trial_ends_at: org.trial_ends_at,
+    }
   )
 
   const updates: Record<string, any> = {

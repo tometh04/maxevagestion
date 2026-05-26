@@ -35,6 +35,12 @@ export interface MPPaymentEvent {
 export interface TransitionContext {
   /** current_period_ends_at actual en DB, para preservarlo al cancelar. */
   preserved_current_period_ends_at?: string | null
+  /**
+   * trial_ends_at de la DB. Fuente de verdad cuando el admin extendió el
+   * trial: MP no permite modificar free_trial post-creación, así que la DB
+   * puede tener una fecha posterior a next_payment_date de MP.
+   */
+  trial_ends_at?: string | null
 }
 
 export interface TransitionResult {
@@ -74,10 +80,20 @@ export function transitionFromMP(
   }
 
   if (mpStatus === "authorized") {
-    const hasActiveFreeTrial = hasActiveFreeTrialPeriod(preapproval)
+    const hasActiveFreeTrial = hasActiveFreeTrialPeriod(preapproval, ctx?.trial_ends_at)
 
     if (paymentEvent?.type === "subscription_authorized_payment") {
       if (paymentEvent.status === "rejected") {
+        // Si el trial fue extendido por admin y aún está vigente en DB, mantener
+        // TRIALING en lugar de bloquear al usuario prematuramente (MP intentó cobrar
+        // en la fecha original, pero el admin había dado más tiempo de prueba).
+        if (ctx?.trial_ends_at && new Date(ctx.trial_ends_at).getTime() > Date.now()) {
+          return {
+            subscription_status: "TRIALING",
+            current_period_ends_at: ctx.trial_ends_at,
+            event_type: "PAYMENT_REJECTED_TRIAL_ACTIVE",
+          }
+        }
         return {
           subscription_status: "PAST_DUE",
           current_period_ends_at: ctx?.preserved_current_period_ends_at ?? null,
@@ -153,13 +169,15 @@ export function transitionFromMP(
 /**
  * ¿El preapproval sigue dentro de su período free_trial?
  *
- * Heurística: free_trial declarado + next_payment_date futuro + authorized.
- * MP expone next_payment_date como "fecha del próximo cobro" — durante trial
- * coincide con el fin del trial. Tras el primer cobro exitoso, next_payment_date
- * avanza un mes, así que esta heurística devuelve false como corresponde.
+ * Prioriza trial_ends_at de DB cuando existe: el admin puede extender el trial
+ * pero MP no permite modificar free_trial post-creación, así que la DB puede
+ * tener una fecha posterior a next_payment_date de MP. Sin trial_ends_at en DB,
+ * fallback a next_payment_date de MP (comportamiento original).
  */
-function hasActiveFreeTrialPeriod(p: MPPreapproval): boolean {
+function hasActiveFreeTrialPeriod(p: MPPreapproval, dbTrialEndsAt?: string | null): boolean {
   if (!p.auto_recurring.free_trial) return false
+  const now = Date.now()
+  if (dbTrialEndsAt) return new Date(dbTrialEndsAt).getTime() > now
   if (!p.next_payment_date) return false
-  return new Date(p.next_payment_date).getTime() > Date.now()
+  return new Date(p.next_payment_date).getTime() > now
 }
