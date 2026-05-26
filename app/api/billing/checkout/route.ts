@@ -2,13 +2,15 @@ import { NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import { ensureMpPlan } from "@/lib/billing/mp-plans"
+import { cancelPreapproval } from "@/lib/billing/mercadopago"
 import { mpErrorToUserMessage } from "@/lib/billing/mp-error-mapper"
+import { notifySlack } from "@/lib/billing/slack-notify"
 import type { PlanId } from "@/lib/billing/plans"
 import { PLANS } from "@/lib/billing/plans"
 
 /**
  * POST /api/billing/checkout
- * Body: { plan: "STARTER" | "PRO" | "ENTERPRISE", reactivate?: boolean }
+ * Body: { plan: "STARTER" | "PRO" | "ENTERPRISE", reactivate?: boolean, regularize?: boolean }
  *
  * Crea una preapproval (suscripción mensual) en MP para la org del user y
  * devuelve `init_point` (URL a la que redirigir para completar el pago).
@@ -17,7 +19,9 @@ import { PLANS } from "@/lib/billing/plans"
  * - Si has_used_trial=true y no es reactivación → no incluye trial
  * - Si reactivate=true → permite re-checkout para orgs CANCELLED, con
  *   start_date calculado para no cobrar doble si current_period_ends_at es futuro
- * - 409 si ya hay un preapproval activo y no es reactivación
+ * - Si regularize=true → para orgs PAST_DUE: cancela preapproval viejo,
+ *   crea uno nuevo SIN trial y SIN start_date → cobro inmediato
+ * - 409 si ya hay un preapproval activo y no es reactivación/regularización
  */
 export async function POST(request: Request) {
   const { user } = await getCurrentUser()
@@ -29,6 +33,7 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}))
   const plan = body.plan as PlanId
   const isReactivation = body.reactivate === true
+  const isRegularize = body.regularize === true
 
   if (!plan || !PLANS[plan]) {
     return NextResponse.json({ error: "plan inválido" }, { status: 400 })
@@ -59,8 +64,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Organización no encontrada" }, { status: 404 })
   }
 
-  // Guard: ya hay preapproval activo (salvo que sea reactivación)
-  if (isReactivation) {
+  // Guard: ya hay preapproval activo (salvo que sea reactivación/regularización)
+  if (isRegularize) {
+    if (org.subscription_status !== "PAST_DUE") {
+      return NextResponse.json(
+        { error: "Solo se puede regularizar una suscripción con pago vencido" },
+        { status: 400 }
+      )
+    }
+    // Cancelar preapproval viejo que está fallando en cobrar
+    if (org.mp_preapproval_id) {
+      try {
+        await cancelPreapproval(org.mp_preapproval_id)
+        console.log("[checkout:regularize] cancelled old preapproval", org.mp_preapproval_id)
+      } catch (err: any) {
+        // Si ya estaba cancelado o no existe, seguimos igual
+        console.warn("[checkout:regularize] cancel old preapproval failed (non-blocking)", err?.message)
+      }
+    }
+  } else if (isReactivation) {
     if (org.subscription_status !== "CANCELLED") {
       return NextResponse.json(
         { error: "Solo se puede reactivar una suscripción cancelada" },
@@ -102,8 +124,9 @@ export async function POST(request: Request) {
   }
 
   // Calcular start_date para reactivaciones (no cobrar doble)
+  // NOTA: para regularize (PAST_DUE) NUNCA ponemos start_date — queremos cobro inmediato.
   let startDate: string | undefined = undefined
-  if (isReactivation && org.current_period_ends_at) {
+  if (isReactivation && !isRegularize && org.current_period_ends_at) {
     const periodEnd = new Date(org.current_period_ends_at)
     if (periodEnd.getTime() > Date.now()) {
       // Todavía tiene período pagado — MP arranca a cobrar después del end.
@@ -112,9 +135,10 @@ export async function POST(request: Request) {
     }
   }
 
-  const includeFreeTrial = !org.has_used_trial
+  // PAST_DUE regularización: NUNCA trial (ya usaron el servicio, deben pagar ya)
+  const includeFreeTrial = !org.has_used_trial && !isRegularize
   console.log("[checkout] MP preapproval_plan request", {
-    orgId, plan, backUrl, isReactivation, includeFreeTrial, startDate,
+    orgId, plan, backUrl, isReactivation, isRegularize, includeFreeTrial, startDate,
   })
 
   let mpPlan
@@ -163,6 +187,7 @@ export async function POST(request: Request) {
       initiated_by_user_id: user.id,
       included_free_trial: includeFreeTrial,
       is_reactivation: isReactivation,
+      is_regularize: isRegularize,
       start_date: startDate,
       cached_plan: mpPlan.cached,
     },
@@ -178,8 +203,13 @@ export async function POST(request: Request) {
   const orgUpdates: Record<string, any> = {
     has_used_trial: true,
   }
-  if (isReactivation) {
+  if (isReactivation || isRegularize) {
     orgUpdates.subscription_status = "PENDING_PAYMENT"
+  }
+  if (isRegularize) {
+    // Limpiar preapproval_id viejo (ya lo cancelamos arriba). El nuevo se
+    // escribirá cuando MP notifique subscription_preapproval.created vía webhook.
+    orgUpdates.mp_preapproval_id = null
   }
   await admin.from("organizations").update(orgUpdates).eq("id", orgId)
 
@@ -188,6 +218,16 @@ export async function POST(request: Request) {
   // que acaba de crear MP.
   const initPointWithRef = new URL(mpPlan.init_point)
   initPointWithRef.searchParams.set("external_reference", orgId)
+
+  // Slack: notificar cuando una agencia inicia regularización (PAST_DUE → checkout nuevo)
+  if (isRegularize) {
+    notifySlack(
+      `🔄 *Regularización iniciada*\n` +
+      `Agencia: ${org.name}\n` +
+      `Plan: ${planDef.name}\n` +
+      `Se canceló preapproval viejo y se generó checkout nuevo (cobro inmediato).`
+    )
+  }
 
   return NextResponse.json({
     init_point: initPointWithRef.toString(),

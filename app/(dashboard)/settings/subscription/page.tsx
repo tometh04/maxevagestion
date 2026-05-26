@@ -8,6 +8,7 @@ import { PaymentMethodCard } from "@/components/billing/payment-method-card"
 import { BillingHistoryTable } from "@/components/billing/billing-history-table"
 import { CancelDialog } from "@/components/billing/cancel-dialog"
 import { ReactivateDialog } from "@/components/billing/reactivate-dialog"
+import { RegularizePaymentButton } from "@/components/billing/regularize-payment-button"
 import { CustomPlanOwnerView } from "@/components/subscription/custom-plan-owner-view"
 import { fetchPreapproval } from "@/lib/billing/mercadopago"
 import { MpSandboxBanner } from "@/components/admin/mp-sandbox-banner"
@@ -206,10 +207,12 @@ export default async function SubscriptionPage({
             </p>
           )}
           {status === "PAST_DUE" && (
-            <p className="text-destructive">
-              No pudimos cobrar tu última cuota. Actualizá tu medio de pago antes del{" "}
-              {fmt(org.current_period_ends_at)} para no perder el acceso.
-            </p>
+            <div className="space-y-3">
+              <p className="text-destructive font-medium">
+                No pudimos cobrar tu última cuota. Regularizá tu pago para no perder el acceso.
+              </p>
+              <RegularizePaymentButton plan={org.plan} />
+            </div>
           )}
           {isCancelledWithAccess && (
             <p className="text-primary">
@@ -230,8 +233,12 @@ export default async function SubscriptionPage({
         </CardContent>
       </Card>
 
-      {/* Método de pago */}
-      <PaymentMethodCard hasActivePreapproval={hasActivePreapproval} cardSummary={null} />
+      {/* Método de pago — oculto en PAST_DUE porque "Cambiar tarjeta" de MP no
+          fuerza un retry inmediato. El botón "Regularizar pago" arriba crea un
+          preapproval nuevo con cobro inmediato, que es lo que realmente sirve. */}
+      {status !== "PAST_DUE" && (
+        <PaymentMethodCard hasActivePreapproval={hasActivePreapproval} cardSummary={null} />
+      )}
 
       {/* Plan */}
       {plan && (

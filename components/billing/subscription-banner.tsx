@@ -27,12 +27,12 @@ function daysUntil(iso: string | null): number | null {
 export function SubscriptionBanner({ subscription_status, current_period_ends_at, trial_ends_at }: Props) {
   if (subscription_status === "PAST_DUE") {
     return (
-      <div className="bg-destructive/5 border-b border-destructive/15 px-6 py-3 text-sm flex flex-wrap items-center justify-between gap-2">
-        <span className="text-destructive">
-          ⚠️ No pudimos cobrar tu última cuota. Actualizá tu medio de pago para no perder el acceso.
+      <div className="bg-destructive/10 border-b border-destructive/20 px-6 py-3 text-sm flex flex-wrap items-center justify-between gap-2">
+        <span className="text-destructive font-medium">
+          ⚠️ Tu pago está vencido. Regularizá tu suscripción para no perder el acceso.
         </span>
-        <Link href="/settings/subscription" className="text-destructive underline font-medium whitespace-nowrap">
-          Actualizar tarjeta
+        <Link href="/settings/subscription" className="bg-destructive text-destructive-foreground px-3 py-1 rounded-md text-xs font-medium whitespace-nowrap hover:bg-destructive/90 transition-colors">
+          Regularizar pago
         </Link>
       </div>
     )
