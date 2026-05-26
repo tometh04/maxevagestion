@@ -309,11 +309,23 @@ export async function middleware(req: NextRequest) {
       const customPlanId = (orgRow as any)?.custom_plan_id as string | null | undefined
       const now = Date.now()
 
+      // Grace period PAST_DUE: 3 días después de current_period_ends_at.
+      // DEBE mantenerse alineado con lib/billing/guard.ts PAST_DUE_GRACE_DAYS.
+      const PAST_DUE_GRACE_DAYS = 3
+
       let blocked = false
       if (status === "SUSPENDED" || status === "PENDING_PAYMENT") {
         blocked = true
       } else if (status === "CANCELLED") {
         blocked = !periodEnds || new Date(periodEnds).getTime() <= now
+      } else if (status === "PAST_DUE") {
+        if (!periodEnds) {
+          blocked = true
+        } else {
+          const graceDeadline =
+            new Date(periodEnds).getTime() + PAST_DUE_GRACE_DAYS * 24 * 60 * 60 * 1000
+          blocked = now >= graceDeadline
+        }
       } else if (status === "TRIAL") {
         // Legacy pre-mig157
         blocked = !trialEnds || new Date(trialEnds).getTime() <= now
@@ -321,7 +333,14 @@ export async function middleware(req: NextRequest) {
 
       if (blocked) {
         const url = req.nextUrl.clone()
-        url.pathname = customPlanId ? "/settings/subscription" : "/onboarding/billing"
+        // PAST_DUE bloqueado → /settings/subscription (tiene botón "Regularizar pago")
+        // custom_plan_id → /settings/subscription (plan custom, no onboarding genérico)
+        // Resto → /onboarding/billing (checkout estándar)
+        if (status === "PAST_DUE" || customPlanId) {
+          url.pathname = "/settings/subscription"
+        } else {
+          url.pathname = "/onboarding/billing"
+        }
         return NextResponse.redirect(url)
       }
     }
