@@ -71,7 +71,13 @@ export function isAccessAllowed(org: BillingOrg): boolean {
     return new Date(org.trial_ends_at).getTime() > now
   }
 
-  // TRIALING, ACTIVE → acceso concedido
+  if (status === "TRIALING") {
+    // Sin trial_ends_at en DB → confiar en el status (el cron lo corregirá si expiró).
+    if (!org.trial_ends_at) return true
+    return new Date(org.trial_ends_at).getTime() > now
+  }
+
+  // ACTIVE → acceso concedido
   return true
 }
 

@@ -29,7 +29,7 @@ export async function POST(request: Request) {
   const { data: orgs } = await admin
     .from("organizations")
     .select("id, name, subscription_status, current_period_ends_at, mp_preapproval_id, mp_last_synced_at, trial_ends_at")
-    .in("subscription_status", ["TRIALING", "ACTIVE", "PAST_DUE", "PENDING_PAYMENT"])
+    .in("subscription_status", ["TRIAL", "TRIALING", "ACTIVE", "PAST_DUE", "PENDING_PAYMENT"])
     .not("mp_preapproval_id", "is", null)
 
   const results: any[] = []
@@ -113,12 +113,23 @@ export async function POST(request: Request) {
   const expiredResults: any[] = []
   for (const org of expiredTrials || []) {
     try {
-      await admin.from("organizations")
+      // Guard atómico: solo actualizar si el status sigue siendo TRIALING.
+      // Si un webhook de pago aprobado llegó entre el SELECT y este UPDATE,
+      // el .eq("subscription_status", "TRIALING") no matchea y no sobrescribe ACTIVE.
+      const { data: updated } = await admin.from("organizations")
         .update({
           subscription_status: "PAST_DUE",
           current_period_ends_at: org.trial_ends_at,
         })
         .eq("id", org.id)
+        .eq("subscription_status", "TRIALING")
+        .select("id")
+
+      if (!updated || updated.length === 0) {
+        // Status ya cambió (p.ej. ACTIVE por pago aprobado) — no hacer nada
+        expiredResults.push({ orgId: org.id, skipped: true, reason: "status_changed_concurrently" })
+        continue
+      }
 
       await admin.from("billing_events").insert({
         org_id: org.id,

@@ -14,7 +14,7 @@ export default async function OnboardingBillingPage() {
   const admin = createAdminClient() as any
   const { data: org } = await admin
     .from("organizations")
-    .select("name, subscription_status, current_period_ends_at, trial_ends_at")
+    .select("name, subscription_status, current_period_ends_at, trial_ends_at, has_used_trial")
     .eq("id", user.org_id)
     .maybeSingle()
 
@@ -25,6 +25,7 @@ export default async function OnboardingBillingPage() {
     org?.current_period_ends_at &&
     new Date(org.current_period_ends_at).getTime() <= Date.now()
 
+  const hasUsedTrial = !!org?.has_used_trial
   const firstName = user.name?.split(" ")[0] || ""
 
   return (
@@ -62,15 +63,15 @@ export default async function OnboardingBillingPage() {
               )}
             </h1>
             <p className="text-xl text-muted-foreground max-w-2xl mx-auto text-balance">
-              {isCancelledExpired
-                ? "Reactivá tu cuenta para volver a operar. Toda tu información sigue intacta."
+              {isCancelledExpired || hasUsedTrial
+                ? "Elegí el plan para continuar. Toda tu información sigue intacta."
                 : "Empezá gratis por 7 días. Sin cobro hasta el día 8. Cancelás cuando quieras."}
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {PLAN_ORDER.map((planId) => (
-              <PlanCard key={planId} planId={planId} />
+              <PlanCard key={planId} planId={planId} trialAvailable={!hasUsedTrial} />
             ))}
           </div>
 
