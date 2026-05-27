@@ -202,6 +202,36 @@ export async function GET(request: Request) {
       })
     }
 
+    // Cargar ajustes/créditos de todos los operadores de la org
+    // y restar del balance (sin afectar costos ni comisiones)
+    const { data: allAdjustmentsRaw } = await (supabase as any)
+      .from("operator_adjustments")
+      .select("operator_id, amount, currency")
+      .eq("org_id", user.org_id!)
+
+    if (allAdjustmentsRaw && allAdjustmentsRaw.length > 0) {
+      // Agrupar ajustes por operador y moneda
+      const adjByOperator: Record<string, Record<string, number>> = {}
+      for (const adj of allAdjustmentsRaw as any[]) {
+        if (!adj.operator_id) continue
+        if (!adjByOperator[adj.operator_id]) adjByOperator[adj.operator_id] = {}
+        const cur = adj.currency || "USD"
+        adjByOperator[adj.operator_id][cur] =
+          (adjByOperator[adj.operator_id][cur] || 0) + (Number(adj.amount) || 0)
+      }
+
+      // Restar ajustes del balance de cada operador
+      for (const op of operatorsWithStats) {
+        const opAdj = adjByOperator[op.id]
+        if (!opAdj) continue
+        for (const [cur, adjTotal] of Object.entries(opAdj)) {
+          if (op.balanceByCurrency[cur] !== undefined) {
+            op.balanceByCurrency[cur] = Math.max(0, op.balanceByCurrency[cur] - adjTotal)
+          }
+        }
+      }
+    }
+
     return NextResponse.json({ operators: operatorsWithStats })
   } catch (error: any) {
     console.error("Error in GET /api/operators:", error)

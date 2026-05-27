@@ -74,6 +74,20 @@ async function renderFromOperatorPayments(supabase: any, orgId: string) {
     opCountByOperator[row.operator_id] = (opCountByOperator[row.operator_id] || 0) + 1
   }
 
+  // Cargar ajustes/créditos para restar del balance
+  const { data: allAdjRaw } = await (supabase as any)
+    .from("operator_adjustments")
+    .select("operator_id, amount, currency")
+    .eq("org_id", orgId)
+
+  const adjByOperator: Record<string, Record<string, number>> = {}
+  for (const adj of (allAdjRaw || []) as any[]) {
+    if (!adj.operator_id) continue
+    if (!adjByOperator[adj.operator_id]) adjByOperator[adj.operator_id] = {}
+    const cur = adj.currency || "USD"
+    adjByOperator[adj.operator_id][cur] = (adjByOperator[adj.operator_id][cur] || 0) + (Number(adj.amount) || 0)
+  }
+
   const initialOperators = (operators || []).map((op: any) => {
     const payments = paymentsByOperator[op.id] || []
 
@@ -92,6 +106,16 @@ async function renderFromOperatorPayments(supabase: any, orgId: string) {
     )
     for (const cur of allCurrencies) {
       balanceByCurrency[cur] = Math.max(0, (totalCostByCurrency[cur] || 0) - (paidAmountByCurrency[cur] || 0))
+    }
+
+    // Restar ajustes del balance
+    const opAdj = adjByOperator[op.id]
+    if (opAdj) {
+      for (const [cur, adjTotal] of Object.entries(opAdj)) {
+        if (balanceByCurrency[cur] !== undefined) {
+          balanceByCurrency[cur] = Math.max(0, balanceByCurrency[cur] - adjTotal)
+        }
+      }
     }
 
     // Próximo pago pendiente (status != PAID con saldo restante)
