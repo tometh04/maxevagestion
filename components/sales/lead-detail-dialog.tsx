@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { toast } from "sonner"
 import { getQuotationOptionPricing } from "@/lib/quotations/presentation"
+import { LeadEmiliaChat } from "@/components/sales/lead-emilia-chat"
 
 const regionColors: Record<string, string> = {
   ARGENTINA: "bg-accent-coral/80",
@@ -224,6 +225,7 @@ export function LeadDetailDialog({
   const [convertDialogOpen, setConvertDialogOpen] = useState(false)
   const [quotationDialogOpen, setQuotationDialogOpen] = useState(false)
   const [editingQuotationId, setEditingQuotationId] = useState<string | null>(null)
+  const [mode, setMode] = useState<"detail" | "emilia">("detail")
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -335,6 +337,11 @@ export function LeadDetailDialog({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, lead?.id])
+
+  // Resetear mode cuando el modal se cierra
+  useEffect(() => {
+    if (!open) setMode("detail")
+  }, [open])
 
   if (!lead) return null
 
@@ -488,6 +495,27 @@ export function LeadDetailDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl p-0">
+        {mode === "emilia" ? (
+          <LeadEmiliaChat
+            lead={{
+              id: lead.id,
+              contact_name: lead.contact_name,
+              contact_phone: lead.contact_phone,
+              destination: lead.destination,
+              region: lead.region,
+              agency_id: lead.agency_id,
+            }}
+            onBack={() => setMode("detail")}
+            onQuotationCreated={() => {
+              // El padre puede refrescar el listado de cotizaciones internamente
+              if (typeof window !== "undefined") {
+                // Cuando vuelve al detail mode tras cerrar el banner del chat,
+                // las cotizaciones se recargarán por el useEffect existente.
+              }
+            }}
+          />
+        ) : (
+          <>
         {/* Header con nombre y badges */}
         <div className="px-6 pt-6 pb-4 border-b">
           <DialogHeader>
@@ -981,7 +1009,18 @@ export function LeadDetailDialog({
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => {
+                    onClick={async () => {
+                      // Beta gate: si la feature flag está ON para la org, abrir chat embebido.
+                      // Si está OFF (403) o hay error, caer al QuotationBuilder clásico.
+                      try {
+                        const res = await fetch(`/api/leads/${lead.id}/emilia`)
+                        if (res.ok) {
+                          setMode("emilia")
+                          return
+                        }
+                      } catch {
+                        // network error → fallback al builder clásico
+                      }
                       setEditingQuotationId(null)
                       setQuotationDialogOpen(true)
                     }}
@@ -1045,6 +1084,8 @@ export function LeadDetailDialog({
             </div>
           )}
         </div>
+          </>
+        )}
       </DialogContent>
 
       {/* Dialog de editar */}
