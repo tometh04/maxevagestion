@@ -1,7 +1,7 @@
 // components/sales/lead-emilia-chat.tsx
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Loader2, ChevronLeft, MessageSquarePlus, Send, AlertTriangle, CheckCircle2, ExternalLink, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -22,8 +22,13 @@ interface Message {
     requestType?: string
   }
   meta?: {
-    confidence?: number
-    originalRequest?: any
+    // Emilia anida confidence dentro de originalRequest en el shape nuevo.
+    originalRequest?: {
+      confidence?: number
+      flights?: { departureDate?: string; returnDate?: string | null; adults?: number; children?: number; infants?: number }
+      hotels?: { checkinDate?: string; checkoutDate?: string | null; adults?: number; children?: number; infants?: number }
+      [key: string]: any
+    }
     missing_fields?: string[]
   }
 }
@@ -345,7 +350,7 @@ export function LeadEmiliaChat({ lead, onBack, onQuotationCreated }: Props) {
                   selected={selectedHotels.has(hotel.id)}
                   selectedRoomId={selectedHotels.get(hotel.id)}
                   onRoomSelect={(roomId) => toggleHotel(hotel.id, roomId)}
-                  onSelectionChange={(hid, sel) => sel ? toggleHotel(hid) : toggleHotel(hid)}
+                  onSelectionChange={(hid) => toggleHotel(hid)}
                 />
               ))}
             </div>
