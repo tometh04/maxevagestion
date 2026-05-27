@@ -157,4 +157,43 @@ describe("/api/leads/[id]/emilia", () => {
     expect(body.conversation_id).toBe("conv-new")
     expect(body.suggested_prompt).toMatch(/Cancún/)
   })
+
+  it("POST reusa conversación existente cuando ya hay una active", async () => {
+    getCurrentUser.mockResolvedValue({ user: { id: "u1", org_id: USER_ORG } })
+    getOrgFeatureFlag.mockResolvedValue(true)
+
+    const insertSpy = jest.fn()
+
+    createServerClient.mockResolvedValue(mockSupabase({
+      leads: {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => ({
+              data: {
+                id: LEAD_ID,
+                contact_name: "Juan",
+                destination: "Cancún",
+                region: "CARIBE",
+                notes: null,
+                agency_id: "a1",
+                agencies: { org_id: USER_ORG },
+              },
+            }),
+          }),
+        }),
+      },
+      conversations: {
+        select: () => ({
+          eq: () => ({ eq: () => ({ eq: () => ({ order: () => ({ limit: () => ({ maybeSingle: async () => ({ data: { id: "conv-existing" } }) }) }) }) }) }),
+        }),
+        insert: insertSpy,
+      },
+    }))
+
+    const res = await POST(REQ_STUB, { params: Promise.resolve({ id: LEAD_ID }) })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.conversation_id).toBe("conv-existing")
+    expect(insertSpy).not.toHaveBeenCalled()
+  })
 })
