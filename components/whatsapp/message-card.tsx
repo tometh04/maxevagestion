@@ -20,6 +20,7 @@ import {
   ChevronUp,
 } from "lucide-react"
 import { formatDistanceToNow, format } from "date-fns"
+import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 import { es } from "date-fns/locale"
 import Link from "next/link"
 import { toast } from "sonner"
@@ -225,7 +226,7 @@ export function MessageCard({ message, onMarkSent, onSkip }: MessageCardProps) {
           {message.operations?.departure_date ? (
             <span className="flex items-center gap-0.5">
               <Calendar className="h-3 w-3" />
-              {format(new Date(message.operations.departure_date), "dd/MM/yyyy")}
+              {format(parseDateOnlyLocal(message.operations.departure_date) ?? new Date(message.operations.departure_date), "dd/MM/yyyy")}
             </span>
           ) : null}
           {message.operations?.file_code ? (

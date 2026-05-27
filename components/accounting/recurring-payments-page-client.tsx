@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { format } from "date-fns"
+import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 import { es } from "date-fns/locale"
 import { Plus, RefreshCw, AlertCircle, Filter, HelpCircle, Info, Trash2 } from "lucide-react"
 import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
@@ -657,7 +658,7 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
                       <TableCell>
                         <div className="flex flex-col">
                           <span>
-                            {format(new Date(payment.next_due_date), "dd/MM/yyyy", {
+                            {format(parseDateOnlyLocal(payment.next_due_date) ?? new Date(payment.next_due_date), "dd/MM/yyyy", {
                               locale: es,
                             })}
                           </span>

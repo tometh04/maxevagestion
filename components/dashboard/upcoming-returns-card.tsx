@@ -9,6 +9,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { PlaneLanding, ChevronRight, MapPin, Users, Calendar } from "lucide-react"
 import { format, differenceInDays } from "date-fns"
 import { es } from "date-fns/locale"
+import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 import Link from "next/link"
 
 interface Operation {
@@ -60,9 +61,9 @@ export function UpcomingReturnsCard({ agencyId, sellerId }: UpcomingReturnsCardP
       const todayDate = new Date()
       todayDate.setHours(0, 0, 0, 0)
       const withReturn = (data.operations || [])
-        .filter((op: Operation) => op.return_date && new Date(op.return_date) >= todayDate)
+        .filter((op: Operation) => op.return_date && (parseDateOnlyLocal(op.return_date) ?? new Date(op.return_date)) >= todayDate)
         .sort((a: Operation, b: Operation) =>
-          new Date(a.return_date!).getTime() - new Date(b.return_date!).getTime()
+          (parseDateOnlyLocal(a.return_date!) ?? new Date(a.return_date!)).getTime() - (parseDateOnlyLocal(b.return_date!) ?? new Date(b.return_date!)).getTime()
         )
         .slice(0, 10)
 
@@ -155,7 +156,7 @@ export function UpcomingReturnsCard({ agencyId, sellerId }: UpcomingReturnsCardP
                           <div className="flex items-center gap-2 mt-0.5 text-[10px] text-muted-foreground">
                             <span className="flex items-center gap-0.5">
                               <Calendar className="h-2.5 w-2.5" />
-                              {format(new Date(op.return_date!), "d MMM", { locale: es })}
+                              {format(parseDateOnlyLocal(op.return_date!) ?? new Date(op.return_date!), "d MMM", { locale: es })}
                             </span>
                             <span className="flex items-center gap-0.5">
                               <Users className="h-2.5 w-2.5" />

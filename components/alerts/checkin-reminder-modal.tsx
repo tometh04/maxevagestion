@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { format } from "date-fns"
+import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 import { es } from "date-fns/locale"
 import { LogIn, Plane } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -80,7 +81,7 @@ export function CheckinReminderModal() {
   if (!isOpen) return null
 
   const departure = current.operations?.departure_date
-    ? format(new Date(current.operations.departure_date), "EEEE d 'de' MMMM", { locale: es })
+    ? format(parseDateOnlyLocal(current.operations.departure_date) ?? new Date(current.operations.departure_date), "EEEE d 'de' MMMM", { locale: es })
     : null
 
   return (

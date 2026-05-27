@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
+import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 import {
   Table,
   TableBody,
@@ -26,6 +27,7 @@ import {
   BreadcrumbPage,
 } from "@/components/ui/breadcrumb"
 import { EditOperatorDialog } from "./edit-operator-dialog"
+import { OperatorAdjustmentsSection } from "./operator-adjustments-section"
 import { useRouter } from "next/navigation"
 
 interface Operator {
@@ -46,11 +48,25 @@ interface Metrics {
   nextPaymentDate: string | null
 }
 
+interface Adjustment {
+  id: string
+  amount: number
+  currency: string
+  reason: string
+  created_at: string
+  created_by: string
+  users?: { name: string } | null
+}
+
 interface OperatorDetailClientProps {
   operator: Operator
   operations: any[]
   pendingPayments: any[]
   metrics: Metrics
+  adjustments?: Adjustment[]
+  adjustmentsTotalByCurrency?: Record<string, number>
+  canCreateAdjustments?: boolean
+  userRole?: string
 }
 
 function formatMoney(amount: number, currency: string) {
@@ -86,7 +102,26 @@ export function OperatorDetailClient({
   operations,
   pendingPayments,
   metrics,
+  adjustments = [],
+  adjustmentsTotalByCurrency = {},
+  canCreateAdjustments = false,
 }: OperatorDetailClientProps) {
+  // Calcular saldo neto (balance - ajustes)
+  const hasAdjustments = Object.values(adjustmentsTotalByCurrency).some((v) => v > 0)
+  const netBalanceByCurrency: Record<string, number> = {}
+  if (hasAdjustments) {
+    const allCurrencies = Array.from(
+      new Set([
+        ...Object.keys(metrics.balanceByCurrency),
+        ...Object.keys(adjustmentsTotalByCurrency),
+      ])
+    )
+    for (const cur of allCurrencies) {
+      const bal = metrics.balanceByCurrency[cur] || 0
+      const adj = adjustmentsTotalByCurrency[cur] || 0
+      netBalanceByCurrency[cur] = Math.max(0, bal - adj)
+    }
+  }
   const router = useRouter()
   const [editDialogOpen, setEditDialogOpen] = useState(false)
 
@@ -170,12 +205,30 @@ export function OperatorDetailClient({
 
         <Card className="rounded-xl border-border/40 bg-muted/20">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Saldo Pendiente</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              {hasAdjustments ? "Saldo Neto" : "Saldo Pendiente"}
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold space-y-1">
-              {renderBalanceEntries(metrics.balanceByCurrency)}
+              {renderBalanceEntries(hasAdjustments ? netBalanceByCurrency : metrics.balanceByCurrency)}
             </div>
+            {hasAdjustments && (
+              <div className="mt-2 space-y-0.5">
+                <p className="text-xs text-muted-foreground">
+                  Deuda: {Object.entries(metrics.balanceByCurrency)
+                    .filter(([, v]) => v > 0.005)
+                    .map(([cur, amt]) => formatMoney(amt, cur))
+                    .join(" / ") || "0"}
+                </p>
+                <p className="text-xs text-green-600">
+                  Ajustes: -{Object.entries(adjustmentsTotalByCurrency)
+                    .filter(([, v]) => v > 0)
+                    .map(([cur, amt]) => formatMoney(amt, cur))
+                    .join(" / ")}
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -210,6 +263,16 @@ export function OperatorDetailClient({
           </div>
         </CardContent>
       </Card>
+
+      {/* Ajustes / Créditos */}
+      {(adjustments.length > 0 || canCreateAdjustments) && (
+        <OperatorAdjustmentsSection
+          operatorId={operator.id}
+          operatorName={operator.name}
+          canCreate={canCreateAdjustments}
+          initialAdjustments={adjustments}
+        />
+      )}
 
       {/* Tabs */}
       <Tabs defaultValue="operations" className="w-full">
@@ -249,7 +312,7 @@ export function OperatorDetailClient({
                           <TableCell className="font-medium">{op.destination}</TableCell>
                           <TableCell>
                             {op.departure_date
-                              ? format(new Date(op.departure_date), "dd/MM/yyyy", { locale: es })
+                              ? format(parseDateOnlyLocal(op.departure_date) ?? new Date(op.departure_date), "dd/MM/yyyy", { locale: es })
                               : "-"}
                           </TableCell>
                           <TableCell>
@@ -337,7 +400,7 @@ export function OperatorDetailClient({
                         <TableRow key={payment.id}>
                           <TableCell>
                             {payment.date_due
-                              ? format(new Date(payment.date_due), "dd/MM/yyyy", { locale: es })
+                              ? format(parseDateOnlyLocal(payment.date_due) ?? new Date(payment.date_due), "dd/MM/yyyy", { locale: es })
                               : "-"}
                           </TableCell>
                           <TableCell className="text-right">

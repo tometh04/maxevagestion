@@ -8,7 +8,7 @@ import { PLANS, SALES_CONTACT_URL, formatArs, type PlanId } from "@/lib/billing/
  * Plan card — styled to match landing (vibook.ai/#pricing).
  * Dark bg, blue/purple accents, glowing gradient effects.
  */
-export function PlanCard({ planId }: { planId: PlanId }) {
+export function PlanCard({ planId, trialAvailable = true }: { planId: PlanId; trialAvailable?: boolean }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const plan = PLANS[planId]
@@ -109,7 +109,7 @@ export function PlanCard({ planId }: { planId: PlanId }) {
             </span>
             <span className="text-muted-foreground">/mes</span>
           </div>
-          {plan.trialDays ? (
+          {trialAvailable && plan.trialDays ? (
             <p className="text-sm text-muted-foreground mt-2">
               {plan.trialDays} días de prueba gratuita · sin cobro hasta el día {plan.trialDays + 1}
             </p>
