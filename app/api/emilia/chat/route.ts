@@ -230,11 +230,30 @@ export async function POST(request: Request) {
         }
 
         // 6. Transformar los datos de la API al formato del frontend
-        // La API puede devolver resultados en dos formatos:
-        // 1. data.results.flights (formato anidado)
-        // 2. data.flights (formato plano)
-        const flightsData = data.results?.flights || data.flights
-        const hotelsData = data.results?.hotels || data.hotels
+        // La API puede devolver resultados en tres formatos según versión:
+        // 1. data.results.flights (formato anidado legacy)
+        // 2. data.flights (formato plano legacy)
+        // 3. data.assistant_message.meta.combinedData.flights (shape nuevo /v1/emilia/turn)
+        const metaCombined = data.assistant_message?.meta?.combinedData
+        const flightsRaw =
+          metaCombined?.flights ??
+          data.results?.flights ??
+          data.flights
+        const hotelsRaw =
+          metaCombined?.hotels ??
+          data.results?.hotels ??
+          data.hotels
+
+        // Normalizar: el shape nuevo viene como array plano. Los shapes legacy
+        // vienen como { count, items: [] }. Unificamos a { count, items }.
+        const flightsData =
+          Array.isArray(flightsRaw)
+            ? { count: flightsRaw.length, items: flightsRaw }
+            : flightsRaw
+        const hotelsData =
+          Array.isArray(hotelsRaw)
+            ? { count: hotelsRaw.length, items: hotelsRaw }
+            : hotelsRaw
 
         const transformedFlights = flightsData?.items
             ? transformFlights(flightsData.items)
