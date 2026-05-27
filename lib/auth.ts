@@ -15,7 +15,7 @@ export const getCurrentUser = cache(async (): Promise<{ user: User; session: { u
   if (process.env.DISABLE_AUTH === 'true' && process.env.NODE_ENV === 'production') {
     console.warn('⚠️ DISABLE_AUTH ignorada en producción — usando auth real')
   }
-  if (process.env.DISABLE_AUTH === 'true' && process.env.NODE_ENV !== 'production') {
+  if (process.env.DISABLE_AUTH === 'true' && process.env.NODE_ENV === 'development') {
     // Retornar usuario mock para desarrollo (usar IDs reales para evitar errores de UUID)
     const mockUser: User = {
       id: '9ec9dbcf-5cdd-428f-a303-c3f79b06d0be',
@@ -71,7 +71,7 @@ export const getCurrentUser = cache(async (): Promise<{ user: User; session: { u
 
 export const getUserAgencies = cache(async (userId: string): Promise<Array<{ agency_id: string; agencies: { name: string; city: string; timezone: string } | null }>> => {
   // BYPASS EN DESARROLLO - Retornar array vacío si falla
-  if (process.env.DISABLE_AUTH === 'true' && process.env.NODE_ENV !== 'production') {
+  if (process.env.DISABLE_AUTH === 'true' && process.env.NODE_ENV === 'development') {
     try {
       const supabase = await createServerClient()
       const { data: agencies } = await supabase
