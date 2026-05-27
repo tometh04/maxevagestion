@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
 import { getUserAgencyIds, canPerformAction } from "@/lib/permissions-api"
 import { revalidateTag, CACHE_TAGS } from "@/lib/cache"
+import { getOrgFeatureFlag } from "@/lib/settings/org-features"
 import type { UserRole } from "@/lib/permissions"
 
 // Forzar ruta dinámica (usa cookies para autenticación)
@@ -77,55 +78,129 @@ export async function GET(request: Request) {
       throw new Error("Error al obtener operadores")
     }
 
-    // Calculate metrics for each operator. Regla: separar por moneda.
-    const operatorsWithStats = (data || []).map((op: any) => {
-      const operations = (op.operations || []) as any[]
-      const operationsCount = operations.length
+    // Feature flag: usar operator_payments como fuente de verdad (VICO ON)
+    const useOperatorPayments = user.org_id
+      ? await getOrgFeatureFlag(supabase, user.org_id, "features.operator_debt_from_operator_payments")
+      : false
 
-      const totalCostByCurrency: Record<string, number> = {}
-      const paidAmountByCurrency: Record<string, number> = {}
+    let operatorsWithStats: any[]
 
-      for (const o of operations) {
-        const opCur = o.currency || "ARS"
-        totalCostByCurrency[opCur] = (totalCostByCurrency[opCur] || 0) + (Number(o.operator_cost) || 0)
+    if (useOperatorPayments) {
+      // ─── Modelo NUEVO: operator_payments ─────────────────────────────────
+      const { data: allPaymentsRaw } = await supabase
+        .from("operator_payments")
+        .select("id, operator_id, amount, paid_amount, currency, status, due_date")
+        .eq("org_id", user.org_id!)
 
-        const payments = (o.payments || []) as any[]
+      const allPayments = (allPaymentsRaw || []) as any[]
+
+      const paymentsByOperator: Record<string, any[]> = {}
+      for (const p of allPayments) {
+        if (!p.operator_id) continue
+        if (!paymentsByOperator[p.operator_id]) paymentsByOperator[p.operator_id] = []
+        paymentsByOperator[p.operator_id].push(p)
+      }
+
+      operatorsWithStats = (data || []).map((op: any) => {
+        const operations = (op.operations || []) as any[]
+        const payments = paymentsByOperator[op.id] || []
+
+        const totalCostByCurrency: Record<string, number> = {}
+        const paidAmountByCurrency: Record<string, number> = {}
+
         for (const p of payments) {
-          if (p.direction === "EXPENSE" && p.status === "PAID") {
-            const payCur = p.currency || opCur
-            paidAmountByCurrency[payCur] = (paidAmountByCurrency[payCur] || 0) + (Number(p.amount) || 0)
+          const cur = (p.currency || "ARS") as string
+          totalCostByCurrency[cur] = (totalCostByCurrency[cur] || 0) + (Number(p.amount) || 0)
+          paidAmountByCurrency[cur] = (paidAmountByCurrency[cur] || 0) + (Number(p.paid_amount) || 0)
+        }
+
+        const balanceByCurrency: Record<string, number> = {}
+        const allCurrencies = Array.from(
+          new Set([...Object.keys(totalCostByCurrency), ...Object.keys(paidAmountByCurrency)])
+        )
+        for (const cur of allCurrencies) {
+          balanceByCurrency[cur] = Math.max(0, (totalCostByCurrency[cur] || 0) - (paidAmountByCurrency[cur] || 0))
+        }
+
+        const nextPayment = payments
+          .filter((p: any) => {
+            if (p.status === "PAID") return false
+            const remaining = (Number(p.amount) || 0) - (Number(p.paid_amount) || 0)
+            return remaining > 0.001
+          })
+          .sort((a: any, b: any) => {
+            if (!a.due_date && !b.due_date) return 0
+            if (!a.due_date) return 1
+            if (!b.due_date) return -1
+            return new Date(a.due_date).getTime() - new Date(b.due_date).getTime()
+          })[0]
+
+        return {
+          id: op.id,
+          name: op.name,
+          contact_name: op.contact_name,
+          contact_email: op.contact_email,
+          contact_phone: op.contact_phone,
+          credit_limit: op.credit_limit,
+          admin_fee_percentage: op.admin_fee_percentage ?? 0,
+          cuit: op.cuit ?? null,
+          operationsCount: operations.length,
+          totalCostByCurrency,
+          paidAmountByCurrency,
+          balanceByCurrency,
+          nextPaymentDate: nextPayment?.due_date || null,
+        }
+      })
+    } else {
+      // ─── Modelo LEGACY: operations.operator_cost − payments PAID ────────
+      operatorsWithStats = (data || []).map((op: any) => {
+        const operations = (op.operations || []) as any[]
+        const operationsCount = operations.length
+
+        const totalCostByCurrency: Record<string, number> = {}
+        const paidAmountByCurrency: Record<string, number> = {}
+
+        for (const o of operations) {
+          const opCur = o.currency || "ARS"
+          totalCostByCurrency[opCur] = (totalCostByCurrency[opCur] || 0) + (Number(o.operator_cost) || 0)
+
+          const payments = (o.payments || []) as any[]
+          for (const p of payments) {
+            if (p.direction === "EXPENSE" && p.status === "PAID") {
+              const payCur = p.currency || opCur
+              paidAmountByCurrency[payCur] = (paidAmountByCurrency[payCur] || 0) + (Number(p.amount) || 0)
+            }
           }
         }
-      }
 
-      const balanceByCurrency: Record<string, number> = {}
-      const allCurrencies = Array.from(new Set([...Object.keys(totalCostByCurrency), ...Object.keys(paidAmountByCurrency)]))
-      for (const cur of allCurrencies) {
-        balanceByCurrency[cur] = (totalCostByCurrency[cur] || 0) - (paidAmountByCurrency[cur] || 0)
-      }
+        const balanceByCurrency: Record<string, number> = {}
+        const allCurrencies = Array.from(new Set([...Object.keys(totalCostByCurrency), ...Object.keys(paidAmountByCurrency)]))
+        for (const cur of allCurrencies) {
+          balanceByCurrency[cur] = (totalCostByCurrency[cur] || 0) - (paidAmountByCurrency[cur] || 0)
+        }
 
-      // Find next payment due date (PENDING EXPENSE payments)
-      const nextPayment = operations
-        .flatMap((o: any) => (o.payments || []) as any[])
-        .filter((p: any) => p.direction === "EXPENSE" && p.status === "PENDING")
-        .sort((a: any, b: any) => new Date(a.date_due).getTime() - new Date(b.date_due).getTime())[0]
+        const nextPayment = operations
+          .flatMap((o: any) => (o.payments || []) as any[])
+          .filter((p: any) => p.direction === "EXPENSE" && p.status === "PENDING")
+          .sort((a: any, b: any) => new Date(a.date_due).getTime() - new Date(b.date_due).getTime())[0]
 
-      return {
-        id: op.id,
-        name: op.name,
-        contact_name: op.contact_name,
-        contact_email: op.contact_email,
-        contact_phone: op.contact_phone,
-        credit_limit: op.credit_limit,
-        admin_fee_percentage: op.admin_fee_percentage ?? 0,
-        cuit: op.cuit ?? null,
-        operationsCount,
-        totalCostByCurrency,
-        paidAmountByCurrency,
-        balanceByCurrency,
-        nextPaymentDate: nextPayment?.date_due || null,
-      }
-    })
+        return {
+          id: op.id,
+          name: op.name,
+          contact_name: op.contact_name,
+          contact_email: op.contact_email,
+          contact_phone: op.contact_phone,
+          credit_limit: op.credit_limit,
+          admin_fee_percentage: op.admin_fee_percentage ?? 0,
+          cuit: op.cuit ?? null,
+          operationsCount,
+          totalCostByCurrency,
+          paidAmountByCurrency,
+          balanceByCurrency,
+          nextPaymentDate: nextPayment?.date_due || null,
+        }
+      })
+    }
 
     return NextResponse.json({ operators: operatorsWithStats })
   } catch (error: any) {

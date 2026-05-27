@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
+import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 import {
   Table,
   TableBody,
@@ -249,7 +250,7 @@ export function OperatorDetailClient({
                           <TableCell className="font-medium">{op.destination}</TableCell>
                           <TableCell>
                             {op.departure_date
-                              ? format(new Date(op.departure_date), "dd/MM/yyyy", { locale: es })
+                              ? format(parseDateOnlyLocal(op.departure_date) ?? new Date(op.departure_date), "dd/MM/yyyy", { locale: es })
                               : "-"}
                           </TableCell>
                           <TableCell>
@@ -337,7 +338,7 @@ export function OperatorDetailClient({
                         <TableRow key={payment.id}>
                           <TableCell>
                             {payment.date_due
-                              ? format(new Date(payment.date_due), "dd/MM/yyyy", { locale: es })
+                              ? format(parseDateOnlyLocal(payment.date_due) ?? new Date(payment.date_due), "dd/MM/yyyy", { locale: es })
                               : "-"}
                           </TableCell>
                           <TableCell className="text-right">

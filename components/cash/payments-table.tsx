@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
+import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 import { DataTable } from "@/components/ui/data-table"
 import { DataTableColumnHeader } from "@/components/ui/data-table-column-header"
 import { ServerPagination } from "@/components/ui/server-pagination"
@@ -197,7 +198,7 @@ export function PaymentsTable({
         ),
         cell: ({ row }) => (
           <div className="whitespace-nowrap">
-            {format(new Date(row.original.date_due), "dd/MM/yyyy", {
+            {format(parseDateOnlyLocal(row.original.date_due) ?? new Date(row.original.date_due), "dd/MM/yyyy", {
               locale: es,
             })}
           </div>
@@ -211,7 +212,7 @@ export function PaymentsTable({
         cell: ({ row }) => (
           <div className="whitespace-nowrap">
             {row.original.date_paid
-              ? format(new Date(row.original.date_paid), "dd/MM/yyyy", {
+              ? format(parseDateOnlyLocal(row.original.date_paid) ?? new Date(row.original.date_paid), "dd/MM/yyyy", {
                   locale: es,
                 })
               : "-"}
