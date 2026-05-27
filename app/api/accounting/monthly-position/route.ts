@@ -24,6 +24,12 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "No autorizado" }, { status: 403 })
     }
 
+    // Cross-tenant fix: filtro explícito, no confiar en RLS
+    const userOrgId = (user as any).org_id as string | null
+    if (!userOrgId) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
     
@@ -65,6 +71,7 @@ export async function GET(request: Request) {
     let accountsQuery = supabase
       .from("financial_accounts")
       .select("id, name, type, currency, initial_balance, agency_id")
+      .eq("org_id", userOrgId) // Cross-tenant fix: filtro explícito, no confiar en RLS
       .eq("is_active", true)
       .in("type", ["CASH_ARS", "CASH_USD", "CHECKING_ARS", "CHECKING_USD", "SAVINGS_ARS", "SAVINGS_USD"])
 
