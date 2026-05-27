@@ -96,7 +96,7 @@ export const assertSubscriptionActive = cache(async (): Promise<BillingOrg | nul
   // Mismo patrón que lib/auth.ts: si DISABLE_AUTH=true en dev, no chequeamos
   // suscripción ni org_id (el user mock tiene org_id=null y forzaría redirect
   // a /onboarding).
-  if (process.env.DISABLE_AUTH === "true" && process.env.NODE_ENV !== "production") {
+  if (process.env.DISABLE_AUTH === "true" && process.env.NODE_ENV === "development") {
     return {
       subscription_status: "ACTIVE",
       current_period_ends_at: null,
