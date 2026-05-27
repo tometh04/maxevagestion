@@ -507,11 +507,8 @@ export function LeadDetailDialog({
             }}
             onBack={() => setMode("detail")}
             onQuotationCreated={() => {
-              // El padre puede refrescar el listado de cotizaciones internamente
-              if (typeof window !== "undefined") {
-                // Cuando vuelve al detail mode tras cerrar el banner del chat,
-                // las cotizaciones se recargarán por el useEffect existente.
-              }
+              // Recargar cotizaciones para que aparezcan al volver al mode="detail"
+              loadQuotations()
             }}
           />
         ) : (
