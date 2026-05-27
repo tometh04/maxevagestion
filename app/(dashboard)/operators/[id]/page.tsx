@@ -76,6 +76,7 @@ export default async function OperatorDetailPage({ params }: { params: Promise<{
       operatorId,
       orgId,
       supabase,
+      userRole: user.role,
     })
   }
 
@@ -83,7 +84,7 @@ export default async function OperatorDetailPage({ params }: { params: Promise<{
   // Preservado EXACTO igual al comportamiento histórico para no romper
   // contabilidades existentes. Si reportan un bug similar al de VICO,
   // se activa la flag para esa org y se compara.
-  return await renderLegacy({ operator, operatorId, orgId, supabase })
+  return await renderLegacy({ operator, operatorId, orgId, supabase, userRole: user.role })
 }
 
 // =========================================================================
@@ -95,11 +96,13 @@ async function renderLegacy({
   operatorId,
   orgId,
   supabase,
+  userRole,
 }: {
   operator: any
   operatorId: string
   orgId: string
   supabase: any
+  userRole: string
 }) {
   const { data: operations, error: operationsError } = await supabase
     .from("operations")
@@ -167,12 +170,32 @@ async function renderLegacy({
     nextPaymentDate: pendingPayments[0]?.date_due || null,
   }
 
+  // Cargar ajustes/créditos del operador (compartido con modelo nuevo)
+  const { data: adjustmentsRaw } = await (supabase as any)
+    .from("operator_adjustments")
+    .select("id, amount, currency, reason, created_at, created_by, users:created_by(name)")
+    .eq("operator_id", operatorId)
+    .eq("org_id", orgId)
+    .order("created_at", { ascending: false })
+
+  const adjustments = (adjustmentsRaw || []) as any[]
+  const adjustmentsTotalByCurrency: Record<string, number> = {}
+  for (const adj of adjustments) {
+    const cur = (adj.currency || "USD") as string
+    adjustmentsTotalByCurrency[cur] = (adjustmentsTotalByCurrency[cur] || 0) + (Number(adj.amount) || 0)
+  }
+
+  const canCreateAdjustments = userRole === "SUPER_ADMIN" || userRole === "ORG_OWNER"
+
   return (
     <OperatorDetailClient
       operator={operator as any}
       operations={operations || []}
       pendingPayments={pendingPayments}
       metrics={metrics}
+      adjustments={adjustments}
+      adjustmentsTotalByCurrency={adjustmentsTotalByCurrency}
+      canCreateAdjustments={canCreateAdjustments}
     />
   )
 }
@@ -185,11 +208,13 @@ async function renderFromOperatorPayments({
   operatorId,
   orgId,
   supabase,
+  userRole,
 }: {
   operator: any
   operatorId: string
   orgId: string
   supabase: any
+  userRole: string
 }) {
   // 1. operator_payments scopeado por operator + org. Captura multi-operator
   //    (vía operation_operators) porque operator_payments tiene operator_id
@@ -330,6 +355,22 @@ async function renderFromOperatorPayments({
     }
   })
 
+  // Cargar ajustes/créditos del operador
+  const { data: adjustmentsRaw } = await (supabase as any)
+    .from("operator_adjustments")
+    .select("id, amount, currency, reason, created_at, created_by, users:created_by(name)")
+    .eq("operator_id", operatorId)
+    .eq("org_id", orgId)
+    .order("created_at", { ascending: false })
+
+  const adjustments = (adjustmentsRaw || []) as any[]
+
+  const adjustmentsTotalByCurrency: Record<string, number> = {}
+  for (const adj of adjustments) {
+    const cur = (adj.currency || "USD") as string
+    adjustmentsTotalByCurrency[cur] = (adjustmentsTotalByCurrency[cur] || 0) + (Number(adj.amount) || 0)
+  }
+
   const metrics = {
     operationsCount: operations.length,
     totalCostByCurrency,
@@ -339,12 +380,17 @@ async function renderFromOperatorPayments({
     nextPaymentDate: pendingPayments[0]?.date_due || null,
   }
 
+  const canCreateAdjustments = userRole === "SUPER_ADMIN" || userRole === "ORG_OWNER"
+
   return (
     <OperatorDetailClient
       operator={operator as any}
       operations={operations}
       pendingPayments={pendingPayments}
       metrics={metrics}
+      adjustments={adjustments}
+      adjustmentsTotalByCurrency={adjustmentsTotalByCurrency}
+      canCreateAdjustments={canCreateAdjustments}
     />
   )
 }
