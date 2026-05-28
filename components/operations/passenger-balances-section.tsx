@@ -247,11 +247,11 @@ export function PassengerBalancesSection({
     }
 
     // Caso 2: op ARS, alloc USD → necesitamos ARS value
+    // Las allocations siempre heredan la moneda del pago, por lo que si alloc es
+    // USD el pago padre es USD. En ese caso amount = amount_usd (ambos en USD),
+    // así que la fórmula proporcional (allocAmount/amount_usd)*amount daría
+    // simplemente allocAmount en vez del equivalente ARS. Usar exchange_rate.
     if (currency === "ARS" && allocCcy === "USD") {
-      if (parentPayment.amount_usd != null && Number(parentPayment.amount_usd) > 0) {
-        // Proporcional: si payment es USD 100 = ARS 143000, alloc USD 50 → ARS 71500
-        return (allocAmount / Number(parentPayment.amount_usd)) * paymentAmount
-      }
       if (parentPayment.exchange_rate && Number(parentPayment.exchange_rate) > 0) {
         return allocAmount * Number(parentPayment.exchange_rate)
       }

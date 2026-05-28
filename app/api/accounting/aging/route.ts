@@ -80,12 +80,15 @@ function daysBetween(dateStr: string, now: Date): number {
 export async function GET(request: Request) {
   try {
     const { user } = await getCurrentUser()
+    // Cross-tenant fix: filtro explícito, no confiar en RLS
+    const userOrgId = (user as any).org_id as string | null
+    if (!userOrgId) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
-    const perms = (user as any).org_id
-      ? await resolveUserPermissions(supabase as any, user.id, (user as any).org_id, user.role, agencyIds)
-      : null
+    const perms = await resolveUserPermissions(supabase as any, user.id, userOrgId, user.role, agencyIds)
     if (!assertPermission(user.role, perms, "accounting", "read")) {
       return NextResponse.json({ error: "No tiene permiso para ver esta seccion" }, { status: 403 })
     }
@@ -167,6 +170,7 @@ export async function GET(request: Request) {
           const { data: payments } = await supabase
             .from("payments")
             .select("operation_id, amount, amount_usd, currency, exchange_rate, status, direction")
+            .eq("org_id", userOrgId) // Cross-tenant fix: filtro explícito, no confiar en RLS
             .in("operation_id", chunk)
             .eq("direction", "INCOME")
             .eq("payer_type", "CUSTOMER")

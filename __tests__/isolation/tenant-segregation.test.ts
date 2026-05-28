@@ -111,4 +111,60 @@ describeIfCreds("tenant segregation (Pilar 5)", () => {
     expect(error).toBeNull()
     expect((data as any)?.[0]?.prosecdef).toBe(false)
   })
+
+  describe("user_org_ids() edge cases (VIB-9)", () => {
+    it("es SECURITY DEFINER y STABLE", async () => {
+      const { data, error } = await admin.rpc("execute_readonly_query", {
+        query_text: `
+          SELECT prosecdef, provolatile
+          FROM pg_proc
+          WHERE proname = 'user_org_ids'
+            AND pronamespace = 'public'::regnamespace
+        `,
+      })
+      expect(error).toBeNull()
+      const fn = (data as any)?.[0]
+      expect(fn?.prosecdef).toBe(true)   // SECURITY DEFINER
+      expect(fn?.provolatile).toBe("s")  // STABLE
+    })
+
+    it("no tiene GRANT a anon", async () => {
+      const { data, error } = await admin.rpc("execute_readonly_query", {
+        query_text: `
+          SELECT has_function_privilege('anon', 'public.user_org_ids()', 'EXECUTE') AS has_priv
+        `,
+      })
+      expect(error).toBeNull()
+      expect((data as any)?.[0]?.has_priv).toBe(false)
+    })
+
+    it("usa DISTINCT (no devuelve duplicados ante memberships repetidos)", async () => {
+      // Verificar en el source de la función que contiene DISTINCT
+      const { data, error } = await admin.rpc("execute_readonly_query", {
+        query_text: `
+          SELECT prosrc FROM pg_proc
+          WHERE proname = 'user_org_ids'
+            AND pronamespace = 'public'::regnamespace
+        `,
+      })
+      expect(error).toBeNull()
+      const src: string = (data as any)?.[0]?.prosrc ?? ""
+      expect(src.toUpperCase()).toContain("DISTINCT")
+    })
+  })
+
+  describe("operation_legs policy (VIB-9)", () => {
+    it("tiene policy tenant_isolation (no la legacy broken)", async () => {
+      const { data, error } = await admin.rpc("execute_readonly_query", {
+        query_text: `
+          SELECT policyname FROM pg_policies
+          WHERE tablename = 'operation_legs'
+        `,
+      })
+      expect(error).toBeNull()
+      const names = ((data as any) || []).map((r: any) => r.policyname as string)
+      expect(names).toContain("tenant_isolation")
+      expect(names).not.toContain("Agency members can manage operation legs")
+    })
+  })
 })
