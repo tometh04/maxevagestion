@@ -27,6 +27,9 @@ AS $$
     AND status = 'ACTIVE'
 $$;
 
+-- Revocar de PUBLIC (grant implícito que Postgres crea por defecto)
+-- y de anon explícitamente; luego re-grant solo a authenticated.
+REVOKE EXECUTE ON FUNCTION public.user_org_ids() FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION public.user_org_ids() FROM anon;
 GRANT EXECUTE ON FUNCTION public.user_org_ids() TO authenticated;
 
