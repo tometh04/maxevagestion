@@ -6,9 +6,15 @@ import { getCurrentUser } from "@/lib/auth"
 export async function GET() {
   try {
     const { user } = await getCurrentUser()
-    
+
     if (!["SUPER_ADMIN", "ADMIN", "CONTABLE"].includes(user.role)) {
       return NextResponse.json({ error: "No autorizado" }, { status: 403 })
+    }
+
+    // Cross-tenant fix: filtro explícito, no confiar en RLS
+    const userOrgId = (user as any).org_id as string | null
+    if (!userOrgId) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
     }
 
     const supabase = await createServerClient()
@@ -28,6 +34,7 @@ export async function GET() {
         customer_id,
         customers:customer_id(first_name, last_name)
       `)
+      .eq("org_id", userOrgId)
       .in("status", ["CONFIRMED", "TRAVELLING", "TRAVELLED", "CLOSED"])
       .is("invoice_cae", null) // Sin CAE = sin factura
       .order("created_at", { ascending: false })
