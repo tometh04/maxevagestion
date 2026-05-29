@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input"
 import { DecimalInput } from "@/components/ui/decimal-input"
 import { DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
 import { Badge } from "@/components/ui/badge"
-import { Save, Loader2 } from "lucide-react"
+import { Save, Loader2, Info } from "lucide-react"
 import {
   Breadcrumb,
   BreadcrumbList,
@@ -43,6 +43,9 @@ interface FinancialSettings {
   iibb_rate: number
   iibb_convenio_multilateral: boolean
   withholdings_enabled: boolean
+  // Cálculo de costo de operadores
+  default_cost_calculation_mode: "SIMPLE" | "COMMISSIONABLE"
+  default_commission_percentage: number
 }
 
 export function FinancesSettingsPageClient() {
@@ -61,6 +64,8 @@ export function FinancesSettingsPageClient() {
     iibb_rate: 3.5,
     iibb_convenio_multilateral: false,
     withholdings_enabled: true,
+    default_cost_calculation_mode: "SIMPLE",
+    default_commission_percentage: 0,
   })
 
   useEffect(() => {
@@ -257,6 +262,65 @@ export function FinancesSettingsPageClient() {
                     })
                   }
                 />
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="rounded-xl border-border/40">
+            <CardHeader>
+              <CardTitle>Cálculo de costo de operadores</CardTitle>
+              <CardDescription>
+                Define cómo se calcula el costo real a pagar a los operadores en las cotizaciones.
+                Cada operador puede tener su propia configuración que sobreescribe este default.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>Modo de cálculo default</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Aplica a todos los operadores que no tengan modo propio configurado
+                  </p>
+                </div>
+                <Select
+                  value={settings.default_cost_calculation_mode}
+                  onValueChange={(v: "SIMPLE" | "COMMISSIONABLE") =>
+                    setSettings({ ...settings, default_cost_calculation_mode: v })
+                  }
+                >
+                  <SelectTrigger className="w-[280px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="SIMPLE">Simple — ingresar costo neto</SelectItem>
+                    <SelectItem value="COMMISSIONABLE">Comisionable — ingresar precio bruto</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {settings.default_cost_calculation_mode === "COMMISSIONABLE" && (
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label>% Comisión default</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Porcentaje que el operador paga sobre el precio bruto. Editable por operador.
+                    </p>
+                  </div>
+                  <DecimalInput
+                    className="w-32"
+                    value={settings.default_commission_percentage}
+                    onChange={(v) =>
+                      setSettings({ ...settings, default_commission_percentage: parseFloat(v) || 0 })
+                    }
+                  />
+                </div>
+              )}
+
+              <div className="flex items-start gap-2 rounded-lg border border-border/40 bg-muted/20 p-3">
+                <Info className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                <div className="text-xs text-muted-foreground space-y-1">
+                  <p><strong>Simple:</strong> el vendedor ingresa el costo neto directamente. Los gastos administrativos del operador se suman encima.</p>
+                  <p><strong>Comisionable:</strong> el vendedor ingresa el precio de lista del operador. La comisión y los gastos se calculan desde ese bruto: <code className="bg-muted px-1 rounded">neto = bruto × (1 − comisión% + gastos%)</code></p>
+                </div>
               </div>
             </CardContent>
           </Card>

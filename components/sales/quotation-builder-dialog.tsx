@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { SearchableCombobox, type ComboboxOption } from "@/components/ui/searchable-combobox"
 import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
-import { Plus, Trash2, Loader2, Plane, Hotel, Bus, Shield, MapPin, Copy, Send, Globe, ListChecks, StickyNote, DollarSign, Eye, Upload, Image, X, AlertTriangle } from "lucide-react"
+import { Plus, Trash2, Loader2, Plane, Hotel, Bus, Shield, MapPin, Copy, Send, Globe, ListChecks, StickyNote, DollarSign, Eye, Upload, Image, X, AlertTriangle, Info } from "lucide-react"
 import { toast } from "sonner"
 import { format, parseISO } from "date-fns"
 import {
@@ -40,7 +40,7 @@ interface QuotationBuilderProps {
     region?: string | null
     agency_id?: string | null
   }
-  operators?: Array<{ id: string; name: string; admin_fee_percentage?: number | null }>
+  operators?: Array<{ id: string; name: string; admin_fee_percentage?: number | null; cost_calculation_mode?: string | null; commission_percentage?: number | null }>
   onSuccess?: (quotation: any) => void
   /** If set, loads and edits an existing quotation instead of creating new */
   existingQuotationId?: string | null
@@ -61,6 +61,9 @@ interface QuotationItem {
   cost_amount: number
   cost_currency: string
   admin_fee_percentage: number
+  cost_calculation_mode: string
+  gross_price: number | null
+  commission_percentage: number
   operator_id: string | null
   generates_commission: boolean
   // Hotel
@@ -144,6 +147,9 @@ function createEmptyItem(type: string = "FLIGHT"): QuotationItem {
     cost_amount: 0,
     cost_currency: "USD",
     admin_fee_percentage: 0,
+    cost_calculation_mode: 'SIMPLE',
+    gross_price: null,
+    commission_percentage: 0,
     operator_id: null,
     generates_commission: COMMISSION_TYPES.has(type),
     stopovers: [],
@@ -286,6 +292,19 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
   const [savedQuotation, setSavedQuotation] = useState<any>(null)
   const [loadingExisting, setLoadingExisting] = useState(false)
   const [uploadingFlightScreenshotIds, setUploadingFlightScreenshotIds] = useState<Record<string, boolean>>({})
+  const [agencyDefaultMode, setAgencyDefaultMode] = useState<string>('SIMPLE')
+  const [agencyDefaultCommission, setAgencyDefaultCommission] = useState<number>(0)
+
+  // Cargar defaults de la agencia al montar
+  useEffect(() => {
+    fetch('/api/finances/settings')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.default_cost_calculation_mode) setAgencyDefaultMode(data.default_cost_calculation_mode)
+        if (data?.default_commission_percentage) setAgencyDefaultCommission(Number(data.default_commission_percentage) || 0)
+      })
+      .catch(() => {})
+  }, [])
 
   // General data
   const [quotationTitle, setQuotationTitle] = useState(initialDraft.quotationTitle)
@@ -450,6 +469,9 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                 flight_class: item.flight_class || undefined,
                 flight_screenshot_url: item.flight_screenshot_url || undefined,
                 transfer_description: item.transfer_description || undefined,
+                cost_calculation_mode: item.cost_calculation_mode || 'SIMPLE',
+                gross_price: item.gross_price ?? null,
+                commission_percentage: Number(item.commission_percentage) || 0,
                 stopovers: [],
               }))
             const calculatedTotal = opt.calculated_total_amount != null
@@ -787,6 +809,12 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                   if (opFee > 0 && (!i.admin_fee_percentage || i.admin_fee_percentage === 0)) {
                     updated.admin_fee_percentage = opFee
                   }
+                  // Resolver modo efectivo: operador → default agencia → SIMPLE
+                  const resolvedMode = op?.cost_calculation_mode ?? agencyDefaultMode ?? 'SIMPLE'
+                  updated.cost_calculation_mode = resolvedMode
+                  updated.commission_percentage = Number(op?.commission_percentage) || agencyDefaultCommission || 0
+                  // Al cambiar de operador, limpiar gross_price previo
+                  updated.gross_price = null
                 }
                 // Auto-fill hotel data when hotel is selected from search
                 if (field === "hotel_name" && value) {
@@ -1108,6 +1136,9 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
             flight_class: item.flight_class || null,
             flight_screenshot_url: item.flight_screenshot_url || null,
             transfer_description: item.transfer_description || null,
+            cost_calculation_mode: item.cost_calculation_mode || 'SIMPLE',
+            gross_price: item.gross_price ?? null,
+            commission_percentage: Number(item.commission_percentage) || 0,
           })),
         })),
       }
@@ -1443,7 +1474,11 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                 {/* Items */}
                 {option.items.map((item, itemIndex) => {
                   const adminFeePct = Number(item.admin_fee_percentage) || 0
-                  const totalCost = (item.cost_amount || 0) * (1 + adminFeePct / 100)
+                  const commissionPct = Number(item.commission_percentage) || 0
+                  const itemMode = item.cost_calculation_mode || 'SIMPLE'
+                  const totalCost = itemMode === 'COMMISSIONABLE' && (item.gross_price || 0) > 0
+                    ? (item.gross_price!) * (1 - commissionPct / 100 + adminFeePct / 100)
+                    : (item.cost_amount || 0) * (1 + adminFeePct / 100)
                   const itemMargin = (item.unit_price || 0) - totalCost
                   const itemMarginPct = (item.unit_price || 0) > 0
                     ? (itemMargin / (item.unit_price || 1)) * 100
@@ -1555,35 +1590,72 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                             />
                           </div>
                         </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs text-accent-coral">Costo operador</Label>
-                          <div className="relative">
-                            <DollarSign className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
-                            <DecimalInput
-                              value={item.cost_amount || ""}
-                              disabled={isLinkedFlightReadonly}
-                              onChange={(v) => updateItem(option.id, item.id, "cost_amount", Number(v) || 0)}
-                              placeholder="0.00"
-                              className="text-sm font-mono pl-7"
-                            />
-                          </div>
-                          <div className="flex items-center gap-1 pt-0.5">
-                            <span className="text-[10px] text-muted-foreground">+ admin</span>
-                            <DecimalInput
-                              value={item.admin_fee_percentage || ""}
-                              disabled={isLinkedFlightReadonly}
-                              onChange={(v) => updateItem(option.id, item.id, "admin_fee_percentage", Number(v) || 0)}
-                              placeholder="0"
-                              className="h-6 text-[11px] font-mono w-16 px-1.5"
-                            />
-                            <span className="text-[10px] text-muted-foreground">%</span>
-                            {adminFeePct > 0 && (
-                              <span className="text-[10px] font-mono text-accent-coral ml-auto">
-                                = {currency} {totalCost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-                              </span>
+                        {itemMode === 'COMMISSIONABLE' ? (
+                          <div className="space-y-1">
+                            <Label className="text-xs text-accent-coral">Precio bruto</Label>
+                            <div className="relative">
+                              <DollarSign className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                              <DecimalInput
+                                value={item.gross_price || ""}
+                                disabled={isLinkedFlightReadonly}
+                                onChange={(v) => {
+                                  const gross = Number(v) || 0
+                                  const newCost = gross * (1 - commissionPct / 100 + adminFeePct / 100)
+                                  updateItem(option.id, item.id, "gross_price", gross)
+                                  updateItem(option.id, item.id, "cost_amount", Math.round(newCost * 100) / 100)
+                                }}
+                                placeholder="0.00"
+                                className="text-sm font-mono pl-7"
+                              />
+                            </div>
+                            {(item.gross_price || 0) > 0 && (
+                              <div className="text-[10px] text-muted-foreground space-y-0.5 pt-0.5">
+                                <div className="flex gap-1">
+                                  <span className="text-destructive/70">− comisión {commissionPct}%:</span>
+                                  <span className="font-mono">{currency} {((item.gross_price || 0) * commissionPct / 100).toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span>
+                                </div>
+                                <div className="flex gap-1">
+                                  <span className="text-accent-coral/80">+ gastos {adminFeePct}%:</span>
+                                  <span className="font-mono">{currency} {((item.gross_price || 0) * adminFeePct / 100).toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span>
+                                </div>
+                                <div className="flex gap-1 font-semibold">
+                                  <span>= neto:</span>
+                                  <span className="font-mono text-accent-coral">{currency} {totalCost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span>
+                                </div>
+                              </div>
                             )}
                           </div>
-                        </div>
+                        ) : (
+                          <div className="space-y-1">
+                            <Label className="text-xs text-accent-coral">Costo operador</Label>
+                            <div className="relative">
+                              <DollarSign className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                              <DecimalInput
+                                value={item.cost_amount || ""}
+                                disabled={isLinkedFlightReadonly}
+                                onChange={(v) => updateItem(option.id, item.id, "cost_amount", Number(v) || 0)}
+                                placeholder="0.00"
+                                className="text-sm font-mono pl-7"
+                              />
+                            </div>
+                            <div className="flex items-center gap-1 pt-0.5">
+                              <span className="text-[10px] text-muted-foreground">+ admin</span>
+                              <DecimalInput
+                                value={item.admin_fee_percentage || ""}
+                                disabled={isLinkedFlightReadonly}
+                                onChange={(v) => updateItem(option.id, item.id, "admin_fee_percentage", Number(v) || 0)}
+                                placeholder="0"
+                                className="h-6 text-[11px] font-mono w-16 px-1.5"
+                              />
+                              <span className="text-[10px] text-muted-foreground">%</span>
+                              {adminFeePct > 0 && (
+                                <span className="text-[10px] font-mono text-accent-coral ml-auto">
+                                  = {currency} {totalCost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )}
                         <div className="space-y-1">
                           <Label className="text-xs">Moneda costo</Label>
                           <Select
@@ -1615,6 +1687,26 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                           )}
                         </div>
                       </div>
+
+                      {/* Callout modo de cálculo — solo cuando hay operador seleccionado */}
+                      {item.operator_id && (
+                        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                          <Info className="h-3 w-3 shrink-0" />
+                          <span>
+                            Modo:{" "}
+                            <span className="font-medium">
+                              {itemMode === 'COMMISSIONABLE' ? 'Comisionable' : 'Simple'}
+                            </span>
+                            {operators.find(o => o.id === item.operator_id)?.cost_calculation_mode
+                              ? ' · configurado en la ficha del operador'
+                              : ' · usando default de agencia'}
+                            {' · '}
+                            <a href="/finances/settings" target="_blank" className="underline underline-offset-2 hover:text-foreground">
+                              Cambiar en Ajustes → Finanzas
+                            </a>
+                          </span>
+                        </div>
+                      )}
 
                       {/* Hotel-specific fields */}
                       {(item.item_type === "HOTEL" || item.item_type === "ACCOMMODATION") && (
