@@ -25,6 +25,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { toast } from "sonner"
 import { Loader2, Building2, Phone, DollarSign } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -43,6 +44,8 @@ const operatorSchema = z.object({
   contact_phone: z.string().optional(),
   credit_limit: z.coerce.number().min(0).optional(),
   admin_fee_percentage: z.coerce.number().min(0).max(100).optional(),
+  cost_calculation_mode: z.enum(["SIMPLE", "COMMISSIONABLE"]).nullable().optional(),
+  commission_percentage: z.coerce.number().min(0).max(100).optional(),
 })
 
 type OperatorFormValues = z.infer<typeof operatorSchema>
@@ -70,8 +73,12 @@ export function NewOperatorDialog({
       contact_phone: "",
       credit_limit: 0,
       admin_fee_percentage: 0,
+      cost_calculation_mode: null,
+      commission_percentage: 0,
     },
   })
+
+  const watchedMode = form.watch("cost_calculation_mode")
 
   const onSubmit = async (values: OperatorFormValues) => {
     setIsLoading(true)
@@ -86,6 +93,8 @@ export function NewOperatorDialog({
           contact_phone: values.contact_phone || null,
           credit_limit: values.credit_limit || null,
           admin_fee_percentage: typeof values.admin_fee_percentage === "number" ? values.admin_fee_percentage : 0,
+          cost_calculation_mode: values.cost_calculation_mode || null,
+          commission_percentage: typeof values.commission_percentage === "number" ? values.commission_percentage : 0,
         }),
       })
 
@@ -288,6 +297,68 @@ export function NewOperatorDialog({
                   </FormItem>
                 )}
               />
+
+              <FormField
+                control={form.control}
+                name="cost_calculation_mode"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Modo de cálculo de costo</FormLabel>
+                    <Select
+                      value={field.value ?? ""}
+                      onValueChange={(v) => field.onChange(v === "" ? null : v)}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Usar default de agencia" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="">Usar default de agencia</SelectItem>
+                        <SelectItem value="SIMPLE">Simple — ingresar costo neto</SelectItem>
+                        <SelectItem value="COMMISSIONABLE">Comisionable — ingresar precio bruto</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      Define cómo se calcula el costo real en cotizaciones. Configurable globalmente en Ajustes → Finanzas.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {watchedMode === "COMMISSIONABLE" && (
+                <FormField
+                  control={form.control}
+                  name="commission_percentage"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>% Comisión del operador</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="text"
+                          inputMode="decimal"
+                          placeholder="0"
+                          value={field.value ?? ""}
+                          onChange={(e) => {
+                            const raw = e.target.value.replace(",", ".")
+                            if (raw === "" || /^\d*\.?\d*$/.test(raw)) {
+                              field.onChange(raw)
+                            }
+                          }}
+                          onBlur={field.onBlur}
+                          name={field.name}
+                          ref={field.ref}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        Porcentaje que el operador te paga sobre el precio bruto. Se descuenta del bruto junto con los gastos administrativos.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
             </div>
 
             <DialogFooter>

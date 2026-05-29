@@ -189,8 +189,8 @@ export async function POST(request: Request) {
       nationality,
     } = body
 
-    // Validations básicas (email es opcional, solo requerido si la configuración lo indica)
-    if (!first_name || !last_name || !phone) {
+    // Validations básicas — teléfono es opcional
+    if (!first_name || !last_name) {
       return NextResponse.json({ error: "Faltan campos requeridos" }, { status: 400 })
     }
 
@@ -220,9 +220,6 @@ export async function POST(request: Request) {
         }
       }
       
-      if (validations.phone?.required && !phone) {
-        return NextResponse.json({ error: "Teléfono es requerido" }, { status: 400 })
-      }
     }
 
     // Verificar documento requerido
@@ -236,7 +233,7 @@ export async function POST(request: Request) {
     // 2026-05-22: ahora scoped por org_id (antes leakeaba cross-tenant) y
     // devuelve qué campo matcheó para mensajes más claros al user.
     if (settingsData?.duplicate_check_enabled) {
-      const checkFields = settingsData.duplicate_check_fields || ['email', 'phone']
+      const checkFields = (settingsData.duplicate_check_fields || ['email']).filter((f: string) => f !== 'phone')
       const duplicateCheck = await checkDuplicateCustomer(
         supabase,
         { email, phone, document_number },
