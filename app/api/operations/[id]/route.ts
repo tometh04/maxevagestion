@@ -16,6 +16,7 @@ type IncomingOperatorPayload = {
   cost_currency: "ARS" | "USD"
   product_type?: string | null
   notes?: string | null
+  sale_amount?: number
 }
 
 function normalizeIncomingOperators(
@@ -181,7 +182,7 @@ export async function PATCH(
     const currentOp = currentOperation as any
 
     const { data: existingOperationOperators } = await (supabase.from("operation_operators") as any)
-      .select("operator_id, cost, cost_currency, product_type, notes")
+      .select("operator_id, cost, cost_currency, product_type, notes, sale_amount")
       .eq("operation_id", operationId)
 
     // Check permissions
@@ -388,6 +389,7 @@ export async function PATCH(
         cost_currency: operatorData.cost_currency || "USD",
         product_type: operatorData.product_type || null,
         notes: operatorData.notes || null,
+        sale_amount: Number(operatorData.sale_amount) || 0,
       }))
 
       const { error: rpcError } = await (supabase.rpc as any)("replace_operation_operators", {
@@ -484,6 +486,7 @@ export async function PATCH(
           cost_currency: operatorData.cost_currency || "USD",
           product_type: operatorData.product_type || null,
           notes: operatorData.notes || null,
+          sale_amount: Number(operatorData.sale_amount) || 0,
         }))
 
         const { error: rpcError } = await (supabase.rpc as any)("replace_operation_operators", {
@@ -604,7 +607,45 @@ export async function PATCH(
         })
 
         if (hasPaidOperatorPayments) {
+          // 🔴 Bug fix 2026-05-28 (VICO Enzo): antes se skipeaba TODO el sync
+          // cuando había pagos aplicados, incluyendo la creación de operator_payments
+          // para operadores NUEVOS recién agregados en la edición.
+          // Resultado: "Pendiente a Operador USD 0,00" para el nuevo servicio.
+          //
+          // Fix: conservar operator_payments existentes con pagos, pero CREAR
+          // los que faltan para operadores nuevos.
           auditWarnings.push("Se conservaron operator_payments existentes porque hay pagos aplicados")
+
+          // Obtener TODOS los operator_payments actuales (no solo los de la query previa)
+          const { data: allExistingOPs } = await (supabase.from("operator_payments") as any)
+            .select("id, operator_id, amount, currency")
+            .eq("operation_id", operationId)
+
+          const existingOPsByOperator = new Set(
+            (allExistingOPs || []).map((op: any) => op.operator_id)
+          )
+
+          // Crear operator_payments para operadores que no tienen uno
+          for (const operatorData of synchronizedOperators) {
+            if (operatorData.cost > 0 && !existingOPsByOperator.has(operatorData.operator_id)) {
+              const dueDate = calculateDueDate(
+                (operatorData.product_type || op.product_type || currentOp.product_type || null) as any,
+                op.operation_date || currentOp.operation_date || op.created_at?.split("T")[0],
+                op.checkin_date || currentOp.checkin_date || undefined,
+                op.departure_date || currentOp.departure_date || undefined
+              )
+
+              await createOperatorPayment(
+                supabase,
+                operatorData.operator_id,
+                operatorData.cost,
+                operatorData.cost_currency,
+                dueDate,
+                operationId,
+                `Deuda nueva por edición de operación ${op.file_code || operationId.slice(0, 8)}`
+              )
+            }
+          }
         } else {
           await (supabase.from("operator_payments") as any)
             .delete()

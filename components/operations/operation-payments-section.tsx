@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 import { Badge } from "@/components/ui/badge"
@@ -81,6 +80,7 @@ interface FinancialAccount {
   currency: "ARS" | "USD"
   current_balance?: number
   is_active?: boolean
+  bank_tax_rate?: number | null
 }
 
 const paymentSchema = z.object({
@@ -182,6 +182,11 @@ export function OperationPaymentsSection({
   const [downloadingReceiptId, setDownloadingReceiptId] = useState<string | null>(null)
   const [sendingReceiptId, setSendingReceiptId] = useState<string | null>(null)
   const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([])
+  // Bank tax (Ley 25413) — for income and expense dialogs
+  const [applyBankTaxIncome, setApplyBankTaxIncome] = useState(false)
+  const [bankTaxRateIncome, setBankTaxRateIncome] = useState<string>("0.6")
+  const [applyBankTaxExpense, setApplyBankTaxExpense] = useState(false)
+  const [bankTaxRateExpense, setBankTaxRateExpense] = useState<string>("0.6")
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [editingPayment, setEditingPayment] = useState<any>(null)
   const [markAsPaid, setMarkAsPaid] = useState(false)
@@ -441,6 +446,50 @@ export function OperationPaymentsSection({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openOperatorDebts.length])
+
+  // Bank tax (Ley 25413): computed values for INCOME (cobro) dialog
+  const watchedIncomeAccountId = incomeForm.watch("financial_account_id")
+  const watchedIncomeAmount = incomeForm.watch("amount")
+  const selectedIncomeAccount = useMemo(
+    () => financialAccounts.find((a) => a.id === watchedIncomeAccountId) || null,
+    [financialAccounts, watchedIncomeAccountId]
+  )
+  const incomeAccountHasBankTax = selectedIncomeAccount?.bank_tax_rate != null && selectedIncomeAccount.bank_tax_rate > 0
+  const bankTaxAmountIncome = useMemo(() => {
+    if (!applyBankTaxIncome || !watchedIncomeAmount) return 0
+    const rate = Number(bankTaxRateIncome) || 0
+    return Math.round(watchedIncomeAmount * (rate / 100) * 100) / 100
+  }, [applyBankTaxIncome, watchedIncomeAmount, bankTaxRateIncome])
+
+  useEffect(() => {
+    if (selectedIncomeAccount?.bank_tax_rate != null && selectedIncomeAccount.bank_tax_rate > 0) {
+      setBankTaxRateIncome(String(selectedIncomeAccount.bank_tax_rate))
+    }
+    setApplyBankTaxIncome(false)
+  }, [selectedIncomeAccount])
+
+  // Bank tax (Ley 25413): computed values for EXPENSE (pago operador) dialog
+  const watchedExpenseAccountId = expenseForm.watch("financial_account_id")
+  const watchedExpenseAmount = expenseForm.watch("amount")
+  const selectedExpenseAccount = useMemo(
+    () => financialAccounts.find((a) => a.id === watchedExpenseAccountId) || null,
+    [financialAccounts, watchedExpenseAccountId]
+  )
+  const expenseAccountHasBankTax = selectedExpenseAccount?.bank_tax_rate != null && selectedExpenseAccount.bank_tax_rate > 0
+  const bankTaxAmountExpense = useMemo(() => {
+    if (!applyBankTaxExpense || !watchedExpenseAmount) return 0
+    const rate = Number(bankTaxRateExpense) || 0
+    return Math.round(watchedExpenseAmount * (rate / 100) * 100) / 100
+  }, [applyBankTaxExpense, watchedExpenseAmount, bankTaxRateExpense])
+
+  // Auto-set bank tax rate when selecting a bank account
+  useEffect(() => {
+    if (selectedExpenseAccount?.bank_tax_rate != null && selectedExpenseAccount.bank_tax_rate > 0) {
+      setBankTaxRateExpense(String(selectedExpenseAccount.bank_tax_rate))
+    }
+    // Reset toggle when switching accounts
+    setApplyBankTaxExpense(false)
+  }, [selectedExpenseAccount])
 
   const editForm = useForm<EditPaymentFormValues>({
     resolver: zodResolver(editPaymentSchema),
@@ -713,12 +762,19 @@ export function OperationPaymentsSection({
         apply_rg3819: applyRg3819,
       }
 
+      // Ley 25413: bank tax deduction for income via bank accounts
+      if (applyBankTaxIncome && bankTaxAmountIncome > 0) {
+        body.bank_tax_rate = Number(bankTaxRateIncome) || 0
+        body.bank_tax_amount = bankTaxAmountIncome
+      }
+
       await submitPaymentWithDuplicateCheck(body, "income", {
         onSuccess: () => {
           setIncomeDialogOpen(false)
           incomeForm.reset()
           setApplyRg5617(false)
           setApplyRg3819(false)
+          setApplyBankTaxIncome(false)
           router.refresh()
         },
         onError: (msg) => toast.error(msg),
@@ -786,10 +842,17 @@ export function OperationPaymentsSection({
         status: "PAID",
       }
 
+      // Ley 25413: bank tax deduction for operator payments via bank accounts
+      if (applyBankTaxExpense && bankTaxAmountExpense > 0) {
+        body.bank_tax_rate = Number(bankTaxRateExpense) || 0
+        body.bank_tax_amount = bankTaxAmountExpense
+      }
+
       await submitPaymentWithDuplicateCheck(body, "expense", {
         onSuccess: () => {
           setExpenseDialogOpen(false)
           expenseForm.reset()
+          setApplyBankTaxExpense(false)
           router.refresh()
         },
         onError: (msg) => toast.error(msg),
@@ -836,14 +899,14 @@ export function OperationPaymentsSection({
     <>
       <div className="grid gap-4 md:grid-cols-2 mb-4">
         {/* Deuda del cliente */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
+        <div className="vb-panel" style={{ padding: 0, overflow: "hidden" }}>
+          <div style={{ padding: "12px 16px 8px 16px" }}>
+            <div style={{ fontSize: 13, fontWeight: 600 }} className="text-sm font-medium text-muted-foreground">
               Deuda del Cliente ({opCurrency})
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
+            </div>
+          </div>
+          <div style={{ padding: "0 16px 16px 16px" }}>
+            <div className="text-[17px] font-semibold tabular-nums">
               {currencySymbol} {customerDebt.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
@@ -853,18 +916,18 @@ export function OperationPaymentsSection({
             {customerDebt <= 0 && (
               <Badge className="mt-2 bg-success">Pagado completo</Badge>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
         {/* Deuda a operador */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
+        <div className="vb-panel" style={{ padding: 0, overflow: "hidden" }}>
+          <div style={{ padding: "12px 16px 8px 16px" }}>
+            <div style={{ fontSize: 13, fontWeight: 600 }} className="text-sm font-medium text-muted-foreground">
               Pendiente a Operador ({opCurrency})
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
+            </div>
+          </div>
+          <div style={{ padding: "0 16px 16px 16px" }}>
+            <div className="text-[17px] font-semibold tabular-nums">
               {currencySymbol} {operatorDebt.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
@@ -874,13 +937,13 @@ export function OperationPaymentsSection({
             {operatorDebt <= 0 && (
               <Badge className="mt-2 bg-success">Pagado completo</Badge>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Historial de Pagos</CardTitle>
+      <div className="vb-panel" style={{ padding: 0, overflow: "hidden" }}>
+        <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--vb-border)" }} className="flex flex-row items-center justify-between">
+          <div style={{ fontSize: 13, fontWeight: 600 }}>Historial de Pagos</div>
           <div className="flex gap-2">
             {hasPendingToClean && (
               <Button 
@@ -911,8 +974,8 @@ export function OperationPaymentsSection({
             </Button>
             )}
           </div>
-        </CardHeader>
-        <CardContent>
+        </div>
+        <div style={{ padding: 16 }}>
           {payments.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">
               No hay pagos registrados. Usa el botón &quot;Registrar Pago&quot; cuando recibas un pago del cliente o pagues al operador.
@@ -1093,8 +1156,8 @@ export function OperationPaymentsSection({
               </TableBody>
             </Table>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* Dialog para registrar cobro (INCOME) */}
       {/* Bug fix 2026-05-19 (Andres VICO): dialog se cortaba sin scroll →
@@ -1113,7 +1176,7 @@ export function OperationPaymentsSection({
             <form onSubmit={incomeForm.handleSubmit(onSubmitIncome)} className="flex flex-col flex-1 min-h-0">
               <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5 -mr-2 pr-2">
               {/* Sub-card: Método y Monto */}
-              <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="rounded-[var(--vb-r-sm)] border border-[var(--vb-border)] bg-[var(--vb-hover)] p-4 space-y-4">
                 <div className="flex items-center gap-1.5">
                   <CreditCard className="h-3.5 w-3.5 text-primary" />
                   <span className="text-xs font-medium text-foreground/70">Pago</span>
@@ -1212,7 +1275,7 @@ export function OperationPaymentsSection({
               )}
 
               {/* Sub-card: Fecha y Cuenta */}
-              <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="rounded-[var(--vb-r-sm)] border border-[var(--vb-border)] bg-[var(--vb-hover)] p-4 space-y-4">
                 <div className="flex items-center gap-1.5">
                   <Landmark className="h-3.5 w-3.5 text-success" />
                   <span className="text-xs font-medium text-foreground/70">Destino del cobro</span>
@@ -1294,6 +1357,44 @@ export function OperationPaymentsSection({
                 </div>
               </div>
 
+              {/* Bank tax (Ley 25413) — semi-automatic deduction for bank accounts */}
+              {incomeAccountHasBankTax && (
+                <div className="rounded-[var(--vb-r-sm)] border border-[var(--vb-border)] bg-background/60 p-3 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="bank-tax-income"
+                      checked={applyBankTaxIncome}
+                      onCheckedChange={(checked) => setApplyBankTaxIncome(checked === true)}
+                    />
+                    <label htmlFor="bank-tax-income" className="text-sm font-medium cursor-pointer flex items-center gap-1.5">
+                      <Landmark className="h-3.5 w-3.5 text-muted-foreground" />
+                      Deducir imp. Ley 25413 (déb/créd bancarios)
+                    </label>
+                  </div>
+                  {applyBankTaxIncome && (
+                    <div className="ml-6 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs text-muted-foreground whitespace-nowrap">Tasa %</label>
+                        <DecimalInput
+                          value={bankTaxRateIncome}
+                          onChange={(v) => setBankTaxRateIncome(String(v))}
+                          className="h-7 w-20 text-xs"
+                        />
+                      </div>
+                      {bankTaxAmountIncome > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          Se creará un egreso automático de{" "}
+                          <span className="font-medium text-destructive">
+                            {bankTaxAmountIncome.toLocaleString("es-AR", { style: "currency", currency: incomeForm.watch("currency") })}
+                          </span>
+                          {" "}en la misma cuenta (impuesto bancario).
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Percepciones opcionales */}
               {isInternationalDestination(destination) && (() => {
                 const watchedMethod = incomeForm.watch("method")
@@ -1301,7 +1402,7 @@ export function OperationPaymentsSection({
                 const watchedCurrency = incomeForm.watch("currency")
                 const isCash = watchedMethod === "Efectivo"
                 return (
-                  <div className="rounded-xl border border-accent-coral/30 bg-accent-coral/5 p-4 space-y-3">
+                  <div className="rounded-[var(--vb-r-sm)] border border-accent-coral/30 bg-accent-coral/5 p-4 space-y-3">
                     <div className="flex items-center gap-1.5">
                       <Receipt className="h-3.5 w-3.5 text-accent-coral" />
                       <span className="text-xs font-medium text-foreground/70">Percepciones Impositivas</span>
@@ -1367,7 +1468,7 @@ export function OperationPaymentsSection({
 
               </div>{/* fin wrapper scrollable */}
 
-              <DialogFooter className="px-6 py-3 border-t border-border/40">
+              <DialogFooter className="px-6 py-3 border-t border-[var(--vb-border)]">
                 <Button type="button" variant="outline" onClick={() => setIncomeDialogOpen(false)}>
                   Cancelar
                 </Button>
@@ -1409,7 +1510,7 @@ export function OperationPaymentsSection({
               <form onSubmit={editForm.handleSubmit(onSubmitEdit)} className="flex flex-col flex-1 min-h-0">
                 <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5 -mr-2 pr-2">
                 {/* Sub-card: Método y Monto */}
-                <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+                <div className="rounded-[var(--vb-r-sm)] border border-[var(--vb-border)] bg-[var(--vb-hover)] p-4 space-y-4">
                   <div className="flex items-center gap-1.5">
                     <CreditCard className="h-3.5 w-3.5 text-primary" />
                     <span className="text-xs font-medium text-foreground/70">Pago</span>
@@ -1512,7 +1613,7 @@ export function OperationPaymentsSection({
                 )}
 
                 {/* Sub-card: Fecha y Estado */}
-                <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+                <div className="rounded-[var(--vb-r-sm)] border border-[var(--vb-border)] bg-[var(--vb-hover)] p-4 space-y-4">
                   <div className="flex items-center gap-1.5">
                     <Landmark className="h-3.5 w-3.5 text-success" />
                     <span className="text-xs font-medium text-foreground/70">Fecha y Cuenta</span>
@@ -1558,7 +1659,7 @@ export function OperationPaymentsSection({
 
                   {/* Switch para marcar como pagado - para cualquier pago PENDING */}
                   {editingPayment?.status === "PENDING" && (
-                    <div className="flex items-center justify-between rounded-xl border border-border/30 bg-background p-3">
+                    <div className="flex items-center justify-between rounded-[var(--vb-r-sm)] border border-[var(--vb-border)] bg-[var(--vb-bg)] p-3">
                       <div className="space-y-0.5">
                         <div className="flex items-center gap-2">
                           <CheckCircle2 className="h-4 w-4 text-success" />
@@ -1630,7 +1731,7 @@ export function OperationPaymentsSection({
 
                 </div>{/* fin wrapper scrollable */}
 
-                <DialogFooter className="px-6 py-3 border-t border-border/40">
+                <DialogFooter className="px-6 py-3 border-t border-[var(--vb-border)]">
                   <Button type="button" variant="outline" onClick={() => {
                     setEditDialogOpen(false)
                     setEditingPayment(null)
@@ -1722,7 +1823,7 @@ export function OperationPaymentsSection({
                 />
 
                 {/* Sub-card: Método y Monto */}
-                <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+                <div className="rounded-[var(--vb-r-sm)] border border-[var(--vb-border)] bg-[var(--vb-hover)] p-4 space-y-4">
                   <div className="flex items-center gap-1.5">
                     <Banknote className="h-3.5 w-3.5 text-accent-coral" />
                     <span className="text-xs font-medium text-foreground/70">Pago al Operador</span>
@@ -1818,7 +1919,7 @@ export function OperationPaymentsSection({
                 )}
 
                 {/* Sub-card: Fecha y Cuenta */}
-                <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+                <div className="rounded-[var(--vb-r-sm)] border border-[var(--vb-border)] bg-[var(--vb-hover)] p-4 space-y-4">
                   <div className="flex items-center gap-1.5">
                     <Landmark className="h-3.5 w-3.5 text-success" />
                     <span className="text-xs font-medium text-foreground/70">Destino del pago</span>
@@ -1900,6 +2001,44 @@ export function OperationPaymentsSection({
                   </div>
                 </div>
 
+                {/* Bank tax (Ley 25413) — semi-automatic deduction for bank accounts */}
+                {expenseAccountHasBankTax && (
+                  <div className="rounded-[var(--vb-r-sm)] border border-[var(--vb-border)] bg-[var(--vb-bg)]/60 p-3 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="bank-tax-expense"
+                        checked={applyBankTaxExpense}
+                        onCheckedChange={(checked) => setApplyBankTaxExpense(checked === true)}
+                      />
+                      <label htmlFor="bank-tax-expense" className="text-sm font-medium cursor-pointer flex items-center gap-1.5">
+                        <Landmark className="h-3.5 w-3.5 text-muted-foreground" />
+                        Deducir imp. Ley 25413 (déb/créd bancarios)
+                      </label>
+                    </div>
+                    {applyBankTaxExpense && (
+                      <div className="ml-6 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs text-muted-foreground whitespace-nowrap">Tasa %</label>
+                          <DecimalInput
+                            value={bankTaxRateExpense}
+                            onChange={(v) => setBankTaxRateExpense(String(v))}
+                            className="h-7 w-20 text-xs"
+                          />
+                        </div>
+                        {bankTaxAmountExpense > 0 && (
+                          <p className="text-xs text-muted-foreground">
+                            Se creará un egreso adicional de{" "}
+                            <span className="font-medium text-destructive">
+                              {bankTaxAmountExpense.toLocaleString("es-AR", { style: "currency", currency: expenseForm.watch("currency") })}
+                            </span>
+                            {" "}en la misma cuenta (impuesto bancario).
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <FormField
                   control={expenseForm.control}
                   name="notes"
@@ -1916,7 +2055,7 @@ export function OperationPaymentsSection({
 
               </div>{/* fin wrapper scrollable */}
 
-              <DialogFooter className="px-6 py-3 border-t border-border/40">
+              <DialogFooter className="px-6 py-3 border-t border-[var(--vb-border)]">
                 <Button type="button" variant="outline" onClick={() => setExpenseDialogOpen(false)}>
                   Cancelar
                 </Button>
@@ -1957,7 +2096,7 @@ export function OperationPaymentsSection({
                       {duplicateAlert?.duplicates.length === 1 ? "" : "s"} similar
                       {duplicateAlert?.duplicates.length === 1 ? "" : "es"} en los últimos 7 días con el mismo monto, moneda y fecha. Revisalos antes de continuar:
                     </p>
-                    <div className="rounded-md border border-border/40 bg-muted/30 p-3 space-y-2 max-h-48 overflow-y-auto">
+                    <div className="rounded-[var(--vb-r-sm)] border border-[var(--vb-border)] bg-[var(--vb-hover)] p-3 space-y-2 max-h-48 overflow-y-auto">
                       {duplicateAlert?.duplicates.map((d) => (
                         <div key={d.id} className="text-xs space-y-0.5">
                           <div className="font-medium text-foreground">
