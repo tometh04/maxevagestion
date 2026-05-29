@@ -38,6 +38,10 @@ export interface PreparedQuotationItem {
   flight_screenshot_url: string | null
   transfer_description: string | null
   notes: string | null
+  admin_fee_percentage: number
+  cost_calculation_mode: string
+  gross_price: number | null
+  commission_percentage: number
 }
 
 export interface PreparedQuotationOption {
@@ -118,6 +122,10 @@ function prepareQuotationItem(rawItem: any, fallbackCurrency: string): PreparedQ
     flight_screenshot_url: rawItem?.flight_screenshot_url || null,
     transfer_description: rawItem?.transfer_description || null,
     notes: rawItem?.notes || null,
+    admin_fee_percentage: Number(rawItem?.admin_fee_percentage) || 0,
+    cost_calculation_mode: rawItem?.cost_calculation_mode || 'SIMPLE',
+    gross_price: rawItem?.gross_price != null ? roundQuotationMoney(Number(rawItem.gross_price)) : null,
+    commission_percentage: Number(rawItem?.commission_percentage) || 0,
   }
 }
 
@@ -194,6 +202,10 @@ function buildQuotationItemsInsertPayload(
     flight_class: item.flight_class || null,
     flight_screenshot_url: item.flight_screenshot_url || null,
     transfer_description: item.transfer_description || null,
+    admin_fee_percentage: item.admin_fee_percentage || 0,
+    cost_calculation_mode: item.cost_calculation_mode || 'SIMPLE',
+    gross_price: item.gross_price ?? null,
+    commission_percentage: item.commission_percentage || 0,
   }))
 }
 
