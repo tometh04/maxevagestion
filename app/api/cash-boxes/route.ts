@@ -16,21 +16,14 @@ export async function GET(request: Request) {
       return NextResponse.json({ cashBoxes: [] })
     }
 
-    // Get user agencies (de SU org)
-    const { data: orgAgencies } = await supabase
-      .from("agencies")
-      .select("id")
-      .eq("org_id", userOrgId)
-    const orgAgencyIds = (orgAgencies || []).map((a: any) => a.id)
-
-    // Build query — siempre scopear por las agencias de la org
+    // Build query — scopear por org_id directo (VIB-15: cash_boxes ahora tiene org_id)
     let query = (supabase.from("cash_boxes") as any)
       .select("*")
-      .in("agency_id", orgAgencyIds.length > 0 ? orgAgencyIds : ["00000000-0000-0000-0000-000000000000"])
+      .eq("org_id", userOrgId)
 
     // Apply filters
     const agencyId = searchParams.get("agencyId")
-    if (agencyId && agencyId !== "ALL" && orgAgencyIds.includes(agencyId)) {
+    if (agencyId && agencyId !== "ALL") {
       query = query.eq("agency_id", agencyId)
     }
 
@@ -112,6 +105,7 @@ export async function POST(request: Request) {
     // Create cash box
     const cashBoxData: Record<string, any> = {
       agency_id,
+      org_id: (user as any).org_id,
       name,
       description: description || null,
       box_type,

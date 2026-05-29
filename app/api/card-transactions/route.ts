@@ -21,7 +21,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ transactions: [] })
     }
 
-    // Build query — siempre scopear por org_id
+    // Build query — scopear por org_id directo (VIB-15: card_transactions ahora tiene org_id)
     let query = supabase
       .from("card_transactions")
       .select(`
@@ -29,9 +29,9 @@ export async function GET(request: Request) {
         operations:operation_id(id, destination),
         payments:payment_id(id, amount, status),
         cash_boxes:cash_box_id(id, name),
-        agencies:agency_id!inner(id, name, org_id)
+        agencies:agency_id(id, name)
       `)
-      .eq("agencies.org_id", userOrgId)
+      .eq("org_id", userOrgId)
 
     // Apply filters
     const status = searchParams.get("status")
@@ -127,6 +127,7 @@ export async function POST(request: Request) {
       payment_id: payment_id || null,
       cash_box_id: cash_box_id || null,
       agency_id,
+      org_id: (user as any).org_id,
       transaction_number: transaction_number || null,
       card_type,
       card_last_four: card_last_four || null,

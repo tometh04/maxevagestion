@@ -168,23 +168,14 @@ export async function checkPlanLimit(
     startOfMonth.setDate(1)
     startOfMonth.setHours(0, 0, 0, 0)
 
-    const { data: orgAgencies } = await supabase
-      .from('agencies')
-      .select('id')
-      .eq('org_id', orgId) as { data: { id: string }[] | null }
+    const { count } = await supabase
+      .from('operations')
+      .select('*', { count: 'exact', head: true })
+      .eq('org_id', orgId)
+      .gte('created_at', startOfMonth.toISOString())
 
-    const agencyIds = orgAgencies?.map(a => a.id) ?? []
-
-    if (agencyIds.length > 0) {
-      const { count } = await supabase
-        .from('operations')
-        .select('*', { count: 'exact', head: true })
-        .in('agency_id', agencyIds)
-        .gte('created_at', startOfMonth.toISOString())
-
-      if ((count ?? 0) >= org.max_operations_per_month) {
-        return { allowed: false, reason: `Límite de operaciones del mes alcanzado (${org.max_operations_per_month}). Upgrade tu plan.` }
-      }
+    if ((count ?? 0) >= org.max_operations_per_month) {
+      return { allowed: false, reason: `Límite de operaciones del mes alcanzado (${org.max_operations_per_month}). Upgrade tu plan.` }
     }
   }
 

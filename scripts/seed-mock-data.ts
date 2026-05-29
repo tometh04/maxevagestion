@@ -229,9 +229,11 @@ async function seedMockData() {
     const leadsData = Array.from({ length: 25 }, (_, i) => {
       const createdDate = randomDate(new Date(2024, 0, 1), new Date())
       const seller = users && users.length > 0 ? randomElement(users) : null
+      const agency = randomElement(agencies)
 
       return {
-        agency_id: randomElement(agencies).id,
+        agency_id: agency.id,
+        org_id: (agency as any).org_id,
         source: randomElement(sources),
         status: randomElement(leadStatuses),
         region: randomElement(regions),
