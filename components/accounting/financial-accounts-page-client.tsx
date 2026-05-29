@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -34,7 +33,9 @@ import { Input } from "@/components/ui/input"
 import { DecimalInput } from "@/components/ui/decimal-input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Plus, Trash2, AlertTriangle, Building2, ArrowRightLeft, Pencil } from "lucide-react"
+import { Plus, Trash2, AlertTriangle, Building2, ArrowRightLeft, Pencil, Download, Filter } from "lucide-react"
+import { format } from "date-fns"
+import { es } from "date-fns/locale"
 import { TransferAccountDialog } from "./transfer-account-dialog"
 import { toast } from "sonner"
 import { useRouter, useSearchParams } from "next/navigation"
@@ -116,13 +117,21 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
   const [editName, setEditName] = useState("")
   const [editTargetBalance, setEditTargetBalance] = useState("")
   const [editReason, setEditReason] = useState("")
+  const [editBankTaxRate, setEditBankTaxRate] = useState("")
   const [isEditing, setIsEditing] = useState(false)
+
+  // Atlas layout: selected account + movements
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null)
+  const [movements, setMovements] = useState<any[]>([])
+  const [movementsLoading, setMovementsLoading] = useState(false)
+  const [movementsTotal, setMovementsTotal] = useState(0)
 
   const openEditAccount = (account: any) => {
     setEditingAccount(account)
     setEditName(account.name || "")
-    setEditTargetBalance(String(account.current_balance ?? 0))
+    setEditTargetBalance(String(Number((account.current_balance ?? 0).toFixed(2))))
     setEditReason("")
+    setEditBankTaxRate(account.bank_tax_rate != null ? String(account.bank_tax_rate) : "")
     setEditAccountOpen(true)
   }
 
@@ -141,7 +150,10 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
     const currentBal = Number(editingAccount.current_balance ?? 0)
     const balanceChanged = Math.abs(targetNum - currentBal) > 0.01
     const nameChanged = trimmedName !== (editingAccount.name || "")
-    if (!balanceChanged && !nameChanged) {
+    // Bank tax rate change detection
+    const oldTaxRate = editingAccount.bank_tax_rate != null ? String(editingAccount.bank_tax_rate) : ""
+    const taxRateChanged = editBankTaxRate !== oldTaxRate
+    if (!balanceChanged && !nameChanged && !taxRateChanged) {
       toast.info("Sin cambios")
       setEditAccountOpen(false)
       return
@@ -154,6 +166,9 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
       if (balanceChanged) {
         payload.target_balance = targetNum
         payload.adjustment_reason = editReason.trim() || undefined
+      }
+      if (taxRateChanged) {
+        payload.bank_tax_rate = editBankTaxRate === "" ? null : Number(editBankTaxRate)
       }
       const res = await fetch(`/api/accounting/financial-accounts/${editingAccount.id}`, {
         method: "PATCH",
@@ -191,6 +206,7 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
     initial_balance: 0,
     account_number: "",
     bank_name: "",
+    bank_tax_rate: "",
     // Tarjeta de crédito
     card_number: "",
     card_holder: "",
@@ -250,6 +266,46 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
     }
   }
 
+  async function fetchMovements(accountId: string) {
+    setMovementsLoading(true)
+    try {
+      const res = await fetch(`/api/accounting/ledger?accountId=${accountId}&limit=200`)
+      if (!res.ok) throw new Error("Error loading movements")
+      const data = await res.json()
+      setMovements(data.movements || [])
+      setMovementsTotal(data.pagination?.total || 0)
+    } catch {
+      setMovements([])
+      setMovementsTotal(0)
+    } finally {
+      setMovementsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (accounts.length > 0 && !selectedAccountId) {
+      setSelectedAccountId(accounts[0].id)
+    }
+  }, [accounts, selectedAccountId])
+
+  useEffect(() => {
+    if (selectedAccountId) {
+      fetchMovements(selectedAccountId)
+    }
+  }, [selectedAccountId])
+
+  const selectedAccount = accounts.find((a) => a.id === selectedAccountId) || null
+
+  const movementsSummary = movements.reduce(
+    (acc, m) => {
+      const amt = Math.abs(m.amount_original || 0)
+      if (m.type === "INCOME" || m.type === "FX_GAIN") acc.income += amt
+      else acc.expense += amt
+      return acc
+    },
+    { income: 0, expense: 0 }
+  )
+
   const handleClearAll = async () => {
     try {
       const res = await fetch("/api/accounting/financial-accounts/clear", {
@@ -307,9 +363,12 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
     }
 
     // Datos para cuentas bancarias
-    if (formData.type.includes("CHECKING") || formData.type.includes("SAVINGS")) {
+    if (!["CASH_ARS", "CASH_USD", "ASSETS", "PARTNER"].includes(formData.type)) {
       accountData.account_number = formData.account_number || null
       accountData.bank_name = formData.bank_name || null
+      // Ley 25413: tasa de impuesto a débitos/créditos bancarios (típico 0.6%)
+      const taxRate = Number(formData.bank_tax_rate)
+      accountData.bank_tax_rate = taxRate > 0 ? taxRate : null
     }
 
     // Datos para tarjetas de crédito
@@ -369,6 +428,7 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
       initial_balance: 0,
       account_number: "",
       bank_name: "",
+      bank_tax_rate: "",
       card_number: "",
       card_holder: "",
       card_expiry_date: "",
@@ -471,164 +531,288 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
   }, {} as Record<string, any>)
 
   return (
-    <div className="space-y-6">
-      {/* Header con botones */}
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-muted-foreground">Gestiona todas las cuentas y cajas de las agencias</p>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      {/* ===== Account selector strip ===== */}
+      {accounts.length > 0 && (
+        <div style={{ display: "flex", gap: 0, borderBottom: "1px solid var(--vb-border)", overflowX: "auto", flexShrink: 0 }}>
+          {accounts.map((account) => (
+            <div
+              key={account.id}
+              onClick={() => setSelectedAccountId(account.id)}
+              style={{
+                minWidth: 160,
+                flex: "0 0 auto",
+                padding: "12px 16px",
+                borderRight: "1px solid var(--vb-border)",
+                borderBottom: selectedAccountId === account.id ? "2px solid var(--vb-accent)" : "2px solid transparent",
+                marginBottom: -1,
+                cursor: "pointer",
+                background: selectedAccountId === account.id ? "var(--vb-elev)" : "transparent",
+                transition: "background 0.15s",
+              }}
+            >
+              <div className="muted" style={{ fontSize: 11, whiteSpace: "nowrap" }}>{getDisplayName(account)}</div>
+              <div className="mono tnum" style={{ fontSize: 15, fontWeight: 600, marginTop: 2 }}>
+                {formatCurrency(account.current_balance ?? 0, account.currency)}
+              </div>
+              <div style={{ fontSize: 10.5, color: "var(--vb-muted)", marginTop: 1 }}>{account.currency} · {accountTypeLabels[account.type]?.replace(/Caja de ahorro |Cuenta corriente |Caja efectivo /, "") || account.type}</div>
+            </div>
+          ))}
+          <div
+            onClick={() => setOpenDialog(true)}
+            style={{
+              minWidth: 80,
+              flex: "0 0 auto",
+              padding: "12px 16px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              color: "var(--vb-muted)",
+              transition: "color 0.15s",
+            }}
+          >
+            <Plus style={{ width: 16, height: 16 }} />
+          </div>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" className="h-8 rounded-full" onClick={() => setTransferDialogOpen(true)}>
-            <ArrowRightLeft className="h-4 w-4 mr-2" />
-            Transferir
-          </Button>
-          {accounts.length > 0 && (
-            <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
-              <DialogTrigger asChild>
-                <Button variant="destructive" size="sm" className="h-8 rounded-full">
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Limpiar Todas
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle className="flex items-center gap-2 text-destructive">
-                    <AlertTriangle className="h-5 w-5" />
-                    ¿Eliminar todas las cuentas?
-                  </DialogTitle>
-                  <DialogDescription>
-                    Esta acción eliminará todas las cuentas financieras del sistema. Esta acción no se puede deshacer.
-                    Asegúrate de haber respaldado la información necesaria.
-                  </DialogDescription>
-                </DialogHeader>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setDeleteConfirmOpen(false)}>
-                    Cancelar
-                  </Button>
-                  <Button variant="destructive" onClick={handleClearAll}>
-                    Sí, eliminar todas
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          )}
+      )}
 
-          <Dialog open={deleteAccountOpen} onOpenChange={(open) => !open && closeDeleteAccount()}>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2 text-destructive">
-                  <Trash2 className="h-5 w-5" />
-                  Eliminar cuenta
-                </DialogTitle>
-                <DialogDescription asChild>
-                  <div className="space-y-3">
-                    {accountToDelete && (
-                      <>
-                        {Math.abs(accountToDelete.balance) <= 1e-6 ? (
-                          <p>
-                            ¿Eliminar la cuenta <strong>{accountToDelete.displayName}</strong>? Esta acción no se puede deshacer.
-                          </p>
-                        ) : deleteStep === "confirm" ? (
-                          <p>
-                            La cuenta <strong>{accountToDelete.displayName}</strong> tiene{" "}
-                            <strong className={accountToDelete.balance >= 0 ? "text-accent-coral" : "text-destructive"}>
-                              {formatCurrency(accountToDelete.balance, accountToDelete.currency)}
-                            </strong>{" "}
-                            de saldo. ¿Quieres transferirlo a otra cuenta?
-                          </p>
-                        ) : (
-                          <>
-                            <p>
-                              Transferir{" "}
-                              <strong className={accountToDelete.balance >= 0 ? "text-accent-coral" : "text-destructive"}>
-                                {formatCurrency(Math.abs(accountToDelete.balance), accountToDelete.currency)}
-                              </strong>{" "}
-                              a:
-                            </p>
-                            <Select value={transferToId} onValueChange={setTransferToId}>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Selecciona una cuenta" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {accounts
-                                  .filter(
-                                    (a: any) =>
-                                      a.id !== accountToDelete.id &&
-                                      a.currency === accountToDelete.currency &&
-                                      a.is_active !== false
-                                  )
-                                  .map((a: any) => (
-                                    <SelectItem key={a.id} value={a.id}>
-                                      {getDisplayName(a)} ({a.currency})
-                                    </SelectItem>
-                                  ))}
-                              </SelectContent>
-                            </Select>
-                            {accounts.filter(
-                              (a: any) =>
-                                a.id !== accountToDelete.id &&
-                                a.currency === accountToDelete.currency &&
-                                a.is_active !== false
-                            ).length === 0 && (
-                              <p className="text-sm text-accent-coral">
-                                No hay otras cuentas en {accountToDelete.currency} para transferir.
-                              </p>
-                            )}
-                          </>
-                        )}
-                      </>
+      {/* ===== Toolbar ===== */}
+      {selectedAccount && (
+        <div style={{ padding: "8px 14px", display: "flex", gap: 6, alignItems: "center", borderBottom: "1px solid var(--vb-border)", flexShrink: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>{getDisplayName(selectedAccount)} · {movementsTotal} movimientos</div>
+          <span style={{ flex: 1 }} />
+          <button className="vb-btn sm" onClick={() => setTransferDialogOpen(true)}>
+            <ArrowRightLeft style={{ width: 12, height: 12 }} /> Transferir
+          </button>
+          <button className="vb-btn sm" onClick={() => openEditAccount(selectedAccount)}>
+            <Pencil style={{ width: 12, height: 12 }} /> Editar
+          </button>
+          <button className="vb-btn sm" style={{ color: "var(--destructive)" }} onClick={() => openDeleteAccount(selectedAccount)}>
+            <Trash2 style={{ width: 12, height: 12 }} /> Eliminar
+          </button>
+          <button className="vb-btn sm primary" onClick={() => setOpenDialog(true)}>
+            <Plus style={{ width: 12, height: 12 }} /> Nueva Cuenta
+          </button>
+        </div>
+      )}
+
+      {/* ===== Main content ===== */}
+      {accounts.length === 0 ? (
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ textAlign: "center" }}>
+            <Building2 style={{ width: 48, height: 48, margin: "0 auto 16px", color: "var(--vb-muted)" }} />
+            <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>No hay cuentas financieras</h3>
+            <p className="muted" style={{ fontSize: 12, marginBottom: 16 }}>Comienza creando tu primera cuenta financiera</p>
+            <button className="vb-btn sm primary" onClick={() => setOpenDialog(true)}>
+              <Plus style={{ width: 14, height: 14 }} /> Crear Primera Cuenta
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 300px", flex: 1, minHeight: 0 }}>
+          {/* Movements table */}
+          <div style={{ overflow: "auto" }}>
+            {movementsLoading ? (
+              <div style={{ padding: 40, textAlign: "center" }}>
+                <Skeleton className="h-8 w-48 mx-auto mb-3" />
+                <Skeleton className="h-6 w-full mb-2" />
+                <Skeleton className="h-6 w-full mb-2" />
+                <Skeleton className="h-6 w-full mb-2" />
+                <Skeleton className="h-6 w-full" />
+              </div>
+            ) : movements.length === 0 ? (
+              <div style={{ padding: 40, textAlign: "center", color: "var(--vb-muted)", fontSize: 13 }}>
+                No hay movimientos en esta cuenta
+              </div>
+            ) : (
+              <table className="vb-table">
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Concepto</th>
+                    <th>Vinculado a</th>
+                    <th>Tipo</th>
+                    <th style={{ textAlign: "right" }}>Ingreso</th>
+                    <th style={{ textAlign: "right" }}>Egreso</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {movements.map((m: any) => {
+                    const isIncome = m.type === "INCOME" || m.type === "FX_GAIN"
+                    const amt = Math.abs(m.amount_original || 0)
+                    const opCode = m.operations?.file_code || (m.operation_id ? m.operation_id.slice(0, 8) : null)
+                    return (
+                      <tr key={m.id}>
+                        <td className="mono" style={{ fontSize: 12, color: "var(--vb-muted)" }}>
+                          {m.movement_date ? format(new Date(m.movement_date), "dd MMM", { locale: es }) : "—"}
+                        </td>
+                        <td style={{ fontSize: 12.5, fontWeight: 500, maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {m.concept || "—"}
+                        </td>
+                        <td className="mono" style={{ fontSize: 11.5, color: opCode ? "var(--vb-accent)" : "var(--vb-muted)" }}>
+                          {opCode || "—"}
+                        </td>
+                        <td>
+                          <span className="vb-chip" style={{ fontSize: 10.5 }}>
+                            {m.type === "INCOME" ? "Ingreso" : m.type === "EXPENSE" ? "Egreso" : m.type === "FX_GAIN" ? "Ganancia FX" : m.type}
+                          </span>
+                        </td>
+                        <td className="mono tnum" style={{ textAlign: "right", fontSize: 12.5, color: isIncome ? "var(--vb-success)" : "var(--vb-muted)" }}>
+                          {isIncome ? formatCurrency(amt, selectedAccount?.currency) : "—"}
+                        </td>
+                        <td className="mono tnum" style={{ textAlign: "right", fontSize: 12.5, color: !isIncome ? "var(--vb-danger)" : "var(--vb-muted)" }}>
+                          {!isIncome ? formatCurrency(amt, selectedAccount?.currency) : "—"}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          {/* Summary panel */}
+          <div style={{ borderLeft: "1px solid var(--vb-border)", padding: 16, display: "flex", flexDirection: "column", gap: 14, overflow: "auto" }}>
+            {selectedAccount && (
+              <>
+                <div>
+                  <div className="muted" style={{ fontSize: 11, marginBottom: 8, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>Resumen</div>
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}>
+                    <span className="muted" style={{ fontSize: 12 }}>Saldo inicial</span>
+                    <span className="mono tnum" style={{ fontSize: 12.5 }}>{formatCurrency(selectedAccount.initial_balance ?? 0, selectedAccount.currency)}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}>
+                    <span className="muted" style={{ fontSize: 12 }}>Ingresos</span>
+                    <span className="mono tnum" style={{ fontSize: 12.5, color: "var(--vb-success)" }}>+{formatCurrency(movementsSummary.income, selectedAccount.currency)}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}>
+                    <span className="muted" style={{ fontSize: 12 }}>Egresos</span>
+                    <span className="mono tnum" style={{ fontSize: 12.5, color: "var(--vb-danger)" }}>−{formatCurrency(movementsSummary.expense, selectedAccount.currency)}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderTop: "1px solid var(--vb-border)", marginTop: 4 }}>
+                    <span style={{ fontSize: 12, fontWeight: 600 }}>Saldo actual</span>
+                    <span className="mono tnum" style={{ fontSize: 14, fontWeight: 600 }}>{formatCurrency(selectedAccount.current_balance ?? 0, selectedAccount.currency)}</span>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="muted" style={{ fontSize: 11, marginBottom: 8, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>Detalle</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span className="muted" style={{ fontSize: 12 }}>Tipo</span>
+                      <span style={{ fontSize: 12 }}>{accountTypeLabels[selectedAccount.type] || selectedAccount.type}</span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span className="muted" style={{ fontSize: 12 }}>Moneda</span>
+                      <span style={{ fontSize: 12 }}>{selectedAccount.currency}</span>
+                    </div>
+                    {selectedAccount.bank_name && (
+                      <div style={{ display: "flex", justifyContent: "space-between" }}>
+                        <span className="muted" style={{ fontSize: 12 }}>Banco</span>
+                        <span style={{ fontSize: 12 }}>{selectedAccount.bank_name}</span>
+                      </div>
+                    )}
+                    {selectedAccount.account_number && (
+                      <div style={{ display: "flex", justifyContent: "space-between" }}>
+                        <span className="muted" style={{ fontSize: 12 }}>Nro. cuenta</span>
+                        <span className="mono" style={{ fontSize: 12 }}>{selectedAccount.account_number}</span>
+                      </div>
                     )}
                   </div>
-                </DialogDescription>
-              </DialogHeader>
-              <DialogFooter>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ===== Dialogs ===== */}
+      <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              ¿Eliminar todas las cuentas?
+            </DialogTitle>
+            <DialogDescription>
+              Esta acción eliminará todas las cuentas financieras del sistema. Esta acción no se puede deshacer.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteConfirmOpen(false)}>Cancelar</Button>
+            <Button variant="destructive" onClick={handleClearAll}>Sí, eliminar todas</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteAccountOpen} onOpenChange={(open) => !open && closeDeleteAccount()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="h-5 w-5" />
+              Eliminar cuenta
+            </DialogTitle>
+            <DialogDescription asChild>
+              <div className="space-y-3">
                 {accountToDelete && (
                   <>
                     {Math.abs(accountToDelete.balance) <= 1e-6 ? (
-                      <>
-                        <Button variant="outline" onClick={closeDeleteAccount}>
-                          Cancelar
-                        </Button>
-                        <Button variant="destructive" onClick={handleDeleteAccount} disabled={isDeleting}>
-                          {isDeleting ? "Eliminando…" : "Sí, eliminar"}
-                        </Button>
-                      </>
+                      <p>¿Eliminar la cuenta <strong>{accountToDelete.displayName}</strong>? Esta acción no se puede deshacer.</p>
                     ) : deleteStep === "confirm" ? (
-                      <>
-                        <Button variant="outline" onClick={closeDeleteAccount}>
-                          No, cancelar
-                        </Button>
-                        <Button onClick={() => setDeleteStep("transfer")}>
-                          Sí, transferir
-                        </Button>
-                      </>
+                      <p>
+                        La cuenta <strong>{accountToDelete.displayName}</strong> tiene{" "}
+                        <strong className={accountToDelete.balance >= 0 ? "text-accent-coral" : "text-destructive"}>
+                          {formatCurrency(accountToDelete.balance, accountToDelete.currency)}
+                        </strong> de saldo. ¿Quieres transferirlo a otra cuenta?
+                      </p>
                     ) : (
                       <>
-                        <Button variant="outline" onClick={() => setDeleteStep("confirm")}>
-                          Atrás
-                        </Button>
-                        <Button
-                          variant="destructive"
-                          onClick={handleDeleteAccount}
-                          disabled={isDeleting || !transferToId}
-                        >
-                          {isDeleting ? "Eliminando…" : "Eliminar y transferir"}
-                        </Button>
+                        <p>Transferir <strong className={accountToDelete.balance >= 0 ? "text-accent-coral" : "text-destructive"}>{formatCurrency(Math.abs(accountToDelete.balance), accountToDelete.currency)}</strong> a:</p>
+                        <Select value={transferToId} onValueChange={setTransferToId}>
+                          <SelectTrigger><SelectValue placeholder="Selecciona una cuenta" /></SelectTrigger>
+                          <SelectContent>
+                            {accounts.filter((a: any) => a.id !== accountToDelete.id && a.currency === accountToDelete.currency && a.is_active !== false).map((a: any) => (
+                              <SelectItem key={a.id} value={a.id}>{getDisplayName(a)} ({a.currency})</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {accounts.filter((a: any) => a.id !== accountToDelete.id && a.currency === accountToDelete.currency && a.is_active !== false).length === 0 && (
+                          <p className="text-sm text-accent-coral">No hay otras cuentas en {accountToDelete.currency} para transferir.</p>
+                        )}
                       </>
                     )}
                   </>
                 )}
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            {accountToDelete && (
+              <>
+                {Math.abs(accountToDelete.balance) <= 1e-6 ? (
+                  <>
+                    <Button variant="outline" onClick={closeDeleteAccount}>Cancelar</Button>
+                    <Button variant="destructive" onClick={handleDeleteAccount} disabled={isDeleting}>{isDeleting ? "Eliminando…" : "Sí, eliminar"}</Button>
+                  </>
+                ) : deleteStep === "confirm" ? (
+                  <>
+                    <Button variant="outline" onClick={closeDeleteAccount}>No, cancelar</Button>
+                    <Button onClick={() => setDeleteStep("transfer")}>Sí, transferir</Button>
+                  </>
+                ) : (
+                  <>
+                    <Button variant="outline" onClick={() => setDeleteStep("confirm")}>Atrás</Button>
+                    <Button variant="destructive" onClick={handleDeleteAccount} disabled={isDeleting || !transferToId}>{isDeleting ? "Eliminando…" : "Eliminar y transferir"}</Button>
+                  </>
+                )}
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-          <Dialog open={openDialog} onOpenChange={setOpenDialog}>
-            <DialogTrigger asChild>
-              <Button size="sm" className="h-8 rounded-full">
-                <Plus className="h-4 w-4 mr-2" />
-                Nueva Cuenta
-              </Button>
-            </DialogTrigger>
+      <Dialog open={openDialog} onOpenChange={setOpenDialog}>
             <DialogContent className="max-w-2xl">
               <DialogHeader>
                 <DialogTitle>Nueva Cuenta Financiera</DialogTitle>
@@ -697,7 +881,7 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
                 </div>
 
                 {/* Campos específicos para cuentas bancarias */}
-                {(formData.type.includes("CHECKING") || formData.type.includes("SAVINGS")) && (
+                {!["CASH_ARS", "CASH_USD", "ASSETS", "PARTNER", ""].includes(formData.type) && (
                   <>
                     <div>
                       <Label>Banco</Label>
@@ -714,6 +898,19 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
                         onChange={(e) => setFormData({ ...formData, account_number: e.target.value })}
                         placeholder="Número de cuenta bancaria"
                       />
+                    </div>
+                    <div>
+                      <Label>Imp. Ley 25413 — tasa (%)</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={formData.bank_tax_rate || ""}
+                        onChange={(e) => setFormData({ ...formData, bank_tax_rate: e.target.value })}
+                        placeholder="0.6 (dejar vacío si no aplica)"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Si se completa, al registrar un ingreso en esta cuenta se ofrecerá deducir automáticamente el impuesto a déb/créd bancarios.
+                      </p>
                     </div>
                   </>
                 )}
@@ -888,129 +1085,6 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
               </form>
             </DialogContent>
           </Dialog>
-        </div>
-      </div>
-
-      {/* Filtro de agencia */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <Label htmlFor="agency-filter" className="text-xs font-medium whitespace-nowrap">
-          Agencia:
-        </Label>
-        <Select value={selectedAgencyId} onValueChange={setSelectedAgencyId}>
-          <SelectTrigger id="agency-filter" className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
-            <SelectValue placeholder="Selecciona una agencia" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">Todas las agencias</SelectItem>
-            {agencies.map((agency) => (
-              <SelectItem key={agency.id} value={agency.id}>
-                {agency.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {selectedAgencyId !== "ALL" && (
-          <p className="text-xs text-muted-foreground">
-            Mostrando cuentas de {agencies.find((a) => a.id === selectedAgencyId)?.name || "la agencia seleccionada"}
-          </p>
-        )}
-      </div>
-
-      {/* Tabla de cuentas por agencia */}
-      {Object.keys(accountsByAgency).length === 0 ? (
-        <div className="rounded-xl border border-border/40 py-12 text-center">
-          <Building2 className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold mb-2">No hay cuentas financieras</h3>
-          <p className="text-muted-foreground mb-4">
-            Comienza creando tu primera cuenta financiera
-          </p>
-          <Button size="sm" className="h-8 rounded-full" onClick={() => setOpenDialog(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Crear Primera Cuenta
-          </Button>
-        </div>
-      ) : (
-        <div className="space-y-6">
-          {Object.entries(accountsByAgency).map(([agencyId, data]: [string, any]) => (
-            <div key={agencyId} className="rounded-xl border border-border/40">
-              <div className="p-5 pb-3">
-                <h3 className="text-base font-semibold flex items-center gap-2">
-                  <Building2 className="h-5 w-5 text-muted-foreground" />
-                  {data.agency?.name || "Sin agencia"}
-                </h3>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {data.accounts.length} cuenta{data.accounts.length !== 1 ? "s" : ""}
-                </p>
-              </div>
-              <div className="px-5 pb-5">
-                <div className="max-h-[60vh] overflow-y-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <SortableTableHead sortKey="name" sortConfig={accountsSortConfig} onSort={requestAccountsSort} className="sticky top-0 bg-background z-10">Nombre</SortableTableHead>
-                        <SortableTableHead sortKey="type" sortConfig={accountsSortConfig} onSort={requestAccountsSort} className="sticky top-0 bg-background z-10">Tipo</SortableTableHead>
-                        <SortableTableHead sortKey="currency" sortConfig={accountsSortConfig} onSort={requestAccountsSort} className="sticky top-0 bg-background z-10">Moneda</SortableTableHead>
-                        <SortableTableHead sortKey="initial_balance" sortConfig={accountsSortConfig} onSort={requestAccountsSort} className="sticky top-0 bg-background z-10 text-right">Saldo Inicial</SortableTableHead>
-                        <SortableTableHead sortKey="current_balance" sortConfig={accountsSortConfig} onSort={requestAccountsSort} className="sticky top-0 bg-background z-10 text-right">Balance Actual</SortableTableHead>
-                        <TableHead className="sticky top-0 bg-background z-10 w-[80px]">Acciones</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {data.accounts.map((account: any) => (
-                        <TableRow key={account.id}>
-                          <TableCell className="font-medium">{getDisplayName(account)}</TableCell>
-                          <TableCell>
-                            <Badge variant="outline">
-                              {accountTypeLabels[account.type] || account.type}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="secondary">{account.currency}</Badge>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {formatCurrency(account.initial_balance ?? 0, account.currency)}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <span
-                              className={`font-bold ${
-                                (account.current_balance ?? 0) >= 0 ? "text-accent-coral" : "text-destructive"
-                              }`}
-                            >
-                              {formatCurrency(account.current_balance ?? 0, account.currency)}
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-1">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8"
-                                onClick={() => openEditAccount(account)}
-                                title="Editar nombre o ajustar saldo"
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                              onClick={() => openDeleteAccount(account)}
-                              title="Eliminar cuenta"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
 
       {/* Dialog de edición de cuenta — nombre + ajuste de saldo */}
       <Dialog open={editAccountOpen} onOpenChange={(open) => { if (!isEditing) setEditAccountOpen(open) }}>
@@ -1035,7 +1109,7 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="text-muted-foreground">Saldo actual</Label>
-                <div className="h-10 px-3 py-2 rounded-md border border-border/40 bg-muted/30 text-sm tabular-nums">
+                <div className="h-10 px-3 py-2 rounded-[var(--vb-r-sm)] border border-[var(--vb-border)] bg-[var(--vb-hover)] text-sm tabular-nums">
                   {editingAccount
                     ? formatCurrency(Number(editingAccount.current_balance ?? 0), editingAccount.currency)
                     : "—"}
@@ -1066,6 +1140,24 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
                 Si modificás el saldo, se generará un movimiento en el libro mayor con este motivo. Si no ponés motivo se registra como &quot;Ajuste manual sin motivo declarado&quot;.
               </p>
             </div>
+            {/* Bank tax rate — for any account that goes through a bank (not cash/assets/partner) */}
+            {editingAccount && !["CASH_ARS", "CASH_USD", "ASSETS", "PARTNER"].includes(editingAccount.type || "") && (
+              <div>
+                <Label htmlFor="edit-bank-tax">Imp. Ley 25413 — tasa (%)</Label>
+                <Input
+                  id="edit-bank-tax"
+                  type="number"
+                  step="0.01"
+                  value={editBankTaxRate}
+                  onChange={(e) => setEditBankTaxRate(e.target.value)}
+                  placeholder="0.6 (dejar vacío si no aplica)"
+                  disabled={isEditing}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Si se completa, al registrar un ingreso en esta cuenta se ofrecerá deducir automáticamente el impuesto a déb/créd bancarios.
+                </p>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditAccountOpen(false)} disabled={isEditing}>
