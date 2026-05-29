@@ -121,7 +121,7 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
   const openEditAccount = (account: any) => {
     setEditingAccount(account)
     setEditName(account.name || "")
-    setEditTargetBalance(String(account.current_balance ?? 0))
+    setEditTargetBalance(String(Number((account.current_balance ?? 0).toFixed(2))))
     setEditReason("")
     setEditAccountOpen(true)
   }
