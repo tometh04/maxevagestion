@@ -1021,14 +1021,14 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
 
       {/* Dialog de edición de cuenta — nombre + ajuste de saldo */}
       <Dialog open={editAccountOpen} onOpenChange={(open) => { if (!isEditing) setEditAccountOpen(open) }}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Editar cuenta financiera</DialogTitle>
             <DialogDescription>
               Cambiá el nombre o ajustá el saldo. Si cambiás el saldo, se crea un movimiento de ajuste en el libro mayor (queda en el historial).
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <div className="space-y-5 py-2">
             <div>
               <Label htmlFor="edit-name">Nombre</Label>
               <Input
@@ -1075,7 +1075,7 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
             </div>
             {/* Imp. Ley 25413 — visible para todas las cuentas excepto caja/activos/socio */}
             {editingAccount && !["CASH_ARS", "CASH_USD", "ASSETS", "PARTNER"].includes(editingAccount.type || "") && (
-              <div>
+              <div className="rounded-md border border-border/40 bg-muted/20 p-4 space-y-2">
                 <Label htmlFor="edit-bank-tax">Imp. Ley 25413 — tasa (%)</Label>
                 <Input
                   id="edit-bank-tax"
@@ -1086,8 +1086,8 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
                   placeholder="0.6 (dejar vacío si no aplica)"
                   disabled={isEditing}
                 />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Si se completa, al registrar cobros/pagos con esta cuenta se ofrecerá deducir automáticamente el impuesto a déb/créd bancarios.
+                <p className="text-xs text-muted-foreground">
+                  Al registrar cobros/pagos con esta cuenta se ofrecerá deducir automáticamente el impuesto a déb/créd bancarios.
                 </p>
               </div>
             )}
