@@ -18,11 +18,17 @@ export const getCurrentUser = cache(async (): Promise<{ user: User; session: { u
   if (process.env.DISABLE_AUTH === 'true' && process.env.NODE_ENV !== 'production') {
     // Retornar usuario mock para desarrollo (usar IDs reales para evitar errores de UUID)
     const mockUser: User = {
-      id: '9ec9dbcf-5cdd-428f-a303-c3f79b06d0be',
-      auth_id: '21b65d51-dedd-4566-bd85-515b6e1fb8fe',
-      org_id: null,
+      // Dev: usuario REAL (SUPER_ADMIN) de la org Oficial Testing Vibook.
+      // Debe existir en `users` para no violar FKs (quotations.seller_id,
+      // created_by, conversations, etc.) y tener la beta `features.lead_emilia_chat`
+      // activada, así el chat de Emilia abre en dev Y la cotización se crea.
+      // Un mock con id/org inexistentes hace que los endpoints org-scoped
+      // devuelvan 400 y los inserts con FK al user fallen.
+      id: '4da8ab16-d81c-4c03-88c6-f4f1da740b61',
+      auth_id: '8bb59fad-db45-47f6-b411-be1b44101fb4',
+      org_id: '410ada50-d8ae-4d18-8c90-36a9223b378b',
       name: 'Usuario Desarrollo',
-      email: 'tomas.sanchez04@gmail.com',
+      email: 'mypupybox@gmail.com',
       role: 'SUPER_ADMIN',
       is_active: true,
       can_view_agency_operations_support: false,
@@ -33,7 +39,7 @@ export const getCurrentUser = cache(async (): Promise<{ user: User; session: { u
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }
-    return { user: mockUser, session: { user: { id: '21b65d51-dedd-4566-bd85-515b6e1fb8fe' } } }
+    return { user: mockUser, session: { user: { id: '8bb59fad-db45-47f6-b411-be1b44101fb4' } } }
   }
 
   const t = makeTimer('getCurrentUser')
