@@ -238,14 +238,23 @@ export function transformFlight(flight: ApiFlight): any {
     })
   })
 
+  // Preservar la clase de cabina para la cotización: el shape transformado de
+  // los legs la descarta, así que la rescatamos del primer segmento (o del
+  // nivel de vuelo si el proveedor la trae ahí).
+  const firstSegment = flight.legs?.[0]?.options?.[0]?.segments?.[0]
+  const cabinClass =
+    (flight as any).cabin?.class ?? firstSegment?.cabinClass ?? null
+
   return {
     id: flight.id,
     airline: flight.airline,
     price: flight.price,
     adults: flight.adults,
     childrens: flight.children,
+    children: flight.children,
     departure_date: flight.departure_date,
     return_date: flight.return_date,
+    cabin_class: cabinClass,
     legs: transformedLegs,
   }
 }

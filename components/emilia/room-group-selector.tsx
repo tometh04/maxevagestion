@@ -25,6 +25,8 @@ interface RoomGroupSelectorProps {
   onRoomSelect?: (roomId: string) => void
   maxInitialRooms?: number
   nights: number
+  /** Carrusel angosto: 1 columna para que el precio no se corte. */
+  compact?: boolean
 }
 
 export function RoomGroupSelector({
@@ -33,6 +35,7 @@ export function RoomGroupSelector({
   onRoomSelect,
   maxInitialRooms = 3,
   nights,
+  compact = false,
 }: RoomGroupSelectorProps) {
   const [showAll, setShowAll] = useState(false)
 
@@ -63,7 +66,7 @@ export function RoomGroupSelector({
     <div className="space-y-3">
       <h4 className="text-sm font-medium">Habitaciones disponibles:</h4>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div className={`grid gap-3 ${compact ? "grid-cols-1" : "grid-cols-1 md:grid-cols-2"}`}>
         {visibleRooms.map((room) => {
           const group = groupedRooms[room.type]
           const cheapest = group[0]
@@ -151,9 +154,10 @@ function RoomCard({
       )}
 
       <div className="space-y-2">
-        {/* Precio por noche */}
-        <div className="flex items-center gap-2">
-          <Bed className="h-4 w-4 text-muted-foreground" />
+        {/* Precio por noche — pr-8 reserva espacio para el check de selección
+            (absolute top-2 right-2) para que no tape el precio. */}
+        <div className="flex items-center gap-2 pr-8">
+          <Bed className="h-4 w-4 text-muted-foreground flex-shrink-0" />
           <span className="font-bold text-lg">
             {formatPrice(room.price_per_night, room.currency)}/noche
           </span>
@@ -184,8 +188,9 @@ function RoomCard({
           </div>
         )}
 
-        {/* Descripción */}
-        <p className="text-sm text-muted-foreground line-clamp-2">
+        {/* Descripción completa (sin truncar) para que el vendedor vea el tipo
+            de habitación y régimen completos. */}
+        <p className="text-sm text-muted-foreground whitespace-pre-line">
           {translateRoomDescription(room.description)}
         </p>
 

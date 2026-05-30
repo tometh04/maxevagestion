@@ -52,6 +52,8 @@ interface HotelResultCardProps {
   selectedRoomId?: string
   selected?: boolean
   onSelectionChange?: (hotelId: string, selected: boolean) => void
+  /** Carrusel angosto (chat embebido): fuerza 1 columna de habitaciones. */
+  compact?: boolean
 }
 
 export function HotelResultCard({
@@ -60,6 +62,7 @@ export function HotelResultCard({
   selectedRoomId,
   selected = false,
   onSelectionChange,
+  compact = false,
 }: HotelResultCardProps) {
   const formatDate = (dateStr: string) => {
     // Mantener formato YYYY-MM-DD según especificación
@@ -122,6 +125,7 @@ export function HotelResultCard({
           onRoomSelect={onRoomSelect}
           nights={hotel.nights}
           maxInitialRooms={3}
+          compact={compact}
         />
       </CardContent>
     </Card>

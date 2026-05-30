@@ -226,6 +226,8 @@ export function LeadDetailDialog({
   const [quotationDialogOpen, setQuotationDialogOpen] = useState(false)
   const [editingQuotationId, setEditingQuotationId] = useState<string | null>(null)
   const [mode, setMode] = useState<"detail" | "emilia">("detail")
+  // Conversación que ya trajo el gate de "Cotizar" (perf: el chat evita re-fetchear).
+  const [emiliaConversation, setEmiliaConversation] = useState<{ id: string } | null | undefined>(undefined)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -340,7 +342,10 @@ export function LeadDetailDialog({
 
   // Resetear mode cuando el modal se cierra
   useEffect(() => {
-    if (!open) setMode("detail")
+    if (!open) {
+      setMode("detail")
+      setEmiliaConversation(undefined)
+    }
   }, [open])
 
   if (!lead) return null
@@ -494,7 +499,7 @@ export function LeadDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl p-0">
+      <DialogContent className={`p-0 ${mode === "emilia" ? "max-w-4xl" : "max-w-2xl"}`}>
         {mode === "emilia" ? (
           <LeadEmiliaChat
             lead={{
@@ -505,6 +510,7 @@ export function LeadDetailDialog({
               region: lead.region,
               agency_id: lead.agency_id,
             }}
+            initialConversation={emiliaConversation}
             onBack={() => setMode("detail")}
             onQuotationCreated={() => {
               // Recargar cotizaciones para que aparezcan al volver al mode="detail"
@@ -1012,6 +1018,10 @@ export function LeadDetailDialog({
                       try {
                         const res = await fetch(`/api/leads/${lead.id}/emilia`)
                         if (res.ok) {
+                          // Perf: reusamos la conversación del gate para que el
+                          // chat NO repita el GET en su init.
+                          const json = await res.json().catch(() => ({}))
+                          setEmiliaConversation(json?.data ?? null)
                           setMode("emilia")
                           return
                         }

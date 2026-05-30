@@ -18,47 +18,34 @@ const MAX_OPTIONS = 4
 // Tipos de input — basados en EmiliaFlight (TVC) y EurovipsHotel server-side
 // =============================================================================
 
+// IMPORTANTE: este es el shape *transformado* (output de `transformFlights` en
+// lib/emilia/transformers.ts), que es exactamente lo que consumen las cards del
+// chat y, por ende, lo que llega a este mapper. NO es el shape crudo de la API.
+export interface EmiliaFlightLeg {
+  departure: { city_code: string; city_name: string; time: string }
+  arrival: { city_code: string; city_name: string; time: string }
+  duration: string
+  flight_type: "outbound" | "inbound"
+  layovers?: Array<{
+    destination_city: string
+    destination_code: string
+    waiting_time: string
+  }>
+  arrival_next_day?: boolean
+}
+
 export interface EmiliaFlight {
   id: string
   airline: { code: string; name: string }
-  price: {
-    amount: number
-    currency: string
-    netAmount: number
-    taxAmount: number
-    fareAmount: number
-  }
+  price: { amount: number; currency: string }
   adults: number
-  children: number
+  // El transformer emite `childrens` (typo histórico) y ahora también `children`.
+  children?: number
+  childrens?: number
   departure_date: string
-  departure_time: string
-  arrival_date: string
-  arrival_time: string
-  return_date: string | null
-  trip_type?: "one_way" | "round_trip" | "multi_city"
-  duration: { total: number; formatted: string }
-  stops: { count: number; direct: boolean; connections: number }
-  baggage: { included: boolean; details: string; quantity: number }
-  cabin: { class: string; brandName: string }
-  booking: { validatingCarrier: string; lastTicketingDate: string; fareType: string }
-  legs: Array<{
-    legNumber: number
-    options: Array<{
-      optionId: string
-      duration: number
-      segments: Array<{
-        airline: string
-        flightNumber: string
-        departure: { airportCode: string; date: string; time: string }
-        arrival: { airportCode: string; date: string; time: string }
-        duration: number
-        cabinClass: string
-        baggage: string
-      }>
-    }>
-  }>
-  provider: "TVC"
-  transactionId: string
+  return_date?: string | null
+  cabin_class?: string | null
+  legs: EmiliaFlightLeg[]
 }
 
 export interface EurovipsHotel {
@@ -150,59 +137,138 @@ export function parseStars(category: string | null | undefined): number | null {
   return null
 }
 
+/** Leg de ida del vuelo transformado (fallback al primer leg). */
+function outboundLeg(flight: EmiliaFlight): EmiliaFlightLeg | null {
+  const legs = flight.legs
+  if (!Array.isArray(legs) || legs.length === 0) return null
+  return legs.find((l) => l.flight_type === "outbound") ?? legs[0]
+}
+
+/**
+ * Normaliza la clase de cabina a las keys de enum que usa la presentación
+ * (QUOTATION_FLIGHT_CLASS_LABELS: ECONOMY / PREMIUM_ECONOMY / BUSINESS / FIRST).
+ * Acepta tanto palabras ("Economy", "Económica") como códigos de booking
+ * class IATA de una letra. Si no matchea nada conocido, devuelve el valor
+ * original en mayúsculas (mejor mostrar algo que perderlo).
+ */
+export function normalizeFlightClass(raw: string | null | undefined): string | null {
+  if (!raw) return null
+  const s = String(raw).trim().toUpperCase()
+  if (!s) return null
+  if (["ECONOMY", "PREMIUM_ECONOMY", "BUSINESS", "FIRST"].includes(s)) return s
+
+  if (/FIRST|PRIMERA/.test(s)) return "FIRST"
+  if (/BUSINESS|EJECUTIV/.test(s)) return "BUSINESS"
+  if (/PREMIUM/.test(s)) return "PREMIUM_ECONOMY"
+  if (/ECON[OÓ]M|TURISTA|COACH/.test(s)) return "ECONOMY"
+
+  // Códigos de cabina/booking class IATA de una sola letra.
+  if (/^[FAP]$/.test(s)) return "FIRST"
+  if (/^[CJDIZ]$/.test(s)) return "BUSINESS"
+  if (/^W$/.test(s)) return "PREMIUM_ECONOMY"
+  if (/^[YMBHKLQTENRSVXGUO]$/.test(s)) return "ECONOMY"
+
+  return s
+}
+
+/**
+ * Deriva el régimen de comidas (meal plan) a partir de la descripción de la
+ * habitación, devolviendo las keys de enum de QUOTATION_MEAL_PLAN_LABELS.
+ * Devuelve null si no se reconoce ningún patrón.
+ */
+export function deriveMealPlan(description: string | null | undefined): string | null {
+  if (!description) return null
+  const s = String(description).toLowerCase()
+  if (!s.trim()) return null
+
+  if (/all\s*-?\s*inclusive|todo\s+incluido/.test(s)) return "ALL_INCLUSIVE"
+  if (/full\s*board|pensi[oó]n\s+completa/.test(s)) return "PENSION_COMPLETA"
+  if (/half\s*board|media\s+pensi[oó]n/.test(s)) return "MEDIA_PENSION"
+  if (/breakfast|desayuno|b\s*&\s*b/.test(s)) return "DESAYUNO"
+  if (/room\s*only|solo\s+alojamiento|sin\s+comidas|only\s+room/.test(s)) return "SOLO_ALOJAMIENTO"
+  return null
+}
+
 function buildFlightRoute(flight: EmiliaFlight): string | null {
-  const firstLeg = flight.legs?.[0]?.options?.[0]?.segments
-  if (!firstLeg || firstLeg.length === 0) return null
-  const origin = firstLeg[0].departure.airportCode
-  const destination = firstLeg[firstLeg.length - 1].arrival.airportCode
+  // El shape transformado expone origen/destino en cada leg como `city_code`.
+  // Usamos el leg de ida. Si falta algún código devolvemos null en lugar de
+  // crashear — el vendedor puede completarlo en el QuotationBuilder.
+  const leg = outboundLeg(flight)
+  const origin = leg?.departure?.city_code
+  const destination = leg?.arrival?.city_code
+  if (!origin || !destination) return null
   return `${origin} - ${destination}`
 }
 
 function mapFlightToItem(flight: EmiliaFlight) {
+  // Acceso defensivo a campos opcionales — Emilia entrega shapes ligeramente
+  // distintos según proveedor (TVC, etc.). Defaults razonables si falta algo.
+  const adults = flight.adults ?? 0
+  const children = flight.children ?? flight.childrens ?? 0
+  const quantity = adults + children || 1
+  // Escalas: el shape transformado no trae `stops`; las contamos desde los
+  // layovers del leg de ida.
+  const stops = outboundLeg(flight)?.layovers?.length ?? 0
+  const route = buildFlightRoute(flight)
+  const airlineName = flight.airline?.name ?? null
+  // Descripción legible para el editor/PDF: aerolínea · ruta · escalas.
+  const description = [
+    airlineName,
+    route,
+    stops > 0 ? `${stops} escala${stops > 1 ? "s" : ""}` : "directo",
+  ]
+    .filter(Boolean)
+    .join(" · ")
   return {
     item_type: "FLIGHT" as const,
-    description: "",
-    provider: flight.airline.code,
-    quantity: flight.adults + flight.children,
-    unit_price: flight.price.amount,
+    description,
+    provider: flight.airline?.code ?? null,
+    quantity,
+    unit_price: flight.price?.amount ?? 0,
     cost_amount: 0,
-    cost_currency: flight.price.currency,
+    cost_currency: flight.price?.currency ?? "USD",
     admin_fee_percentage: 0,
     operator_id: null,
     generates_commission: true,
-    airline: flight.airline.name,
-    flight_route: buildFlightRoute(flight),
-    flight_date: flight.departure_date,
-    flight_return_date: flight.return_date,
-    flight_stops: flight.stops.count,
-    flight_class: flight.cabin.class,
+    airline: airlineName,
+    flight_route: route,
+    flight_date: flight.departure_date ?? null,
+    flight_return_date: flight.return_date ?? null,
+    flight_stops: stops,
+    flight_class: normalizeFlightClass(flight.cabin_class),
+    // Detalle rico por leg (horarios, duración, escalas) → se persiste en
+    // quotation_items.flight_details (jsonb). Permite renderizar ida/regreso
+    // con escalas y horarios en la cotización pública.
+    flight_details:
+      Array.isArray(flight.legs) && flight.legs.length > 0 ? { legs: flight.legs } : null,
   }
 }
 
 function mapHotelToItem(sel: SelectedHotel) {
-  const room = sel.hotel.rooms[sel.roomIndex]
-  if (!room) throw new Error(`Hotel "${sel.hotel.name}" no tiene room index ${sel.roomIndex}`)
+  // Acceso defensivo: si no hay room en el index pedido, intentar room 0;
+  // si tampoco hay, devolver shape mínimo con price 0 (el vendedor lo edita).
+  const room = sel.hotel.rooms?.[sel.roomIndex] ?? sel.hotel.rooms?.[0] ?? null
 
   return {
     item_type: "HOTEL" as const,
-    description: "",
-    provider: sel.hotel.provider,
+    description: room?.description ?? "",
+    provider: sel.hotel.provider ?? null,
     quantity: 1,
     rooms: 1,
-    unit_price: room.total_price,
+    unit_price: room?.total_price ?? 0,
     cost_amount: 0,
-    cost_currency: room.currency,
+    cost_currency: room?.currency ?? "USD",
     admin_fee_percentage: 0,
     operator_id: null,
     generates_commission: true,
-    hotel_name: sel.hotel.name,
+    hotel_name: sel.hotel.name ?? null,
     hotel_stars: parseStars(sel.hotel.category),
-    hotel_address: sel.hotel.address,
-    hotel_phone: sel.hotel.phone,
+    hotel_address: sel.hotel.address ?? null,
+    hotel_phone: sel.hotel.phone ?? null,
     hotel_photo_url: sel.hotel.images?.[0] ?? null,
-    destination_city: sel.hotel.city,
-    room_type: room.type,
-    meal_plan: null as string | null,
+    destination_city: sel.hotel.city ?? null,
+    room_type: room?.type ?? null,
+    meal_plan: deriveMealPlan(room?.description),
     checkin_date: sel.hotel.check_in,
     checkout_date: sel.hotel.check_out,
     nights: sel.hotel.nights,

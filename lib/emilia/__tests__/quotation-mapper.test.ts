@@ -1,12 +1,15 @@
 // lib/emilia/__tests__/quotation-mapper.test.ts
 import {
   parseStars,
+  normalizeFlightClass,
+  deriveMealPlan,
   buildQuotationPayload,
   type EmiliaFlight,
   type EurovipsHotel,
   type GeneralData,
   type LeadInfo,
 } from "../quotation-mapper"
+import { transformFlights, transformHotels } from "../transformers"
 
 describe("parseStars", () => {
   it.each([
@@ -26,6 +29,54 @@ describe("parseStars", () => {
   })
 })
 
+describe("normalizeFlightClass", () => {
+  it.each([
+    ["ECONOMY", "ECONOMY"],
+    ["Economy", "ECONOMY"],
+    ["Económica", "ECONOMY"],
+    ["Turista", "ECONOMY"],
+    ["Premium Economy", "PREMIUM_ECONOMY"],
+    ["BUSINESS", "BUSINESS"],
+    ["Ejecutiva", "BUSINESS"],
+    ["First", "FIRST"],
+    ["Primera Clase", "FIRST"],
+    ["Y", "ECONOMY"],
+    ["J", "BUSINESS"],
+    ["F", "FIRST"],
+    ["W", "PREMIUM_ECONOMY"],
+    ["", null],
+    [null, null],
+    [undefined, null],
+  ])("normaliza '%s' → %s", (input, expected) => {
+    expect(normalizeFlightClass(input as any)).toBe(expected)
+  })
+
+  it("devuelve el valor original en mayúsculas si no matchea", () => {
+    expect(normalizeFlightClass("rara")).toBe("RARA")
+  })
+})
+
+describe("deriveMealPlan", () => {
+  it.each([
+    ["All Inclusive con vista al mar", "ALL_INCLUSIVE"],
+    ["ALL INCLUSIVE", "ALL_INCLUSIVE"],
+    ["Todo Incluido", "ALL_INCLUSIVE"],
+    ["Half Board", "MEDIA_PENSION"],
+    ["Media Pensión", "MEDIA_PENSION"],
+    ["Full Board", "PENSION_COMPLETA"],
+    ["Pensión Completa", "PENSION_COMPLETA"],
+    ["Bed and Breakfast", "DESAYUNO"],
+    ["Desayuno incluido", "DESAYUNO"],
+    ["Room Only", "SOLO_ALOJAMIENTO"],
+    ["Solo alojamiento", "SOLO_ALOJAMIENTO"],
+    ["Double Room", null],
+    ["", null],
+    [null, null],
+  ])("deriva '%s' → %s", (input, expected) => {
+    expect(deriveMealPlan(input as any)).toBe(expected)
+  })
+})
+
 const lead: LeadInfo = {
   id: "lead-1",
   contact_name: "Juan",
@@ -42,42 +93,38 @@ const general: GeneralData = {
   infants: 0,
 }
 
+// Shape *transformado* (output de transformFlights) — es lo que realmente
+// recibe el mapper desde las cards del chat.
 function makeFlight(overrides: Partial<EmiliaFlight> = {}): EmiliaFlight {
   return {
     id: "f1",
     airline: { code: "AR", name: "Aerolíneas Argentinas" },
-    price: { amount: 850, currency: "USD", netAmount: 700, taxAmount: 150, fareAmount: 700 },
+    price: { amount: 850, currency: "USD" },
     adults: 2,
     children: 0,
+    childrens: 0,
     departure_date: "2026-07-01",
-    departure_time: "10:00",
-    arrival_date: "2026-07-01",
-    arrival_time: "16:00",
     return_date: "2026-07-07",
-    trip_type: "round_trip",
-    duration: { total: 360, formatted: "6h 0m" },
-    stops: { count: 1, direct: false, connections: 1 },
-    baggage: { included: true, details: "23kg", quantity: 1 },
-    cabin: { class: "ECONOMY", brandName: "Economy Light" },
-    booking: { validatingCarrier: "AR", lastTicketingDate: "2026-06-25", fareType: "PUB" },
-    legs: [{
-      legNumber: 1,
-      options: [{
-        optionId: "o1",
-        duration: 360,
-        segments: [{
-          airline: "AR",
-          flightNumber: "1304",
-          departure: { airportCode: "EZE", date: "2026-07-01", time: "10:00" },
-          arrival: { airportCode: "PUJ", date: "2026-07-01", time: "16:00" },
-          duration: 360,
-          cabinClass: "Y",
-          baggage: "23kg",
-        }],
-      }],
-    }],
-    provider: "TVC",
-    transactionId: "tx-1",
+    cabin_class: "ECONOMY",
+    legs: [
+      {
+        departure: { city_code: "EZE", city_name: "Buenos Aires", time: "10:00" },
+        arrival: { city_code: "PUJ", city_name: "Punta Cana", time: "16:00" },
+        duration: "8h 00m",
+        flight_type: "outbound",
+        layovers: [
+          { destination_city: "Panamá", destination_code: "PTY", waiting_time: "2h 00m" },
+        ],
+        arrival_next_day: false,
+      },
+      {
+        departure: { city_code: "PUJ", city_name: "Punta Cana", time: "18:00" },
+        arrival: { city_code: "EZE", city_name: "Buenos Aires", time: "06:00" },
+        duration: "8h 00m",
+        flight_type: "inbound",
+        arrival_next_day: true,
+      },
+    ],
     ...overrides,
   }
 }
@@ -183,6 +230,37 @@ describe("buildQuotationPayload", () => {
     expect(payload.options[0].items[0].item_type).toBe("FLIGHT")
   })
 
+  it("vuelo: quantity = adultos + niños (honra `childrens` del transformer)", () => {
+    const payload = buildQuotationPayload({
+      lead,
+      selectedFlight: makeFlight({ adults: 2, children: undefined, childrens: 1 }),
+      selectedHotels: [],
+      generalData: general,
+    })
+    expect(payload.options[0].items[0].quantity).toBe(3)
+  })
+
+  it("vuelo: sin escalas → flight_stops = 0 y ruta desde el leg de ida", () => {
+    const payload = buildQuotationPayload({
+      lead,
+      selectedFlight: makeFlight({
+        legs: [
+          {
+            departure: { city_code: "EZE", city_name: "Buenos Aires", time: "10:00" },
+            arrival: { city_code: "MIA", city_name: "Miami", time: "20:00" },
+            duration: "9h 00m",
+            flight_type: "outbound",
+          },
+        ],
+      }),
+      selectedHotels: [],
+      generalData: general,
+    })
+    const flightItem = payload.options[0].items[0]
+    expect(flightItem.flight_route).toBe("EZE - MIA")
+    expect(flightItem.flight_stops).toBe(0)
+  })
+
   it("hotel: mapea total_price desde el room seleccionado", () => {
     const hotel = makeHotel({
       rooms: [
@@ -199,6 +277,45 @@ describe("buildQuotationPayload", () => {
     const hotelItem = payload.options[0].items[0]
     expect(hotelItem.unit_price).toBe(1200)
     expect(hotelItem.room_type).toBe("B")
+  })
+
+  it("vuelo: arma description legible con aerolínea, ruta y escalas", () => {
+    const payload = buildQuotationPayload({
+      lead,
+      selectedFlight: makeFlight(),
+      selectedHotels: [],
+      generalData: general,
+    })
+    expect(payload.options[0].items[0].description).toBe(
+      "Aerolíneas Argentinas · EZE - PUJ · 1 escala"
+    )
+    expect(payload.options[0].items[0].flight_class).toBe("ECONOMY")
+  })
+
+  it("hotel: rellena meal_plan y description desde la habitación", () => {
+    const hotel = makeHotel({
+      rooms: [
+        {
+          type: "Doble Superior",
+          description: "All Inclusive con vista al mar",
+          price_per_night: 200,
+          total_price: 1200,
+          currency: "USD",
+          availability: 3,
+          occupancy_id: "1",
+        },
+      ],
+    })
+    const payload = buildQuotationPayload({
+      lead,
+      selectedFlight: null,
+      selectedHotels: [{ hotel, roomIndex: 0 }],
+      generalData: general,
+    })
+    const hotelItem = payload.options[0].items[0]
+    expect(hotelItem.meal_plan).toBe("ALL_INCLUSIVE")
+    expect(hotelItem.description).toBe("All Inclusive con vista al mar")
+    expect(hotelItem.room_type).toBe("Doble Superior")
   })
 
   it("hotel: parsea stars desde category", () => {
@@ -268,5 +385,133 @@ describe("buildQuotationPayload", () => {
       generalData: general,
     })
     expect(payload.options).toHaveLength(4)
+  })
+})
+
+// =============================================================================
+// Integración: cadena real de producción (raw de Emilia → transformers →
+// buildQuotationPayload). Prueba que el shape que realmente entregan los
+// transformers se mapea completo, no solo el shape mockeado a mano.
+// =============================================================================
+describe("integración raw → transformers → buildQuotationPayload", () => {
+  // Shape crudo tal como lo entrega la API de Emilia (lo que recibe transformFlights).
+  const rawFlight = {
+    id: "f-raw-1",
+    airline: { code: "AA", name: "American Airlines" },
+    price: { amount: 1320.5, currency: "USD" },
+    adults: 2,
+    children: 1,
+    departure_date: "2026-07-01",
+    return_date: "2026-07-15",
+    cabin: { class: "BUSINESS", brandName: "Business" },
+    legs: [
+      {
+        legNumber: 1,
+        options: [
+          {
+            optionId: "o1",
+            duration: 720,
+            segments: [
+              {
+                airline: "AA",
+                flightNumber: 900,
+                departure: { airportCode: "EZE", date: "2026-07-01", time: "22:00" },
+                arrival: { airportCode: "MIA", date: "2026-07-02", time: "06:00" },
+                duration: 540,
+                cabinClass: "J",
+                baggage: "2",
+              },
+              {
+                airline: "AA",
+                flightNumber: 200,
+                departure: { airportCode: "MIA", date: "2026-07-02", time: "09:00" },
+                arrival: { airportCode: "JFK", date: "2026-07-02", time: "12:00" },
+                duration: 180,
+                cabinClass: "J",
+                baggage: "2",
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  }
+
+  const rawHotel = {
+    id: "hotel_riu",
+    unique_id: "riu",
+    name: "Riu Plaza",
+    category: "4 estrellas",
+    city: "Nueva York",
+    address: "145 W 47th St",
+    phone: "+1-212-555-0000",
+    images: ["https://img/riu.jpg"],
+    check_in: "2026-07-02",
+    check_out: "2026-07-15",
+    nights: 13,
+    provider: "EUROVIPS",
+    search_adults: 2,
+    search_children: 1,
+    rooms: [
+      {
+        type: "Standard",
+        description: "Room Only",
+        price_per_night: 150,
+        total_price: 1950,
+        currency: "USD",
+        availability: 5,
+        occupancy_id: "occ-standard",
+      },
+      {
+        type: "Deluxe",
+        description: "Breakfast included",
+        price_per_night: 220,
+        total_price: 2860,
+        currency: "USD",
+        availability: 3,
+        occupancy_id: "occ-deluxe",
+      },
+    ],
+  }
+
+  it("vuelo: ruta, clase, escalas y description salen completos tras transformar", () => {
+    const [flight] = transformFlights([rawFlight as any]) as EmiliaFlight[]
+    const payload = buildQuotationPayload({
+      lead,
+      selectedFlight: flight,
+      selectedHotels: [],
+      generalData: general,
+    })
+    const item = payload.options[0].items[0]
+    expect(item.airline).toBe("American Airlines")
+    expect(item.flight_route).toBe("EZE - JFK")
+    expect(item.flight_stops).toBe(1) // 2 segmentos → 1 escala (MIA)
+    expect(item.flight_class).toBe("BUSINESS")
+    expect(item.quantity).toBe(3) // 2 adultos + 1 niño (childrens del transformer)
+    expect(item.unit_price).toBe(1320.5)
+    expect(item.description).toBe("American Airlines · EZE - JFK · 1 escala")
+  })
+
+  it("hotel: room elegida (occupancy_id) mapea precio, tipo y meal_plan correctos", () => {
+    const [hotel] = transformHotels([rawHotel as any]) as EurovipsHotel[]
+    // Simula la resolución de índice por occupancy_id que hace el chat.
+    const roomIndex = hotel.rooms.findIndex(r => r.occupancy_id === "occ-deluxe")
+    const payload = buildQuotationPayload({
+      lead,
+      selectedFlight: null,
+      selectedHotels: [{ hotel, roomIndex }],
+      generalData: general,
+    })
+    const item = payload.options[0].items[0]
+    expect(item.hotel_name).toBe("Riu Plaza")
+    expect(item.hotel_stars).toBe(4)
+    expect(item.room_type).toBe("Deluxe")
+    expect(item.unit_price).toBe(2860)
+    expect(item.meal_plan).toBe("DESAYUNO")
+    expect(item.description).toBe("Breakfast included")
+    expect(item.destination_city).toBe("Nueva York")
+    expect(item.nights).toBe(13)
+    expect(item.checkin_date).toBe("2026-07-02")
+    expect(item.checkout_date).toBe("2026-07-15")
   })
 })

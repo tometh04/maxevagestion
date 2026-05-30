@@ -109,18 +109,21 @@ export async function POST(request: Request) {
         }
 
         // 5. Llamar a la API externa con contexto
+        // Body shape de /v1/emilia/turn:
+        //   - request_id: ÚNICO por turno (idempotencia/cache). Ya lo genera
+        //     generateRequestId() en cada POST → no se reutiliza entre turnos.
+        //   - external_conversation_ref: ESTABLE durante todo el chat para que
+        //     Emilia mantenga el contexto conversacional. Usamos nuestro
+        //     conversationId (id de la tabla conversations), que es estable por
+        //     lead+vendedor. Sin esto, Emilia trata cada turno como chat nuevo.
+        void conversationHistory // el endpoint mantiene contexto vía external_conversation_ref
         const apiPayload = {
             request_id: requestId,
-            prompt: message,
-            context: {
-                previous_request: (conversation as any).last_search_context,
-                conversation_history: conversationHistory,
-            },
-            options: {
-                language: "es",
-                include_metadata: true,
-            },
             external_conversation_ref: conversationId,
+            message,
+            mode: "agency",
+            workspace_mode: "standard",
+            language: "es",
         }
 
         const response = await fetch(EMILIA_API_URL, {
@@ -278,6 +281,22 @@ export async function POST(request: Request) {
             }
             : hotelsData
 
+        // requestType: derivar de los resultados REALES. El data.requestType de
+        // Emilia puede venir mal (ej. "hotels-only" en una búsqueda de vuelos);
+        // si no hay resultados, caer al tipo del request parseado.
+        const parsedReqType =
+            data.assistant_message?.meta?.parsedRequest?.requestType ??
+            data.emilia?.parsed_request?.requestType ??
+            data.parsed_request?.requestType
+        const derivedRequestType =
+            resultsFlights && resultsHotels ? "combined"
+            : resultsFlights ? "flights-only"
+            : resultsHotels ? "hotels-only"
+            : parsedReqType === "flights" ? "flights-only"
+            : parsedReqType === "hotels" ? "hotels-only"
+            : parsedReqType === "combined" ? "combined"
+            : data.requestType
+
         // 7. Guardar mensaje del asistente
         // Normalizar data para buildAssistantContent (debe tener results)
         const normalizedDataForContent = {
@@ -289,16 +308,24 @@ export async function POST(request: Request) {
         }
 
         const assistantClientId = generateClientId()
+        // El shape nuevo /v1/emilia/turn entrega el texto real en
+        // `data.assistant_message.content.text`. Usarlo directo cuando esté
+        // disponible; si no (shape legacy /search), caer a buildAssistantContent.
+        const emiliaText = data.assistant_message?.content?.text as string | undefined
+        const emiliaMeta = data.assistant_message?.meta
         const assistantContent = {
-            text: buildAssistantContent(normalizedDataForContent),
+            text: emiliaText || buildAssistantContent(normalizedDataForContent),
             cards: resultsFlights || resultsHotels ? {
                 flights: resultsFlights,
                 hotels: resultsHotels,
-                requestType: data.requestType || (resultsFlights && resultsHotels ? 'combined' : resultsFlights ? 'flights-only' : 'hotels-only'),
+                requestType: derivedRequestType,
             } : undefined,
             metadata: {
                 search_id: data.search_id,
                 results_count: (resultsFlights?.count || 0) + (resultsHotels?.count || 0),
+                // Preservar meta de Emilia (originalRequest, confidence, messageType...)
+                // para que se pueda leer al rehidratar el historial desde DB.
+                emilia_meta: emiliaMeta,
             },
         }
 
@@ -321,16 +348,23 @@ export async function POST(request: Request) {
             last_message_at: new Date().toISOString(),
         }
 
+        // El request parseado puede venir en distintos lugares según el shape.
+        const parsedRequestForCtx =
+            data.parsed_request ??
+            data.emilia?.parsed_request ??
+            data.assistant_message?.meta?.parsedRequest ??
+            null
+
         // Guardar contexto para próxima búsqueda
         if (data.context_management?.action === "save" && data.context_management?.context_to_save) {
             updates.last_search_context = data.context_management.context_to_save
-        } else if (data.parsed_request) {
-            updates.last_search_context = data.parsed_request
+        } else if (parsedRequestForCtx) {
+            updates.last_search_context = parsedRequestForCtx
         }
 
         // Generar título automático si es la primera búsqueda exitosa
-        if ((conversation as any).title?.startsWith("Chat ") && data.status === "completed" && data.parsed_request) {
-            updates.title = generateTitle(data.parsed_request)
+        if ((conversation as any).title?.startsWith("Chat ") && data.status === "completed" && parsedRequestForCtx) {
+            updates.title = generateTitle(parsedRequestForCtx)
         }
 
         await (supabase.from("conversations") as any)
@@ -364,7 +398,7 @@ export async function POST(request: Request) {
             ...data,
             status: responseStatus, // Asegurar que siempre haya status
             results: normalizedResults,
-            requestType: data.requestType || (resultsFlights && resultsHotels ? 'combined' : resultsFlights ? 'flights-only' : 'hotels-only'),
+            requestType: derivedRequestType,
             timestamp: new Date().toISOString(),
             conversationTitle: updates.title || (conversation as any).title,
         })
