@@ -35,6 +35,7 @@ export interface PreparedQuotationItem {
   flight_return_date: string | null
   flight_stops: number
   flight_class: string | null
+  flight_details: Record<string, unknown> | null
   flight_screenshot_url: string | null
   transfer_description: string | null
   notes: string | null
@@ -115,6 +116,7 @@ function prepareQuotationItem(rawItem: any, fallbackCurrency: string): PreparedQ
     flight_return_date: rawItem?.flight_return_date || null,
     flight_stops: Math.max(0, Number(rawItem?.flight_stops ?? 0)),
     flight_class: rawItem?.flight_class || null,
+    flight_details: rawItem?.flight_details ?? null,
     flight_screenshot_url: rawItem?.flight_screenshot_url || null,
     transfer_description: rawItem?.transfer_description || null,
     notes: rawItem?.notes || null,
@@ -192,6 +194,7 @@ function buildQuotationItemsInsertPayload(
     flight_return_date: item.flight_return_date || null,
     flight_stops: item.flight_stops != null ? Number(item.flight_stops) : 0,
     flight_class: item.flight_class || null,
+    flight_details: item.flight_details ?? null,
     flight_screenshot_url: item.flight_screenshot_url || null,
     transfer_description: item.transfer_description || null,
   }))
@@ -267,9 +270,20 @@ export async function insertQuotationOptionsOrThrow({
 
     if (Array.isArray(opt.items) && opt.items.length > 0) {
       const itemsToInsert = buildQuotationItemsInsertPayload(quotationId, option.id, opt.items, currency)
-      const { error: itemsError } = await supabase
+      let { error: itemsError } = await supabase
         .from("quotation_items")
         .insert(itemsToInsert)
+
+      // Resiliencia: si la migración de flight_details (jsonb) todavía no se
+      // aplicó, el insert falla por columna inexistente. Reintentamos sin ese
+      // campo para no romper la creación de la cotización (el resto sí se guarda).
+      if (itemsError && /flight_details/i.test(itemsError.message || "")) {
+        const stripped = itemsToInsert.map((it: any) => {
+          const { flight_details, ...rest } = it
+          return rest
+        })
+        ;({ error: itemsError } = await supabase.from("quotation_items").insert(stripped))
+      }
 
       if (itemsError) {
         try {

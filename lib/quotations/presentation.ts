@@ -1,5 +1,22 @@
 import { getEffectiveQuotationOptionTotal, normalizeManualQuotationTotal } from "@/lib/quotations/totals"
 
+export interface QuotationFlightLeg {
+  departure?: { city_code?: string | null; city_name?: string | null; time?: string | null } | null
+  arrival?: { city_code?: string | null; city_name?: string | null; time?: string | null } | null
+  duration?: string | null
+  flight_type?: string | null
+  layovers?: Array<{
+    destination_city?: string | null
+    destination_code?: string | null
+    waiting_time?: string | null
+  }> | null
+  arrival_next_day?: boolean | null
+}
+
+export interface QuotationFlightDetails {
+  legs?: QuotationFlightLeg[] | null
+}
+
 export interface QuotationPresentationItem {
   id?: string
   item_type: string
@@ -24,6 +41,7 @@ export interface QuotationPresentationItem {
   flight_date?: string | null
   flight_return_date?: string | null
   flight_screenshot_url?: string | null
+  flight_details?: QuotationFlightDetails | null
   transfer_description?: string | null
   price_per_unit?: number | null
   notes?: string | null
@@ -233,6 +251,7 @@ function normalizeQuotationItem(item: any): QuotationPresentationItem {
     flight_date: item.flight_date || null,
     flight_return_date: item.flight_return_date || null,
     flight_screenshot_url: item.flight_screenshot_url || null,
+    flight_details: (item.flight_details as QuotationFlightDetails | null) ?? null,
     transfer_description: item.transfer_description || null,
     price_per_unit: item.price_per_unit != null
       ? Number(item.price_per_unit)

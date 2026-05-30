@@ -28,9 +28,10 @@ import {
   getQuotationPassengerCount,
   getQuotationPassengersText,
   QUOTATION_AVAILABILITY_NOTE,
-  // QUOTATION_FLIGHT_CLASS_LABELS — removido 2026-05-07 con el rediseño del FlightCard.
+  QUOTATION_FLIGHT_CLASS_LABELS,
   QUOTATION_MEAL_PLAN_LABELS,
   QUOTATION_STATUS_LABELS,
+  type QuotationFlightLeg,
   type QuotationPresentationData,
   type QuotationPresentationItem,
 } from "@/lib/quotations/presentation"
@@ -206,10 +207,112 @@ function HotelCard({ item, brandColor }: { item: QuotationPresentationItem; bran
   )
 }
 
+function FlightLegDetail({
+  leg,
+  index,
+  brandColor,
+}: {
+  leg: QuotationFlightLeg
+  index: number
+  brandColor: string
+}) {
+  if (!leg) return null
+  const label =
+    leg.flight_type === "inbound"
+      ? "Regreso"
+      : leg.flight_type === "outbound"
+        ? "Ida"
+        : `Tramo ${index + 1}`
+  const dep = leg.departure
+  const arr = leg.arrival
+  const layovers = Array.isArray(leg.layovers) ? leg.layovers : []
+
+  return (
+    <div className="bg-muted rounded-lg p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: brandColor }}>
+          {label}
+        </span>
+        {leg.duration && (
+          <span className="text-[11px] text-muted-foreground inline-flex items-center gap-1">
+            <Clock className="h-3 w-3" />
+            {leg.duration}
+          </span>
+        )}
+      </div>
+
+      <div className="flex items-center gap-3">
+        <div className="text-center min-w-[52px]">
+          <div className="text-sm font-bold text-foreground">{dep?.city_code || "---"}</div>
+          {dep?.time && <div className="text-sm text-foreground">{dep.time}</div>}
+          {dep?.city_name && (
+            <div className="text-[10px] text-muted-foreground leading-tight">{dep.city_name}</div>
+          )}
+        </div>
+
+        <div className="flex-1 flex items-center">
+          <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground/50" />
+          <div className="flex-1 h-px bg-muted-foreground/30 relative">
+            <Plane
+              className="h-3.5 w-3.5 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-45"
+              style={{ color: brandColor }}
+            />
+          </div>
+          <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: brandColor }} />
+        </div>
+
+        <div className="text-center min-w-[52px]">
+          <div className="text-sm font-bold text-foreground">{arr?.city_code || "---"}</div>
+          {arr?.time && (
+            <div className="text-sm text-foreground inline-flex items-center justify-center gap-0.5">
+              {arr.time}
+              {leg.arrival_next_day && (
+                <span className="text-[9px] font-semibold text-accent-coral">+1</span>
+              )}
+            </div>
+          )}
+          {arr?.city_name && (
+            <div className="text-[10px] text-muted-foreground leading-tight">{arr.city_name}</div>
+          )}
+        </div>
+      </div>
+
+      {layovers.length > 0 && (
+        <div className="space-y-1 pt-1 border-t border-border/40">
+          {layovers.map((lay, j) => (
+            <div key={j} className="text-[11px] text-muted-foreground flex items-center gap-1">
+              <Clock className="h-3 w-3 flex-shrink-0" />
+              <span>
+                Escala en {lay.destination_code || lay.destination_city || "—"}
+                {lay.waiting_time ? ` · ${lay.waiting_time}` : ""}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function FlightCard({ item, brandColor }: { item: QuotationPresentationItem; brandColor: string }) {
-  // Feedback Yami 2026-05-07: aerolínea, ruta, clase y escalas se sacaron de
-  // la card pública del vuelo — esa info ahora va embebida en el screenshot.
-  // Quedan solo: ícono de tipo, fechas y screenshot.
+  // Feedback Yami 2026-05-07: en el flujo MANUAL la aerolínea/ruta/clase/escalas
+  // van embebidas en el screenshot del itinerario, así que ahí no se duplican.
+  // Pero el flujo de Emilia trae esos datos ESTRUCTURADOS y sin screenshot: en
+  // ese caso los renderizamos como texto para que el vuelo no quede vacío.
+  const classLabel = item.flight_class
+    ? QUOTATION_FLIGHT_CLASS_LABELS[item.flight_class] || item.flight_class
+    : null
+  const stopsLabel =
+    item.flight_stops != null
+      ? item.flight_stops === 0
+        ? "Directo"
+        : `${item.flight_stops} escala${item.flight_stops > 1 ? "s" : ""}`
+      : null
+  const flightMeta = [item.airline, classLabel, stopsLabel].filter(Boolean).join(" · ")
+  const rawLegs = item.flight_details?.legs
+  const legs = Array.isArray(rawLegs) ? rawLegs : []
+  const showStructuredInfo =
+    !item.flight_screenshot_url && (item.flight_route || flightMeta || legs.length > 0)
 
   return (
     <div className="quotation-print-service bg-white border rounded-xl p-4 space-y-3">
@@ -223,6 +326,25 @@ function FlightCard({ item, brandColor }: { item: QuotationPresentationItem; bra
           </div>
         </div>
       </div>
+
+      {/* Datos estructurados (flujo Emilia, sin screenshot): resumen + detalle por tramo */}
+      {showStructuredInfo && (
+        <div className="space-y-2">
+          {flightMeta && <p className="text-sm font-medium text-foreground">{flightMeta}</p>}
+          {legs.length > 0 ? (
+            <div className="space-y-2">
+              {legs.map((leg, i) => (
+                <FlightLegDetail key={i} leg={leg} index={i} brandColor={brandColor} />
+              ))}
+            </div>
+          ) : item.flight_route ? (
+            <div className="flex items-center gap-2 text-sm font-semibold text-foreground bg-muted rounded-lg px-3 py-2">
+              <Plane className="h-3.5 w-3.5 flex-shrink-0" style={{ color: brandColor }} />
+              <span>{item.flight_route}</span>
+            </div>
+          ) : null}
+        </div>
+      )}
 
       {(item.flight_date || item.flight_return_date) && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted rounded-lg px-3 py-2">
