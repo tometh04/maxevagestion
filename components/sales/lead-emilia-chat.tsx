@@ -225,7 +225,17 @@ interface Message {
       hotels?: { checkinDate?: string; checkoutDate?: string | null; adults?: number; children?: number; infants?: number }
       [key: string]: any
     }
+    parsedRequest?: {
+      confidence?: number
+      flights?: { departureDate?: string; returnDate?: string | null; adults?: number; children?: number; infants?: number }
+      hotels?: { checkinDate?: string; checkoutDate?: string | null; adults?: number; children?: number; infants?: number }
+      [key: string]: any
+    }
+    messageType?: string
     missing_fields?: string[]
+    // Emilia agrega muchos campos al meta (routeResult, iterationContext, etc.);
+    // permitimos cualquiera para no tipar todo el shape.
+    [key: string]: any
   }
 }
 

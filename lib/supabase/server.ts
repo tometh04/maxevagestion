@@ -48,7 +48,7 @@ export async function createServerClient() {
   if (process.env.DISABLE_AUTH === 'true' && process.env.NODE_ENV === 'production') {
     console.warn('⚠️ DISABLE_AUTH ignorada en producción — usando auth real')
   }
-  if (process.env.DISABLE_AUTH === 'true' && process.env.NODE_ENV !== 'production') {
+  if (process.env.DISABLE_AUTH === 'true' && process.env.NODE_ENV === 'development') {
     return createAdminClient()
   }
 

@@ -57,6 +57,9 @@ const financialSettingsSchema = z.object({
   // Master toggle para desactivar todas las retenciones/percepciones automáticas
   // (p.ej. agencias monotributistas o de prueba que no retienen).
   withholdings_enabled: z.boolean().optional(),
+  // Modo de cálculo de costo de operadores para cotizaciones
+  default_cost_calculation_mode: z.enum(['SIMPLE', 'COMMISSIONABLE']).optional(),
+  default_commission_percentage: z.number().min(0).max(100).optional(),
 })
 
 // GET - Obtener configuración financiera

@@ -162,7 +162,7 @@ export function NewCustomerDialog({
     const baseFields: Record<string, z.ZodTypeAny> = {
       first_name: z.string().min(1, "Nombre es requerido"),
       last_name: z.string().min(1, "Apellido es requerido"),
-      phone: z.string().min(1, "Teléfono es requerido"),
+      phone: z.string().optional(),
       email: z.union([z.string().email("Email inválido"), z.literal("")]).optional(),
       document_type: z.string().optional(),
       document_number: z.string().optional(),
@@ -175,9 +175,6 @@ export function NewCustomerDialog({
     if (settings?.validations) {
       const validations = settings.validations
       
-      if (validations.phone?.required) {
-        baseFields.phone = z.string().min(1, "Teléfono es requerido")
-      }
     }
 
     // Agregar campos personalizados al schema
@@ -612,7 +609,7 @@ export function NewCustomerDialog({
                   name="phone"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Teléfono *</FormLabel>
+                      <FormLabel>Teléfono</FormLabel>
                       <FormControl>
                         <Input placeholder="+54 11 1234-5678" {...field} />
                       </FormControl>

@@ -116,13 +116,15 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
   const [editName, setEditName] = useState("")
   const [editTargetBalance, setEditTargetBalance] = useState("")
   const [editReason, setEditReason] = useState("")
+  const [editBankTaxRate, setEditBankTaxRate] = useState("")
   const [isEditing, setIsEditing] = useState(false)
 
   const openEditAccount = (account: any) => {
     setEditingAccount(account)
     setEditName(account.name || "")
-    setEditTargetBalance(String(account.current_balance ?? 0))
+    setEditTargetBalance(String(Number((account.current_balance ?? 0).toFixed(2))))
     setEditReason("")
+    setEditBankTaxRate(account.bank_tax_rate != null ? String(account.bank_tax_rate) : "")
     setEditAccountOpen(true)
   }
 
@@ -141,7 +143,9 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
     const currentBal = Number(editingAccount.current_balance ?? 0)
     const balanceChanged = Math.abs(targetNum - currentBal) > 0.01
     const nameChanged = trimmedName !== (editingAccount.name || "")
-    if (!balanceChanged && !nameChanged) {
+    const oldTaxRate = editingAccount.bank_tax_rate != null ? String(editingAccount.bank_tax_rate) : ""
+    const taxRateChanged = editBankTaxRate !== oldTaxRate
+    if (!balanceChanged && !nameChanged && !taxRateChanged) {
       toast.info("Sin cambios")
       setEditAccountOpen(false)
       return
@@ -154,6 +158,9 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
       if (balanceChanged) {
         payload.target_balance = targetNum
         payload.adjustment_reason = editReason.trim() || undefined
+      }
+      if (taxRateChanged) {
+        payload.bank_tax_rate = editBankTaxRate === "" ? null : Number(editBankTaxRate)
       }
       const res = await fetch(`/api/accounting/financial-accounts/${editingAccount.id}`, {
         method: "PATCH",
@@ -1014,14 +1021,14 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
 
       {/* Dialog de edición de cuenta — nombre + ajuste de saldo */}
       <Dialog open={editAccountOpen} onOpenChange={(open) => { if (!isEditing) setEditAccountOpen(open) }}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Editar cuenta financiera</DialogTitle>
             <DialogDescription>
               Cambiá el nombre o ajustá el saldo. Si cambiás el saldo, se crea un movimiento de ajuste en el libro mayor (queda en el historial).
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <div className="space-y-5 px-6 py-4">
             <div>
               <Label htmlFor="edit-name">Nombre</Label>
               <Input
@@ -1066,6 +1073,24 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
                 Si modificás el saldo, se generará un movimiento en el libro mayor con este motivo. Si no ponés motivo se registra como &quot;Ajuste manual sin motivo declarado&quot;.
               </p>
             </div>
+            {/* Imp. Ley 25413 — visible para todas las cuentas excepto caja/activos/socio */}
+            {editingAccount && (editingAccount.type?.includes("CHECKING") || editingAccount.type?.includes("SAVINGS")) && (
+              <div className="rounded-md border border-border/40 bg-muted/20 p-4 space-y-2">
+                <Label htmlFor="edit-bank-tax">Imp. Ley 25413 — tasa (%)</Label>
+                <Input
+                  id="edit-bank-tax"
+                  type="number"
+                  step="0.01"
+                  value={editBankTaxRate}
+                  onChange={(e) => setEditBankTaxRate(e.target.value)}
+                  placeholder="0.6 (dejar vacío si no aplica)"
+                  disabled={isEditing}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Al registrar cobros/pagos con esta cuenta se ofrecerá deducir automáticamente el impuesto a déb/créd bancarios.
+                </p>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditAccountOpen(false)} disabled={isEditing}>

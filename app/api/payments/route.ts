@@ -1042,6 +1042,75 @@ export async function POST(request: Request) {
           // No romper el flujo principal — el pago ya fue registrado
         }
 
+        // ============================================
+        // LEY 25413: Impuesto déb/créd bancarios
+        // Si el frontend mandó bank_tax_rate + bank_tax_amount,
+        // crear un EXPENSE adicional (cash_movement + ledger_movement)
+        // en la misma cuenta financiera.
+        // ============================================
+        const incomingBankTaxRate = body.bank_tax_rate
+        const incomingBankTaxAmount = body.bank_tax_amount
+        if (
+          incomingBankTaxRate != null &&
+          incomingBankTaxAmount != null &&
+          Number(incomingBankTaxAmount) > 0
+        ) {
+          try {
+            const taxAmount = Number(incomingBankTaxAmount)
+            const taxRate = Number(incomingBankTaxRate)
+            const taxConcept = `Imp. Ley 25413 (${taxRate}%) — Pago Op. ${operation_id ? operation_id.slice(0, 8) : "N/A"}`
+
+            // Calcular ARS equivalent para el tax
+            let taxAmountARS = taxAmount
+            if (currency === "USD" && exchangeRate) {
+              taxAmountARS = calculateARSEquivalent(taxAmount, "USD", exchangeRate)
+            }
+
+            // 1. Crear ledger_movement EXPENSE para el impuesto
+            const { id: taxLedgerMovementId } = await createLedgerMovement(
+              {
+                operation_id: operation_id || null,
+                lead_id: null,
+                type: "EXPENSE",
+                concept: taxConcept,
+                currency: currency as "ARS" | "USD",
+                amount_original: taxAmount,
+                exchange_rate: currency === "USD" ? exchangeRate : null,
+                amount_ars_equivalent: taxAmountARS,
+                method: ledgerMethod,
+                account_id: accountId,
+                seller_id: sellerId,
+                notes: `Impuesto bancario automático vinculado a payment ${payment.id}. Tasa: ${taxRate}%.`,
+                created_by: user.id,
+              },
+              supabase
+            )
+
+            // 2. Crear cash_movement EXPENSE para que aparezca en vista de caja
+            await (supabase.from("cash_movements") as any)
+              .insert({
+                operation_id: operation_id || null,
+                payment_id: payment.id, // Vincular al mismo payment para trazabilidad
+                cash_box_id: null,
+                financial_account_id: accountId,
+                user_id: user.id,
+                type: "EXPENSE",
+                category: "BANK_TAX",
+                amount: taxAmount,
+                currency,
+                movement_date: date_paid || new Date().toISOString().split("T")[0],
+                notes: taxConcept,
+                is_touristic: false,
+                agency_id: agencyId,
+              })
+
+            console.log(`✅ Bank tax Ley 25413: ${taxAmount} ${currency} (${taxRate}%) deducido para payment ${payment.id}`)
+          } catch (bankTaxError) {
+            // No romper el flujo principal — el pago ya fue registrado
+            console.error("Error creando movimiento de impuesto bancario Ley 25413:", bankTaxError)
+          }
+        }
+
       } catch (accountingError) {
         const errorMsg = accountingError instanceof Error ? accountingError.message : String(accountingError)
         console.error("❌ CRITICAL: Error creating ledger movement for payment:", {
@@ -1531,6 +1600,7 @@ export async function DELETE(request: Request) {
       const { data: orphaned } = await (supabase.from("ledger_movements") as any)
         .select("id")
         .eq("operation_id", payment.operation_id)
+        .eq("org_id", user.org_id) // 🔴 defense-in-depth
         .eq("type", expectedType)
         .eq("amount_original", payment.amount)
         .eq("currency", payment.currency)
@@ -1545,10 +1615,17 @@ export async function DELETE(request: Request) {
 
     if (ledgerMovementId) {
       // Obtener account_id antes de eliminar para invalidar cache
+      // 🔴 Defense-in-depth: filtrar por org_id (no confiar solo en RLS)
       const { data: ledgerMovement } = await (supabase.from("ledger_movements") as any)
-        .select("account_id")
+        .select("id, account_id")
         .eq("id", ledgerMovementId)
+        .eq("org_id", user.org_id)
         .single()
+
+      if (!ledgerMovement) {
+        console.error(`❌ DELETE payment ${paymentId}: ledger_movement ${ledgerMovementId} no encontrado (org_id=${user.org_id}). Posible inconsistencia.`)
+        // No abortar: puede ser un movimiento legado sin org_id, intentar delete igualmente
+      }
 
       if (payment.payer_type === "OPERATOR" && payment.operator_payment_id) {
         await revertOperatorPaymentSettlement(supabase, {
@@ -1569,16 +1646,42 @@ export async function DELETE(request: Request) {
       }
 
       // Eliminar el ledger movement
-      const { error: ledgerError } = await (supabase.from("ledger_movements") as any)
+      // 🔴 Bug fix 2026-05-28: usar .select("id") para verificar que realmente
+      // se eliminó la fila. Sin esto, Supabase devuelve error=null aunque 0 filas
+      // fueron eliminadas (RLS silente, row ya borrada, etc.), y el código seguía
+      // como si nada — eliminaba el payment pero dejaba el ledger_movement huérfano,
+      // causando que el saldo de la cuenta nunca se restaurara.
+      const { data: deletedLedger, error: ledgerError } = await (supabase.from("ledger_movements") as any)
         .delete()
         .eq("id", ledgerMovementId)
+        .select("id, account_id")
 
       if (ledgerError) {
         console.error("ERROR: Could not delete ledger movement:", ledgerError)
         return NextResponse.json({ error: "Error al eliminar movimiento contable asociado. El pago NO fue eliminado." }, { status: 500 })
-      } else if (ledgerMovement?.account_id) {
-        // Invalidar cache de balance de la cuenta afectada
-        invalidateBalanceCache(ledgerMovement.account_id)
+      }
+
+      if (!deletedLedger || deletedLedger.length === 0) {
+        // 🔴 Fila no fue eliminada (RLS bloqueó, ya no existía, etc.)
+        // Esto es exactamente el bug reportado por VICO: el delete "funciona"
+        // pero 0 rows se borran → el saldo nunca vuelve a la cuenta.
+        console.error(
+          `❌ CRITICAL: ledger_movement ${ledgerMovementId} DELETE returned 0 rows affected. ` +
+          `Payment ${paymentId} will NOT be deleted to prevent inconsistencia contable. ` +
+          `org_id=${user.org_id}, account_id=${ledgerMovement?.account_id || "unknown"}`
+        )
+        return NextResponse.json(
+          {
+            error: "No se pudo eliminar el movimiento contable (posible restricción de permisos). El pago NO fue eliminado para evitar inconsistencias. Contactá soporte.",
+          },
+          { status: 500 }
+        )
+      }
+
+      // Invalidar cache de balance de la cuenta afectada
+      const affectedAccountId = deletedLedger[0]?.account_id || ledgerMovement?.account_id
+      if (affectedAccountId) {
+        invalidateBalanceCache(affectedAccountId)
       }
     }
 
