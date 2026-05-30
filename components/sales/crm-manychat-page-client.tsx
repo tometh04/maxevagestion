@@ -360,7 +360,13 @@ export function CRMManychatPageClient({
           <TabsTrigger value="table">Tabla</TabsTrigger>
         </TabsList>
         <TabsContent value="kanban">
-          {loading ? (
+          {/* Solo mostrar el placeholder de carga en la carga INICIAL (sin leads
+              todavía). En recargas en background (loadLeads con leads ya cargados)
+              NO desmontamos el kanban: si lo hiciéramos, el LeadDetailDialog que
+              vive adentro (y el chat de Emilia abierto) se destruiría junto con su
+              estado local. Mantenerlo montado deja que los leads se actualicen
+              in-place sin cerrar el modal. */}
+          {loading && allLeads.length === 0 ? (
             <div className="flex items-center justify-center p-8">
               <p className="text-muted-foreground">Cargando leads...</p>
             </div>
