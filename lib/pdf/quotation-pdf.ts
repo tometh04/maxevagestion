@@ -73,6 +73,18 @@ function getItemTitle(item: QuotationPresentationItem) {
   }
 }
 
+/** Texto de equipaje del leg (options[].segments[].baggage) para el PDF. */
+function pdfLegBaggageText(leg: any): string | null {
+  const seg = leg?.options?.[0]?.segments?.[0]
+  if (!seg) return null
+  const parts: string[] = []
+  const checked = seg.baggage ? parseInt(String(seg.baggage).replace(/[^0-9]/g, ""), 10) : 0
+  if (checked > 0) parts.push(`${checked} valija${checked > 1 ? "s" : ""} despachada${checked > 1 ? "s" : ""}`)
+  const carry = seg.carryOnBagInfo?.quantity ? parseInt(String(seg.carryOnBagInfo.quantity), 10) : 0
+  if (carry > 0) parts.push("1 de mano")
+  return parts.length ? parts.join(" + ") : "1 equipaje de mano"
+}
+
 function getItemLines(item: QuotationPresentationItem, currency: string) {
   const lines: string[] = []
   const title = getItemTitle(item)
@@ -107,23 +119,46 @@ function getItemLines(item: QuotationPresentationItem, currency: string) {
   }
 
   if (item.item_type === "FLIGHT") {
-    if (item.flight_route) {
-      lines.push(`Ruta: ${item.flight_route.replace(/\s*[-→>]+\s*/g, " -> ")}`)
-    }
-
-    const flightMeta: string[] = []
     if (item.flight_class) {
-      flightMeta.push(QUOTATION_FLIGHT_CLASS_LABELS[item.flight_class] || item.flight_class)
+      lines.push(QUOTATION_FLIGHT_CLASS_LABELS[item.flight_class] || item.flight_class)
     }
-    if (item.flight_stops != null) {
-      flightMeta.push(item.flight_stops === 0 ? "Directo" : `${item.flight_stops} escala${item.flight_stops > 1 ? "s" : ""}`)
-    }
-    if (flightMeta.length > 0) lines.push(flightMeta.join(" | "))
 
-    const flightDates: string[] = []
-    if (item.flight_date) flightDates.push(`Ida: ${formatQuotationDateShort(item.flight_date)}`)
-    if (item.flight_return_date) flightDates.push(`Vuelta: ${formatQuotationDateShort(item.flight_return_date)}`)
-    if (flightDates.length > 0) lines.push(flightDates.join(" | "))
+    const rawLegs = item.flight_details?.legs
+    const legs = Array.isArray(rawLegs) ? rawLegs : []
+
+    if (legs.length > 0) {
+      // Detalle por tramo (cuando viene de Emilia): horarios, duración y escalas.
+      legs.forEach((leg) => {
+        const legLabel =
+          leg.flight_type === "inbound" ? "Regreso" : leg.flight_type === "outbound" ? "Ida" : "Tramo"
+        const legDate = leg.flight_type === "inbound" ? item.flight_return_date : item.flight_date
+        const dateStr = legDate ? ` (${formatQuotationDateShort(legDate)})` : ""
+        const depStr = `${leg.departure?.city_code || "?"} ${leg.departure?.time || ""}`.trim()
+        const arrStr = `${leg.arrival?.city_code || "?"} ${leg.arrival?.time || ""}${leg.arrival_next_day ? " +1" : ""}`.trim()
+        const durStr = leg.duration ? ` (${leg.duration})` : ""
+        lines.push(`${legLabel}${dateStr}: ${depStr} -> ${arrStr}${durStr}`)
+        const layovers = Array.isArray(leg.layovers) ? leg.layovers : []
+        layovers.forEach((lay) => {
+          const place = lay.destination_city || lay.destination_code || "?"
+          const codeStr = lay.destination_city && lay.destination_code ? ` (${lay.destination_code})` : ""
+          lines.push(`   Escala en ${place}${codeStr}${lay.waiting_time ? ` - espera ${lay.waiting_time}` : ""}`)
+        })
+      })
+      const bag = pdfLegBaggageText(legs[0])
+      if (bag) lines.push(`Equipaje: ${bag}`)
+    } else {
+      // Fallback plano (cotizaciones sin flight_details).
+      if (item.flight_route) {
+        lines.push(`Ruta: ${item.flight_route.replace(/\s*[-→>]+\s*/g, " -> ")}`)
+      }
+      if (item.flight_stops != null) {
+        lines.push(item.flight_stops === 0 ? "Directo" : `${item.flight_stops} escala${item.flight_stops > 1 ? "s" : ""}`)
+      }
+      const flightDates: string[] = []
+      if (item.flight_date) flightDates.push(`Ida: ${formatQuotationDateShort(item.flight_date)}`)
+      if (item.flight_return_date) flightDates.push(`Vuelta: ${formatQuotationDateShort(item.flight_return_date)}`)
+      if (flightDates.length > 0) lines.push(flightDates.join(" | "))
+    }
   }
 
   if (item.item_type === "TRANSFER" && item.transfer_description && item.transfer_description !== title) {
