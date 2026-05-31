@@ -749,21 +749,25 @@ export function LeadEmiliaChat({ lead, onBack, onQuotationCreated, initialConver
 
       {/* Input + CTA */}
       <div className="border-t px-6 py-3 space-y-3">
-        <div className="flex">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => applySuggestedPrompt(true)}
-            disabled={promptLoading || sending}
-            className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
-          >
-            {promptLoading
-              ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
-              : <Sparkles className="h-3.5 w-3.5 mr-1" />}
-            Sugerir prompt inicial
-          </Button>
-        </div>
+        {/* "Sugerir prompt inicial" solo al iniciar el chat (sin mensajes todavía).
+            Si ya hay conversación, no aparece. */}
+        {messages.length === 0 && (
+          <div className="flex">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => applySuggestedPrompt(true)}
+              disabled={promptLoading || sending}
+              className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+            >
+              {promptLoading
+                ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                : <Sparkles className="h-3.5 w-3.5 mr-1" />}
+              Sugerir prompt inicial
+            </Button>
+          </div>
+        )}
         <div className="flex gap-2">
           <Textarea
             value={input}
