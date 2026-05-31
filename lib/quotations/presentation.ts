@@ -11,6 +11,12 @@ export interface QuotationFlightLeg {
     waiting_time?: string | null
   }> | null
   arrival_next_day?: boolean | null
+  options?: Array<{
+    segments?: Array<{
+      baggage?: string | null
+      carryOnBagInfo?: { quantity?: string | null } | null
+    }>
+  }> | null
 }
 
 export interface QuotationFlightDetails {

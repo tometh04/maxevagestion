@@ -14,6 +14,7 @@ import {
   Eye,
   Hotel,
   Loader2,
+  Luggage,
   type LucideIcon,
   MapPin,
   Plane,
@@ -207,6 +208,18 @@ function HotelCard({ item, brandColor }: { item: QuotationPresentationItem; bran
   )
 }
 
+/** Texto de equipaje del leg, derivado de options[].segments[].baggage. */
+function legBaggageText(leg: QuotationFlightLeg): string | null {
+  const seg = leg?.options?.[0]?.segments?.[0]
+  if (!seg) return null
+  const parts: string[] = []
+  const checked = seg.baggage ? parseInt(String(seg.baggage).replace(/[^0-9]/g, ""), 10) : 0
+  if (checked > 0) parts.push(`${checked} valija${checked > 1 ? "s" : ""} despachada${checked > 1 ? "s" : ""}`)
+  const carry = seg.carryOnBagInfo?.quantity ? parseInt(String(seg.carryOnBagInfo.quantity), 10) : 0
+  if (carry > 0) parts.push("1 de mano")
+  return parts.length ? parts.join(" + ") : "1 equipaje de mano"
+}
+
 function FlightLegDetail({
   leg,
   index,
@@ -226,65 +239,89 @@ function FlightLegDetail({
   const dep = leg.departure
   const arr = leg.arrival
   const layovers = Array.isArray(leg.layovers) ? leg.layovers : []
+  const baggage = legBaggageText(leg)
+  const stopsLabel =
+    layovers.length > 0 ? `${layovers.length} escala${layovers.length > 1 ? "s" : ""}` : "Directo"
 
   return (
-    <div className="bg-muted rounded-lg p-3 space-y-2">
-      <div className="flex items-center justify-between">
-        <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: brandColor }}>
+    <div className="rounded-xl border bg-white overflow-hidden">
+      {/* Encabezado del tramo: Ida/Regreso · duración · equipaje */}
+      <div className="flex items-center justify-between gap-2 px-3.5 py-2 bg-muted/50 border-b">
+        <span
+          className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide"
+          style={{ color: brandColor }}
+        >
+          <Plane className="h-3.5 w-3.5" />
           {label}
         </span>
-        {leg.duration && (
-          <span className="text-[11px] text-muted-foreground inline-flex items-center gap-1">
-            <Clock className="h-3 w-3" />
-            {leg.duration}
-          </span>
-        )}
+        <div className="inline-flex items-center gap-3 text-[11px] text-muted-foreground">
+          {leg.duration && (
+            <span className="inline-flex items-center gap-1">
+              <Clock className="h-3 w-3" />
+              {leg.duration}
+            </span>
+          )}
+          {baggage && (
+            <span className="inline-flex items-center gap-1">
+              <Luggage className="h-3 w-3" />
+              {baggage}
+            </span>
+          )}
+        </div>
       </div>
 
-      <div className="flex items-center gap-3">
-        <div className="text-center min-w-[52px]">
-          <div className="text-sm font-bold text-foreground">{dep?.city_code || "---"}</div>
-          {dep?.time && <div className="text-sm text-foreground">{dep.time}</div>}
+      {/* Línea de tiempo: horario · código · ciudad */}
+      <div className="flex items-center gap-2 px-3.5 py-3">
+        <div className="text-center min-w-[58px]">
+          <div className="text-lg font-bold leading-none text-foreground">{dep?.time || "--:--"}</div>
+          <div className="text-xs font-semibold text-foreground mt-1">{dep?.city_code || "---"}</div>
           {dep?.city_name && (
             <div className="text-[10px] text-muted-foreground leading-tight">{dep.city_name}</div>
           )}
         </div>
 
-        <div className="flex-1 flex items-center">
-          <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground/50" />
-          <div className="flex-1 h-px bg-muted-foreground/30 relative">
-            <Plane
-              className="h-3.5 w-3.5 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-45"
-              style={{ color: brandColor }}
-            />
+        <div className="flex-1 flex flex-col items-center">
+          <span
+            className={`text-[10px] font-medium mb-1 ${layovers.length > 0 ? "text-accent-coral" : "text-success"}`}
+          >
+            {stopsLabel}
+          </span>
+          <div className="w-full flex items-center">
+            <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40" />
+            <div className="flex-1 h-px bg-muted-foreground/30 relative">
+              <Plane
+                className="h-3.5 w-3.5 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-45"
+                style={{ color: brandColor }}
+              />
+            </div>
+            <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: brandColor }} />
           </div>
-          <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: brandColor }} />
         </div>
 
-        <div className="text-center min-w-[52px]">
-          <div className="text-sm font-bold text-foreground">{arr?.city_code || "---"}</div>
-          {arr?.time && (
-            <div className="text-sm text-foreground inline-flex items-center justify-center gap-0.5">
-              {arr.time}
-              {leg.arrival_next_day && (
-                <span className="text-[9px] font-semibold text-accent-coral">+1</span>
-              )}
-            </div>
-          )}
+        <div className="text-center min-w-[58px]">
+          <div className="text-lg font-bold leading-none text-foreground inline-flex items-start justify-center gap-0.5">
+            {arr?.time || "--:--"}
+            {leg.arrival_next_day && (
+              <span className="text-[9px] font-semibold text-accent-coral">+1</span>
+            )}
+          </div>
+          <div className="text-xs font-semibold text-foreground mt-1">{arr?.city_code || "---"}</div>
           {arr?.city_name && (
             <div className="text-[10px] text-muted-foreground leading-tight">{arr.city_name}</div>
           )}
         </div>
       </div>
 
+      {/* Detalle de cada escala: ciudad (código) · tiempo de espera */}
       {layovers.length > 0 && (
-        <div className="space-y-1 pt-1 border-t border-border/40">
+        <div className="px-3.5 pb-2.5 pt-2 space-y-1 border-t">
           {layovers.map((lay, j) => (
-            <div key={j} className="text-[11px] text-muted-foreground flex items-center gap-1">
-              <Clock className="h-3 w-3 flex-shrink-0" />
+            <div key={j} className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-accent-coral flex-shrink-0" />
               <span>
-                Escala en {lay.destination_code || lay.destination_city || "—"}
-                {lay.waiting_time ? ` · ${lay.waiting_time}` : ""}
+                Escala en {lay.destination_city || lay.destination_code || "—"}
+                {lay.destination_city && lay.destination_code ? ` (${lay.destination_code})` : ""}
+                {lay.waiting_time ? ` · espera ${lay.waiting_time}` : ""}
               </span>
             </div>
           ))}

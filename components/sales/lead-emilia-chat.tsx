@@ -73,7 +73,7 @@ function CardCarousel({ count, ariaLabel, children }: CardCarouselProps) {
       <div
         ref={trackRef}
         onScroll={updateNav}
-        className="flex gap-3 items-start overflow-x-auto scroll-smooth snap-x snap-mandatory -mx-6 px-6 py-1.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+        className="flex gap-3 items-start overflow-x-auto scroll-smooth snap-x snap-mandatory px-2 py-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
       >
         {children}
       </div>
