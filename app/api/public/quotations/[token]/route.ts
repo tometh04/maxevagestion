@@ -32,6 +32,7 @@ export async function GET(
           checkin_date, checkout_date, nights, destination_city,
           hotel_name, hotel_stars, room_type, meal_plan, hotel_address, hotel_photo_url, rooms,
           airline, flight_route, flight_class, flight_stops, flight_date, flight_return_date, flight_screenshot_url,
+          flight_details,
           transfer_description,
           unit_price
         )
