@@ -2,7 +2,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Loader2, ChevronLeft, ChevronRight, MessageSquarePlus, Send, AlertTriangle, CheckCircle2, ExternalLink, X } from "lucide-react"
+import { Loader2, ChevronLeft, ChevronRight, MessageSquarePlus, Send, AlertTriangle, CheckCircle2, ExternalLink, X, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
@@ -265,6 +265,8 @@ export function LeadEmiliaChat({ lead, onBack, onQuotationCreated, initialConver
   const [sending, setSending] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [createdQuotation, setCreatedQuotation] = useState<any | null>(null)
+  // Cargando el prompt sugerido (gpt). Loading sutil: se llena una sola vez.
+  const [promptLoading, setPromptLoading] = useState(false)
 
   // Selección
   const [selectedFlightId, setSelectedFlightId] = useState<string | null>(null)
@@ -295,9 +297,15 @@ export function LeadEmiliaChat({ lead, onBack, onQuotationCreated, initialConver
 
         if (conv?.id) {
           setConversationId(conv.id)
-          await loadHistory(conv.id)
+          const count = await loadHistory(conv.id)
+          // Conversación vacía (abriste y cerraste sin enviar) → re-sugerir el prompt.
+          if (count === 0 && !cancelled) {
+            void applySuggestedPrompt(false, () => cancelled)
+          }
         } else {
-          // No hay conversación activa → crear (devuelve el prompt fallback al toque)
+          // No hay conversación activa → crearla. El prompt sugerido se pide aparte
+          // (applySuggestedPrompt) con loading sutil: se llena una sola vez, sin
+          // mostrar el fallback y después cambiarlo.
           const postRes = await fetch(`/api/leads/${lead.id}/emilia`, { method: "POST" })
           if (cancelled) return
           const postData = await postRes.json()
@@ -307,10 +315,7 @@ export function LeadEmiliaChat({ lead, onBack, onQuotationCreated, initialConver
             return
           }
           setConversationId(postData.conversation_id)
-          const fallbackPrompt = postData.suggested_prompt || ""
-          setInput(fallbackPrompt)
-          // Mejora del prompt con gpt en background (no bloquea el render).
-          void enhanceSuggestedPrompt(fallbackPrompt, () => cancelled)
+          void applySuggestedPrompt(false, () => cancelled)
         }
       } catch (err: any) {
         if (!cancelled) {
@@ -326,23 +331,31 @@ export function LeadEmiliaChat({ lead, onBack, onQuotationCreated, initialConver
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lead.id])
 
-  // Pide a gpt el prompt mejorado (parsea las notas del lead) y lo aplica SOLO
-  // si el usuario todavía no tocó el input (sigue siendo el fallback o vacío).
-  async function enhanceSuggestedPrompt(fallback: string, isCancelled: () => boolean) {
+  // Pide el prompt sugerido (gpt + fallback determinístico del server) y lo
+  // aplica con un loading sutil — en una sola pasada, sin mostrar el fallback y
+  // después cambiarlo. force=true (botón "Sugerir prompt inicial") siempre
+  // reemplaza; force=false (auto) solo si el input está vacío (no pisa lo escrito).
+  // NOTA: el prompt es SIEMPRE el inicial basado en el lead (destino/notas), no
+  // toma el historial del chat — es para arrancar/resetear, no un siguiente paso.
+  async function applySuggestedPrompt(force = false, isCancelled: () => boolean = () => false) {
+    setPromptLoading(true)
     try {
       const res = await fetch(`/api/leads/${lead.id}/emilia/suggested-prompt`)
-      if (!res.ok || isCancelled()) return
-      const data = await res.json()
-      const better = (data?.prompt || "").trim()
-      if (better) {
-        setInput(prev => (prev === fallback || prev === "" ? better : prev))
+      if (isCancelled()) return
+      const data = res.ok ? await res.json() : null
+      const prompt = (data?.prompt || "").trim()
+      if (prompt) {
+        setInput(prev => (force || prev.trim() === "" ? prompt : prev))
       }
     } catch {
-      // silencioso — el fallback ya está cargado en el input
+      // silencioso
+    } finally {
+      if (!isCancelled()) setPromptLoading(false)
     }
   }
 
-  async function loadHistory(convId: string) {
+  // Devuelve la cantidad de mensajes cargados (para decidir si re-sugerir prompt).
+  async function loadHistory(convId: string): Promise<number> {
     try {
       const res = await fetch(`/api/emilia/conversations/${convId}`)
       if (res.ok) {
@@ -361,10 +374,12 @@ export function LeadEmiliaChat({ lead, onBack, onQuotationCreated, initialConver
           }
         })
         setMessages(msgs)
+        return msgs.length
       }
     } catch {
       // silencioso — historial es nice-to-have
     }
+    return 0
   }
 
   async function handleSend() {
@@ -734,11 +749,26 @@ export function LeadEmiliaChat({ lead, onBack, onQuotationCreated, initialConver
 
       {/* Input + CTA */}
       <div className="border-t px-6 py-3 space-y-3">
+        <div className="flex">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => applySuggestedPrompt(true)}
+            disabled={promptLoading || sending}
+            className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+          >
+            {promptLoading
+              ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+              : <Sparkles className="h-3.5 w-3.5 mr-1" />}
+            Sugerir prompt inicial
+          </Button>
+        </div>
         <div className="flex gap-2">
           <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Escribí a Emilia..."
+            placeholder={promptLoading && !input ? "✨ Generando sugerencia…" : "Escribí a Emilia..."}
             className="min-h-[60px] resize-none"
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSend()
