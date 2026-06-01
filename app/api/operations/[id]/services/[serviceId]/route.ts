@@ -197,18 +197,46 @@ export async function PATCH(
     }
 
     // Actualizar operator_payment si cambió cost_amount
-    if (costChanged && currentService.operator_payment_id) {
-      const { data: opPayment } = await (supabase.from("operator_payments") as any)
-        .select("id, status")
-        .eq("id", currentService.operator_payment_id)
-        .single()
+    if (costChanged) {
+      const effectiveOperatorId = updateData.operator_id !== undefined ? updateData.operator_id : currentService.operator_id
 
-      if (opPayment?.status === "PAID") {
-        warnings.push("El pago al operador ya fue registrado como pagado. El monto no se actualizó automáticamente.")
-      } else if (opPayment) {
-        await (supabase.from("operator_payments") as any)
-          .update({ amount: updateData.cost_amount, updated_at: new Date().toISOString() })
+      if (currentService.operator_payment_id) {
+        const { data: opPayment } = await (supabase.from("operator_payments") as any)
+          .select("id, status")
           .eq("id", currentService.operator_payment_id)
+          .eq("org_id", (user as any).org_id)
+          .single()
+
+        if (opPayment?.status === "PAID") {
+          warnings.push("El pago al operador ya fue registrado como pagado. El monto no se actualizó automáticamente.")
+        } else if (opPayment) {
+          await (supabase.from("operator_payments") as any)
+            .update({ amount: updateData.cost_amount, updated_at: new Date().toISOString() })
+            .eq("id", currentService.operator_payment_id)
+        }
+      } else if (effectiveOperatorId) {
+        // Fallback: el servicio no tiene operator_payment_id vinculado, buscar por operation_id + operator_id
+        const { data: opPayment } = await (supabase.from("operator_payments") as any)
+          .select("id, status")
+          .eq("operation_id", operationId)
+          .eq("operator_id", effectiveOperatorId)
+          .eq("org_id", (user as any).org_id)
+          .neq("status", "PAID")
+          .order("created_at", { ascending: true })
+          .maybeSingle()
+
+        if (opPayment) {
+          const { error: opPayErr } = await (supabase.from("operator_payments") as any)
+            .update({ amount: updateData.cost_amount, updated_at: new Date().toISOString() })
+            .eq("id", opPayment.id)
+
+          if (!opPayErr) {
+            // Vincular para futuros updates
+            await (supabase.from("operation_services") as any)
+              .update({ operator_payment_id: opPayment.id })
+              .eq("id", serviceId)
+          }
+        }
       }
     }
 
