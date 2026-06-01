@@ -325,12 +325,12 @@ export async function POST(request: Request) {
       const { data: lockedLead } = await (supabase.from("leads") as any)
         .update({ status: "WON" })
         .eq("id", lead_id)
-        .in("status", ["NEW", "IN_PROGRESS", "QUOTED"])
+        .in("status", ["NEW", "IN_PROGRESS", "QUOTED", "WON"])
         .select("id")
         .maybeSingle()
 
       if (!lockedLead) {
-        // No pudo adquirir el lock: o ya está WON/LOST, o no existe.
+        // No pudo adquirir el lock: o ya está LOST, o no existe.
         // Si ya hay una operación vinculada, devolvemos 409 con la referencia.
         const { data: existingOp } = await (supabase.from("operations") as any)
           .select("id")
@@ -345,7 +345,7 @@ export async function POST(request: Request) {
           )
         }
         return NextResponse.json(
-          { error: "El lead no está en un estado convertible (debe estar NEW, IN_PROGRESS o QUOTED)" },
+          { error: "El lead no está en un estado convertible (debe estar NEW, IN_PROGRESS, QUOTED o WON)" },
           { status: 409 }
         )
       }
