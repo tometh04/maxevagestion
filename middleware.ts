@@ -3,10 +3,11 @@ import { createClient as createAdminSupabaseClient } from '@supabase/supabase-js
 import { NextResponse, type NextRequest } from 'next/server'
 
 // ============================================
-// RATE LIMITING (en memoria, por IP)
+// RATE LIMITING (en memoria, por usuario autenticado o IP como fallback)
 // ============================================
 const RATE_LIMIT_WINDOW_MS = 60_000 // 1 minuto
-const RATE_LIMIT_MAX_REQUESTS = 600 // máx requests por ventana (por IP — varias personas desde la misma red cuentan juntas)
+const RATE_LIMIT_MAX_REQUESTS = 300 // máx requests por ventana y por usuario
+const RATE_LIMIT_MAX_REQUESTS_ANON = 60  // límite más estricto para IPs sin sesión
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>()
 
 // Limpiar entradas expiradas cada 5 minutos
@@ -17,20 +18,20 @@ setInterval(() => {
   })
 }, 300_000)
 
-function checkRateLimit(ip: string): { allowed: boolean; remaining: number } {
+function checkRateLimit(key: string, max: number): { allowed: boolean; remaining: number } {
   const now = Date.now()
-  const entry = rateLimitMap.get(ip)
+  const entry = rateLimitMap.get(key)
 
   if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS })
-    return { allowed: true, remaining: RATE_LIMIT_MAX_REQUESTS - 1 }
+    rateLimitMap.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS })
+    return { allowed: true, remaining: max - 1 }
   }
 
   entry.count++
-  if (entry.count > RATE_LIMIT_MAX_REQUESTS) {
+  if (entry.count > max) {
     return { allowed: false, remaining: 0 }
   }
-  return { allowed: true, remaining: RATE_LIMIT_MAX_REQUESTS - entry.count }
+  return { allowed: true, remaining: max - entry.count }
 }
 
 export async function middleware(req: NextRequest) {
@@ -63,25 +64,7 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next()
   }
 
-  // Rate limiting para rutas API
-  if (req.nextUrl.pathname.startsWith('/api/')) {
-    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || 'unknown'
-    const { allowed, remaining } = checkRateLimit(ip)
-
-    if (!allowed) {
-      return NextResponse.json(
-        { error: 'Demasiadas solicitudes. Intente nuevamente en un momento.' },
-        {
-          status: 429,
-          headers: {
-            'Retry-After': '60',
-            'X-RateLimit-Limit': String(RATE_LIMIT_MAX_REQUESTS),
-            'X-RateLimit-Remaining': '0',
-          },
-        }
-      )
-    }
-  }
+  // Rate limiting: se aplica después de resolver la sesión (ver más abajo)
 
   // BYPASS LOGIN EN DESARROLLO - TODO: Remover antes de producción
   // Seguridad: en producción NUNCA aplicar el bypass aunque DISABLE_AUTH=true.
@@ -150,6 +133,30 @@ export async function middleware(req: NextRequest) {
       return response
     }
     console.warn('Middleware auth error:', error)
+  }
+
+  // Rate limiting por usuario autenticado (o IP como fallback para anónimos).
+  // Así cada usuario tiene su propio contador independiente del resto de la
+  // oficina, aunque compartan la misma IP.
+  if (req.nextUrl.pathname.startsWith('/api/')) {
+    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || 'unknown'
+    const rateLimitKey = authUserId ? `user:${authUserId}` : `ip:${ip}`
+    const maxRequests = authUserId ? RATE_LIMIT_MAX_REQUESTS : RATE_LIMIT_MAX_REQUESTS_ANON
+    const { allowed } = checkRateLimit(rateLimitKey, maxRequests)
+
+    if (!allowed) {
+      return NextResponse.json(
+        { error: 'Demasiadas solicitudes. Intente nuevamente en un momento.' },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': '60',
+            'X-RateLimit-Limit': String(maxRequests),
+            'X-RateLimit-Remaining': '0',
+          },
+        }
+      )
+    }
   }
 
   // SaaS Pilar 3 — onboarding gate.
