@@ -243,7 +243,8 @@ export async function POST(
           cost_currency as "ARS" | "USD",
           departureDate || new Date().toISOString().split("T")[0],
           operationId,
-          `Servicio: ${serviceLabel} - Op. ${fileCode}`
+          `Servicio: ${serviceLabel} - Op. ${fileCode}`,
+          (user as any).org_id
         )
         if (opPayment?.id) {
           updates.operator_payment_id = opPayment.id

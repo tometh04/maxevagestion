@@ -351,6 +351,17 @@ export async function DELETE(
       }
     }
 
+    // Limpiar ghost operator_payments: registros huérfanos (sin operator_payment_id en el servicio
+    // o que quedaron del historial) con el mismo operation_id + operator_id, que estén PENDING.
+    if (service.operator_id) {
+      await (supabase.from("operator_payments") as any)
+        .delete()
+        .eq("operation_id", operationId)
+        .eq("operator_id", service.operator_id)
+        .neq("status", "PAID")
+        .neq("id", service.operator_payment_id || "00000000-0000-0000-0000-000000000000")
+    }
+
     // ── Eliminar ledger movements ──
     // Solo si existen (si el pago ya está hecho el ledger igual se borra,
     // ya que el pago real genera su propio ledger movement al marcarse PAID)
