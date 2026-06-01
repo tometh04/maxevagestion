@@ -6,7 +6,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 // RATE LIMITING (en memoria, por IP)
 // ============================================
 const RATE_LIMIT_WINDOW_MS = 60_000 // 1 minuto
-const RATE_LIMIT_MAX_REQUESTS = 200 // máx requests por ventana
+const RATE_LIMIT_MAX_REQUESTS = 600 // máx requests por ventana (por IP — varias personas desde la misma red cuentan juntas)
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>()
 
 // Limpiar entradas expiradas cada 5 minutos
