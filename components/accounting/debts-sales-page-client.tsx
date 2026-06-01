@@ -350,12 +350,22 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
       )
       // Obtener vendedores únicos de las operaciones
       const sellers = Array.from(new Set(debtor.operationsWithDebt.map(op => op.seller_name).filter(Boolean)))
+      // Fechas de salida ordenadas para ver flujos
+      const departureDates = debtor.operationsWithDebt
+        .map(op => op.departure_date)
+        .filter(Boolean)
+        .sort()
+        .map(d => {
+          const parsed = parseDateOnlyLocal(d!)
+          return parsed ? format(parsed, "dd/MM/yyyy", { locale: es }) : "-"
+        })
       return {
         Cliente: customerName,
         "Documento": debtor.customer.document_number || "",
         "Email": debtor.customer.email || "",
         "Teléfono": debtor.customer.phone || "",
         "Vendedores": sellers.join(", ") || "Sin vendedor",
+        "Fechas de Salida": departureDates.join(" | ") || "-",
         "Deuda Total (USD)": debtor.totalDebt,
         "Cantidad Operaciones": debtor.operationsWithDebt.length,
       }
