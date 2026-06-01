@@ -196,28 +196,31 @@ export async function PATCH(
       if (ledgerErr) warnings.push("No se pudo actualizar el movimiento contable de gasto")
     }
 
-    // Actualizar operator_payment si cambió cost_amount
-    if (costChanged) {
+    // Sincronizar operator_payment cuando se envía cost_amount en el request.
+    // Se compara contra operator_payments.amount (no contra el valor previo del servicio)
+    // para corregir desincronizaciones previas aunque el costo "no haya cambiado" en la UI.
+    if (updateData.cost_amount !== undefined) {
+      const newCostAmount = Number(updateData.cost_amount)
       const effectiveOperatorId = updateData.operator_id !== undefined ? updateData.operator_id : currentService.operator_id
 
       if (currentService.operator_payment_id) {
         const { data: opPayment } = await (supabase.from("operator_payments") as any)
-          .select("id, status")
+          .select("id, status, amount")
           .eq("id", currentService.operator_payment_id)
           .eq("org_id", (user as any).org_id)
           .single()
 
         if (opPayment?.status === "PAID") {
-          warnings.push("El pago al operador ya fue registrado como pagado. El monto no se actualizó automáticamente.")
-        } else if (opPayment) {
+          if (costChanged) warnings.push("El pago al operador ya fue registrado como pagado. El monto no se actualizó automáticamente.")
+        } else if (opPayment && Number(opPayment.amount) !== newCostAmount) {
           await (supabase.from("operator_payments") as any)
-            .update({ amount: updateData.cost_amount, updated_at: new Date().toISOString() })
+            .update({ amount: newCostAmount, updated_at: new Date().toISOString() })
             .eq("id", currentService.operator_payment_id)
         }
       } else if (effectiveOperatorId) {
         // Fallback: el servicio no tiene operator_payment_id vinculado, buscar por operation_id + operator_id
         const { data: opPayment } = await (supabase.from("operator_payments") as any)
-          .select("id, status")
+          .select("id, status, amount")
           .eq("operation_id", operationId)
           .eq("operator_id", effectiveOperatorId)
           .eq("org_id", (user as any).org_id)
@@ -225,9 +228,9 @@ export async function PATCH(
           .order("created_at", { ascending: true })
           .maybeSingle()
 
-        if (opPayment) {
+        if (opPayment && Number(opPayment.amount) !== newCostAmount) {
           const { error: opPayErr } = await (supabase.from("operator_payments") as any)
-            .update({ amount: updateData.cost_amount, updated_at: new Date().toISOString() })
+            .update({ amount: newCostAmount, updated_at: new Date().toISOString() })
             .eq("id", opPayment.id)
 
           if (!opPayErr) {
