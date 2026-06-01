@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
+import { createServerClient, createAdminClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canPerformAction, getUserAgencyIds, resolveOperationAccessScope } from "@/lib/permissions-api"
 import { calculateCommission, createOrUpdateCommissionRecords } from "@/lib/commissions/calculate"
@@ -351,10 +351,13 @@ export async function DELETE(
       }
     }
 
-    // Limpiar ghost operator_payments: registros huérfanos (sin operator_payment_id en el servicio
-    // o que quedaron del historial) con el mismo operation_id + operator_id, que estén PENDING.
+    // Limpiar ghost operator_payments: registros huérfanos con el mismo operation_id + operator_id.
+    // Usamos admin client porque los ghosts suelen tener org_id=null (creados antes del fix de
+    // multi-tenant), y RLS bloquea DELETE sobre rows con org_id=null usando el client de usuario.
     if (service.operator_id) {
-      await (supabase.from("operator_payments") as any)
+      const adminClient = createAdminClient() as any
+      await adminClient
+        .from("operator_payments")
         .delete()
         .eq("operation_id", operationId)
         .eq("operator_id", service.operator_id)
