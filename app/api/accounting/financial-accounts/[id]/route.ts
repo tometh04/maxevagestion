@@ -40,10 +40,11 @@ export async function PATCH(
     }
 
     const body = await request.json().catch(() => ({}))
-    const { name, target_balance, adjustment_reason } = body as {
+    const { name, target_balance, adjustment_reason, bank_tax_rate } = body as {
       name?: string
       target_balance?: number | string | null
       adjustment_reason?: string | null
+      bank_tax_rate?: number | null
     }
 
     // Cargar cuenta y validar tenant isolation
@@ -63,23 +64,37 @@ export async function PATCH(
     }
 
     // ──────────────────────────────────────────────────────────
-    // 1) Actualizar name (si vino en el body)
+    // 1) Actualizar name y/o bank_tax_rate (si vinieron en el body)
     // ──────────────────────────────────────────────────────────
     let updatedName: string | null = null
+    const simpleUpdate: Record<string, unknown> = {}
+
     if (typeof name === "string") {
       const trimmed = name.trim()
       if (trimmed.length === 0) {
         return NextResponse.json({ error: "El nombre no puede estar vacío" }, { status: 400 })
       }
       if (trimmed !== account.name) {
-        const { error: nameError } = await (supabase.from("financial_accounts") as any)
-          .update({ name: trimmed })
-          .eq("id", id)
-        if (nameError) {
-          console.error("Error actualizando nombre:", nameError)
-          return NextResponse.json({ error: "Error al actualizar el nombre" }, { status: 500 })
-        }
+        simpleUpdate.name = trimmed
         updatedName = trimmed
+      }
+    }
+
+    if ("bank_tax_rate" in body) {
+      const rate = bank_tax_rate == null ? null : Number(bank_tax_rate)
+      if (rate !== null && (!Number.isFinite(rate) || rate < 0 || rate > 100)) {
+        return NextResponse.json({ error: "bank_tax_rate debe ser un número entre 0 y 100" }, { status: 400 })
+      }
+      simpleUpdate.bank_tax_rate = rate
+    }
+
+    if (Object.keys(simpleUpdate).length > 0) {
+      const { error: updateError } = await (supabase.from("financial_accounts") as any)
+        .update(simpleUpdate)
+        .eq("id", id)
+      if (updateError) {
+        console.error("Error actualizando cuenta:", updateError)
+        return NextResponse.json({ error: "Error al actualizar la cuenta" }, { status: 500 })
       }
     }
 
