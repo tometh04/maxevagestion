@@ -295,8 +295,10 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
   const [agencyDefaultMode, setAgencyDefaultMode] = useState<string>('SIMPLE')
   const [agencyDefaultCommission, setAgencyDefaultCommission] = useState<number>(0)
 
-  // Cargar defaults de la agencia al montar
+  // Cargar defaults de la agencia solo cuando el dialog se abre (no al montar),
+  // para evitar N fetches simultáneos si hay N instancias del builder en la página.
   useEffect(() => {
+    if (!open) return
     fetch('/api/finances/settings')
       .then(r => r.ok ? r.json() : null)
       .then(data => {
@@ -304,7 +306,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
         if (data?.default_commission_percentage) setAgencyDefaultCommission(Number(data.default_commission_percentage) || 0)
       })
       .catch(() => {})
-  }, [])
+  }, [open])
 
   // General data
   const [quotationTitle, setQuotationTitle] = useState(initialDraft.quotationTitle)
