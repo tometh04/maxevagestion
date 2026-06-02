@@ -1746,8 +1746,20 @@ export function OperationPaymentsSection({
                     )}
                   />
 
-                  {/* Switch para marcar como pagado - para cualquier pago PENDING */}
-                  {editingPayment?.status === "PENDING" && (
+                  {/* Aviso si requiere aprobación primero */}
+                  {editingPayment?.status === "PENDING" && editingPayment?.approval_status === "PENDING_APPROVAL" && (
+                    <div className="rounded-[var(--vb-r-sm)] border border-amber-400/30 bg-amber-400/5 p-3">
+                      <p className="text-sm font-medium text-amber-400">Requiere aprobación previa</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Este cobro está esperando aprobación. Una vez aprobado desde{" "}
+                        <span className="font-medium text-foreground">Pagos → Pendientes de Aprobación</span>,
+                        podrás marcarlo como cobrado y asignar la cuenta financiera.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Switch para marcar como pagado - solo si NO requiere aprobación */}
+                  {editingPayment?.status === "PENDING" && editingPayment?.approval_status !== "PENDING_APPROVAL" && (
                     <div className="flex items-center justify-between rounded-[var(--vb-r-sm)] border border-[var(--vb-border)] bg-[var(--vb-bg)] p-3">
                       <div className="space-y-0.5">
                         <div className="flex items-center gap-2">

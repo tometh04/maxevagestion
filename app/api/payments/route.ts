@@ -2021,6 +2021,14 @@ export async function PATCH(request: Request) {
     // constraint payments_status_check solo permite ('PENDING','PAID','OVERDUE').
     // El UPDATE atómico con filtro de status logra el mismo efecto sin agregar
     // un estado transient al enum.)
+    // Guard: no permitir marcar como pagado si aún requiere aprobación
+    if (markAsPaid && existingPayment.approval_status === "PENDING_APPROVAL") {
+      return NextResponse.json({
+        error: "Este pago requiere aprobación previa. Aprobalo desde Pagos → Pendientes de Aprobación antes de marcarlo como cobrado.",
+        requires_approval: true,
+      }, { status: 403 })
+    }
+
     if (markAsPaid) {
       updateData.status = "PAID"
     }

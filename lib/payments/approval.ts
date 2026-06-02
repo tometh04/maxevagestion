@@ -20,6 +20,8 @@ export function canApprove(
   approverRole: string,
   rules: ApprovalRule[],
 ): boolean {
+  // ADMIN y SUPER_ADMIN pueden aprobar cualquier monto, siempre
+  if (approverRole === "ADMIN" || approverRole === "SUPER_ADMIN") return true
   if (!rules || rules.length === 0) return true
   const rule = rules.find((r) => r.role === approverRole)
   if (!rule) return true
