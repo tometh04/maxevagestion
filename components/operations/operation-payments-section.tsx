@@ -1471,42 +1471,45 @@ export function OperationPaymentsSection({
                 )}
               />
 
-              {customers.length > 1 && (
-                <FormField
-                  control={incomeForm.control}
-                  name="payer_name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="flex items-center gap-1.5">
-                        <span className="text-muted-foreground">👤</span> ¿Quién abona? (opcional)
-                      </FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value || ""}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Titular de la operación (por defecto)" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="">Titular de la operación (por defecto)</SelectItem>
-                          {customers.map((oc, i) => {
-                            const c = oc.customers
-                            if (!c) return null
-                            const name = `${c.first_name || ""} ${c.last_name || ""}`.trim()
-                            if (!name) return null
-                            return (
-                              <SelectItem key={oc.customer_id || oc.id || i} value={name}>
-                                {name}
-                              </SelectItem>
-                            )
-                          })}
-                        </SelectContent>
-                      </Select>
-                      <p className="text-xs text-muted-foreground">El recibo saldrá a nombre de esta persona.</p>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              )}
+              {customers.length > 1 && (() => {
+                const passengerNames = customers
+                  .map((oc) => {
+                    const c = Array.isArray(oc.customers) ? oc.customers[0] : oc.customers
+                    if (!c) return null
+                    return `${c.first_name || ""} ${c.last_name || ""}`.trim() || null
+                  })
+                  .filter(Boolean) as string[]
+                if (passengerNames.length < 2) return null
+                return (
+                  <FormField
+                    control={incomeForm.control}
+                    name="payer_name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>¿Quién abona? (opcional)</FormLabel>
+                        <Select
+                          onValueChange={(v) => field.onChange(v === "__default__" ? "" : v)}
+                          value={field.value && field.value !== "" ? field.value : "__default__"}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="__default__">Titular de la operación</SelectItem>
+                            {passengerNames.map((name, i) => (
+                              <SelectItem key={i} value={name}>{name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">El recibo saldrá a nombre de esta persona.</p>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )
+              })()}
 
               </div>{/* fin wrapper scrollable */}
 
