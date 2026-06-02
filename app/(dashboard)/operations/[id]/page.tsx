@@ -104,12 +104,34 @@ export default async function OperationDetailPage({
   // Bug fix 2026-05-21 (VICO): agregamos `currency` al SELECT — lo necesita el
   // dropdown desglosado de "Registrar Pago a Operador" para mostrar la moneda
   // de cada deuda pendiente en su label (ej. "Tower — USD 6.760 pendiente").
-  const { data: operatorPayments } = await (supabase
+  const { data: operatorPaymentsRaw } = await (supabase
     .from("operator_payments") as any)
     .select("id, operator_id, amount, paid_amount, currency, status, operators:operator_id(id, name)")
     .eq("operation_id", id)
     .eq("org_id", userOrgId)
     .order("created_at", { ascending: true })
+
+  // Limpiar operator_payments huérfanos: registros que no están vinculados a ningún
+  // operation_service activo y nunca tuvieron dinero aplicado (paid_amount = 0).
+  // Esto cubre el caso donde el servicio fue eliminado pero el operator_payment quedó.
+  // Solo aplica si la operación usa el sistema de servicios (tiene operation_services).
+  const activePaymentIds = new Set(
+    (operationServices || [])
+      .map((s: any) => s.operator_payment_id)
+      .filter(Boolean)
+  )
+  let operatorPayments = operatorPaymentsRaw || []
+  if ((operationServices || []).length > 0 && operatorPaymentsRaw) {
+    const orphans = operatorPaymentsRaw.filter(
+      (p: any) => !activePaymentIds.has(p.id) && Number(p.paid_amount || 0) === 0 && p.status !== "PAID"
+    )
+    if (orphans.length > 0) {
+      await (supabase.from("operator_payments") as any)
+        .delete()
+        .in("id", orphans.map((p: any) => p.id))
+      operatorPayments = operatorPaymentsRaw.filter((p: any) => activePaymentIds.has(p.id) || Number(p.paid_amount || 0) > 0 || p.status === "PAID")
+    }
+  }
 
   // Get operators assigned to the operation (may include operators without operator_payment)
   // Needed so the "Pagar a operador" dialog can list ALL assigned operators,
