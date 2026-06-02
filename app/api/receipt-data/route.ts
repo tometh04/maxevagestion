@@ -62,6 +62,7 @@ export async function GET(request: NextRequest) {
         date_due,
         operation_id,
         operation_service_id,
+        payer_name,
         operations:operation_id (
           id,
           seller_id,
@@ -261,6 +262,31 @@ export async function GET(request: NextRequest) {
       concepto = "Pago de servicios turisticos"
     }
 
+    // Percepciones impositivas aplicadas a este pago (RG 5617 / RG 3819)
+    const PERCEPTION_LABELS: Record<string, string> = {
+      PERCEPCION_RG5617_30: "RG 5617 (30%) — Ganancias/Bienes Personales",
+      PERCEPCION_RG3819_5: "RG 3819 (5%) — Efectivo turismo internacional",
+    }
+    let perceptions: Array<{ type: string; label: string; amount: number; currency: string }> = []
+    try {
+      const { data: withholdings } = await (supabase.from("tax_withholdings") as any)
+        .select("type, amount, currency")
+        .eq("source_id", paymentId)
+        .eq("source_type", "PAYMENT")
+        .eq("org_id", user.org_id)
+        .in("type", ["PERCEPCION_RG5617_30", "PERCEPCION_RG3819_5"])
+      if (withholdings && withholdings.length > 0) {
+        perceptions = withholdings.map((w: any) => ({
+          type: w.type,
+          label: PERCEPTION_LABELS[w.type] || w.type,
+          amount: Number(w.amount) || 0,
+          currency: w.currency || paymentCurrency,
+        }))
+      }
+    } catch {
+      // No romper el recibo si falla la query de percepciones
+    }
+
     return NextResponse.json({
       currentPaymentId: payment.id,
       receiptNumber,
@@ -307,6 +333,8 @@ export async function GET(request: NextRequest) {
       serviceDescription: service?.description || "",
       serviceOperatorName: serviceOperator?.name || "",
       paymentHistory,
+      perceptions,
+      payerName: (payment as any).payer_name || null,
     })
   } catch (error: any) {
     console.error("Error fetching receipt data:", error)

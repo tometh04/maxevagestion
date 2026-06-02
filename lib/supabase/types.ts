@@ -6383,6 +6383,7 @@ export type Database = {
           operator_id: string | null
           operator_payment_id: string | null
           org_id: string | null
+          payer_name: string | null
           payer_type: string
           reference: string | null
           rejection_reason: string | null
@@ -6413,6 +6414,7 @@ export type Database = {
           operator_id?: string | null
           operator_payment_id?: string | null
           org_id?: string | null
+          payer_name?: string | null
           payer_type: string
           reference?: string | null
           rejection_reason?: string | null
@@ -6443,6 +6445,7 @@ export type Database = {
           operator_id?: string | null
           operator_payment_id?: string | null
           org_id?: string | null
+          payer_name?: string | null
           payer_type?: string
           reference?: string | null
           rejection_reason?: string | null

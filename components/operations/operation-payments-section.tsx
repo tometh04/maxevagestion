@@ -86,6 +86,7 @@ interface FinancialAccount {
 const paymentSchema = z.object({
   payer_type: z.enum(["CUSTOMER", "OPERATOR"]),
   direction: z.enum(["INCOME", "EXPENSE"]),
+  payer_name: z.string().optional(),
   operator_id: z.string().optional(),
   /**
    * Bug fix 2026-05-21 (VICO): operación con DOS líneas de operation_operators
@@ -151,6 +152,7 @@ interface OperationPaymentsSectionProps {
   operatorPayments?: OperationOperatorPaymentLike[]
   operationServices?: OperationServicePaymentRelationLike[]
   destination?: string
+  customers?: Array<{ id?: string; customer_id?: string; customers?: { first_name?: string; last_name?: string } }>
 }
 
 function isInternationalDestination(destination?: string | null): boolean {
@@ -172,6 +174,7 @@ export function OperationPaymentsSection({
   operatorPayments = [],
   operationServices = [],
   destination,
+  customers = [],
 }: OperationPaymentsSectionProps) {
   const router = useRouter()
   const [incomeDialogOpen, setIncomeDialogOpen] = useState(false)
@@ -399,6 +402,7 @@ export function OperationPaymentsSection({
     defaultValues: {
       payer_type: "CUSTOMER",
       direction: "INCOME",
+      payer_name: "",
       method: "Transferencia",
       amount: 0,
       currency: "USD", // Default USD
@@ -746,7 +750,7 @@ export function OperationPaymentsSection({
 
     setIsLoading(true)
     try {
-      const { payer_type, direction, ...restValues } = values
+      const { payer_type, direction, payer_name, ...restValues } = values
       const datePaidStr = values.date_paid.toISOString().split("T")[0]
       const body: Record<string, unknown> = {
         operation_id: operationId,
@@ -760,6 +764,7 @@ export function OperationPaymentsSection({
         status: "PAID",
         apply_rg5617: applyRg5617,
         apply_rg3819: applyRg3819,
+        payer_name: payer_name || null,
       }
 
       // Ley 25413: bank tax deduction for income via bank accounts
@@ -771,7 +776,7 @@ export function OperationPaymentsSection({
       await submitPaymentWithDuplicateCheck(body, "income", {
         onSuccess: () => {
           setIncomeDialogOpen(false)
-          incomeForm.reset()
+          incomeForm.reset({ payer_type: "CUSTOMER", direction: "INCOME", payer_name: "", method: "Transferencia", amount: 0, currency: "USD", financial_account_id: "", exchange_rate: undefined, date_paid: new Date(), notes: "" })
           setApplyRg5617(false)
           setApplyRg3819(false)
           setApplyBankTaxIncome(false)
@@ -1465,6 +1470,43 @@ export function OperationPaymentsSection({
                   </FormItem>
                 )}
               />
+
+              {customers.length > 1 && (
+                <FormField
+                  control={incomeForm.control}
+                  name="payer_name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-1.5">
+                        <span className="text-muted-foreground">👤</span> ¿Quién abona? (opcional)
+                      </FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value || ""}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Titular de la operación (por defecto)" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="">Titular de la operación (por defecto)</SelectItem>
+                          {customers.map((oc, i) => {
+                            const c = oc.customers
+                            if (!c) return null
+                            const name = `${c.first_name || ""} ${c.last_name || ""}`.trim()
+                            if (!name) return null
+                            return (
+                              <SelectItem key={oc.customer_id || oc.id || i} value={name}>
+                                {name}
+                              </SelectItem>
+                            )
+                          })}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">El recibo saldrá a nombre de esta persona.</p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
 
               </div>{/* fin wrapper scrollable */}
 

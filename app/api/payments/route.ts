@@ -155,6 +155,7 @@ export async function POST(request: Request) {
       notes,
       apply_rg5617,
       apply_rg3819,
+      payer_name,
       idempotency_key, // UUID generado por el cliente al montar el form (Stripe-style)
     } = body
 
@@ -622,6 +623,7 @@ export async function POST(request: Request) {
       date_due: date_due || date_paid,
       status: needsApproval ? "PENDING" : finalStatus,
       reference: notes || null,
+      payer_name: payer_name || null,
       created_by_user_id: user.id,
     }
     if (needsApproval) {

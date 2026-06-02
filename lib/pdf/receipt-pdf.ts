@@ -55,6 +55,13 @@ export interface ReceiptPdfData {
     reference: string
     amountInReceiptCurrency?: number
   }>
+  perceptions?: Array<{
+    type: string
+    label: string
+    amount: number
+    currency: string
+  }>
+  payerName?: string | null
 }
 
 interface InfoItem {
@@ -695,8 +702,10 @@ export async function generateReceiptPdf(data: ReceiptPdfData): Promise<void> {
     customerLastName && !customerName.toLocaleLowerCase().endsWith(customerLastName.toLocaleLowerCase())
       ? `${customerName} ${customerLastName}`.trim()
       : customerName
+  const payerName = (data.payerName || "").trim()
   const customerItems: InfoItem[] = [
     { label: "Pasajeros", value: normalizeText(data.passengerNamesText, "") },
+    ...(payerName ? [{ label: "Abonado por", value: payerName }] : []),
     { label: "Domicilio", value: normalizeText(data.customerAddress, "") },
     { label: "Localidad", value: normalizeText(data.customerCity, "") },
   ].filter((item) => item.value && item.value !== "-")
@@ -763,6 +772,23 @@ export async function generateReceiptPdf(data: ReceiptPdfData): Promise<void> {
   if (paymentHistory.length > 0) {
     drawHistoryTable()
   }
+
+  // Percepciones impositivas aplicadas a este cobro
+  const perceptions = data.perceptions || []
+  if (perceptions.length > 0) {
+    drawSectionHeading("Percepciones impositivas cobradas")
+    const percItems: InfoItem[] = perceptions.map((p) => ({
+      label: p.label,
+      value: formatCurrencyValue(p.currency, p.amount),
+      note: "La agencia actúa como agente de percepción — este importe es recaudado por la agencia en nombre de AFIP.",
+    }))
+    drawInfoCard("Percepciones incluidas en este cobro", percItems, {
+      fillColor: slateSoft,
+      borderColor: slateBorder,
+      titleColor: brandColor,
+    })
+  }
+
   // drawFooterNote() removida — la info de saldo pendiente ya está en el summary card.
   // El footer del pie (página X de Y, dirección/CUIT) sigue en addFooters().
 
