@@ -284,7 +284,6 @@ export async function GET(request: NextRequest) {
         .select("type, amount, currency")
         .eq("source_id", paymentId)
         .eq("source_type", "PAYMENT")
-        .eq("org_id", user.org_id)
         .in("type", ["PERCEPCION_RG5617_30", "PERCEPCION_RG3819_5"])
       if (withholdings && withholdings.length > 0) {
         perceptions = withholdings.map((w: any) => ({
