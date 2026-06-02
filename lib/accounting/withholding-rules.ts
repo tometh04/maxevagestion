@@ -293,7 +293,7 @@ export async function autoCreateWithholdings(
   // doble-click en mark-paid, o race conditions.
   if (params.source_type && params.source_id) {
     const { data: existing, error: existingError } = await (supabase.from("tax_withholdings") as any)
-      .select("id, type, amount, rate_applied")
+      .select("id, type, amount")
       .eq("source_type", params.source_type)
       .eq("source_id", params.source_id)
 
@@ -338,7 +338,6 @@ export async function autoCreateWithholdings(
     counterpart_name: params.counterpart_name || null,
     currency: params.currency || "ARS",
     amount: w.amount,
-    rate_applied: w.rate,
     tax_period: taxPeriod,
     withholding_date: withholdingDate,
     status: "PENDING",
