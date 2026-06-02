@@ -8,6 +8,8 @@ export function requiresApproval(
   userRole: string,
   rules: ApprovalRule[],
 ): boolean {
+  // ADMIN y SUPER_ADMIN nunca requieren aprobación — ellos SON los aprobadores
+  if (userRole === "ADMIN" || userRole === "SUPER_ADMIN") return false
   if (!rules || rules.length === 0) return false
   const rule = rules.find((r) => r.role === userRole)
   if (!rule) return false
