@@ -266,7 +266,11 @@ export async function loadWithholdingRules(
       return []
     }
 
-    if (data?.withholding_rules && Array.isArray(data.withholding_rules)) {
+    // Usar reglas custom SOLO si el array existe y tiene al menos una regla.
+    // Si está vacío (ej. agencia que tocó settings y guardó sin reglas), caer
+    // a los defaults — el master toggle `withholdings_enabled=false` es el
+    // mecanismo correcto para deshabilitar todas las percepciones.
+    if (data?.withholding_rules && Array.isArray(data.withholding_rules) && data.withholding_rules.length > 0) {
       return data.withholding_rules as WithholdingRule[]
     }
 
