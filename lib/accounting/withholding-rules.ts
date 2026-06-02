@@ -8,6 +8,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js"
+import { createAdminClient } from "@/lib/supabase/server"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -289,18 +290,32 @@ export async function autoCreateWithholdings(
   supabase: SupabaseClient,
   params: AutoCreateWithholdingsParams
 ): Promise<any[]> {
+  // Admin client justificado (CLAUDE.md): la política RLS
+  // `tax_withholdings_tenant_isolation` depende de `user_org_ids()`, que en
+  // varios entornos está rota (incidente 2026-05-18). El INSERT desde el
+  // user client fallaba silenciosamente — las percepciones nunca se creaban.
+  // El caller pasa `params.org_id` explícito (validado contra el user), así
+  // que el bypass de RLS es seguro: cada record lleva org_id correcto y los
+  // SELECTs posteriores filtran por org_id explícito en los endpoints.
+  const adminDb = createAdminClient() as any
+
+  if (!params.org_id) {
+    console.error("[withholding-rules] org_id requerido para crear percepciones — abortando")
+    return []
+  }
+
   // IDEMPOTENCY GUARD: si ya existen retenciones/percepciones para este
-  // (source_type, source_id), no crear duplicados. Protege contra retries,
-  // doble-click en mark-paid, o race conditions.
+  // (source_type, source_id), no crear duplicados.
   if (params.source_type && params.source_id) {
-    const { data: existing, error: existingError } = await (supabase.from("tax_withholdings") as any)
+    const { data: existing, error: existingError } = await adminDb.from("tax_withholdings")
       .select("id, type, amount")
       .eq("source_type", params.source_type)
       .eq("source_id", params.source_id)
+      .eq("org_id", params.org_id)
 
     if (!existingError && existing && existing.length > 0) {
       console.log(
-        `[withholding-rules] Withholdings ya creadas para source ${params.source_type}/${params.source_id} (${existing.length} registros). Skipping duplicate creation.`
+        `[withholding-rules] Withholdings ya creadas para source ${params.source_type}/${params.source_id} (${existing.length} registros). Skipping.`
       )
       return existing
     }
@@ -352,15 +367,16 @@ export async function autoCreateWithholdings(
     agency_id: params.agency_id || null,
   }))
 
-  // 4. Insert
-  const { data, error } = await (supabase.from("tax_withholdings") as any)
+  // 4. Insert con admin client (bypass RLS — ver comment arriba)
+  const { data, error } = await adminDb.from("tax_withholdings")
     .insert(records)
     .select("*")
 
   if (error) {
-    console.error("Error creating automatic withholdings:", error)
+    console.error("[withholding-rules] Error creating automatic withholdings:", error)
     throw new Error(`Error al crear retenciones/percepciones automáticas: ${error.message}`)
   }
 
+  console.log(`[withholding-rules] ✓ ${data?.length || 0} percepciones creadas para source ${params.source_type}/${params.source_id}`)
   return data || []
 }
