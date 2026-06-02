@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
+import { createServerClient, createAdminClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { updateSaleIVA, updatePurchaseIVA, deleteSaleIVA, deletePurchaseIVA, createPurchaseIVA } from "@/lib/accounting/iva"
 import { invalidateBalanceCache } from "@/lib/accounting/ledger"
@@ -75,14 +75,6 @@ export async function GET(
           operator_payment_id,
           operators:operator_id(id, name)
         ),
-        operator_payments(
-          id,
-          operator_id,
-          amount,
-          paid_amount,
-          status,
-          operators:operator_id(id, name)
-        ),
         iva_purchases(
           operator_id,
           operators:operator_id(id, name)
@@ -108,11 +100,24 @@ export async function GET(
   // Extraer clientes de la operación (ya están incluidos en la query)
   const operationCustomers = (op.operation_customers || []) as any[]
 
-  // OPTIMIZACIÓN: Paralelizar queries restantes (documentos, pagos, alertas)
+  // Limpiar ghost operator_payments (org_id=null) con admin client — no bloquea la respuesta.
+  // Estos ghosts son invisibles para el user client (RLS los filtra en DELETE) pero aparecen
+  // en el dialog porque el join embebido no aplica filtro de org_id.
+  const adminClient = createAdminClient() as any
+  adminClient
+    .from("operator_payments")
+    .delete()
+    .eq("operation_id", operationId)
+    .is("org_id", null)
+    .neq("status", "PAID")
+    .then(() => {}) // fire-and-forget, no bloqueamos el response
+
+  // OPTIMIZACIÓN: Paralelizar queries restantes (documentos, pagos, alertas, operator_payments)
   const [
     documents,
     paymentsResult,
-    alertsResult
+    alertsResult,
+    operatorPaymentsResult,
   ] = await Promise.all([
     getOperationVisibleDocuments(supabase, {
       operationId,
@@ -129,16 +134,24 @@ export async function GET(
       .select("*")
       .eq("operation_id", operationId)
       .order("date_due", { ascending: true }),
+    // Fetch operator_payments con filtro explícito de org_id para excluir ghosts
+    supabase
+      .from("operator_payments")
+      .select("id, operator_id, amount, paid_amount, status, operators:operator_id(id, name)")
+      .eq("operation_id", operationId)
+      .eq("org_id", (user as any).org_id),
   ])
 
   const payments = paymentsResult.data || []
   const alerts = alertsResult.data || []
+  const operatorPayments = operatorPaymentsResult.data || []
 
   // Limpiar operation_customers del objeto operation para evitar duplicación
-  const { operation_customers, ...operationWithoutCustomers } = op
+  // y reemplazar operator_payments del join por el fetch con org_id correcto
+  const { operation_customers, operator_payments: _opPayJoin, ...operationWithoutCustomers } = op
 
   return NextResponse.json({
-    operation: operationWithoutCustomers,
+    operation: { ...operationWithoutCustomers, operator_payments: operatorPayments },
     customers: operationCustomers,
     documents: documents,
     payments: payments,
