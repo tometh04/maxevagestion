@@ -153,6 +153,7 @@ interface OperationPaymentsSectionProps {
   operationServices?: OperationServicePaymentRelationLike[]
   destination?: string
   customers?: Array<{ id?: string; customer_id?: string; customers?: { first_name?: string; last_name?: string } }>
+  paymentWithholdings?: Array<{ source_id: string; type: string; amount: number; currency: string }>
 }
 
 function isInternationalDestination(destination?: string | null): boolean {
@@ -175,6 +176,7 @@ export function OperationPaymentsSection({
   operationServices = [],
   destination,
   customers = [],
+  paymentWithholdings = [],
 }: OperationPaymentsSectionProps) {
   const router = useRouter()
   const [incomeDialogOpen, setIncomeDialogOpen] = useState(false)
@@ -220,6 +222,16 @@ export function OperationPaymentsSection({
   const [duplicateAlert, setDuplicateAlert] = useState<DuplicateInfo | null>(null)
   const operatorNameById = new Map(operators.map((operator) => [operator.id, operator.name]))
   const customerSaleCurrency = normalizeSupportedCurrency(saleCurrency || currency)
+
+  const withholdingsByPayment = useMemo(() => {
+    const map = new Map<string, Array<{ type: string; amount: number; currency: string }>>()
+    for (const w of paymentWithholdings) {
+      const list = map.get(w.source_id) || []
+      list.push({ type: w.type, amount: w.amount, currency: w.currency })
+      map.set(w.source_id, list)
+    }
+    return map
+  }, [paymentWithholdings])
 
   /**
    * Bug fix 2026-05-21 (VICO): deudas a operador desglosadas — una entry
@@ -1047,6 +1059,17 @@ export function OperationPaymentsSection({
                               {operatorNameById.get(payment.operator_id) || "Operador seleccionado"}
                             </span>
                           )}
+                          {withholdingsByPayment.get(payment.id)?.map((w, i) => (
+                            <Badge
+                              key={i}
+                              variant="outline"
+                              className="w-fit text-[10px] border-orange-400/60 text-orange-400"
+                              title={`Percepción ${w.type === "PERCEPCION_RG5617_30" ? "RG 5617 (30%)" : "RG 3819 (5%)"} — ${w.currency} ${w.amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`}
+                            >
+                              {w.type === "PERCEPCION_RG5617_30" ? "RG 5617" : "RG 3819"}{" "}
+                              {w.currency} {w.amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                            </Badge>
+                          ))}
                         </div>
                       </div>
                     </TableCell>

@@ -84,6 +84,19 @@ export default async function OperationDetailPage({
     .eq("org_id", userOrgId)
     .order("date_due", { ascending: true })
 
+  // Percepciones (RG 5617/3819) asociadas a los pagos de esta operación
+  const paymentIds = (payments || []).map((p: any) => p.id)
+  let paymentWithholdings: any[] = []
+  if (paymentIds.length > 0) {
+    const { data: wData } = await (supabase.from("tax_withholdings") as any)
+      .select("source_id, type, amount, currency")
+      .in("source_id", paymentIds)
+      .eq("source_type", "PAYMENT")
+      .eq("org_id", userOrgId)
+      .in("type", ["PERCEPCION_RG5617_30", "PERCEPCION_RG3819_5"])
+    paymentWithholdings = wData || []
+  }
+
   // Get alerts
   const { data: alerts } = await supabase
     .from("alerts")
@@ -194,6 +207,7 @@ export default async function OperationDetailPage({
       operatorPayments={operatorPayments || []}
       operationOperators={operationOperators || []}
       operationLegs={operationLegs || []}
+      paymentWithholdings={paymentWithholdings}
     />
   )
 }

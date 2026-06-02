@@ -547,6 +547,7 @@ export async function POST(request: Request) {
           source_id: paymentId,
           direction: "PRACTICED",
           created_by: user.id,
+          org_id: (user as any).org_id || undefined,
           agency_id: opForPerc?.agency_id || undefined,
           payment_method: paymentData.method || undefined,
           destination: opForPerc?.destination || undefined,

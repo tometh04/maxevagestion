@@ -70,6 +70,7 @@ export interface AutoCreateWithholdingsParams extends CalculateWithholdingsParam
   direction?: "SUFFERED" | "PRACTICED"
   notes?: string
   created_by?: string
+  org_id?: string
   agency_id?: string
   payment_method?: string
   destination?: string
@@ -338,6 +339,7 @@ export async function autoCreateWithholdings(
     counterpart_name: params.counterpart_name || null,
     currency: params.currency || "ARS",
     amount: w.amount,
+    org_id: params.org_id || null,
     tax_period: taxPeriod,
     withholding_date: withholdingDate,
     status: "PENDING",

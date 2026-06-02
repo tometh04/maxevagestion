@@ -145,6 +145,7 @@ interface OperationDetailClientProps {
     checkin_date: string | null
     checkout_date: string | null
   }>
+  paymentWithholdings?: Array<{ source_id: string; type: string; amount: number; currency: string }>
 }
 
 export function OperationDetailClient({
@@ -164,6 +165,7 @@ export function OperationDetailClient({
   operatorPayments = [],
   operationOperators = [],
   operationLegs = [],
+  paymentWithholdings = [],
 }: OperationDetailClientProps) {
   const router = useRouter()
   const [editDialogOpen, setEditDialogOpen] = useState(false)
@@ -761,6 +763,7 @@ export function OperationDetailClient({
             operationServices={operationServices}
             destination={operation.destination || ""}
             customers={customers}
+            paymentWithholdings={paymentWithholdings}
           />
           <PassengerBalancesSection
             operationId={operation.id}

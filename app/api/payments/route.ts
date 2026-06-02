@@ -925,6 +925,7 @@ export async function POST(request: Request) {
               source_id: payment.id,
               direction: "PRACTICED",
               created_by: user.id,
+              org_id: (user as any).org_id || undefined,
               agency_id: agencyId,
               payment_method: method || undefined,
               destination: operationData?.destination || undefined,
