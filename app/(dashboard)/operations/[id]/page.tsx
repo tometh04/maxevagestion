@@ -111,27 +111,10 @@ export default async function OperationDetailPage({
     .eq("org_id", userOrgId)
     .order("created_at", { ascending: true })
 
-  // Limpiar operator_payments huérfanos: registros que no están vinculados a ningún
-  // operation_service activo y nunca tuvieron dinero aplicado (paid_amount = 0).
-  // Esto cubre el caso donde el servicio fue eliminado pero el operator_payment quedó.
-  // Solo aplica si la operación usa el sistema de servicios (tiene operation_services).
-  const activePaymentIds = new Set(
-    (operationServices || [])
-      .map((s: any) => s.operator_payment_id)
-      .filter(Boolean)
-  )
+  // Nota: la limpieza de ghost operator_payments se hace MÁS ABAJO, después
+  // de tener operationOperators cargado (necesario para no borrar pagos legítimos
+  // del flujo operation_operators que también tienen linked_service=NULL).
   let operatorPayments = operatorPaymentsRaw || []
-  if ((operationServices || []).length > 0 && operatorPaymentsRaw) {
-    const orphans = operatorPaymentsRaw.filter(
-      (p: any) => !activePaymentIds.has(p.id) && Number(p.paid_amount || 0) === 0 && p.status !== "PAID"
-    )
-    if (orphans.length > 0) {
-      await (supabase.from("operator_payments") as any)
-        .delete()
-        .in("id", orphans.map((p: any) => p.id))
-      operatorPayments = operatorPaymentsRaw.filter((p: any) => activePaymentIds.has(p.id) || Number(p.paid_amount || 0) > 0 || p.status === "PAID")
-    }
-  }
 
   // Get operators assigned to the operation (may include operators without operator_payment)
   // Needed so the "Pagar a operador" dialog can list ALL assigned operators,
@@ -143,6 +126,34 @@ export default async function OperationDetailPage({
     .eq("operation_id", id)
     .eq("org_id", userOrgId)
     .order("created_at", { ascending: true })
+
+  // Limpieza de ghost operator_payments: un registro es ghost si su operator_id
+  // no aparece en ningún operation_service activo NI en operation_operators.
+  // FTA TOUR OPERADOR (flujo legacy operation_operators) tiene linked_service=NULL
+  // pero SÍ aparece en operation_operators → no es ghost → no se toca.
+  if (operatorPaymentsRaw && operatorPaymentsRaw.length > 0) {
+    const activeServiceOperatorIds = new Set(
+      (operationServices || []).map((s: any) => s.operator_id).filter(Boolean)
+    )
+    const activeOperatorIds = new Set(
+      (operationOperators || []).map((o: any) => o.operator_id).filter(Boolean)
+    )
+    const ghosts = operatorPaymentsRaw.filter(
+      (p: any) =>
+        !activeServiceOperatorIds.has(p.operator_id) &&
+        !activeOperatorIds.has(p.operator_id) &&
+        Number(p.paid_amount || 0) === 0 &&
+        p.status !== "PAID"
+    )
+    if (ghosts.length > 0) {
+      await (supabase.from("operator_payments") as any)
+        .delete()
+        .in("id", ghosts.map((p: any) => p.id))
+      operatorPayments = operatorPaymentsRaw.filter(
+        (p: any) => !ghosts.some((g: any) => g.id === p.id)
+      )
+    }
+  }
 
   // Get stopovers / legs for this operation. operation_legs NO tiene
   // org_id (mig 129) — scopeamos por agency_id que sí tiene NOT NULL.
