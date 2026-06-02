@@ -193,6 +193,7 @@ export function OperationPaymentsSection({
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [editingPayment, setEditingPayment] = useState<any>(null)
   const [markAsPaid, setMarkAsPaid] = useState(false)
+  const [payerOperationCustomerId, setPayerOperationCustomerId] = useState<string | null>(null)
   const [applyRg5617, setApplyRg5617] = useState(false)
   const [applyRg3819, setApplyRg3819] = useState(false)
 
@@ -765,6 +766,7 @@ export function OperationPaymentsSection({
         apply_rg5617: applyRg5617,
         apply_rg3819: applyRg3819,
         payer_name: payer_name || null,
+        payer_operation_customer_id: payerOperationCustomerId || null,
       }
 
       // Ley 25413: bank tax deduction for income via bank accounts
@@ -780,6 +782,7 @@ export function OperationPaymentsSection({
           setApplyRg5617(false)
           setApplyRg3819(false)
           setApplyBankTaxIncome(false)
+          setPayerOperationCustomerId(null)
           router.refresh()
         },
         onError: (msg) => toast.error(msg),
@@ -886,6 +889,7 @@ export function OperationPaymentsSection({
             incomeForm.reset()
             setApplyRg5617(false)
             setApplyRg3819(false)
+            setPayerOperationCustomerId(null)
           } else {
             setExpenseDialogOpen(false)
             expenseForm.reset()
@@ -1472,14 +1476,16 @@ export function OperationPaymentsSection({
               />
 
               {customers.length > 1 && (() => {
-                const passengerNames = customers
+                const passengerOptions = customers
                   .map((oc) => {
                     const c = Array.isArray(oc.customers) ? oc.customers[0] : oc.customers
-                    if (!c) return null
-                    return `${c.first_name || ""} ${c.last_name || ""}`.trim() || null
+                    if (!c || !oc.id) return null
+                    const name = `${c.first_name || ""} ${c.last_name || ""}`.trim()
+                    if (!name) return null
+                    return { id: oc.id as string, name }
                   })
-                  .filter(Boolean) as string[]
-                if (passengerNames.length < 2) return null
+                  .filter(Boolean) as Array<{ id: string; name: string }>
+                if (passengerOptions.length < 2) return null
                 return (
                   <FormField
                     control={incomeForm.control}
@@ -1488,8 +1494,17 @@ export function OperationPaymentsSection({
                       <FormItem>
                         <FormLabel>¿Quién abona? (opcional)</FormLabel>
                         <Select
-                          onValueChange={(v) => field.onChange(v === "__default__" ? "" : v)}
-                          value={field.value && field.value !== "" ? field.value : "__default__"}
+                          onValueChange={(v) => {
+                            if (v === "__default__") {
+                              setPayerOperationCustomerId(null)
+                              field.onChange("")
+                            } else {
+                              setPayerOperationCustomerId(v)
+                              const opt = passengerOptions.find(o => o.id === v)
+                              field.onChange(opt?.name || "")
+                            }
+                          }}
+                          value={payerOperationCustomerId || "__default__"}
                         >
                           <FormControl>
                             <SelectTrigger>
@@ -1498,12 +1513,12 @@ export function OperationPaymentsSection({
                           </FormControl>
                           <SelectContent>
                             <SelectItem value="__default__">Titular de la operación</SelectItem>
-                            {passengerNames.map((name, i) => (
-                              <SelectItem key={i} value={name}>{name}</SelectItem>
+                            {passengerOptions.map((opt) => (
+                              <SelectItem key={opt.id} value={opt.id}>{opt.name}</SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
-                        <p className="text-xs text-muted-foreground">El recibo saldrá a nombre de esta persona.</p>
+                        <p className="text-xs text-muted-foreground">El pago se asignará a este pasajero y el recibo saldrá a su nombre.</p>
                         <FormMessage />
                       </FormItem>
                     )}

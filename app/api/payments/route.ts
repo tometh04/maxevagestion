@@ -156,6 +156,7 @@ export async function POST(request: Request) {
       apply_rg5617,
       apply_rg3819,
       payer_name,
+      payer_operation_customer_id,
       idempotency_key, // UUID generado por el cliente al montar el form (Stripe-style)
     } = body
 
@@ -670,6 +671,22 @@ export async function POST(request: Request) {
       details: { amount, currency, direction, payer_type },
       ip_address: getClientIP(request) || undefined,
     })
+
+    // Auto-asignar pago al pasajero seleccionado si se indicó quién abona
+    if (payer_operation_customer_id && payer_type === "CUSTOMER" && payment?.id) {
+      try {
+        await (supabase.from("payment_passenger_allocations") as any)
+          .insert({
+            payment_id: payment.id,
+            operation_customer_id: payer_operation_customer_id,
+            amount: parseFloat(amount),
+            currency: currency || "USD",
+            created_by: user.id,
+          })
+      } catch (allocError) {
+        console.warn("[payments POST] Error auto-asignando pago a pasajero (non-fatal):", allocError)
+      }
+    }
 
     // Approval gate: if approval is required, skip ledger/cash creation and return early
     if (needsApproval) {
