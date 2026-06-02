@@ -87,15 +87,20 @@ export async function GET(request: Request) {
       .eq("source_id", paymentId)
       .eq("source_type", "PAYMENT")
 
-    // 8. Probar INSERT real con admin client (dry-run: insertar y borrar)
+    // 8. Probar INSERT real con admin client usando source_type="PAYMENT"
+    // (el valor que usa el código real). Si esto falla, el check constraint
+    // está rechazando "PAYMENT" → necesitamos relajar el constraint o usar
+    // otro valor. Insertamos con un source_id ficticio para no chocar con
+    // los registros reales y poder borrar.
+    const sentinelSourceId = "00000000-0000-0000-0000-000000000000"
     let canInsertWithAdmin = false
     let insertError: any = null
     if ((user as any).org_id) {
       const testRecord = {
         type: "PERCEPCION_RG5617_30",
         direction: "PRACTICED",
-        source_type: "DIAGNOSTIC_TEST",
-        source_id: paymentId,
+        source_type: "PAYMENT",
+        source_id: sentinelSourceId,
         operation_id: payment.operation_id,
         currency: payment.currency || "ARS",
         amount: 0.01,
@@ -117,6 +122,38 @@ export async function GET(request: Request) {
         await admin.from("tax_withholdings").delete().eq("id", inserted[0].id)
       } else {
         insertError = insErr
+      }
+    }
+
+    // 9. Probar el flow REAL: llamar autoCreateWithholdings con los params
+    // exactos que usa el POST de payments. Si esto crea el registro, el
+    // problema es de timing (el payment se creó antes del deploy del fix).
+    // Si falla, vemos el error real aquí.
+    let runWithholdingsResult: any = null
+    let runWithholdingsError: any = null
+    try {
+      const { autoCreateWithholdings } = await import("@/lib/accounting/withholding-rules")
+      runWithholdingsResult = await autoCreateWithholdings(supabase, {
+        amount: Number(payment.amount),
+        currency: payment.currency,
+        type: "CUSTOMER_PAYMENT",
+        tax_period: new Date().toISOString().substring(0, 7),
+        withholding_date: new Date().toISOString().split("T")[0],
+        operation_id: payment.operation_id,
+        source_type: "PAYMENT",
+        source_id: paymentId,
+        direction: "PRACTICED",
+        created_by: user.id,
+        org_id: (user as any).org_id,
+        agency_id: operation?.agency_id,
+        payment_method: payment.method,
+        destination: operation?.destination,
+        // NO excluimos nada — dejamos que aplique las RG que correspondan
+      })
+    } catch (e: any) {
+      runWithholdingsError = {
+        message: e?.message,
+        stack: e?.stack?.split("\n").slice(0, 3),
       }
     }
 
@@ -171,6 +208,10 @@ export async function GET(request: Request) {
           details: insertError.details,
           hint: insertError.hint,
         } : null,
+      },
+      run_real_withholdings: {
+        result: runWithholdingsResult,
+        error: runWithholdingsError,
       },
     })
   } catch (error: any) {
