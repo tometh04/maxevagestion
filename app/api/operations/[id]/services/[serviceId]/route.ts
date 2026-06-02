@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { createServerClient, createAdminClient } from "@/lib/supabase/server"
+import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canPerformAction, getUserAgencyIds, resolveOperationAccessScope } from "@/lib/permissions-api"
 import { calculateCommission, createOrUpdateCommissionRecords } from "@/lib/commissions/calculate"
@@ -336,39 +336,34 @@ export async function DELETE(
     }
 
     // ── Eliminar operator_payment(s) vinculados al servicio ──
-    // Usamos admin client en todo el bloque para cubrir registros con org_id=null
-    // que RLS ocultaría al user client (causando que el delete falle silenciosamente).
-    if (service.operator_payment_id || service.operator_id) {
-      const adminSupabase = createAdminClient() as any
+    // Todos los operator_payments tienen org_id seteado (migración 2026-06-02),
+    // por lo que el user client con RLS alcanza para todas las operaciones.
+    if (service.operator_payment_id) {
+      const { data: opPayment } = await (supabase.from("operator_payments") as any)
+        .select("id, status")
+        .eq("id", service.operator_payment_id)
+        .eq("org_id", (user as any).org_id)
+        .maybeSingle()
 
-      if (service.operator_payment_id) {
-        const { data: opPayment } = await adminSupabase
-          .from("operator_payments")
-          .select("id, status")
-          .eq("id", service.operator_payment_id)
-          .maybeSingle()
-
-        if (opPayment?.status === "PAID") {
-          warnings.push("El pago al proveedor ya fue registrado como pagado y no se puede revertir automáticamente.")
-        } else if (opPayment) {
-          await adminSupabase
-            .from("operator_payments")
-            .delete()
-            .eq("id", service.operator_payment_id)
-        }
-      }
-
-      // Limpiar cualquier ghost remanente para este operador/operación
-      // (registros sin operator_payment_id en el servicio, o de ediciones previas)
-      if (service.operator_id) {
-        await adminSupabase
-          .from("operator_payments")
+      if (opPayment?.status === "PAID") {
+        warnings.push("El pago al proveedor ya fue registrado como pagado y no se puede revertir automáticamente.")
+      } else if (opPayment) {
+        await (supabase.from("operator_payments") as any)
           .delete()
-          .eq("operation_id", operationId)
-          .eq("operator_id", service.operator_id)
-          .neq("status", "PAID")
-          .neq("id", service.operator_payment_id || "00000000-0000-0000-0000-000000000000")
+          .eq("id", service.operator_payment_id)
       }
+    }
+
+    // Limpiar cualquier ghost remanente para este operador/operación
+    // (registros de ediciones previas sin operator_payment_id en el servicio)
+    if (service.operator_id) {
+      await (supabase.from("operator_payments") as any)
+        .delete()
+        .eq("operation_id", operationId)
+        .eq("operator_id", service.operator_id)
+        .eq("org_id", (user as any).org_id)
+        .neq("status", "PAID")
+        .neq("id", service.operator_payment_id || "00000000-0000-0000-0000-000000000000")
     }
 
     // ── Eliminar ledger movements ──

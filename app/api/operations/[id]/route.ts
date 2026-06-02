@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { createServerClient, createAdminClient } from "@/lib/supabase/server"
+import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { updateSaleIVA, updatePurchaseIVA, deleteSaleIVA, deletePurchaseIVA, createPurchaseIVA } from "@/lib/accounting/iva"
 import { invalidateBalanceCache } from "@/lib/accounting/ledger"
@@ -99,18 +99,6 @@ export async function GET(
 
   // Extraer clientes de la operación (ya están incluidos en la query)
   const operationCustomers = (op.operation_customers || []) as any[]
-
-  // Limpiar ghost operator_payments (org_id=null) con admin client — no bloquea la respuesta.
-  // Estos ghosts son invisibles para el user client (RLS los filtra en DELETE) pero aparecen
-  // en el dialog porque el join embebido no aplica filtro de org_id.
-  const adminClient = createAdminClient() as any
-  adminClient
-    .from("operator_payments")
-    .delete()
-    .eq("operation_id", operationId)
-    .is("org_id", null)
-    .neq("status", "PAID")
-    .then(() => {}) // fire-and-forget, no bloqueamos el response
 
   // OPTIMIZACIÓN: Paralelizar queries restantes (documentos, pagos, alertas, operator_payments)
   const [
