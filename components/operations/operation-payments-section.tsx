@@ -198,6 +198,8 @@ export function OperationPaymentsSection({
   const [payerOperationCustomerId, setPayerOperationCustomerId] = useState<string | null>(null)
   const [applyRg5617, setApplyRg5617] = useState(false)
   const [applyRg3819, setApplyRg3819] = useState(false)
+  const [applyRg5617Edit, setApplyRg5617Edit] = useState(false)
+  const [applyRg3819Edit, setApplyRg3819Edit] = useState(false)
 
   // Bug fix 2026-05-13 (Santi): el detector de duplicados flagea 3 cobros
   // de USD 1.000 el mismo día como sospechosos. La heurística es válida pero
@@ -624,6 +626,8 @@ export function OperationPaymentsSection({
           financial_account_id: values.financial_account_id || null,
           notes: values.notes,
           markAsPaid: markAsPaid || undefined,
+          apply_rg5617: markAsPaid ? applyRg5617Edit : undefined,
+          apply_rg3819: markAsPaid ? applyRg3819Edit : undefined,
         }),
       })
 
@@ -1579,6 +1583,8 @@ export function OperationPaymentsSection({
           if (!open) {
             setEditingPayment(null)
             setMarkAsPaid(false)
+            setApplyRg5617Edit(false)
+            setApplyRg3819Edit(false)
           }
         }}>
           <DialogContent className="max-w-md max-h-[95vh] flex flex-col">
@@ -1811,6 +1817,63 @@ export function OperationPaymentsSection({
                     </FormItem>
                   )}
                 />
+
+                {/* Percepciones al marcar como pagado — igual lógica que el income dialog */}
+                {markAsPaid && editingPayment?.direction === "INCOME" && isInternationalDestination(destination) && (() => {
+                  const watchedMethod = editForm.watch("method")
+                  const watchedAmount = Number(editForm.watch("amount") || 0)
+                  const watchedCurrency = editForm.watch("currency")
+                  const isCashEdit = watchedMethod === "Efectivo"
+                  return (
+                    <div className="rounded-[var(--vb-r-sm)] border border-accent-coral/30 bg-accent-coral/5 p-4 space-y-3">
+                      <div className="flex items-center gap-1.5">
+                        <Receipt className="h-3.5 w-3.5 text-accent-coral" />
+                        <span className="text-xs font-medium text-foreground/70">Percepciones Impositivas</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Destino: <span className="font-medium text-foreground">{destination}</span> (internacional)
+                      </p>
+                      <div className="flex items-start gap-3">
+                        <Checkbox
+                          id="edit-rg5617"
+                          checked={applyRg5617Edit}
+                          onCheckedChange={(checked) => setApplyRg5617Edit(checked === true)}
+                        />
+                        <label htmlFor="edit-rg5617" className="text-sm leading-tight cursor-pointer">
+                          <span className="font-medium">RG 5617 — 30%</span>
+                          <span className="block text-xs text-muted-foreground mt-0.5">
+                            Percepción Ganancias/Bienes Personales.
+                            {watchedAmount > 0 && (
+                              <span className="font-medium text-foreground ml-1">
+                                ({watchedCurrency} {(watchedAmount * 0.3).toLocaleString("es-AR", { minimumFractionDigits: 2 })})
+                              </span>
+                            )}
+                          </span>
+                        </label>
+                      </div>
+                      {isCashEdit && (
+                        <div className="flex items-start gap-3">
+                          <Checkbox
+                            id="edit-rg3819"
+                            checked={applyRg3819Edit}
+                            onCheckedChange={(checked) => setApplyRg3819Edit(checked === true)}
+                          />
+                          <label htmlFor="edit-rg3819" className="text-sm leading-tight cursor-pointer">
+                            <span className="font-medium">RG 3819 — 5%</span>
+                            <span className="block text-xs text-muted-foreground mt-0.5">
+                              Percepción adicional por pago en efectivo.
+                              {watchedAmount > 0 && (
+                                <span className="font-medium text-foreground ml-1">
+                                  ({watchedCurrency} {(watchedAmount * 0.05).toLocaleString("es-AR", { minimumFractionDigits: 2 })})
+                                </span>
+                              )}
+                            </span>
+                          </label>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
 
                 </div>{/* fin wrapper scrollable */}
 

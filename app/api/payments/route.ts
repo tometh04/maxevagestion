@@ -1783,6 +1783,8 @@ export async function PATCH(request: Request) {
       financial_account_id,
       notes,
       markAsPaid,
+      apply_rg5617: patchApplyRg5617,
+      apply_rg3819: patchApplyRg3819,
     } = body
 
     if (!paymentId) {
@@ -2281,6 +2283,40 @@ export async function PATCH(request: Request) {
         await upsertSellerReceiptMessage(supabase, paymentId)
       } catch (error) {
         console.error("Error creando mensaje interno de recibo para vendedor:", error)
+      }
+    }
+
+    // Percepciones al marcar como pagado (PATCH + markAsPaid)
+    if (markAsPaid && !wasPaid && existingPayment.direction === "INCOME" && existingPayment.operation_id) {
+      try {
+        const { data: opForPerc } = await (supabase.from("operations") as any)
+          .select("destination, agency_id")
+          .eq("id", existingPayment.operation_id)
+          .single()
+
+        const excludedTypes: WithholdingType[] = []
+        if (!patchApplyRg5617) excludedTypes.push("PERCEPCION_RG5617_30")
+        if (!patchApplyRg3819) excludedTypes.push("PERCEPCION_RG3819_5")
+
+        await autoCreateWithholdings(supabase, {
+          amount: finalAmount,
+          currency: finalCurrency,
+          type: "CUSTOMER_PAYMENT",
+          tax_period: (finalDatePaid || new Date().toISOString().split("T")[0]).substring(0, 7),
+          withholding_date: finalDatePaid || new Date().toISOString().split("T")[0],
+          operation_id: existingPayment.operation_id,
+          source_type: "PAYMENT",
+          source_id: paymentId,
+          direction: "PRACTICED",
+          created_by: user.id,
+          org_id: (user as any).org_id || undefined,
+          agency_id: opForPerc?.agency_id || undefined,
+          payment_method: finalMethod || undefined,
+          destination: opForPerc?.destination || undefined,
+          excluded_types: excludedTypes.length > 0 ? excludedTypes : undefined,
+        })
+      } catch (percError) {
+        console.error("[PATCH markAsPaid] Error calculando percepciones:", percError)
       }
     }
 
