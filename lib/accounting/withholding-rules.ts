@@ -328,7 +328,10 @@ export async function autoCreateWithholdings(
   // 1. Load rules
   const rules = await loadWithholdingRules(supabase, params.agency_id)
 
-  // 2. Calculate
+  // 2. Calculate — IMPORTANTE: pasar excluded_types así calculateWithholdings
+  // respeta los flags apply_rg5617/apply_rg3819 del frontend. Si se omite, se
+  // aplican TODAS las reglas que pasan los filtros (cash + internacional),
+  // ignorando lo que el usuario tildó.
   const withholdings = calculateWithholdings(rules, {
     amount: params.amount,
     currency: params.currency,
@@ -337,6 +340,7 @@ export async function autoCreateWithholdings(
     tax_period: params.tax_period,
     payment_method: params.payment_method,
     destination: params.destination,
+    excluded_types: params.excluded_types,
   })
 
   if (withholdings.length === 0) return []
