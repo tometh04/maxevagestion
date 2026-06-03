@@ -237,6 +237,7 @@ Si algún campo no está disponible, usa null. Devuelve SOLO el JSON.`
               document_number: parsedData.document_number || null,
               date_of_birth: parsedData.date_of_birth || null,
               nationality: parsedData.nationality || null,
+              created_by: user.id,
             } as any)
             .select()
             .single()

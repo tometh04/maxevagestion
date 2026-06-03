@@ -278,6 +278,7 @@ export async function POST(request: Request) {
         procedure_number: procedure_number || null,
         date_of_birth: date_of_birth || null,
         nationality: nationality || null,
+        created_by: user.id,
       })
       .select()
       .single()

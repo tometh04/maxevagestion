@@ -271,9 +271,14 @@ export async function applyCustomersFilters(
     return { query }
   }
 
-  // SELLER en vista normal: solo ve clientes de sus operaciones
+  // SELLER en vista normal: ve clientes de sus operaciones + los que ella creó.
+  // El "created_by" se agregó (migration 2026-06-03) para que un cliente
+  // recién creado (todavía sin operación) sea visible para quien lo creó —
+  // antes quedaba invisible y la vendedora terminaba creando duplicados.
   if (userRole === "SELLER") {
-    // Primero obtener las operaciones del vendedor
+    const customerIds = new Set<string>()
+
+    // 1) Customers vinculados a operaciones del vendedor
     const { data: operations } = await supabase
       .from("operations")
       .select("id")
@@ -281,33 +286,41 @@ export async function applyCustomersFilters(
 
     const operationIds = (operations || []).map((op: any) => op.id)
 
-    if (operationIds.length === 0) {
-      // No tiene operaciones, retornar query que no devuelva resultados usando limit(0)
-      return { query: query.limit(0) }
-    }
-
-    // Obtener customer_ids de operation_customers (chunked: .in() revienta URL con >300 UUIDs)
-    const customerIds: string[] = []
-    const chunkSize = 200
-    for (let i = 0; i < operationIds.length; i += chunkSize) {
-      const chunk = operationIds.slice(i, i + chunkSize)
-      const { data: operationCustomers } = await supabase
-        .from("operation_customers")
-        .select("customer_id")
-        .in("operation_id", chunk)
-      if (operationCustomers) {
-        for (const oc of operationCustomers as any[]) {
-          if (oc.customer_id) customerIds.push(oc.customer_id)
+    if (operationIds.length > 0) {
+      // chunked: .in() revienta URL con >300 UUIDs
+      const chunkSize = 200
+      for (let i = 0; i < operationIds.length; i += chunkSize) {
+        const chunk = operationIds.slice(i, i + chunkSize)
+        const { data: operationCustomers } = await supabase
+          .from("operation_customers")
+          .select("customer_id")
+          .in("operation_id", chunk)
+        if (operationCustomers) {
+          for (const oc of operationCustomers as any[]) {
+            if (oc.customer_id) customerIds.add(oc.customer_id)
+          }
         }
       }
     }
 
-    if (customerIds.length === 0) {
-      // No hay clientes asociados, retornar query que no devuelva resultados
+    // 2) Customers creados por el vendedor (aunque todavía no tengan operación).
+    // Cast a any: created_by se agregó en migration 2026-06-03 pero los
+    // tipos generados de Supabase no se regeneraron todavía.
+    const { data: createdByMe } = await (supabase.from("customers") as any)
+      .select("id")
+      .eq("created_by", user.id)
+      .eq("org_id", orgId)
+
+    for (const c of (createdByMe || []) as any[]) {
+      if (c.id) customerIds.add(c.id)
+    }
+
+    if (customerIds.size === 0) {
+      // No tiene clientes asociados ni creados, retornar query vacía
       return { query: query.limit(0) }
     }
 
-    return { query: query.in("id", customerIds) }
+    return { query: query.in("id", Array.from(customerIds)) }
   }
 
   // Para otros roles no contemplados, retornar query vacío por seguridad

@@ -727,6 +727,7 @@ export async function POST(request: Request) {
               phone: leadData.contact_phone || "",
               email: leadData.contact_email || "",
               instagram_handle: leadData.contact_instagram || null,
+              created_by: user.id,
             })
             .select()
             .single()
