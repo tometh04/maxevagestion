@@ -615,20 +615,26 @@ export async function PATCH(
           //
           // Fix: conservar operator_payments existentes con pagos, pero CREAR
           // los que faltan para operadores nuevos.
-          auditWarnings.push("Se conservaron operator_payments existentes porque hay pagos aplicados")
+          auditWarnings.push("Se conservaron operator_payments existentes con pagos aplicados")
 
-          // Obtener TODOS los operator_payments actuales (no solo los de la query previa)
+          // 🔴 Bug fix 2026-06-03 (Lozada VG): los operator_payments con paid_amount=0
+          // quedaban con amount viejo. Sync explícito en este path.
           const { data: allExistingOPs } = await (supabase.from("operator_payments") as any)
-            .select("id, operator_id, amount, currency")
+            .select("id, operator_id, amount, paid_amount, status, currency")
             .eq("operation_id", operationId)
+            .eq("org_id", (user as any).org_id)
 
-          const existingOPsByOperator = new Set(
-            (allExistingOPs || []).map((op: any) => op.operator_id)
-          )
+          const existingOPsByOperator = new Map<string, any[]>()
+          for (const opPay of allExistingOPs || []) {
+            const arr = existingOPsByOperator.get((opPay as any).operator_id) || []
+            arr.push(opPay)
+            existingOPsByOperator.set((opPay as any).operator_id, arr)
+          }
 
-          // Crear operator_payments para operadores que no tienen uno
           for (const operatorData of synchronizedOperators) {
-            if (operatorData.cost > 0 && !existingOPsByOperator.has(operatorData.operator_id)) {
+            const existingForOperator = existingOPsByOperator.get(operatorData.operator_id) || []
+
+            if (existingForOperator.length === 0 && operatorData.cost > 0) {
               const dueDate = calculateDueDate(
                 (operatorData.product_type || op.product_type || currentOp.product_type || null) as any,
                 op.operation_date || currentOp.operation_date || op.created_at?.split("T")[0],
@@ -643,14 +649,46 @@ export async function PATCH(
                 operatorData.cost_currency,
                 dueDate,
                 operationId,
-                `Deuda nueva por edición de operación ${op.file_code || operationId.slice(0, 8)}`
+                `Deuda nueva por edición de operación ${op.file_code || operationId.slice(0, 8)}`,
+                (user as any).org_id
               )
+              continue
+            }
+
+            // Sincronizar amount de los pending sin paid_amount al nuevo costo.
+            // Los que tienen paid_amount > 0 o status PAID conservan amount
+            // (drift histórico legítimo — cambió el costo después de pagos).
+            for (const opPay of existingForOperator) {
+              const paidAmount = Number(opPay.paid_amount || 0)
+              const isPaid = opPay.status === "PAID" || paidAmount > 0
+              const amountChanged = Number(opPay.amount || 0) !== operatorData.cost
+              const currencyChangedLocal = (opPay.currency || "") !== operatorData.cost_currency
+
+              if (isPaid) {
+                if (amountChanged) {
+                  auditWarnings.push(
+                    `operator_payment ${opPay.id.slice(0, 8)} conserva amount ${opPay.amount} (paid_amount=${paidAmount})`
+                  )
+                }
+                continue
+              }
+
+              if (amountChanged || currencyChangedLocal) {
+                await (supabase.from("operator_payments") as any)
+                  .update({
+                    amount: operatorData.cost,
+                    currency: operatorData.cost_currency,
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq("id", opPay.id)
+              }
             }
           }
         } else {
           await (supabase.from("operator_payments") as any)
             .delete()
             .eq("operation_id", operationId)
+            .eq("org_id", (user as any).org_id)
 
           for (const operatorData of synchronizedOperators) {
             if (operatorData.cost > 0) {
@@ -668,7 +706,8 @@ export async function PATCH(
                 operatorData.cost_currency,
                 dueDate,
                 operationId,
-                `Pago automático actualizado para operación ${op.file_code || operationId.slice(0, 8)}`
+                `Pago automático actualizado para operación ${op.file_code || operationId.slice(0, 8)}`,
+                (user as any).org_id
               )
             }
           }
@@ -679,23 +718,57 @@ export async function PATCH(
       }
     } else if (costChanged || currencyChanged) {
       try {
-        // Buscar operator_payments pendientes
+        // 🔴 Bug fix 2026-06-03 (Lozada VG): antes solo sincronizaba amount cuando
+        // length===1. Si había 2+ operator_payments pendientes o si el costo se
+        // editaba sin que cambiara `currentOp.operator_cost` (porque el trigger DB
+        // lo había sincronizado antes con operation_operators), el amount quedaba
+        // stale. Reemplazado por sync por operator_id contra operation_operators,
+        // sólo donde paid_amount=0 (no pisar drift histórico legítimo).
+        const operatorCostCurrency = op.operator_cost_currency || currency
+
         const { data: operatorPayments } = await (supabase.from("operator_payments") as any)
-          .select("id, status")
+          .select("id, operator_id, amount, paid_amount, status, currency")
           .eq("operation_id", operationId)
+          .eq("org_id", (user as any).org_id)
           .in("status", ["PENDING", "OVERDUE"])
 
         if (operatorPayments && operatorPayments.length > 0) {
-          const operatorCostCurrency = op.operator_cost_currency || currency
-          for (const payment of operatorPayments) {
+          const operatorRowsForLookup = existingOperatorRows
+          const costByOperatorId = new Map<string, { cost: number; currency: string }>()
+          for (const row of operatorRowsForLookup) {
+            if (row.operator_id) {
+              costByOperatorId.set(row.operator_id, {
+                cost: Number(row.cost || 0),
+                currency: (row.cost_currency || operatorCostCurrency) as string,
+              })
+            }
+          }
+
+          for (const payment of operatorPayments as any[]) {
+            const paidAmount = Number(payment.paid_amount || 0)
+            const isPaid = payment.status === "PAID" || paidAmount > 0
+
             const updateFields: any = {
               currency: operatorCostCurrency,
-              updated_at: new Date().toISOString()
+              updated_at: new Date().toISOString(),
             }
-            // Solo actualizar monto si cambió el costo (y es un solo pago)
-            if (costChanged && operatorPayments.length === 1) {
-              updateFields.amount = newOperatorCost
+
+            if (!isPaid) {
+              // Sincronizar amount al costo del operador correspondiente.
+              const mapped = costByOperatorId.get(payment.operator_id)
+              if (mapped) {
+                updateFields.amount = mapped.cost
+                updateFields.currency = mapped.currency
+              } else if (operatorPayments.length === 1) {
+                // Legacy single-op sin row en operation_operators
+                updateFields.amount = newOperatorCost
+              }
+            } else if (Number(payment.amount || 0) !== newOperatorCost) {
+              auditWarnings.push(
+                `operator_payment ${payment.id.slice(0, 8)} conserva amount ${payment.amount} (paid_amount=${paidAmount})`
+              )
             }
+
             await (supabase.from("operator_payments") as any)
               .update(updateFields)
               .eq("id", payment.id)
@@ -703,6 +776,7 @@ export async function PATCH(
         }
       } catch (error) {
         console.error("Error updating operator payment:", error)
+        auditWarnings.push("No se pudieron sincronizar operator_payments (path legacy)")
       }
     }
 

@@ -83,7 +83,7 @@ export async function POST(request: Request) {
     // 2. Migrar operator_payments
     const { data: operationsWithoutPayments } = await supabase
       .from("operations")
-      .select("id, operator_id, operator_cost, operator_cost_currency, product_type, departure_date, checkin_date, created_at")
+      .select("id, operator_id, operator_cost, operator_cost_currency, product_type, departure_date, checkin_date, created_at, org_id")
       .not("operator_id", "is", null)
       .gt("operator_cost", 0)
 
@@ -116,7 +116,8 @@ export async function POST(request: Request) {
             (operation.operator_cost_currency || "ARS") as "ARS" | "USD",
             dueDate,
             operation.id, // operationId
-            `Pago automático generado para operación ${operation.id.slice(0, 8)} (migración histórica)`
+            `Pago automático generado para operación ${operation.id.slice(0, 8)} (migración histórica)`,
+            (operation as any).org_id
           )
           paymentsCreated++
         }

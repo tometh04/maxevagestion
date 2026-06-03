@@ -520,7 +520,8 @@ export async function POST(request: Request) {
               operatorData.cost_currency as "ARS" | "USD",
           dueDate,
           op.id, // operationId
-          `Pago automático generado para operación ${operation.id}`
+          `Pago automático generado para operación ${operation.id}`,
+          (user as any).org_id
         )
       } catch (error) {
             console.error(`Error creating operator payment for ${operatorData.operator_id}:`, error)
