@@ -619,10 +619,18 @@ export async function PATCH(
 
           // 🔴 Bug fix 2026-06-03 (Lozada VG): los operator_payments con paid_amount=0
           // quedaban con amount viejo. Sync explícito en este path.
+          //
+          // 🔴 Bug fix 2026-06-03 (VICO MITIKA/NITES + FREE WAY 2x): cuando un mismo
+          // operador aparece N veces en operation_operators (ej. NITES con 2 hoteles,
+          // FREE WAY con 2 tramos) y solo había M < N operator_payments, las rows
+          // extras no se generaban (Set/Map por operator_id pisaba el chequeo).
+          // Fix: match por CONTEO — agrupar synchronizedOperators por operator_id,
+          // crear los faltantes, actualizar los existentes por orden de array.
           const { data: allExistingOPs } = await (supabase.from("operator_payments") as any)
-            .select("id, operator_id, amount, paid_amount, status, currency")
+            .select("id, operator_id, amount, paid_amount, status, currency, created_at")
             .eq("operation_id", operationId)
             .eq("org_id", (user as any).org_id)
+            .order("created_at", { ascending: true })
 
           const existingOPsByOperator = new Map<string, any[]>()
           for (const opPay of allExistingOPs || []) {
@@ -631,34 +639,47 @@ export async function PATCH(
             existingOPsByOperator.set((opPay as any).operator_id, arr)
           }
 
-          for (const operatorData of synchronizedOperators) {
-            const existingForOperator = existingOPsByOperator.get(operatorData.operator_id) || []
+          const operatorDataByOperator = new Map<string, typeof synchronizedOperators>()
+          for (const od of synchronizedOperators) {
+            const arr = operatorDataByOperator.get(od.operator_id) || []
+            arr.push(od)
+            operatorDataByOperator.set(od.operator_id, arr)
+          }
 
-            if (existingForOperator.length === 0 && operatorData.cost > 0) {
-              const dueDate = calculateDueDate(
-                (operatorData.product_type || op.product_type || currentOp.product_type || null) as any,
-                op.operation_date || currentOp.operation_date || op.created_at?.split("T")[0],
-                op.checkin_date || currentOp.checkin_date || undefined,
-                op.departure_date || currentOp.departure_date || undefined
-              )
+          for (const [, operatorRows] of operatorDataByOperator.entries()) {
+            const existingForOperator = existingOPsByOperator.get(operatorRows[0].operator_id) || []
 
-              await createOperatorPayment(
-                supabase,
-                operatorData.operator_id,
-                operatorData.cost,
-                operatorData.cost_currency,
-                dueDate,
-                operationId,
-                `Deuda nueva por edición de operación ${op.file_code || operationId.slice(0, 8)}`,
-                (user as any).org_id
-              )
-              continue
-            }
+            for (let i = 0; i < operatorRows.length; i++) {
+              const operatorData = operatorRows[i]
+              const opPay = existingForOperator[i]
 
-            // Sincronizar amount de los pending sin paid_amount al nuevo costo.
-            // Los que tienen paid_amount > 0 o status PAID conservan amount
-            // (drift histórico legítimo — cambió el costo después de pagos).
-            for (const opPay of existingForOperator) {
+              // No hay operator_payment para esta row → crear nuevo
+              if (!opPay) {
+                if (operatorData.cost <= 0) continue
+
+                const dueDate = calculateDueDate(
+                  (operatorData.product_type || op.product_type || currentOp.product_type || null) as any,
+                  op.operation_date || currentOp.operation_date || op.created_at?.split("T")[0],
+                  op.checkin_date || currentOp.checkin_date || undefined,
+                  op.departure_date || currentOp.departure_date || undefined
+                )
+
+                await createOperatorPayment(
+                  supabase,
+                  operatorData.operator_id,
+                  operatorData.cost,
+                  operatorData.cost_currency,
+                  dueDate,
+                  operationId,
+                  `Deuda nueva por edición de operación ${op.file_code || operationId.slice(0, 8)}`,
+                  (user as any).org_id
+                )
+                continue
+              }
+
+              // Sincronizar amount de los pending sin paid_amount al nuevo costo.
+              // Los que tienen paid_amount > 0 o status PAID conservan amount
+              // (drift histórico legítimo — cambió el costo después de pagos).
               const paidAmount = Number(opPay.paid_amount || 0)
               const isPaid = opPay.status === "PAID" || paidAmount > 0
               const amountChanged = Number(opPay.amount || 0) !== operatorData.cost
