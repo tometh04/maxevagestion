@@ -6,14 +6,25 @@ import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { DataTable } from "@/components/ui/data-table"
 import { DataTableColumnHeader } from "@/components/ui/data-table-column-header"
-import { MoreHorizontal } from "lucide-react"
+import { MoreHorizontal, Trash2 } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { QuickWhatsAppButton } from "@/components/whatsapp/quick-whatsapp-button"
 import { extractCustomerName, normalizePhone } from "@/lib/customers/utils"
 import { toast } from "sonner"
@@ -40,6 +51,8 @@ export function CustomersTable({ initialFilters }: CustomersTableProps) {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [loading, setLoading] = useState(true)
   const [filters, setFilters] = useState(initialFilters)
+  const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   useEffect(() => {
     setFilters(initialFilters)
@@ -80,6 +93,30 @@ export function CustomersTable({ initialFilters }: CustomersTableProps) {
   useEffect(() => {
     fetchCustomers()
   }, [fetchCustomers])
+
+  const handleDelete = useCallback(async () => {
+    if (!customerToDelete) return
+    setIsDeleting(true)
+    try {
+      const res = await fetch(`/api/customers/${customerToDelete.id}`, {
+        method: "DELETE",
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        // El endpoint devuelve mensajes claros (ej: "tiene N operaciones asociadas")
+        toast.error(data.error || "Error al eliminar cliente")
+        return
+      }
+      toast.success("Cliente eliminado")
+      setCustomerToDelete(null)
+      await fetchCustomers()
+    } catch (error) {
+      console.error("[CustomersTable] Delete error:", error)
+      toast.error("Error al eliminar cliente")
+    } finally {
+      setIsDeleting(false)
+    }
+  }, [customerToDelete, fetchCustomers])
 
   const columns: ColumnDef<Customer>[] = useMemo(
     () => [
@@ -207,6 +244,17 @@ export function CustomersTable({ initialFilters }: CustomersTableProps) {
                 <DropdownMenuItem asChild>
                   <Link href={`/customers/${customer.id}`}>Ver detalles</Link>
                 </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-red-600 focus:text-red-600"
+                  onSelect={(e) => {
+                    e.preventDefault()
+                    setCustomerToDelete(customer)
+                  }}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Eliminar
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           )
@@ -230,12 +278,48 @@ export function CustomersTable({ initialFilters }: CustomersTableProps) {
     )
   }
 
+  const customerName = customerToDelete
+    ? `${customerToDelete.first_name || ""} ${customerToDelete.last_name || ""}`.trim() || "este cliente"
+    : ""
+
   return (
-    <DataTable
-      columns={columns}
-      data={customers}
-      // No usar searchKey aquí porque ya hay un filtro de búsqueda arriba
-    />
+    <>
+      <DataTable
+        columns={columns}
+        data={customers}
+        // No usar searchKey aquí porque ya hay un filtro de búsqueda arriba
+      />
+      <AlertDialog
+        open={!!customerToDelete}
+        onOpenChange={(open) => {
+          if (!open && !isDeleting) setCustomerToDelete(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar a {customerName}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción no se puede deshacer. Si el cliente tiene operaciones
+              asociadas, el sistema va a impedir el borrado y vas a ver un
+              mensaje explicativo.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault()
+                handleDelete()
+              }}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+            >
+              {isDeleting ? "Eliminando..." : "Eliminar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
 }
 
