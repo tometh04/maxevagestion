@@ -7,17 +7,39 @@ import { calculateCommission, createOrUpdateCommissionRecords } from "@/lib/comm
 /**
  * Recalcula los totales de la operación (sale_amount_total, operator_cost, margin)
  * sumando los valores de todos sus servicios, y luego recalcula las comisiones.
+ *
+ * IMPORTANTE: solo se suman los servicios cuya moneda coincide con la moneda
+ * base de la operación. Sumar montos en monedas distintas como si fueran iguales
+ * produce una "dolarización 1:1" (ej: 50.000 ARS de un transfer se sumaban como
+ * 50.000 USD al total de una op en USD). Los servicios en otra moneda quedan
+ * fuera de los totales agregados — la UI ya los muestra en sus propios totales
+ * por moneda (ver OperationAccountingSection.servicesInOtherCurrency).
  */
 async function recalculateOperationTotals(supabase: any, operationId: string) {
-  // Sumar todos los servicios activos de la operación
+  // Obtener la moneda base de la operación para filtrar servicios.
+  const { data: opCurrencyRow } = await (supabase.from("operations") as any)
+    .select("sale_currency, operator_cost_currency, currency")
+    .eq("id", operationId)
+    .single()
+
+  if (!opCurrencyRow) return
+
+  const opSaleCurrency = opCurrencyRow.sale_currency || opCurrencyRow.currency || "USD"
+  const opCostCurrency = opCurrencyRow.operator_cost_currency || opCurrencyRow.currency || "USD"
+
+  // Sumar todos los servicios activos de la operación, separando por moneda.
   const { data: services } = await (supabase.from("operation_services") as any)
-    .select("sale_amount, cost_amount")
+    .select("sale_amount, sale_currency, cost_amount, cost_currency")
     .eq("operation_id", operationId)
 
   if (!services) return
 
-  const totalSale = (services as any[]).reduce((sum: number, s: any) => sum + (Number(s.sale_amount) || 0), 0)
-  const totalCost = (services as any[]).reduce((sum: number, s: any) => sum + (Number(s.cost_amount) || 0), 0)
+  const totalSale = (services as any[]).reduce((sum: number, s: any) => {
+    return s.sale_currency === opSaleCurrency ? sum + (Number(s.sale_amount) || 0) : sum
+  }, 0)
+  const totalCost = (services as any[]).reduce((sum: number, s: any) => {
+    return s.cost_currency === opCostCurrency ? sum + (Number(s.cost_amount) || 0) : sum
+  }, 0)
   const margin = totalSale - totalCost
   const marginPct = totalSale > 0 ? (margin / totalSale) * 100 : 0
 
