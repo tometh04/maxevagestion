@@ -10,6 +10,7 @@ import {
 import { createLedgerMovement, calculateARSEquivalent } from "@/lib/accounting/ledger"
 import { createOperatorPayment } from "@/lib/accounting/operator-payments"
 import { getExchangeRate, getLatestExchangeRate, getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
+import { getSellerPercentage } from "@/lib/commissions/calculate"
 
 // Tipos de servicios que generan comisión al vendedor
 const COMMISSION_SERVICE_TYPES = new Set(["TRANSFER", "ASSISTANCE", "HOTEL", "FLIGHT", "EXCURSION"])
@@ -401,7 +402,15 @@ export async function POST(
       }
     }
 
-    // ── 6. Comisión al vendedor (solo TRANSFER y ASSISTANCE) ──
+    // ── 6. Comisión al vendedor ──
+    // Usa la jerarquía canónica de getSellerPercentage:
+    //   1. commission_rules con seller_id específico
+    //   2. users.default_commission_percentage  ← fuente canónica
+    //   3. commission_rules genérica
+    // Antes este bloque buscaba commission_rules por destination_region o
+    // genérica directamente, ignorando el % del vendedor. Si había una regla
+    // genérica del 50%, todos los servicios comisionaban al 50% sin importar
+    // el % real del vendedor (mientras la op base usaba bien el 15% u otro).
     if (generatesCommission && operation.seller_id) {
       try {
         // Calcular margen del servicio (solo si misma moneda, sino usar sale_amount como base)
@@ -411,43 +420,10 @@ export async function POST(
             : saleAmount
 
         if (marginBase > 0) {
-          // Buscar regla de comisión activa (misma lógica que calculate.ts)
-          const today = new Date().toISOString().split("T")[0]
+          const sellerPct = await getSellerPercentage(operation.seller_id)
 
-          const { data: regionRules } = await (supabase.from("commission_rules") as any)
-            .select("*")
-            .eq("type", "SELLER")
-            .lte("valid_from", today)
-            .or(`valid_to.is.null,valid_to.gte.${today}`)
-            .eq("destination_region", operation.destination)
-            .order("valid_from", { ascending: false })
-            .limit(1)
-
-          let rule = regionRules?.[0] || null
-
-          if (!rule) {
-            const { data: generalRules } = await (supabase.from("commission_rules") as any)
-              .select("*")
-              .eq("type", "SELLER")
-              .lte("valid_from", today)
-              .or(`valid_to.is.null,valid_to.gte.${today}`)
-              .is("destination_region", null)
-              .order("valid_from", { ascending: false })
-              .limit(1)
-            rule = generalRules?.[0] || null
-          }
-
-          if (rule) {
-            let commissionAmount = 0
-            let commissionPercentage = 0
-
-            if (rule.basis === "FIXED_PERCENTAGE") {
-              commissionPercentage = rule.value
-              commissionAmount = Math.round((marginBase * rule.value) / 100 * 100) / 100
-            } else if (rule.basis === "FIXED_AMOUNT") {
-              commissionAmount = rule.value
-              commissionPercentage = marginBase > 0 ? (rule.value / marginBase) * 100 : 0
-            }
+          if (sellerPct > 0) {
+            const commissionAmount = Math.round((marginBase * sellerPct) / 100 * 100) / 100
 
             if (commissionAmount > 0) {
               const { data: existingRecord } = await (supabase.from("commission_records") as any)
@@ -457,10 +433,11 @@ export async function POST(
                 .maybeSingle()
 
               if (existingRecord) {
-                // Sumar al registro existente
+                // Sumar al registro existente, manteniendo el % del vendedor.
                 const { data: updated } = await (supabase.from("commission_records") as any)
                   .update({
-                    amount: existingRecord.amount + commissionAmount,
+                    amount: Number(existingRecord.amount) + commissionAmount,
+                    percentage: sellerPct,
                     updated_at: new Date().toISOString(),
                   })
                   .eq("id", existingRecord.id)
@@ -476,7 +453,7 @@ export async function POST(
                     seller_id: operation.seller_id,
                     agency_id: operation.agency_id,
                     amount: commissionAmount,
-                    percentage: commissionPercentage,
+                    percentage: sellerPct,
                     status: "PENDING",
                     date_calculated: new Date().toISOString(),
                   })
