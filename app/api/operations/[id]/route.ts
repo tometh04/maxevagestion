@@ -646,7 +646,7 @@ export async function PATCH(
             operatorDataByOperator.set(od.operator_id, arr)
           }
 
-          for (const [, operatorRows] of operatorDataByOperator.entries()) {
+          for (const operatorRows of Array.from(operatorDataByOperator.values())) {
             const existingForOperator = existingOPsByOperator.get(operatorRows[0].operator_id) || []
 
             for (let i = 0; i < operatorRows.length; i++) {
