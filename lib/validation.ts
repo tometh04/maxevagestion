@@ -65,7 +65,7 @@ export const createLeadSchema = z.object({
   contact_phone: z.string().optional(),
   contact_email: z.string().email("Email inválido").optional().or(z.literal("")),
   destination: z.string().max(200).optional(),
-  region: z.enum(["ARGENTINA", "CARIBE", "BRASIL", "EUROPA", "EEUU", "OTROS", "CRUCEROS"]).optional(),
+  region: z.string().min(1).max(40).optional(),
   status: schemas.leadStatus.optional(),
   notes: z.string().max(5000).optional(),
   agency_id: schemas.uuid,

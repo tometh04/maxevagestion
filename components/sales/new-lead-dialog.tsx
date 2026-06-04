@@ -35,6 +35,7 @@ import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
+import { useLeadRegions } from "@/lib/hooks/use-lead-regions"
 
 const REGION_TO_LIST: Record<string, string> = {
   ARGENTINA: "Leads - Argentina",
@@ -50,7 +51,7 @@ const leadSchema = z.object({
   agency_id: z.string().min(1, "La agencia es requerida"),
   source: z.enum(["Manychat", "Instagram", "WhatsApp", "Meta Ads", "Referido", "Cliente", "Other"]),
   status: z.enum(["NEW", "IN_PROGRESS", "QUOTED", "WON", "LOST"]),
-  region: z.enum(["ARGENTINA", "CARIBE", "BRASIL", "EUROPA", "EEUU", "OTROS", "CRUCEROS"]),
+  region: z.string().min(1, "La región es requerida"),
   destination: z.string().min(1, "El destino es requerido"),
   contact_name: z.string().min(1, "El nombre de contacto es requerido"),
   contact_phone: z.string().min(1, "El teléfono es requerido"),
@@ -91,6 +92,8 @@ export function NewLeadDialog({
   const [loading, setLoading] = useState(false)
   const [crmLists, setCrmLists] = useState<string[]>([])
   const [loadingLists, setLoadingLists] = useState(false)
+  const { regions } = useLeadRegions()
+  const defaultRegionCode = regions[0]?.code ?? "ARGENTINA"
 
   const form = useForm<LeadFormValues>({
     resolver: zodResolver(leadSchema) as any,
@@ -416,13 +419,11 @@ export function NewLeadDialog({
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="ARGENTINA">Argentina</SelectItem>
-                        <SelectItem value="CARIBE">Caribe</SelectItem>
-                        <SelectItem value="BRASIL">Brasil</SelectItem>
-                        <SelectItem value="EUROPA">Europa</SelectItem>
-                        <SelectItem value="EEUU">EEUU</SelectItem>
-                        <SelectItem value="OTROS">Otros</SelectItem>
-                        <SelectItem value="CRUCEROS">Cruceros</SelectItem>
+                        {regions.map((r) => (
+                          <SelectItem key={r.code} value={r.code}>
+                            {r.name}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                     <FormMessage />

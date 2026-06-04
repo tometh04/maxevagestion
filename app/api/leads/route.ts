@@ -294,6 +294,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Faltan campos requeridos" }, { status: 400 })
     }
 
+    // Validar que la región pertenece a las regiones activas del org.
+    // Reemplaza al CHECK constraint hardcoded que fue removido en
+    // migration 20260604000001_lead_regions_configurable.
+    const { data: regionRow } = await ((supabase as any).from("lead_regions"))
+      .select("id")
+      .eq("org_id", (user as any).org_id)
+      .eq("code", region)
+      .eq("is_active", true)
+      .maybeSingle()
+    if (!regionRow) {
+      return NextResponse.json({ error: "Región inválida para tu organización" }, { status: 400 })
+    }
+
     // Check permissions
     if (user.role === "SELLER") {
       // Sellers can only create leads for their own agency

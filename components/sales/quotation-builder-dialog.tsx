@@ -27,6 +27,7 @@ import {
   normalizeManualQuotationTotal,
   roundQuotationMoney,
 } from "@/lib/quotations/totals"
+import { useLeadRegions } from "@/lib/hooks/use-lead-regions"
 
 interface QuotationBuilderProps {
   open: boolean
@@ -307,6 +308,8 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
       })
       .catch(() => {})
   }, [open])
+
+  const { regions: leadRegions } = useLeadRegions()
 
   // General data
   const [quotationTitle, setQuotationTitle] = useState(initialDraft.quotationTitle)
@@ -1270,13 +1273,11 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                 <Select value={region} onValueChange={setRegion}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="ARGENTINA">Argentina</SelectItem>
-                    <SelectItem value="CARIBE">Caribe</SelectItem>
-                    <SelectItem value="BRASIL">Brasil</SelectItem>
-                    <SelectItem value="EUROPA">Europa</SelectItem>
-                    <SelectItem value="EEUU">EEUU</SelectItem>
-                    <SelectItem value="CRUCEROS">Cruceros</SelectItem>
-                    <SelectItem value="OTROS">Otros</SelectItem>
+                    {leadRegions.map((r) => (
+                      <SelectItem key={r.code} value={r.code}>
+                        {r.name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

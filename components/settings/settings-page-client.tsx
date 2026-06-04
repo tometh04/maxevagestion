@@ -10,6 +10,7 @@ import { AISettings } from "@/components/settings/ai-settings"
 import { SeedMockData } from "@/components/settings/seed-mock-data"
 import { MigrateHistoricalAccounting } from "@/components/settings/migrate-historical-accounting"
 import { DestinationRequirementsClient } from "@/components/settings/destination-requirements-client"
+import { LeadRegionsSettings } from "@/components/settings/lead-regions-settings"
 import { AfipSettings } from "@/components/settings/afip-settings"
 import { InterfaceSettings } from "@/components/settings/interface-settings"
 import { AuditSettings } from "@/components/settings/audit-settings"
@@ -106,6 +107,7 @@ export function SettingsPageClient({ defaultTab, agencies, firstAgencyId, userRo
         {userRole === "SUPER_ADMIN" && <TabsTrigger value="seed">Seed Data</TabsTrigger>}
         */}
         <TabsTrigger value="requirements">Requisitos Destino</TabsTrigger>
+        <TabsTrigger value="regiones">Regiones CRM</TabsTrigger>
         <TabsTrigger value="afip">Facturación AFIP</TabsTrigger>
         <TabsTrigger value="permisos">Permisos de Roles</TabsTrigger>
         <TabsTrigger value="auditoria">Auditoría</TabsTrigger>
@@ -146,6 +148,9 @@ export function SettingsPageClient({ defaultTab, agencies, firstAgencyId, userRo
       {/* End hidden tab contents */}
       <TabsContent value="requirements" className="mt-6">
         <DestinationRequirementsClient />
+      </TabsContent>
+      <TabsContent value="regiones" className="mt-6">
+        <LeadRegionsSettings />
       </TabsContent>
       <TabsContent value="afip" className="mt-6">
         <AfipSettings agencies={agencies} defaultAgencyId={firstAgencyId} />

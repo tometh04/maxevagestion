@@ -13,6 +13,7 @@ import {
 import { Search, X } from "lucide-react"
 import { DateTypeFilter, type DateTypeOption } from "@/components/ui/date-type-filter"
 import { format, parseISO, isValid } from "date-fns"
+import { useLeadRegions } from "@/lib/hooks/use-lead-regions"
 
 const leadsDateTypes: DateTypeOption[] = [
   { value: "CREACION", label: "Creación", shortLabel: "Creac." },
@@ -25,17 +26,6 @@ const statusOptions = [
   { value: "QUOTED", label: "Cotizado" },
   { value: "WON", label: "Ganado" },
   { value: "LOST", label: "Perdido" },
-]
-
-const regionOptions = [
-  { value: "ALL", label: "Todas las regiones" },
-  { value: "ARGENTINA", label: "Argentina" },
-  { value: "CARIBE", label: "Caribe" },
-  { value: "BRASIL", label: "Brasil" },
-  { value: "EUROPA", label: "Europa" },
-  { value: "EEUU", label: "EEUU" },
-  { value: "OTROS", label: "Otros" },
-  { value: "CRUCEROS", label: "Cruceros" },
 ]
 
 interface LeadsFiltersProps {
@@ -63,6 +53,7 @@ function toStr(d: Date | undefined): string {
 }
 
 export function LeadsFilters({ sellers, onFilterChange }: LeadsFiltersProps) {
+  const { regions } = useLeadRegions()
   const [status, setStatus] = useState("ALL")
   const [region, setRegion] = useState("ALL")
   const [sellerId, setSellerId] = useState("ALL")
@@ -141,9 +132,10 @@ export function LeadsFilters({ sellers, onFilterChange }: LeadsFiltersProps) {
           <SelectValue placeholder="Seleccionar región" />
         </SelectTrigger>
         <SelectContent>
-          {regionOptions.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
+          <SelectItem value="ALL">Todas las regiones</SelectItem>
+          {regions.map((r) => (
+            <SelectItem key={r.code} value={r.code}>
+              {r.name}
             </SelectItem>
           ))}
         </SelectContent>
