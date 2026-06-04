@@ -677,18 +677,40 @@ export async function PATCH(
                 continue
               }
 
-              // Sincronizar amount de los pending sin paid_amount al nuevo costo.
-              // Los que tienen paid_amount > 0 o status PAID conservan amount
-              // (drift histórico legítimo — cambió el costo después de pagos).
+              // Sincronizar amount al nuevo costo. Reglas:
+              // - status=PAID (totalmente liquidado): no tocar. Drift histórico
+              //   legítimo — modificar amount post-cierre confunde reportes.
+              // - new_cost < paid_amount: no bajar amount por debajo de
+              //   paid_amount, romperia el balance. Conservar y warning.
+              // - resto (PENDING/OVERDUE con paid_amount=0 o paid_amount<=new_cost):
+              //   actualizar amount. Caso típico: ajuste de costo después de
+              //   pago parcial (ej. se cayó un pasaje y bajó la liqui).
+              //
+              // 🔴 Bug fix 2026-06-04 (VICO Delfos OP-200669DE): el código
+              // previo conservaba amount cuando paid_amount > 0 sin distinguir
+              // si la baja era segura. Resultado: edición de operación bajaba
+              // operation_operators.cost pero operator_payments.amount quedaba
+              // viejo, así que "Pendiente a operador" no reflejaba la baja.
               const paidAmount = Number(opPay.paid_amount || 0)
-              const isPaid = opPay.status === "PAID" || paidAmount > 0
-              const amountChanged = Number(opPay.amount || 0) !== operatorData.cost
+              const currentAmount = Number(opPay.amount || 0)
+              const newCost = Number(operatorData.cost)
+              const isFullyPaid = opPay.status === "PAID"
+              const amountChanged = currentAmount !== newCost
               const currencyChangedLocal = (opPay.currency || "") !== operatorData.cost_currency
 
-              if (isPaid) {
+              if (isFullyPaid) {
                 if (amountChanged) {
                   auditWarnings.push(
-                    `operator_payment ${opPay.id.slice(0, 8)} conserva amount ${opPay.amount} (paid_amount=${paidAmount})`
+                    `operator_payment ${opPay.id.slice(0, 8)} conserva amount ${currentAmount} (status=PAID)`
+                  )
+                }
+                continue
+              }
+
+              if (newCost < paidAmount) {
+                if (amountChanged) {
+                  auditWarnings.push(
+                    `operator_payment ${opPay.id.slice(0, 8)} conserva amount ${currentAmount} porque new_cost (${newCost}) < paid_amount (${paidAmount}) rompería el balance`
                   )
                 }
                 continue
@@ -697,7 +719,7 @@ export async function PATCH(
               if (amountChanged || currencyChangedLocal) {
                 await (supabase.from("operator_payments") as any)
                   .update({
-                    amount: operatorData.cost,
+                    amount: newCost,
                     currency: operatorData.cost_currency,
                     updated_at: new Date().toISOString(),
                   })
