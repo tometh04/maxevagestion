@@ -53,6 +53,14 @@ const KNOWN_ERRORS: Record<number, Omit<AfipErrorTranslation, 'code' | 'rawMessa
   },
 
   // Punto de venta
+  11002: {
+    title: 'Punto de venta no habilitado para este Web Service',
+    explanation:
+      'El punto de venta configurado en Vibook existe en AFIP, pero no está autorizado para el Web Service de Facturación (WSFE). Esto suele pasar cuando el paso de autorización automática falló o no se completó.',
+    action:
+      'Hay dos cosas para verificar en AFIP:\n1) Administrador de Relaciones de Clave Fiscal → agregá una relación para el servicio "wsfe" con Computador Fiscal CUIT 20409378472 (AFIP SDK).\n2) Administración de Puntos de Venta → el PV debe ser de tipo "RECE para aplicativo y web services". Si ya está así, volvé a Configuración → Integraciones y tocá "Volver a chequear" para sincronizar.',
+    severity: 'config',
+  },
   10015: {
     title: 'Punto de venta inexistente',
     explanation:

@@ -902,9 +902,17 @@ function WsfePendingBanner({
           con tu CUIT y Clave Fiscal.
         </li>
         <li>
-          Si no lo adheriste nunca: <strong>Administrador de Relaciones de Clave Fiscal</strong>{" "}
-          → <strong>Nueva Relación</strong> → buscá y adherí{" "}
-          <em>&quot;Administración de Puntos de Venta y Domicilios&quot;</em>.
+          <strong>Administrador de Relaciones de Clave Fiscal</strong> → <strong>Nueva Relación</strong>{" "}
+          → buscá el servicio <em>&quot;wsfe&quot;</em> (Facturación Electrónica) y como{" "}
+          <strong>Computador Fiscal</strong> ingresá el CUIT:{" "}
+          <span className="font-mono font-semibold bg-muted px-1 py-0.5 rounded select-all">20409378472</span>{" "}
+          (AFIP SDK — el servidor que realiza las llamadas en nombre de Vibook). Este paso es
+          obligatorio para que el sistema pueda conectarse con AFIP.
+        </li>
+        <li>
+          En el mismo <strong>Administrador de Relaciones</strong> → <strong>Nueva Relación</strong>{" "}
+          → adherí también <em>&quot;Administración de Puntos de Venta y Domicilios&quot;</em>{" "}
+          si aún no lo hiciste.
         </li>
         <li>
           Entrá al servicio <strong>Administración de Puntos de Venta y Domicilios</strong>,
