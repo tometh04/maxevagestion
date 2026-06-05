@@ -455,7 +455,11 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
                   />
                 </div>
                 <div>
-                  <Label>Cuenta Financiera *</Label>
+                  <Label>
+                    {movementType === "DEPOSIT"
+                      ? "¿En qué cuenta ingresó el dinero? *"
+                      : "¿De qué cuenta sale el dinero? *"}
+                  </Label>
                   <Select value={withdrawalAccountId} onValueChange={(value) => {
                     setWithdrawalAccountId(value)
                     // Resetear tipo de cambio si cambia la cuenta
@@ -480,6 +484,11 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
                       ))}
                     </SelectContent>
                   </Select>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {movementType === "DEPOSIT"
+                      ? "Seleccioná la caja o banco donde el socio depositó los fondos (ej: Banco Galicia USD, Caja USD)."
+                      : "Seleccioná la cuenta desde donde se transfieren los fondos al socio."}
+                  </p>
                 </div>
                 {needsExchangeRate && (
                   <div>

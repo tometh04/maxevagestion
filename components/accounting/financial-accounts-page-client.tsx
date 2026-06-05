@@ -868,9 +868,16 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
                     <Label>Saldo Inicial</Label>
                     <DecimalInput
                       value={formData.initial_balance}
-                      onChange={(v) => setFormData({ ...formData, initial_balance: parseFloat(v) || 0 })}
+                      onChange={(v) => {
+                        const n = parseFloat(v)
+                        setFormData({ ...formData, initial_balance: isNaN(n) ? 0 : n })
+                      }}
                       placeholder="0"
+                      allowNegative={true}
                     />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Aceptá valores negativos para cuentas en descubierto o con saldo en rojo.
+                    </p>
                   </div>
                 )}
 

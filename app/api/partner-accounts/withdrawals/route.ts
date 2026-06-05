@@ -181,8 +181,10 @@ export async function POST(request: Request) {
       exchangeRate
     )
 
-    // Validar saldo suficiente (solo para retiros, no para aportes)
-    if (!isDeposit) {
+    // Validar saldo suficiente solo para retiros de cuentas físicas (no para PARTNER).
+    // Las cuentas PARTNER representan deuda con el socio y pueden quedar en negativo
+    // legítimamente (ej: se pagó más de lo que prestó).
+    if (!isDeposit && account.type !== "PARTNER") {
       const balanceCheck = await validateSufficientBalance(
         account_id,
         withdrawalAmountInAccountCurrency,
