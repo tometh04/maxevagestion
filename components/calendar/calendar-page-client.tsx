@@ -377,9 +377,6 @@ export function CalendarPageClient() {
                       <p className="text-xs text-muted-foreground truncate">{event.description}</p>
                     )}
                   </div>
-                  <Badge variant="outline" className={`shrink-0 text-[10px] ${cfg?.className || ""}`}>
-                    {cfg?.label || event.type}
-                  </Badge>
                   {link && (
                     <Link href={link}>
                       <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
@@ -387,6 +384,9 @@ export function CalendarPageClient() {
                       </Button>
                     </Link>
                   )}
+                  <Badge variant="outline" className={`shrink-0 text-[10px] ${cfg?.className || ""}`}>
+                    {cfg?.label || event.type}
+                  </Badge>
                 </div>
               )
             })}
