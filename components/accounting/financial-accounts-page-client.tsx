@@ -1062,6 +1062,7 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
                   value={editTargetBalance}
                   onChange={(v) => setEditTargetBalance(v)}
                   placeholder="0.00"
+                  allowNegative={true}
                   disabled={isEditing}
                 />
               </div>
