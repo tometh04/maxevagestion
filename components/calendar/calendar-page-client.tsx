@@ -42,7 +42,7 @@ import Link from "next/link"
 
 interface CalendarEvent {
   id: string
-  type: "CHECKIN" | "DEPARTURE" | "PAYMENT_DUE" | "QUOTATION_EXPIRY" | "FOLLOW_UP" | "REMINDER"
+  type: "CHECKIN" | "CHECKOUT" | "DEPARTURE" | "PAYMENT_DUE" | "QUOTATION_EXPIRY" | "FOLLOW_UP" | "REMINDER"
   title: string
   date: string
   description?: string
@@ -53,6 +53,7 @@ interface CalendarEvent {
 
 const typeConfig: Record<string, { label: string; icon: typeof Plane; className: string }> = {
   CHECKIN: { label: "Check-in", icon: Hotel, className: "bg-primary/15 text-primary border-primary/20" },
+  CHECKOUT: { label: "Check-out", icon: Hotel, className: "bg-accent-violet/15 text-accent-violet border-accent-violet/20" },
   DEPARTURE: { label: "Salida", icon: Plane, className: "bg-success/15 text-success border-success/20" },
   PAYMENT_DUE: { label: "Pago", icon: DollarSign, className: "bg-accent-coral/15 text-accent-coral border-accent-coral/20" },
   QUOTATION_EXPIRY: { label: "Cotización", icon: CalendarDays, className: "bg-accent-coral/15 text-accent-coral border-accent-coral/20" },

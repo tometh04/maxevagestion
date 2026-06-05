@@ -59,24 +59,54 @@ export async function GET(request: Request) {
       }
     }
 
-    // Salidas de operaciones
+    // Salidas de operaciones (vuelos) y check-in/check-out de hoteles
+    // Para product_type HOTEL/CRUCERO: departure_date = check-in, checkout_date = check-out
     let departuresQuery = (supabase.from("operations") as any)
-      .select("id, destination, departure_date, file_code, seller_id, agency_id")
+      .select("id, destination, departure_date, checkout_date, product_type, file_code, seller_id, agency_id")
       .not("departure_date", "is", null)
     departuresQuery = applyOperationFilters(departuresQuery)
     const { data: departures } = await departuresQuery
 
+    const hotelTypes = new Set(["HOTEL", "CRUCERO"])
+
     if (departures) {
       for (const op of departures) {
-        events.push({
-          id: `departure-${op.id}`,
-          type: "DEPARTURE",
-          title: `Salida: ${op.destination}`,
-          date: op.departure_date,
-          description: op.file_code || undefined,
-          color: "#2CA77F",
-          operationId: op.id,
-        })
+        const isHotel = hotelTypes.has(op.product_type)
+
+        if (isHotel) {
+          // Check-in del hotel (desde departure_date)
+          events.push({
+            id: `departure-${op.id}`,
+            type: "CHECKIN",
+            title: `Check-in: ${op.destination}`,
+            date: op.departure_date,
+            description: op.file_code || undefined,
+            color: "#4F5BD5",
+            operationId: op.id,
+          })
+          // Check-out del hotel
+          if (op.checkout_date) {
+            events.push({
+              id: `checkout-${op.id}`,
+              type: "CHECKOUT",
+              title: `Check-out: ${op.destination}`,
+              date: op.checkout_date,
+              description: op.file_code || undefined,
+              color: "#8B82E8",
+              operationId: op.id,
+            })
+          }
+        } else {
+          events.push({
+            id: `departure-${op.id}`,
+            type: "DEPARTURE",
+            title: `Salida: ${op.destination}`,
+            date: op.departure_date,
+            description: op.file_code || undefined,
+            color: "#2CA77F",
+            operationId: op.id,
+          })
+        }
       }
     }
 
