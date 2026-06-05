@@ -83,15 +83,16 @@ export async function GET(request: Request) {
       return NextResponse.json({ steps })
     }
 
-    // Step 4: getLastVoucher (usar el PV configurado)
+    // Step 4: getLastVoucher (usar el PV configurado con cbteTipo 6 = Factura B,
+    // válido para PVs tipo RECE de Responsable Inscripto)
     steps.push({ step: "4_get_last_voucher", status: "running" })
     try {
       const ptoVta = afipConfig.point_of_sale || 1
-      const lastVoucher = await afip.ElectronicBilling.getLastVoucher(ptoVta, 11)
+      const lastVoucher = await afip.ElectronicBilling.getLastVoucher(ptoVta, 6)
       steps[steps.length - 1] = {
         step: "4_get_last_voucher",
         status: "ok",
-        data: { lastVoucher, ptoVta, cbteTipo: 11 }
+        data: { lastVoucher, ptoVta, cbteTipo: 6 }
       }
     } catch (lvError: any) {
       steps[steps.length - 1] = {

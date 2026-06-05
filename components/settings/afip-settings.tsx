@@ -409,9 +409,20 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
       if (data.success) {
         toast({ title: "Conexión exitosa ✓", description: data.message || "AFIP responde correctamente" })
       } else {
+        // Extraer el paso que falló para un mensaje más específico
+        const failedStep = Array.isArray(data.steps)
+          ? data.steps.find((s: any) => s.status === "error")
+          : null
+        const detail = failedStep?.error || data.error || data.message || "No se pudo conectar con AFIP"
+        const stepLabel: Record<string, string> = {
+          "3_get_token_auth": "Autenticación WSAA",
+          "4_get_last_voucher": "Consulta de comprobantes",
+          "5_server_status": "Estado del servidor AFIP",
+        }
+        const stepName = failedStep ? (stepLabel[failedStep.step] || failedStep.step) : null
         toast({
-          title: "Error de conexión",
-          description: data.error || data.message || "No se pudo conectar con AFIP",
+          title: "Error de conexión" + (stepName ? ` — ${stepName}` : ""),
+          description: detail,
           variant: "destructive",
         })
       }
