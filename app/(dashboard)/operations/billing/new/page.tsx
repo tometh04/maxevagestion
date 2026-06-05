@@ -752,14 +752,6 @@ export default function NewInvoicePage() {
   const handleSubmit = async () => {
     try {
       // Validaciones
-      if (!formData.receptor_nombre) {
-        toast({
-          title: "Error",
-          description: "Debe ingresar el nombre del receptor",
-          variant: "destructive",
-        })
-        return
-      }
       // Factura A requiere CUIT obligatoriamente
       if (formData.cbte_tipo === 1 && (!formData.receptor_doc_nro || formData.receptor_doc_nro === '0')) {
         toast({
@@ -1135,7 +1127,7 @@ export default function NewInvoicePage() {
               
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Nombre/Razón Social *</Label>
+                  <Label>Nombre/Razón Social</Label>
                   <Input
                     value={formData.receptor_nombre}
                     onChange={(e) => setFormData({ ...formData, receptor_nombre: e.target.value })}
