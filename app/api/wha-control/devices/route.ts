@@ -112,13 +112,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  // Tell connector to start the device (begin QR generation)
-  const connResult = await callConnector(`/devices/${device.id}/start`, "POST")
+  // Tell connector to start the device (begin QR generation).
+  // Use longer timeout (20s) since starting a new device session can be slow.
+  const connResult = await callConnector(`/devices/${device.id}/start`, "POST", undefined, 20000)
   if (!connResult.ok) {
-    return NextResponse.json({
-      device,
-      warning: `Dispositivo creado pero el conector no respondió: ${connResult.error}`,
-    })
+    // Rollback: delete device from DB — the user will need to retry from scratch
+    await supabase.from("wa_devices").delete().eq("id", device.id)
+    return NextResponse.json(
+      { error: `No se pudo iniciar el dispositivo: ${connResult.error}` },
+      { status: 502 }
+    )
   }
 
   return NextResponse.json({ device })

@@ -8,7 +8,12 @@ export interface ConnectorResult {
   error?: string
 }
 
-export async function callConnector(path: string, method: string = "GET", body?: any): Promise<ConnectorResult> {
+export async function callConnector(
+  path: string,
+  method: string = "GET",
+  body?: any,
+  timeoutMs: number = 10000
+): Promise<ConnectorResult> {
   const url = process.env.WHA_CONNECTOR_URL
   const secret = process.env.WHA_CONNECTOR_SECRET
 
@@ -17,14 +22,19 @@ export async function callConnector(path: string, method: string = "GET", body?:
     return { ok: false, data: null, error: "Connector no configurado (WHA_CONNECTOR_URL)" }
   }
 
+  if (!secret) {
+    console.error("WHA_CONNECTOR_SECRET not set")
+    return { ok: false, data: null, error: "Connector no configurado (WHA_CONNECTOR_SECRET)" }
+  }
+
   try {
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 10000) // 10s timeout
+    const timeout = setTimeout(() => controller.abort(), timeoutMs)
 
     const res = await fetch(`${url}${path}`, {
       method,
       headers: {
-        Authorization: `Bearer ${secret || ""}`,
+        Authorization: `Bearer ${secret}`,
         "Content-Type": "application/json",
       },
       body: body ? JSON.stringify(body) : undefined,
@@ -39,7 +49,14 @@ export async function callConnector(path: string, method: string = "GET", body?:
       return { ok: false, data: null, error: `Connector respondió ${res.status}: ${text}` }
     }
 
-    const data = await res.json()
+    const text = await res.text()
+    let data: any
+    try {
+      data = JSON.parse(text)
+    } catch {
+      console.error("Connector response is not JSON:", text)
+      return { ok: false, data: null, error: "Respuesta inválida del connector" }
+    }
     return { ok: true, data }
   } catch (err: any) {
     if (err.name === "AbortError") {

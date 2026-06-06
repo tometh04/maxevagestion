@@ -233,7 +233,19 @@ export function DeviceList({ agencies }: DeviceListProps) {
                         {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <PowerOff className="mr-1 h-3 w-3" />}
                         Desconectar
                       </Button>
-                    ) : device.status === "DISCONNECTED" || device.status === "LOGGED_OUT" || device.status === "ERROR" ? (
+                    ) : device.status === "RECONNECTING" ? (
+                      // Allow force-disconnect to break out of a stuck RECONNECTING state
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => handleDisconnect(device.id)}
+                        disabled={isLoading}
+                      >
+                        {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <PowerOff className="mr-1 h-3 w-3" />}
+                        Forzar desconexión
+                      </Button>
+                    ) : device.status === "DISCONNECTED" || device.status === "LOGGED_OUT" || device.status === "ERROR" || device.status === "PENDING_QR" ? (
                       <Button
                         variant="outline"
                         size="sm"
