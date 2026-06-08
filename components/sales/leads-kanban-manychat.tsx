@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Phone, Instagram, MapPin, DollarSign, UserPlus, Loader2, Pencil, Trash2, Plus, GripVertical, Inbox, Check, X, User, Archive, ArchiveRestore, ListOrdered } from "lucide-react"
+import { Phone, Instagram, MapPin, DollarSign, UserPlus, Loader2, Pencil, Trash2, Plus, GripVertical, Inbox, Check, X, User, Archive, ArchiveRestore, ListOrdered, Calendar, Clock } from "lucide-react"
 import {
   Select,
   SelectContent,
@@ -41,6 +41,10 @@ import {
   useSortable,
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
+
+function formatLeadDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("es-AR", { day: "2-digit", month: "short" }).replace(".", "")
+}
 
 // Configuración de estilos por estado conocido; futuros estados heredan el fallback
 const STATUS_CONFIG: Record<string, { label: string; activeClass: string }> = {
@@ -1138,6 +1142,22 @@ export function LeadsKanbanManychat({
                                         {lead.users.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)}
                                       </AvatarFallback>
                                     </Avatar>
+                                  )}
+                                </div>
+
+                                {/* Fechas de creación y última modificación */}
+                                <div className="flex items-center gap-3 mt-1.5 pt-1.5 border-t border-border/30 text-muted-foreground/50">
+                                  {lead.created_at && (
+                                    <div className="flex items-center gap-1">
+                                      <Calendar className="h-2.5 w-2.5 flex-shrink-0" />
+                                      <span className="text-[10px]">{formatLeadDate(lead.created_at)}</span>
+                                    </div>
+                                  )}
+                                  {lead.updated_at && lead.updated_at !== lead.created_at && (
+                                    <div className="flex items-center gap-1">
+                                      <Clock className="h-2.5 w-2.5 flex-shrink-0" />
+                                      <span className="text-[10px]">Mod. {formatLeadDate(lead.updated_at)}</span>
+                                    </div>
                                   )}
                                 </div>
                               </div>
