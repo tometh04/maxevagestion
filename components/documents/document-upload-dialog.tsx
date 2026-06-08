@@ -36,14 +36,16 @@ const documentTypeOptions = [
   { value: "PASSPORT", label: "Pasaporte" },
   { value: "DNI", label: "DNI" },
   { value: "VOUCHER", label: "Voucher" },
-  { value: "INVOICE", label: "Factura" },
+  { value: "INVOICE_OPERATOR", label: "Factura Operador" },
+  { value: "INVOICE_CUSTOMER", label: "Factura Cliente" },
+  { value: "CONTRACT", label: "Contrato" },
   { value: "PAYMENT_PROOF", label: "Comprobante de Pago" },
   { value: "SETTLEMENT", label: "Liquidación" },
   { value: "OTHER", label: "Otro" },
 ]
 
 const uploadSchema = z.object({
-  type: z.enum(["PASSPORT", "DNI", "VOUCHER", "INVOICE", "PAYMENT_PROOF", "SETTLEMENT", "OTHER"]),
+  type: z.enum(["PASSPORT", "DNI", "VOUCHER", "INVOICE", "INVOICE_OPERATOR", "INVOICE_CUSTOMER", "CONTRACT", "PAYMENT_PROOF", "SETTLEMENT", "OTHER"]),
   file: z.instanceof(File).refine((file) => file.size <= 10 * 1024 * 1024, {
     message: "El archivo debe ser menor a 10MB",
   }),

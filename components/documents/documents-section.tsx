@@ -196,6 +196,9 @@ export function DocumentsSection({
       LICENSE: "Licencia",
       VOUCHER: "Voucher",
       INVOICE: "Factura",
+      INVOICE_OPERATOR: "Factura Operador",
+      INVOICE_CUSTOMER: "Factura Cliente",
+      CONTRACT: "Contrato",
       PAYMENT_PROOF: "Comprobante de Pago",
       SETTLEMENT: "Liquidación",
       OTHER: "Otro",
@@ -231,7 +234,9 @@ export function DocumentsSection({
                       <SelectItem value="DNI">DNI</SelectItem>
                       <SelectItem value="LICENSE">Licencia de Conducir</SelectItem>
                       <SelectItem value="VOUCHER">Voucher</SelectItem>
-                      <SelectItem value="INVOICE">Factura</SelectItem>
+                      <SelectItem value="INVOICE_OPERATOR">Factura Operador</SelectItem>
+                      <SelectItem value="INVOICE_CUSTOMER">Factura Cliente</SelectItem>
+                      <SelectItem value="CONTRACT">Contrato</SelectItem>
                       <SelectItem value="PAYMENT_PROOF">Comprobante de Pago</SelectItem>
                       <SelectItem value="SETTLEMENT">Liquidación</SelectItem>
                       <SelectItem value="OTHER">Otro</SelectItem>
