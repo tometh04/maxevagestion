@@ -52,7 +52,11 @@ interface Totals {
   countVariable: number
 }
 
-export function MonthlyExpensesTab() {
+interface MonthlyExpensesTabProps {
+  agencies: Array<{ id: string; name: string }>
+}
+
+export function MonthlyExpensesTab({ agencies }: MonthlyExpensesTabProps) {
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [totals, setTotals] = useState<Totals>({ ars: 0, usd: 0, count: 0, countRecurring: 0, countVariable: 0 })
   const [loading, setLoading] = useState(true)
@@ -72,6 +76,7 @@ export function MonthlyExpensesTab() {
   const [currencyFilter, setCurrencyFilter] = useState("ALL")
   const [typeFilter, setTypeFilter] = useState("ALL")
   const [categoryFilter, setCategoryFilter] = useState("all")
+  const [agencyFilter, setAgencyFilter] = useState("ALL")
   const [categories, setCategories] = useState<Category[]>([])
 
   const fetchExpenses = useCallback(async () => {
@@ -80,6 +85,7 @@ export function MonthlyExpensesTab() {
       const params = new URLSearchParams({ dateFrom, dateTo })
       if (currencyFilter !== "ALL") params.set("currency", currencyFilter)
       if (categoryFilter !== "all") params.set("categoryId", categoryFilter)
+      if (agencyFilter !== "ALL") params.set("agencyId", agencyFilter)
 
       const res = await fetch(`/api/expenses/monthly?${params}`)
       if (res.ok) {
@@ -92,7 +98,7 @@ export function MonthlyExpensesTab() {
     } finally {
       setLoading(false)
     }
-  }, [dateFrom, dateTo, currencyFilter, categoryFilter])
+  }, [dateFrom, dateTo, currencyFilter, categoryFilter, agencyFilter])
 
   useEffect(() => {
     fetchExpenses()
@@ -218,6 +224,24 @@ export function MonthlyExpensesTab() {
             </SelectContent>
           </Select>
         </div>
+        {agencies.length > 1 && (
+          <div className="space-y-1">
+            <Label className="text-xs font-medium text-muted-foreground">Agencia</Label>
+            <Select value={agencyFilter} onValueChange={setAgencyFilter}>
+              <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todas</SelectItem>
+                {agencies.map((agency) => (
+                  <SelectItem key={agency.id} value={agency.id}>
+                    {agency.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
       </div>
 
       {/* Table */}

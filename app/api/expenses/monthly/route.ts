@@ -22,7 +22,12 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "No tiene permiso para ver egresos" }, { status: 403 })
     }
 
-    // SaaS Pilar 2: RLS acota ledger_movements y cash_movements por org_id del JWT.
+    // Cross-tenant fix: filtro explícito por org_id, no confiar en RLS.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+    const userOrgId = (user as any).org_id as string
+
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
@@ -31,6 +36,18 @@ export async function GET(request: Request) {
     const currencyParam = searchParams.get("currency")
     const typeFilter = searchParams.get("type") // "recurring", "variable", or null for all
     const categoryIdFilter = searchParams.get("categoryId") // optional, applies only to variable expenses
+    const agencyId = searchParams.get("agencyId") // optional, filtra por agencia
+
+    // Los gastos recurrentes viven en ledger_movements (sin agency_id), así que
+    // para filtrar por agencia mapeamos a las cuentas financieras de esa agencia.
+    let agencyAccountIds: string[] | null = null
+    if (agencyId && agencyId !== "ALL") {
+      const { data: agencyAccounts } = await (supabase.from("financial_accounts") as any)
+        .select("id")
+        .eq("agency_id", agencyId)
+        .eq("org_id", userOrgId)
+      agencyAccountIds = (agencyAccounts || []).map((a: any) => a.id as string)
+    }
 
     const allExpenses: any[] = []
 
@@ -44,14 +61,20 @@ export async function GET(request: Request) {
           users:created_by (id, name)
         `)
         .eq("type", "EXPENSE")
+        .eq("org_id", userOrgId)
         .like("concept", "Gasto recurrente:%")
         .order("movement_date", { ascending: false })
 
       if (dateFrom) recQuery = recQuery.gte("movement_date", startOfDayAR(dateFrom))
       if (dateTo) recQuery = recQuery.lte("movement_date", endOfDayAR(dateTo))
       if (currencyParam && currencyParam !== "ALL") recQuery = recQuery.eq("currency", currencyParam)
+      // Filtro por agencia: ledger_movements no tiene agency_id, acotamos por las
+      // cuentas financieras de la agencia. Si la agencia no tiene cuentas, no hay recurrentes.
+      if (agencyAccountIds !== null) recQuery = recQuery.in("account_id", agencyAccountIds)
 
-      const { data: recurring, error: recError } = await recQuery
+      const { data: recurring, error: recError } = agencyAccountIds !== null && agencyAccountIds.length === 0
+        ? { data: [], error: null }
+        : await recQuery
 
       if (!recError && recurring) {
         for (const e of recurring) {
@@ -89,6 +112,7 @@ export async function GET(request: Request) {
           users:user_id (id, name)
         `)
         .eq("type", "EXPENSE")
+        .eq("org_id", userOrgId)
         .not("category", "in", '("OPERATOR_PAYMENT","Pago Operador","Pago Cliente")')
         .order("movement_date", { ascending: false })
 
@@ -96,6 +120,7 @@ export async function GET(request: Request) {
       if (dateTo) varQuery = varQuery.lte("movement_date", endOfDayAR(dateTo))
       if (currencyParam && currencyParam !== "ALL") varQuery = varQuery.eq("currency", currencyParam)
       if (categoryIdFilter && categoryIdFilter !== "all") varQuery = varQuery.eq("category_id", categoryIdFilter)
+      if (agencyId && agencyId !== "ALL") varQuery = varQuery.eq("agency_id", agencyId)
       if (user.role === "SELLER") varQuery = varQuery.eq("user_id", user.id)
 
       const { data: variables, error: varError } = await varQuery

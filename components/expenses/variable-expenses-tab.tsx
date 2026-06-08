@@ -78,7 +78,11 @@ interface Expense {
   cc_payment_group_id: string | null
 }
 
-export function VariableExpensesTab() {
+interface VariableExpensesTabProps {
+  agencies: Array<{ id: string; name: string }>
+}
+
+export function VariableExpensesTab({ agencies }: VariableExpensesTabProps) {
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [totals, setTotals] = useState({ ars: 0, usd: 0 })
@@ -93,6 +97,7 @@ export function VariableExpensesTab() {
   const [dateTo, setDateTo] = useState(() => new Date().toISOString().split("T")[0])
   const [categoryFilter, setCategoryFilter] = useState("all")
   const [currencyFilter, setCurrencyFilter] = useState("ALL")
+  const [agencyFilter, setAgencyFilter] = useState("ALL")
 
   // Dialogs
   const [newExpenseOpen, setNewExpenseOpen] = useState(false)
@@ -119,6 +124,7 @@ export function VariableExpensesTab() {
       const params = new URLSearchParams({ dateFrom, dateTo })
       if (categoryFilter !== "all") params.set("categoryId", categoryFilter)
       if (currencyFilter !== "ALL") params.set("currency", currencyFilter)
+      if (agencyFilter !== "ALL") params.set("agencyId", agencyFilter)
 
       const res = await fetch(`/api/expenses/variable?${params}`)
       if (res.ok) {
@@ -131,7 +137,7 @@ export function VariableExpensesTab() {
     } finally {
       setLoading(false)
     }
-  }, [dateFrom, dateTo, categoryFilter, currencyFilter])
+  }, [dateFrom, dateTo, categoryFilter, currencyFilter, agencyFilter])
 
   const fetchCategories = async () => {
     try {
@@ -291,6 +297,24 @@ export function VariableExpensesTab() {
             </SelectContent>
           </Select>
         </div>
+        {agencies.length > 1 && (
+          <div className="space-y-1">
+            <Label className="text-xs font-medium text-muted-foreground">Agencia</Label>
+            <Select value={agencyFilter} onValueChange={setAgencyFilter}>
+              <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todas</SelectItem>
+                {agencies.map((agency) => (
+                  <SelectItem key={agency.id} value={agency.id}>
+                    {agency.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
         <div className="ml-auto flex items-center gap-2">
           <Button size="sm" variant="outline" onClick={() => setCcPaymentOpen(true)} className="rounded-full">
             <CreditCard className="h-4 w-4 mr-2" />

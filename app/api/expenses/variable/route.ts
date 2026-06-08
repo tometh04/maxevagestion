@@ -232,6 +232,7 @@ export async function GET(request: Request) {
     const dateTo = searchParams.get("dateTo")
     const categoryId = searchParams.get("categoryId")
     const currencyParam = searchParams.get("currency")
+    const agencyId = searchParams.get("agencyId")
 
     // Fetch variable expenses (cash_movements with type=EXPENSE and is_touristic=false)
     let query = (supabase.from("cash_movements") as any)
@@ -250,6 +251,7 @@ export async function GET(request: Request) {
     if (dateTo) query = query.lte("movement_date", endOfDayAR(dateTo))
     if (categoryId) query = query.eq("category_id", categoryId)
     if (currencyParam && currencyParam !== "ALL") query = query.eq("currency", currencyParam)
+    if (agencyId && agencyId !== "ALL") query = query.eq("agency_id", agencyId)
     if (user.role === "SELLER") query = query.eq("user_id", user.id)
 
     const { data: expenses, error } = await query

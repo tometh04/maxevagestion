@@ -42,11 +42,11 @@ export function GastosPageClient({ agencies }: GastosPageClientProps) {
         </TabsList>
 
         <TabsContent value="egresos">
-          <MonthlyExpensesTab />
+          <MonthlyExpensesTab agencies={agencies} />
         </TabsContent>
 
         <TabsContent value="variables">
-          <VariableExpensesTab />
+          <VariableExpensesTab agencies={agencies} />
         </TabsContent>
 
         <TabsContent value="recurrentes">
