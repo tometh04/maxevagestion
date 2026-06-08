@@ -141,7 +141,7 @@ export function OperationsTable({
     try {
       const [agenciesRes, sellersRes, operatorsRes] = await Promise.all([
         fetch("/api/agencies"),
-        fetch("/api/users?role=SELLER"),
+        fetch("/api/users?role=SELLER,ADMIN,SUPER_ADMIN"),
         fetch("/api/operators"),
       ])
       
