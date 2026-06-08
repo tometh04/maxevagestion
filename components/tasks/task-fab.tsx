@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils"
 interface TaskFABProps {
   onClick: () => void
   onHelpClick?: () => void
+  hasTawk?: boolean
 }
 
 const ACTIONS = [
@@ -31,7 +32,7 @@ const ACTIONS = [
   },
 ] as const
 
-export function TaskFAB({ onClick, onHelpClick }: TaskFABProps) {
+export function TaskFAB({ onClick, onHelpClick, hasTawk }: TaskFABProps) {
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
@@ -78,7 +79,7 @@ export function TaskFAB({ onClick, onHelpClick }: TaskFABProps) {
   }
 
   return (
-    <div ref={containerRef} className="fixed bottom-6 right-6 z-50 flex flex-col-reverse items-end gap-3">
+    <div ref={containerRef} className={`fixed ${hasTawk ? "bottom-24" : "bottom-6"} right-6 z-50 flex flex-col-reverse items-end gap-3`}>
       {/* Main FAB button */}
       <button
         onClick={() => setOpen((prev) => !prev)}

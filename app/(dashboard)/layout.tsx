@@ -6,7 +6,7 @@ import { TaskShortcutProvider } from "@/components/tasks/task-shortcut-provider"
 import { PushNotificationManager } from "@/components/notifications/push-notification-manager"
 import { TrialBanner } from "@/components/trial-banner"
 import { PerfNavLogger } from "@/components/perf-nav-logger"
-import { TawkWidget } from "@/components/integrations/tawk-widget"
+import { TawkWidget, isTawkUser } from "@/components/integrations/tawk-widget"
 import { OnboardingTour } from "@/components/onboarding/onboarding-tour"
 import { CheckinReminderModal } from "@/components/alerts/checkin-reminder-modal"
 import {
@@ -107,6 +107,7 @@ export default async function DashboardLayout({
         <TaskShortcutProvider
           currentUserId={user.id}
           agencyId={agencies[0]?.id || ""}
+          hasTawk={isTawkUser(user.email)}
         />
         <PushNotificationManager userId={user.id} />
         <PerfNavLogger />

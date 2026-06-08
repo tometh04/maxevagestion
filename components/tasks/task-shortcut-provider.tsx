@@ -9,9 +9,10 @@ import { SupportPanel } from "@/components/support/support-panel"
 interface TaskShortcutProviderProps {
   currentUserId: string
   agencyId: string
+  hasTawk?: boolean
 }
 
-export function TaskShortcutProvider({ currentUserId, agencyId }: TaskShortcutProviderProps) {
+export function TaskShortcutProvider({ currentUserId, agencyId, hasTawk }: TaskShortcutProviderProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [voiceOpen, setVoiceOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
@@ -61,7 +62,7 @@ export function TaskShortcutProvider({ currentUserId, agencyId }: TaskShortcutPr
 
   return (
     <>
-      <TaskFAB onClick={openDialog} onHelpClick={toggleHelp} />
+      <TaskFAB onClick={openDialog} onHelpClick={toggleHelp} hasTawk={hasTawk} />
 
       <TaskDialog
         open={dialogOpen}

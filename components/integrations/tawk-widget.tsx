@@ -21,8 +21,12 @@ const ALLOWED_EMAILS = new Set<string>([
   "mypupybox@gmail.com",
 ])
 
+export function isTawkUser(email: string | null | undefined): boolean {
+  return !!email && ALLOWED_EMAILS.has(email.trim().toLowerCase())
+}
+
 export function TawkWidget({ userEmail }: { userEmail: string | null | undefined }) {
-  if (!userEmail || !ALLOWED_EMAILS.has(userEmail.trim().toLowerCase())) {
+  if (!isTawkUser(userEmail)) {
     // Resto de users: el componente NO renderiza nada, así que el JS de
     // Tawk.to ni siquiera se descarga del CDN. Garantizado por React/Next.
     return null
