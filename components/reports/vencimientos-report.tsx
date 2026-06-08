@@ -20,7 +20,7 @@ type CustomerPayment = {
   id: string
   amount: number
   currency: string
-  date_due: string
+  date_due: string | null
   status: string
   isOverdue: boolean
   operation?: {
@@ -35,7 +35,7 @@ type OperatorPayment = {
   id: string
   amount: number
   currency: string
-  due_date: string
+  due_date: string | null
   status: string
   isOverdue: boolean
   operator?: { id: string; name: string }
@@ -168,7 +168,7 @@ export function VencimientosReport({ agencies }: Props) {
                         <TableCell className="text-xs">
                           <span className={p.isOverdue ? "text-destructive font-semibold flex items-center gap-1" : ""}>
                             {p.isOverdue && <AlertCircle className="h-3 w-3" />}
-                            {formatDate(p.date_due)}
+                            {p.date_due ? formatDate(p.date_due) : <span className="text-muted-foreground italic">Sin fecha</span>}
                           </span>
                         </TableCell>
                         <TableCell className="text-xs">
@@ -229,7 +229,7 @@ export function VencimientosReport({ agencies }: Props) {
                       <TableCell className="text-xs">
                         <span className={p.isOverdue ? "text-destructive font-semibold flex items-center gap-1" : ""}>
                           {p.isOverdue && <AlertCircle className="h-3 w-3" />}
-                          {formatDate(p.due_date)}
+                          {p.due_date ? formatDate(p.due_date) : <span className="text-muted-foreground italic">Sin fecha</span>}
                         </span>
                       </TableCell>
                       <TableCell className="text-xs">

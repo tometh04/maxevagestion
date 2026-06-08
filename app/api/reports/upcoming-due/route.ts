@@ -40,9 +40,9 @@ export async function GET(request: Request) {
   const limitStr = limit.toISOString().split("T")[0]
 
   // 1. Pagos de clientes pending (lo que nos deben)
-  // LIMIT 500: ORDER BY date_due ascending pone los más urgentes primero;
-  // el corte cae en pagos lejanos. Combinado con idx_payments_pending_due
-  // (mig 20260427000009) deja el query en O(log n).
+  // Incluimos también pagos con date_due = NULL (sin fecha asignada) porque
+  // son deuda real que no aparecería si solo filtráramos por rango de fecha.
+  // El filtro de rango se aplica solo a los que tienen fecha definida.
   let customerQuery = supabase
     .from("payments")
     .select(
@@ -53,11 +53,12 @@ export async function GET(request: Request) {
     .eq("org_id", user.org_id) // 🔴 scope multi-tenant explícito
     .eq("payer_type", "CUSTOMER")
     .in("status", ["PENDING", "OVERDUE"])
-    .lte("date_due", limitStr)
-    .order("date_due", { ascending: true })
+    .or(`date_due.lte.${limitStr},date_due.is.null`)
+    .order("date_due", { ascending: true, nullsFirst: false })
     .limit(500)
 
   // 2. Pagos a operadores pending (lo que tenemos que pagar)
+  // Igual: incluimos due_date = NULL para no perder deudas sin fecha.
   let operatorQuery = supabase
     .from("operator_payments")
     .select(
@@ -67,8 +68,8 @@ export async function GET(request: Request) {
     )
     .eq("org_id", user.org_id) // 🔴 scope multi-tenant explícito
     .in("status", ["PENDING", "OVERDUE"])
-    .lte("due_date", limitStr)
-    .order("due_date", { ascending: true })
+    .or(`due_date.lte.${limitStr},due_date.is.null`)
+    .order("due_date", { ascending: true, nullsFirst: false })
     .limit(500)
 
   const [customerRes, operatorRes] = await Promise.all([customerQuery, operatorQuery])
