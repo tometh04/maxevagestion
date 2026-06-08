@@ -58,7 +58,8 @@ export async function GET(request: Request) {
 
     // Filtros opcionales
     if (role) {
-      query = query.eq("role", role)
+      const roles = role.split(",").map((r) => r.trim()).filter(Boolean)
+      query = roles.length === 1 ? query.eq("role", roles[0]) : query.in("role", roles)
     }
     if (search) {
       query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%`)
