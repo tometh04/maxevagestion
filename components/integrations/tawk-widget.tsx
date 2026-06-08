@@ -1,6 +1,7 @@
 "use client"
 
 import Script from "next/script"
+import { isTawkUser } from "@/lib/tawk-config"
 
 /**
  * Tawk.to live chat widget — scoped a un user específico.
@@ -17,13 +18,7 @@ import Script from "next/script"
  *   - Para un feature flag → leer de organizations.config o users.features
  */
 
-const ALLOWED_EMAILS = new Set<string>([
-  "mypupybox@gmail.com",
-])
-
-export function isTawkUser(email: string | null | undefined): boolean {
-  return !!email && ALLOWED_EMAILS.has(email.trim().toLowerCase())
-}
+export { isTawkUser } from "@/lib/tawk-config"
 
 export function TawkWidget({ userEmail }: { userEmail: string | null | undefined }) {
   if (!isTawkUser(userEmail)) {
