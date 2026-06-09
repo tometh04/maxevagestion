@@ -34,7 +34,7 @@ export function PublicQuotationView({
       try {
         const [quotRes, brandRes] = await Promise.all([
           fetch(`/api/public/quotations/${token}`, { cache: "no-store" }),
-          fetch("/api/public/branding", { cache: "no-store" }),
+          fetch(`/api/public/branding?token=${token}`, { cache: "no-store" }),
         ])
 
         if (!quotRes.ok) {

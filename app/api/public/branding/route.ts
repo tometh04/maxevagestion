@@ -3,14 +3,34 @@ import { createAdminClient } from "@/lib/supabase/server"
 export const dynamic = "force-dynamic"
 
 // GET — Datos de branding públicos (sin auth)
-export async function GET() {
+// Requiere ?token=<public_token> para scopear al org correcto
+export async function GET(request: Request) {
   try {
+    const { searchParams } = new URL(request.url)
+    const token = searchParams.get("token")
+
     // Admin client requerido: endpoint público sin sesión de usuario, RLS bloquearía la query
     const supabase: any = createAdminClient()
+
+    let orgId: string | null = null
+
+    if (token) {
+      const { data: quotation } = await supabase
+        .from("quotations")
+        .select("org_id")
+        .eq("public_token", token)
+        .single()
+      orgId = quotation?.org_id ?? null
+    }
+
+    if (!orgId) {
+      return Response.json({ data: {} })
+    }
 
     const { data, error } = await supabase
       .from("organization_settings")
       .select("key, value")
+      .eq("org_id", orgId)
 
     if (error || !data) {
       return Response.json({ data: {} })
