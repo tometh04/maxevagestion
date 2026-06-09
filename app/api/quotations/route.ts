@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { normalizeQuotationPricingMode } from "@/lib/quotations/presentation"
+import { normalizeRegion } from "@/lib/manychat/sync"
 import {
   insertQuotationOptionsOrThrow,
   prepareQuotationOptionsForPersistence,
@@ -158,7 +159,12 @@ export async function POST(request: Request) {
         quotation_number: quotationNumber || `COT-${new Date().getFullYear()}-${Date.now()}`,
         destination,
         origin: origin || null,
-        region: region || "OTROS",
+        // Las regiones de leads son configurables por org (migración
+        // 20260604000001) pero quotations.region conserva el CHECK legacy de
+        // 7 valores. Normalizar acá: región custom → se infiere del destino
+        // o cae en OTROS. Sin esto, generar cotización desde un lead con
+        // región custom viola quotations_region_check.
+        region: normalizeRegion(region, destination),
         departure_date,
         return_date: return_date || null,
         valid_until: validUntil.toISOString().split("T")[0],

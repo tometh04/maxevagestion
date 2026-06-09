@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { normalizeQuotationPricingMode } from "@/lib/quotations/presentation"
+import { normalizeRegion } from "@/lib/manychat/sync"
 import {
   cleanupInsertedQuotationOptions,
   insertQuotationOptionsOrThrow,
@@ -141,6 +142,13 @@ export async function PATCH(
 
     if (body.pricing_mode !== undefined) {
       updateData.pricing_mode = normalizeQuotationPricingMode(body.pricing_mode)
+    }
+
+    // quotations.region tiene CHECK legacy de 7 valores pero las regiones de
+    // leads son configurables por org → normalizar (custom → inferida del
+    // destino u OTROS) para no violar quotations_region_check.
+    if (body.region !== undefined) {
+      updateData.region = normalizeRegion(body.region, body.destination ?? existing.destination)
     }
 
     let preparedOptions: ReturnType<typeof prepareQuotationOptionsForPersistence> | null = null
