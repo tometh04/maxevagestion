@@ -1,11 +1,12 @@
-import { createServerClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/server"
 
 export const dynamic = "force-dynamic"
 
 // GET — Datos de branding públicos (sin auth)
 export async function GET() {
   try {
-    const supabase: any = await createServerClient()
+    // Admin client requerido: endpoint público sin sesión de usuario, RLS bloquearía la query
+    const supabase: any = createAdminClient()
 
     const { data, error } = await supabase
       .from("organization_settings")

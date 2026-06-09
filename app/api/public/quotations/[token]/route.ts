@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { createServerClient, createAdminClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/server"
 import { normalizeQuotationForPresentation } from "@/lib/quotations/presentation"
 
 export const dynamic = "force-dynamic"
@@ -11,7 +11,8 @@ export async function GET(
 ) {
   try {
     const { token } = await params
-    const supabase = await createServerClient()
+    // Admin client requerido: endpoint público sin sesión de usuario, RLS bloquearía la query
+    const supabase = createAdminClient()
 
     const { data: rawData, error } = await (supabase
       .from("quotations") as any)
@@ -51,8 +52,8 @@ export async function GET(
       const validUntil = new Date(data.valid_until + "T23:59:59")
       if (validUntil < new Date()) {
         // Marcar como expirada
-        await (supabase
-          .from("quotations") as any)
+        await ((supabase as any)
+          .from("quotations"))
           .update({ status: "EXPIRED" })
           .eq("id", data.id)
         data.status = "EXPIRED"
@@ -79,7 +80,8 @@ export async function POST(
 ) {
   try {
     const { token } = await params
-    const supabase = await createServerClient()
+    // Admin client requerido: endpoint público sin sesión de usuario, RLS bloquearía las queries
+    const supabase = createAdminClient()
     const body = await request.json()
 
     const { option_id } = body
