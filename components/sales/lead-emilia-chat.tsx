@@ -2,7 +2,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Loader2, ChevronLeft, ChevronRight, MessageSquarePlus, Send, AlertTriangle, CheckCircle2, ExternalLink, X, Sparkles } from "lucide-react"
+import { Loader2, ChevronLeft, ChevronRight, MessageSquarePlus, Send, AlertTriangle, CheckCircle2, ExternalLink, X, Sparkles, FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
@@ -11,6 +11,8 @@ import { cn } from "@/lib/utils"
 import { FlightResultCard } from "@/components/emilia/flight-result-card"
 import { HotelResultCard } from "@/components/emilia/hotel-result-card"
 import { buildQuotationPayload, type EmiliaFlight, type EurovipsHotel } from "@/lib/emilia/quotation-mapper"
+import { getPublicQuotationPdfPath } from "@/lib/quotations/public-links"
+import { QuotationPdfPriceDialog } from "@/components/sales/quotation-pdf-price-dialog"
 
 const MAX_HOTELS = 4
 
@@ -265,6 +267,8 @@ export function LeadEmiliaChat({ lead, onBack, onQuotationCreated, initialConver
   const [sending, setSending] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [createdQuotation, setCreatedQuotation] = useState<any | null>(null)
+  // Cotización con el dialog "Cambiar precio" abierto antes de generar el PDF
+  const [pdfPriceQuotation, setPdfPriceQuotation] = useState<{ id: string; public_token: string } | null>(null)
   // Cargando el prompt sugerido (gpt). Loading sutil: se llena una sola vez.
   const [promptLoading, setPromptLoading] = useState(false)
 
@@ -613,7 +617,7 @@ export function LeadEmiliaChat({ lead, onBack, onQuotationCreated, initialConver
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center py-12">
+      <div className="flex flex-col items-center justify-center py-12 h-full">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         <p className="text-sm text-muted-foreground mt-2">Iniciando chat con Emilia…</p>
       </div>
@@ -621,7 +625,7 @@ export function LeadEmiliaChat({ lead, onBack, onQuotationCreated, initialConver
   }
 
   return (
-    <div className="flex flex-col h-full max-h-[85vh]">
+    <div className="flex flex-col h-full min-h-0">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 px-6 py-3 border-b text-sm">
         <button onClick={onBack} className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
@@ -740,12 +744,32 @@ export function LeadEmiliaChat({ lead, onBack, onQuotationCreated, initialConver
             <Button size="sm" variant="outline" onClick={() => window.open(`/cotizacion/${createdQuotation.public_token}`, "_blank")}>
               <ExternalLink className="h-3.5 w-3.5 mr-1" /> Ver
             </Button>
+            {createdQuotation.public_token && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setPdfPriceQuotation({ id: createdQuotation.id, public_token: createdQuotation.public_token })}
+              >
+                <FileText className="h-3.5 w-3.5 mr-1" /> Generar PDF
+              </Button>
+            )}
             <Button size="sm" variant="ghost" onClick={() => setCreatedQuotation(null)}>
               <X className="h-3.5 w-3.5" />
             </Button>
           </div>
         )}
       </div>
+
+      {/* Cambiar precio antes de generar el PDF */}
+      <QuotationPdfPriceDialog
+        quotationId={pdfPriceQuotation?.id ?? null}
+        onClose={() => setPdfPriceQuotation(null)}
+        onGenerate={() => {
+          if (pdfPriceQuotation) {
+            window.open(getPublicQuotationPdfPath(pdfPriceQuotation.public_token), "_blank", "noopener,noreferrer")
+          }
+        }}
+      />
 
       {/* Input + CTA */}
       <div className="border-t px-6 py-3 space-y-3">

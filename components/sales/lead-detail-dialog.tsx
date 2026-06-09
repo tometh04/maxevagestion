@@ -34,6 +34,8 @@ import {
 } from "@/components/ui/alert-dialog"
 import { toast } from "sonner"
 import { getQuotationOptionPricing } from "@/lib/quotations/presentation"
+import { getPublicQuotationPdfPath } from "@/lib/quotations/public-links"
+import { QuotationPdfPriceDialog } from "@/components/sales/quotation-pdf-price-dialog"
 import { LeadEmiliaChat } from "@/components/sales/lead-emilia-chat"
 
 const regionColors: Record<string, string> = {
@@ -225,6 +227,8 @@ export function LeadDetailDialog({
   const [convertDialogOpen, setConvertDialogOpen] = useState(false)
   const [quotationDialogOpen, setQuotationDialogOpen] = useState(false)
   const [editingQuotationId, setEditingQuotationId] = useState<string | null>(null)
+  // Cotización con el dialog "Cambiar precio" abierto antes de generar el PDF
+  const [pdfPriceQuotation, setPdfPriceQuotation] = useState<{ id: string; public_token: string } | null>(null)
   const [mode, setMode] = useState<"detail" | "emilia">("detail")
   // Conversación que ya trajo el gate de "Cotizar" (perf: el chat evita re-fetchear).
   const [emiliaConversation, setEmiliaConversation] = useState<{ id: string } | null | undefined>(undefined)
@@ -499,7 +503,7 @@ export function LeadDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={`p-0 ${mode === "emilia" ? "max-w-4xl" : "max-w-2xl"}`}>
+      <DialogContent className={`p-0 ${mode === "emilia" ? "max-w-7xl w-[95vw] h-[90vh]" : "max-w-2xl"}`}>
         {mode === "emilia" ? (
           <LeadEmiliaChat
             lead={{
@@ -795,6 +799,20 @@ export function LeadDetailDialog({
                               title="Ver cotización pública"
                             >
                               <Eye className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                          {q.public_token && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setPdfPriceQuotation({ id: q.id, public_token: q.public_token! })
+                              }}
+                              title="Generar PDF"
+                            >
+                              <Download className="h-3.5 w-3.5" />
                             </Button>
                           )}
                         </div>
@@ -1159,6 +1177,18 @@ export function LeadDetailDialog({
           }}
         />
       )}
+
+      {/* Cambiar precio antes de generar el PDF de una cotización */}
+      <QuotationPdfPriceDialog
+        quotationId={pdfPriceQuotation?.id ?? null}
+        onClose={() => setPdfPriceQuotation(null)}
+        onGenerate={() => {
+          if (pdfPriceQuotation) {
+            window.open(getPublicQuotationPdfPath(pdfPriceQuotation.public_token), "_blank", "noopener,noreferrer")
+            loadQuotations() // refrescar totales mostrados en la lista
+          }
+        }}
+      />
 
       {/* Dialog de confirmación de eliminación */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

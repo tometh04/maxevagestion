@@ -26,6 +26,7 @@ import {
   normalizeQuotationForPresentation,
 } from "@/lib/quotations/presentation"
 import { getPublicQuotationPdfPath } from "@/lib/quotations/public-links"
+import { QuotationPdfPriceDialog } from "@/components/sales/quotation-pdf-price-dialog"
 
 interface QuotationsDashboardProps {
   sellers: Array<{ id: string; name: string }>
@@ -125,6 +126,8 @@ export function QuotationsDashboard({ sellers, agencies, currentUserRole, curren
   const [convertDialogOpen, setConvertDialogOpen] = useState(false)
   const [selectedQuotation, setSelectedQuotation] = useState<any>(null)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
+  // Cotización con el dialog "Cambiar precio" abierto antes de generar el PDF
+  const [pdfPriceQuotation, setPdfPriceQuotation] = useState<any | null>(null)
 
   const isSeller = currentUserRole === "SELLER"
 
@@ -632,7 +635,7 @@ export function QuotationsDashboard({ sellers, agencies, currentUserRole, curren
                               variant="ghost"
                               size="sm"
                               className="h-7 w-7 p-0"
-                              onClick={() => handleDownloadPDF(q)}
+                              onClick={() => setPdfPriceQuotation(q)}
                               disabled={downloadingId === q.id}
                               title="Descargar PDF"
                             >
@@ -685,6 +688,15 @@ export function QuotationsDashboard({ sellers, agencies, currentUserRole, curren
           </div>
         )}
       </Card>
+
+      {/* Cambiar precio antes de generar el PDF */}
+      <QuotationPdfPriceDialog
+        quotationId={pdfPriceQuotation?.id ?? null}
+        onClose={() => setPdfPriceQuotation(null)}
+        onGenerate={() => {
+          if (pdfPriceQuotation) handleDownloadPDF(pdfPriceQuotation)
+        }}
+      />
 
       {/* Convert confirmation dialog */}
       <AlertDialog open={convertDialogOpen} onOpenChange={setConvertDialogOpen}>
