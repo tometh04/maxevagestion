@@ -13,7 +13,7 @@
 import { cache } from "react"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/lib/supabase/types"
-import { PERMISSIONS, type Module, type UserRole } from "@/lib/permissions"
+import { PERMISSIONS, mergeRolePermissions, type Module, type UserRole } from "@/lib/permissions"
 
 export type ResolvedModulePerms = {
   read: boolean
@@ -66,6 +66,33 @@ export function buildDefaultMatrix(role: UserRole): ResolvedPermissionsMatrix {
   )
 }
 
+/**
+ * Versión multi-rol de buildDefaultMatrix.
+ * Fusiona la matriz estática de múltiples roles con OR/AND logic.
+ */
+export function buildDefaultMatrixMulti(roles: UserRole[]): ResolvedPermissionsMatrix {
+  if (roles.length === 0) return buildDefaultMatrix("VIEWER" as UserRole)
+  if (roles.length === 1) return buildDefaultMatrix(roles[0])
+  if (roles.some((r) => FULL_ACCESS_ROLES.includes(r))) return FULL_ACCESS_MATRIX
+
+  const merged = mergeRolePermissions(roles)
+  return Object.fromEntries(
+    ALL_MODULES.map((m) => {
+      const p = merged[m]
+      return [
+        m,
+        {
+          read: p?.read ?? false,
+          write: p?.write ?? false,
+          delete: p?.delete ?? false,
+          export: p?.export ?? false,
+          ownDataOnly: p?.ownDataOnly ?? false,
+        },
+      ]
+    })
+  )
+}
+
 type DbPermRow = {
   agency_id: string
   role: string
@@ -78,21 +105,24 @@ type DbPermRow = {
 }
 
 /**
- * Carga los registros de agency_role_permissions para un conjunto de agencias y rol.
+ * Carga los registros de agency_role_permissions para un conjunto de agencias y roles.
  * Retorna solo los registros que existen en DB (puede ser subconjunto de módulos).
+ * Acepta uno o varios roles para soportar usuarios multi-rol.
  */
 async function fetchAgencyPermissions(
   supabase: SupabaseClient<Database>,
   agencyIds: string[],
-  role: string
+  roles: string | string[]
 ): Promise<DbPermRow[]> {
   if (agencyIds.length === 0) return []
+  const roleArray = Array.isArray(roles) ? roles : [roles]
+  if (roleArray.length === 0) return []
 
   const { data, error } = await (supabase as any)
     .from("agency_role_permissions")
     .select("agency_id, role, module, can_read, can_write, can_delete, can_export, own_data_only")
     .in("agency_id", agencyIds)
-    .eq("role", role)
+    .in("role", roleArray)
 
   if (error) {
     console.error("[permissions-agency] Error fetching permissions:", error.message)
@@ -105,10 +135,13 @@ async function fetchAgencyPermissions(
 /**
  * Resuelve la matriz efectiva de permisos para un usuario.
  *
+ * Acepta un rol único (string) o múltiples roles (string[]) para soporte multi-rol.
+ * Los callers existentes que pasan un string siguen funcionando sin cambios.
+ *
  * Lógica:
- * 1. SUPER_ADMIN / ORG_OWNER → FULL_ACCESS_MATRIX sin DB
- * 2. Para cada módulo: toma el OR (unión) de todas las agencias con registro en DB
- * 3. Módulos sin registro en DB → usa default estático del rol
+ * 1. Si ANY rol es SUPER_ADMIN/ORG_OWNER → FULL_ACCESS_MATRIX sin DB
+ * 2. Para cada módulo: OR de todas las agencias Y todos los roles con registro en DB
+ * 3. Módulos sin registro en DB → usa default fusionado de todos los roles
  *
  * Cacheado con React.cache() para deduplicar dentro del mismo server request.
  */
@@ -116,16 +149,18 @@ export const resolveUserPermissions = cache(async (
   supabase: SupabaseClient<Database>,
   _userId: string,
   _orgId: string,
-  role: string,
+  roleOrRoles: string | string[],
   agencyIds: string[]
 ): Promise<ResolvedPermissionsMatrix> => {
-  if (FULL_ACCESS_ROLES.includes(role as UserRole)) {
+  const roles = (Array.isArray(roleOrRoles) ? roleOrRoles : [roleOrRoles]) as UserRole[]
+
+  if (roles.some((r) => FULL_ACCESS_ROLES.includes(r))) {
     return FULL_ACCESS_MATRIX
   }
 
-  const rows = await fetchAgencyPermissions(supabase, agencyIds, role)
+  const rows = await fetchAgencyPermissions(supabase, agencyIds, roles.map(String))
 
-  // Construir mapa: module → merged perms (unión de todas las agencias)
+  // Construir mapa: module → merged perms (OR de agencias y roles)
   const merged: Record<string, ResolvedModulePerms> = {}
 
   for (const row of rows) {
@@ -139,20 +174,20 @@ export const resolveUserPermissions = cache(async (
         ownDataOnly: row.own_data_only,
       }
     } else {
-      // Unión: si alguna agencia lo habilita, el usuario lo tiene
+      // OR: si cualquier agencia/rol lo habilita, el usuario lo tiene
       merged[row.module] = {
         read: existing.read || row.can_read,
         write: existing.write || row.can_write,
         delete: existing.delete || row.can_delete,
         export: existing.export || row.can_export,
-        // ownDataOnly: true solo si TODAS las agencias lo tienen (intersección)
+        // AND: ownDataOnly=true solo si TODOS los registros lo tienen
         ownDataOnly: existing.ownDataOnly && row.own_data_only,
       }
     }
   }
 
-  // Para módulos sin registro en DB → usar default estático
-  const defaults = buildDefaultMatrix(role as UserRole)
+  // Para módulos sin registro en DB → usar defaults fusionados de todos los roles
+  const defaults = buildDefaultMatrixMulti(roles)
   const result: ResolvedPermissionsMatrix = {}
   for (const m of ALL_MODULES) {
     result[m] = merged[m] ?? defaults[m]

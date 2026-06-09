@@ -3,8 +3,12 @@ import { createServerClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Database } from '@/lib/supabase/types'
 import { makeTimer } from '@/lib/perf-log'
+import type { UserRole } from '@/lib/permissions'
 
-type User = Database['public']['Tables']['users']['Row']
+type UserRow = Database['public']['Tables']['users']['Row']
+// Extiende el tipo de DB con el campo `roles` (array fusionado de role + additional_roles)
+// que se computa en getCurrentUser() y evita re-calcular en cada caller.
+export type User = UserRow & { roles: UserRole[] }
 
 // React.cache deduplica DENTRO del mismo request. Multi-tenant safe:
 // per-request scope, no global; distintos users = distintas cookies =
@@ -38,6 +42,7 @@ export const getCurrentUser = cache(async (): Promise<{ user: User; session: { u
       legal_version: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
+      roles: ['SUPER_ADMIN'],
     }
     return { user: mockUser, session: { user: { id: '8bb59fad-db45-47f6-b411-be1b44101fb4' } } }
   }
@@ -71,8 +76,14 @@ export const getCurrentUser = cache(async (): Promise<{ user: User; session: { u
     redirect('/login')
   }
 
-  t.end(`role=${userData.role}`)
-  return { user: userData, session: { user: authUser } }
+  // Fusionar rol primario + roles adicionales en un array deduplicado.
+  // Los callers que usen `user.roles` obtienen automáticamente soporte multi-rol
+  // sin necesidad de modificar el resto del código que usa `user.role`.
+  const rawRoles: string[] = [userData.role, ...(userData.additional_roles ?? [])]
+  const roles = Array.from(new Set(rawRoles)) as UserRole[]
+
+  t.end(`role=${userData.role} roles=${roles.length}`)
+  return { user: { ...userData, roles }, session: { user: authUser } }
 })
 
 export const getUserAgencies = cache(async (userId: string): Promise<Array<{ agency_id: string; agencies: { name: string; city: string; timezone: string } | null }>> => {

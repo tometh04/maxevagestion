@@ -16,7 +16,7 @@ export async function POST(request: Request) {
 
     const supabase = await createServerClient()
     const body = await request.json()
-    const { name, email, role, agencies, default_commission_percentage } = body
+    const { name, email, role, agencies, default_commission_percentage, additional_roles } = body
 
     // Validar campos requeridos
     if (!name || !email || !role) {
@@ -27,6 +27,17 @@ export async function POST(request: Request) {
     const validRoles = ["ADMIN", "CONTABLE", "SELLER", "VIEWER", "POST_VENTA"]
     if (!validRoles.includes(role)) {
       return NextResponse.json({ error: "Rol inválido" }, { status: 400 })
+    }
+
+    // Validar additional_roles si fue enviado
+    const allValidRoles = ["SUPER_ADMIN", "ORG_OWNER", "ADMIN", "CONTABLE", "SELLER", "VIEWER", "POST_VENTA"]
+    if (additional_roles !== undefined) {
+      if (
+        !Array.isArray(additional_roles) ||
+        additional_roles.some((r: any) => !allValidRoles.includes(r))
+      ) {
+        return NextResponse.json({ error: "Roles adicionales inválidos" }, { status: 400 })
+      }
     }
 
     // Verificar límite de usuarios del plan
@@ -117,6 +128,11 @@ export async function POST(request: Request) {
     // Si es vendedor y se especificó comisión
     if (role === "SELLER" && default_commission_percentage !== undefined && default_commission_percentage !== null) {
       userInsertData.default_commission_percentage = default_commission_percentage
+    }
+
+    // Roles adicionales (sin duplicar el rol primario)
+    if (additional_roles && Array.isArray(additional_roles) && additional_roles.length > 0) {
+      userInsertData.additional_roles = additional_roles.filter((r: string) => r !== role)
     }
 
     const { data: userData, error: userError } = await usersTable

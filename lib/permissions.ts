@@ -36,7 +36,7 @@ interface ModulePermissions {
   ownDataOnly?: boolean
 }
 
-type RolePermissions = Record<Module, ModulePermissions>
+export type RolePermissions = Record<Module, ModulePermissions>
 
 /**
  * Matriz de permisos por rol y módulo
@@ -218,5 +218,71 @@ export function usePermissions(role: UserRole) {
     ownDataOnly: (module: Module) => isOwnDataOnly(role, module),
     canAccess: (module: Module) => canAccessModule(role, module),
   }
+}
+
+const ALL_MODULES_LIST: Module[] = [
+  "dashboard", "leads", "operations", "customers", "operators",
+  "cash", "accounting", "alerts", "reports", "commissions",
+  "settings", "documents", "tasks",
+]
+
+/**
+ * Combina los permisos de múltiples roles usando lógica OR:
+ * - read/write/delete/export: true si CUALQUIER rol lo permite
+ * - ownDataOnly: true solo si TODOS los roles lo restringen (AND)
+ *
+ * Ejemplo: SELLER+CONTABLE en `leads` → read=true, ownDataOnly=false
+ * (CONTABLE no tiene ownDataOnly=true, por lo que el AND da false)
+ */
+export function mergeRolePermissions(roles: UserRole[]): RolePermissions {
+  if (roles.length === 0) {
+    return Object.fromEntries(
+      ALL_MODULES_LIST.map((m) => [
+        m,
+        { read: false, write: false, delete: false, export: false, ownDataOnly: true },
+      ])
+    ) as RolePermissions
+  }
+  if (roles.length === 1) return PERMISSIONS[roles[0]]
+
+  return Object.fromEntries(
+    ALL_MODULES_LIST.map((m) => {
+      const perms = roles.map((r) => PERMISSIONS[r]?.[m])
+      return [
+        m,
+        {
+          read:        perms.some((p) => p?.read === true),
+          write:       perms.some((p) => p?.write === true),
+          delete:      perms.some((p) => p?.delete === true),
+          export:      perms.some((p) => p?.export === true),
+          // AND: ownDataOnly=true solo si TODOS los roles lo restringen
+          ownDataOnly: perms.every((p) => p?.ownDataOnly === true),
+        },
+      ]
+    })
+  ) as RolePermissions
+}
+
+/**
+ * Dado un array de roles, devuelve el que otorga el mayor scope de agencias.
+ * Se usa para llamar a getUserAgencyIds() con el rol más amplio del usuario.
+ * Prioridad: SUPER_ADMIN > ORG_OWNER > CONTABLE > POST_VENTA > ADMIN > SELLER > VIEWER
+ */
+export function getEffectiveAgencyScopeRole(roles: UserRole[]): UserRole {
+  const priority: UserRole[] = [
+    "SUPER_ADMIN", "ORG_OWNER", "CONTABLE", "POST_VENTA", "ADMIN", "SELLER", "VIEWER",
+  ]
+  for (const r of priority) {
+    if (roles.includes(r)) return r
+  }
+  return roles[0] ?? "VIEWER"
+}
+
+/**
+ * Versión multi-rol de shouldShowInSidebar.
+ * Devuelve true si CUALQUIER rol del usuario debe mostrar el módulo en el sidebar.
+ */
+export function shouldShowInSidebarMulti(roles: UserRole[], module: Module): boolean {
+  return roles.some((r) => shouldShowInSidebar(r, module))
 }
 

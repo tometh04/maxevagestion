@@ -74,6 +74,7 @@ interface User {
   name: string
   email: string
   role: string
+  additional_roles?: string[]
   is_active: boolean
   can_view_agency_operations_support?: boolean
   can_add_services_on_agency_operations?: boolean
@@ -124,6 +125,7 @@ export function UsersSettings() {
   const [permissionsDialogOpen, setPermissionsDialogOpen] = useState(false)
   const [changeRoleDialogOpen, setChangeRoleDialogOpen] = useState(false)
   const [selectedRole, setSelectedRole] = useState("")
+  const [selectedAdditionalRoles, setSelectedAdditionalRoles] = useState<string[]>([])
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [newPassword, setNewPassword] = useState("")
@@ -352,7 +354,10 @@ export function UsersSettings() {
       const response = await fetch(`/api/settings/users/${selectedUser.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: selectedRole }),
+        body: JSON.stringify({
+          role: selectedRole,
+          additional_roles: selectedAdditionalRoles.filter((r) => r !== selectedRole),
+        }),
       })
 
       const data = await response.json()
@@ -362,10 +367,13 @@ export function UsersSettings() {
         return
       }
 
-      toast.success(`Rol actualizado a ${roleLabels[selectedRole] || selectedRole}`)
+      const allRoles = [selectedRole, ...selectedAdditionalRoles.filter((r) => r !== selectedRole)]
+      const rolesLabel = allRoles.map((r) => roleLabels[r] || r).join(" + ")
+      toast.success(`Rol actualizado a ${rolesLabel}`)
       setChangeRoleDialogOpen(false)
       setSelectedUser(null)
       setSelectedRole("")
+      setSelectedAdditionalRoles([])
       loadData()
     } catch (error) {
       console.error("Error changing role:", error)
@@ -651,6 +659,15 @@ export function UsersSettings() {
                       <Badge className={`${roleColors[user.role]} text-white`}>
                         {roleLabels[user.role] || user.role}
                       </Badge>
+                      {user.additional_roles && user.additional_roles.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {user.additional_roles.map((r) => (
+                            <Badge key={r} variant="outline" className="text-[10px]">
+                              +{roleLabels[r] || r}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
                       {user.role === "SELLER" && (user.can_view_agency_operations_support || user.can_add_services_on_agency_operations) && (
                         <div className="flex flex-wrap gap-1">
                           {user.can_view_agency_operations_support && (
@@ -745,6 +762,7 @@ export function UsersSettings() {
                             onClick={() => {
                               setSelectedUser(user)
                               setSelectedRole(user.role)
+                              setSelectedAdditionalRoles(user.additional_roles ?? [])
                               setChangeRoleDialogOpen(true)
                             }}
                           >
@@ -1058,25 +1076,58 @@ export function UsersSettings() {
               El cambio aplica inmediatamente.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 py-2">
-            <Label>Nuevo rol</Label>
-            <Select value={selectedRole} onValueChange={setSelectedRole}>
-              <SelectTrigger>
-                <SelectValue placeholder="Seleccioná un rol" />
-              </SelectTrigger>
-              <SelectContent>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Rol principal</Label>
+              <Select value={selectedRole} onValueChange={(v) => {
+                setSelectedRole(v)
+                // Si el rol principal nuevo estaba en adicionales, lo removemos
+                setSelectedAdditionalRoles((prev) => prev.filter((r) => r !== v))
+              }}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccioná un rol" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(roleLabels)
+                    .filter(([value]) => value !== "SUPER_ADMIN")
+                    .map(([value, label]) => (
+                      <SelectItem key={value} value={value}>
+                        <div className="flex flex-col">
+                          <span>{label}</span>
+                          <span className="text-xs text-muted-foreground">{roleDescriptions[value]}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Roles adicionales</Label>
+              <p className="text-xs text-muted-foreground">
+                El usuario tendrá acceso combinado de todos los roles seleccionados.
+              </p>
+              <div className="rounded-lg border border-border/30 bg-background p-3 space-y-2">
                 {Object.entries(roleLabels)
-                  .filter(([value]) => value !== "SUPER_ADMIN")
+                  .filter(([value]) => value !== "SUPER_ADMIN" && value !== selectedRole)
                   .map(([value, label]) => (
-                    <SelectItem key={value} value={value}>
-                      <div className="flex flex-col">
-                        <span>{label}</span>
-                        <span className="text-xs text-muted-foreground">{roleDescriptions[value]}</span>
+                    <div key={value} className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm">{label}</p>
+                        <p className="text-xs text-muted-foreground">{roleDescriptions[value]}</p>
                       </div>
-                    </SelectItem>
+                      <Switch
+                        checked={selectedAdditionalRoles.includes(value)}
+                        onCheckedChange={(checked) =>
+                          setSelectedAdditionalRoles((prev) =>
+                            checked ? [...prev, value] : prev.filter((r) => r !== value)
+                          )
+                        }
+                      />
+                    </div>
                   ))}
-              </SelectContent>
-            </Select>
+              </div>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setChangeRoleDialogOpen(false)}>
@@ -1085,7 +1136,7 @@ export function UsersSettings() {
             <Button
               size="sm"
               onClick={handleChangeRole}
-              disabled={submitting || !selectedRole || selectedRole === selectedUser?.role}
+              disabled={submitting || !selectedRole}
             >
               {submitting ? (
                 <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Guardando...</>

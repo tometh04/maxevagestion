@@ -34,12 +34,24 @@ export async function PATCH(
       "default_commission_percentage",
       "can_view_agency_operations_support",
       "can_add_services_on_agency_operations",
+      "additional_roles",
     ]
     const updateData: Record<string, any> = {}
 
     for (const field of allowedFields) {
       if (body[field] !== undefined) {
         updateData[field] = body[field]
+      }
+    }
+
+    // Validar additional_roles si fue enviado
+    if (updateData.additional_roles !== undefined) {
+      const validRoles = ["SUPER_ADMIN", "ORG_OWNER", "ADMIN", "CONTABLE", "SELLER", "VIEWER", "POST_VENTA"]
+      if (
+        !Array.isArray(updateData.additional_roles) ||
+        updateData.additional_roles.some((r: any) => !validRoles.includes(r))
+      ) {
+        return NextResponse.json({ error: "Roles adicionales inválidos" }, { status: 400 })
       }
     }
 
@@ -67,6 +79,12 @@ export async function PATCH(
     // No permitir cambiar el rol de un SUPER_ADMIN si no eres SUPER_ADMIN
     if ((existingUser as any).role === "SUPER_ADMIN" && user.role !== "SUPER_ADMIN") {
       return NextResponse.json({ error: "No puedes modificar un usuario SUPER_ADMIN" }, { status: 403 })
+    }
+
+    // Filtrar additional_roles: no puede incluir el rol primario (redundante)
+    if (updateData.additional_roles !== undefined) {
+      const primaryRole = updateData.role ?? (existingUser as any).role
+      updateData.additional_roles = updateData.additional_roles.filter((r: string) => r !== primaryRole)
     }
 
     // Actualizar usuario

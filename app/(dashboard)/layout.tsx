@@ -21,6 +21,7 @@ import { makeTimer } from "@/lib/perf-log"
 import { createServerClient } from "@/lib/supabase/server"
 import { getUserAgencyIds } from "@/lib/permissions-api"
 import { resolveUserPermissions, type ResolvedPermissionsMatrix } from "@/lib/permissions-agency"
+import { getEffectiveAgencyScopeRole } from "@/lib/permissions"
 
 export default async function DashboardLayout({
   children,
@@ -53,11 +54,16 @@ export default async function DashboardLayout({
 
   // Cargar permisos dinámicos para el sidebar. resolveUserPermissions usa
   // React.cache() internamente, así que en la misma request no re-fetcha.
-  const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
+  // Para usuarios multi-rol, se usa el rol con mayor scope de agencias para
+  // determinar qué agencias son visibles; luego la resolución fusiona todos los roles.
+  const effectiveRole = getEffectiveAgencyScopeRole((user as any).roles ?? [user.role as any])
+  const agencyIds = await getUserAgencyIds(supabase, user.id, effectiveRole)
   let resolvedPermissions: ResolvedPermissionsMatrix | null = null
   if (user.org_id) {
     resolvedPermissions = await resolveUserPermissions(
-      supabase as any, user.id, user.org_id, user.role, agencyIds
+      supabase as any, user.id, user.org_id,
+      (user as any).roles ?? [user.role],
+      agencyIds
     )
   }
   t.mark("resolvePermissions")
