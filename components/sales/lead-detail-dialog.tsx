@@ -503,7 +503,7 @@ export function LeadDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={`p-0 ${mode === "emilia" ? "max-w-7xl w-[95vw] h-[90vh]" : "max-w-2xl"}`}>
+      <DialogContent className={`p-0 ${mode === "emilia" ? "max-w-7xl w-[95vw] h-[90vh] overflow-hidden" : "max-w-2xl"}`}>
         {mode === "emilia" ? (
           <LeadEmiliaChat
             lead={{

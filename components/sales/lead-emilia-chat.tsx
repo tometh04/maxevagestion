@@ -21,8 +21,10 @@ const MAX_HOTELS = 4
 // Ancho fijo (para el snap horizontal) pero ALTURA NATURAL: la card crece
 // con su contenido. Una altura fija + overflow-hidden recortaba el vuelo de
 // REGRESO, el "total" del hotel y el ring de selección (`ring-2 ring-primary`).
+// 360px: con el modal ancho (max-w-7xl) entran ~3 cards y el contenido de la
+// card (aerolínea, precio, horarios) respira sin envolver en 3 líneas.
 // -------------------------------------------------------------------------
-const SLIDE_WIDTH = 320
+const SLIDE_WIDTH = 360
 
 function CarouselSlide({ children }: { children: React.ReactNode }) {
   return (
@@ -72,10 +74,13 @@ function CardCarousel({ count, ariaLabel, children }: CardCarouselProps) {
 
   return (
     <div className="relative group/carousel" aria-roledescription="carousel" aria-label={ariaLabel}>
+      {/* Sin margen negativo: con -mx-3 las cards sangraban sobre el padding
+          del modal y el scroll container las recortaba contra el borde.
+          px-1 deja lugar para el ring de selección de las cards. */}
       <div
         ref={trackRef}
         onScroll={updateNav}
-        className="flex gap-3 items-start overflow-x-auto scroll-smooth snap-x snap-mandatory -mx-3 px-3 py-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+        className="flex gap-3 items-start overflow-x-auto scroll-smooth snap-x snap-mandatory px-1 py-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
       >
         {children}
       </div>
@@ -625,7 +630,7 @@ export function LeadEmiliaChat({ lead, onBack, onQuotationCreated, initialConver
   }
 
   return (
-    <div className="flex flex-col h-full min-h-0">
+    <div className="flex flex-col h-full min-h-0 min-w-0 overflow-hidden">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 px-6 py-3 border-b text-sm">
         <button onClick={onBack} className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
@@ -638,7 +643,7 @@ export function LeadEmiliaChat({ lead, onBack, onQuotationCreated, initialConver
       </div>
 
       {/* Mensajes */}
-      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+      <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4 space-y-3">
         {messages.length === 0 && (
           <div className="text-center text-sm text-muted-foreground py-8">
             Revisá el prompt sugerido y enviá a Emilia.
@@ -651,9 +656,10 @@ export function LeadEmiliaChat({ lead, onBack, onQuotationCreated, initialConver
           const hasCards = mFlights.length > 0 || mHotels.length > 0
           return (
             <div key={i} className="space-y-2">
-              {/* Burbuja del mensaje */}
+              {/* Burbuja del mensaje. Ancho acotado: con el modal ancho,
+                  85% serían ~1080px — ilegible para una línea de texto. */}
               <div className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${m.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
+                <div className={`max-w-[min(85%,42rem)] rounded-lg px-3 py-2 text-sm ${m.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
                   {m.text}
                   {m.meta?.missing_fields && m.meta.missing_fields.length > 0 && (
                     <ul className="mt-2 text-xs list-disc list-inside opacity-80">
