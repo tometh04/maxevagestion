@@ -1611,6 +1611,26 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                                 className="text-sm font-mono pl-7"
                               />
                             </div>
+                            <div className="flex items-center gap-1 pt-0.5">
+                              <span className="text-[10px] text-muted-foreground">comisión</span>
+                              <DecimalInput
+                                value={item.commission_percentage ?? ""}
+                                disabled={isLinkedFlightReadonly}
+                                onChange={(v) => {
+                                  const pct = Number(v) || 0
+                                  updateItem(option.id, item.id, "commission_percentage", pct)
+                                  // Recalcular cost_amount con el nuevo %
+                                  const gross = item.gross_price || 0
+                                  if (gross > 0) {
+                                    const newCost = gross * (1 - pct / 100 + adminFeePct / 100)
+                                    updateItem(option.id, item.id, "cost_amount", Math.round(newCost * 100) / 100)
+                                  }
+                                }}
+                                placeholder="0"
+                                className="h-6 text-[11px] font-mono w-16 px-1.5"
+                              />
+                              <span className="text-[10px] text-muted-foreground">%</span>
+                            </div>
                             {(item.gross_price || 0) > 0 && (
                               <div className="text-[10px] text-muted-foreground space-y-0.5 pt-0.5">
                                 <div className="flex gap-1">
