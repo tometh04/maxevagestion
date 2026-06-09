@@ -14,6 +14,10 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "No tiene permiso para ver pagos recurrentes" }, { status: 403 })
     }
 
+    if (!user.org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     const isActive = searchParams.get("isActive")
       ? searchParams.get("isActive") === "true"
       : undefined
@@ -21,16 +25,18 @@ export async function GET(request: Request) {
 
     let query = (supabase.from("recurring_payments") as any)
       .select("*")
+      .eq("org_id", user.org_id)
       .order("created_at", { ascending: false })
 
     // Filtrar por agencia del query string (si se especifica)
     if (agencyId && agencyId !== "ALL") {
-      query = query.eq("agency_id", agencyId)
+      // Incluir registros de la agencia seleccionada Y los sin agencia asignada (null)
+      query = query.or(`agency_id.eq.${agencyId},agency_id.is.null`)
     } else {
-      // Si no se especifica, filtrar por agencia del usuario (si existe)
+      // "Todos": si el usuario tiene agencia, filtrar por ella; si no, mostrar todo el org
       const userAny = user as any
       if (userAny.agency_id) {
-        query = query.eq("agency_id", userAny.agency_id)
+        query = query.or(`agency_id.eq.${userAny.agency_id},agency_id.is.null`)
       }
     }
 
@@ -95,6 +101,10 @@ export async function POST(request: Request) {
       category_id,
     } = body
 
+    if (!user.org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     // Validar campos requeridos
     if (!provider_name || provider_name.length < 3) {
       return NextResponse.json(
@@ -137,6 +147,7 @@ export async function POST(request: Request) {
         reference: reference || null,
         category_id: category_id || null,
         agency_id: userAny.agency_id || null,
+        org_id: user.org_id,
         created_by: user.id,
       })
       .select("id")

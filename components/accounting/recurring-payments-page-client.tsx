@@ -346,8 +346,33 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
 
   const activeCount = payments.filter((p) => p.is_active).length
   const inactiveCount = payments.filter((p) => !p.is_active).length
+
+  // Prefijo del mes seleccionado para comparar con last_generated_date ("YYYY-MM")
+  const monthPrefix = yearFilter && monthFilter ? `${yearFilter}-${monthFilter}` : ""
+
+  // Solo suman pagos que fueron efectivamente pagados este mes (last_generated_date en el mes)
+  const totalMonthlyPaid = payments
+    .filter((p) =>
+      p.is_active &&
+      p.frequency === "MONTHLY" &&
+      p.currency !== "USD" &&
+      monthPrefix &&
+      p.last_generated_date?.startsWith(monthPrefix)
+    )
+    .reduce((sum, p) => sum + parseFloat(p.amount || "0"), 0)
+  const totalMonthlyPaidUSD = payments
+    .filter((p) =>
+      p.is_active &&
+      p.frequency === "MONTHLY" &&
+      p.currency === "USD" &&
+      monthPrefix &&
+      p.last_generated_date?.startsWith(monthPrefix)
+    )
+    .reduce((sum, p) => sum + parseFloat(p.amount || "0"), 0)
+
+  // Total teórico mensual (para mostrar como referencia en el subtítulo)
   const totalMonthly = payments
-    .filter((p) => p.is_active && p.frequency === "MONTHLY")
+    .filter((p) => p.is_active && p.frequency === "MONTHLY" && p.currency !== "USD")
     .reduce((sum, p) => sum + parseFloat(p.amount || "0"), 0)
   const totalMonthlyUSD = payments
     .filter((p) => p.is_active && p.frequency === "MONTHLY" && p.currency === "USD")
@@ -474,28 +499,28 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
 
         <Card className="rounded-xl border border-border/40 p-5">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-0">
-            <CardTitle className="text-sm font-medium">Total Mensual ARS</CardTitle>
+            <CardTitle className="text-sm font-medium">Pagado este Mes ARS</CardTitle>
           </CardHeader>
           <CardContent className="p-0 pt-2">
             <div className="text-2xl font-bold">
-              {formatCurrency(totalMonthly - (totalMonthlyUSD * 1), "ARS")}
+              {formatCurrency(totalMonthlyPaid, "ARS")}
             </div>
             <p className="text-xs text-muted-foreground">
-              Pagos mensuales en pesos
+              de {formatCurrency(totalMonthly, "ARS")} mensual estimado
             </p>
           </CardContent>
         </Card>
 
         <Card className="rounded-xl border border-border/40 p-5">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-0">
-            <CardTitle className="text-sm font-medium">Total Mensual USD</CardTitle>
+            <CardTitle className="text-sm font-medium">Pagado este Mes USD</CardTitle>
           </CardHeader>
           <CardContent className="p-0 pt-2">
             <div className="text-2xl font-bold text-success">
-              {formatCurrency(totalMonthlyUSD, "USD")}
+              {formatCurrency(totalMonthlyPaidUSD, "USD")}
             </div>
             <p className="text-xs text-muted-foreground">
-              Pagos mensuales en dólares
+              de {formatCurrency(totalMonthlyUSD, "USD")} mensual estimado
             </p>
           </CardContent>
         </Card>
