@@ -383,7 +383,7 @@ export function NewOperationDialog({
       commission_pct_secondary: null,
       type: "PACKAGE",
       customer_id: null,
-      origin: "Rosario", // Por defecto Rosario
+      origin: "Buenos Aires",
       destination: cleanedDestination,
       departure_date: undefined,
       return_date: undefined,
@@ -417,7 +417,7 @@ export function NewOperationDialog({
         commission_split: 50,
         type: "PACKAGE",
         customer_id: null,
-        origin: "Rosario",
+        origin: "Buenos Aires",
         destination: cleanedDestination,
         departure_date: undefined,
         return_date: undefined,
