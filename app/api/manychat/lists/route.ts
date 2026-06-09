@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canPerformAction } from "@/lib/permissions-api"
+import { getOrgAgencyIds } from "@/lib/organizations"
 
 /**
  * GET /api/manychat/lists?agencyId=xxx
@@ -43,20 +44,30 @@ export async function GET(request: Request) {
 /**
  * POST /api/manychat/lists
  * Crea una nueva lista (agregando al orden)
- * Body: { agencyId: string, listName: string }
+ * Body: { agencyId: string, listName: string, sellerId?: string, prompt?: string }
  */
 export async function POST(request: Request) {
   try {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
     const body = await request.json()
-    const { agencyId, listName, sellerId } = body
+    const { agencyId, listName, sellerId, prompt } = body
 
     if (!agencyId || !listName || !listName.trim()) {
       return NextResponse.json(
         { error: "Falta agencyId o listName" },
         { status: 400 }
       )
+    }
+
+    // Cross-tenant fix: filtro explícito, no confiar en RLS — la agencia
+    // debe pertenecer al org del user.
+    if (!user.org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+    const orgAgencyIds = await getOrgAgencyIds(user.org_id)
+    if (!orgAgencyIds || !orgAgencyIds.includes(agencyId)) {
+      return NextResponse.json({ error: "Agencia no encontrada" }, { status: 404 })
     }
 
     // Verificar permisos: admins pueden crear cualquier lista, sellers solo para sí mismos
@@ -109,7 +120,7 @@ export async function POST(request: Request) {
 
     const nextPosition = lastOrder ? (lastOrder.position as number) + 1 : 0
 
-    // Insertar nueva lista con seller_id
+    // Insertar nueva lista con seller_id y prompt opcional para Emilia
     const { error: insertError } = await (supabase
       .from("manychat_list_order") as any)
       .insert({
@@ -117,6 +128,7 @@ export async function POST(request: Request) {
         list_name: trimmedListName,
         position: nextPosition,
         seller_id: finalSellerId,
+        prompt: typeof prompt === "string" && prompt.trim() ? prompt.trim() : null,
       })
 
     if (insertError) {
@@ -294,6 +306,116 @@ export async function DELETE(request: Request) {
     console.error("Error in DELETE /api/manychat/lists:", error)
     return NextResponse.json(
       { error: error.message || "Error al eliminar lista" },
+      { status: 500 }
+    )
+  }
+}
+
+/**
+ * PATCH /api/manychat/lists
+ * Actualiza el prompt de Emilia de una lista existente.
+ * Body: { agencyId: string, listName: string, prompt: string }
+ * prompt vacío/whitespace → null (elimina el prompt).
+ * Si la lista no está registrada en manychat_list_order (columna creada
+ * implícitamente por leads con ese list_name), la registra (solo admins).
+ */
+export async function PATCH(request: Request) {
+  try {
+    const { user } = await getCurrentUser()
+    const supabase = await createServerClient()
+    const body = await request.json()
+    const { agencyId, listName, prompt } = body
+
+    if (!agencyId || !listName || !listName.trim()) {
+      return NextResponse.json(
+        { error: "Falta agencyId o listName" },
+        { status: 400 }
+      )
+    }
+
+    // Cross-tenant fix: filtro explícito, no confiar en RLS — la agencia
+    // debe pertenecer al org del user.
+    if (!user.org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+    const orgAgencyIds = await getOrgAgencyIds(user.org_id)
+    if (!orgAgencyIds || !orgAgencyIds.includes(agencyId)) {
+      return NextResponse.json({ error: "Agencia no encontrada" }, { status: 404 })
+    }
+
+    const trimmedListName = listName.trim()
+    const cleanedPrompt = typeof prompt === "string" && prompt.trim() ? prompt.trim() : null
+    const isAdmin = canPerformAction(user, "settings", "write")
+
+    const { data: existing } = await (supabase
+      .from("manychat_list_order") as any)
+      .select("id, seller_id")
+      .eq("agency_id", agencyId)
+      .eq("list_name", trimmedListName)
+      .maybeSingle()
+
+    if (existing) {
+      // Admins editan cualquier lista; sellers solo las propias (mismo
+      // criterio que los controles del Kanban).
+      const isOwner = user.role === "SELLER" && existing.seller_id === user.id
+      if (!isAdmin && !isOwner) {
+        return NextResponse.json(
+          { error: "No tiene permiso para editar el prompt de esta lista" },
+          { status: 403 }
+        )
+      }
+
+      const { error: updateError } = await (supabase
+        .from("manychat_list_order") as any)
+        .update({ prompt: cleanedPrompt })
+        .eq("id", existing.id)
+
+      if (updateError) {
+        console.error("Error updating list prompt:", updateError)
+        return NextResponse.json({ error: "Error al guardar el prompt" }, { status: 500 })
+      }
+    } else {
+      // Columna implícita (existe solo por leads con ese list_name) → la
+      // registramos con el prompt al final del orden. Solo admins.
+      if (!isAdmin) {
+        return NextResponse.json(
+          { error: "No tiene permiso para editar el prompt de esta lista" },
+          { status: 403 }
+        )
+      }
+
+      const { data: lastOrder } = await (supabase
+        .from("manychat_list_order") as any)
+        .select("position")
+        .eq("agency_id", agencyId)
+        .order("position", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      const { error: insertError } = await (supabase
+        .from("manychat_list_order") as any)
+        .insert({
+          agency_id: agencyId,
+          list_name: trimmedListName,
+          position: lastOrder ? (lastOrder.position as number) + 1 : 0,
+          seller_id: null,
+          prompt: cleanedPrompt,
+        })
+
+      if (insertError) {
+        console.error("Error registering list with prompt:", insertError)
+        return NextResponse.json({ error: "Error al guardar el prompt" }, { status: 500 })
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: cleanedPrompt ? "Prompt guardado correctamente" : "Prompt eliminado",
+    })
+  } catch (error: any) {
+    console.error("Error in PATCH /api/manychat/lists:", error)
+    return NextResponse.json(
+      { error: error.message || "Error al guardar el prompt" },
       { status: 500 }
     )
   }

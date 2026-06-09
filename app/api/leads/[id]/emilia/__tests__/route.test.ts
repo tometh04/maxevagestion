@@ -32,6 +32,13 @@ jest.mock("@/lib/supabase/server", () => ({
 jest.mock("@/lib/settings/org-features", () => ({
   getOrgFeatureFlag: jest.fn(),
 }))
+// La beta cerrada por allowlist de emails se bypassea en tests: acá probamos
+// la lógica del route (org gate, multi-tenant, conversaciones, prompt), no el
+// allowlist hard-codeado que cambia durante la beta.
+jest.mock("@/lib/feature-flags", () => ({
+  ...jest.requireActual("@/lib/feature-flags"),
+  isLeadEmiliaChatBetaUser: () => true,
+}))
 
 import { GET, POST } from "../route"
 
@@ -70,7 +77,13 @@ describe("/api/leads/[id]/emilia", () => {
 
   it("GET 403 si flag OFF", async () => {
     getCurrentUser.mockResolvedValue({ user: { id: "u1", org_id: USER_ORG } })
-    createServerClient.mockResolvedValue({})
+    // El route consulta flag + lead en paralelo (Promise.all), así que el mock
+    // de leads tiene que resolver aunque el flag esté OFF.
+    createServerClient.mockResolvedValue(mockSupabase({
+      leads: {
+        select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null }) }) }),
+      },
+    }))
     getOrgFeatureFlag.mockResolvedValue(false)
     const res = await GET(REQ_STUB, { params: Promise.resolve({ id: LEAD_ID }) })
     expect(res.status).toBe(403)
@@ -156,6 +169,51 @@ describe("/api/leads/[id]/emilia", () => {
     const body = await res.json()
     expect(body.conversation_id).toBe("conv-new")
     expect(body.suggested_prompt).toMatch(/Cancún/)
+  })
+
+  it("POST incorpora el prompt de la lista del Kanban al suggested_prompt (match case-insensitive)", async () => {
+    getCurrentUser.mockResolvedValue({ user: { id: "u1", org_id: USER_ORG } })
+    getOrgFeatureFlag.mockResolvedValue(true)
+    createServerClient.mockResolvedValue(mockSupabase({
+      leads: {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => ({
+              data: {
+                id: LEAD_ID,
+                contact_name: "Juan",
+                destination: "Cancún",
+                region: "CARIBE",
+                notes: null,
+                list_name: "Caribe",
+                agency_id: "a1",
+                agencies: { org_id: USER_ORG },
+              },
+            }),
+          }),
+        }),
+      },
+      manychat_list_order: {
+        select: () => ({
+          eq: async () => ({
+            data: [{ list_name: "CARIBE", prompt: "Cotizar all inclusive saliendo desde Córdoba." }],
+          }),
+        }),
+      },
+      conversations: {
+        select: () => ({
+          eq: () => ({ eq: () => ({ eq: () => ({ order: () => ({ limit: () => ({ maybeSingle: async () => ({ data: null }) }) }) }) }) }),
+        }),
+        insert: () => ({
+          select: () => ({ single: async () => ({ data: { id: "conv-new" } }) }),
+        }),
+      },
+    }))
+    const res = await POST(REQ_STUB, { params: Promise.resolve({ id: LEAD_ID }) })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.suggested_prompt).toMatch(/Cancún/)
+    expect(body.suggested_prompt).toMatch(/Cotizar all inclusive saliendo desde Córdoba\./)
   })
 
   it("POST reusa conversación existente cuando ya hay una active", async () => {

@@ -9,6 +9,7 @@ import {
   buildOpenAIInstructions,
   type LeadInput,
 } from "@/lib/emilia/lead-context"
+import { fetchListPrompt } from "@/lib/emilia/list-prompt"
 
 export const dynamic = "force-dynamic"
 
@@ -47,18 +48,27 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   // Multi-tenant defense: el lead debe pertenecer a la org del user.
   const { data: lead } = await supabase
     .from("leads")
-    .select("contact_name, destination, region, notes, agencies!inner(org_id)")
+    .select("contact_name, destination, region, notes, list_name, agency_id, agencies!inner(org_id)")
     .eq("id", leadId)
     .maybeSingle()
   if (!lead || (lead as any).agencies?.org_id !== user.org_id) {
     return NextResponse.json({ error: "Lead no encontrado" }, { status: 404 })
   }
 
+  // Prompt de la columna del Kanban donde está el lead → se suma al prompt sugerido
+  const listPrompt = await fetchListPrompt(
+    supabase,
+    (lead as any).agency_id,
+    (lead as any).list_name,
+    (lead as any).region
+  )
+
   const leadInput: LeadInput = {
     contact_name: (lead as any).contact_name,
     destination: (lead as any).destination,
     region: (lead as any).region,
     notes: (lead as any).notes,
+    list_prompt: listPrompt,
   }
 
   const prompt = await generateSuggestedPrompt(leadInput)

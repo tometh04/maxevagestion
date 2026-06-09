@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Phone, Instagram, MapPin, DollarSign, UserPlus, Loader2, Pencil, Trash2, Plus, GripVertical, Inbox, Check, X, User, Archive, ArchiveRestore, ListOrdered, Calendar, Clock } from "lucide-react"
+import { Phone, Instagram, MapPin, DollarSign, UserPlus, Loader2, Pencil, Trash2, Plus, GripVertical, Inbox, Check, X, User, Archive, ArchiveRestore, ListOrdered, Calendar, Clock, Sparkles } from "lucide-react"
 import {
   Select,
   SelectContent,
@@ -25,6 +25,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { toast } from "sonner"
 import {
   DndContext,
@@ -106,6 +107,8 @@ interface ListInfo {
   id: string
   seller_id: string | null
   seller_name: string | null
+  /** Prompt de Emilia configurado para esta lista (contexto al cotizar) */
+  prompt: string | null
 }
 
 interface LeadsKanbanManychatProps {
@@ -203,6 +206,11 @@ export function LeadsKanbanManychat({
   const [createListDialogOpen, setCreateListDialogOpen] = useState(false)
   const [newListName, setNewListName] = useState("")
   const [newListSellerId, setNewListSellerId] = useState<string>("none")
+  const [newListPrompt, setNewListPrompt] = useState("")
+  // Dialog para editar el prompt de Emilia de una lista existente
+  const [promptDialogList, setPromptDialogList] = useState<string | null>(null)
+  const [promptValue, setPromptValue] = useState("")
+  const [savingPrompt, setSavingPrompt] = useState(false)
   const [viewMode, setViewMode] = useState<"activos" | "archivados">("activos")
   const [archivedLeads, setArchivedLeads] = useState<Lead[]>([])
   const [loadingArchived, setLoadingArchived] = useState(false)
@@ -426,7 +434,7 @@ export function LeadsKanbanManychat({
     }
   }
 
-  const handleCreateList = async (listName: string, sellerId?: string) => {
+  const handleCreateList = async (listName: string, sellerId?: string, prompt?: string) => {
     try {
       const response = await fetch("/api/manychat/lists", {
         method: "POST",
@@ -435,6 +443,7 @@ export function LeadsKanbanManychat({
           agencyId,
           listName,
           sellerId: sellerId && sellerId !== "none" ? sellerId : undefined,
+          prompt: prompt?.trim() || undefined,
         }),
       })
       const data = await response.json()
@@ -455,10 +464,37 @@ export function LeadsKanbanManychat({
       return
     }
     const sellerId = isSeller ? currentUserId : (newListSellerId !== "none" ? newListSellerId : undefined)
-    handleCreateList(newListName.trim(), sellerId)
+    handleCreateList(newListName.trim(), sellerId, newListPrompt)
     setCreateListDialogOpen(false)
     setNewListName("")
     setNewListSellerId("none")
+    setNewListPrompt("")
+  }
+
+  // Guarda el prompt de Emilia de una lista existente (vacío = eliminar)
+  const handleSaveListPrompt = async () => {
+    if (!promptDialogList) return
+    setSavingPrompt(true)
+    try {
+      const response = await fetch("/api/manychat/lists", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agencyId, listName: promptDialogList, prompt: promptValue }),
+      })
+      const data = await response.json()
+      if (response.ok && data.success) {
+        toast.success(promptValue.trim() ? "Prompt guardado" : "Prompt eliminado")
+        setPromptDialogList(null)
+        setPromptValue("")
+        fetchListOrder()
+      } else {
+        toast.error(data.error || "Error al guardar el prompt")
+      }
+    } catch (error) {
+      toast.error("Error al guardar el prompt")
+    } finally {
+      setSavingPrompt(false)
+    }
   }
 
   const handleSaveListName = async (oldListName: string) => {
@@ -564,6 +600,7 @@ export function LeadsKanbanManychat({
           id: `manychat-${index}`,
           seller_id: item.seller_id || null,
           seller_name: item.seller_name || null,
+          prompt: item.prompt || null,
         }))
         setListOrder(listsInfo)
       } else if (data.listNames && Array.isArray(data.listNames)) {
@@ -571,6 +608,7 @@ export function LeadsKanbanManychat({
           name, id: `manychat-${index}`,
           seller_id: null,
           seller_name: null,
+          prompt: null,
         }))
         setListOrder(listsInfo)
       } else {
@@ -854,6 +892,7 @@ export function LeadsKanbanManychat({
               onClick={() => {
                 setNewListName("")
                 setNewListSellerId(isSeller && currentUserId ? currentUserId : "none")
+                setNewListPrompt("")
                 setCreateListDialogOpen(true)
               }}
             >
@@ -1005,6 +1044,18 @@ export function LeadsKanbanManychat({
                                 if (!canEditThisList) return null
                                 return (
                                   <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <Button
+                                      variant="ghost" size="sm"
+                                      className={`h-6 w-6 p-0 ${listInfo?.prompt ? "text-primary hover:text-primary" : "text-muted-foreground hover:text-foreground"}`}
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        setPromptDialogList(listName)
+                                        setPromptValue(listInfo?.prompt || "")
+                                      }}
+                                      title={listInfo?.prompt ? "Editar prompt de Emilia" : "Agregar prompt de Emilia"}
+                                    >
+                                      <Sparkles className="h-3 w-3" />
+                                    </Button>
                                     <Button
                                       variant="ghost" size="sm"
                                       className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
@@ -1248,6 +1299,23 @@ export function LeadsKanbanManychat({
                 </p>
               </div>
             )}
+            <div className="space-y-2">
+              <Label htmlFor="new-list-prompt" className="flex items-center gap-1.5">
+                <Sparkles className="h-3.5 w-3.5 text-primary" />
+                Prompt de Emilia (opcional)
+              </Label>
+              <Textarea
+                id="new-list-prompt"
+                placeholder='Ej: Cotizar all inclusive saliendo desde Córdoba, 7 noches'
+                value={newListPrompt}
+                onChange={(e) => setNewListPrompt(e.target.value)}
+                rows={3}
+                className="resize-none"
+              />
+              <p className="text-xs text-muted-foreground">
+                Al presionar Cotizar en un lead de esta lista, este contexto se suma al prompt sugerido que viaja a Emilia.
+              </p>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateListDialogOpen(false)}>
@@ -1255,6 +1323,38 @@ export function LeadsKanbanManychat({
             </Button>
             <Button onClick={handleSubmitCreateList} disabled={!newListName.trim()}>
               Crear Lista
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog de prompt de Emilia por lista */}
+      <Dialog open={promptDialogList !== null} onOpenChange={(open) => { if (!open) { setPromptDialogList(null); setPromptValue("") } }}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-primary" />
+              Prompt de Emilia — {promptDialogList}
+            </DialogTitle>
+            <DialogDescription>
+              Al presionar Cotizar en un lead de esta lista, este contexto se suma al prompt sugerido que viaja a Emilia. Dejalo vacío para eliminarlo.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            placeholder='Ej: Cotizar all inclusive saliendo desde Córdoba, 7 noches'
+            value={promptValue}
+            onChange={(e) => setPromptValue(e.target.value)}
+            rows={4}
+            className="resize-none"
+            autoFocus
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setPromptDialogList(null); setPromptValue("") }} disabled={savingPrompt}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveListPrompt} disabled={savingPrompt}>
+              {savingPrompt && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Guardar
             </Button>
           </DialogFooter>
         </DialogContent>

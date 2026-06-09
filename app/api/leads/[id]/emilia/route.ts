@@ -8,6 +8,7 @@ import {
   buildFallbackPrompt,
   type LeadInput,
 } from "@/lib/emilia/lead-context"
+import { fetchListPrompt } from "@/lib/emilia/list-prompt"
 
 export const dynamic = "force-dynamic"
 
@@ -95,7 +96,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     getOrgFeatureFlag(supabase, user.org_id, FEATURE_FLAG_LEAD_EMILIA_CHAT),
     supabase
       .from("leads")
-      .select("id, contact_name, destination, region, notes, agency_id, agencies!inner(org_id)")
+      .select("id, contact_name, destination, region, notes, list_name, agency_id, agencies!inner(org_id)")
       .eq("id", leadId)
       .maybeSingle(),
   ])
@@ -111,11 +112,20 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ error: "Lead no encontrado" }, { status: 404 })
   }
 
+  // Prompt de la columna del Kanban donde está el lead → se suma al prompt sugerido
+  const listPrompt = await fetchListPrompt(
+    supabase,
+    (lead as any).agency_id,
+    (lead as any).list_name,
+    (lead as any).region
+  )
+
   const leadInput: LeadInput = {
     contact_name: (lead as any).contact_name,
     destination: (lead as any).destination,
     region: (lead as any).region,
     notes: (lead as any).notes,
+    list_prompt: listPrompt,
   }
 
   // Reusar conversación activa si existe, sino crearla

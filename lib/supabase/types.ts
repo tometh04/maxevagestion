@@ -4205,6 +4205,7 @@ export type Database = {
           list_name: string
           org_id: string
           position: number
+          prompt: string | null
           seller_id: string | null
           updated_at: string | null
         }
@@ -4215,6 +4216,7 @@ export type Database = {
           list_name: string
           org_id: string
           position: number
+          prompt?: string | null
           seller_id?: string | null
           updated_at?: string | null
         }
@@ -4225,6 +4227,7 @@ export type Database = {
           list_name?: string
           org_id?: string
           position?: number
+          prompt?: string | null
           seller_id?: string | null
           updated_at?: string | null
         }

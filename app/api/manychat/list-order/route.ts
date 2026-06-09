@@ -18,10 +18,10 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Falta agencyId" }, { status: 400 })
     }
 
-    // Obtener orden de listas ordenado por posición, incluyendo seller info
+    // Obtener orden de listas ordenado por posición, incluyendo seller info y prompt
     let listQuery = (supabase
       .from("manychat_list_order") as any)
-      .select("list_name, position, seller_id, seller:seller_id(id, name)")
+      .select("list_name, position, seller_id, prompt, seller:seller_id(id, name)")
       .eq("agency_id", agencyId)
       .order("position", { ascending: true })
 
@@ -40,12 +40,13 @@ export async function GET(request: Request) {
     // Retornar nombres de listas en orden + info de seller
     const orderedListNames = ((listOrder || []) as Array<{ list_name: string; position: number }>).map(item => item.list_name)
 
-    // Mapear info completa con seller
+    // Mapear info completa con seller y prompt de Emilia
     const orderWithSeller = ((listOrder || []) as any[]).map(item => ({
       list_name: item.list_name,
       position: item.position,
       seller_id: item.seller_id || null,
       seller_name: item.seller?.name || null,
+      prompt: item.prompt || null,
     }))
 
     return NextResponse.json({
@@ -85,17 +86,20 @@ export async function PUT(request: Request) {
       )
     }
 
-    // Actualizar posiciones sin perder seller_id
-    // Obtener listas actuales para preservar seller_id
+    // Actualizar posiciones sin perder seller_id ni prompt
+    // Obtener listas actuales para preservar seller_id y prompt
     const { data: currentLists } = await (supabase
       .from("manychat_list_order") as any)
-      .select("list_name, seller_id")
+      .select("list_name, seller_id, prompt")
       .eq("agency_id", agencyId)
 
-    const sellerMap: Record<string, string | null> = {}
+    const listInfoMap: Record<string, { seller_id: string | null; prompt: string | null }> = {}
     if (currentLists) {
       for (const list of currentLists) {
-        sellerMap[list.list_name] = list.seller_id || null
+        listInfoMap[list.list_name] = {
+          seller_id: list.seller_id || null,
+          prompt: list.prompt || null,
+        }
       }
     }
 
@@ -113,12 +117,13 @@ export async function PUT(request: Request) {
       )
     }
 
-    // Insertar nuevo orden preservando seller_id
+    // Insertar nuevo orden preservando seller_id y prompt
     const orderData = listNames.map((listName: string, index: number) => ({
       agency_id: agencyId,
       list_name: listName.trim(),
       position: index,
-      seller_id: sellerMap[listName.trim()] || null,
+      seller_id: listInfoMap[listName.trim()]?.seller_id || null,
+      prompt: listInfoMap[listName.trim()]?.prompt || null,
     }))
 
     const { error: insertError } = await (supabase
