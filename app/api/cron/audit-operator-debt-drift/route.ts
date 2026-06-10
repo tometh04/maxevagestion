@@ -39,83 +39,34 @@ export async function POST(request: Request) {
   const USD_TO_ARS_APPROX = 1000
 
   // ─── 1. Fetch operation_operators agregado por (org, operator) ──────
-  // Hacemos un solo round-trip vía SQL para mantenerlo barato.
-  const { data: declaredAgg, error: declaredErr } = await admin.rpc(
-    "exec_sql_readonly",
-    {
-      query: `
-        SELECT
-          op.org_id,
-          oo.operator_id,
-          oo.cost_currency AS currency,
-          SUM(oo.cost) AS declared_total
-        FROM operation_operators oo
-        JOIN operators op ON op.id = oo.operator_id
-        WHERE op.org_id IS NOT NULL
-        GROUP BY op.org_id, oo.operator_id, oo.cost_currency
-      `,
-    }
-  ).catch(() => ({ data: null, error: { message: "rpc unavailable" } }))
+  // RPC get_operator_cost_aggregated: 1 round-trip SQL en lugar de
+  // paginación manual en Node.js (mig 20260610000002).
+  const { data: declaredRaw, error: declaredErr } = await admin.rpc(
+    "get_operator_cost_aggregated"
+  )
 
-  // Si la RPC `exec_sql_readonly` no existe en el proyecto, caemos a
-  // fetch + group en memoria. No es eficiente pero funciona.
-  let declared: Array<{ org_id: string; operator_id: string; currency: string; declared_total: number }>
-  if (declaredAgg && !declaredErr) {
-    declared = declaredAgg as any
-  } else {
-    declared = []
-    let page = 0
-    const PAGE = 1000
-    while (true) {
-      const { data, error } = await admin
-        .from("operation_operators")
-        .select("operator_id, cost, cost_currency, operators!inner(org_id)")
-        .range(page * PAGE, (page + 1) * PAGE - 1)
-      if (error || !data || data.length === 0) break
-      const agg: Record<string, { org_id: string; operator_id: string; currency: string; declared_total: number }> = {}
-      for (const row of data as any[]) {
-        const orgId = row.operators?.org_id
-        if (!orgId) continue
-        const key = `${orgId}::${row.operator_id}::${row.cost_currency || "ARS"}`
-        if (!agg[key]) {
-          agg[key] = { org_id: orgId, operator_id: row.operator_id, currency: row.cost_currency || "ARS", declared_total: 0 }
-        }
-        agg[key].declared_total += Number(row.cost) || 0
-      }
-      declared.push(...Object.values(agg))
-      if (data.length < PAGE) break
-      page++
-    }
-
-    // Merge cross-page (mismo key puede aparecer en páginas distintas).
-    const merged: Record<string, typeof declared[number]> = {}
-    for (const d of declared) {
-      const key = `${d.org_id}::${d.operator_id}::${d.currency}`
-      if (!merged[key]) merged[key] = { ...d }
-      else merged[key].declared_total += d.declared_total
-    }
-    declared = Object.values(merged)
+  if (declaredErr || !declaredRaw) {
+    console.error("[audit-drift] Error llamando get_operator_cost_aggregated:", declaredErr)
+    return NextResponse.json({ error: "RPC get_operator_cost_aggregated falló", detail: declaredErr?.message }, { status: 500 })
   }
 
+  const declared = declaredRaw as Array<{ org_id: string; operator_id: string; currency: string; declared_total: number }>
+
   // ─── 2. Fetch operator_payments agregado por (org, operator, currency)
+  const { data: registeredRaw, error: registeredErr } = await admin.rpc(
+    "get_operator_payments_aggregated"
+  )
+
+  if (registeredErr || !registeredRaw) {
+    console.error("[audit-drift] Error llamando get_operator_payments_aggregated:", registeredErr)
+    return NextResponse.json({ error: "RPC get_operator_payments_aggregated falló", detail: registeredErr?.message }, { status: 500 })
+  }
+
   const registered: Record<string, number> = {}
-  {
-    let page = 0
-    const PAGE = 2000
-    while (true) {
-      const { data, error } = await admin
-        .from("operator_payments")
-        .select("org_id, operator_id, currency, amount")
-        .range(page * PAGE, (page + 1) * PAGE - 1)
-      if (error || !data || data.length === 0) break
-      for (const row of data as any[]) {
-        if (!row.org_id) continue
-        const key = `${row.org_id}::${row.operator_id}::${row.currency || "ARS"}`
-        registered[key] = (registered[key] || 0) + (Number(row.amount) || 0)
-      }
-      if (data.length < PAGE) break
-      page++
-    }
+  for (const row of registeredRaw as Array<{ org_id: string; operator_id: string; currency: string; registered_total: number }>) {
+    if (!row.org_id) continue
+    const key = `${row.org_id}::${row.operator_id}::${row.currency || "ARS"}`
+    registered[key] = Number(row.registered_total) || 0
   }
 
   // ─── 3. Detectar drift material
