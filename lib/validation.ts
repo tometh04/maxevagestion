@@ -100,7 +100,7 @@ export const createOperationSchema = z.object({
   status: schemas.operationStatus.optional(),
   operator_id: schemas.uuid.optional(),
   seller_secondary_id: schemas.uuid.optional(),
-  product_type: z.enum(["AEREO", "HOTEL", "PAQUETE", "CRUCERO", "OTRO"]).optional(),
+  product_type: z.string().optional(),
   checkin_date: schemas.date.optional(),
   checkout_date: schemas.date.optional(),
 })

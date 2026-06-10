@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
-import { Save, Loader2 } from "lucide-react"
+import { Save, Loader2, Plus, Trash2 } from "lucide-react"
 import {
   Breadcrumb,
   BreadcrumbList,
@@ -46,6 +46,7 @@ interface OperationSettings {
   auto_create_ledger_entry: boolean
   auto_create_iva_entry: boolean
   auto_create_operator_payment: boolean
+  custom_product_types: Array<{ value: string; label: string }>
 }
 
 
@@ -72,7 +73,9 @@ export function OperationsSettingsPageClient() {
     auto_create_ledger_entry: true,
     auto_create_iva_entry: true,
     auto_create_operator_payment: true,
+    custom_product_types: [],
   })
+  const [newProductTypeLabel, setNewProductTypeLabel] = useState("")
 
   useEffect(() => {
     loadSettings()
@@ -196,6 +199,7 @@ export function OperationsSettingsPageClient() {
         <TabsList>
           <TabsTrigger value="alerts">Alertas</TabsTrigger>
           <TabsTrigger value="validations">Validaciones</TabsTrigger>
+          <TabsTrigger value="product-types">Tipos de Producto</TabsTrigger>
         </TabsList>
 
         {/* Tab: Alertas */}
@@ -311,6 +315,78 @@ export function OperationsSettingsPageClient() {
                     require_customer: checked,
                   })}
                 />
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Tab: Tipos de Producto */}
+        <TabsContent value="product-types" className="space-y-4">
+          <Card className="rounded-xl border border-border/40">
+            <CardHeader>
+              <CardTitle>Tipos de Producto Personalizados</CardTitle>
+              <CardDescription>
+                Agrega categorías propias que aparecerán en el campo Tipo de Producto al cargar operadores en una operación. Los tipos estándar (Vuelo, Hotel, Paquete, etc.) siempre están disponibles.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Lista de tipos personalizados */}
+              {(settings.custom_product_types || []).length === 0 && (
+                <p className="text-sm text-muted-foreground">No hay tipos personalizados aún.</p>
+              )}
+              {(settings.custom_product_types || []).map((pt, index) => (
+                <div key={pt.value} className="flex items-center justify-between rounded-lg border border-border/40 bg-muted/20 px-4 py-2">
+                  <span className="text-sm font-medium">{pt.label}</span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-destructive hover:text-destructive"
+                    onClick={() => {
+                      const updated = (settings.custom_product_types || []).filter((_, i) => i !== index)
+                      setSettings({ ...settings, custom_product_types: updated })
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+
+              {/* Agregar nuevo tipo */}
+              <div className="flex gap-2 pt-2">
+                <Input
+                  placeholder="Ej: Entradas Mundial"
+                  value={newProductTypeLabel}
+                  onChange={(e) => setNewProductTypeLabel(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault()
+                      const label = newProductTypeLabel.trim()
+                      if (!label) return
+                      const value = label.toUpperCase().replace(/\s+/g, "_").replace(/[^A-Z0-9_]/g, "")
+                      const existing = settings.custom_product_types || []
+                      if (existing.some((pt) => pt.value === value || pt.label.toLowerCase() === label.toLowerCase())) return
+                      setSettings({ ...settings, custom_product_types: [...existing, { value, label }] })
+                      setNewProductTypeLabel("")
+                    }
+                  }}
+                  className="flex-1"
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const label = newProductTypeLabel.trim()
+                    if (!label) return
+                    const value = label.toUpperCase().replace(/\s+/g, "_").replace(/[^A-Z0-9_]/g, "")
+                    const existing = settings.custom_product_types || []
+                    if (existing.some((pt) => pt.value === value || pt.label.toLowerCase() === label.toLowerCase())) return
+                    setSettings({ ...settings, custom_product_types: [...existing, { value, label }] })
+                    setNewProductTypeLabel("")
+                  }}
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Agregar
+                </Button>
               </div>
             </CardContent>
           </Card>

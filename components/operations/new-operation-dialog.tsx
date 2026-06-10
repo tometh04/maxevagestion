@@ -55,13 +55,14 @@ interface OperationSettings {
   require_customer: boolean
   default_status: string
   custom_statuses: Array<{ value: string; label: string; color: string }>
+  custom_product_types?: Array<{ value: string; label: string }>
 }
 
 const operatorSchema = z.object({
   operator_id: z.string().min(1, "El operador es requerido"),
   cost: z.coerce.number().min(0, "El costo debe ser mayor o igual a 0"),
   cost_currency: z.enum(["ARS", "USD"]).default("USD").optional(),
-  product_type: z.enum(["FLIGHT", "HOTEL", "PACKAGE", "CRUISE", "TRANSFER", "MIXED", "ASSISTANCE"]).optional(),
+  product_type: z.string().optional(),
   notes: z.string().optional(),
 })
 
@@ -205,7 +206,7 @@ export function NewOperationDialog({
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
   const [useMultipleOperators, setUseMultipleOperators] = useState(false)
-  const [operatorList, setOperatorList] = useState<Array<{operator_id: string, cost: string | number, cost_currency: "ARS" | "USD", product_type?: "FLIGHT" | "HOTEL" | "PACKAGE" | "CRUISE" | "TRANSFER" | "MIXED", notes?: string}>>([])
+  const [operatorList, setOperatorList] = useState<Array<{operator_id: string, cost: string | number, cost_currency: "ARS" | "USD", product_type?: string, notes?: string}>>([])
   const [settings, setSettings] = useState<OperationSettings | null>(null)
   const [apiError, setApiError] = useState<string | null>(null)
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
@@ -359,6 +360,15 @@ export function NewOperationDialog({
     ]
     if (settings?.custom_statuses && settings.custom_statuses.length > 0) {
       return [...standard, ...settings.custom_statuses.map(s => ({ value: s.value, label: s.label }))]
+    }
+    return standard
+  }, [settings])
+
+  // Tipos de producto disponibles (estándar + personalizados por agencia)
+  const availableProductTypes = React.useMemo(() => {
+    const standard = operationTypeOptions
+    if (settings?.custom_product_types && settings.custom_product_types.length > 0) {
+      return [...standard, ...settings.custom_product_types]
     }
     return standard
   }, [settings])
@@ -1049,20 +1059,35 @@ export function NewOperationDialog({
                     <div>
                           <label className="text-xs font-medium mb-1.5 block">Tipo de Producto *</label>
                           <Select
-                            value={op.product_type || ""}
-                            onValueChange={(value) => updateOperator(index, "product_type", value as "FLIGHT" | "HOTEL" | "PACKAGE" | "CRUISE" | "TRANSFER" | "MIXED")}
+                            value={availableProductTypes.some(o => o.value === op.product_type) ? (op.product_type || "") : (op.product_type !== undefined ? "__OTRO__" : "")}
+                            onValueChange={(value) => {
+                              if (value === "__OTRO__") {
+                                updateOperator(index, "product_type", "")
+                              } else {
+                                updateOperator(index, "product_type", value)
+                              }
+                            }}
                           >
                             <SelectTrigger>
                               <SelectValue placeholder="Seleccionar tipo" />
                             </SelectTrigger>
                             <SelectContent>
-                              {operationTypeOptions.map((option) => (
+                              {availableProductTypes.map((option) => (
                                 <SelectItem key={option.value} value={option.value}>
                                   {option.label}
                                 </SelectItem>
                               ))}
+                              <SelectItem value="__OTRO__">Otro...</SelectItem>
                             </SelectContent>
                           </Select>
+                          {!availableProductTypes.some(o => o.value === op.product_type) && op.product_type !== undefined ? (
+                            <Input
+                              className="mt-1.5 h-9 text-sm"
+                              placeholder="Escribí el tipo de producto..."
+                              value={op.product_type || ""}
+                              onChange={(e) => updateOperator(index, "product_type", e.target.value)}
+                            />
+                          ) : null}
                         </div>
 
                         {/* Fila 2: Costo + Moneda - más espacio */}

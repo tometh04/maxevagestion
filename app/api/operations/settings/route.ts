@@ -23,6 +23,10 @@ const operationSettingsSchema = z.object({
     channels: z.array(z.string()).optional(),
   })).optional(),
   document_templates: z.array(z.any()).optional(),
+  custom_product_types: z.array(z.object({
+    value: z.string(),
+    label: z.string(),
+  })).optional(),
   default_status: z.string().optional(),
   require_destination: z.boolean().optional(),
   require_departure_date: z.boolean().optional(),

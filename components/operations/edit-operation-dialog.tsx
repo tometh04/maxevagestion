@@ -181,6 +181,7 @@ export function EditOperationDialog({
   const [creatingOperator, setCreatingOperator] = useState(false)
   const [localOperators, setLocalOperators] = useState(operators)
   const [customStatuses, setCustomStatuses] = useState<Array<{ value: string; label: string; color?: string }>>([])
+  const [customProductTypes, setCustomProductTypes] = useState<Array<{ value: string; label: string }>>([])
 
   // Estado para múltiples operadores
   type OperatorEntry = { operator_id: string; cost: string | number; cost_currency: "ARS" | "USD"; product_type?: string; notes?: string; id?: string }
@@ -191,29 +192,39 @@ export function EditOperationDialog({
   const operationCurrency = (operation.sale_currency || operation.currency || "USD") as "ARS" | "USD"
   const operationCostCurrency = (operation.operator_cost_currency || operationCurrency) as "ARS" | "USD"
 
-  // Cargar estados personalizados
+  // Cargar estados y tipos de producto personalizados
   useEffect(() => {
-    const loadCustomStatuses = async () => {
+    const loadSettings = async () => {
       try {
         const response = await fetch("/api/operations/settings")
         if (response.ok) {
           const data = await response.json()
-          if (data.settings?.custom_statuses) {
-            setCustomStatuses(data.settings.custom_statuses)
+          if (data.custom_statuses) {
+            setCustomStatuses(data.custom_statuses)
+          }
+          if (data.custom_product_types) {
+            setCustomProductTypes(data.custom_product_types)
           }
         }
       } catch (error) {
-        console.error("Error loading custom statuses:", error)
-        toast.error("Error al cargar estados personalizados")
+        console.error("Error loading settings:", error)
       }
     }
-    loadCustomStatuses()
+    loadSettings()
   }, [])
 
   // Combinar estados estándar con personalizados
   const statusOptions = useMemo(() => {
     return [...standardStatusOptions, ...customStatuses.map(s => ({ value: s.value, label: s.label, color: s.color || "bg-muted-foreground" }))]
   }, [customStatuses])
+
+  // Tipos de producto disponibles (estándar + personalizados por agencia)
+  const availableProductTypes = useMemo(() => {
+    if (customProductTypes.length > 0) {
+      return [...operationTypeOptions, ...customProductTypes]
+    }
+    return operationTypeOptions
+  }, [customProductTypes])
 
   // Sincronizar operadores cuando cambian.
   // Bug fix 2026-05-21 (segunda iteración): antes la dep era [operators].
@@ -868,20 +879,35 @@ export function EditOperationDialog({
                         <div>
                           <label className="text-xs font-medium mb-1.5 block">Tipo de Producto</label>
                           <Select
-                            value={op.product_type || ""}
-                            onValueChange={(value) => updateOperatorField(index, "product_type", value)}
+                            value={availableProductTypes.some(o => o.value === op.product_type) ? (op.product_type || "") : (op.product_type !== undefined ? "__OTRO__" : "")}
+                            onValueChange={(value) => {
+                              if (value === "__OTRO__") {
+                                updateOperatorField(index, "product_type", "")
+                              } else {
+                                updateOperatorField(index, "product_type", value)
+                              }
+                            }}
                           >
                             <SelectTrigger>
                               <SelectValue placeholder="Seleccionar tipo" />
                             </SelectTrigger>
                             <SelectContent>
-                              {operationTypeOptions.map((option) => (
+                              {availableProductTypes.map((option) => (
                                 <SelectItem key={option.value} value={option.value}>
                                   {option.label}
                                 </SelectItem>
                               ))}
+                              <SelectItem value="__OTRO__">Otro...</SelectItem>
                             </SelectContent>
                           </Select>
+                          {!availableProductTypes.some(o => o.value === op.product_type) && op.product_type !== undefined ? (
+                            <Input
+                              className="mt-1.5 h-9 text-sm"
+                              placeholder="Escribí el tipo de producto..."
+                              value={op.product_type || ""}
+                              onChange={(e) => updateOperatorField(index, "product_type", e.target.value)}
+                            />
+                          ) : null}
                         </div>
 
                         <div>
