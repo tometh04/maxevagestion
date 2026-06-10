@@ -234,22 +234,14 @@ export function DashboardPageClient({
         signal: ctrl.signal,
       }
       
-      // Deudores: llamamos directamente al endpoint /api/accounting/debts-sales
-      // (mismo que la página Contabilidad → Deudores) y sumamos totalDebt en
-      // cliente. Así garantizamos que el KPI coincida siempre con la tabla
-      // que el user ya usa. /api/analytics/pending-balances queda solo para
-      // accountsPayable (deuda a operadores).
+      // Deudores: KPI sin filtro de fecha — muestra TODA la deuda pendiente
+      // de clientes sin importar cuándo se cargó la operación. El usuario
+      // espera ver el total de lo que le deben hoy, no solo de las ops del
+      // período seleccionado. Sí respeta filtros de agencia y vendedor.
       const debtsSalesSearchParams = new URLSearchParams()
-      debtsSalesSearchParams.set("dateFrom", filters.dateFrom)
-      debtsSalesSearchParams.set("dateTo", filters.dateTo)
       if (filters.sellerId && filters.sellerId !== "ALL") {
         debtsSalesSearchParams.set("sellerId", filters.sellerId)
       }
-      // Bug 2026-05-06: el KPI Deudores ignoraba el filtro de agencia. En
-      // tenants multi-agencia (Lozada = Rosario + Madero) el filtro funcionaba
-      // para Ventas/Margen/Cashflow/Operadores PERO Deudores siempre sumaba
-      // todas las agencias. Asimétrico con `operatorsDebtParams` que sí lo
-      // pasa. Multi-tenant correcto = filtro de agencia se respeta SIEMPRE.
       if (filters.agencyId && filters.agencyId !== "ALL") {
         debtsSalesSearchParams.set("agencyId", filters.agencyId)
       }
@@ -549,7 +541,7 @@ export function DashboardPageClient({
                   </TooltipTrigger>
                   <TooltipContent className="max-w-xs">
                     <p className="text-xs font-medium mb-1">Lo que tus clientes te deben.</p>
-                    <p className="text-xs">Suma de ventas pendientes de cobrar (monto vendido − pagos ya recibidos), convertido a USD con tipo de cambio histórico de cada operación. Se respeta el rango de fechas y el resto de los filtros del dashboard.</p>
+                    <p className="text-xs">Suma de ventas pendientes de cobrar (monto vendido − pagos ya recibidos), convertido a USD con tipo de cambio histórico de cada operación. Muestra la deuda total vigente sin filtro de fechas.</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -559,7 +551,7 @@ export function DashboardPageClient({
           {loading ? (
             <Skeleton className="h-3 w-20 mt-1" />
           ) : (
-            <p className="text-xs text-muted-foreground mt-1">Por ventas</p>
+            <p className="text-xs text-muted-foreground mt-1">Deuda vigente total</p>
           )}
         </Card>
         )}
