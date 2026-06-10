@@ -682,8 +682,6 @@ export function OperationPaymentsSection({
 
   const customerPayments = payments.filter(p => p.payer_type === "CUSTOMER" && p.status === "PAID")
   const operatorExpensePayments = payments.filter(p => p.payer_type === "OPERATOR" && p.status === "PAID")
-  // Pagos a operador PAID pero sin operator_payment_id → no actualizaron operator_payments.paid_amount
-  const unlinkedOperatorPayments = operatorExpensePayments.filter(p => !p.operator_payment_id)
   const baseOperatorPayments = getOperationBaseOperatorPayments({
     operatorPayments,
     operationServices,
@@ -728,6 +726,11 @@ export function OperationPaymentsSection({
     return sum + Math.max(0, amount - paidAmount)
   }, 0)
   const hasRegisteredBaseOperatorDebt = baseOperatorPayments.length > 0
+  // Si lo pagado según payments > lo registrado en operator_payments.paid_amount,
+  // hay pagos que no se aplicaron al settlement y la deuda mostrada es incorrecta.
+  const hasOperatorSettlementDrift =
+    hasRegisteredBaseOperatorDebt &&
+    totalPaidToOperatorByPayments > totalRegisteredOperatorPaid + 0.01
 
   const customerDebt = saleAmount - totalPaidByCustomer
   const totalPaidToOperator = hasRegisteredBaseOperatorDebt
@@ -1015,15 +1018,15 @@ export function OperationPaymentsSection({
                 Limpiar auto-generados
               </Button>
             )}
-            {/* Botón Reconciliar - visible para ADMIN/SUPER_ADMIN cuando hay pagos sin vincular */}
-            {(userRole === "ADMIN" || userRole === "SUPER_ADMIN") && unlinkedOperatorPayments.length > 0 && (
+            {/* Botón Reconciliar - visible para ADMIN/SUPER_ADMIN cuando hay drift entre payments y operator_payments */}
+            {(userRole === "ADMIN" || userRole === "SUPER_ADMIN") && hasOperatorSettlementDrift && (
               <Button
                 onClick={handleRepairOperatorLink}
                 size="sm"
                 variant="outline"
                 className="text-amber-600 border-amber-300 hover:text-amber-700"
                 disabled={isRepairing}
-                title={`${unlinkedOperatorPayments.length} pago(s) al operador sin vincular a deuda`}
+                title="Hay pagos al operador que no actualizaron el saldo pendiente"
               >
                 {isRepairing ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
