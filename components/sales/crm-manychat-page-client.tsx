@@ -75,6 +75,8 @@ interface CRMManychatPageClientProps {
    *   quiere mirar solo leads nuevos / de un rango específico.
    */
   enableCreatedAtFilter?: boolean
+  /** Org ID del usuario — usado para filtrar la suscripción Realtime por tenant. */
+  orgId?: string
 }
 
 export function CRMManychatPageClient({
@@ -89,6 +91,7 @@ export function CRMManychatPageClient({
   enableRegionFilter = false,
   enableListStatusSync = false,
   enableCreatedAtFilter = false,
+  orgId,
 }: CRMManychatPageClientProps) {
   const [leads, setLeads] = useState<Lead[]>(initialLeads)
   const [newLeadDialogOpen, setNewLeadDialogOpen] = useState(false)
@@ -206,6 +209,9 @@ export function CRMManychatPageClient({
           event: '*',
           schema: 'public',
           table: 'leads',
+          // Filtrar por org en el servidor — evita que Supabase decodifique
+          // WAL de todos los tenants para cada usuario conectado.
+          ...(orgId ? { filter: `org_id=eq.${orgId}` } : {}),
         },
         (payload: RealtimePostgresChangesPayload<Lead>) => {
           // Debounce: acumular eventos y procesar cada 200ms (más rápido que antes)

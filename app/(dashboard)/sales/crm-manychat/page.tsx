@@ -150,6 +150,7 @@ export default async function CRMManychatPage() {
       defaultSellerId={user.role === "SELLER" ? user.id : undefined}
       currentUserId={user.id}
       currentUserRole={user.role}
+      orgId={(user as any).org_id || undefined}
       enableRegionFilter={featureFlags["features.region_filter_in_kanban"]}
       enableListStatusSync={featureFlags["features.list_name_to_status_sync"]}
       enableCreatedAtFilter={featureFlags["features.created_at_filter_in_kanban"]}

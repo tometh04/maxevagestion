@@ -1,7 +1,6 @@
 "use client"
 
-import { useEffect, useState, useRef } from "react"
-import { createBrowserClient } from "@supabase/ssr"
+import { useEffect, useState, useCallback } from "react"
 import { Bell, ChevronRight, Check, Calendar, DollarSign, FileText, AlertTriangle, CheckSquare, BellRing, BellOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -49,16 +48,24 @@ export function NotificationBell() {
   const [pushEnabled, setPushEnabled] = useState(false)
   const [pushSupported, setPushSupported] = useState(false)
   const [pushLoading, setPushLoading] = useState(false)
-  const supabaseRef = useRef<ReturnType<typeof createBrowserClient> | null>(null)
+
+  const fetchAlerts = useCallback(async () => {
+    try {
+      const response = await fetch("/api/alerts?status=PENDING&limit=10")
+      const data = await response.json()
+      setAlerts(data.alerts || [])
+      setUnreadCount(data.alerts?.length || 0)
+    } catch (error) {
+      console.error("Error fetching alerts:", error)
+    }
+  }, [])
 
   useEffect(() => {
-    // Initialize Supabase client
-    supabaseRef.current = createBrowserClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    )
-
     fetchAlerts()
+
+    // Polling cada 60s — las alertas las genera un cron, no requieren realtime.
+    // Reemplaza la suscripción Realtime que consumía WAL en todos los tenants.
+    const interval = setInterval(fetchAlerts, 60_000)
 
     // Check push support & status
     const checkPush = async () => {
@@ -70,65 +77,9 @@ export function NotificationBell() {
       }
     }
     checkPush()
-  }, [])
 
-  // Supabase Realtime subscription
-  useEffect(() => {
-    const supabase = supabaseRef.current
-    if (!supabase) return
-
-    const channel = supabase
-      .channel('alerts-realtime')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'alerts',
-        },
-        (payload: any) => {
-          const newAlert = payload.new as Alert
-          if (newAlert.status === 'PENDING') {
-            setAlerts((prev) => [newAlert, ...prev.slice(0, 9)])
-            setUnreadCount((prev) => prev + 1)
-            toast.info(`🔔 Nueva alerta: ${newAlert.description.slice(0, 50)}...`, {
-              duration: 4000,
-            })
-          }
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'alerts',
-        },
-        (payload: any) => {
-          const updatedAlert = payload.new as Alert
-          if (updatedAlert.status === 'DONE') {
-            setAlerts((prev) => prev.filter(a => a.id !== updatedAlert.id))
-            setUnreadCount((prev) => Math.max(0, prev - 1))
-          }
-        }
-      )
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [])
-
-  const fetchAlerts = async () => {
-    try {
-      const response = await fetch("/api/alerts?status=PENDING&limit=10")
-      const data = await response.json()
-      setAlerts(data.alerts || [])
-      setUnreadCount(data.alerts?.length || 0)
-    } catch (error) {
-      console.error("Error fetching alerts:", error)
-    }
-  }
+    return () => clearInterval(interval)
+  }, [fetchAlerts])
 
   const markAsDone = async (alertId: string, e: React.MouseEvent) => {
     e.preventDefault()
@@ -187,7 +138,7 @@ export function NotificationBell() {
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={(next) => { setOpen(next); if (next) fetchAlerts() }}>
       <PopoverTrigger asChild>
         <Button variant="ghost" size="icon" className="relative">
           <Bell className="h-5 w-5" />
