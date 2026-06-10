@@ -9,6 +9,90 @@ import {
 const EPSILON = 0.01
 
 /**
+ * GET /api/payments/repair-operator-link
+ *
+ * Escanea toda la org del user en busca de operaciones donde los pagos PAID
+ * al operador no se reflejan en operator_payments.paid_amount (settlement drift).
+ * Solo lectura — no modifica nada.
+ */
+export async function GET() {
+  try {
+    const { user } = await getCurrentUser()
+    if (!["ADMIN", "SUPER_ADMIN"].includes(user.role as string)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
+    const supabase = await createServerClient()
+    const orgId = (user as any).org_id
+
+    // 1. Pagos PAID a operador sin operator_payment_id
+    const { data: unlinked } = await (supabase.from("payments") as any)
+      .select("id, operation_id, operator_id, amount, currency, date_paid, operations:operation_id(file_code, destination)")
+      .eq("payer_type", "OPERATOR")
+      .eq("direction", "EXPENSE")
+      .eq("status", "PAID")
+      .eq("org_id", orgId)
+      .is("operator_payment_id", null)
+
+    // 2. operator_payments donde la suma de payments PAID < lo que debería ser
+    const { data: opPayments } = await (supabase.from("operator_payments") as any)
+      .select("id, operation_id, operator_id, amount, paid_amount, currency, operators:operator_id(name), operations:operation_id(file_code, destination)")
+      .eq("org_id", orgId)
+      .neq("status", "PAID")
+
+    const drifted: any[] = []
+
+    for (const op of opPayments || []) {
+      const { data: linked } = await (supabase.from("payments") as any)
+        .select("amount")
+        .eq("operator_payment_id", op.id)
+        .eq("status", "PAID")
+        .eq("org_id", orgId)
+
+      const actualPaid = (linked || []).reduce((s: number, p: any) => s + parseFloat(p.amount || 0), 0)
+      const recordedPaid = parseFloat(op.paid_amount || 0)
+      const delta = actualPaid - recordedPaid
+
+      if (delta > EPSILON) {
+        drifted.push({
+          operator_payment_id: op.id,
+          operation_id: op.operation_id,
+          file_code: op.operations?.file_code,
+          destination: op.operations?.destination,
+          operator_name: op.operators?.name,
+          currency: op.currency,
+          amount: parseFloat(op.amount),
+          recorded_paid: recordedPaid,
+          actual_paid: Math.round(actualPaid * 100) / 100,
+          drift: Math.round(delta * 100) / 100,
+        })
+      }
+    }
+
+    return NextResponse.json({
+      unlinked_payments: (unlinked || []).map((p: any) => ({
+        payment_id: p.id,
+        operation_id: p.operation_id,
+        file_code: p.operations?.file_code,
+        destination: p.operations?.destination,
+        operator_id: p.operator_id,
+        amount: parseFloat(p.amount),
+        currency: p.currency,
+        date_paid: p.date_paid,
+      })),
+      drifted_settlements: drifted,
+      total_issues: (unlinked?.length || 0) + drifted.length,
+    })
+  } catch (err: any) {
+    console.error("[payments/repair-operator-link GET] Unexpected:", err)
+    return NextResponse.json({ error: err.message ?? "Error inesperado" }, { status: 500 })
+  }
+}
+
+/**
  * POST /api/payments/repair-operator-link
  *
  * Repara dos variantes de desincronización entre `payments` y `operator_payments`:
