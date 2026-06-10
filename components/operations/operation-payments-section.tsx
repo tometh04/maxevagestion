@@ -222,6 +222,7 @@ export function OperationPaymentsSection({
     message?: string
   }
   const [duplicateAlert, setDuplicateAlert] = useState<DuplicateInfo | null>(null)
+  const [isRepairing, setIsRepairing] = useState(false)
   const operatorNameById = new Map(operators.map((operator) => [operator.id, operator.name]))
   const customerSaleCurrency = normalizeSupportedCurrency(saleCurrency || currency)
 
@@ -336,6 +337,32 @@ export function OperationPaymentsSection({
       toast.error("Error al eliminar pagos pendientes")
     } finally {
       setIsDeleting(false)
+    }
+  }
+
+  const handleRepairOperatorLink = async () => {
+    setIsRepairing(true)
+    try {
+      const response = await fetch("/api/payments/repair-operator-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ operationId }),
+      })
+      const result = await response.json()
+      if (!response.ok) {
+        toast.error(result.error || "Error al reconciliar pagos")
+        return
+      }
+      if (result.fixed === 0) {
+        toast.info("No se encontraron pagos para reconciliar")
+      } else {
+        toast.success(`Se reconciliaron ${result.fixed} pago(s) al operador`)
+        router.refresh()
+      }
+    } catch {
+      toast.error("Error al reconciliar pagos al operador")
+    } finally {
+      setIsRepairing(false)
     }
   }
 
@@ -655,6 +682,8 @@ export function OperationPaymentsSection({
 
   const customerPayments = payments.filter(p => p.payer_type === "CUSTOMER" && p.status === "PAID")
   const operatorExpensePayments = payments.filter(p => p.payer_type === "OPERATOR" && p.status === "PAID")
+  // Pagos a operador PAID pero sin operator_payment_id → no actualizaron operator_payments.paid_amount
+  const unlinkedOperatorPayments = operatorExpensePayments.filter(p => !p.operator_payment_id)
   const baseOperatorPayments = getOperationBaseOperatorPayments({
     operatorPayments,
     operationServices,
@@ -984,6 +1013,24 @@ export function OperationPaymentsSection({
                   <Trash2 className="mr-2 h-4 w-4" />
                 )}
                 Limpiar auto-generados
+              </Button>
+            )}
+            {/* Botón Reconciliar - visible para ADMIN/SUPER_ADMIN cuando hay pagos sin vincular */}
+            {(userRole === "ADMIN" || userRole === "SUPER_ADMIN") && unlinkedOperatorPayments.length > 0 && (
+              <Button
+                onClick={handleRepairOperatorLink}
+                size="sm"
+                variant="outline"
+                className="text-amber-600 border-amber-300 hover:text-amber-700"
+                disabled={isRepairing}
+                title={`${unlinkedOperatorPayments.length} pago(s) al operador sin vincular a deuda`}
+              >
+                {isRepairing ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                )}
+                Reconciliar operador
               </Button>
             )}
             {/* Botón Registrar Cobro - visible para todos */}
