@@ -77,6 +77,7 @@ const typeLabels: Record<string, string> = {
   TRANSFER: "Transfer",
   MIXED: "Mixto",
   ASSISTANCE: "Asistencia al Viajero",
+  ACTIVITY: "Actividad",
 }
 
 const alertTypeLabels: Record<string, string> = {

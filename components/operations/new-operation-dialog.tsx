@@ -117,6 +117,7 @@ const operationTypeOptions = [
   { value: "TRANSFER", label: "Transfer" },
   { value: "MIXED", label: "Mixto" },
   { value: "ASSISTANCE", label: "Asistencia al Viajero" },
+  { value: "ACTIVITY", label: "Actividad" },
 ]
 
 // Estados de leads que NO son destinos

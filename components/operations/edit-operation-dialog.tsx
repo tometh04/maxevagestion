@@ -80,6 +80,7 @@ const operationTypeOptions = [
   { value: "TRANSFER", label: "Transfer" },
   { value: "MIXED", label: "Mixto" },
   { value: "ASSISTANCE", label: "Asistencia al Viajero" },
+  { value: "ACTIVITY", label: "Actividad" },
 ]
 
 const standardStatusOptions = [

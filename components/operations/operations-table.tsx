@@ -376,6 +376,7 @@ export function OperationsTable({
             TRANSFER: "Transfer",
             MIXED: "Mixto",
             ASSISTANCE: "Asistencia",
+            ACTIVITY: "Actividad",
           }
           const type = row.original.type
           if (!type) return <div className="text-xs">-</div>
