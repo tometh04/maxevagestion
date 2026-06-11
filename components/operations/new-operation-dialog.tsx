@@ -56,6 +56,7 @@ interface OperationSettings {
   default_status: string
   custom_statuses: Array<{ value: string; label: string; color: string }>
   custom_product_types?: Array<{ value: string; label: string }>
+  custom_operation_types?: Array<{ value: string; label: string }>
 }
 
 const operatorSchema = z.object({
