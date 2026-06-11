@@ -86,8 +86,38 @@ export async function GET(request: Request) {
       )
     }
 
+    // Para comisiones PENDING: filtrar solo las de operaciones que el cliente ya pagó en su totalidad.
+    // Las comisiones PAID se muestran siempre (ya se pagaron al vendedor, independientemente del estado).
+    let filteredRecords = commissionRecords || []
+    if (status === "PENDING") {
+      const opIds = Array.from(new Set(filteredRecords.map((cr: any) => cr.operation_id).filter(Boolean))) as string[]
+      if (opIds.length > 0) {
+        const { data: incomePayments } = await (supabase
+          .from("payments") as any)
+          .select("operation_id, amount")
+          .in("operation_id", opIds)
+          .eq("direction", "INCOME")
+          .eq("status", "PAID")
+          .eq("org_id", (user as any).org_id)
+
+        // Sumar pagos INCOME cobrados por operación
+        const paidByOp: Record<string, number> = {}
+        for (const p of incomePayments || []) {
+          paidByOp[p.operation_id] = (paidByOp[p.operation_id] || 0) + parseFloat(p.amount || 0)
+        }
+
+        // Solo incluir comisiones cuya operación está cobrada al 99%+ (tolerancia centavos)
+        filteredRecords = filteredRecords.filter((cr: any) => {
+          const saleTotal = parseFloat(cr.operations?.sale_amount_total || 0)
+          if (saleTotal <= 0) return true // Sin monto de venta, mostrar igual
+          const totalPaid = paidByOp[cr.operation_id] || 0
+          return totalPaid >= saleTotal * 0.95
+        })
+      }
+    }
+
     // Fetch seller names from users table (scopeado por org)
-    const sellerIds = Array.from(new Set((commissionRecords || []).map((cr: any) => cr.seller_id).filter(Boolean))) as string[]
+    const sellerIds = Array.from(new Set(filteredRecords.map((cr: any) => cr.seller_id).filter(Boolean))) as string[]
     let sellersMap: Record<string, { name: string; email: string }> = {}
     if (sellerIds.length > 0) {
       const { data: sellers } = await (supabase.from("users") as any)
@@ -100,7 +130,7 @@ export async function GET(request: Request) {
     }
 
     // Transformar commission_records a formato Commission
-    const commissions = (commissionRecords || []).map((cr: any) => {
+    const commissions = filteredRecords.map((cr: any) => {
       const seller = sellersMap[cr.seller_id]
       return {
         id: cr.id,
