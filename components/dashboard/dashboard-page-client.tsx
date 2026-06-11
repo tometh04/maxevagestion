@@ -13,6 +13,7 @@ import { UpcomingTripsCard } from "./upcoming-trips-card"
 import { TopSellersCard } from "./top-sellers-card"
 import { PendingTasksCard } from "./pending-tasks-card"
 import { BirthdaysTodayCard } from "./birthdays-today-card"
+import { PaymentsSemaphoreCard } from "./payments-semaphore-card"
 import { KpiCustomizer, type DashboardKpiId } from "./kpi-customizer"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -587,15 +588,24 @@ export function DashboardPageClient({
       {/* Cumpleaños del día */}
       <BirthdaysTodayCard />
 
-      {/* Tareas, Alertas, Próximos Viajes y Top Vendedores */}
+      {/* Tareas, Alertas, Próximos Viajes, Semáforo y Top Vendedores */}
       <div className="grid gap-3 grid-cols-1 lg:grid-cols-2 xl:grid-cols-4">
         <PendingTasksCard />
         <PendingAlertsCard agencyId={filters.agencyId} sellerId={filters.sellerId} />
         <UpcomingTripsCard agencyId={filters.agencyId} sellerId={filters.sellerId} />
-        {!isSeller && (
+        {!isSeller ? (
           <TopSellersCard agencyId={filters.agencyId} sellerId={filters.sellerId} dateFrom={filters.dateFrom} dateTo={filters.dateTo} />
+        ) : (
+          <PaymentsSemaphoreCard agencyId={filters.agencyId} />
         )}
       </div>
+
+      {/* Semáforo de pagos — solo para no-SELLER (que ya lo ven arriba en el 4to slot) */}
+      {!isSeller && (
+        <div className="grid gap-3 grid-cols-1 lg:grid-cols-3">
+          <PaymentsSemaphoreCard agencyId={filters.agencyId} />
+        </div>
+      )}
 
       {/* Charts */}
       <div className="grid gap-3 grid-cols-1 lg:grid-cols-2">

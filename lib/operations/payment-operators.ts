@@ -19,6 +19,8 @@ export interface OperationOperatorPaymentLike extends OperationOperatorRelationL
    */
   currency?: string | null
   status?: "PENDING" | "PAID" | "OVERDUE" | string | null
+  /** VIB-38: fecha acordada de pago al operador (editable por el usuario). */
+  due_date?: string | null
 }
 
 export interface OperationServicePaymentRelationLike extends OperationOperatorRelationLike {

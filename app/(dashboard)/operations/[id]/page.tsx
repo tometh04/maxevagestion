@@ -119,7 +119,7 @@ export default async function OperationDetailPage({
   // de cada deuda pendiente en su label (ej. "Tower — USD 6.760 pendiente").
   const { data: operatorPaymentsRaw } = await (supabase
     .from("operator_payments") as any)
-    .select("id, operator_id, amount, paid_amount, currency, status, operators:operator_id(id, name)")
+    .select("id, operator_id, amount, paid_amount, currency, status, due_date, operators:operator_id(id, name)")
     .eq("operation_id", id)
     .eq("org_id", userOrgId)
     .order("created_at", { ascending: true })

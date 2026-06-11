@@ -223,6 +223,11 @@ export function OperationPaymentsSection({
   }
   const [duplicateAlert, setDuplicateAlert] = useState<DuplicateInfo | null>(null)
   const [isRepairing, setIsRepairing] = useState(false)
+  // VIB-38: edición inline de due_date por operator_payment
+  const [editingDueDateId, setEditingDueDateId] = useState<string | null>(null)
+  const [savingDueDateId, setSavingDueDateId] = useState<string | null>(null)
+  // Optimistic: due_date override por id para reflejar el cambio antes de router.refresh()
+  const [dueDateOverrides, setDueDateOverrides] = useState<Record<string, string | null>>({})
   const operatorNameById = new Map(operators.map((operator) => [operator.id, operator.name]))
   const customerSaleCurrency = normalizeSupportedCurrency(saleCurrency || currency)
 
@@ -259,6 +264,7 @@ export function OperationPaymentsSection({
       pending: number
       amount: number
       currency: string
+      due_date: string | null
     }> = []
     for (const op of operatorPayments || []) {
       const amt = Number((op as any).amount || 0)
@@ -279,6 +285,7 @@ export function OperationPaymentsSection({
         pending,
         amount: amt,
         currency: (op as any).currency || "USD",
+        due_date: (op as any).due_date || null,
       })
     }
     return out.sort((a, b) => {
@@ -363,6 +370,30 @@ export function OperationPaymentsSection({
       toast.error("Error al reconciliar pagos al operador")
     } finally {
       setIsRepairing(false)
+    }
+  }
+
+  const handleSaveDueDate = async (operatorPaymentId: string, date: Date | undefined) => {
+    const dueDateStr = date ? date.toISOString().split("T")[0] : null
+    setSavingDueDateId(operatorPaymentId)
+    try {
+      const res = await fetch(`/api/accounting/operator-payments/${operatorPaymentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ due_date: dueDateStr }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        toast.error(err?.error || "Error al guardar la fecha")
+        return
+      }
+      setDueDateOverrides((prev) => ({ ...prev, [operatorPaymentId]: dueDateStr }))
+      setEditingDueDateId(null)
+      toast.success("Fecha de pago actualizada")
+    } catch {
+      toast.error("Error al guardar la fecha")
+    } finally {
+      setSavingDueDateId(null)
     }
   }
 
@@ -997,6 +1028,97 @@ export function OperationPaymentsSection({
           </div>
         </div>
       </div>
+
+      {/* VIB-38: Fechas de vencimiento editables por deuda al operador (todas las PENDING/OVERDUE) */}
+      {(() => {
+        const pendingOpPayments = (operatorPayments as any[]).filter(
+          (op) => op.status === "PENDING" || op.status === "OVERDUE"
+        )
+        if (pendingOpPayments.length === 0) return null
+        const todayMidnight = new Date(); todayMidnight.setHours(0, 0, 0, 0)
+        return (
+        <div className="vb-panel" style={{ padding: 0, overflow: "hidden" }}>
+          <div style={{ padding: "10px 16px 8px 16px", borderBottom: "1px solid var(--vb-border)" }}>
+            <div style={{ fontSize: 13, fontWeight: 600 }} className="flex items-center gap-1.5">
+              <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground" />
+              Fechas de Pago al Operador
+            </div>
+          </div>
+          <div style={{ padding: "8px 16px 12px 16px" }} className="space-y-2">
+            {pendingOpPayments.map((op: any) => {
+              const opId = op.id as string
+              const opName = op.operators?.name?.trim() || operatorNameById.get(op.operator_id) || "Operador"
+              const pending = Math.max(0, Number(op.amount || 0) - Number(op.paid_amount || 0))
+              const rawDue = opId in dueDateOverrides ? dueDateOverrides[opId] : (op.due_date as string | null)
+              const dueDate = rawDue ? new Date(rawDue + "T12:00:00") : undefined
+              const isOverdue = dueDate ? dueDate < todayMidnight : false
+              const isNear = dueDate && !isOverdue ? (dueDate.getTime() - todayMidnight.getTime()) / 86400000 <= 7 : false
+              const isPaid = pending <= 0.005
+              return (
+                <div key={opId} className="flex items-center justify-between gap-3 text-sm">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="truncate font-medium">{opName}</span>
+                    <span className="text-xs text-muted-foreground shrink-0">
+                      {(op.currency || "USD")} {pending.toLocaleString("es-AR", { minimumFractionDigits: 2 })} pendiente
+                    </span>
+                    {isPaid && <Badge className="bg-success text-[10px] h-4 px-1 shrink-0">Pagado</Badge>}
+                    {!isPaid && isOverdue && <Badge variant="destructive" className="text-[10px] h-4 px-1 shrink-0">Vencido</Badge>}
+                    {!isPaid && isNear && !isOverdue && <Badge className="bg-amber-500 text-[10px] h-4 px-1 shrink-0">Próximo</Badge>}
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className={`text-xs ${isOverdue && !isPaid ? "text-destructive font-medium" : "text-muted-foreground"}`}>
+                      {dueDate ? format(dueDate, "dd/MM/yyyy", { locale: es }) : "Sin fecha"}
+                    </span>
+                    {(userRole === "ADMIN" || userRole === "SUPER_ADMIN") && (
+                      <Popover
+                        open={editingDueDateId === opId}
+                        onOpenChange={(open) => setEditingDueDateId(open ? opId : null)}
+                      >
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                            disabled={savingDueDateId === opId}
+                            title="Editar fecha de pago"
+                          >
+                            {savingDueDateId === opId ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Pencil className="h-3 w-3" />
+                            )}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="end">
+                          <Calendar
+                            mode="single"
+                            selected={dueDate}
+                            onSelect={(date) => handleSaveDueDate(opId, date)}
+                            initialFocus
+                          />
+                          {dueDate && (
+                            <div className="p-2 border-t">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="w-full text-xs text-muted-foreground"
+                                onClick={() => handleSaveDueDate(opId, undefined)}
+                              >
+                                Quitar fecha
+                              </Button>
+                            </div>
+                          )}
+                        </PopoverContent>
+                      </Popover>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+        )
+      })()}
 
       <div className="vb-panel" style={{ padding: 0, overflow: "hidden" }}>
         <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--vb-border)" }} className="flex flex-row items-center justify-between">
