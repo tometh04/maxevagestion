@@ -20,6 +20,11 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "No tiene permisos para acceder a operadores" }, { status: 403 })
     }
 
+    const { searchParams } = new URL(request.url)
+    // selector=true: usado por formularios de operación — devuelve todos los operadores del org
+    // sin el filtro restrictivo de SELLER (que solo muestra ops ya vinculadas).
+    const isSelector = searchParams.get("selector") === "true"
+
     // Get all operators with their operations and payments
     let query = supabase
       .from("operators")
@@ -50,8 +55,10 @@ export async function GET(request: Request) {
       query = query.eq("org_id", user.org_id)
     }
 
-    // SELLERs adicionalmente ven solo operators vinculados a operaciones de sus agencias
-    if (user.role === "SELLER") {
+    // SELLERs adicionalmente ven solo operators vinculados a operaciones de sus agencias.
+    // Excepción: cuando se usa como selector en formularios de operación (?selector=true)
+    // se muestran todos los operadores del org para no bloquear la creación/edición.
+    if (user.role === "SELLER" && !isSelector) {
       const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as UserRole)
       if (agencyIds.length === 0) {
         return NextResponse.json({ operators: [] })
