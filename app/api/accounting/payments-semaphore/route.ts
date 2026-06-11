@@ -71,18 +71,12 @@ export async function GET(request: Request) {
     const { data: customerPayments } = await customerQuery
 
     // ── Pagos pendientes a operadores (operator_payments) ───────────────────
-    let operatorQuery = (supabase.from("operator_payments") as any)
-      .select("id, amount, paid_amount, currency, due_date, status, agency_id")
+    // operator_payments no tiene agency_id propio — la agencia viene de la
+    // operación relacionada. Filtramos por org_id en SQL y por agency en JS.
+    const { data: operatorPayments } = await (supabase.from("operator_payments") as any)
+      .select("id, amount, paid_amount, currency, due_date, status, operations!operation_id(agency_id)")
       .eq("org_id", orgId)
       .in("status", ["PENDING", "OVERDUE"])
-
-    if (agencyIdFilter && agencyIdFilter !== "ALL") {
-      operatorQuery = operatorQuery.eq("agency_id", agencyIdFilter)
-    } else {
-      operatorQuery = operatorQuery.in("agency_id", agencyIds)
-    }
-
-    const { data: operatorPayments } = await operatorQuery
 
     // ── Clasificación por urgencia ───────────────────────────────────────────
     type Bucket = { count: number; totalUsd: number }
@@ -111,6 +105,14 @@ export async function GET(request: Request) {
 
     const operatorResult = empty()
     for (const p of operatorPayments || []) {
+      // Filtrar por agencia en JS (operator_payments no tiene agency_id directo)
+      const opAgencyId = (p.operations as any)?.agency_id as string | null
+      if (agencyIdFilter && agencyIdFilter !== "ALL") {
+        if (opAgencyId !== agencyIdFilter) continue
+      } else if (agencyIds.length > 0 && opAgencyId && !agencyIds.includes(opAgencyId)) {
+        continue
+      }
+
       const pending = Math.max(0, Number(p.amount || 0) - Number(p.paid_amount || 0))
       if (pending < 0.01) continue // ignorar deudas ya cubiertas
       const amtUsd = p.currency === "USD" ? pending : 0
