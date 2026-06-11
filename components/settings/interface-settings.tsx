@@ -104,6 +104,7 @@ async function loadAllSettings(): Promise<Record<string, string>> {
     "legajo",
     "instagram",
     "pdf_terms_text",
+    "pdf_terms_receipt_text",
     "policy_payment_terms_days",
     "policy_deposit_retention_percent",
     "policy_refund_window_days",
@@ -185,6 +186,7 @@ export function InterfaceSettings() {
     instagram: "",
   })
   const [pdfTermsText, setPdfTermsText] = useState("")
+  const [pdfTermsReceiptText, setPdfTermsReceiptText] = useState("")
   const [savingTerms, setSavingTerms] = useState(false)
   const [policies, setPolicies] = useState({
     payment_terms_days: "",
@@ -217,6 +219,7 @@ export function InterfaceSettings() {
         instagram: settings.instagram || settings.company_instagram || "",
       }))
       if (settings.pdf_terms_text) setPdfTermsText(settings.pdf_terms_text)
+      if (settings.pdf_terms_receipt_text) setPdfTermsReceiptText(settings.pdf_terms_receipt_text)
       setPolicies({
         payment_terms_days: settings.policy_payment_terms_days || "",
         deposit_retention_percent: settings.policy_deposit_retention_percent || "",
@@ -246,14 +249,17 @@ export function InterfaceSettings() {
   const handleSavePdfTerms = useCallback(async () => {
     setSavingTerms(true)
     try {
-      await saveSetting("pdf_terms_text", pdfTermsText.trim())
-      toast.success("Términos guardados — aparecerán al pie de cotizaciones y recibos")
+      await Promise.all([
+        saveSetting("pdf_terms_text", pdfTermsText.trim()),
+        saveSetting("pdf_terms_receipt_text", pdfTermsReceiptText.trim()),
+      ])
+      toast.success("Leyendas guardadas")
     } catch {
       toast.error("No se pudo guardar")
     } finally {
       setSavingTerms(false)
     }
-  }, [pdfTermsText])
+  }, [pdfTermsText, pdfTermsReceiptText])
 
   // --- Color picker handler ---
   const handleColorSelect = useCallback(async (hsl: string, hex: string) => {
@@ -510,7 +516,7 @@ export function InterfaceSettings() {
       </div>
 
       {/* ----------------------------------------------------------------- */}
-      {/* Section: Términos y Condiciones en PDFs */}
+      {/* Section: Leyendas en PDFs */}
       {/* ----------------------------------------------------------------- */}
       <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
         <div className="flex items-center gap-2">
@@ -518,33 +524,47 @@ export function InterfaceSettings() {
             <FileText className="h-3.5 w-3.5 text-primary" />
           </div>
           <span className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">
-            Términos en PDFs
+            Leyendas en PDFs
           </span>
         </div>
 
         <p className="text-xs text-muted-foreground">
-          Texto que aparece al pie de las cotizaciones y recibos. Usalo para políticas de
-          cancelación, términos de pago, o cualquier mensaje fijo que quieras incluir en los
-          documentos que mandás a tus clientes. Si está vacío, los PDFs no muestran nada.
+          Texto que aparece al pie de los documentos PDF. Podés tener una leyenda distinta para
+          cotizaciones y para recibos de pago. Si un campo está vacío, ese tipo de documento no
+          muestra leyenda.
         </p>
 
         <div className="space-y-2">
-          <Label htmlFor="pdf_terms_text" className="text-xs">
-            Texto de términos y condiciones
+          <Label htmlFor="pdf_terms_text" className="text-xs font-medium">
+            Leyenda para cotizaciones / presupuestos
           </Label>
           <Textarea
             id="pdf_terms_text"
             value={pdfTermsText}
             onChange={(e) => setPdfTermsText(e.target.value)}
             placeholder={`Ej: "Esta cotización tiene validez por 72 hs. Las reservas se confirman con el 30% de seña. Cancelaciones: consultar política vigente."`}
-            rows={5}
+            rows={4}
+            className="text-sm"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="pdf_terms_receipt_text" className="text-xs font-medium">
+            Leyenda para recibos de pago
+          </Label>
+          <Textarea
+            id="pdf_terms_receipt_text"
+            value={pdfTermsReceiptText}
+            onChange={(e) => setPdfTermsReceiptText(e.target.value)}
+            placeholder={`Ej: "Lozada Viajes actúa únicamente como intermediario turístico, por cuenta y orden de los prestadores de servicios."`}
+            rows={4}
             className="text-sm"
           />
         </div>
 
         <div className="flex justify-end">
           <Button onClick={handleSavePdfTerms} disabled={savingTerms}>
-            {savingTerms ? "Guardando..." : "Guardar Términos"}
+            {savingTerms ? "Guardando..." : "Guardar Leyendas"}
           </Button>
         </div>
       </div>
