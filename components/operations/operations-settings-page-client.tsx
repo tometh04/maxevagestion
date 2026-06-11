@@ -47,6 +47,7 @@ interface OperationSettings {
   auto_create_iva_entry: boolean
   auto_create_operator_payment: boolean
   custom_product_types: Array<{ value: string; label: string }>
+  custom_operation_types: Array<{ value: string; label: string }>
 }
 
 
@@ -74,8 +75,10 @@ export function OperationsSettingsPageClient() {
     auto_create_iva_entry: true,
     auto_create_operator_payment: true,
     custom_product_types: [],
+    custom_operation_types: [],
   })
   const [newProductTypeLabel, setNewProductTypeLabel] = useState("")
+  const [newOperationTypeLabel, setNewOperationTypeLabel] = useState("")
 
   useEffect(() => {
     loadSettings()
@@ -199,6 +202,7 @@ export function OperationsSettingsPageClient() {
         <TabsList>
           <TabsTrigger value="alerts">Alertas</TabsTrigger>
           <TabsTrigger value="validations">Validaciones</TabsTrigger>
+          <TabsTrigger value="operation-types">Tipos de Operación</TabsTrigger>
           <TabsTrigger value="product-types">Tipos de Producto</TabsTrigger>
         </TabsList>
 
@@ -315,6 +319,75 @@ export function OperationsSettingsPageClient() {
                     require_customer: checked,
                   })}
                 />
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Tab: Tipos de Operación */}
+        <TabsContent value="operation-types" className="space-y-4">
+          <Card className="rounded-xl border border-border/40">
+            <CardHeader>
+              <CardTitle>Tipos de Operación Personalizados</CardTitle>
+              <CardDescription>
+                Agrega tipos propios que aparecerán en el selector &quot;Tipo&quot; al crear o editar una operación. Los tipos estándar (Vuelo, Hotel, Paquete, etc.) siempre están disponibles.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {(settings.custom_operation_types || []).length === 0 && (
+                <p className="text-sm text-muted-foreground">No hay tipos personalizados aún.</p>
+              )}
+              {(settings.custom_operation_types || []).map((ot, index) => (
+                <div key={ot.value} className="flex items-center justify-between rounded-lg border border-border/40 bg-muted/20 px-4 py-2">
+                  <span className="text-sm font-medium">{ot.label}</span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-destructive hover:text-destructive"
+                    onClick={() => {
+                      const updated = (settings.custom_operation_types || []).filter((_, i) => i !== index)
+                      setSettings({ ...settings, custom_operation_types: updated })
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+              <div className="flex gap-2 pt-2">
+                <Input
+                  placeholder="Ej: Actividad, Excursión, Seguro..."
+                  value={newOperationTypeLabel}
+                  onChange={(e) => setNewOperationTypeLabel(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault()
+                      const label = newOperationTypeLabel.trim()
+                      if (!label) return
+                      const value = label.toUpperCase().replace(/\s+/g, "_").replace(/[^A-Z0-9_]/g, "")
+                      const existing = settings.custom_operation_types || []
+                      if (existing.some((ot) => ot.value === value || ot.label.toLowerCase() === label.toLowerCase())) return
+                      setSettings({ ...settings, custom_operation_types: [...existing, { value, label }] })
+                      setNewOperationTypeLabel("")
+                    }
+                  }}
+                  className="flex-1"
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const label = newOperationTypeLabel.trim()
+                    if (!label) return
+                    const value = label.toUpperCase().replace(/\s+/g, "_").replace(/[^A-Z0-9_]/g, "")
+                    const existing = settings.custom_operation_types || []
+                    if (existing.some((ot) => ot.value === value || ot.label.toLowerCase() === label.toLowerCase())) return
+                    setSettings({ ...settings, custom_operation_types: [...existing, { value, label }] })
+                    setNewOperationTypeLabel("")
+                  }}
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Agregar
+                </Button>
               </div>
             </CardContent>
           </Card>

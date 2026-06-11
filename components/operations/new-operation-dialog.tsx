@@ -365,6 +365,14 @@ export function NewOperationDialog({
     return standard
   }, [settings])
 
+  // Tipos de operación disponibles (estándar + personalizados por agencia)
+  const availableOperationTypes = React.useMemo(() => {
+    if (settings?.custom_operation_types && settings.custom_operation_types.length > 0) {
+      return [...operationTypeOptions, ...settings.custom_operation_types]
+    }
+    return operationTypeOptions
+  }, [settings])
+
   // Tipos de producto disponibles (estándar + personalizados por agencia)
   const availableProductTypes = React.useMemo(() => {
     const standard = operationTypeOptions
@@ -1204,7 +1212,7 @@ export function NewOperationDialog({
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {operationTypeOptions.map((option) => (
+                          {availableOperationTypes.map((option) => (
                             <SelectItem key={option.value} value={option.value}>
                               {option.label}
                             </SelectItem>

@@ -183,6 +183,7 @@ export function EditOperationDialog({
   const [localOperators, setLocalOperators] = useState(operators)
   const [customStatuses, setCustomStatuses] = useState<Array<{ value: string; label: string; color?: string }>>([])
   const [customProductTypes, setCustomProductTypes] = useState<Array<{ value: string; label: string }>>([])
+  const [customOperationTypes, setCustomOperationTypes] = useState<Array<{ value: string; label: string }>>([])
 
   // Estado para múltiples operadores
   type OperatorEntry = { operator_id: string; cost: string | number; cost_currency: "ARS" | "USD"; product_type?: string; notes?: string; id?: string }
@@ -206,6 +207,9 @@ export function EditOperationDialog({
           if (data.custom_product_types) {
             setCustomProductTypes(data.custom_product_types)
           }
+          if (data.custom_operation_types) {
+            setCustomOperationTypes(data.custom_operation_types)
+          }
         }
       } catch (error) {
         console.error("Error loading settings:", error)
@@ -218,6 +222,14 @@ export function EditOperationDialog({
   const statusOptions = useMemo(() => {
     return [...standardStatusOptions, ...customStatuses.map(s => ({ value: s.value, label: s.label, color: s.color || "bg-muted-foreground" }))]
   }, [customStatuses])
+
+  // Tipos de operación disponibles (estándar + personalizados por agencia)
+  const availableOperationTypes = useMemo(() => {
+    if (customOperationTypes.length > 0) {
+      return [...operationTypeOptions, ...customOperationTypes]
+    }
+    return operationTypeOptions
+  }, [customOperationTypes])
 
   // Tipos de producto disponibles (estándar + personalizados por agencia)
   const availableProductTypes = useMemo(() => {
@@ -1015,7 +1027,7 @@ export function EditOperationDialog({
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {operationTypeOptions.map((option) => (
+                        {availableOperationTypes.map((option) => (
                           <SelectItem key={option.value} value={option.value}>
                             {option.label}
                           </SelectItem>
