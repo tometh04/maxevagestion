@@ -646,6 +646,11 @@ export async function PATCH(
             operatorDataByOperator.set(od.operator_id, arr)
           }
 
+          // Trackear qué operator_payments existentes quedaron "vivos" (matcheados
+          // a un operador entrante). Los no-matcheados son fantasmas de operadores
+          // removidos en la edición y se limpian abajo.
+          const keptOperatorPaymentIds = new Set<string>()
+
           for (const operatorRows of Array.from(operatorDataByOperator.values())) {
             const existingForOperator = existingOPsByOperator.get(operatorRows[0].operator_id) || []
 
@@ -676,6 +681,9 @@ export async function PATCH(
                 )
                 continue
               }
+
+              // opPay existe y matchea un operador entrante → conservarlo.
+              keptOperatorPaymentIds.add(opPay.id)
 
               // Sincronizar amount al nuevo costo. Reglas:
               // - status=PAID (totalmente liquidado): no tocar. Drift histórico
@@ -727,6 +735,48 @@ export async function PATCH(
               }
             }
           }
+
+          // 🔴 Bug fix 2026-06-12 (VICO OP-200669DE / MITIKA): limpiar
+          // operator_payments fantasma. Cuando se edita una operación con
+          // pagos aplicados (rama "conservar") y se REMUEVE un operador, su
+          // operator_payment quedaba vivo e inflaba "Pendiente a Operador"
+          // (MITIKA USD 3529 fantasma que no se actualizaba al editar la liqui).
+          // Borramos las deudas no matcheadas a ningún operador entrante, solo si
+          // NO tienen pagos aplicados ni están linkeadas a un servicio. Las que
+          // tienen plata se conservan con warning (drift histórico legítimo).
+          const { data: svcLinkedRows, error: svcLinkedErr } = await (supabase.from("operation_services") as any)
+            .select("operator_payment_id")
+            .eq("operation_id", operationId)
+            .not("operator_payment_id", "is", null)
+
+          // Safety: si no pudimos confirmar qué operator_payments están linkeados
+          // a servicios, NO borramos nada (un set vacío por error podría eliminar
+          // una deuda de servicio legítima). Mejor dejar el fantasma que romper data.
+          if (svcLinkedErr) {
+            auditWarnings.push(
+              "No se pudo verificar operator_payments de servicios; se omitió la limpieza de fantasmas"
+            )
+          } else {
+          const serviceLinkedOpPaymentIds = new Set(
+            (svcLinkedRows || []).map((s: any) => s.operator_payment_id).filter(Boolean)
+          )
+
+          for (const opPay of allExistingOPs || []) {
+            if (keptOperatorPaymentIds.has((opPay as any).id)) continue
+            if (serviceLinkedOpPaymentIds.has((opPay as any).id)) continue
+            const paidAmount = Number((opPay as any).paid_amount || 0)
+            if ((opPay as any).status === "PAID" || paidAmount > 0) {
+              auditWarnings.push(
+                `operator_payment ${(opPay as any).id.slice(0, 8)} quedó sin operador en la edición pero conserva pagos (${paidAmount}) — revisar manualmente`
+              )
+              continue
+            }
+            await (supabase.from("operator_payments") as any)
+              .delete()
+              .eq("id", (opPay as any).id)
+              .eq("org_id", (user as any).org_id)
+          }
+          } // fin limpieza de fantasmas (svcLinkedErr === null)
         } else {
           await (supabase.from("operator_payments") as any)
             .delete()
