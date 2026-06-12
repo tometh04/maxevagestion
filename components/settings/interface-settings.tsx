@@ -299,34 +299,26 @@ export function InterfaceSettings() {
 
     setUploading(true)
     try {
-      // Upload to Supabase Storage via a simple approach:
-      // Create a FormData and use the existing upload pattern
+      // Upload server-side: el upload client-side directo a Storage fallaba
+      // siempre por RLS (policies de storage.objects ausentes en prod) y caía
+      // al fallback data URL, embebiendo el logo en organization_settings.
       try {
-        const ext = file.name.split(".").pop() || "png"
-        const fileName = `brand-logo-${Date.now()}.${ext}`
+        const formData = new FormData()
+        formData.append("file", file)
 
-        // Use supabase client-side upload
-        const { supabase } = await import("@/lib/supabase/client")
+        const res = await fetch("/api/settings/organization/logo", {
+          method: "POST",
+          body: formData,
+        })
+        const json = await res.json()
+        if (!res.ok || !json?.data?.url) {
+          throw new Error(json?.error || "Error al subir el logo")
+        }
 
-        const { data, error } = await supabase.storage
-          .from("documents")
-          .upload(`logos/${fileName}`, file, {
-            cacheControl: "3600",
-            upsert: true,
-          })
-
-        if (error) throw error
-
-        const { data: urlData } = supabase.storage
-          .from("documents")
-          .getPublicUrl(`logos/${fileName}`)
-
-        const publicUrl = urlData.publicUrl
-        setLogoUrl(publicUrl)
-        await saveSetting("brand_logo", publicUrl)
+        setLogoUrl(json.data.url)
         toast.success("Logo actualizado correctamente")
       } catch (storageError) {
-        // Fallback: convert to data URL and store in localStorage
+        // Fallback: convert to data URL and store in organization_settings
         console.warn("Storage upload failed, using data URL fallback:", storageError)
         const reader = new FileReader()
         reader.onload = async (e) => {

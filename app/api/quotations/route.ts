@@ -92,6 +92,9 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const { user } = await getCurrentUser()
+    if (!user.org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
     const supabase: any = await createServerClient()
     const body = await request.json()
 
@@ -155,6 +158,11 @@ export async function POST(request: Request) {
       .insert({
         lead_id: lead_id || null,
         agency_id,
+        // Cross-tenant fix: org_id explícito. El trigger auto_set_org_id_from_auth
+        // resuelve desde auth.uid() y deja NULL sin JWT (DISABLE_AUTH en dev):
+        // la fila queda invisible para generate_quotation_number (filtra por org)
+        // y el UNIQUE (org_id, quotation_number) no ataja duplicados con NULL.
+        org_id: user.org_id,
         seller_id: user.id,
         quotation_number: quotationNumber || `COT-${new Date().getFullYear()}-${Date.now()}`,
         destination,
@@ -197,6 +205,7 @@ export async function POST(request: Request) {
         quotationId: quotation.id,
         currency: currency || "USD",
         preparedOptions,
+        orgId: user.org_id,
       })
     } catch (error) {
       console.error("Error persisting quotation structure during POST:", {

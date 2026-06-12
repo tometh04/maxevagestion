@@ -58,6 +58,9 @@ export interface PersistQuotationOptionsArgs {
   quotationId: string
   currency: string
   preparedOptions: PreparedQuotationOption[]
+  // Cross-tenant fix: org_id explícito en los items, no confiar en el trigger
+  // auto_set_org_id_from_auth (sin JWT — DISABLE_AUTH, jobs — deja NULL)
+  orgId?: string | null
 }
 
 export interface PersistQuotationOptionsResult {
@@ -166,11 +169,13 @@ function buildQuotationItemsInsertPayload(
   quotationId: string,
   optionId: string,
   items: PreparedQuotationItem[],
-  currency: string
+  currency: string,
+  orgId?: string | null
 ) {
   return items.map((item, idx) => ({
     quotation_id: quotationId,
     option_id: optionId,
+    org_id: orgId ?? null,
     item_type: item.item_type || "OTHER",
     description: item.description || "",
     quantity: item.quantity || 1,
@@ -239,6 +244,7 @@ export async function insertQuotationOptionsOrThrow({
   quotationId,
   currency,
   preparedOptions,
+  orgId,
 }: PersistQuotationOptionsArgs): Promise<PersistQuotationOptionsResult> {
   const insertedOptionIds: string[] = []
 
@@ -281,7 +287,7 @@ export async function insertQuotationOptionsOrThrow({
     insertedOptionIds.push(option.id)
 
     if (Array.isArray(opt.items) && opt.items.length > 0) {
-      const itemsToInsert = buildQuotationItemsInsertPayload(quotationId, option.id, opt.items, currency)
+      const itemsToInsert = buildQuotationItemsInsertPayload(quotationId, option.id, opt.items, currency, orgId)
       let { error: itemsError } = await supabase
         .from("quotation_items")
         .insert(itemsToInsert)

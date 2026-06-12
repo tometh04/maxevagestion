@@ -272,6 +272,7 @@ export async function PATCH(
           quotationId: id,
           currency: updated.currency || "USD",
           preparedOptions,
+          orgId: existing.org_id ?? user.org_id ?? null,
         })
         insertedOptionIds = insertResult.optionIds
       } catch (error) {
