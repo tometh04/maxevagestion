@@ -1381,16 +1381,23 @@ export function OperationServicesSection({
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {services.map((s) => (
-                          <SelectItem key={s.id} value={s.id}>
-                            {SERVICE_LABELS[s.service_type]}
-                            {s.description ? ` — ${s.description}` : ""}
-                            {" "}
-                            <span className="text-muted-foreground text-xs">
-                              ({formatCurrency(s.sale_amount, s.sale_currency)})
-                            </span>
-                          </SelectItem>
-                        ))}
+                        {services.map((s) => {
+                          // El monto del selector refleja la parte: costo si es pago al
+                          // proveedor, venta si es cobro al cliente.
+                          const isOperatorPay = selectedPayerType === "OPERATOR"
+                          const displayAmount = isOperatorPay ? s.cost_amount : s.sale_amount
+                          const displayCurrency = isOperatorPay ? s.cost_currency : s.sale_currency
+                          return (
+                            <SelectItem key={s.id} value={s.id}>
+                              {SERVICE_LABELS[s.service_type]}
+                              {s.description ? ` — ${s.description}` : ""}
+                              {" "}
+                              <span className="text-muted-foreground text-xs">
+                                ({formatCurrency(displayAmount, displayCurrency)})
+                              </span>
+                            </SelectItem>
+                          )
+                        })}
                       </SelectContent>
                     </Select>
                     <FormMessage />
