@@ -15,7 +15,8 @@ import { logAudit, getClientIP } from "@/lib/audit"
 import { enforceUserRateLimit } from "@/lib/rate-limit"
 import { checkLimit } from "@/lib/billing/limits"
 import { getSellerPercentage } from "@/lib/commissions/calculate"
-import { calculateOperationBalances } from "@/lib/operations/operation-financials"
+import { calculateOperationBalances, roundMoney } from "@/lib/operations/operation-financials"
+import { getOrgFeatureFlag } from "@/lib/settings/org-features"
 
 export async function POST(request: Request) {
   try {
@@ -1308,6 +1309,40 @@ export async function GET(request: Request) {
       }
     }
     
+    // H1 (2026-06-12): fuente de verdad de la deuda al operador en el LISTADO.
+    // Con el flag per-org `features.operator_debt_from_operator_payments` ON,
+    // usamos operator_payments (igual que el detalle de la operación) en vez del
+    // legacy operator_cost − Σ(payments EXPENSE PAID). El legacy sub/sobre-reporta
+    // cuando operation_operators.cost difiere de operator_payments.amount (drift
+    // histórico legítimo con pagos parciales). Flag OFF → comportamiento idéntico
+    // al legacy (cero cambios para orgs sin migrar).
+    const useOperatorPaymentsSource = await getOrgFeatureFlag(
+      supabase,
+      (user as any).org_id,
+      "features.operator_debt_from_operator_payments"
+    )
+    const operatorDebtByOp: Record<string, { paid: number; pending: number }> = {}
+    if (useOperatorPaymentsSource && operationIds.length > 0) {
+      const { data: opPaysForList } = await supabase
+        .from("operator_payments")
+        .select("operation_id, amount, paid_amount, currency")
+        .eq("org_id", (user as any).org_id)
+        .in("operation_id", operationIds)
+      for (const opPay of (opPaysForList || []) as any[]) {
+        const opId = opPay.operation_id
+        const costCur = operationCurrencyMap[opId]?.operator_cost_currency || "USD"
+        // Mismo criterio que el resto del listado: sumar solo deudas en la
+        // moneda de costo de la operación (no mezclar monedas sin TC).
+        if ((opPay.currency || "USD") !== costCur) continue
+        const entry = operatorDebtByOp[opId] || { paid: 0, pending: 0 }
+        const amount = Number(opPay.amount) || 0
+        const paid = Number(opPay.paid_amount) || 0
+        entry.paid += paid
+        entry.pending += Math.max(0, amount - paid)
+        operatorDebtByOp[opId] = entry
+      }
+    }
+
     // Enriquecer operaciones con datos de pagos y cliente principal
     const enrichedOperations = (operations || []).map((op: any) => {
       const mainCustomer = op.operation_customers?.find(
@@ -1338,9 +1373,16 @@ export async function GET(request: Request) {
         paid_amount: paymentData.customer_paid, // Monto Cobrado
         scheduled_pending_amount: paymentData.customer_pending,
         pending_amount: balances.customerPending, // A cobrar
-        operator_paid_amount: paymentData.operator_paid, // Pagado (a operadores)
+        // H1: con flag ON y operator_payments presentes para esta op, usamos ese
+        // modelo (fuente de verdad). Si la op no tiene operator_payments, caemos
+        // al legacy — igual que el detalle de la operación.
+        operator_paid_amount: operatorDebtByOp[op.id]
+          ? roundMoney(operatorDebtByOp[op.id].paid)
+          : paymentData.operator_paid, // Pagado (a operadores)
         scheduled_operator_pending_amount: paymentData.operator_pending,
-        operator_pending_amount: balances.operatorPending, // A pagar (a operadores)
+        operator_pending_amount: operatorDebtByOp[op.id]
+          ? roundMoney(operatorDebtByOp[op.id].pending)
+          : balances.operatorPending, // A pagar (a operadores)
       }
     })
 
