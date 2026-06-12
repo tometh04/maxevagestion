@@ -35,6 +35,7 @@ import {
 import { toast } from "sonner"
 import { getQuotationOptionPricing } from "@/lib/quotations/presentation"
 import { getPublicQuotationPdfPath } from "@/lib/quotations/public-links"
+import { tryDownloadQuotationHtmlPDFById } from "@/lib/pdf/quotation-pdf-html"
 import { QuotationPdfPriceDialog } from "@/components/sales/quotation-pdf-price-dialog"
 import { LeadEmiliaChat } from "@/components/sales/lead-emilia-chat"
 
@@ -1182,11 +1183,18 @@ export function LeadDetailDialog({
       <QuotationPdfPriceDialog
         quotationId={pdfPriceQuotation?.id ?? null}
         onClose={() => setPdfPriceQuotation(null)}
-        onGenerate={() => {
-          if (pdfPriceQuotation) {
-            window.open(getPublicQuotationPdfPath(pdfPriceQuotation.public_token), "_blank", "noopener,noreferrer")
-            loadQuotations() // refrescar totales mostrados en la lista
+        onGenerate={async () => {
+          if (!pdfPriceQuotation) return
+          loadQuotations() // refrescar totales mostrados en la lista
+          // Vuelos/hoteles usan el diseño HTML nuevo con logo de la org;
+          // el resto mantiene la vista print pública
+          try {
+            const handled = await tryDownloadQuotationHtmlPDFById(pdfPriceQuotation.id)
+            if (handled) return
+          } catch (err) {
+            console.error("Error generando PDF HTML, fallback a vista print:", err)
           }
+          window.open(getPublicQuotationPdfPath(pdfPriceQuotation.public_token), "_blank", "noopener,noreferrer")
         }}
       />
 

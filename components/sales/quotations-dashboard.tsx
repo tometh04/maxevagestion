@@ -21,6 +21,11 @@ import {
 } from "lucide-react"
 import { downloadQuotationPDF } from "@/lib/pdf/quotation-pdf"
 import {
+  downloadQuotationHtmlPDF,
+  fetchOrganizationBrandingSettings,
+  isHtmlQuotePdfEligible,
+} from "@/lib/pdf/quotation-pdf-html"
+import {
   formatQuotationCurrency,
   getQuotationOptionPricing,
   normalizeQuotationForPresentation,
@@ -178,6 +183,22 @@ export function QuotationsDashboard({ sellers, agencies, currentUserRole, curren
   const handleDownloadPDF = async (quotation: any) => {
     setDownloadingId(quotation.id)
     try {
+      // Fetch full quotation data para decidir el template
+      const res = await fetch(`/api/quotations/${quotation.id}`)
+      if (!res.ok) throw new Error("Error fetching quotation")
+      const json = await res.json()
+      const q = json.data
+
+      const pdfData = normalizeQuotationForPresentation(q)
+
+      // Cotizaciones de vuelos/hoteles usan el diseño HTML nuevo con el
+      // logo y branding de la organización loggeada
+      if (isHtmlQuotePdfEligible(pdfData)) {
+        const settings = await fetchOrganizationBrandingSettings()
+        await downloadQuotationHtmlPDF(pdfData, settings)
+        return
+      }
+
       if (quotation.public_token) {
         const pdfPath = getPublicQuotationPdfPath(quotation.public_token)
         const openedWindow = window.open(pdfPath, "_blank", "noopener,noreferrer")
@@ -187,19 +208,10 @@ export function QuotationsDashboard({ sellers, agencies, currentUserRole, curren
         return
       }
 
-      // Fetch full quotation data for PDF
-      const res = await fetch(`/api/quotations/${quotation.id}`)
-      if (!res.ok) throw new Error("Error fetching quotation")
-      const json = await res.json()
-      const q = json.data
-
-      // Fetch branding
-      const brandRes = await fetch("/api/public/branding")
-      const brandJson = brandRes.ok ? await brandRes.json() : { data: {} }
-
-      const pdfData = normalizeQuotationForPresentation(q)
-
-      await downloadQuotationPDF(pdfData, brandJson.data || {})
+      // Branding desde organization_settings (autenticado). Antes se usaba
+      // /api/public/branding sin token, que devuelve {} — PDF sin branding.
+      const settings = await fetchOrganizationBrandingSettings()
+      await downloadQuotationPDF(pdfData, settings)
     } catch (err) {
       console.error("Error downloading PDF:", err)
       toast.error("Error al descargar PDF")

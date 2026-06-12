@@ -12,6 +12,7 @@ import { FlightResultCard } from "@/components/emilia/flight-result-card"
 import { HotelResultCard } from "@/components/emilia/hotel-result-card"
 import { buildQuotationPayload, type EmiliaFlight, type EurovipsHotel } from "@/lib/emilia/quotation-mapper"
 import { getPublicQuotationPdfPath } from "@/lib/quotations/public-links"
+import { tryDownloadQuotationHtmlPDFById } from "@/lib/pdf/quotation-pdf-html"
 import { QuotationPdfPriceDialog } from "@/components/sales/quotation-pdf-price-dialog"
 
 const MAX_HOTELS = 4
@@ -770,10 +771,17 @@ export function LeadEmiliaChat({ lead, onBack, onQuotationCreated, initialConver
       <QuotationPdfPriceDialog
         quotationId={pdfPriceQuotation?.id ?? null}
         onClose={() => setPdfPriceQuotation(null)}
-        onGenerate={() => {
-          if (pdfPriceQuotation) {
-            window.open(getPublicQuotationPdfPath(pdfPriceQuotation.public_token), "_blank", "noopener,noreferrer")
+        onGenerate={async () => {
+          if (!pdfPriceQuotation) return
+          // Vuelos/hoteles usan el diseño HTML nuevo con logo de la org;
+          // el resto mantiene la vista print pública
+          try {
+            const handled = await tryDownloadQuotationHtmlPDFById(pdfPriceQuotation.id)
+            if (handled) return
+          } catch (err) {
+            console.error("Error generando PDF HTML, fallback a vista print:", err)
           }
+          window.open(getPublicQuotationPdfPath(pdfPriceQuotation.public_token), "_blank", "noopener,noreferrer")
         }}
       />
 
