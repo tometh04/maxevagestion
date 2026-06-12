@@ -228,11 +228,24 @@ export function OperationDetailClient({
     }
   }
 
-  // Separar pagos de la operación base de pagos de servicios adicionales
+  // Separar pagos de la operación base de pagos de servicios adicionales.
+  // Un pago cuenta como "de servicio" si está linkeado por operation_service_id
+  // O si saldó el operator_payment de un servicio (operator_payment_id matchea
+  // el de un operation_service). Esto último cubre los pagos a deuda de servicio
+  // hechos desde el flujo de operador/masivo, que no setean operation_service_id
+  // y de otro modo no aparecerían en la pestaña de Servicios.
   const operationCurrency = operation.sale_currency || operation.currency || "USD"
   const operationCostCurrency = operation.operator_cost_currency || operationCurrency
-  const operationBasePayments = (payments || []).filter((p: any) => !p.operation_service_id)
-  const servicePayments = (payments || []).filter((p: any) => p.operation_service_id)
+  const serviceOperatorPaymentIds = new Set(
+    (operationServices || [])
+      .map((s: any) => s.operator_payment_id)
+      .filter(Boolean)
+  )
+  const isServicePayment = (p: any) =>
+    !!p.operation_service_id ||
+    (!!p.operator_payment_id && serviceOperatorPaymentIds.has(p.operator_payment_id))
+  const operationBasePayments = (payments || []).filter((p: any) => !isServicePayment(p))
+  const servicePayments = (payments || []).filter((p: any) => isServicePayment(p))
   const payableOperators = useMemo(
     () =>
       buildOpenOperationBasePayableOperators({
