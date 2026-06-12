@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { createOperatorPayment } from "@/lib/accounting/operator-payments"
 
 export const dynamic = "force-dynamic"
 
@@ -208,13 +209,43 @@ export async function POST(
       if (item.flight_route) servicePayload.flight_route = item.flight_route
       if (item.flight_class) servicePayload.flight_class = item.flight_class
 
-      const { error: serviceError } = await supabase
+      const { data: createdService, error: serviceError } = await supabase
         .from("operation_services")
         .insert(servicePayload)
+        .select("id")
+        .single()
 
-      if (serviceError) {
+      if (serviceError || !createdService) {
         console.error("Error creating service from quotation item:", serviceError)
         // No falla toda la operación por un servicio
+        continue
+      }
+
+      // Generar la deuda al proveedor en operator_payments (fuente de verdad,
+      // ver REGLA DE ORO en CLAUDE.md). Sin esto el servicio queda con costo
+      // pero sin deuda registrada, y el pago al proveedor falla luego con
+      // "No hay deuda pendiente para el proveedor vinculado a este servicio".
+      if (itemCostAmount > 0 && servicePayload.operator_id) {
+        try {
+          const opPayment = await createOperatorPayment(
+            supabase,
+            servicePayload.operator_id,
+            itemCostAmount,
+            (servicePayload.cost_currency as "ARS" | "USD") || "USD",
+            quotation.departure_date || new Date().toISOString().split("T")[0],
+            operation.id,
+            `Servicio cotización: ${servicePayload.description || serviceType}`,
+            (user as any).org_id || (operation as any).org_id || null
+          )
+          if (opPayment?.id) {
+            await supabase
+              .from("operation_services")
+              .update({ operator_payment_id: opPayment.id })
+              .eq("id", createdService.id)
+          }
+        } catch (opPayError) {
+          console.error("Error creating operator_payment from quotation item:", opPayError)
+        }
       }
     }
 
