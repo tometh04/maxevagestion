@@ -5,6 +5,7 @@ import { updateSaleIVA, updatePurchaseIVA, deleteSaleIVA, deletePurchaseIVA, cre
 import { invalidateBalanceCache } from "@/lib/accounting/ledger"
 import { revalidateTag, CACHE_TAGS } from "@/lib/cache"
 import { createOperatorPayment, calculateDueDate } from "@/lib/accounting/operator-payments"
+import { getOpenOperatorPaymentStatus } from "@/lib/accounting/operator-payment-settlement"
 import { logAudit, getClientIP } from "@/lib/audit"
 import { enforceUserRateLimit } from "@/lib/rate-limit"
 import { getOperationVisibleDocuments } from "@/lib/documents/operation-documents"
@@ -707,11 +708,37 @@ export async function PATCH(
               const currencyChangedLocal = (opPay.currency || "") !== operatorData.cost_currency
 
               if (isFullyPaid) {
-                if (amountChanged) {
-                  auditWarnings.push(
-                    `operator_payment ${opPay.id.slice(0, 8)} conserva amount ${currentAmount} (status=PAID)`
-                  )
+                // Costo BAJÓ o quedó igual sobre una deuda ya liquidada: no tocar.
+                // Drift histórico legítimo — modificar amount post-cierre confunde reportes.
+                if (newCost <= currentAmount) {
+                  if (amountChanged) {
+                    auditWarnings.push(
+                      `operator_payment ${opPay.id.slice(0, 8)} conserva amount ${currentAmount} (status=PAID, costo no aumentó)`
+                    )
+                  }
+                  continue
                 }
+
+                // 🔴 Bug fix 2026-06-12 (VICO OP-2EB7BEF5): el costo SUBIÓ sobre una
+                // deuda ya pagada (el operador informó un costo mayor tras el pago).
+                // Antes se conservaba el amount viejo y la diferencia quedaba sin
+                // operator_payment pendiente → "No hay deudas pendientes" y no se
+                // podía cobrar el extra. Fix: reabrir la deuda subiendo amount al
+                // nuevo costo. paid_amount se preserva, así que el saldo pendiente
+                // pasa a ser (newCost - paid_amount), pagable normalmente.
+                await (supabase.from("operator_payments") as any)
+                  .update({
+                    amount: newCost,
+                    currency: operatorData.cost_currency,
+                    status: getOpenOperatorPaymentStatus(opPay.due_date),
+                    ledger_movement_id: null,
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq("id", opPay.id)
+
+                auditWarnings.push(
+                  `operator_payment ${opPay.id.slice(0, 8)} reabierto: amount ${currentAmount}→${newCost} (costo aumentó tras pago completo)`
+                )
                 continue
               }
 
