@@ -56,6 +56,7 @@ const recurringPaymentSchema = z.object({
   invoice_number: z.string().optional().nullable(),
   reference: z.string().optional().nullable(),
   category_id: z.string().optional().nullable(),
+  agency_id: z.string().optional().nullable(),
 })
 
 type RecurringPaymentFormValues = z.infer<typeof recurringPaymentSchema>
@@ -72,12 +73,16 @@ interface NewRecurringPaymentDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSuccess: () => void
+  agencies?: Array<{ id: string; name: string }>
+  defaultAgencyId?: string | null
 }
 
 export function NewRecurringPaymentDialog({
   open,
   onOpenChange,
   onSuccess,
+  agencies = [],
+  defaultAgencyId = null,
 }: NewRecurringPaymentDialogProps) {
   const [isLoading, setIsLoading] = useState(false)
   const { currency: defaultCurrency } = useDefaultCurrency()
@@ -102,6 +107,7 @@ export function NewRecurringPaymentDialog({
       invoice_number: null,
       reference: null,
       category_id: "none",
+      agency_id: null,
     },
   })
 
@@ -138,12 +144,21 @@ export function NewRecurringPaymentDialog({
     if (open) {
       form.reset()
       form.setValue("currency", defaultCurrency)
+      // Precargar oficina: la del filtro activo, o la única disponible.
+      const initialAgency =
+        (defaultAgencyId && agencies.some((a) => a.id === defaultAgencyId)
+          ? defaultAgencyId
+          : agencies.length === 1
+            ? agencies[0].id
+            : null)
+      form.setValue("agency_id", initialAgency)
       setHasEndDate(false)
       setProviderSearch("")
       fetchProviders()
       fetchCategories()
     }
-  }, [open, form, defaultCurrency])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, form, defaultCurrency, defaultAgencyId])
 
   // Filtrar proveedores basado en búsqueda
   const filteredProviders = useMemo(() => {
@@ -197,6 +212,12 @@ export function NewRecurringPaymentDialog({
   }
 
   const onSubmit = async (values: RecurringPaymentFormValues) => {
+    // Oficina obligatoria cuando hay agencias disponibles (evita gastos
+    // "globales" que aparecerían en todas las oficinas).
+    if (agencies.length > 0 && !values.agency_id) {
+      form.setError("agency_id", { message: "Selecciona una oficina" })
+      return
+    }
     setIsLoading(true)
     try {
       const response = await fetch("/api/recurring-payments", {
@@ -206,6 +227,7 @@ export function NewRecurringPaymentDialog({
           ...values,
           end_date: hasEndDate ? values.end_date : null,
           category_id: values.category_id === "none" ? null : values.category_id,
+          agency_id: values.agency_id || null,
         }),
       })
 
@@ -413,6 +435,36 @@ export function NewRecurringPaymentDialog({
                     </FormItem>
                   )}
                 />
+
+                {agencies.length > 0 && (
+                  <FormField
+                    control={form.control}
+                    name="agency_id"
+                    render={({ field }) => (
+                      <FormItem className="md:col-span-2">
+                        <FormLabel>Oficina *</FormLabel>
+                        <Select
+                          onValueChange={field.onChange}
+                          value={field.value || ""}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Seleccionar oficina" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {agencies.map((agency) => (
+                              <SelectItem key={agency.id} value={agency.id}>
+                                {agency.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
               </div>
             </div>
 
