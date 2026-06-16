@@ -69,6 +69,9 @@ interface Commission {
   status: "PENDING" | "PAID"
   date_calculated: string
   date_paid: string | null
+  // % cobrado de la operación y si la comisión ya es pagable (≥95% cobrado).
+  collected_pct?: number | null
+  collectible?: boolean
   operation?: {
     id: string
     short_code?: string
@@ -320,6 +323,11 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
     () => calcTotalsByCurrency(pendingCommissions),
     [pendingCommissions]
   )
+  // Solo lo cobrable ahora (operación cobrada ≥95%) — el resto se muestra pero no es pagable.
+  const pendingCollectibleTotals = useMemo(
+    () => calcTotalsByCurrency(pendingCommissions.filter((c) => c.collectible !== false)),
+    [pendingCommissions]
+  )
   const sellersWithPending = sellerGroups.length
 
   // ── KPI for paid tab (separated by currency) ──
@@ -356,8 +364,10 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
     // Pre-select only commissions of the first currency found (USD priority)
     const hasUSD = group.commissions.some((c) => getCommCurrency(c) !== "ARS")
     const defaultCur = hasUSD ? "USD" : "ARS"
+    // Solo preseleccionar comisiones cobrables (operación cobrada ≥95%). Las no
+    // cobrables se muestran pero no se pueden pagar todavía.
     const defaultSelected = group.commissions
-      .filter((c) => (defaultCur === "ARS" ? getCommCurrency(c) === "ARS" : getCommCurrency(c) !== "ARS"))
+      .filter((c) => c.collectible !== false && (defaultCur === "ARS" ? getCommCurrency(c) === "ARS" : getCommCurrency(c) !== "ARS"))
       .map((c) => c.id)
     setSelectedCommissionIds(new Set(defaultSelected))
     // Initialize pay amounts to remaining balance for each commission
@@ -374,6 +384,8 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
   }
 
   const toggleCommissionSelection = (id: string, comm: Commission) => {
+    // No permitir seleccionar comisiones no cobrables (operación < 95% cobrada).
+    if (comm.collectible === false && !selectedCommissionIds.has(id)) return
     setSelectedCommissionIds((prev) => {
       const next = new Set(prev)
       if (next.has(id)) {
@@ -558,6 +570,11 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
               <p className="text-2xl font-semibold tabular-nums tracking-tight">
                 {pendingLoading ? <Skeleton className="h-8 w-32" /> : fmtCurrency(pendingTotals.usd, "USD")}
               </p>
+              {!pendingLoading && pendingTotals.usd > pendingCollectibleTotals.usd + 0.005 && (
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Cobrable ahora: {fmtCurrency(pendingCollectibleTotals.usd, "USD")}
+                </p>
+              )}
             </div>
 
             {/* Total Pendiente ARS */}
@@ -571,6 +588,11 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
               <p className="text-2xl font-semibold tabular-nums tracking-tight">
                 {pendingLoading ? <Skeleton className="h-8 w-32" /> : fmtCurrency(pendingTotals.ars, "ARS")}
               </p>
+              {!pendingLoading && pendingTotals.ars > pendingCollectibleTotals.ars + 0.005 && (
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Cobrable ahora: {fmtCurrency(pendingCollectibleTotals.ars, "ARS")}
+                </p>
+              )}
             </div>
 
             {/* Vendedores */}
@@ -727,6 +749,14 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
                                     {hasPartial && (
                                       <Badge className="ml-2 bg-primary/10 text-primary border-0 text-[10px]">
                                         Pago parcial
+                                      </Badge>
+                                    )}
+                                    {c.collectible === false && (
+                                      <Badge
+                                        className="ml-2 bg-amber-500/10 text-amber-600 border-0 text-[10px]"
+                                        title="La comisión se podrá pagar cuando la operación esté cobrada al 95%"
+                                      >
+                                        No cobrada aún{typeof c.collected_pct === "number" ? ` (${c.collected_pct}%)` : ""}
                                       </Badge>
                                     )}
                                   </TableCell>
@@ -997,6 +1027,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
                         >
                           <Checkbox
                             checked={isSelected}
+                            disabled={c.collectible === false}
                             onCheckedChange={() => toggleCommissionSelection(c.id, c)}
                           />
                           <div className="flex-1 min-w-0">
@@ -1014,6 +1045,11 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
                               {hasPartial && (
                                 <span className="ml-2 text-primary">
                                   (Pagado: {fmtCurrency(c.amount_paid || 0, cur)} | Restante: {fmtCurrency(remaining, cur)})
+                                </span>
+                              )}
+                              {c.collectible === false && (
+                                <span className="ml-2 text-amber-600">
+                                  · No cobrada aún{typeof c.collected_pct === "number" ? ` (${c.collected_pct}% cobrado)` : ""} — disponible al 95%
                                 </span>
                               )}
                             </p>
