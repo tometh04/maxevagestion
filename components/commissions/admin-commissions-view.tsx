@@ -193,6 +193,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
   const [payAmounts, setPayAmounts] = useState<Record<string, number>>({})
   const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([])
   const [payAccountId, setPayAccountId] = useState("")
+  const [payExchangeRate, setPayExchangeRate] = useState("")
   const [payDate, setPayDate] = useState(() => new Date().toISOString().split("T")[0])
   const [payNotes, setPayNotes] = useState("")
   const [paySubmitting, setPaySubmitting] = useState(false)
@@ -377,6 +378,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
     }
     setPayAmounts(amounts)
     setPayAccountId("")
+    setPayExchangeRate("")
     setPayDate(new Date().toISOString().split("T")[0])
     setPayNotes("")
     setPayDialogOpen(true)
@@ -414,11 +416,23 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
 
   const selectedCurrency = useMemo(() => getSelectedCurrency(), [getSelectedCurrency])
 
-  // Filter accounts by selected currency
+  // Mostramos TODAS las cuentas activas (no filtramos por moneda): se puede pagar
+  // una comisión USD desde una cuenta en ARS ingresando tipo de cambio (y viceversa).
+  // Se ordenan poniendo primero las de la moneda de la comisión.
   const filteredAccounts = useMemo(() => {
-    if (!selectedCurrency) return financialAccounts
-    return financialAccounts.filter((acc) => acc.currency === selectedCurrency)
+    const accts = [...financialAccounts]
+    if (selectedCurrency) {
+      accts.sort((a, b) => (a.currency === selectedCurrency ? -1 : 0) - (b.currency === selectedCurrency ? -1 : 0))
+    }
+    return accts
   }, [financialAccounts, selectedCurrency])
+
+  // Cuenta elegida y si requiere TC (su moneda difiere de la moneda de la comisión).
+  const selectedPayAccount = useMemo(
+    () => financialAccounts.find((a) => a.id === payAccountId) || null,
+    [financialAccounts, payAccountId]
+  )
+  const needsPayExchangeRate = !!selectedPayAccount && !!selectedCurrency && selectedPayAccount.currency !== selectedCurrency
 
   // Group dialog commissions by currency
   const dialogCommissionsByCurrency = useMemo(() => {
@@ -445,6 +459,13 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
       return
     }
 
+    // Si la cuenta es de otra moneda que la comisión, exigir tipo de cambio.
+    const exchangeRateNum = Number(payExchangeRate)
+    if (needsPayExchangeRate && (!exchangeRateNum || exchangeRateNum <= 0)) {
+      toast({ title: "Falta el tipo de cambio", description: `Ingresá el tipo de cambio para pagar en ${selectedPayAccount?.currency}.`, variant: "destructive" })
+      return
+    }
+
     setPaySubmitting(true)
     let successCount = 0
     let errorCount = 0
@@ -468,6 +489,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
             method: "BANK",
             notes: payNotes || null,
             financial_account_id: payAccountId,
+            exchange_rate: needsPayExchangeRate ? exchangeRateNum : undefined,
           }),
         })
 
@@ -1119,7 +1141,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label className="text-xs">Cuenta Financiera {selectedCurrency ? `(${selectedCurrency})` : ""}</Label>
+                  <Label className="text-xs">Cuenta Financiera</Label>
                   <Select value={payAccountId} onValueChange={setPayAccountId}>
                     <SelectTrigger className="h-9 text-sm">
                       <SelectValue placeholder="Seleccionar cuenta..." />
@@ -1150,6 +1172,31 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
                   />
                 </div>
               </div>
+
+              {/* Tipo de cambio: requerido cuando la cuenta es de otra moneda que la comisión */}
+              {needsPayExchangeRate && (
+                <div className="rounded-lg border border-accent-coral/30 bg-accent-coral/5 p-3 space-y-2">
+                  <Label className="text-xs">
+                    Tipo de cambio (1 {selectedCurrency} = ? {selectedPayAccount?.currency})
+                  </Label>
+                  <div className="flex items-center gap-3">
+                    <DecimalInput
+                      value={payExchangeRate}
+                      onChange={(v) => setPayExchangeRate(v)}
+                      className="h-9 w-36 text-sm"
+                    />
+                    {Number(payExchangeRate) > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        Se debitará{" "}
+                        <span className="font-medium text-foreground">
+                          {fmtCurrency(selectedTotal * Number(payExchangeRate), selectedPayAccount?.currency || "ARS")}
+                        </span>{" "}
+                        de la cuenta (= {fmtCurrency(selectedTotal, selectedCurrency || "USD")} × {payExchangeRate})
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label className="text-xs">Notas (opcional)</Label>
