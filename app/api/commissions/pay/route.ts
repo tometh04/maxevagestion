@@ -97,47 +97,58 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Cuenta financiera no encontrada o inactiva" }, { status: 404 })
     }
 
-    // Validar que la moneda de la cuenta coincide con la de la comisión
-    if (financialAccount.currency !== currency) {
-      return NextResponse.json({
-        error: `La cuenta financiera debe estar en ${currency}`,
-      }, { status: 400 })
-    }
-
     const accountId = financial_account_id
+    const accountCur = financialAccount.currency as "ARS" | "USD"
+    const commissionCur = currency as "ARS" | "USD"
+    const applyAmount = parseFloat(amount) // en moneda de la comisión (reduce el saldo pendiente)
 
-    // Calcular ARS equivalent
-    // Si currency = USD, exchange_rate es obligatorio (ya validado en createLedgerMovement)
-    // Si currency = ARS, exchange_rate puede ser null o proporcionado para conversión
+    // Determinar el movimiento de caja en la MONEDA DE LA CUENTA.
+    // Permite pagar una comisión en USD desde una cuenta en ARS (o viceversa)
+    // ingresando tipo de cambio, igual que en cobros/pagos de servicios.
     let exchangeRate: number | null = exchange_rate ? parseFloat(exchange_rate.toString()) : null
-    
-    if (currency === "USD") {
-      // Para USD, siempre necesitamos tipo de cambio
-      if (!exchangeRate) {
-        const rateDate = datePaid ? new Date(datePaid) : new Date()
-        const rateResult = await getExchangeRateWithFallback(supabase, rateDate, "commissions-pay")
-        exchangeRate = rateResult.rate
-      }
-    } else if (currency === "ARS" && exchange_rate) {
-      // Si es ARS y se proporcionó TC, usarlo (para casos especiales)
-      exchangeRate = parseFloat(exchange_rate.toString())
-    }
-    
-    const amountARS = calculateARSEquivalent(
-      parseFloat(amount),
-      currency as "ARS" | "USD",
-      exchangeRate
-    )
+    let cashAmount: number // monto que sale de la cuenta, en accountCur
+    let amountARS: number // equivalente en ARS para el ledger
 
-    // Validar saldo suficiente (NUNCA permitir saldo negativo)
-    const amountToCheck = parseFloat(amount)
+    if (accountCur === commissionCur) {
+      cashAmount = applyAmount
+      if (commissionCur === "USD") {
+        // Cuenta USD: TC solo para el equivalente ARS del ledger.
+        if (!exchangeRate) {
+          const rateDate = datePaid ? new Date(datePaid) : new Date()
+          const rateResult = await getExchangeRateWithFallback(supabase, rateDate, "commissions-pay")
+          exchangeRate = rateResult.rate
+        }
+        amountARS = calculateARSEquivalent(cashAmount, "USD", exchangeRate)
+      } else {
+        amountARS = cashAmount // ARS == ARS
+      }
+    } else {
+      // Pago cross-moneda → TC obligatorio.
+      if (!exchangeRate || exchangeRate <= 0) {
+        return NextResponse.json(
+          { error: "Debe ingresar el tipo de cambio para pagar en una moneda distinta a la de la comisión" },
+          { status: 400 }
+        )
+      }
+      if (commissionCur === "USD" && accountCur === "ARS") {
+        cashAmount = Math.round(applyAmount * exchangeRate * 100) / 100
+        amountARS = cashAmount
+      } else if (commissionCur === "ARS" && accountCur === "USD") {
+        cashAmount = Math.round((applyAmount / exchangeRate) * 100) / 100
+        amountARS = applyAmount
+      } else {
+        return NextResponse.json({ error: "Combinación de monedas no soportada" }, { status: 400 })
+      }
+    }
+
+    // Validar saldo suficiente en la cuenta (en su propia moneda) — NUNCA saldo negativo.
     const balanceCheck = await validateSufficientBalance(
       accountId,
-      amountToCheck,
-      currency as "ARS" | "USD",
+      cashAmount,
+      accountCur,
       supabase
     )
-    
+
     if (!balanceCheck.valid) {
       return NextResponse.json(
         { error: balanceCheck.error || "Saldo insuficiente en cuenta para realizar el pago" },
@@ -145,8 +156,8 @@ export async function POST(request: Request) {
       )
     }
 
-    // Calcular amount_paid acumulado
-    const payAmount = parseFloat(amount)
+    // Calcular amount_paid acumulado (en moneda de la comisión)
+    const payAmount = applyAmount
     const previouslyPaid = parseFloat(commission.amount_paid || "0")
     const totalPaid = previouslyPaid + payAmount
     const commissionTotal = parseFloat(commission.amount)
@@ -168,8 +179,8 @@ export async function POST(request: Request) {
         lead_id: null,
         type: "COMMISSION",
         concept: `Pago de comisión${isFullyPaid ? "" : " (parcial)"} - ${commission.operations?.id ? `Operación ${commission.operations.id.slice(0, 8)}` : "Comisión"}`,
-        currency: currency as "ARS" | "USD",
-        amount_original: payAmount,
+        currency: accountCur,
+        amount_original: cashAmount,
         exchange_rate: exchangeRate,
         amount_ars_equivalent: amountARS,
         method: (method || "CASH") as "CASH" | "BANK" | "MP" | "USD" | "OTHER",
