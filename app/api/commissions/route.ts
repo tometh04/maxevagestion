@@ -86,11 +86,24 @@ export async function GET(request: Request) {
       )
     }
 
-    // Para comisiones PENDING: filtrar solo las de operaciones que el cliente ya pagó en su totalidad.
-    // Las comisiones PAID se muestran siempre (ya se pagaron al vendedor, independientemente del estado).
+    // Para comisiones PENDING: NO ocultamos las de operaciones aún no cobradas.
+    // Antes se filtraban (drop) las que no estaban cobradas al ≥95%, lo que hacía
+    // que el vendedor/admin no viera comisiones reales en "Por Pagar" hasta cobrar
+    // casi todo. Ahora las MOSTRAMOS todas pero ANOTAMOS cada una con:
+    //   - collected_pct: % cobrado de la operación (pagos INCOME PAID / sale_amount_total)
+    //   - collectible: true si está cobrada al ≥95% (o sin monto de venta) → recién ahí
+    //     es pagable al vendedor. El front muestra un badge "No cobrada aún" y bloquea
+    //     el pago de las no cobrables.
+    // Las comisiones PAID siempre son collectible (ya se pagaron).
+    const COLLECTIBLE_THRESHOLD = 0.95
     let filteredRecords = commissionRecords || []
-    if (status === "PENDING") {
-      const opIds = Array.from(new Set(filteredRecords.map((cr: any) => cr.operation_id).filter(Boolean))) as string[]
+    const collectedPctByOp: Record<string, number> = {}
+    // Anotamos el % cobrado de las operaciones de los registros PENDING
+    // (sin importar el filtro de status, así también aplica a la vista "Todos").
+    {
+      const opIds = Array.from(new Set(
+        filteredRecords.filter((cr: any) => cr.status === "PENDING").map((cr: any) => cr.operation_id).filter(Boolean)
+      )) as string[]
       if (opIds.length > 0) {
         const { data: incomePayments } = await (supabase
           .from("payments") as any)
@@ -106,14 +119,24 @@ export async function GET(request: Request) {
           paidByOp[p.operation_id] = (paidByOp[p.operation_id] || 0) + parseFloat(p.amount || 0)
         }
 
-        // Solo incluir comisiones cuya operación está cobrada al 99%+ (tolerancia centavos)
-        filteredRecords = filteredRecords.filter((cr: any) => {
+        for (const cr of filteredRecords) {
           const saleTotal = parseFloat(cr.operations?.sale_amount_total || 0)
-          if (saleTotal <= 0) return true // Sin monto de venta, mostrar igual
+          if (saleTotal <= 0) {
+            collectedPctByOp[cr.operation_id] = 100
+            continue
+          }
           const totalPaid = paidByOp[cr.operation_id] || 0
-          return totalPaid >= saleTotal * 0.95
-        })
+          collectedPctByOp[cr.operation_id] = Math.round((totalPaid / saleTotal) * 100)
+        }
       }
+    }
+
+    // Helper: ¿la comisión es cobrable (pagable al vendedor) ahora?
+    const isCollectible = (cr: any): boolean => {
+      if (cr.status === "PAID") return true
+      const saleTotal = parseFloat(cr.operations?.sale_amount_total || 0)
+      if (saleTotal <= 0) return true
+      return (collectedPctByOp[cr.operation_id] ?? 0) >= COLLECTIBLE_THRESHOLD * 100
     }
 
     // Fetch seller names from users table (scopeado por org)
@@ -145,6 +168,10 @@ export async function GET(request: Request) {
         status: cr.status as "PENDING" | "PAID",
         date_calculated: cr.date_calculated,
         date_paid: cr.date_paid,
+        // % cobrado de la operación + si la comisión ya es pagable (≥95% cobrado).
+        // collected_pct solo se calcula en la vista PENDING; para PAID es 100.
+        collected_pct: cr.status === "PAID" ? 100 : (collectedPctByOp[cr.operation_id] ?? null),
+        collectible: isCollectible(cr),
         operation: cr.operations ? {
           id: cr.operations.id,
           short_code: cr.operations.file_code || "",
