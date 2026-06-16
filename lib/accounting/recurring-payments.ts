@@ -305,6 +305,7 @@ export async function updateRecurringPayment(
     notes: string | null
     invoice_number: string | null
     reference: string | null
+    agency_id: string | null
   }>
 ): Promise<void> {
   const { error } = await (supabase.from("recurring_payments") as any)

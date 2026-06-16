@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { canPerformAction } from "@/lib/permissions-api"
+import { canPerformAction, getScopedAgenciesForUser } from "@/lib/permissions-api"
 
 export async function GET(request: Request) {
   try {
@@ -99,10 +99,35 @@ export async function POST(request: Request) {
       invoice_number,
       reference,
       category_id,
+      agency_id,
     } = body
 
     if (!user.org_id) {
       return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
+    // Resolver la agencia del gasto recurrente.
+    // El agency_id viene del selector del diálogo (NO de user.agency_id, que
+    // para admins sin agencia fija es null y dejaba el registro "global"
+    // visible en todas las oficinas). Validar siempre contra las agencias
+    // que el usuario puede ver para no permitir asignar agencias de otro org.
+    const scopedAgencies = await getScopedAgenciesForUser(supabase, user)
+    let resolvedAgencyId: string | null = null
+    if (agency_id) {
+      if (!scopedAgencies.some((a) => a.id === agency_id)) {
+        return NextResponse.json(
+          { error: "La oficina seleccionada no es válida" },
+          { status: 400 }
+        )
+      }
+      resolvedAgencyId = agency_id
+    } else if (scopedAgencies.length > 0) {
+      // Hay oficinas disponibles pero no se eligió ninguna: rechazar para
+      // evitar gastos "globales" accidentales (visibles en todas las oficinas).
+      return NextResponse.json(
+        { error: "Debe seleccionar una oficina para el gasto recurrente" },
+        { status: 400 }
+      )
     }
 
     // Validar campos requeridos
@@ -129,7 +154,6 @@ export async function POST(request: Request) {
 
     // Calcular next_due_date basado en start_date
     const nextDueDate = start_date
-    const userAny = user as any
 
     const { data, error } = await (supabase.from("recurring_payments") as any)
       .insert({
@@ -146,7 +170,7 @@ export async function POST(request: Request) {
         invoice_number: invoice_number || null,
         reference: reference || null,
         category_id: category_id || null,
-        agency_id: userAny.agency_id || null,
+        agency_id: resolvedAgencyId,
         org_id: user.org_id,
         created_by: user.id,
       })

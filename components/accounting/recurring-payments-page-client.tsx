@@ -941,6 +941,8 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
         open={newDialogOpen}
         onOpenChange={setNewDialogOpen}
         onSuccess={fetchData}
+        agencies={agencies}
+        defaultAgencyId={agencyFilter !== "ALL" ? agencyFilter : null}
       />
 
       {editingPayment && (
@@ -949,6 +951,7 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
           onOpenChange={(open) => !open && setEditingPayment(null)}
           onSuccess={fetchData}
           payment={editingPayment}
+          agencies={agencies}
         />
       )}
 

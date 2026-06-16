@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { canPerformAction } from "@/lib/permissions-api"
+import { canPerformAction, getScopedAgenciesForUser } from "@/lib/permissions-api"
 import {
   updateRecurringPayment,
   deleteRecurringPayment,
@@ -37,6 +37,23 @@ export async function PATCH(
     if (body.invoice_number !== undefined) updates.invoice_number = body.invoice_number || null
     if (body.reference !== undefined) updates.reference = body.reference || null
     if (body.category_id !== undefined) updates.category_id = body.category_id || null
+
+    // Permitir reasignar la oficina, validando contra las agencias visibles
+    // para el usuario (no confiar en el valor del body sin validar).
+    if (body.agency_id !== undefined) {
+      if (body.agency_id) {
+        const scopedAgencies = await getScopedAgenciesForUser(supabase, user)
+        if (!scopedAgencies.some((a) => a.id === body.agency_id)) {
+          return NextResponse.json(
+            { error: "La oficina seleccionada no es válida" },
+            { status: 400 }
+          )
+        }
+        updates.agency_id = body.agency_id
+      } else {
+        updates.agency_id = null
+      }
+    }
 
     await updateRecurringPayment(supabase, id, updates)
 
