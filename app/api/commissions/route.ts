@@ -4,6 +4,38 @@ import { getCurrentUser } from "@/lib/auth"
 
 export const dynamic = 'force-dynamic'
 
+const COMMISSION_THRESHOLD_KEY = "commissions.payout_collection_threshold"
+
+/**
+ * Umbral de cobranza (config por org, key/value en organization_settings) a
+ * partir del cual una comisión PENDING se considera "cobrable" (pagable al
+ * vendedor). Se guarda como porcentaje 0-100. Default 95%.
+ *
+ * Permite que convivan dos formas de operar:
+ *   - Agencias que NO pagan hasta cobrar → 95% o 100%.
+ *   - Agencias que pagan al cierre de mes aunque la operación no esté cobrada
+ *     (ej. Lozada) → 0%.
+ * Devuelve una FRACCIÓN (0..1).
+ */
+async function getCommissionCollectionThreshold(supabase: any, orgId: string): Promise<number> {
+  try {
+    const { data } = await supabase
+      .from("organization_settings")
+      .select("value")
+      .eq("org_id", orgId)
+      .eq("key", COMMISSION_THRESHOLD_KEY)
+      .maybeSingle()
+    const raw = (data as any)?.value
+    if (raw != null && String(raw).trim() !== "") {
+      const pct = Number(raw)
+      if (Number.isFinite(pct)) return Math.min(1, Math.max(0, pct / 100))
+    }
+  } catch {
+    // Sin config → default abajo.
+  }
+  return 0.95
+}
+
 // GET - Obtener comisiones
 export async function GET(request: Request) {
   try {
@@ -95,7 +127,8 @@ export async function GET(request: Request) {
     //     es pagable al vendedor. El front muestra un badge "No cobrada aún" y bloquea
     //     el pago de las no cobrables.
     // Las comisiones PAID siempre son collectible (ya se pagaron).
-    const COLLECTIBLE_THRESHOLD = 0.95
+    // El umbral es configurable por org (default 95%). 0% → siempre cobrable.
+    const COLLECTIBLE_THRESHOLD = await getCommissionCollectionThreshold(supabase, (user as any).org_id)
     let filteredRecords = commissionRecords || []
     const collectedPctByOp: Record<string, number> = {}
     // Anotamos el % cobrado de las operaciones de los registros PENDING

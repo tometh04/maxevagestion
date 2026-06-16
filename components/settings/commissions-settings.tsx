@@ -47,8 +47,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Percent, Plus, Info, Settings2, Calendar } from "lucide-react"
+import { Percent, Plus, Info, Settings2, Calendar, Wallet } from "lucide-react"
 import { toast } from "sonner"
+
+// Umbral de cobranza (% de la venta cobrado) a partir del cual una comisión
+// PENDING se puede pagar al vendedor. Configurable por agencia:
+//   - 95% (default): no se paga hasta cobrar casi todo.
+//   - 0%: se paga aunque la operación no esté cobrada (ej. pago al cierre de mes).
+const COMMISSION_THRESHOLD_KEY = "commissions.payout_collection_threshold"
 
 const commissionRuleSchema = z.object({
   type: z.enum(["SELLER", "AGENCY"]),
@@ -84,6 +90,9 @@ export function CommissionsSettings() {
   const [agencies, setAgencies] = useState<Array<{ id: string; name: string }>>([])
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [ruleToDelete, setRuleToDelete] = useState<string | null>(null)
+  // Umbral de cobranza para habilitar el pago de comisión (% de la venta cobrado).
+  const [collectionThreshold, setCollectionThreshold] = useState<string>("95")
+  const [savingThreshold, setSavingThreshold] = useState(false)
 
   const form = useForm<CommissionRuleFormValues>({
     resolver: zodResolver(commissionRuleSchema),
@@ -101,7 +110,41 @@ export function CommissionsSettings() {
   useEffect(() => {
     fetchRules()
     fetchAgencies()
+    fetchThreshold()
   }, [])
+
+  const fetchThreshold = async () => {
+    try {
+      const response = await fetch(`/api/settings/organization?key=${COMMISSION_THRESHOLD_KEY}`)
+      const data = await response.json()
+      const row = (data.data || []).find((x: any) => x.key === COMMISSION_THRESHOLD_KEY)
+      if (row && row.value != null && String(row.value).trim() !== "") {
+        setCollectionThreshold(String(row.value))
+      }
+    } catch (error) {
+      console.error("Error fetching commission threshold:", error)
+    }
+  }
+
+  const saveThreshold = async () => {
+    const pct = Math.min(100, Math.max(0, Number(collectionThreshold) || 0))
+    setSavingThreshold(true)
+    try {
+      const response = await fetch("/api/settings/organization", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: COMMISSION_THRESHOLD_KEY, value: String(pct) }),
+      })
+      if (!response.ok) throw new Error("save failed")
+      setCollectionThreshold(String(pct))
+      toast.success("Umbral de cobranza actualizado")
+    } catch (error) {
+      console.error("Error saving commission threshold:", error)
+      toast.error("Error al guardar el umbral")
+    } finally {
+      setSavingThreshold(false)
+    }
+  }
 
   const fetchRules = async () => {
     setLoading(true)
@@ -258,6 +301,37 @@ export function CommissionsSettings() {
           Las reglas de comisión se aplican automáticamente cuando una operación está CONFIRMED y todos los pagos de
           cliente están PAID. Las reglas se evalúan por fecha de validez y región de destino.
         </p>
+      </div>
+
+      {/* Umbral de cobranza para pagar comisiones */}
+      <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+        <div className="flex items-center gap-2">
+          <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+            <Wallet className="h-3.5 w-3.5 text-primary" />
+          </div>
+          <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Pago de comisiones</h4>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Definí a partir de qué % cobrado de la operación una comisión pendiente se puede pagar al vendedor.
+          Las comisiones siempre se ven en &quot;Por Pagar&quot;; las que no llegan al umbral quedan marcadas como
+          &quot;No cobrada aún&quot; y no se pueden pagar hasta alcanzarlo.
+          Poné <span className="font-medium text-foreground">0%</span> si pagás comisiones aunque la operación no esté
+          cobrada (ej. al cierre de mes), o <span className="font-medium text-foreground">95–100%</span> si pagás recién
+          cuando cobraste.
+        </p>
+        <div className="flex items-end gap-3">
+          <div className="space-y-1.5">
+            <Label className="text-xs">Cobranza mínima para pagar comisión (%)</Label>
+            <DecimalInput
+              value={collectionThreshold}
+              onChange={(v) => setCollectionThreshold(v)}
+              className="w-32"
+            />
+          </div>
+          <Button size="sm" onClick={saveThreshold} disabled={savingThreshold}>
+            {savingThreshold ? "Guardando..." : "Guardar"}
+          </Button>
+        </div>
       </div>
 
       <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
