@@ -130,7 +130,13 @@ interface OperationDetailClientProps {
    * poblar el selector de "Pagar a operador" con TODOS los operadores,
    * incluyendo los que aún no tienen operator_payment generado. */
   operationOperators?: Array<{
+    id?: string
     operator_id: string
+    cost?: number | string | null
+    cost_currency?: string | null
+    product_type?: string | null
+    notes?: string | null
+    sale_amount?: number | string | null
     operators?: { id: string; name: string } | null
   }>
   operationLegs?: Array<{
@@ -945,6 +951,7 @@ export function OperationDetailClient({
           operators={operators}
           userRole={userRole}
           operationLegs={operationLegs}
+          operationOperators={operationOperators}
         />
       )}
     </div>
