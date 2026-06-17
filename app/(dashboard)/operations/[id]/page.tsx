@@ -132,7 +132,7 @@ export default async function OperationDetailPage({
   // operation_operators tiene org_id (migration 20260331000134).
   const { data: operationOperators } = await (supabase
     .from("operation_operators") as any)
-    .select("operator_id, operators:operator_id(id, name)")
+    .select("id, operator_id, cost, cost_currency, product_type, notes, sale_amount, operators:operator_id(id, name)")
     .eq("operation_id", id)
     .eq("org_id", userOrgId)
     .order("created_at", { ascending: true })

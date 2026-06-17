@@ -160,6 +160,18 @@ interface EditOperationDialogProps {
     checkin_date: string | null
     checkout_date: string | null
   }>
+  /** Operadores/productos ya cargados por el server (página de detalle).
+   * Si vienen, el dialog inicializa las filas por producto desde acá en vez
+   * de un fetch propio (que para algunos roles/casos no traía las filas y
+   * dejaba el editor en modo single → el costo cargado se descartaba). */
+  operationOperators?: Array<{
+    id?: string
+    operator_id: string
+    cost?: number | string | null
+    cost_currency?: string | null
+    product_type?: string | null
+    notes?: string | null
+  }>
 }
 
 export function EditOperationDialog({
@@ -172,6 +184,7 @@ export function EditOperationDialog({
   operators,
   userRole,
   operationLegs = [],
+  operationOperators = [],
 }: EditOperationDialogProps) {
   const [isLoading, setIsLoading] = useState(false)
 
@@ -275,9 +288,31 @@ export function EditOperationDialog({
     )
   }, [open, operationLegs?.length, operationLegs?.map((l) => l.id || "").join(",")])
 
-  // Cargar operation_operators existentes al abrir el dialog
+  // Cargar operation_operators existentes al abrir el dialog.
   useEffect(() => {
     if (!open || operatorsLoaded) return
+
+    const mapRows = (rows: any[]): OperatorEntry[] =>
+      rows.map((oo: any) => ({
+        id: oo.id,
+        operator_id: oo.operator_id || "",
+        cost: Number(oo.cost || 0),
+        cost_currency: (oo.cost_currency || operationCostCurrency) as "ARS" | "USD",
+        product_type: oo.product_type || undefined,
+        notes: oo.notes || undefined,
+      }))
+
+    // 1) Preferir los operadores que ya trajo el server (prop). Es confiable y
+    //    evita que el editor quede en modo single cuando el fetch propio no
+    //    devuelve las filas (en cuyo caso el costo cargado se descartaba).
+    if (operationOperators && operationOperators.length > 0) {
+      setOperatorList(mapRows(operationOperators))
+      setUseMultipleOperators(true)
+      setOperatorsLoaded(true)
+      return
+    }
+
+    // 2) Fallback: fetch propio (callers que no pasan la prop, ej. tabla de operaciones).
     const loadOperators = async () => {
       try {
         const res = await fetch(`/api/operations/${operation.id}`)
@@ -285,15 +320,7 @@ export function EditOperationDialog({
           const data = await res.json()
           const opOps = data.operation?.operation_operators || []
           if (opOps.length > 0) {
-            const mapped: OperatorEntry[] = opOps.map((oo: any) => ({
-              id: oo.id,
-              operator_id: oo.operator_id || "",
-              cost: Number(oo.cost || 0),
-              cost_currency: (oo.cost_currency || operationCostCurrency) as "ARS" | "USD",
-              product_type: oo.product_type || undefined,
-              notes: oo.notes || undefined,
-            }))
-            setOperatorList(mapped)
+            setOperatorList(mapRows(opOps))
             setUseMultipleOperators(true)
           }
         }
@@ -304,6 +331,7 @@ export function EditOperationDialog({
       setOperatorsLoaded(true)
     }
     loadOperators()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, operation.id, operationCostCurrency, operatorsLoaded])
 
   // Reset operatorsLoaded when dialog closes
