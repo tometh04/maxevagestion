@@ -128,6 +128,34 @@ export async function GET(request: Request) {
       }
     }
 
+    // Dedup de operaciones compartidas (paquetes con varios pasajeros):
+    // la deuda de la operación se cuenta UNA sola vez, atribuida al pasajero
+    // TITULAR (role MAIN). Antes se sumaba la deuda TOTAL a CADA pasajero, así
+    // un paquete de 3 figuraba con la deuda ×3 (uno por pasajero).
+    // Si la operación no tiene MAIN, fallback determinístico al primer customer_id.
+    const opOwnerCustomerId: Record<string, string> = {}
+    if (allOperationIds.length > 0 && (user as any).org_id) {
+      const userOrgId = (user as any).org_id as string
+      const chunkSize = 200
+      for (let i = 0; i < allOperationIds.length; i += chunkSize) {
+        const chunk = allOperationIds.slice(i, i + chunkSize)
+        const { data: ocRows } = await supabase
+          .from("operation_customers")
+          .select("operation_id, customer_id, role")
+          .in("operation_id", chunk)
+          .eq("org_id", userOrgId)
+        if (ocRows) {
+          for (const oc of ocRows as any[]) {
+            if (!oc.operation_id || !oc.customer_id) continue
+            // Fallback: primer pasajero visto. El MAIN siempre sobreescribe.
+            if (!opOwnerCustomerId[oc.operation_id] || oc.role === "MAIN") {
+              opOwnerCustomerId[oc.operation_id] = oc.customer_id
+            }
+          }
+        }
+      }
+    }
+
     // Obtener nombres de vendedores para mostrar en la respuesta
     const sellerIds = new Set<string>()
     customers?.forEach((customer: any) => {
@@ -214,6 +242,11 @@ export async function GET(request: Request) {
       for (const oc of operations) {
         const operation = oc.operations
         if (!operation) continue
+
+        // Paquete compartido: solo el pasajero titular (o dueño fallback) acumula
+        // la deuda de la operación, para no repetirla en cada pasajero.
+        const ownerId = opOwnerCustomerId[operation.id]
+        if (ownerId && ownerId !== customer.id) continue
 
         // Aplicar filtro de vendedor si existe
         if (sellerIdFilter && sellerIdFilter !== "ALL" && operation.seller_id !== sellerIdFilter) {
