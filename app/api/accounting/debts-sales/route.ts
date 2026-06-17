@@ -93,7 +93,13 @@ export async function GET(request: Request) {
     // Defense-in-depth (2026-05-18): aunque los operation_ids ya vienen del filtro
     // de applyCustomersFilters (scoped al org del user), agregamos .eq("org_id")
     // explícito a la query de payments por la regla canónica de no confiar en RLS.
-    let paymentsByOperation: Record<string, { paidUsd: number; currency: string }> = {}
+    // Guardamos los pagos PAID crudos por operación. La conversión a la moneda
+    // de la venta (y luego a USD) se hace en el loop principal, donde ya tenemos
+    // la tasa de la operación. Antes se pre-sumaba a USD y un pago ARS sin
+    // exchange_rate ni amount_usd se contaba como 0 → operaciones ARS pagadas
+    // en ARS (T/C "-") figuraban como deuda fantasma.
+    type RawPayment = { amount: number; currency: string; exchange_rate: number | null; amount_usd: number | null }
+    let paymentsByOperation: Record<string, RawPayment[]> = {}
     if (allOperationIds.length > 0 && (user as any).org_id) {
       const userOrgId = (user as any).org_id as string
       const chunkSize = 200
@@ -109,23 +115,14 @@ export async function GET(request: Request) {
 
         if (payments) {
           payments.forEach((payment: any) => {
+            if (payment.status !== "PAID") return
             const opId = payment.operation_id
-            if (!paymentsByOperation[opId]) {
-              paymentsByOperation[opId] = { paidUsd: 0, currency: payment.currency || "ARS" }
-            }
-            if (payment.status === "PAID") {
-              // Usar amount_usd si está disponible (pagos nuevos)
-              // Si no, calcularlo usando exchange_rate
-              let paidUsd = 0
-              if (payment.amount_usd != null) {
-                paidUsd = Number(payment.amount_usd)
-              } else if (payment.currency === "USD") {
-                paidUsd = Number(payment.amount) || 0
-              } else if (payment.currency === "ARS" && payment.exchange_rate) {
-                paidUsd = (Number(payment.amount) || 0) / Number(payment.exchange_rate)
-              }
-              paymentsByOperation[opId].paidUsd += paidUsd
-            }
+            ;(paymentsByOperation[opId] ||= []).push({
+              amount: Number(payment.amount) || 0,
+              currency: payment.currency || "ARS",
+              exchange_rate: payment.exchange_rate != null ? Number(payment.exchange_rate) : null,
+              amount_usd: payment.amount_usd != null ? Number(payment.amount_usd) : null,
+            })
           })
         }
       }
@@ -252,22 +249,36 @@ export async function GET(request: Request) {
         const opId = operation.id
         const saleCurrency = operation.sale_currency || operation.currency || "USD"
         const saleAmount = Number(operation.sale_amount_total) || 0
-        
-        // Convertir sale_amount_total a USD
-        let saleAmountUsd = saleAmount
-        if (saleCurrency === "ARS") {
-          // Lookup sincrónico en el map (sin queries a la BD).
-          const operationDate = operation.departure_date || operation.created_at
-          const exchangeRate = getRate(operationDate) || latestExchangeRate
-          // Convertir ARS a USD: dividir por el exchange_rate
-          saleAmountUsd = saleAmount / exchangeRate
+
+        // Tasa ARS/USD de la operación (por fecha, con fallback a la última).
+        const operationDate = operation.departure_date || operation.created_at
+        const rateForOp = getRate(operationDate) || latestExchangeRate
+
+        // Convertir sale_amount_total a USD (solo si la venta está en ARS).
+        const saleAmountUsd = saleCurrency === "ARS" ? saleAmount / rateForOp : saleAmount
+
+        // Sumar los pagos EN LA MONEDA DE LA VENTA y recién después convertir el
+        // neto a USD. Así un cobro en ARS (sin T/C) sobre una venta en ARS netea
+        // correctamente en vez de contarse como 0 USD.
+        const opPayments = paymentsByOperation[opId] || []
+        let paidInSaleCurrency = 0
+        for (const p of opPayments) {
+          if (p.currency === saleCurrency) {
+            paidInSaleCurrency += p.amount
+          } else if (saleCurrency === "ARS" && p.currency === "USD") {
+            paidInSaleCurrency += p.amount * (p.exchange_rate || rateForOp)
+          } else if (saleCurrency === "USD" && p.currency === "ARS") {
+            paidInSaleCurrency += p.amount_usd != null
+              ? p.amount_usd
+              : p.amount / (p.exchange_rate || rateForOp)
+          } else {
+            paidInSaleCurrency += p.amount
+          }
         }
-        // Si ya está en USD, saleAmountUsd = saleAmount (ya está correcto)
-        
-        const paymentData = paymentsByOperation[opId] || { paidUsd: 0, currency: saleCurrency }
-        const paidUsd = paymentData.paidUsd
-        
-        const debtUsd = Math.max(0, saleAmountUsd - paidUsd)
+
+        const debtInSaleCurrency = Math.max(0, saleAmount - paidInSaleCurrency)
+        const debtUsd = saleCurrency === "ARS" ? debtInSaleCurrency / rateForOp : debtInSaleCurrency
+        const paidUsd = saleCurrency === "ARS" ? paidInSaleCurrency / rateForOp : paidInSaleCurrency
 
         // Usar USD como moneda principal para deudas
         currency = "USD"
