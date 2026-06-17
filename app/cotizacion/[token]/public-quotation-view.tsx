@@ -5,6 +5,11 @@ import { useParams } from "next/navigation"
 import { type QuotationPresentationData } from "@/lib/quotations/presentation"
 import { getPublicQuotationPdfPath } from "@/lib/quotations/public-links"
 import {
+  downloadQuotationHtmlPDF,
+  isHtmlQuotePdfEligible,
+  type OrganizationBrandingSettings,
+} from "@/lib/pdf/quotation-pdf-html"
+import {
   PublicQuotationDocument,
   PublicQuotationError,
   PublicQuotationLoading,
@@ -144,20 +149,32 @@ export function PublicQuotationView({
     }
   }
 
-  function handleDownload() {
+  async function handleDownload() {
     if (!token || typeof window === "undefined") {
       return
     }
 
     setDownloading(true)
-    const pdfPath = getPublicQuotationPdfPath(token)
-    const openedWindow = window.open(pdfPath, "_blank", "noopener,noreferrer")
+    try {
+      // Vuelos/hoteles: PDF con el diseño nuevo y el branding de la agencia
+      // (el branding ya viene de /api/public/branding, sin auth).
+      if (data && isHtmlQuotePdfEligible(data)) {
+        await downloadQuotationHtmlPDF(data, branding as OrganizationBrandingSettings)
+        return
+      }
 
-    if (!openedWindow) {
-      window.location.assign(pdfPath)
+      // Resto de cotizaciones: vista print preexistente.
+      const pdfPath = getPublicQuotationPdfPath(token)
+      const openedWindow = window.open(pdfPath, "_blank", "noopener,noreferrer")
+      if (!openedWindow) {
+        window.location.assign(pdfPath)
+      }
+    } catch (err) {
+      console.error("Error descargando PDF:", err)
+      toast.error("Error al descargar PDF")
+    } finally {
+      setDownloading(false)
     }
-
-    setDownloading(false)
   }
 
   if (loading) {
