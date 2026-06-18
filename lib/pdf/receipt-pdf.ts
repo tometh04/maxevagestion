@@ -770,6 +770,11 @@ export async function generateReceiptPdf(data: ReceiptPdfData): Promise<void> {
   drawSummaryCard()
 
   if (paymentHistory.length > 0) {
+    // El historial de pagos arranca SIEMPRE en hoja nueva, así el recibo del
+    // cobro queda en la primera hoja (lo que se envía por el pago) y el
+    // historial se puede entregar/separar aparte. Pedido cliente 2026-06-18.
+    doc.addPage()
+    addPageChrome(true)
     drawHistoryTable()
   }
 
