@@ -40,6 +40,9 @@ interface OperationSettings {
   alert_payment_due_days: number
   alert_operator_payment_days: number
   alert_upcoming_trip_days: number
+  checkin_enabled: boolean
+  checkin_default_hours: number
+  checkin_airline_lead_times: Array<{ airline: string; hours: number }>
   auto_generate_quotation: boolean
   auto_generate_invoice: boolean
   require_documents_before_confirmation: boolean
@@ -68,6 +71,9 @@ export function OperationsSettingsPageClient() {
     alert_payment_due_days: 30,
     alert_operator_payment_days: 30,
     alert_upcoming_trip_days: 7,
+    checkin_enabled: true,
+    checkin_default_hours: 48,
+    checkin_airline_lead_times: [],
     auto_generate_quotation: false,
     auto_generate_invoice: false,
     require_documents_before_confirmation: false,
@@ -117,6 +123,10 @@ export function OperationsSettingsPageClient() {
         auto_create_ledger_entry: true,
         auto_create_iva_entry: true,
         auto_create_operator_payment: true,
+        // Descartar overrides de check-in incompletos (aerolínea vacía / horas inválidas)
+        checkin_airline_lead_times: (settings.checkin_airline_lead_times || [])
+          .map((r) => ({ airline: r.airline.trim(), hours: r.hours }))
+          .filter((r) => r.airline.length > 0 && r.hours > 0),
       }
       const response = await fetch('/api/operations/settings', {
         method: 'PUT',
@@ -246,6 +256,116 @@ export function OperationsSettingsPageClient() {
                   )}
                 </div>
               ))}
+            </CardContent>
+          </Card>
+
+          {/* Check-in: anticipación por defecto + overrides por aerolínea */}
+          <Card className="rounded-xl border border-border/40">
+            <CardHeader>
+              <CardTitle>Alerta de Check-in</CardTitle>
+              <CardDescription>
+                Define con cuántas horas de anticipación a la salida se avisa el check-in.
+                Podés fijar excepciones por aerolínea (algunas abren 24hs antes, otras 72hs).
+                Como el aviso se procesa una vez por día, la precisión real es por día.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label className="font-semibold">Generar alerta de check-in</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Si se desactiva, no se crean alertas de check-in.
+                  </p>
+                </div>
+                <Switch
+                  checked={settings.checkin_enabled}
+                  onCheckedChange={(checked) => setSettings({ ...settings, checkin_enabled: checked })}
+                />
+              </div>
+
+              {settings.checkin_enabled && (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label>Anticipación por defecto (horas)</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={168}
+                        value={settings.checkin_default_hours || ''}
+                        onChange={(e) =>
+                          setSettings({
+                            ...settings,
+                            checkin_default_hours: parseInt(e.target.value) || 0,
+                          })
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Excepciones por aerolínea</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Escribí el nombre tal como aparece en la operación. El match ignora
+                      mayúsculas y acentos; si no coincide, se usa el valor por defecto.
+                    </p>
+                    {(settings.checkin_airline_lead_times || []).map((row, index) => (
+                      <div key={index} className="flex items-center gap-2">
+                        <Input
+                          placeholder="Aerolínea (ej: Aerolíneas Argentinas)"
+                          value={row.airline}
+                          onChange={(e) => {
+                            const updated = [...settings.checkin_airline_lead_times]
+                            updated[index] = { ...updated[index], airline: e.target.value }
+                            setSettings({ ...settings, checkin_airline_lead_times: updated })
+                          }}
+                          className="flex-1"
+                        />
+                        <Input
+                          type="number"
+                          min={1}
+                          max={168}
+                          placeholder="Horas"
+                          value={row.hours || ''}
+                          onChange={(e) => {
+                            const updated = [...settings.checkin_airline_lead_times]
+                            updated[index] = { ...updated[index], hours: parseInt(e.target.value) || 0 }
+                            setSettings({ ...settings, checkin_airline_lead_times: updated })
+                          }}
+                          className="w-28"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9 text-destructive hover:text-destructive"
+                          onClick={() => {
+                            const updated = settings.checkin_airline_lead_times.filter((_, i) => i !== index)
+                            setSettings({ ...settings, checkin_airline_lead_times: updated })
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setSettings({
+                          ...settings,
+                          checkin_airline_lead_times: [
+                            ...(settings.checkin_airline_lead_times || []),
+                            { airline: "", hours: 48 },
+                          ],
+                        })
+                      }
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      Agregar aerolínea
+                    </Button>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

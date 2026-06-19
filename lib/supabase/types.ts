@@ -5108,6 +5108,9 @@ export type Database = {
           auto_create_operator_payment: boolean | null
           auto_generate_invoice: boolean | null
           auto_generate_quotation: boolean | null
+          checkin_airline_lead_times: Json | null
+          checkin_default_hours: number | null
+          checkin_enabled: boolean | null
           created_at: string | null
           created_by: string | null
           custom_statuses: Json | null
@@ -5135,6 +5138,9 @@ export type Database = {
           auto_create_operator_payment?: boolean | null
           auto_generate_invoice?: boolean | null
           auto_generate_quotation?: boolean | null
+          checkin_airline_lead_times?: Json | null
+          checkin_default_hours?: number | null
+          checkin_enabled?: boolean | null
           created_at?: string | null
           created_by?: string | null
           custom_statuses?: Json | null
@@ -5162,6 +5168,9 @@ export type Database = {
           auto_create_operator_payment?: boolean | null
           auto_generate_invoice?: boolean | null
           auto_generate_quotation?: boolean | null
+          checkin_airline_lead_times?: Json | null
+          checkin_default_hours?: number | null
+          checkin_enabled?: boolean | null
           created_at?: string | null
           created_by?: string | null
           custom_statuses?: Json | null
