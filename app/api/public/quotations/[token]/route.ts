@@ -21,6 +21,7 @@ export async function GET(
         departure_date, return_date, valid_until,
         adults, children, infants,
         total_amount, currency, pricing_mode, status,
+        insurance_amount, transfer_amount,
         package_description,
         notes, terms_and_conditions, payment_methods,
         created_at,

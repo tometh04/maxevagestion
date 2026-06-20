@@ -16,6 +16,7 @@ import {
   type PublicQuotationBranding,
   type PublicQuotationViewMode,
 } from "./public-quotation-document"
+import { PublicQuotationHtmlDocument } from "./public-quotation-html-document"
 import { toast } from "sonner"
 
 export function PublicQuotationView({
@@ -183,6 +184,22 @@ export function PublicQuotationView({
 
   if (error || !data) {
     return <PublicQuotationError mode={mode} message={error || "No se encontro la cotizacion solicitada."} />
+  }
+
+  // Vuelos/hoteles: mismo diseño que el PDF nuevo, embebido en la página.
+  // El resto (paquetes, excursiones, etc.) sigue con el documento clásico.
+  if (isHtmlQuotePdfEligible(data)) {
+    return (
+      <PublicQuotationHtmlDocument
+        mode={mode}
+        data={data}
+        branding={branding}
+        accepting={accepting}
+        downloading={downloading}
+        onAccept={handleAccept}
+        onDownload={handleDownload}
+      />
+    )
   }
 
   return (

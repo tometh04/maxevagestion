@@ -80,6 +80,10 @@ export interface QuotationPresentationData {
   infants: number
   currency: string
   pricing_mode: QuotationPricingMode
+  /** Seguro/asistencia: adicional global de la cotización, en `currency`. */
+  insurance_amount: number
+  /** Traslado: adicional global de la cotización, en `currency`. */
+  transfer_amount: number
   status: string
   package_description?: string | null
   notes?: string | null
@@ -320,6 +324,8 @@ export function normalizeQuotationForPresentation(quotation: any): QuotationPres
     infants: Number(quotation.infants || 0),
     currency: quotation.currency || "USD",
     pricing_mode: normalizeQuotationPricingMode(quotation.pricing_mode),
+    insurance_amount: Math.max(0, Number(quotation.insurance_amount || 0)),
+    transfer_amount: Math.max(0, Number(quotation.transfer_amount || 0)),
     status: quotation.status || "DRAFT",
     package_description: quotation.package_description || null,
     notes: quotation.notes || null,

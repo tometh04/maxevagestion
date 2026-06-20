@@ -99,6 +99,28 @@ export interface CombinedTemplateInput {
   hotel_destinations_summary?: string;
   hotel_summary_cards?: HotelSummaryCard[];
   nights_label?: string;
+  addons?: AddonBreakdown;
+  addonNote?: QuoteAddons;
+}
+
+/**
+ * Desglose de precio con adicionales (seguro/traslado) para boxes de total
+ * único. Todos los montos vienen ya formateados; insurance/transfer en null
+ * cuando el adicional es 0 (no se muestra esa fila).
+ */
+export interface AddonBreakdown {
+  base: string;
+  insurance: string | null;
+  transfer: string | null;
+  total: string;
+  currency: string;
+}
+
+/** Versión compacta de los adicionales para una nota "Incluye ...". */
+export interface QuoteAddons {
+  insurance: string | null;
+  transfer: string | null;
+  currency: string;
 }
 
 export interface HotelSummaryCard {
@@ -160,6 +182,35 @@ export function renderCustomFooter(branding: BrandingData): string {
         ${footerText ? `<div style="font-size:13px;color:${textColor};line-height:1.5;text-align:left;">${footerText.replace(/\n/g, '<br/>')}</div>` : ''}
       </div>
     </div>`;
+}
+
+// ─── ADDONS (SEGURO / TRASLADO) ───
+
+/**
+ * Desglose Precio base / Seguro / Traslado / Total para los boxes de total
+ * único. Solo muestra las filas de adicionales con monto > 0.
+ */
+function renderAddonBreakdown(addons: AddonBreakdown): string {
+  const row = (label: string, value: string, total = false): string => `
+    <div style="display:flex;justify-content:space-between;align-items:center;font-size:${total ? '13px' : '11px'};color:${total ? '#111827' : '#6b7280'};font-weight:${total ? '700' : '500'};${total ? 'border-top:1px solid #e5e7eb;padding-top:5px;margin-top:5px;' : 'margin-bottom:3px;'}">
+      <span>${label}</span><span>$${value} ${addons.currency}</span>
+    </div>`;
+  return `
+    <div style="margin-top:8px;padding:9px 12px;background:#ffffff;border:1px dashed #d1d5db;border-radius:6px;">
+      ${row('Precio base', addons.base)}
+      ${addons.insurance ? row('Seguro', addons.insurance) : ''}
+      ${addons.transfer ? row('Traslado', addons.transfer) : ''}
+      ${row('Total', addons.total, true)}
+    </div>`;
+}
+
+/** Nota compacta "Incluye Seguro $X · Traslado $Y" para boxes por opción. */
+function renderAddonNote(addons: QuoteAddons): string {
+  const parts: string[] = [];
+  if (addons.insurance) parts.push(`Seguro $${addons.insurance}`);
+  if (addons.transfer) parts.push(`Traslado $${addons.transfer}`);
+  if (!parts.length) return '';
+  return `<div style="font-size:10px;color:#6b7280;margin-top:3px;">Incluye ${parts.join(' · ')} ${addons.currency}</div>`;
 }
 
 // ─── INCLUDES BOX ───
@@ -252,7 +303,7 @@ function renderFlightLeg(leg: FlightTemplateData['legs'][0], label: string, date
     </div>`;
 }
 
-function renderFlightDetail(flight: FlightTemplateData, optionIndex?: number): string {
+function renderFlightDetail(flight: FlightTemplateData, optionIndex?: number, addonNote?: QuoteAddons): string {
   const titleSuffix = optionIndex !== undefined ? ` - OPCIÓN ${optionIndex}` : '';
 
   const legsHtml = flight.legs.map((leg, i) => {
@@ -273,7 +324,7 @@ function renderFlightDetail(flight: FlightTemplateData, optionIndex?: number): s
             <div style="margin-bottom:5px;"><span style="font-weight:600;margin-right:5px;color:#333;font-size:11px;">Ocupación:</span><span style="color:#666;font-size:11px;">${flight.adults} adultos${flight.childrens > 0 ? `, ${flight.childrens} niños` : ''}</span></div>
           </div>
         </div>
-        ${optionIndex !== undefined ? `<div style="font-size:20px;font-weight:700;color:#d93;">$${flight.price.amount} ${flight.price.currency}</div>` : ''}
+        ${optionIndex !== undefined ? `<div style="text-align:right;"><div style="font-size:20px;font-weight:700;color:#d93;">$${flight.price.amount} ${flight.price.currency}</div>${addonNote ? renderAddonNote(addonNote) : ''}</div>` : ''}
       </div>
       ${legsHtml}
     </div>`;
@@ -281,7 +332,7 @@ function renderFlightDetail(flight: FlightTemplateData, optionIndex?: number): s
 
 // ─── FLIGHTS SIMPLE TEMPLATE ───
 
-export function renderFlightsSimpleHtml(data: { selected_flights: FlightTemplateData[]; travel_assistance: number; transfers: number }, branding: BrandingData): string {
+export function renderFlightsSimpleHtml(data: { selected_flights: FlightTemplateData[]; travel_assistance: number; transfers: number; addons?: AddonBreakdown }, branding: BrandingData): string {
   const flight = data.selected_flights[0];
   if (!flight) return '';
 
@@ -329,6 +380,7 @@ export function renderFlightsSimpleHtml(data: { selected_flights: FlightTemplate
         ${hasTransfers ? '<div style="font-size:11px;color:#6b7280;margin-top:4px;">🚐 Traslados, por pasajero.</div>' : ''}
         ${hasTravelAssistance ? '<div style="font-size:11px;color:#6b7280;margin-top:4px;">🏥 Tarjeta de asistencia médica, por pasajero.</div>' : ''}
       </div>
+      ${data.addons ? renderAddonBreakdown(data.addons) : ''}
     </div>`;
   pagesHtml += `</div>`; // close flex:1 content
   pagesHtml += renderCustomFooter(branding);
@@ -348,7 +400,7 @@ export function renderFlightsSimpleHtml(data: { selected_flights: FlightTemplate
 
 // ─── FLIGHTS MULTIPLE TEMPLATE ───
 
-export function renderFlightsMultipleHtml(data: { selected_flights: FlightTemplateData[]; travel_assistance: number; transfers: number }, branding: BrandingData): string {
+export function renderFlightsMultipleHtml(data: { selected_flights: FlightTemplateData[]; travel_assistance: number; transfers: number; addonNote?: QuoteAddons }, branding: BrandingData): string {
   const flights = data.selected_flights;
   if (!flights.length) return '';
 
@@ -362,7 +414,7 @@ export function renderFlightsMultipleHtml(data: { selected_flights: FlightTempla
     pagesHtml += pageOpen();
     pagesHtml += renderCustomHeader(branding);
     pagesHtml += `<div style="flex:1;padding-top:20px;">`;
-    pagesHtml += renderFlightDetail(flight, isMultiple ? idx + 1 : undefined);
+    pagesHtml += renderFlightDetail(flight, isMultiple ? idx + 1 : undefined, data.addonNote);
     if (idx === 0) pagesHtml += renderIncludesBox(flight, false, hasTransfers, hasTravelAssistance);
     pagesHtml += `</div>`;
     pagesHtml += renderCustomFooter(branding);
@@ -459,6 +511,7 @@ function renderHotelOptions(data: CombinedTemplateInput, hasFlights: boolean, ha
           ${hasTransfers ? '<div style="font-size:11px;color:#6b7280;margin-top:4px;">🚐 Traslados, por pasajero.</div>' : ''}
           ${hasTravelAssistance ? '<div style="font-size:11px;color:#6b7280;margin-top:4px;">🏥 Tarjeta de asistencia médica, por pasajero.</div>' : ''}
         </div>
+        ${data.addons ? renderAddonBreakdown(data.addons) : ''}
       </div>`;
   }
 
@@ -490,6 +543,7 @@ function renderHotelOptionsCards(data: CombinedTemplateInput, hasFlights: boolea
         ${data.has_multiple_hotels ? `<div style="font-weight:bold;font-size:12px;color:#333;">${opt.label}</div>` : ''}
         <div style="font-size:16px;font-weight:bold;color:#2563eb;margin-top:4px;">$${opt.total} ${data.total_currency}</div>
         <div style="font-size:8px;font-weight:600;color:#555;text-transform:uppercase;letter-spacing:0.3px;margin-top:2px;">Total paquete${hasFlights ? ' (vuelo + hotel)' : ''}</div>
+        ${data.addonNote ? renderAddonNote(data.addonNote) : ''}
       </div>
       <div style="font-size:11px;">
         <div style="font-weight:600;color:#333;margin-bottom:4px;">🏨 ${opt.hotel!.name || opt.hotel!.location || 'Hotel'}</div>

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Loader2, FileText, RotateCcw } from "lucide-react"
+import { Loader2, FileText, RotateCcw, Shield, Bus } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -51,6 +51,10 @@ export function QuotationPdfPriceDialog({ quotationId, onClose, onGenerate }: Pr
   const [currency, setCurrency] = useState("USD")
   const [quotationNumber, setQuotationNumber] = useState<string | null>(null)
   const [entries, setEntries] = useState<OptionEntry[]>([])
+  // Adicionales globales de la cotización (seguro / traslado). String para
+  // edición libre; "" = sin adicional (0).
+  const [insurance, setInsurance] = useState("")
+  const [transfer, setTransfer] = useState("")
 
   useEffect(() => {
     if (!quotationId) return
@@ -58,6 +62,8 @@ export function QuotationPdfPriceDialog({ quotationId, onClose, onGenerate }: Pr
     async function load() {
       setLoading(true)
       setEntries([])
+      setInsurance("")
+      setTransfer("")
       try {
         const res = await fetch(`/api/quotations/${quotationId}`)
         if (!res.ok) throw new Error("No se pudo cargar la cotización")
@@ -66,6 +72,8 @@ export function QuotationPdfPriceDialog({ quotationId, onClose, onGenerate }: Pr
         const q = json.data
         setCurrency(q?.currency || "USD")
         setQuotationNumber(q?.quotation_number || null)
+        setInsurance(Number(q?.insurance_amount) > 0 ? String(q.insurance_amount) : "")
+        setTransfer(Number(q?.transfer_amount) > 0 ? String(q.transfer_amount) : "")
         const options = Array.isArray(q?.quotation_options) ? q.quotation_options : []
         const mapped: OptionEntry[] = options
           .slice()
@@ -135,6 +143,18 @@ export function QuotationPdfPriceDialog({ quotationId, onClose, onGenerate }: Pr
       }
     }
 
+    // Adicionales: vacío = 0. Solo rechazamos valores inválidos/negativos.
+    const insuranceValue = insurance.trim() ? Number(insurance) : 0
+    const transferValue = transfer.trim() ? Number(transfer) : 0
+    if (!Number.isFinite(insuranceValue) || insuranceValue < 0) {
+      toast.error("Ingresá un monto de seguro válido (0 o mayor)")
+      return
+    }
+    if (!Number.isFinite(transferValue) || transferValue < 0) {
+      toast.error("Ingresá un monto de traslado válido (0 o mayor)")
+      return
+    }
+
     setSaving(true)
     try {
       for (const entry of entries) {
@@ -154,6 +174,18 @@ export function QuotationPdfPriceDialog({ quotationId, onClose, onGenerate }: Pr
           toast.error(json?.error || `No se pudo guardar el precio de "${entry.title}"`)
           return
         }
+      }
+
+      // Adicionales globales (seguro / traslado) → header de la cotización.
+      const addonsRes = await fetch(`/api/quotations/${quotationId}/addons`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ insurance_amount: insuranceValue, transfer_amount: transferValue }),
+      })
+      if (!addonsRes.ok) {
+        const json = await addonsRes.json().catch(() => ({}))
+        toast.error(json?.error || "No se pudieron guardar el seguro y traslado")
+        return
       }
 
       onGenerate(quotationId)
@@ -232,6 +264,47 @@ export function QuotationPdfPriceDialog({ quotationId, onClose, onGenerate }: Pr
                 Esta cotización no tiene opciones.
               </p>
             )}
+
+            {/* Adicionales globales: se suman al total y se muestran
+                desglosados en el PDF. Vacío = no se muestran. */}
+            <div className="rounded-lg border border-border/60 p-3 space-y-3">
+              <p className="text-sm font-medium">Adicionales (opcional)</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="addon-insurance" className="text-xs text-muted-foreground flex items-center gap-1.5">
+                    <Shield className="h-3.5 w-3.5" /> Seguro ({currency})
+                  </Label>
+                  <Input
+                    id="addon-insurance"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    placeholder="0"
+                    value={insurance}
+                    onChange={(e) => setInsurance(e.target.value)}
+                    disabled={saving}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="addon-transfer" className="text-xs text-muted-foreground flex items-center gap-1.5">
+                    <Bus className="h-3.5 w-3.5" /> Traslado ({currency})
+                  </Label>
+                  <Input
+                    id="addon-transfer"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    placeholder="0"
+                    value={transfer}
+                    onChange={(e) => setTransfer(e.target.value)}
+                    disabled={saving}
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Se suman al total y se muestran desglosados en el PDF.
+              </p>
+            </div>
           </div>
         )}
 

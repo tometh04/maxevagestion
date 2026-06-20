@@ -21,6 +21,8 @@ import {
   type HotelTemplateData,
   type CombinedTemplateInput,
   type HotelSummaryCard,
+  type AddonBreakdown,
+  type QuoteAddons,
 } from "@/lib/pdf/quote-pdf-designs"
 import {
   type QuotationPresentationData,
@@ -79,6 +81,45 @@ function fmtAmount(amount: number): string {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   })
+}
+
+// Adicionales globales (seguro/traslado) de la cotización. 0 → null para que
+// el template no renderice esa fila/nota.
+function fmtAddon(amount: number): string | null {
+  return amount > 0 ? fmtAmount(amount) : null
+}
+
+function getQuotationAddons(data: QuotationPresentationData): {
+  insurance: number
+  transfer: number
+  sum: number
+} {
+  const insurance = Math.max(0, Number(data.insurance_amount || 0))
+  const transfer = Math.max(0, Number(data.transfer_amount || 0))
+  return { insurance, transfer, sum: insurance + transfer }
+}
+
+/** Desglose Precio base / Seguro / Traslado / Total para boxes de total único. */
+function buildAddonBreakdown(
+  baseTotal: number,
+  insurance: number,
+  transfer: number,
+  currency: string
+): AddonBreakdown | undefined {
+  if (insurance <= 0 && transfer <= 0) return undefined
+  return {
+    base: fmtAmount(baseTotal),
+    insurance: fmtAddon(insurance),
+    transfer: fmtAddon(transfer),
+    total: fmtAmount(baseTotal + insurance + transfer),
+    currency,
+  }
+}
+
+/** Nota compacta "Incluye Seguro $X · Traslado $Y" para boxes por opción. */
+function buildAddonNote(insurance: number, transfer: number, currency: string): QuoteAddons | undefined {
+  if (insurance <= 0 && transfer <= 0) return undefined
+  return { insurance: fmtAddon(insurance), transfer: fmtAddon(transfer), currency }
 }
 
 function computeNightsLabel(checkin?: string | null, checkout?: string | null): string {
@@ -282,6 +323,10 @@ function buildCombinedInput(data: QuotationPresentationData): CombinedTemplateIn
     mapFlightItem(item, data, referenceOption.total_amount)
   )
 
+  // Adicionales globales: se suman al total mostrado y se desglosan.
+  const addons = getQuotationAddons(data)
+  const currency = esc(data.currency)
+
   const input: CombinedTemplateInput = {
     selected_flights: selectedFlights,
     has_flights: selectedFlights.length > 0,
@@ -294,13 +339,18 @@ function buildCombinedInput(data: QuotationPresentationData): CombinedTemplateIn
     adults: data.adults,
     childrens: data.children,
     infants: data.infants,
-    total_price: fmtAmount(referenceOption.total_amount),
-    total_currency: esc(data.currency),
-    travel_assistance: refItems.some((i) => i.item_type === "ASSISTANCE" || i.item_type === "INSURANCE")
-      ? 1
-      : 0,
-    transfers: refItems.some((i) => i.item_type === "TRANSFER") ? 1 : 0,
+    total_price: fmtAmount(referenceOption.total_amount + addons.sum),
+    total_currency: currency,
+    travel_assistance:
+      addons.insurance > 0 ||
+      refItems.some((i) => i.item_type === "ASSISTANCE" || i.item_type === "INSURANCE")
+        ? 1
+        : 0,
+    transfers:
+      addons.transfer > 0 || refItems.some((i) => i.item_type === "TRANSFER") ? 1 : 0,
     hotel_destination: esc(firstHotel?.destination_city || data.destination || ""),
+    addons: buildAddonBreakdown(referenceOption.total_amount, addons.insurance, addons.transfer, data.currency),
+    addonNote: buildAddonNote(addons.insurance, addons.transfer, data.currency),
   }
 
   if (firstHotel?.meal_plan === "ALL_INCLUSIVE") {
@@ -344,7 +394,7 @@ function buildCombinedInput(data: QuotationPresentationData): CombinedTemplateIn
     const hotelItem = (option.items || []).find(isHotelItem)
     if (!hotelItem) return
     const hotel = mapHotelItem(hotelItem, option.total_amount)
-    const total = fmtAmount(option.total_amount)
+    const total = fmtAmount(option.total_amount + addons.sum)
     if (index === 0) {
       input.option_1_hotel = hotel
       input.option_1_total = total
@@ -368,29 +418,61 @@ function buildQuotationHtml(data: QuotationPresentationData, branding: QuotePdfB
     return renderCombinedHtml(buildCombinedInput(data), branding)
   }
 
-  // Solo vuelos: un FlightTemplateData por vuelo, con el precio de su opción
+  // Solo vuelos: un FlightTemplateData por vuelo. El precio mostrado de cada
+  // opción ya incluye los adicionales globales (seguro/traslado) — el desglose
+  // se renderiza aparte (box en el caso simple, nota por opción en múltiples).
+  const addons = getQuotationAddons(data)
   const flights = data.options.flatMap((option) =>
     (option.items || [])
       .filter(isFlightItem)
-      .map((item) => mapFlightItem(item, data, option.total_amount))
+      .map((item) => mapFlightItem(item, data, option.total_amount + addons.sum))
   )
 
   const referenceOption = getReferenceOption(data)
   const refItems = referenceOption.items || []
   const flightsData = {
     selected_flights: flights,
-    travel_assistance: refItems.some(
-      (i) => i.item_type === "ASSISTANCE" || i.item_type === "INSURANCE"
-    )
-      ? 1
-      : 0,
-    transfers: refItems.some((i) => i.item_type === "TRANSFER") ? 1 : 0,
+    travel_assistance:
+      addons.insurance > 0 ||
+      refItems.some((i) => i.item_type === "ASSISTANCE" || i.item_type === "INSURANCE")
+        ? 1
+        : 0,
+    transfers:
+      addons.transfer > 0 || refItems.some((i) => i.item_type === "TRANSFER") ? 1 : 0,
   }
 
   if (flights.length === 1) {
-    return renderFlightsSimpleHtml(flightsData, branding)
+    return renderFlightsSimpleHtml(
+      {
+        ...flightsData,
+        addons: buildAddonBreakdown(
+          referenceOption.total_amount,
+          addons.insurance,
+          addons.transfer,
+          data.currency
+        ),
+      },
+      branding
+    )
   }
-  return renderFlightsMultipleHtml(flightsData, branding)
+  return renderFlightsMultipleHtml(
+    { ...flightsData, addonNote: buildAddonNote(addons.insurance, addons.transfer, data.currency) },
+    branding
+  )
+}
+
+/**
+ * Devuelve el HTML del template de cotización (mismo diseño que el PDF) para
+ * embeberlo en pantalla (página pública). Es un string puro: NO dispara
+ * html2canvas/jspdf, así que es seguro de llamar en render. Usar solo si
+ * isHtmlQuotePdfEligible(data) es true.
+ */
+export function renderQuotationHtmlDocument(
+  data: QuotationPresentationData,
+  settings: OrganizationBrandingSettings
+): string {
+  const branding = buildQuotePdfBranding(settings, data)
+  return buildQuotationHtml(data, branding)
 }
 
 /**

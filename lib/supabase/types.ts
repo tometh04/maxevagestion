@@ -7314,6 +7314,7 @@ export type Database = {
           discounts: number | null
           id: string
           infants: number | null
+          insurance_amount: number
           internal_notes: string | null
           lead_id: string | null
           notes: string | null
@@ -7335,6 +7336,7 @@ export type Database = {
           taxes: number | null
           terms_and_conditions: string | null
           total_amount: number
+          transfer_amount: number
           updated_at: string | null
           valid_until: string
         }
@@ -7354,6 +7356,7 @@ export type Database = {
           discounts?: number | null
           id?: string
           infants?: number | null
+          insurance_amount?: number
           internal_notes?: string | null
           lead_id?: string | null
           notes?: string | null
@@ -7375,6 +7378,7 @@ export type Database = {
           taxes?: number | null
           terms_and_conditions?: string | null
           total_amount: number
+          transfer_amount?: number
           updated_at?: string | null
           valid_until: string
         }
@@ -7394,6 +7398,7 @@ export type Database = {
           discounts?: number | null
           id?: string
           infants?: number | null
+          insurance_amount?: number
           internal_notes?: string | null
           lead_id?: string | null
           notes?: string | null
@@ -7415,6 +7420,7 @@ export type Database = {
           taxes?: number | null
           terms_and_conditions?: string | null
           total_amount?: number
+          transfer_amount?: number
           updated_at?: string | null
           valid_until?: string
         }
