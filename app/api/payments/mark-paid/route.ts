@@ -112,6 +112,8 @@ export async function POST(request: Request) {
       const matchedOperatorPayment = await findMatchingOperatorPayment(supabase, {
         operationId: paymentData.operation_id,
         operatorId: linkedOperatorId,
+        // Desambigua patas del mismo operador por monto (ver pickExactPendingMatch).
+        amount: paymentData.amount != null ? parseFloat(String(paymentData.amount)) : null,
       })
 
       if (matchedOperatorPayment) {

@@ -90,12 +90,47 @@ export function buildOperatorPaymentUpdate(
   }
 }
 
+/**
+ * Desambigua entre varias patas pendientes del MISMO operador usando el monto
+ * del pago.
+ *
+ * Caso real (OP b62d751c, 2026-06): un operador (FTA TOUR OPERADOR) aparecía en
+ * 2 patas de la misma operación — Hotel 332,64 y Vuelo 399,44. Al registrar un
+ * pago de 399,44 sin operator_payment_id explícito, el matching tomaba la pata
+ * MÁS VIEJA (FIFO) → la del hotel, topeaba el pago a 332,64 y descartaba el
+ * excedente, dejando el vuelo como pendiente fantasma.
+ *
+ * Estrategia conservadora: solo desvía del orden FIFO si existe UNA ÚNICA pata
+ * cuyo saldo pendiente coincide EXACTAMENTE (± epsilon) con el monto del pago.
+ * Si no hay match, o hay más de uno (ambiguo), devuelve null y el caller mantiene
+ * el comportamiento FIFO previo. Así no cambia ningún flujo existente salvo el
+ * que justamente estaba mal.
+ */
+export function pickExactPendingMatch<
+  T extends { amount: number | string; paid_amount: number | string | null }
+>(candidates: T[], amount: number | string | null | undefined): T | null {
+  if (amount == null) return null
+  const target = Number(amount)
+  if (!Number.isFinite(target) || target <= 0) return null
+
+  const matches = candidates.filter(
+    (c) => Math.abs(toMoney(c.amount) - toMoney(c.paid_amount) - target) <= MONEY_EPSILON
+  )
+
+  return matches.length === 1 ? matches[0] : null
+}
+
 export async function findMatchingOperatorPayment(
   supabase: AppSupabaseClient,
   params: {
     operationId: string
     operatorId?: string | null
     operatorPaymentId?: string | null
+    /**
+     * Monto del pago. Cuando se conoce y hay varias patas pendientes del mismo
+     * operador, se usa para elegir la pata exacta en vez del orden FIFO ciego.
+     */
+    amount?: number | string | null
   }
 ): Promise<OperatorPaymentRecord | null> {
   const baseSelect = "id, operation_id, operator_id, amount, paid_amount, due_date, status, ledger_movement_id, created_at"
@@ -146,6 +181,15 @@ export async function findMatchingOperatorPayment(
 
   if (!params.operatorId && candidates.length !== 1) {
     return null
+  }
+
+  // Varias patas pendientes del mismo operador: preferir la que matchea el monto
+  // exacto del pago antes de caer al FIFO (ver pickExactPendingMatch).
+  if (candidates.length > 1) {
+    const exact = pickExactPendingMatch(candidates, params.amount)
+    if (exact) {
+      return exact
+    }
   }
 
   return candidates[0] || null

@@ -337,7 +337,7 @@ export async function POST(request: Request) {
     let operationServiceData: any = null
     if (operation_service_id) {
       const { data: operationService, error: operationServiceError } = await (supabase.from("operation_services") as any)
-        .select("id, operation_id, operator_id, operator_payment_id, sale_currency")
+        .select("id, operation_id, operator_id, operator_payment_id, sale_currency, cost_amount, cost_currency")
         .eq("id", operation_service_id)
         .maybeSingle()
 
@@ -441,6 +441,9 @@ export async function POST(request: Request) {
             operationId: operation_id,
             operatorId: resolvedOperatorId,
             operatorPaymentId: resolvedOperatorPaymentId || operator_payment_id || null,
+            // Desambigua patas del mismo operador por monto cuando no hay
+            // operator_payment_id explícito (ver pickExactPendingMatch).
+            amount: amount != null ? parseFloat(String(amount)) : null,
           })
         } catch (error) {
           const message = error instanceof Error ? error.message : "Error al identificar la deuda del operador"
@@ -450,10 +453,60 @@ export async function POST(request: Request) {
 
         if (!matchedOperatorPayment) {
           if (operation_service_id) {
-            return NextResponse.json({
-              error: "No hay deuda pendiente para el proveedor vinculado a este servicio",
-            }, { status: 400 })
-          }
+            // Si el servicio YA tiene una deuda vinculada (operator_payment_id) pero
+            // findMatchingOperatorPayment no la devolvió, es porque ya no tiene saldo
+            // pendiente → el pago ya fue registrado. No recrear deuda.
+            if (operationServiceData?.operator_payment_id) {
+              return NextResponse.json({
+                error: "El pago de este servicio al proveedor ya fue registrado",
+              }, { status: 400 })
+            }
+
+            // El servicio no tiene operator_payment vinculado (servicio legacy, o
+            // falló createOperatorPayment al crearlo). Lo creamos on-the-fly desde
+            // el costo del servicio, igual que el flujo de operation_operators de
+            // más abajo, en vez de bloquear el pago.
+            const serviceCost = operationServiceData?.cost_amount != null
+              ? parseFloat(String(operationServiceData.cost_amount))
+              : 0
+            const serviceCostCurrency = operationServiceData?.cost_currency || currency || "USD"
+
+            if (!(serviceCost > 0)) {
+              return NextResponse.json({
+                error: "El servicio seleccionado no tiene costo registrado para el proveedor",
+              }, { status: 400 })
+            }
+
+            const { data: newServiceOpPayment, error: createServiceOpPayError } = await (supabase.from("operator_payments") as any)
+              .insert({
+                operation_id,
+                operator_id: resolvedOperatorId,
+                amount: serviceCost,
+                currency: serviceCostCurrency,
+                paid_amount: 0,
+                status: "PENDING",
+                due_date: new Date().toISOString().split("T")[0],
+                org_id: user.org_id,
+              })
+              .select("id, operator_id")
+              .single()
+
+            if (createServiceOpPayError || !newServiceOpPayment) {
+              console.error("[payments POST] No se pudo crear operator_payment del servicio:", createServiceOpPayError)
+              return NextResponse.json(
+                { error: "No se pudo registrar la deuda del proveedor para este servicio" },
+                { status: 500 }
+              )
+            }
+
+            resolvedOperatorId = (newServiceOpPayment as any).operator_id
+            resolvedOperatorPaymentId = (newServiceOpPayment as any).id
+
+            // Vincular la deuda recién creada al servicio para futuros pagos.
+            await (supabase.from("operation_services") as any)
+              .update({ operator_payment_id: resolvedOperatorPaymentId })
+              .eq("id", operation_service_id)
+          } else {
 
           // Si el operador está asignado a la operación (en operation_operators)
           // pero aún no tiene operator_payment creado, lo creamos on-the-fly usando
@@ -509,6 +562,7 @@ export async function POST(request: Request) {
                 ? "Debe seleccionar el operador al que corresponde el pago"
                 : "No hay deuda pendiente a operador para esta operación",
             }, { status: 400 })
+          }
           }
         } else {
           resolvedOperatorId = matchedOperatorPayment.operator_id
@@ -1865,6 +1919,7 @@ export async function PATCH(request: Request) {
         const matchedOperatorPayment = await findMatchingOperatorPayment(supabase, {
           operationId: existingPayment.operation_id,
           operatorId: linkedOperatorId,
+          amount: amount !== undefined ? parseFloat(amount) : parseFloat(existingPayment.amount),
         })
 
         if (matchedOperatorPayment) {
@@ -2188,6 +2243,7 @@ export async function PATCH(request: Request) {
           const matchedOperatorPayment = await findMatchingOperatorPayment(supabase, {
             operationId: existingPayment.operation_id,
             operatorId: linkedOperatorId,
+            amount: finalAmount,
           })
 
           if (matchedOperatorPayment) {
