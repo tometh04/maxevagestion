@@ -542,12 +542,20 @@ export async function POST(request: Request) {
         .maybeSingle()
 
       if (accountsReceivableChart) {
-        // Buscar o crear financial_account asociada a esta cuenta del plan
+        // Buscar o crear financial_account asociada a esta cuenta del plan.
+        // IMPORTANTE: order+limit (no maybeSingle solo) — si ya existen varias
+        // cuentas del mismo chart/currency (data legacy), maybeSingle tiraba error
+        // y el flujo creaba UNA NUEVA en cada operación → runaway de cuentas
+        // duplicadas "Cuentas por Cobrar" (Lozada Rosario llegó a ~244). Devolvemos
+        // siempre la más antigua. Scope explícito por org (cross-tenant).
         const { data: existingReceivableFA } = await (supabase.from("financial_accounts") as any)
           .select("id")
           .eq("chart_account_id", accountsReceivableChart.id)
           .eq("currency", finalSaleCurrency)
           .eq("is_active", true)
+          .eq("org_id", (user as any).org_id)
+          .order("created_at", { ascending: true })
+          .limit(1)
           .maybeSingle()
         let accountsReceivableFinancialAccount = existingReceivableFA
 
@@ -562,6 +570,7 @@ export async function POST(request: Request) {
               initial_balance: 0,
               is_active: true,
               created_by: user.id,
+              org_id: (user as any).org_id,
             })
             .select("id")
             .single()
@@ -608,12 +617,17 @@ export async function POST(request: Request) {
           .maybeSingle()
 
         if (accountsPayableChart) {
-          // Buscar o crear financial_account asociada
+          // Buscar o crear financial_account asociada. order+limit por la misma
+          // razón que en Cuentas por Cobrar: evitar runaway de duplicados cuando
+          // ya existe más de una. Scope explícito por org (cross-tenant).
           const { data: existingPayableFA } = await (supabase.from("financial_accounts") as any)
             .select("id")
             .eq("chart_account_id", accountsPayableChart.id)
             .eq("currency", finalOperatorCostCurrency)
             .eq("is_active", true)
+            .eq("org_id", (user as any).org_id)
+            .order("created_at", { ascending: true })
+            .limit(1)
             .maybeSingle()
           let accountsPayableFinancialAccount = existingPayableFA
 
@@ -627,6 +641,7 @@ export async function POST(request: Request) {
                 initial_balance: 0,
                 is_active: true,
                 created_by: user.id,
+                org_id: (user as any).org_id,
               })
               .select("id")
               .single()
