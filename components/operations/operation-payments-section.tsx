@@ -72,6 +72,7 @@ import {
   type OperationServicePaymentRelationLike,
 } from "@/lib/operations/payment-operators"
 import { normalizePaymentMethodForForm } from "@/lib/accounting/payment-counterparts"
+import { pickExactPendingMatch } from "@/lib/accounting/operator-payment-settlement"
 
 interface FinancialAccount {
   id: string
@@ -548,6 +549,28 @@ export function OperationPaymentsSection({
   // Bank tax (Ley 25413): computed values for EXPENSE (pago operador) dialog
   const watchedExpenseAccountId = expenseForm.watch("financial_account_id")
   const watchedExpenseAmount = expenseForm.watch("amount")
+  const watchedExpenseCurrency = expenseForm.watch("currency")
+
+  // Auto-preselección por defecto (2026-06): con 2+ deudas pendientes y sin
+  // selección manual, preseleccionar la deuda cuyo saldo pendiente coincide
+  // EXACTAMENTE con el monto tipeado (misma moneda). Reutiliza la misma lógica
+  // que el backend (pickExactPendingMatch). Nunca pisa una elección manual.
+  useEffect(() => {
+    if (!expenseDialogOpen) return
+    if (openOperatorDebts.length <= 1) return // length===1 lo cubre el effect previo
+    if (expenseForm.getValues("operator_payment_id")) return // no pisar selección manual
+
+    const candidates = openOperatorDebts
+      .filter((d) => d.currency === watchedExpenseCurrency)
+      .map((d) => ({ ...d, amount: d.pending, paid_amount: 0 }))
+    const match = pickExactPendingMatch(candidates, watchedExpenseAmount)
+    if (!match) return
+
+    expenseForm.setValue("operator_payment_id", match.id, { shouldValidate: true })
+    expenseForm.setValue("operator_id", match.operatorId || "", { shouldValidate: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expenseDialogOpen, openOperatorDebts, watchedExpenseAmount, watchedExpenseCurrency])
+
   const selectedExpenseAccount = useMemo(
     () => financialAccounts.find((a) => a.id === watchedExpenseAccountId) || null,
     [financialAccounts, watchedExpenseAccountId]
