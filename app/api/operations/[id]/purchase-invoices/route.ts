@@ -164,17 +164,14 @@ async function handleFileUpload(
   // OCR: Extract invoice data using OpenAI Vision
   let ocrData: any = null
   let ocrError: string | null = null
-  let ocrDebug: any = null
   try {
     const ocrResult = await scanInvoiceWithAI(fileBuffer, file.type)
     ocrData = ocrResult.data
     ocrError = ocrResult.error
-    ocrDebug = ocrResult.debug || null
   } catch (err: any) {
     // No-fatal: la factura se sube igual, pero propagamos el motivo al frontend.
     console.error("OCR error (non-fatal):", err)
     ocrError = err?.message || "No se pudo leer la factura automáticamente."
-    ocrDebug = { fatalError: err?.message || String(err) }
   }
 
   // Get operator info if provided
@@ -199,7 +196,6 @@ async function handleFileUpload(
       extract_only: true,
       ocr_extracted: !!ocrData,
       ocr_error: ocrData ? null : ocrError,
-      ocr_debug: ocrDebug, // TEMPORAL: diagnóstico de extracción (se muestra en el modal)
       document_url: documentUrl,
       document_name: file.name,
       extracted: {

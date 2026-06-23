@@ -103,7 +103,6 @@ export function PurchaseInvoicesSection({
   const [showDialog, setShowDialog] = useState(false)
   const [editingInvoice, setEditingInvoice] = useState<PurchaseInvoice | null>(null)
   const [ocrProcessing, setOcrProcessing] = useState(false)
-  const [ocrDebug, setOcrDebug] = useState<any>(null) // TEMPORAL: diagnóstico OCR
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // SP-6.5: percepciones en modo auto vs manual
@@ -246,7 +245,6 @@ export function PurchaseInvoicesSection({
     })
     setEditingInvoice(null)
     setAutoPerceptions(true)
-    setOcrDebug(null)
   }
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -269,10 +267,6 @@ export function PurchaseInvoicesSection({
 
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
-
-      // TEMPORAL: diagnóstico de extracción
-      console.log("[OCR debug]", data.ocr_debug)
-      setOcrDebug(data.ocr_debug || null)
 
       // Precargar el modal con lo extraído (o vacío si el OCR falló) para que el
       // usuario revise/corrija y recién al Guardar se cree la factura.
@@ -613,14 +607,6 @@ export function PurchaseInvoicesSection({
           </DialogHeader>
 
           <div className="px-6 py-5 space-y-5">
-            {/* TEMPORAL: diagnóstico de extracción OCR. Sacar cuando se valide. */}
-            {ocrDebug && (
-              <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] font-mono text-amber-700 dark:text-amber-300 overflow-x-auto">
-                <div className="font-semibold mb-1">DEBUG OCR (temporal)</div>
-                <pre className="whitespace-pre-wrap break-all">{JSON.stringify(ocrDebug, null, 2)}</pre>
-              </div>
-            )}
-
             {/* Archivo adjunto (subido por OCR, aún sin guardar) */}
             {form.document_url && (
               <div className="flex items-center justify-between rounded-md border border-border/60 bg-muted/40 px-3 py-2 text-sm">
