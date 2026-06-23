@@ -407,16 +407,16 @@ async function handleJsonCreate(
  * sin deps nativas, serverless-friendly). Devuelve "" si el PDF es escaneado
  * (sin texto) o si la extracción falla — el caller cae a lectura visual.
  */
-async function extractPdfText(fileBuffer: ArrayBuffer): Promise<string> {
+async function extractPdfText(fileBuffer: ArrayBuffer): Promise<{ text: string; error?: string }> {
   try {
     const { extractText, getDocumentProxy } = await import("unpdf")
     const pdf = await getDocumentProxy(new Uint8Array(fileBuffer))
     const { text } = await extractText(pdf, { mergePages: true })
     const joined = Array.isArray(text) ? text.join("\n") : (text || "")
-    return joined.replace(/\s+\n/g, "\n").trim()
-  } catch (err) {
+    return { text: joined.replace(/\s+\n/g, "\n").trim() }
+  } catch (err: any) {
     console.error("PDF text extraction failed (non-fatal):", err)
-    return ""
+    return { text: "", error: err?.message || String(err) }
   }
 }
 
@@ -446,13 +446,16 @@ async function scanInvoiceWithAI(
   // observado: CUITs e importes inventados). Si el PDF es escaneado (sin capa de
   // texto) o es una imagen, mandamos el archivo/imagen para lectura visual.
   let pdfText = ""
+  let pdfTextError: string | undefined
   if (isPdf) {
-    pdfText = await extractPdfText(fileBuffer)
+    const r = await extractPdfText(fileBuffer)
+    pdfText = r.text
+    pdfTextError = r.error
   }
   const hasUsableText = pdfText.length >= 40
-  console.log(`[purchase-invoice OCR] isPdf=${isPdf} pdfTextLen=${pdfText.length} usingText=${hasUsableText}`)
+  console.log(`[purchase-invoice OCR] isPdf=${isPdf} pdfTextLen=${pdfText.length} usingText=${hasUsableText} err=${pdfTextError || "none"}`)
   // Debug temporal para diagnosticar la extracción en prod (se ve en el modal).
-  const debug: any = { isPdf, pdfTextLen: pdfText.length, usingText: hasUsableText }
+  const debug: any = { isPdf, pdfTextLen: pdfText.length, usingText: hasUsableText, pdfTextError: pdfTextError || null }
 
   // Chat Completions NO acepta PDFs vía image_url (solo imágenes reales). Para
   // PDFs escaneados usamos el content part "file" (file_data base64), que GPT-4o
