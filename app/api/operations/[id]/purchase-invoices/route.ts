@@ -403,21 +403,25 @@ async function handleJsonCreate(
 }
 
 /**
- * Extrae la capa de texto de un PDF digital con unpdf (pdf.js bajo el capó,
- * sin deps nativas, serverless-friendly). Devuelve "" si el PDF es escaneado
- * (sin texto) o si la extracción falla — el caller cae a lectura visual.
+ * Renderiza la 1ª página de un PDF a un PNG de alta resolución (data URL).
+ *
+ * Las facturas electrónicas argentinas suelen venir RASTERIZADAS (sin capa de
+ * texto), y si le mandamos el PDF crudo a GPT lo procesa en baja fidelidad y
+ * ALUCINA los dígitos largos (CUIT, nro de factura). Renderizando nosotros la
+ * página a una imagen nítida (scale 3) y pasándole ESA imagen, GPT lee exacto.
+ * Verificado contra una factura real (CUIT, moneda, exento, total correctos).
+ *
+ * Usa unpdf (pdf.js) + @napi-rs/canvas (binario nativo precompilado, sin deps
+ * de sistema, corre en Railway). Ambos están en serverExternalPackages.
  */
-async function extractPdfText(fileBuffer: ArrayBuffer): Promise<{ text: string; error?: string }> {
-  try {
-    const { extractText, getDocumentProxy } = await import("unpdf")
-    const pdf = await getDocumentProxy(new Uint8Array(fileBuffer))
-    const { text } = await extractText(pdf, { mergePages: true })
-    const joined = Array.isArray(text) ? text.join("\n") : (text || "")
-    return { text: joined.replace(/\s+\n/g, "\n").trim() }
-  } catch (err: any) {
-    console.error("PDF text extraction failed (non-fatal):", err)
-    return { text: "", error: err?.message || String(err) }
-  }
+async function renderPdfFirstPageToPng(fileBuffer: ArrayBuffer): Promise<string> {
+  const { renderPageAsImage } = await import("unpdf")
+  const canvasMod = await import("@napi-rs/canvas")
+  const ab = await renderPageAsImage(new Uint8Array(fileBuffer), 1, {
+    scale: 3,
+    canvasImport: () => Promise.resolve(canvasMod),
+  })
+  return `data:image/png;base64,${Buffer.from(ab).toString("base64")}`
 }
 
 /**
@@ -435,44 +439,40 @@ async function scanInvoiceWithAI(
   }
 
   const openai = new OpenAI({ apiKey })
-  const base64 = Buffer.from(fileBuffer).toString("base64")
-  const dataUrl = `data:${mimeType};base64,${base64}`
-
   const isPdf = mimeType === "application/pdf"
 
-  // Para PDFs digitales (facturas electrónicas) extraemos la CAPA DE TEXTO: los
-  // números (CUIT, importes, moneda, fechas) salen EXACTOS y evitamos que el
-  // modelo los alucine a partir de una imagen de baja resolución (problema real
-  // observado: CUITs e importes inventados). Si el PDF es escaneado (sin capa de
-  // texto) o es una imagen, mandamos el archivo/imagen para lectura visual.
-  let pdfText = ""
-  let pdfTextError: string | undefined
+  // Imagen a leer por GPT. Para PDFs lo renderizamos a PNG nítido (ver
+  // renderPdfFirstPageToPng): mandar el PDF crudo hace que GPT alucine dígitos.
+  // Para imágenes (JPG/PNG) usamos el archivo directo.
+  let imageDataUrl: string
+  let renderError: string | undefined
   if (isPdf) {
-    const r = await extractPdfText(fileBuffer)
-    pdfText = r.text
-    pdfTextError = r.error
+    try {
+      imageDataUrl = await renderPdfFirstPageToPng(fileBuffer)
+    } catch (err: any) {
+      // Fallback: si el render falla, mandamos el PDF crudo (mejor que nada).
+      console.error("PDF render failed, falling back to raw PDF:", err)
+      renderError = err?.message || String(err)
+      imageDataUrl = `data:${mimeType};base64,${Buffer.from(fileBuffer).toString("base64")}`
+    }
+  } else {
+    imageDataUrl = `data:${mimeType};base64,${Buffer.from(fileBuffer).toString("base64")}`
   }
-  const hasUsableText = pdfText.length >= 40
-  console.log(`[purchase-invoice OCR] isPdf=${isPdf} pdfTextLen=${pdfText.length} usingText=${hasUsableText} err=${pdfTextError || "none"}`)
-  // Debug temporal para diagnosticar la extracción en prod (se ve en el modal).
-  const debug: any = { isPdf, pdfTextLen: pdfText.length, usingText: hasUsableText, pdfTextError: pdfTextError || null }
 
-  // Chat Completions NO acepta PDFs vía image_url (solo imágenes reales). Para
-  // PDFs escaneados usamos el content part "file" (file_data base64), que GPT-4o
-  // procesa. El SDK openai@4.24 no tipa "file" pero serializa el content tal cual.
-  const fileContentPart: any = isPdf
-    ? { type: "file", file: { filename: "factura.pdf", file_data: dataUrl } }
-    : { type: "image_url", image_url: { url: dataUrl, detail: "high" } }
+  const usedRender = isPdf && !renderError
+  console.log(`[purchase-invoice OCR] isPdf=${isPdf} usedRender=${usedRender} renderError=${renderError || "none"}`)
+  // Debug temporal para diagnosticar en prod (se ve en el modal).
+  const debug: any = { isPdf, usedRender, renderError: renderError || null }
 
-  // Si tenemos texto del PDF, esa es la fuente de verdad (sin imagen, para no
-  // reintroducir alucinaciones). Si no, lectura visual del archivo/imagen.
-  const userContent: any[] = hasUsableText
-    ? [{
-        type: "text",
-        text: `Datos de la factura extraídos del texto del PDF. Es la FUENTE DE VERDAD: copiá los números (CUIT, importes, moneda, fechas) tal cual figuran acá, no los inventes ni recalcules.\n\n--- TEXTO DE LA FACTURA ---\n${pdfText}`,
-      }]
+  // PDF renderizado o imagen: GPT no acepta PDF vía image_url, pero el render ya
+  // es PNG. Si hubo fallback al PDF crudo, usamos el content part "file".
+  const userContent: any[] = (isPdf && renderError)
+    ? [
+        { type: "file", file: { filename: "factura.pdf", file_data: imageDataUrl } },
+        { type: "text", text: "Extraé los datos de esta factura argentina." },
+      ]
     : [
-        fileContentPart,
+        { type: "image_url", image_url: { url: imageDataUrl, detail: "high" } },
         { type: "text", text: "Extraé los datos de esta factura argentina." },
       ]
 
