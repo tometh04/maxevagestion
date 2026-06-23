@@ -206,7 +206,7 @@ async function handleFileUpload(
         emitter_name: emitterName,
         currency: ocrData?.currency || "ARS",
         net_amount: ocrData?.net_amount || 0,
-        iva_rate: ocrData?.iva_rate || 21,
+        iva_rate: ocrData?.iva_rate ?? 21, // ?? para no pisar 0 (exento) con 21
         iva_amount: ocrData?.iva_amount || 0,
         perception_iva: ocrData?.perception_iva || 0,
         perception_iibb: ocrData?.perception_iibb || 0,
@@ -227,7 +227,7 @@ async function handleFileUpload(
     emitter_name: emitterName,
     currency: ocrData?.currency || "ARS",
     net_amount: ocrData?.net_amount || 0,
-    iva_rate: ocrData?.iva_rate || 21,
+    iva_rate: ocrData?.iva_rate ?? 21, // ?? para no pisar 0 (exento) con 21
     iva_amount: ocrData?.iva_amount || 0,
     perception_iva: ocrData?.perception_iva || 0,
     perception_iibb: ocrData?.perception_iibb || 0,
@@ -335,7 +335,7 @@ async function handleJsonCreate(
     emitter_name: body.emitter_name,
     currency: body.currency || "ARS",
     net_amount: body.net_amount || 0,
-    iva_rate: body.iva_rate || 21,
+    iva_rate: body.iva_rate ?? 21, // ?? para no pisar 0 (exento) con 21
     iva_amount: body.iva_amount || 0,
     perception_iva: body.perception_iva || 0,
     perception_iibb: body.perception_iibb || 0,
@@ -436,22 +436,29 @@ async function scanInvoiceWithAI(
         {
           role: "system",
           content: `Sos un experto en leer facturas argentinas (AFIP). Extraé los datos de la factura en formato JSON.
+
 Campos a extraer:
 - invoice_type: "FACTURA_A", "FACTURA_B", "FACTURA_C", "NOTA_CREDITO_A", "NOTA_CREDITO_B", "NOTA_DEBITO_A", "NOTA_DEBITO_B"
 - invoice_number: número completo "0001-00012345"
-- invoice_date: fecha de emisión en formato "YYYY-MM-DD"
+- invoice_date: fecha de EMISIÓN (no la de vencimiento). Las fechas argentinas vienen como DD/MM/YYYY; convertila a "YYYY-MM-DD" sin invertir día/mes ni cambiar el año.
 - cuit: CUIT del emisor (el que emite la factura)
 - emitter_name: razón social del emisor
-- currency: "ARS" o "USD"
-- net_amount: importe neto gravado (número)
-- iva_rate: alícuota de IVA (21, 10.5, 27, 0)
-- iva_amount: importe de IVA (número)
-- perception_iva: percepciones de IVA si hay (número, 0 si no hay)
-- perception_iibb: percepciones de IIBB si hay (número, 0 si no hay)
-- other_taxes: otros impuestos/tasas (número, 0 si no hay)
-- total_amount: total de la factura (número)
+- currency: moneda de la factura. Leela del campo "Moneda" o de cómo está rotulado el TOTAL (ej. "TOTAL USD" → "USD"; "TOTAL $"/"TOTAL ARS"/"Pesos" → "ARS"). NO asumas "ARS" por defecto: si dice USD, devolvé "USD". Solo "ARS" o "USD".
+- net_amount: base imponible neta (número).
+- iva_rate: alícuota de IVA del comprobante (21, 10.5, 27 o 0).
+- iva_amount: importe de IVA discriminado (número).
+- perception_iva: percepciones de IVA si hay (número, 0 si no hay).
+- perception_iibb: percepciones de IIBB si hay (número, 0 si no hay).
+- other_taxes: otros impuestos/tasas (número, 0 si no hay).
+- total_amount: total final de la factura (número).
 
-IMPORTANTE: Devolvé SOLO el JSON, sin markdown ni explicaciones. Si no podés leer algún campo, poné null.`
+REGLAS IMPORTANTES:
+1. Montos en formato argentino: "2.951,19" significa 2951.19 (punto = miles, coma = decimales). Devolvé siempre números con punto decimal y sin separador de miles.
+2. FACTURA EXENTA / SIN IVA: si los servicios son exentos o no gravados (ej. textos como "exento", "no gravado", "Srvs de transporte exento s/ley 23871", "operaciones exentas"), o si los renglones "Gravado 21%" y "Gravado 10,5%" están en 0,00 y el IVA discriminado es 0,00, entonces es EXENTA: poné iva_rate=0 e iva_amount=0. NO inventes un 21%.
+3. Consistencia obligatoria: net_amount = total_amount − iva_amount − perception_iva − perception_iibb − other_taxes. En una factura exenta (iva_amount=0 y sin percepciones), net_amount = total_amount.
+4. Si la factura tiene importes en USD y un tipo de cambio, currency = "USD" y total_amount es el total en USD.
+
+Devolvé SOLO el JSON, sin markdown ni explicaciones. Si no podés leer algún campo, poné null.`
         },
         {
           role: "user",

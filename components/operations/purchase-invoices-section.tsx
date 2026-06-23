@@ -347,7 +347,7 @@ export function PurchaseInvoicesSection({
             body: JSON.stringify({
               ...formToSave,
               net_amount: parseFloat(formToSave.net_amount) || 0,
-              iva_rate: parseFloat(formToSave.iva_rate) || 21,
+              iva_rate: Number.isNaN(parseFloat(formToSave.iva_rate)) ? 21 : parseFloat(formToSave.iva_rate), // preserva 0 (exento)
               iva_amount: parseFloat(formToSave.iva_amount) || 0,
               perception_iva: parseFloat(formToSave.perception_iva) || 0,
               perception_iibb: parseFloat(formToSave.perception_iibb) || 0,
@@ -370,7 +370,7 @@ export function PurchaseInvoicesSection({
           body: JSON.stringify({
             ...formToSave,
             net_amount: parseFloat(formToSave.net_amount) || 0,
-            iva_rate: parseFloat(formToSave.iva_rate) || 21,
+            iva_rate: Number.isNaN(parseFloat(formToSave.iva_rate)) ? 21 : parseFloat(formToSave.iva_rate), // preserva 0 (exento)
             iva_amount: parseFloat(formToSave.iva_amount) || 0,
             perception_iva: parseFloat(formToSave.perception_iva) || 0,
             perception_iibb: parseFloat(formToSave.perception_iibb) || 0,
