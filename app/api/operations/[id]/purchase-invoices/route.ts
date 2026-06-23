@@ -159,10 +159,15 @@ async function handleFileUpload(
 
   // OCR: Extract invoice data using OpenAI Vision
   let ocrData: any = null
+  let ocrError: string | null = null
   try {
-    ocrData = await scanInvoiceWithAI(fileBuffer, file.type)
-  } catch (err) {
+    const ocrResult = await scanInvoiceWithAI(fileBuffer, file.type)
+    ocrData = ocrResult.data
+    ocrError = ocrResult.error
+  } catch (err: any) {
+    // No-fatal: la factura se sube igual, pero propagamos el motivo al frontend.
     console.error("OCR error (non-fatal):", err)
+    ocrError = err?.message || "No se pudo leer la factura automáticamente."
   }
 
   // Get operator info if provided
@@ -273,6 +278,7 @@ async function handleFileUpload(
   return NextResponse.json({
     invoice,
     ocr_extracted: !!ocrData,
+    ocr_error: ocrData ? null : ocrError,
     message: ocrData ? "Factura cargada con datos extraídos automáticamente" : "Factura cargada, completá los datos manualmente",
   })
 }
@@ -362,24 +368,43 @@ async function handleJsonCreate(
 }
 
 /**
- * OCR: Scan invoice with OpenAI Vision to extract structured data
+ * OCR: Scan invoice with OpenAI Vision to extract structured data.
+ * Devuelve { data, error }: data con los campos extraídos, o error con el
+ * motivo legible para mostrarle al usuario cuando no se pudo leer la factura.
  */
-async function scanInvoiceWithAI(fileBuffer: ArrayBuffer, mimeType: string) {
+async function scanInvoiceWithAI(
+  fileBuffer: ArrayBuffer,
+  mimeType: string
+): Promise<{ data: any | null; error: string | null }> {
   const apiKey = process.env.OPENAI_API_KEY
-  if (!apiKey) return null
+  if (!apiKey) {
+    return { data: null, error: "El OCR no está configurado (falta la API key de OpenAI). Cargá los datos a mano." }
+  }
 
   const openai = new OpenAI({ apiKey })
   const base64 = Buffer.from(fileBuffer).toString("base64")
   const dataUrl = `data:${mimeType};base64,${base64}`
 
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o",
-    temperature: 0.1,
-    max_tokens: 2000,
-    messages: [
-      {
-        role: "system",
-        content: `Sos un experto en leer facturas argentinas (AFIP). Extraé los datos de la factura en formato JSON.
+  // Chat Completions NO acepta PDFs vía image_url (solo imágenes reales).
+  // Para PDFs usamos el content part "file" (file_data base64), que GPT-4o sí
+  // procesa (renderiza páginas + extrae texto, sirve para PDFs digitales y
+  // escaneados). El SDK openai@4.24 todavía no tipa "file", pero serializa el
+  // content tal cual al body, así que casteamos a any.
+  const isPdf = mimeType === "application/pdf"
+  const fileContentPart: any = isPdf
+    ? { type: "file", file: { filename: "factura.pdf", file_data: dataUrl } }
+    : { type: "image_url", image_url: { url: dataUrl, detail: "high" } }
+
+  let response
+  try {
+    response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      temperature: 0.1,
+      max_tokens: 2000,
+      messages: [
+        {
+          role: "system",
+          content: `Sos un experto en leer facturas argentinas (AFIP). Extraé los datos de la factura en formato JSON.
 Campos a extraer:
 - invoice_type: "FACTURA_A", "FACTURA_B", "FACTURA_C", "NOTA_CREDITO_A", "NOTA_CREDITO_B", "NOTA_DEBITO_A", "NOTA_DEBITO_B"
 - invoice_number: número completo "0001-00012345"
@@ -396,32 +421,38 @@ Campos a extraer:
 - total_amount: total de la factura (número)
 
 IMPORTANTE: Devolvé SOLO el JSON, sin markdown ni explicaciones. Si no podés leer algún campo, poné null.`
-      },
-      {
-        role: "user",
-        content: [
-          {
-            type: "image_url",
-            image_url: { url: dataUrl, detail: "high" },
-          },
-          {
-            type: "text",
-            text: "Extraé los datos de esta factura argentina.",
-          },
-        ],
-      },
-    ],
-  })
+        },
+        {
+          role: "user",
+          content: [
+            fileContentPart,
+            {
+              type: "text",
+              text: "Extraé los datos de esta factura argentina.",
+            },
+          ] as any,
+        },
+      ],
+    })
+  } catch (err: any) {
+    console.error("OpenAI OCR request failed:", err)
+    return {
+      data: null,
+      error: "No se pudo leer la factura automáticamente. Revisá que el archivo sea legible o cargá los datos a mano.",
+    }
+  }
 
   const content = response.choices[0]?.message?.content?.trim()
-  if (!content) return null
+  if (!content) {
+    return { data: null, error: "No se pudieron extraer datos de la factura. Cargá los datos a mano." }
+  }
 
   try {
     // Clean potential markdown wrapping
     const cleaned = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim()
-    return JSON.parse(cleaned)
+    return { data: JSON.parse(cleaned), error: null }
   } catch {
     console.error("Failed to parse OCR response:", content)
-    return null
+    return { data: null, error: "No se pudieron interpretar los datos de la factura. Cargá los datos a mano." }
   }
 }
