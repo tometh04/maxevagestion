@@ -164,14 +164,17 @@ async function handleFileUpload(
   // OCR: Extract invoice data using OpenAI Vision
   let ocrData: any = null
   let ocrError: string | null = null
+  let ocrDebug: any = null
   try {
     const ocrResult = await scanInvoiceWithAI(fileBuffer, file.type)
     ocrData = ocrResult.data
     ocrError = ocrResult.error
+    ocrDebug = ocrResult.debug || null
   } catch (err: any) {
     // No-fatal: la factura se sube igual, pero propagamos el motivo al frontend.
     console.error("OCR error (non-fatal):", err)
     ocrError = err?.message || "No se pudo leer la factura automáticamente."
+    ocrDebug = { fatalError: err?.message || String(err) }
   }
 
   // Get operator info if provided
@@ -196,6 +199,7 @@ async function handleFileUpload(
       extract_only: true,
       ocr_extracted: !!ocrData,
       ocr_error: ocrData ? null : ocrError,
+      ocr_debug: ocrDebug, // TEMPORAL: diagnóstico de extracción (se muestra en el modal)
       document_url: documentUrl,
       document_name: file.name,
       extracted: {
@@ -424,7 +428,7 @@ async function extractPdfText(fileBuffer: ArrayBuffer): Promise<string> {
 async function scanInvoiceWithAI(
   fileBuffer: ArrayBuffer,
   mimeType: string
-): Promise<{ data: any | null; error: string | null }> {
+): Promise<{ data: any | null; error: string | null; debug?: any }> {
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) {
     return { data: null, error: "El OCR no está configurado (falta la API key de OpenAI). Cargá los datos a mano." }
@@ -447,6 +451,8 @@ async function scanInvoiceWithAI(
   }
   const hasUsableText = pdfText.length >= 40
   console.log(`[purchase-invoice OCR] isPdf=${isPdf} pdfTextLen=${pdfText.length} usingText=${hasUsableText}`)
+  // Debug temporal para diagnosticar la extracción en prod (se ve en el modal).
+  const debug: any = { isPdf, pdfTextLen: pdfText.length, usingText: hasUsableText }
 
   // Chat Completions NO acepta PDFs vía image_url (solo imágenes reales). Para
   // PDFs escaneados usamos el content part "file" (file_data base64), que GPT-4o
@@ -512,12 +518,13 @@ Devolvé SOLO el JSON, sin markdown ni explicaciones. Si no podés leer algún c
     return {
       data: null,
       error: "No se pudo leer la factura automáticamente. Revisá que el archivo sea legible o cargá los datos a mano.",
+      debug: { ...debug, openaiError: err?.message || String(err) },
     }
   }
 
   const content = response.choices[0]?.message?.content?.trim()
   if (!content) {
-    return { data: null, error: "No se pudieron extraer datos de la factura. Cargá los datos a mano." }
+    return { data: null, error: "No se pudieron extraer datos de la factura. Cargá los datos a mano.", debug }
   }
 
   try {
@@ -525,6 +532,7 @@ Devolvé SOLO el JSON, sin markdown ni explicaciones. Si no podés leer algún c
     const cleaned = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim()
     const parsed = JSON.parse(cleaned)
     console.log("[purchase-invoice OCR] parsed:", JSON.stringify(parsed))
+    debug.parsed = parsed
 
     // Regla determinística (red de seguridad sobre el prompt): si el comprobante
     // NO tiene IVA discriminado (iva_amount = 0), es exento/no gravado → alícuota 0.
@@ -536,9 +544,9 @@ Devolvé SOLO el JSON, sin markdown ni explicaciones. Si no podés leer algún c
       parsed.iva_amount = 0
     }
 
-    return { data: parsed, error: null }
+    return { data: parsed, error: null, debug }
   } catch {
     console.error("Failed to parse OCR response:", content)
-    return { data: null, error: "No se pudieron interpretar los datos de la factura. Cargá los datos a mano." }
+    return { data: null, error: "No se pudieron interpretar los datos de la factura. Cargá los datos a mano.", debug: { ...debug, rawContent: content?.slice(0, 500) } }
   }
 }
