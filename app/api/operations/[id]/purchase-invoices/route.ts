@@ -122,6 +122,10 @@ async function handleFileUpload(
   const formData = await request.formData()
   const file = formData.get("file") as File
   const operatorId = formData.get("operator_id") as string | null
+  // extract_only: hacer OCR + subir el archivo, pero NO crear la factura todavía.
+  // El usuario revisa/corrige en el modal y recién al Guardar se inserta el row
+  // (con sus percepciones e IVA). Evita guardar antes de confirmar.
+  const extractOnly = formData.get("extract_only") === "true"
 
   if (!file) {
     return NextResponse.json({ error: "No se proporcionó archivo" }, { status: 400 })
@@ -183,6 +187,33 @@ async function handleFileUpload(
       if (!emitterName) emitterName = operator.name
       if (!emitterCuit && operator.cuit) emitterCuit = operator.cuit
     }
+  }
+
+  // extract_only: devolver los datos extraídos para precargar el modal, SIN
+  // insertar la factura. El insert (y percepciones/IVA) ocurre recién al Guardar.
+  if (extractOnly) {
+    return NextResponse.json({
+      extract_only: true,
+      ocr_extracted: !!ocrData,
+      ocr_error: ocrData ? null : ocrError,
+      document_url: documentUrl,
+      document_name: file.name,
+      extracted: {
+        invoice_type: ocrData?.invoice_type || "FACTURA_A",
+        invoice_number: ocrData?.invoice_number || "",
+        invoice_date: ocrData?.invoice_date || new Date().toISOString().split("T")[0],
+        emitter_cuit: emitterCuit,
+        emitter_name: emitterName,
+        currency: ocrData?.currency || "ARS",
+        net_amount: ocrData?.net_amount || 0,
+        iva_rate: ocrData?.iva_rate || 21,
+        iva_amount: ocrData?.iva_amount || 0,
+        perception_iva: ocrData?.perception_iva || 0,
+        perception_iibb: ocrData?.perception_iibb || 0,
+        other_taxes: ocrData?.other_taxes || 0,
+        total_amount: ocrData?.total_amount || 0,
+      },
+    })
   }
 
   // Create purchase invoice record with OCR data

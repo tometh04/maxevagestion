@@ -127,6 +127,9 @@ export function PurchaseInvoicesSection({
     other_taxes: "0",
     total_amount: "",
     notes: "",
+    // Archivo subido por OCR (extract_only): se guarda recién al confirmar el modal.
+    document_url: "" as string | null,
+    document_name: "" as string | null,
   })
 
   const fetchInvoices = useCallback(async () => {
@@ -238,8 +241,10 @@ export function PurchaseInvoicesSection({
       net_amount: "", iva_rate: "21", iva_amount: "",
       perception_iva: "0", perception_iibb: "0", other_taxes: "0",
       total_amount: "", notes: "",
+      document_url: "", document_name: "",
     })
     setEditingInvoice(null)
+    setAutoPerceptions(true)
   }
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -252,6 +257,7 @@ export function PurchaseInvoicesSection({
     try {
       const formData = new FormData()
       formData.append("file", file)
+      formData.append("extract_only", "true") // OCR + subir archivo; NO guardar todavía
       if (form.operator_id) formData.append("operator_id", form.operator_id)
 
       const res = await fetch(`/api/operations/${operationId}/purchase-invoices`, {
@@ -262,20 +268,42 @@ export function PurchaseInvoicesSection({
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
 
+      // Precargar el modal con lo extraído (o vacío si el OCR falló) para que el
+      // usuario revise/corrija y recién al Guardar se cree la factura.
+      const ex = data.extracted || {}
+      setEditingInvoice(null)
+      setForm(prev => ({
+        ...prev,
+        operator_id: prev.operator_id,
+        invoice_type: ex.invoice_type || prev.invoice_type,
+        invoice_number: ex.invoice_number || "",
+        invoice_date: ex.invoice_date || prev.invoice_date,
+        emitter_cuit: ex.emitter_cuit || "",
+        emitter_name: ex.emitter_name || "",
+        currency: ex.currency || prev.currency,
+        net_amount: ex.net_amount ? String(ex.net_amount) : "",
+        iva_rate: ex.iva_rate != null ? String(ex.iva_rate) : "21",
+        iva_amount: ex.iva_amount ? String(ex.iva_amount) : "",
+        perception_iva: ex.perception_iva ? String(ex.perception_iva) : "0",
+        perception_iibb: ex.perception_iibb ? String(ex.perception_iibb) : "0",
+        other_taxes: ex.other_taxes ? String(ex.other_taxes) : "0",
+        total_amount: ex.total_amount ? String(ex.total_amount) : "",
+        document_url: data.document_url || null,
+        document_name: data.document_name || file.name,
+      }))
+      // Si el OCR leyó la factura, los importes (incluidas percepciones) son los
+      // reales del documento: modo manual para no sobrescribirlos con el cálculo
+      // automático por reglas. Si falló, dejamos auto para ayudar en la carga.
+      setAutoPerceptions(!data.ocr_extracted)
+      setShowDialog(true)
+
       toast({
-        title: data.ocr_extracted ? "Factura cargada con OCR" : "Factura cargada (sin lectura automática)",
+        title: data.ocr_extracted ? "Datos extraídos con OCR" : "No se pudo leer la factura",
         description: data.ocr_extracted
-          ? "Los datos se extrajeron automáticamente. Verificá que sean correctos."
-          : data.ocr_error || "Completá los datos de la factura manualmente.",
+          ? "Revisá los datos y guardá para registrar la factura."
+          : data.ocr_error || "Completá los datos manualmente y guardá.",
         variant: data.ocr_extracted ? undefined : "destructive",
       })
-
-      await fetchInvoices()
-
-      // If OCR extracted data, open edit dialog to verify
-      if (data.ocr_extracted && data.invoice) {
-        handleEdit(data.invoice)
-      }
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" })
     } finally {
@@ -334,19 +362,20 @@ export function PurchaseInvoicesSection({
         }
         toast({ title: "Factura actualizada" })
       } else {
-        // Create (manual, no file)
+        // Create (manual o tras OCR extract_only). document_url/document_name
+        // viajan dentro de formToSave si la factura se subió con OCR.
         const res = await fetch(`/api/operations/${operationId}/purchase-invoices`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            ...form,
-            net_amount: parseFloat(form.net_amount) || 0,
-            iva_rate: parseFloat(form.iva_rate) || 21,
-            iva_amount: parseFloat(form.iva_amount) || 0,
-            perception_iva: parseFloat(form.perception_iva) || 0,
-            perception_iibb: parseFloat(form.perception_iibb) || 0,
-            other_taxes: parseFloat(form.other_taxes) || 0,
-            total_amount: parseFloat(form.total_amount) || 0,
+            ...formToSave,
+            net_amount: parseFloat(formToSave.net_amount) || 0,
+            iva_rate: parseFloat(formToSave.iva_rate) || 21,
+            iva_amount: parseFloat(formToSave.iva_amount) || 0,
+            perception_iva: parseFloat(formToSave.perception_iva) || 0,
+            perception_iibb: parseFloat(formToSave.perception_iibb) || 0,
+            other_taxes: parseFloat(formToSave.other_taxes) || 0,
+            total_amount: parseFloat(formToSave.total_amount) || 0,
           }),
         })
         if (!res.ok) {
@@ -382,6 +411,8 @@ export function PurchaseInvoicesSection({
       other_taxes: invoice.other_taxes?.toString() || "0",
       total_amount: invoice.total_amount?.toString() || "",
       notes: invoice.notes || "",
+      document_url: invoice.document_url,
+      document_name: invoice.document_name,
     })
     setShowDialog(true)
   }
@@ -576,6 +607,21 @@ export function PurchaseInvoicesSection({
           </DialogHeader>
 
           <div className="px-6 py-5 space-y-5">
+            {/* Archivo adjunto (subido por OCR, aún sin guardar) */}
+            {form.document_url && (
+              <div className="flex items-center justify-between rounded-md border border-border/60 bg-muted/40 px-3 py-2 text-sm">
+                <div className="flex items-center gap-2 min-w-0">
+                  <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span className="truncate">{form.document_name || "Comprobante adjunto"}</span>
+                </div>
+                <Button variant="ghost" size="sm" className="h-7 shrink-0" asChild>
+                  <a href={form.document_url} target="_blank" rel="noopener noreferrer">
+                    <Eye className="h-3.5 w-3.5 mr-1" /> Ver
+                  </a>
+                </Button>
+              </div>
+            )}
+
             {/* Operator */}
             <div>
               <Label>Operador</Label>
