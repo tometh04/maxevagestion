@@ -399,6 +399,24 @@ async function handleJsonCreate(
 }
 
 /**
+ * Extrae la capa de texto de un PDF digital con unpdf (pdf.js bajo el capó,
+ * sin deps nativas, serverless-friendly). Devuelve "" si el PDF es escaneado
+ * (sin texto) o si la extracción falla — el caller cae a lectura visual.
+ */
+async function extractPdfText(fileBuffer: ArrayBuffer): Promise<string> {
+  try {
+    const { extractText, getDocumentProxy } = await import("unpdf")
+    const pdf = await getDocumentProxy(new Uint8Array(fileBuffer))
+    const { text } = await extractText(pdf, { mergePages: true })
+    const joined = Array.isArray(text) ? text.join("\n") : (text || "")
+    return joined.replace(/\s+\n/g, "\n").trim()
+  } catch (err) {
+    console.error("PDF text extraction failed (non-fatal):", err)
+    return ""
+  }
+}
+
+/**
  * OCR: Scan invoice with OpenAI Vision to extract structured data.
  * Devuelve { data, error }: data con los campos extraídos, o error con el
  * motivo legible para mostrarle al usuario cuando no se pudo leer la factura.
@@ -416,15 +434,38 @@ async function scanInvoiceWithAI(
   const base64 = Buffer.from(fileBuffer).toString("base64")
   const dataUrl = `data:${mimeType};base64,${base64}`
 
-  // Chat Completions NO acepta PDFs vía image_url (solo imágenes reales).
-  // Para PDFs usamos el content part "file" (file_data base64), que GPT-4o sí
-  // procesa (renderiza páginas + extrae texto, sirve para PDFs digitales y
-  // escaneados). El SDK openai@4.24 todavía no tipa "file", pero serializa el
-  // content tal cual al body, así que casteamos a any.
   const isPdf = mimeType === "application/pdf"
+
+  // Para PDFs digitales (facturas electrónicas) extraemos la CAPA DE TEXTO: los
+  // números (CUIT, importes, moneda, fechas) salen EXACTOS y evitamos que el
+  // modelo los alucine a partir de una imagen de baja resolución (problema real
+  // observado: CUITs e importes inventados). Si el PDF es escaneado (sin capa de
+  // texto) o es una imagen, mandamos el archivo/imagen para lectura visual.
+  let pdfText = ""
+  if (isPdf) {
+    pdfText = await extractPdfText(fileBuffer)
+  }
+  const hasUsableText = pdfText.length >= 40
+  console.log(`[purchase-invoice OCR] isPdf=${isPdf} pdfTextLen=${pdfText.length} usingText=${hasUsableText}`)
+
+  // Chat Completions NO acepta PDFs vía image_url (solo imágenes reales). Para
+  // PDFs escaneados usamos el content part "file" (file_data base64), que GPT-4o
+  // procesa. El SDK openai@4.24 no tipa "file" pero serializa el content tal cual.
   const fileContentPart: any = isPdf
     ? { type: "file", file: { filename: "factura.pdf", file_data: dataUrl } }
     : { type: "image_url", image_url: { url: dataUrl, detail: "high" } }
+
+  // Si tenemos texto del PDF, esa es la fuente de verdad (sin imagen, para no
+  // reintroducir alucinaciones). Si no, lectura visual del archivo/imagen.
+  const userContent: any[] = hasUsableText
+    ? [{
+        type: "text",
+        text: `Datos de la factura extraídos del texto del PDF. Es la FUENTE DE VERDAD: copiá los números (CUIT, importes, moneda, fechas) tal cual figuran acá, no los inventes ni recalcules.\n\n--- TEXTO DE LA FACTURA ---\n${pdfText}`,
+      }]
+    : [
+        fileContentPart,
+        { type: "text", text: "Extraé los datos de esta factura argentina." },
+      ]
 
   let response
   try {
@@ -462,13 +503,7 @@ Devolvé SOLO el JSON, sin markdown ni explicaciones. Si no podés leer algún c
         },
         {
           role: "user",
-          content: [
-            fileContentPart,
-            {
-              type: "text",
-              text: "Extraé los datos de esta factura argentina.",
-            },
-          ] as any,
+          content: userContent as any,
         },
       ],
     })
@@ -489,6 +524,7 @@ Devolvé SOLO el JSON, sin markdown ni explicaciones. Si no podés leer algún c
     // Clean potential markdown wrapping
     const cleaned = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim()
     const parsed = JSON.parse(cleaned)
+    console.log("[purchase-invoice OCR] parsed:", JSON.stringify(parsed))
 
     // Regla determinística (red de seguridad sobre el prompt): si el comprobante
     // NO tiene IVA discriminado (iva_amount = 0), es exento/no gravado → alícuota 0.
