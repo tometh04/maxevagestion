@@ -488,7 +488,19 @@ Devolvé SOLO el JSON, sin markdown ni explicaciones. Si no podés leer algún c
   try {
     // Clean potential markdown wrapping
     const cleaned = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim()
-    return { data: JSON.parse(cleaned), error: null }
+    const parsed = JSON.parse(cleaned)
+
+    // Regla determinística (red de seguridad sobre el prompt): si el comprobante
+    // NO tiene IVA discriminado (iva_amount = 0), es exento/no gravado → alícuota 0.
+    // Evita que una alícuota mal leída (o el default 21) le invente un IVA que en
+    // la factura no existe y lo sume al total. Solo aplica cuando iva_amount es un
+    // 0 explícito; si vino null (no se pudo leer) no asumimos nada.
+    if (parsed && parsed.iva_amount != null && Number(parsed.iva_amount) === 0) {
+      parsed.iva_rate = 0
+      parsed.iva_amount = 0
+    }
+
+    return { data: parsed, error: null }
   } catch {
     console.error("Failed to parse OCR response:", content)
     return { data: null, error: "No se pudieron interpretar los datos de la factura. Cargá los datos a mano." }
