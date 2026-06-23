@@ -263,10 +263,11 @@ export function PurchaseInvoicesSection({
       if (!res.ok) throw new Error(data.error)
 
       toast({
-        title: data.ocr_extracted ? "Factura cargada con OCR" : "Factura cargada",
+        title: data.ocr_extracted ? "Factura cargada con OCR" : "Factura cargada (sin lectura automática)",
         description: data.ocr_extracted
           ? "Los datos se extrajeron automáticamente. Verificá que sean correctos."
-          : "Completá los datos de la factura manualmente.",
+          : data.ocr_error || "Completá los datos de la factura manualmente.",
+        variant: data.ocr_extracted ? undefined : "destructive",
       })
 
       await fetchInvoices()
