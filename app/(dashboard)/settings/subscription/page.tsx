@@ -10,6 +10,7 @@ import { CancelDialog } from "@/components/billing/cancel-dialog"
 import { ReactivateDialog } from "@/components/billing/reactivate-dialog"
 import { RegularizePaymentButton } from "@/components/billing/regularize-payment-button"
 import { CustomPlanOwnerView } from "@/components/subscription/custom-plan-owner-view"
+import { DowngradeDialog, UndoDowngradeButton } from "@/components/billing/downgrade-dialog"
 import { fetchPreapproval } from "@/lib/billing/mercadopago"
 import { MpSandboxBanner } from "@/components/admin/mp-sandbox-banner"
 
@@ -47,6 +48,10 @@ export default async function SubscriptionPage({
 }) {
   const { user } = await getCurrentUser()
   if (!user) redirect("/login")
+
+  // Solo ADMIN/SUPER_ADMIN pueden programar/deshacer el downgrade (igual que cancelar).
+  const canManageBilling =
+    (user as any).role === "SUPER_ADMIN" || (user as any).role === "ADMIN"
 
   const { checkout, error: errorParam } = await searchParams
   const checkoutFailed = checkout === "failed"
@@ -130,6 +135,7 @@ export default async function SubscriptionPage({
           plan={customPlan as any}
           org={org as any}
           checkoutUrl={checkoutUrl}
+          canManageBilling={canManageBilling}
         />
       )
     }
@@ -151,6 +157,10 @@ export default async function SubscriptionPage({
   const canCancel = ["TRIALING", "ACTIVE", "PAST_DUE"].includes(status)
   const canReactivate = status === "CANCELLED"
   const hasActivePreapproval = !!org.mp_preapproval_id
+  // Downgrade Enterprise→PRO en la rama pública (Enterprise sin custom plan).
+  const hasScheduledDowngrade = org.scheduled_plan === "PRO"
+  const canDowngradeToPro =
+    canManageBilling && org.plan === "ENTERPRISE" && status === "ACTIVE"
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-6 max-w-4xl">
@@ -230,6 +240,19 @@ export default async function SubscriptionPage({
               Tu cuenta está suspendida. Contactanos a hola@vibook.ai.
             </p>
           )}
+          {hasScheduledDowngrade && (
+            <div className="rounded-md border border-accent-coral/40 bg-accent-coral/10 px-3 py-3 text-sm space-y-1.5">
+              <div className="font-semibold text-accent-coral">
+                Downgrade a PRO programado
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Vas a bajar al plan PRO el{" "}
+                <strong>{fmt(org.scheduled_plan_effective_at)}</strong>. Hasta esa fecha
+                seguís con todos los beneficios de tu plan actual.
+              </div>
+              {canManageBilling && <UndoDowngradeButton />}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -272,6 +295,23 @@ export default async function SubscriptionPage({
           <BillingHistoryTable events={events || []} />
         </CardContent>
       </Card>
+
+      {/* Bajar a PRO (Enterprise sin custom plan) */}
+      {canDowngradeToPro && !hasScheduledDowngrade && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Cambiar de plan</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <p className="text-sm text-muted-foreground">
+              ¿Necesitás un plan más chico? Podés bajar al plan PRO al final de tu
+              período actual. Seguís con Enterprise hasta el{" "}
+              <strong>{fmt(org.current_period_ends_at)}</strong>.
+            </p>
+            <DowngradeDialog effectiveAt={org.current_period_ends_at} />
+          </CardContent>
+        </Card>
+      )}
 
       {/* Acciones: cancelar o reactivar */}
       {(canCancel || canReactivate) && (
