@@ -85,9 +85,10 @@ interface Debtor {
 
 interface DebtsSalesPageClientProps {
   sellers: Array<{ id: string; name: string }>
+  agencies?: Array<{ id: string; name: string }>
 }
 
-export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPageClientProps) {
+export function DebtsSalesPageClient({ sellers: initialSellers, agencies = [] }: DebtsSalesPageClientProps) {
   const [debtors, setDebtors] = useState<Debtor[]>([])
   const [allDebtors, setAllDebtors] = useState<Debtor[]>([])
   const [loading, setLoading] = useState(true)
@@ -95,6 +96,7 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
   const [currencyFilter, setCurrencyFilter] = useState<string>("ALL")
   const [customerFilter, setCustomerFilter] = useState<string>("")
   const [sellerFilter, setSellerFilter] = useState<string>("ALL")
+  const [agencyFilter, setAgencyFilter] = useState<string>("ALL")
   const [dateFromFilter, setDateFromFilter] = useState<Date | undefined>(undefined)
   const [dateToFilter, setDateToFilter] = useState<Date | undefined>(undefined)
   const [manualPaymentOpen, setManualPaymentOpen] = useState(false)
@@ -120,6 +122,9 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
       if (sellerFilter !== "ALL") {
         params.append("sellerId", sellerFilter)
       }
+      if (agencyFilter !== "ALL") {
+        params.append("agencyId", agencyFilter)
+      }
       if (debouncedDateFrom) {
         params.append("dateFrom", format(debouncedDateFrom, "yyyy-MM-dd"))
       }
@@ -142,7 +147,7 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
     } finally {
       setLoading(false)
     }
-  }, [currencyFilter, debouncedCustomerFilter, sellerFilter, debouncedDateFrom, debouncedDateTo])
+  }, [currencyFilter, debouncedCustomerFilter, sellerFilter, agencyFilter, debouncedDateFrom, debouncedDateTo])
 
   useEffect(() => {
     fetchDebtors()
@@ -531,6 +536,22 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
             </SelectContent>
           </Select>
 
+          {agencies.length > 1 && (
+            <Select value={agencyFilter} onValueChange={setAgencyFilter}>
+              <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[120px] w-auto">
+                <SelectValue placeholder="Oficina" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todas las oficinas</SelectItem>
+                {agencies.map((agency) => (
+                  <SelectItem key={agency.id} value={agency.id}>
+                    {agency.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+
           <Input
             placeholder="Buscar por nombre..."
             value={customerFilter}
@@ -563,7 +584,7 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
             className="h-8 text-xs rounded-full"
           />
 
-          {(dateFromFilter !== undefined || dateToFilter !== undefined || currencyFilter !== "ALL" || customerFilter || sellerFilter !== "ALL") && (
+          {(dateFromFilter !== undefined || dateToFilter !== undefined || currencyFilter !== "ALL" || customerFilter || sellerFilter !== "ALL" || agencyFilter !== "ALL") && (
             <Button
               variant="ghost"
               size="sm"
@@ -571,6 +592,7 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
               onClick={() => {
                 setCurrencyFilter("ALL")
                 setSellerFilter("ALL")
+                setAgencyFilter("ALL")
                 setCustomerFilter("")
                 setDateFromFilter(undefined)
                 setDateToFilter(undefined)

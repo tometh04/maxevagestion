@@ -457,6 +457,7 @@ export function VariableExpensesTab({ agencies }: VariableExpensesTabProps) {
         open={newExpenseOpen}
         onOpenChange={setNewExpenseOpen}
         onSuccess={fetchExpenses}
+        agencies={agencies}
       />
       <CCPaymentDialog
         open={ccPaymentOpen}

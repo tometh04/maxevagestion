@@ -22,6 +22,7 @@ export async function GET(request: Request) {
     const dateFromFilter = searchParams.get("dateFrom") // YYYY-MM-DD
     const dateToFilter = searchParams.get("dateTo") // YYYY-MM-DD
     const dateType = (searchParams.get("dateType") || "SALIDA").toUpperCase() // SALIDA (departure_date) | CREACION (created_at)
+    const agencyIdFilter = searchParams.get("agencyId") // ID de agencia/oficina | "ALL"
 
     // Get user agencies + resolver permisos dinámicos
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
@@ -58,7 +59,8 @@ export async function GET(request: Request) {
             status,
             departure_date,
             created_at,
-            seller_id
+            seller_id,
+            agency_id
           )
         )
       `)
@@ -250,6 +252,11 @@ export async function GET(request: Request) {
 
         // Aplicar filtro de vendedor si existe
         if (sellerIdFilter && sellerIdFilter !== "ALL" && operation.seller_id !== sellerIdFilter) {
+          continue
+        }
+
+        // Aplicar filtro de agencia/oficina si existe (deuda por oficina).
+        if (agencyIdFilter && agencyIdFilter !== "ALL" && operation.agency_id !== agencyIdFilter) {
           continue
         }
 

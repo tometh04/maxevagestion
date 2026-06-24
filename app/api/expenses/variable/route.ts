@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient, createAdminClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { canPerformAction } from "@/lib/permissions-api"
+import { canPerformAction, getScopedAgenciesForUser } from "@/lib/permissions-api"
 import {
   createLedgerMovement,
   calculateARSEquivalent,
@@ -48,12 +48,41 @@ export async function POST(request: Request) {
       financial_account_id,
       movement_date,
       notes,
+      agency_id,
     } = body
 
     // Validate required fields
     if (!description || !amount || !currency || !financial_account_id || !movement_date) {
       return NextResponse.json(
         { error: "Faltan campos requeridos: descripción, monto, moneda, cuenta financiera, fecha" },
+        { status: 400 }
+      )
+    }
+
+    // Resolver la oficina del gasto. Antes el endpoint nunca seteaba agency_id
+    // y dependía del trigger autofill (SELECT ... LIMIT 1 sobre user_agencies),
+    // que para usuarios multi-oficina (Madero+Rosario) caía en la primera
+    // agencia o en NULL ("Todas"). Ahora el agency_id viene del selector del
+    // diálogo y se valida contra las oficinas que el usuario puede ver.
+    // Mismo patrón que /api/recurring-payments.
+    const scopedAgencies = await getScopedAgenciesForUser(supabase, user)
+    let resolvedAgencyId: string | null = null
+    if (agency_id) {
+      if (!scopedAgencies.some((a) => a.id === agency_id)) {
+        return NextResponse.json(
+          { error: "La oficina seleccionada no es válida" },
+          { status: 400 }
+        )
+      }
+      resolvedAgencyId = agency_id
+    } else if (scopedAgencies.length === 1) {
+      // Org con una sola oficina: asignarla automáticamente.
+      resolvedAgencyId = scopedAgencies[0].id
+    } else if (scopedAgencies.length > 1) {
+      // Hay varias oficinas pero no se eligió ninguna: rechazar para evitar
+      // gastos "globales" accidentales (visibles en todas las oficinas).
+      return NextResponse.json(
+        { error: "Debe seleccionar una oficina para el gasto" },
         { status: 400 }
       )
     }
@@ -129,6 +158,7 @@ export async function POST(request: Request) {
       notes: finalNotes,
       is_touristic: false,
       movement_category: "ADMINISTRATIVE",
+      agency_id: resolvedAgencyId,
     }
 
     const { data: movement, error: movError } = await adminDb

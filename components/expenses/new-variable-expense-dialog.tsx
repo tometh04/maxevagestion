@@ -52,6 +52,7 @@ const expenseSchema = z.object({
   financial_account_id: z.string().min(1, "Debe seleccionar una cuenta financiera"),
   movement_date: z.string().min(1, "La fecha es requerida"),
   notes: z.string().optional(),
+  agency_id: z.string().optional(),
 })
 
 type ExpenseFormValues = z.infer<typeof expenseSchema>
@@ -60,12 +61,14 @@ interface NewVariableExpenseDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSuccess: () => void
+  agencies?: Array<{ id: string; name: string }>
 }
 
 export function NewVariableExpenseDialog({
   open,
   onOpenChange,
   onSuccess,
+  agencies = [],
 }: NewVariableExpenseDialogProps) {
   const [isLoading, setIsLoading] = useState(false)
   const { currency: defaultCurrency } = useDefaultCurrency()
@@ -96,6 +99,8 @@ export function NewVariableExpenseDialog({
       financial_account_id: "",
       movement_date: getDefaultDateTimeLocal(),
       notes: "",
+      // Si hay una sola oficina, preseleccionarla; con varias el usuario elige.
+      agency_id: agencies.length === 1 ? agencies[0].id : "",
     },
   })
 
@@ -104,6 +109,13 @@ export function NewVariableExpenseDialog({
   useEffect(() => {
     form.setValue("currency", defaultCurrency)
   }, [defaultCurrency, form])
+
+  // Si la org tiene una sola oficina, fijarla automáticamente.
+  useEffect(() => {
+    if (agencies.length === 1) {
+      form.setValue("agency_id", agencies[0].id)
+    }
+  }, [agencies, form])
 
   useEffect(() => {
     if (open) {
@@ -143,6 +155,7 @@ export function NewVariableExpenseDialog({
           financial_account_id: values.financial_account_id,
           movement_date: movementDate,
           notes: values.notes || null,
+          agency_id: values.agency_id || null,
         }),
       })
 
@@ -373,6 +386,33 @@ export function NewVariableExpenseDialog({
                   )}
                 />
               </div>
+
+              {agencies.length > 1 && (
+                <FormField
+                  control={form.control}
+                  name="agency_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Oficina *</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleccionar oficina" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {agencies.map((agency) => (
+                            <SelectItem key={agency.id} value={agency.id}>
+                              {agency.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
             </div>
 
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
