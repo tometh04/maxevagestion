@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { canAccessModule } from "@/lib/permissions"
 import { getUserAgencyIds } from "@/lib/permissions-api"
+import { resolveUserPermissions, assertPermission } from "@/lib/permissions-agency"
 import { z } from "zod"
 import { DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
 
@@ -68,17 +68,26 @@ export async function GET(request: Request) {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
 
-    // Verificar permiso de acceso
-    if (!canAccessModule(user.role as any, "cash")) {
+    // Obtener agencias del usuario
+    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
+
+    // Verificar permiso de acceso contra la matriz por org (agency_role_permissions).
+    // Respeta los overrides configurados en Ajustes → Permisos; sin override usa el
+    // default estático del rol (comportamiento previo intacto).
+    const perms = await resolveUserPermissions(
+      supabase,
+      user.id,
+      (user as any).org_id,
+      (user as any).roles ?? user.role,
+      agencyIds
+    )
+    if (!assertPermission(user.role, perms, "cash", "read")) {
       return NextResponse.json(
         { error: "No tiene permiso para ver la configuración financiera" },
         { status: 403 }
       )
     }
 
-    // Obtener agencias del usuario
-    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
-    
     if (agencyIds.length === 0) {
       return NextResponse.json(
         { error: "No tiene agencias asignadas" },
@@ -174,17 +183,26 @@ export async function PUT(request: Request) {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
 
-    // Verificar permiso de acceso (solo ADMIN y SUPER_ADMIN)
-    if (!canAccessModule(user.role as any, "cash") || 
-        (user.role !== "ADMIN" && user.role !== "SUPER_ADMIN")) {
+    // Obtener agencias del usuario
+    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
+
+    // Permiso de EDICIÓN resuelto contra la matriz por org (agency_role_permissions).
+    // Por defecto edita quien tiene cash.write estático (ADMIN/SUPER_ADMIN/ORG_OWNER y
+    // CONTABLE), pero cada org puede habilitar SELLER/VIEWER desde Ajustes → Permisos
+    // sin tocar el rol global de otros tenants.
+    const perms = await resolveUserPermissions(
+      supabase,
+      user.id,
+      (user as any).org_id,
+      (user as any).roles ?? user.role,
+      agencyIds
+    )
+    if (!assertPermission(user.role, perms, "cash", "write")) {
       return NextResponse.json(
         { error: "No tiene permiso para editar la configuración financiera" },
         { status: 403 }
       )
     }
-
-    // Obtener agencias del usuario
-    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
     
     if (agencyIds.length === 0) {
       return NextResponse.json(
