@@ -49,11 +49,21 @@ export async function ensureMpPlan(
   admin: SupabaseClient,
   input: EnsureMpPlanInput
 ): Promise<EnsureMpPlanResult> {
-  // freeTrialDays se incorpora a la cache key: planes con distintos días de trial
+  // El estado del trial se incorpora a la cache key: planes con distinto trial
   // son planes DIFERENTES en MP, no podemos reusar el mismo template.
-  const trialKeyPart = input.freeTrialDays && input.freeTrialDays > 0
-    ? `_T${input.freeTrialDays}D`
-    : ""
+  //   - freeTrialDays > 0      → `_T{n}D`  (trial custom en días)
+  //   - includeFreeTrial=true  → ``        (alta normal: 7 días, key histórica)
+  //   - includeFreeTrial=false → `_NOTRIAL` (regularización PAST_DUE: cobro inmediato)
+  // BUG FIX: antes la key NO distinguía includeFreeTrial, así que "Regularizar
+  // pago" (includeFreeTrial=false) reusaba el plan cacheado del alta normal CON
+  // trial → MP creaba la suscripción con otro trial de 7 días y NO cobraba al
+  // instante (caso Lozada Gualeguaychú, 2026-06-24).
+  const trialKeyPart =
+    input.freeTrialDays && input.freeTrialDays > 0
+      ? `_T${input.freeTrialDays}D`
+      : input.includeFreeTrial
+        ? ""
+        : "_NOTRIAL"
   const plan_key = buildPlanKey({
     plan: input.plan,
     orgSlug: input.orgSlug,
