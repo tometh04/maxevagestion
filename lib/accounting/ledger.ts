@@ -850,8 +850,12 @@ export async function isAccountingOnlyAccount(
 }
 
 /**
- * Validar que una cuenta tiene saldo suficiente para un egreso
- * NUNCA se permite saldo negativo en cuentas financieras
+ * Validar que una cuenta tiene saldo suficiente para un egreso.
+ *
+ * Por defecto NO se permite saldo negativo (guardrail anti-error de carga).
+ * Si la cuenta tiene `credit_limit > 0` (giro en descubierto / línea de crédito
+ * configurada), se permite que el saldo baje hasta `-credit_limit`. El límite
+ * está expresado en la moneda de la cuenta, igual que `amount`.
  */
 export async function validateSufficientBalance(
   accountId: string,
@@ -860,10 +864,10 @@ export async function validateSufficientBalance(
   supabase: SupabaseClient<Database>
 ): Promise<{ valid: boolean; currentBalance: number; error?: string }> {
   const balance = await getAccountBalance(accountId, supabase)
-  
+
   // Determinar qué monto usar según la moneda de la cuenta
   const { data: account } = await (supabase.from("financial_accounts") as any)
-    .select("currency")
+    .select("currency, credit_limit")
     .eq("id", accountId)
     .single()
 
@@ -874,12 +878,21 @@ export async function validateSufficientBalance(
   // Si la cuenta es USD y el monto es en ARS, necesitamos convertir
   // Pero por ahora asumimos que amount ya está en la moneda correcta de la cuenta
   // (validado en el endpoint antes de llamar esta función)
-  
-  if (balance < amount) {
+
+  // Línea de crédito: el saldo puede caer hasta -credit_limit. Con credit_limit=0
+  // (default) esto equivale al comportamiento legacy "nunca negativo".
+  const creditLimit = Math.max(0, Number(account.credit_limit) || 0)
+  const minAllowedBalance = -creditLimit
+
+  if (balance - amount < minAllowedBalance - 1e-6) {
+    const available = balance + creditLimit
+    const creditNote = creditLimit > 0
+      ? ` (saldo ${balance.toFixed(2)} + línea de crédito ${creditLimit.toFixed(2)})`
+      : ""
     return {
       valid: false,
       currentBalance: balance,
-      error: `Saldo insuficiente en cuenta. Disponible: ${balance.toFixed(2)} ${account.currency}, requerido: ${amount.toFixed(2)} ${account.currency}`,
+      error: `Saldo insuficiente en cuenta. Disponible: ${available.toFixed(2)} ${account.currency}${creditNote}, requerido: ${amount.toFixed(2)} ${account.currency}`,
     }
   }
 

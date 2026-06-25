@@ -40,11 +40,12 @@ export async function PATCH(
     }
 
     const body = await request.json().catch(() => ({}))
-    const { name, target_balance, adjustment_reason, bank_tax_rate } = body as {
+    const { name, target_balance, adjustment_reason, bank_tax_rate, credit_limit } = body as {
       name?: string
       target_balance?: number | string | null
       adjustment_reason?: string | null
       bank_tax_rate?: number | null
+      credit_limit?: number | string | null
     }
 
     // Cargar cuenta y validar tenant isolation
@@ -86,6 +87,15 @@ export async function PATCH(
         return NextResponse.json({ error: "bank_tax_rate debe ser un número entre 0 y 100" }, { status: 400 })
       }
       simpleUpdate.bank_tax_rate = rate
+    }
+
+    // Línea de crédito / giro en descubierto. Debe ser >= 0. 0 = no permite negativo.
+    if ("credit_limit" in body) {
+      const limit = credit_limit == null || credit_limit === "" ? 0 : Number(credit_limit)
+      if (!Number.isFinite(limit) || limit < 0) {
+        return NextResponse.json({ error: "El límite de crédito debe ser un número mayor o igual a 0" }, { status: 400 })
+      }
+      simpleUpdate.credit_limit = limit
     }
 
     if (Object.keys(simpleUpdate).length > 0) {

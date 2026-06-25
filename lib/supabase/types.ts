@@ -2433,6 +2433,7 @@ export type Database = {
           chart_account_id: string | null
           created_at: string | null
           created_by: string | null
+          credit_limit: number
           currency: string
           id: string
           initial_balance: number
@@ -2456,6 +2457,7 @@ export type Database = {
           chart_account_id?: string | null
           created_at?: string | null
           created_by?: string | null
+          credit_limit?: number
           currency: string
           id?: string
           initial_balance?: number
@@ -2479,6 +2481,7 @@ export type Database = {
           chart_account_id?: string | null
           created_at?: string | null
           created_by?: string | null
+          credit_limit?: number
           currency?: string
           id?: string
           initial_balance?: number

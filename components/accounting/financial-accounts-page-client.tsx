@@ -117,6 +117,7 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
   const [editTargetBalance, setEditTargetBalance] = useState("")
   const [editReason, setEditReason] = useState("")
   const [editBankTaxRate, setEditBankTaxRate] = useState("")
+  const [editCreditLimit, setEditCreditLimit] = useState("")
   const [isEditing, setIsEditing] = useState(false)
 
   const openEditAccount = (account: any) => {
@@ -125,8 +126,17 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
     setEditTargetBalance(String(Number((account.current_balance ?? 0).toFixed(2))))
     setEditReason("")
     setEditBankTaxRate(account.bank_tax_rate != null ? String(account.bank_tax_rate) : "")
+    setEditCreditLimit(account.credit_limit != null ? String(Number(account.credit_limit)) : "0")
     setEditAccountOpen(true)
   }
+
+  // La línea de crédito aplica a cuentas de caja/banco (no a tarjeta/activos/socio)
+  const editAccountSupportsCreditLimit = (account: any) =>
+    !!account && (
+      account.type?.includes("CASH") ||
+      account.type?.includes("CHECKING") ||
+      account.type?.includes("SAVINGS")
+    )
 
   const handleEditSave = async () => {
     if (!editingAccount) return
@@ -145,7 +155,17 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
     const nameChanged = trimmedName !== (editingAccount.name || "")
     const oldTaxRate = editingAccount.bank_tax_rate != null ? String(editingAccount.bank_tax_rate) : ""
     const taxRateChanged = editBankTaxRate !== oldTaxRate
-    if (!balanceChanged && !nameChanged && !taxRateChanged) {
+
+    const supportsCreditLimit = editAccountSupportsCreditLimit(editingAccount)
+    const oldCreditLimit = Number(editingAccount.credit_limit ?? 0)
+    const newCreditLimit = editCreditLimit === "" ? 0 : Number(editCreditLimit)
+    if (supportsCreditLimit && (!Number.isFinite(newCreditLimit) || newCreditLimit < 0)) {
+      toast.error("El límite de crédito debe ser un número mayor o igual a 0")
+      return
+    }
+    const creditLimitChanged = supportsCreditLimit && Math.abs(newCreditLimit - oldCreditLimit) > 0.001
+
+    if (!balanceChanged && !nameChanged && !taxRateChanged && !creditLimitChanged) {
       toast.info("Sin cambios")
       setEditAccountOpen(false)
       return
@@ -161,6 +181,9 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
       }
       if (taxRateChanged) {
         payload.bank_tax_rate = editBankTaxRate === "" ? null : Number(editBankTaxRate)
+      }
+      if (creditLimitChanged) {
+        payload.credit_limit = newCreditLimit
       }
       const res = await fetch(`/api/accounting/financial-accounts/${editingAccount.id}`, {
         method: "PATCH",
@@ -196,6 +219,7 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
     currency: defaultCurrency,
     agency_id: "",
     initial_balance: 0,
+    credit_limit: 0,
     account_number: "",
     bank_name: "",
     // Tarjeta de crédito
@@ -313,6 +337,15 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
       is_active: true,
     }
 
+    // Línea de crédito / giro en descubierto (solo cuentas de caja/banco)
+    if (
+      formData.type.includes("CASH") ||
+      formData.type.includes("CHECKING") ||
+      formData.type.includes("SAVINGS")
+    ) {
+      accountData.credit_limit = Number(formData.credit_limit) || 0
+    }
+
     // Datos para cuentas bancarias
     if (formData.type.includes("CHECKING") || formData.type.includes("SAVINGS")) {
       accountData.account_number = formData.account_number || null
@@ -374,6 +407,7 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
       currency: defaultCurrency,
       agency_id: "",
       initial_balance: 0,
+      credit_limit: 0,
       account_number: "",
       bank_name: "",
       card_number: "",
@@ -881,6 +915,29 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
                   </div>
                 )}
 
+                {/* Línea de crédito / giro en descubierto — solo caja/banco */}
+                {(formData.type.includes("CASH") ||
+                  formData.type.includes("CHECKING") ||
+                  formData.type.includes("SAVINGS")) && (
+                  <div>
+                    <Label>Límite de crédito (giro en descubierto)</Label>
+                    <DecimalInput
+                      value={formData.credit_limit}
+                      onChange={(v) => {
+                        const n = parseFloat(v)
+                        setFormData({ ...formData, credit_limit: isNaN(n) ? 0 : n })
+                      }}
+                      placeholder="0"
+                      allowNegative={false}
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Cuánto puede quedar la cuenta en negativo al pagar. 0 = no permite saldo negativo.
+                      Útil para cuentas con financiera o giro en descubierto: la deuda queda visible y se
+                      netea sola cuando ingresa dinero. Para un flotante sin tope práctico, cargá un número alto.
+                    </p>
+                  </div>
+                )}
+
                 {/* Notas */}
                 <div>
                   <Label>Notas</Label>
@@ -1096,6 +1153,24 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
                 />
                 <p className="text-xs text-muted-foreground">
                   Al registrar cobros/pagos con esta cuenta se ofrecerá deducir automáticamente el impuesto a déb/créd bancarios.
+                </p>
+              </div>
+            )}
+            {/* Línea de crédito / giro en descubierto — solo caja/banco */}
+            {editAccountSupportsCreditLimit(editingAccount) && (
+              <div>
+                <Label htmlFor="edit-credit-limit">Límite de crédito (giro en descubierto)</Label>
+                <DecimalInput
+                  id="edit-credit-limit"
+                  value={editCreditLimit}
+                  onChange={(v) => setEditCreditLimit(v)}
+                  placeholder="0"
+                  allowNegative={false}
+                  disabled={isEditing}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Cuánto puede quedar la cuenta en negativo al pagar. 0 = no permite saldo negativo.
+                  Para un flotante sin tope práctico, cargá un número alto.
                 </p>
               </div>
             )}
