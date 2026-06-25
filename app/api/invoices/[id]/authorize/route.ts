@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
 import { getAfipServiceForOrg } from "@/lib/afip/afip-service"
 import { logSecurityEvent } from "@/lib/security/audit"
+import { isCreditNote, ledgerSign } from "@/lib/invoices/credit-note"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
@@ -64,7 +65,8 @@ export async function POST(
     // Re-check total sold cap (race-safe: otro POST podría haber completado
     // mientras esta factura estaba en draft/pending). La facturación de
     // operaciones debe cubrir el total vendido, no solo el margen.
-    if (invoice.operation_id) {
+    // Las NC reducen lo facturado → se saltean el cap.
+    if (invoice.operation_id && !isCreditNote(invoice.cbte_tipo)) {
       const { data: operation } = await (supabase.from("operations") as any)
         .select("sale_amount_total")
         .eq("id", invoice.operation_id)
@@ -72,13 +74,13 @@ export async function POST(
 
       if (operation) {
         const { data: peers } = await (supabase.from("invoices") as any)
-          .select("imp_total")
+          .select("imp_total, cbte_tipo")
           .eq("operation_id", invoice.operation_id)
           .eq("status", "authorized")
           .neq("id", invoice.id)
 
         const already = (peers ?? []).reduce(
-          (acc: number, i: any) => acc + Number(i.imp_total),
+          (acc: number, i: any) => acc + ledgerSign(i.cbte_tipo) * Number(i.imp_total),
           0
         )
         const saleTotal = Number(operation.sale_amount_total)

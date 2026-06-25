@@ -5,7 +5,14 @@ import { useToast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { Loader2, Plus, Send, Eye, Download, Search, Filter, User, DollarSign, ShieldCheck, AlertCircle, RefreshCw } from "lucide-react"
+import { Loader2, Plus, Send, Eye, Download, Search, Filter, User, DollarSign, ShieldCheck, AlertCircle, RefreshCw, FileMinus, FilePlus } from "lucide-react"
+import { useRouter } from "next/navigation"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { translateAfipError } from "@/lib/afip/error-translator"
 import {
   Breadcrumb,
@@ -111,6 +118,7 @@ const formatCurrency = (value: number, currency?: string) => formatInvoiceMoney(
 
 export function InvoicesPageClient() {
   const { toast } = useToast()
+  const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [statusFilter, setStatusFilter] = useState("ALL")
@@ -565,6 +573,29 @@ export function InvoicesPageClient() {
                           <Download className="h-4 w-4" />
                         </Button>
                       )}
+                      {invoice.status === 'authorized' && invoice.cae && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="outline" size="icon" title="Nota de crédito / débito">
+                              <FileMinus className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onSelect={() => router.push(`/operations/billing/credit-note/new?invoiceId=${invoice.id}&kind=NC`)}
+                            >
+                              <FileMinus className="mr-2 h-4 w-4" />
+                              Nota de crédito
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onSelect={() => router.push(`/operations/billing/credit-note/new?invoiceId=${invoice.id}&kind=ND`)}
+                            >
+                              <FilePlus className="mr-2 h-4 w-4" />
+                              Nota de débito
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -847,6 +878,30 @@ export function InvoicesPageClient() {
                 )}
                 Re-sincronizar con AFIP
               </Button>
+            )}
+            {selectedInvoice?.status === 'authorized' && selectedInvoice.cae && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline">
+                    <FileMinus className="mr-2 h-4 w-4" />
+                    Nota de crédito / débito
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    onSelect={() => router.push(`/operations/billing/credit-note/new?invoiceId=${selectedInvoice.id}&kind=NC`)}
+                  >
+                    <FileMinus className="mr-2 h-4 w-4" />
+                    Nota de crédito
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => router.push(`/operations/billing/credit-note/new?invoiceId=${selectedInvoice.id}&kind=ND`)}
+                  >
+                    <FilePlus className="mr-2 h-4 w-4" />
+                    Nota de débito
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
             {selectedInvoice?.status === 'authorized' && (
               <Button
