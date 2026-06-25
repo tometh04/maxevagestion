@@ -865,9 +865,14 @@ export async function validateSufficientBalance(
 ): Promise<{ valid: boolean; currentBalance: number; error?: string }> {
   const balance = await getAccountBalance(accountId, supabase)
 
-  // Determinar qué monto usar según la moneda de la cuenta
+  // Determinar qué monto usar según la moneda de la cuenta.
+  // Usamos select("*") a propósito: si la migración 130 (credit_limit) todavía
+  // no corrió en este entorno, pedir la columna explícita haría fallar la query
+  // y romper TODO pago ("Cuenta no encontrada"). Con "*" simplemente no viene la
+  // columna y credit_limit cae a 0 (comportamiento legacy). Resiliente al
+  // desfase deploy-vs-migración.
   const { data: account } = await (supabase.from("financial_accounts") as any)
-    .select("currency, credit_limit")
+    .select("*")
     .eq("id", accountId)
     .single()
 
@@ -880,7 +885,7 @@ export async function validateSufficientBalance(
   // (validado en el endpoint antes de llamar esta función)
 
   // Línea de crédito: el saldo puede caer hasta -credit_limit. Con credit_limit=0
-  // (default) esto equivale al comportamiento legacy "nunca negativo".
+  // (default, o columna ausente) esto equivale al comportamiento legacy "nunca negativo".
   const creditLimit = Math.max(0, Number(account.credit_limit) || 0)
   const minAllowedBalance = -creditLimit
 
