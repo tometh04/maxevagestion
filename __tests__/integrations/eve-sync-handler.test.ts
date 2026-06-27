@@ -204,6 +204,135 @@ describe("processEveLead — aislamiento multi-tenant", () => {
   })
 })
 
+describe("processEveLead — source y list_name en insert", () => {
+  function makeInsertAdmin(capturedInsert: { payload?: any } = {}) {
+    const qMock = buildQueryMock()
+    qMock.single = jest.fn().mockResolvedValue({ data: { id: "lead-src-1" }, error: null })
+    qMock.insert = jest.fn().mockImplementation((payload: any) => {
+      capturedInsert.payload = payload
+      return qMock
+    })
+    return buildAdminMock(() => qMock)
+  }
+
+  it("source es siempre 'Eve' en el insert (m2)", async () => {
+    const captured: { payload?: any } = {}
+    const admin = makeInsertAdmin(captured)
+    await processEveLead(admin, ORG_ID, AGENCY_ID, baseNormalized)
+    expect(captured.payload?.source).toBe("Eve")
+  })
+
+  it("list_name se incluye en el insert (I1)", async () => {
+    const captured: { payload?: any } = {}
+    const admin = makeInsertAdmin(captured)
+    // baseNormalized: canal_tipo=whatsapp + destino=Cancún + region=CARIBE → "Leads - Caribe"
+    await processEveLead(admin, ORG_ID, AGENCY_ID, baseNormalized)
+    expect(captured.payload?.list_name).toBeDefined()
+    expect(typeof captured.payload?.list_name).toBe("string")
+    expect(captured.payload?.list_name.length).toBeGreaterThan(0)
+  })
+})
+
+describe("processEveLead — status en UPDATE (I2)", () => {
+  function makeUpdateAdmin(existingLead: { id: string; status: string; notes: string | null }, capturedUpdate: { payload?: any } = {}) {
+    const qMock = buildQueryMock()
+    // Primera llamada (.maybeSingle): devuelve el lead existente con status y notes
+    qMock.maybeSingle = jest.fn().mockResolvedValue({
+      data: existingLead,
+      error: null,
+    })
+    qMock.update = jest.fn().mockImplementation((payload: any) => {
+      capturedUpdate.payload = payload
+      return qMock
+    })
+    return buildAdminMock(() => qMock)
+  }
+
+  it("status 'NEW' en lead existente se actualiza al hacer UPDATE", async () => {
+    const captured: { payload?: any } = {}
+    const admin = makeUpdateAdmin({ id: "lead-upd-1", status: "NEW", notes: null }, captured)
+    const normalized: NormalizedEveLead = {
+      ...baseNormalized,
+      estado: "listo_para_cotizar",
+      session_id: "sess-existing",
+    }
+    const result = await processEveLead(admin, ORG_ID, AGENCY_ID, normalized)
+    expect(result.action).toBe("updated")
+    expect(captured.payload?.status).toBe("IN_PROGRESS")
+  })
+
+  it("status 'IN_PROGRESS' en lead existente se actualiza al hacer UPDATE", async () => {
+    const captured: { payload?: any } = {}
+    const admin = makeUpdateAdmin({ id: "lead-upd-2", status: "IN_PROGRESS", notes: null }, captured)
+    const normalized: NormalizedEveLead = {
+      ...baseNormalized,
+      estado: "incompleto",
+      session_id: "sess-existing-2",
+    }
+    await processEveLead(admin, ORG_ID, AGENCY_ID, normalized)
+    expect(captured.payload?.status).toBe("NEW")
+  })
+
+  it("status 'CONFIRMED' en lead existente NO se sobreescribe (I2)", async () => {
+    const captured: { payload?: any } = {}
+    const admin = makeUpdateAdmin({ id: "lead-upd-3", status: "CONFIRMED", notes: null }, captured)
+    const normalized: NormalizedEveLead = {
+      ...baseNormalized,
+      estado: "incompleto",
+      session_id: "sess-confirmed",
+    }
+    await processEveLead(admin, ORG_ID, AGENCY_ID, normalized)
+    // El status NO debe estar en el payload de UPDATE
+    expect(captured.payload?.status).toBeUndefined()
+  })
+})
+
+describe("processEveLead — notes en UPDATE (I3)", () => {
+  function makeUpdateAdmin(existingLead: { id: string; status: string; notes: string | null }, capturedUpdate: { payload?: any } = {}) {
+    const qMock = buildQueryMock()
+    qMock.maybeSingle = jest.fn().mockResolvedValue({ data: existingLead, error: null })
+    qMock.update = jest.fn().mockImplementation((payload: any) => {
+      capturedUpdate.payload = payload
+      return qMock
+    })
+    return buildAdminMock(() => qMock)
+  }
+
+  it("notas previas del vendedor se conservan al hacer UPDATE (I3)", async () => {
+    const captured: { payload?: any } = {}
+    const existingNotes = "Nota del vendedor: cliente muy interesado"
+    const admin = makeUpdateAdmin({ id: "lead-notes-1", status: "NEW", notes: existingNotes }, captured)
+    await processEveLead(admin, ORG_ID, AGENCY_ID, {
+      ...baseNormalized,
+      session_id: "sess-notes",
+    })
+    // Las notas deben contener las notas previas y las nuevas
+    expect(captured.payload?.notes).toContain(existingNotes)
+    expect(captured.payload?.notes).toContain("Update Eve")
+  })
+
+  it("si no hay notas previas, usa directamente las nuevas notas", async () => {
+    const captured: { payload?: any } = {}
+    const admin = makeUpdateAdmin({ id: "lead-notes-2", status: "NEW", notes: null }, captured)
+    await processEveLead(admin, ORG_ID, AGENCY_ID, {
+      ...baseNormalized,
+      session_id: "sess-notes-2",
+    })
+    // Notas nuevas sin prefijo de "Update"
+    expect(captured.payload?.notes).not.toContain("Update Eve")
+  })
+
+  it("list_name se incluye también en el payload de UPDATE (I1 UPDATE)", async () => {
+    const captured: { payload?: any } = {}
+    const admin = makeUpdateAdmin({ id: "lead-ln-upd", status: "NEW", notes: null }, captured)
+    await processEveLead(admin, ORG_ID, AGENCY_ID, {
+      ...baseNormalized,
+      session_id: "sess-ln-upd",
+    })
+    expect(captured.payload?.list_name).toBeDefined()
+  })
+})
+
 describe("processEveLead — mapeo de contacto", () => {
   it("contact_name usa nombre si viene, teléfono si no hay nombre, 'Sin nombre' como último fallback", async () => {
     const captured: { payload?: any } = {}

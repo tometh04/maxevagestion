@@ -144,6 +144,7 @@ export async function POST(
         status: "ok",
         lead_id: result.lead_id,
         action: result.action,
+        event_id: normalized.event_id,
       },
       { status: 200 }
     )

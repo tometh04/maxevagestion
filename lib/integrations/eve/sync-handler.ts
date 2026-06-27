@@ -8,10 +8,17 @@
  * - (Opcional) verificó la firma HMAC
  * - Adaptó el payload con adaptEvePayload()
  * - Registró el evento en webhook_event_log (idempotencia de evento)
+ *
+ * TODO: regenerar types tras aplicar migración 130 (eve_session_id, eve_full_data)
  */
 
 import type { NormalizedEveLead } from "./payload-adapter"
-import { normalizeInstagram, normalizeRegion } from "@/lib/manychat/sync"
+import {
+  normalizeInstagram,
+  normalizeRegion,
+  determineListName,
+  type ManychatLeadData,
+} from "@/lib/manychat/sync"
 
 export interface EveSyncResult {
   action: "created" | "updated"
@@ -69,10 +76,11 @@ export async function processEveLead(
   agencyId: string,
   normalized: NormalizedEveLead
 ): Promise<EveSyncResult> {
-  // 1. Buscar lead existente por (org_id, eve_session_id)
+  // 1. Buscar lead existente por (org_id, eve_session_id) — incluye status y
+  //    notes para el UPDATE selectivo (I2: no pisar status avanzado; I3: append notas)
   const { data: existing } = await admin
     .from("leads")
-    .select("id")
+    .select("id, status, notes")
     .eq("org_id", orgId)
     .eq("eve_session_id", normalized.session_id)
     .maybeSingle()
@@ -97,11 +105,30 @@ export async function processEveLead(
   const status = normalized.estado === "listo_para_cotizar" ? "IN_PROGRESS" : "NEW"
   const notes = buildEveLeadNotes(normalized)
 
+  // list_name: determinado por región/destino/canal (reuso helper de Manychat)
+  // Para canal whatsapp pasamos el teléfono para que detectRegionList infiera la región.
+  const manychatData: ManychatLeadData = {
+    destino: destination !== "Sin destino" ? destination : undefined,
+    region: normalized.vuelo.region,
+    whatsapp: normalized.canal_tipo !== "instagram"
+      ? normalized.contacto.telefono?.trim() || undefined
+      : undefined,
+  }
+  const listName = determineListName(manychatData)
+
   let leadId: string
   let action: "created" | "updated"
 
   if (existing) {
-    // UPDATE — actualiza campos del lead sin pisar lo que el vendedor editó
+    // UPDATE — no pisar status si el vendedor ya avanzó el lead (I2)
+    const shouldUpdateStatus =
+      existing.status === "NEW" || existing.status === "IN_PROGRESS"
+
+    // Conservar notas previas del vendedor; agregar bloque de actualización (I3)
+    const updatedNotes = existing.notes
+      ? `${existing.notes}\n\n--- Update Eve ${new Date().toISOString()} ---\n${notes}`
+      : notes
+
     const updatePayload: Record<string, any> = {
       contact_name: contactName,
       contact_phone: normalized.contacto.telefono?.trim() || "",
@@ -109,11 +136,12 @@ export async function processEveLead(
       contact_instagram: contactInstagram,
       destination,
       region,
-      status,
+      list_name: listName,
       eve_full_data: normalized.raw_payload,
-      notes,
+      notes: updatedNotes,
       updated_at: new Date().toISOString(),
     }
+    if (shouldUpdateStatus) updatePayload.status = status
 
     const { error: updateErr } = await admin
       .from("leads")
@@ -137,6 +165,7 @@ export async function processEveLead(
       status,
       region,
       destination,
+      list_name: listName,
       contact_name: contactName,
       contact_phone: normalized.contacto.telefono?.trim() || "",
       contact_email: normalized.contacto.email?.trim() || null,
