@@ -23,6 +23,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import { AlertCircle, Loader2, Plus } from "lucide-react"
 import type { EveCanal } from "@/lib/integrations/eve/client"
 
@@ -248,22 +256,20 @@ export function ChannelEditor({ connected, canWrite, initialChannels }: ChannelE
             Sin canales configurados aún. Usá el botón para agregar el primero.
           </p>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b text-left text-muted-foreground">
-                <th className="pb-2 pr-4 font-medium">Tipo</th>
-                <th className="pb-2 pr-4 font-medium">ID externo</th>
-                <th className="pb-2 font-medium">Estado</th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Tipo</TableHead>
+                <TableHead>ID externo</TableHead>
+                <TableHead>Estado</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {channels.map((canal) => (
-                <tr key={canal.id} className="border-b last:border-0">
-                  <td className="py-2 pr-4">
-                    {TIPO_LABELS[canal.tipo] ?? canal.tipo}
-                  </td>
-                  <td className="py-2 pr-4 font-mono text-xs">{canal.external_id}</td>
-                  <td className="py-2">
+                <TableRow key={canal.id}>
+                  <TableCell>{TIPO_LABELS[canal.tipo] ?? canal.tipo}</TableCell>
+                  <TableCell className="font-mono text-xs">{canal.external_id}</TableCell>
+                  <TableCell>
                     {canal.activa ? (
                       <Badge variant="outline" className="text-green-600 border-green-300 bg-green-50 dark:bg-green-950/30 text-xs">
                         Activo
@@ -273,11 +279,11 @@ export function ChannelEditor({ connected, canWrite, initialChannels }: ChannelE
                         Inactivo
                       </Badge>
                     )}
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         )}
       </CardContent>
     </Card>

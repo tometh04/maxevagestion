@@ -5,22 +5,16 @@ import { toast } from "sonner"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { AlertCircle, CheckCircle2, Loader2, WifiOff } from "lucide-react"
-
-interface EveAgencia {
-  id: string
-  nombre: string
-  plan?: string
-  activa: boolean
-  prompt_custom?: string | null
-}
-
-interface EveCanal {
-  id: string
-  tipo: string
-  external_id: string
-  activa: boolean
-}
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import { CheckCircle2, Loader2, WifiOff } from "lucide-react"
+import type { EveAgencia, EveCanal } from "@/lib/integrations/eve/client"
 
 interface ConnectionState {
   connected: boolean
@@ -148,20 +142,20 @@ export function EveConnectionClient({ initial, canWrite }: EveConnectionClientPr
                 para agregar uno.
               </p>
             ) : (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left text-muted-foreground">
-                    <th className="pb-2 pr-4 font-medium">Tipo</th>
-                    <th className="pb-2 pr-4 font-medium">ID externo</th>
-                    <th className="pb-2 font-medium">Estado</th>
-                  </tr>
-                </thead>
-                <tbody>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead>ID externo</TableHead>
+                    <TableHead>Estado</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {state.canales.map((canal) => (
-                    <tr key={canal.id} className="border-b last:border-0">
-                      <td className="py-2 pr-4 capitalize">{canal.tipo}</td>
-                      <td className="py-2 pr-4 font-mono text-xs">{canal.external_id}</td>
-                      <td className="py-2">
+                    <TableRow key={canal.id}>
+                      <TableCell className="capitalize">{canal.tipo}</TableCell>
+                      <TableCell className="font-mono text-xs">{canal.external_id}</TableCell>
+                      <TableCell>
                         {canal.activa ? (
                           <Badge variant="outline" className="text-green-600 border-green-300 bg-green-50 dark:bg-green-950/30 text-xs">
                             Activo
@@ -171,11 +165,11 @@ export function EveConnectionClient({ initial, canWrite }: EveConnectionClientPr
                             Inactivo
                           </Badge>
                         )}
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             )}
           </CardContent>
         </Card>
