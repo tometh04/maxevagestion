@@ -75,8 +75,9 @@ export interface EveIntegrationConfig {
   default_agency_id?: string
 
   /**
-   * ID de agencia específico de Eve (alias de default_agency_id para
-   * compatibilidad con terminología del equipo Eve).
+   * ID de agencia en la DB interna de Eve (UUID del sistema Eve, DISTINTO de default_agency_id).
+   * Se usa para llamadas a la admin API de Eve (eveSetPrompt, eveUpsertCanal, eveGetAgencia).
+   * NO es válido como FK hacia la tabla `agencies` de maxeva.
    */
   eve_agencia_id?: string
 

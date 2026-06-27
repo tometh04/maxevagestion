@@ -42,9 +42,10 @@ export async function POST(
 
   const config = (integ.config as EveIntegrationConfig | null) || ({} as EveIntegrationConfig)
 
-  // agencyId: usar default_agency_id o eve_agencia_id del config; si no,
+  // agencyId: usar default_agency_id del config (agencies.id de maxeva); si no,
   // hacer fallback a la primera agency de la org (igual que otros webhooks).
-  let agencyId = config.default_agency_id || config.eve_agencia_id || ""
+  // OJO: eve_agencia_id es el UUID interno de Eve (otra DB) — NO es válido como FK aquí.
+  let agencyId = config.default_agency_id || ""
   if (!agencyId) {
     const { data: agencies } = await admin
       .from("agencies")

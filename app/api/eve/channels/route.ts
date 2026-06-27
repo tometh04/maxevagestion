@@ -46,13 +46,12 @@ export async function GET() {
 
     try {
       const { canales } = await eveGetAgencia(user.org_id)
-      // Proyectar solo campos seguros — los tokens Meta NO viajan a maxeva
-      const channels = canales.map(({ id, tipo, external_id, activa, config: cfg }) => ({
+      // Proyectar solo campos de display — se omite config para evitar leak de datos sensibles
+      const channels = canales.map(({ id, tipo, external_id, activa }) => ({
         id,
         tipo,
         external_id,
         activa,
-        config: cfg,
       }))
       return NextResponse.json({ channels })
     } catch {
