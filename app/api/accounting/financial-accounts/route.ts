@@ -134,6 +134,7 @@ export async function POST(request: Request) {
       asset_quantity,
       notes,
       is_active,
+      credit_limit,
     } = body
 
     // Validar campos requeridos
@@ -155,6 +156,15 @@ export async function POST(request: Request) {
     ]
     if (!validTypes.includes(type)) {
       return NextResponse.json({ error: "Tipo de cuenta inválido" }, { status: 400 })
+    }
+
+    // Línea de crédito / giro en descubierto (opcional). Debe ser >= 0.
+    let creditLimitNum = 0
+    if (credit_limit !== undefined && credit_limit !== null && credit_limit !== "") {
+      creditLimitNum = Number(credit_limit)
+      if (!Number.isFinite(creditLimitNum) || creditLimitNum < 0) {
+        return NextResponse.json({ error: "El límite de crédito debe ser un número mayor o igual a 0" }, { status: 400 })
+      }
     }
 
     // Mapeo de tipos de financial_accounts a códigos del plan de cuentas
@@ -200,6 +210,7 @@ export async function POST(request: Request) {
       agency_id,
       org_id: user.org_id,
       initial_balance: Number(initial_balance) || 0,
+      credit_limit: creditLimitNum,
       notes: notes || null,
       is_active: is_active !== undefined ? is_active : true,
       created_by: user.id,

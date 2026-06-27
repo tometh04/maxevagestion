@@ -441,6 +441,9 @@ export async function POST(request: Request) {
             operationId: operation_id,
             operatorId: resolvedOperatorId,
             operatorPaymentId: resolvedOperatorPaymentId || operator_payment_id || null,
+            // Desambigua patas del mismo operador por monto cuando no hay
+            // operator_payment_id explícito (ver pickExactPendingMatch).
+            amount: amount != null ? parseFloat(String(amount)) : null,
           })
         } catch (error) {
           const message = error instanceof Error ? error.message : "Error al identificar la deuda del operador"
@@ -1916,6 +1919,7 @@ export async function PATCH(request: Request) {
         const matchedOperatorPayment = await findMatchingOperatorPayment(supabase, {
           operationId: existingPayment.operation_id,
           operatorId: linkedOperatorId,
+          amount: amount !== undefined ? parseFloat(amount) : parseFloat(existingPayment.amount),
         })
 
         if (matchedOperatorPayment) {
@@ -2239,6 +2243,7 @@ export async function PATCH(request: Request) {
           const matchedOperatorPayment = await findMatchingOperatorPayment(supabase, {
             operationId: existingPayment.operation_id,
             operatorId: linkedOperatorId,
+            amount: finalAmount,
           })
 
           if (matchedOperatorPayment) {

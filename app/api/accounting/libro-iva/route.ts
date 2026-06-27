@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { normalizeTaxTreatment } from "@/lib/invoices/calculation"
+import { ledgerSign } from "@/lib/invoices/credit-note"
 import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
 import { bundleLibroIvaDigital } from "@/lib/accounting/libro-iva-digital"
 
@@ -99,10 +100,13 @@ export async function GET(request: Request) {
     const percs = percepciones || []
 
     const totals = {
+      // Las NC (3/8/13/21) restan del débito fiscal; facturas y ND suman (ledgerSign).
+      // Los exports por comprobante (RG3683/RG4597) conservan montos positivos:
+      // AFIP aplica el signo según el tipo de comprobante.
       ventas: {
-        neto: salesInvoices.reduce((s: number, i: any) => s + Number(i.imp_neto || 0), 0),
-        iva: salesInvoices.reduce((s: number, i: any) => s + Number(i.imp_iva || 0), 0),
-        total: salesInvoices.reduce((s: number, i: any) => s + Number(i.imp_total || 0), 0),
+        neto: salesInvoices.reduce((s: number, i: any) => s + ledgerSign(i.cbte_tipo) * Number(i.imp_neto || 0), 0),
+        iva: salesInvoices.reduce((s: number, i: any) => s + ledgerSign(i.cbte_tipo) * Number(i.imp_iva || 0), 0),
+        total: salesInvoices.reduce((s: number, i: any) => s + ledgerSign(i.cbte_tipo) * Number(i.imp_total || 0), 0),
         count: salesInvoices.length,
       },
       ventas_iva_estimado: {

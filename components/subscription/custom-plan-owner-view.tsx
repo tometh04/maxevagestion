@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { PLANS, formatArs } from "@/lib/billing/plans"
+import { DowngradeDialog, UndoDowngradeButton } from "@/components/billing/downgrade-dialog"
 
 type CustomPlan = {
   display_name: string
@@ -17,6 +18,8 @@ type Org = {
   mp_preapproval_id: string | null
   current_period_ends_at: string | null
   trial_ends_at: string | null
+  scheduled_plan: string | null
+  scheduled_plan_effective_at: string | null
 }
 
 function fmt(iso: string | null): string {
@@ -30,17 +33,22 @@ export function CustomPlanOwnerView({
   plan,
   org,
   checkoutUrl,
+  canManageBilling = false,
 }: {
   plan: CustomPlan
   org: Org
   /** init_point del preapproval MP cuando la suscripción está pendiente. Null si ya pagó o MANUAL. */
   checkoutUrl: string | null
+  /** True si el user es ADMIN/SUPER_ADMIN del org → puede programar/deshacer el downgrade. */
+  canManageBilling?: boolean
 }) {
   const enterpriseFeatures = PLANS.ENTERPRISE.features
   const effective = plan.base_price_ars * (1 - (plan.discount_percent ?? 0) / 100)
   const hasDiscount = plan.discount_percent > 0 && !!plan.discount_ends_at
 
   const isActive = org.subscription_status === "ACTIVE"
+  const hasScheduledDowngrade = org.scheduled_plan === "PRO"
+  const lostExtras = plan.features.extras.filter((e) => e.enabled).map((e) => e.label)
   // Bug fix 2026-05-18 (Tomi reportó VICO): antes isPendingMp era
   // `!isActive && billing_method === "MP" && checkoutUrl`. Pero VICO había
   // sido marcada ACTIVE manualmente (pagaron primer mes por transferencia)
@@ -208,6 +216,36 @@ export function CustomPlanOwnerView({
               )}
               <div>Consultas de facturación: ventas@vibook.ai</div>
             </div>
+          )}
+
+          {/* Downgrade a PRO: banner si está programado, o acción si está activo */}
+          {hasScheduledDowngrade ? (
+            <div className="border-t pt-3 space-y-2">
+              <div className="rounded-md border border-accent-coral/40 bg-accent-coral/10 px-3 py-3 text-sm space-y-1.5">
+                <div className="font-semibold text-accent-coral">
+                  Downgrade a PRO programado
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Vas a bajar al plan PRO el{" "}
+                  <strong>{fmt(org.scheduled_plan_effective_at)}</strong>. Hasta esa fecha
+                  seguís con todos los beneficios de tu plan {plan.display_name}.
+                </div>
+                {canManageBilling && <UndoDowngradeButton />}
+              </div>
+            </div>
+          ) : (
+            canManageBilling &&
+            isActive && (
+              <div className="border-t pt-3 space-y-2">
+                <div className="text-xs text-muted-foreground">
+                  ¿Necesitás un plan más chico? Podés bajar al plan PRO al final de tu período actual.
+                </div>
+                <DowngradeDialog
+                  effectiveAt={org.current_period_ends_at}
+                  lostExtras={lostExtras}
+                />
+              </div>
+            )
           )}
         </CardContent>
       </Card>

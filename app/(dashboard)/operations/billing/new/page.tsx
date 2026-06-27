@@ -578,7 +578,20 @@ export default function NewInvoicePage() {
           }
 
           setInvoiceRemaining(remainingToInvoice)
-          setItems(buildOperationInvoiceItems(summary, formData.cbte_tipo))
+          // Los items se arman en la moneda nativa de la operación (USD para ops USD).
+          // La factura por defecto se emite en PES, así que si la op es USD hay que
+          // convertir los precios a ARS con el TC recién traído. Sin esto los items
+          // quedaban en USD pero la moneda decía ARS (el cliente veía "el importe en
+          // USD con cartel de ARS") y, al pasar a USD, se volvían a dividir por el TC
+          // ("convierte raro" / doble conversión). El resto de los handlers
+          // (handleInvoiceCurrencyChange / handleExchangeRateChange) ya asumen que
+          // items está en la moneda mostrada, así que acá lo dejamos consistente.
+          const builtItems = buildOperationInvoiceItems(summary, formData.cbte_tipo)
+          const itemsInInvoiceCurrency =
+            fullOperation.sale_currency === 'USD' && nextInvoiceCurrency === 'PES' && fetchedRate > 1
+              ? builtItems.map(it => ({ ...it, precio_unitario: roundMoney(it.precio_unitario * fetchedRate) }))
+              : builtItems
+          setItems(itemsInInvoiceCurrency)
         }
       } catch (error) {
         console.error('Error loading operation details:', error)
@@ -798,10 +811,17 @@ export default function NewInvoicePage() {
       // Validación cliente-side: no facturar por encima de la venta restante de la operación.
       if (invoiceRemaining !== null) {
         const totalFinal = calculatedInvoice.totals.imp_total
-        if (totalFinal > invoiceRemaining + 0.01) {
+        // invoiceRemaining está en la moneda nativa de la operación (USD para ops USD).
+        // Si facturamos en PES desde una op USD, los items y el total están en ARS,
+        // así que convertimos el restante a ARS para comparar en la misma moneda.
+        const remainingInInvoiceCurrency =
+          selectedOperation?.sale_currency === 'USD' && invoiceCurrency === 'PES'
+            ? invoiceRemaining * exchangeRate
+            : invoiceRemaining
+        if (totalFinal > remainingInInvoiceCurrency + 0.01) {
           toast({
             title: "No se puede facturar",
-            description: `Excede el total vendido restante (${formatMoney(invoiceRemaining)})`,
+            description: `Excede el total vendido restante (${formatMoney(remainingInInvoiceCurrency)})`,
             variant: "destructive",
           })
           setSaving(false)

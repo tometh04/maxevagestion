@@ -7,7 +7,7 @@
  * sistema que la agencia le debe plata al operador cuando no es así).
  */
 
-import { buildOperatorPaymentUpdate } from "../operator-payment-settlement"
+import { buildOperatorPaymentUpdate, pickExactPendingMatch } from "../operator-payment-settlement"
 
 describe("buildOperatorPaymentUpdate — overpayment cap", () => {
   const baseRow = {
@@ -76,5 +76,54 @@ describe("buildOperatorPaymentUpdate — overpayment cap", () => {
     )
     // 333.333 + 166.667 = 500.00
     expect(update.paid_amount).toBeCloseTo(500, 2)
+  })
+})
+
+describe("pickExactPendingMatch — desambiguación de patas por monto", () => {
+  // Reproduce OP b62d751c: mismo operador en 2 patas (Hotel 332,64 / Vuelo 399,44).
+  const hotel = { id: "hotel", amount: 332.64, paid_amount: 0 }
+  const flight = { id: "flight", amount: 399.44, paid_amount: 0 }
+
+  it("elige la pata cuyo pending coincide exacto con el monto (no la más vieja)", () => {
+    const match = pickExactPendingMatch([hotel, flight], 399.44)
+    expect(match?.id).toBe("flight")
+  })
+
+  it("matchea contra el saldo pendiente, no contra el amount total", () => {
+    // Vuelo ya tiene 100 pagados → pending 299,44. El pago de 299,44 va al vuelo.
+    const flightPartial = { id: "flight", amount: 399.44, paid_amount: 100 }
+    const match = pickExactPendingMatch([hotel, flightPartial], 299.44)
+    expect(match?.id).toBe("flight")
+  })
+
+  it("tolera diferencias de centavos dentro del epsilon", () => {
+    const match = pickExactPendingMatch([hotel, flight], 399.444)
+    expect(match?.id).toBe("flight")
+  })
+
+  it("devuelve null si ninguna pata matchea (caller cae a FIFO)", () => {
+    expect(pickExactPendingMatch([hotel, flight], 500)).toBeNull()
+  })
+
+  it("devuelve null si el match es ambiguo (dos patas con el mismo pending)", () => {
+    const a = { id: "a", amount: 200, paid_amount: 0 }
+    const b = { id: "b", amount: 200, paid_amount: 0 }
+    expect(pickExactPendingMatch([a, b], 200)).toBeNull()
+  })
+
+  it("devuelve null si no se pasa monto (preserva comportamiento previo)", () => {
+    expect(pickExactPendingMatch([hotel, flight], null)).toBeNull()
+    expect(pickExactPendingMatch([hotel, flight], undefined)).toBeNull()
+  })
+
+  it("ignora montos no positivos o no numéricos", () => {
+    expect(pickExactPendingMatch([hotel, flight], 0)).toBeNull()
+    expect(pickExactPendingMatch([hotel, flight], -399.44)).toBeNull()
+    expect(pickExactPendingMatch([hotel, flight], NaN)).toBeNull()
+  })
+
+  it("acepta amount como string (viene del body/DB)", () => {
+    const match = pickExactPendingMatch([hotel, flight], "399.44")
+    expect(match?.id).toBe("flight")
   })
 })

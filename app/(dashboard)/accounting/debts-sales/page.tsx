@@ -2,6 +2,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
 import { DebtsSalesPageClient } from "@/components/accounting/debts-sales-page-client"
 import { createServerClient } from "@/lib/supabase/server"
+import { getScopedAgenciesForUser } from "@/lib/permissions-api"
 
 export default async function DebtsSalesPage() {
   const { user } = await getCurrentUser()
@@ -34,5 +35,13 @@ export default async function DebtsSalesPage() {
   }
   const { data: sellers } = await sellersQuery
 
-  return <DebtsSalesPageClient sellers={(sellers || []).map((s: any) => ({ id: s.id, name: s.name }))} />
+  // Agencias scopeadas por org/rol para el filtro por oficina.
+  const agencies = await getScopedAgenciesForUser(supabase, user)
+
+  return (
+    <DebtsSalesPageClient
+      sellers={(sellers || []).map((s: any) => ({ id: s.id, name: s.name }))}
+      agencies={agencies}
+    />
+  )
 }

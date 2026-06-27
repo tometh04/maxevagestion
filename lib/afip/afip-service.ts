@@ -11,6 +11,7 @@ import { isAfipConfigValid } from "./afip-config"
 import { afipRateCache } from "./rate-cache"
 import { diffVoucher, type VoucherFields, type VoucherDiff } from "./diff"
 import { getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
+import { isCreditOrDebitNote } from "@/lib/invoices/credit-note"
 
 type AfipSdkInstance = {
   ElectronicBilling: {
@@ -465,6 +466,20 @@ export class AfipService {
       CondicionIVAReceptorId: draft.receptor_condicion_iva || 5,
     }
     if (ivaArray.length > 0) payload.Iva = ivaArray
+
+    // NC/ND: AFIP exige CbtesAsoc (comprobante asociado) o rechaza el voucher
+    // (errores típicos 10016/10048). El comprobante asociado se guarda en las
+    // columnas cbte_asoc_* al crear el draft de la NC/ND.
+    if (isCreditOrDebitNote(draft.cbte_tipo) && draft.cbte_asoc_tipo) {
+      const asoc: any = {
+        Tipo: draft.cbte_asoc_tipo,
+        PtoVta: draft.cbte_asoc_pto_vta,
+        Nro: draft.cbte_asoc_nro,
+      }
+      if (draft.cbte_asoc_cuit) asoc.Cuit = Number(draft.cbte_asoc_cuit)
+      if (draft.cbte_asoc_fch) asoc.CbteFch = parseInt(String(draft.cbte_asoc_fch), 10)
+      payload.CbtesAsoc = [asoc]
+    }
 
     if (draft.concepto === 2 || draft.concepto === 3) {
       const serviceFrom = draft.fch_serv_desde || draft.fecha_emision || new Date()

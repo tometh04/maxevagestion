@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { getUserAgencyIds } from "@/lib/permissions-api"
 import { canAccessModule } from "@/lib/permissions"
 import { calculateInvoice } from "@/lib/invoices/calculation"
+import { isCreditNote, isCreditOrDebitNote, ledgerSign } from "@/lib/invoices/credit-note"
 import { z } from "zod"
 
 export const dynamic = 'force-dynamic'
@@ -49,6 +50,14 @@ const createInvoiceSchema = z.object({
   fch_serv_hasta: z.string().optional(),
   fecha_vto_pago: z.string().optional(),
   notes: z.string().optional(),
+  // NC/ND: comprobante asociado (CbtesAsoc de AFIP). Requerido cuando cbte_tipo
+  // es una nota de crédito/débito.
+  original_invoice_id: z.string().uuid().optional().nullable(),
+  cbte_asoc_tipo: z.number().optional(),
+  cbte_asoc_pto_vta: z.number().optional(),
+  cbte_asoc_nro: z.number().optional(),
+  cbte_asoc_cuit: z.number().optional(),
+  cbte_asoc_fch: z.string().optional(),
 }).superRefine((data, ctx) => {
   // Factura A / A con leyenda → exige CUIT del receptor (AFIP 10013).
   // Tipos A: 1 (Factura A), 2 (NC A), 3 (ND A), 51 (Factura A MiPyME), 201 (Factura A FCE), etc.
@@ -67,6 +76,25 @@ const createInvoiceSchema = z.object({
         code: z.ZodIssueCode.custom,
         path: ["receptor_doc_nro"],
         message: "Factura A requiere CUIT de 11 dígitos del receptor.",
+      })
+    }
+  }
+
+  // NC/ND: AFIP exige el comprobante asociado (CbtesAsoc) o rechaza el voucher.
+  if (isCreditOrDebitNote(data.cbte_tipo)) {
+    if (!data.cbte_asoc_tipo || !data.cbte_asoc_pto_vta || !data.cbte_asoc_nro) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["cbte_asoc_nro"],
+        message: "Una NC/ND requiere el comprobante asociado (tipo, punto de venta y número).",
+      })
+    }
+    // La NC/ND debe emitirse contra el mismo punto de venta que la factura origen.
+    if (data.cbte_asoc_pto_vta && data.cbte_asoc_pto_vta !== data.pto_vta) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["pto_vta"],
+        message: "La NC/ND debe emitirse contra el mismo punto de venta que el comprobante asociado.",
       })
     }
   }
@@ -198,7 +226,10 @@ export async function POST(request: Request) {
 
     // Si la factura está atada a una operación, validar que no se exceda
     // el total vendido restante (suma de authorized + new <= sale_amount_total).
-    if (validatedData.operation_id) {
+    // Las NC reducen lo facturado: no pueden exceder el total → se saltean el cap.
+    // Las ND suman: el cap aplica normal. En la suma de "ya facturado", las NC
+    // existentes restan (ledgerSign).
+    if (validatedData.operation_id && !isCreditNote(validatedData.cbte_tipo)) {
       const { data: operation, error: opErr } = await (supabase.from("operations") as any)
         .select("id, org_id, sale_amount_total")
         .eq("id", validatedData.operation_id)
@@ -219,14 +250,14 @@ export async function POST(request: Request) {
         )
       }
 
-      // Sum authorized invoices de esta operación
+      // Sum authorized invoices de esta operación (NC restan, ND/facturas suman)
       const { data: existingInvoices } = await (supabase.from("invoices") as any)
-        .select("imp_total")
+        .select("imp_total, cbte_tipo")
         .eq("operation_id", validatedData.operation_id)
         .eq("status", "authorized")
 
       const alreadyInvoiced = (existingInvoices ?? []).reduce(
-        (acc: number, i: any) => acc + Number(i.imp_total),
+        (acc: number, i: any) => acc + ledgerSign(i.cbte_tipo) * Number(i.imp_total),
         0
       )
       const saleTotal = Number(operation.sale_amount_total)
@@ -282,6 +313,13 @@ export async function POST(request: Request) {
         notes: validatedData.notes,
         status: 'draft',
         created_by: user.id,
+        // NC/ND: comprobante asociado (null para facturas normales)
+        original_invoice_id: validatedData.original_invoice_id || null,
+        cbte_asoc_tipo: validatedData.cbte_asoc_tipo ?? null,
+        cbte_asoc_pto_vta: validatedData.cbte_asoc_pto_vta ?? null,
+        cbte_asoc_nro: validatedData.cbte_asoc_nro ?? null,
+        cbte_asoc_cuit: validatedData.cbte_asoc_cuit ?? null,
+        cbte_asoc_fch: validatedData.cbte_asoc_fch ?? null,
       })
       .select()
       .single()

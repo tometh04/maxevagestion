@@ -2,9 +2,12 @@ const path = require('path')
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Prevent Next.js from bundling @afipsdk/afip.js (CJS module)
-  // so Vercel's file tracer picks it up and includes it in the serverless deployment
-  serverExternalPackages: ['@afipsdk/afip.js'],
+  // Prevent Next.js from bundling these so the file tracer picks them up and
+  // includes them in the serverless deployment.
+  // - @afipsdk/afip.js: CJS module
+  // - unpdf + @napi-rs/canvas: renderizan PDFs a imagen para el OCR de facturas
+  //   de compra (pdf.js + canvas nativo); bundlearlos los rompe solo en prod.
+  serverExternalPackages: ['@afipsdk/afip.js', 'unpdf', '@napi-rs/canvas'],
   outputFileTracingRoot: path.join(__dirname),
   // 2026-05-05: removido `typescript.ignoreBuildErrors`. tsc pasa con 0 errores
   // tras limpiar V1 import (dead code), corregir casts en tablas no tipadas

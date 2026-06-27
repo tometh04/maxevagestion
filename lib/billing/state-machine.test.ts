@@ -164,4 +164,12 @@ describe("transitionFromMP", () => {
     expect(out.subscription_status).toBe("PAST_DUE")
     expect(out.event_type).toBe("PAYMENT_REJECTED")
   })
+
+  // Regresión defensiva: el downgrade Enterprise→PRO cambia organizations.plan
+  // SOLO en el cron apply-scheduled-downgrades. transitionFromMP (webhook/reconcile)
+  // jamás debe tocar el plan, ni siquiera si llega un webhook del preapproval cancelado.
+  it("nunca devuelve un campo 'plan' (el plan lo gestiona el cron, no el webhook)", () => {
+    const out = transitionFromMP(mp({ status: "cancelled" }))
+    expect(out).not.toHaveProperty("plan")
+  })
 })

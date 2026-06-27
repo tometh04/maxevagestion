@@ -10,6 +10,7 @@
 import { PDFDocument, StandardFonts, rgb, PageSizes } from "pdf-lib"
 import QRCode from "qrcode"
 import { COMPROBANTE_LABELS } from "@/lib/afip/types"
+import { isCreditNote, isDebitNote } from "@/lib/invoices/credit-note"
 import {
   formatInvoiceMoney,
   ITEM_TAX_TREATMENT_LABELS,
@@ -174,9 +175,14 @@ export async function renderInvoicePdf(params: InvoicePdfParams): Promise<Uint8A
     y -= logoH + 8
   }
 
-  // HEADER
+  // HEADER — el título depende del tipo de comprobante (factura / NC / ND)
   rect(L, y - 54, W, 56, orange)
-  text("FACTURA ELECTRÓNICA", L + 8, y - 16, 14, bold, rgb(1, 1, 1))
+  const headerTitle = isCreditNote(invoice.cbte_tipo)
+    ? "NOTA DE CRÉDITO ELECTRÓNICA"
+    : isDebitNote(invoice.cbte_tipo)
+    ? "NOTA DE DÉBITO ELECTRÓNICA"
+    : "FACTURA ELECTRÓNICA"
+  text(headerTitle, L + 8, y - 16, 14, bold, rgb(1, 1, 1))
   const comprobanteLabel =
     COMPROBANTE_LABELS[invoice.cbte_tipo as keyof typeof COMPROBANTE_LABELS] ??
     `Tipo ${invoice.cbte_tipo}`
@@ -224,6 +230,16 @@ export async function renderInvoicePdf(params: InvoicePdfParams): Promise<Uint8A
     text(`Periodo: ${fmtDate(invoice.fch_serv_desde)} al ${fmtDate(invoice.fch_serv_hasta)}`, mid, y, 8, regular, gray)
   }
   y -= 18
+
+  // COMPROBANTE ASOCIADO (NC/ND): referencia a la factura acreditada/debitada
+  if (invoice.cbte_asoc_tipo && invoice.cbte_asoc_nro) {
+    const asocLabel =
+      COMPROBANTE_LABELS[invoice.cbte_asoc_tipo as keyof typeof COMPROBANTE_LABELS] ??
+      `Tipo ${invoice.cbte_asoc_tipo}`
+    const asocNro = `${String(invoice.cbte_asoc_pto_vta ?? invoice.pto_vta).padStart(4, "0")}-${String(invoice.cbte_asoc_nro).padStart(8, "0")}`
+    text(`Comprobante asociado: ${asocLabel} ${asocNro}`, L, y, 8, regular, gray)
+    y -= 18
+  }
 
   // TABLA ITEMS
   const rowH = 14
