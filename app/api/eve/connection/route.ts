@@ -33,9 +33,10 @@ export async function GET() {
     const supabase = await createServerClient()
 
     // Cross-tenant fix: filtro explícito por org_id, no confiar en RLS
+    // webhook_token se lee server-side para calcular webhook_configured; NO se devuelve al cliente
     const { data: integ } = await (supabase
       .from("org_integrations") as any)
-      .select("org_id, is_active, config")
+      .select("org_id, is_active, config, webhook_token")
       .eq("org_id", user.org_id)
       .eq("integration", "eve")
       .maybeSingle()
@@ -44,19 +45,21 @@ export async function GET() {
       return NextResponse.json({ connected: false })
     }
 
+    const webhookConfigured = !!integ.webhook_token && integ.is_active === true
+
     // Intentar obtener estado de Eve (toleramos que esté caído)
     try {
       const { agencia, canales } = await eveGetAgencia(user.org_id)
       return NextResponse.json({
         connected: true,
-        webhook_configured: integ.is_active === true,
+        webhook_configured: webhookConfigured,
         agencia,
         canales,
       })
     } catch {
       return NextResponse.json({
         connected: true,
-        webhook_configured: integ.is_active === true,
+        webhook_configured: webhookConfigured,
         agencia: null,
         canales: [],
         error: "eve_unreachable",
@@ -158,7 +161,7 @@ export async function POST() {
       ...(defaultAgencyId ? { default_agency_id: defaultAgencyId } : {}),
     }
 
-    await (supabase
+    const { error: upsertErr } = await (supabase
       .from("org_integrations") as any)
       .upsert(
         {
@@ -171,6 +174,11 @@ export async function POST() {
         },
         { onConflict: "org_id,integration" }
       )
+
+    if (upsertErr) {
+      console.error("[eve/connection POST] upsert org_integrations error:", upsertErr)
+      return NextResponse.json({ error: "Error al guardar integración" }, { status: 500 })
+    }
 
     // 7. Devolver resultado (NUNCA devolver tokens ni secrets al cliente)
     return NextResponse.json({
