@@ -12,6 +12,7 @@ import {
   GalleryVerticalEnd,
   Wrench,
   HelpCircle,
+  Bot,
 } from "lucide-react"
 import Link from "next/link"
 import { shouldShowInSidebar, type UserRole } from "@/lib/permissions"
@@ -39,7 +40,7 @@ interface NavSubItem {
   title: string
   url: string
   items?: NavSubSubItem[]
-  module?: "dashboard" | "leads" | "operations" | "customers" | "operators" | "cash" | "accounting" | "alerts" | "reports" | "settings" | "commissions"
+  module?: "dashboard" | "leads" | "operations" | "customers" | "operators" | "cash" | "accounting" | "alerts" | "reports" | "settings" | "commissions" | "eve"
   badge?: {
     variant: 'warning' | 'error' | 'info'
     tooltip: string
@@ -51,7 +52,7 @@ interface NavItem {
   url: string
   icon?: React.ComponentType<{ className?: string }>
   items?: NavSubItem[]
-  module?: "dashboard" | "leads" | "operations" | "customers" | "operators" | "cash" | "accounting" | "alerts" | "reports" | "settings" | "commissions"
+  module?: "dashboard" | "leads" | "operations" | "customers" | "operators" | "cash" | "accounting" | "alerts" | "reports" | "settings" | "commissions" | "eve"
   collapsible?: boolean
 }
 
@@ -135,7 +136,19 @@ const allNavigation: NavItem[] = [
       { title: "Importar CSV", url: "/settings/import-v2" },
     ],
   },
-  // 7. Cerebro
+  // 7. Agente IA (Eve)
+  {
+    title: "Agente IA",
+    url: "/eve",
+    icon: Bot,
+    module: "eve",
+    items: [
+      { title: "Estado", url: "/eve" },
+      { title: "Canales", url: "/eve/channels" },
+      { title: "Prompt", url: "/eve/prompt" },
+    ],
+  },
+  // 8. Cerebro
   {
     title: "🧠 Cerebro",
     url: "/tools/cerebro",

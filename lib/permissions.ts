@@ -24,6 +24,7 @@ export type Module =
   | "settings"
   | "documents"
   | "tasks"
+  | "eve"
 
 export type Permission = "read" | "write" | "delete" | "export"
 
@@ -55,6 +56,7 @@ export const SUPER_ADMIN_PERMS: RolePermissions = {
   settings: { read: true, write: true, delete: true, export: true },
   documents: { read: true, write: true, delete: true, export: true },
   tasks: { read: true, write: true, delete: true, export: true },
+  eve: { read: true, write: true, delete: true, export: false },
 }
 
 export const PERMISSIONS: Record<UserRole, RolePermissions> = {
@@ -74,6 +76,7 @@ export const PERMISSIONS: Record<UserRole, RolePermissions> = {
     settings: { read: true, write: false, delete: false, export: false }, // No puede modificar settings
     documents: { read: true, write: true, delete: false, export: true },
     tasks: { read: true, write: true, delete: false, export: false },
+    eve: { read: true, write: true, delete: true, export: false },
   },
   CONTABLE: {
     dashboard: { read: false, write: false, delete: false, export: false }, // No ve dashboard general
@@ -89,6 +92,7 @@ export const PERMISSIONS: Record<UserRole, RolePermissions> = {
     settings: { read: false, write: false, delete: false, export: false }, // No ve settings
     documents: { read: false, write: false, delete: false, export: false }, // No ve documentos
     tasks: { read: true, write: true, delete: false, export: false },
+    eve: { read: false, write: false, delete: false, export: false },
   },
   SELLER: {
     dashboard: { read: true, write: false, delete: false, export: false, ownDataOnly: true }, // Solo sus datos
@@ -104,6 +108,7 @@ export const PERMISSIONS: Record<UserRole, RolePermissions> = {
     settings: { read: false, write: false, delete: false, export: false }, // No ve settings
     documents: { read: true, write: true, delete: false, export: false, ownDataOnly: true }, // Solo documentos de sus operaciones
     tasks: { read: true, write: true, delete: false, export: false, ownDataOnly: true },
+    eve: { read: false, write: false, delete: false, export: false },
   },
   VIEWER: {
     dashboard: { read: true, write: false, delete: false, export: false },
@@ -119,6 +124,7 @@ export const PERMISSIONS: Record<UserRole, RolePermissions> = {
     settings: { read: false, write: false, delete: false, export: false },
     documents: { read: true, write: false, delete: false, export: false },
     tasks: { read: true, write: false, delete: false, export: false },
+    eve: { read: false, write: false, delete: false, export: false },
   },
   // POST_VENTA: ve y gestiona el seguimiento post-cierre de operaciones.
   // Puede cargar vouchers enviados, check-in realizado, y consultar requisitos
@@ -138,6 +144,7 @@ export const PERMISSIONS: Record<UserRole, RolePermissions> = {
     settings:   { read: true,  write: false, delete: false, export: false }, // Para requisitos de destino
     documents:  { read: true,  write: true,  delete: false, export: false }, // Cargar vouchers
     tasks:      { read: true,  write: true,  delete: false, export: false },
+    eve:        { read: false, write: false, delete: false, export: false },
   },
 }
 
@@ -192,9 +199,9 @@ export function shouldShowInSidebar(role: UserRole, module: Module): boolean {
     return ["dashboard", "leads", "operations", "customers", "alerts", "reports", "commissions", "documents", "tasks"].includes(module)
   }
 
-  // VIEWER ve todo excepto settings
+  // VIEWER ve todo excepto settings y eve (eve es solo ADMIN/SUPER_ADMIN)
   if (role === "VIEWER") {
-    return module !== "settings"
+    return module !== "settings" && module !== "eve"
   }
 
   // POST_VENTA ve operaciones, clientes, alertas, documentos, tareas y settings (requisitos de destino)
@@ -223,7 +230,7 @@ export function usePermissions(role: UserRole) {
 const ALL_MODULES_LIST: Module[] = [
   "dashboard", "leads", "operations", "customers", "operators",
   "cash", "accounting", "alerts", "reports", "commissions",
-  "settings", "documents", "tasks",
+  "settings", "documents", "tasks", "eve",
 ]
 
 /**
