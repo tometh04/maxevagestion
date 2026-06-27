@@ -29,7 +29,7 @@ export type ResolvedPermissionsMatrix = Record<string, ResolvedModulePerms>
 const ALL_MODULES: Module[] = [
   "dashboard", "leads", "operations", "customers", "operators",
   "cash", "accounting", "alerts", "reports", "commissions",
-  "settings", "documents", "tasks",
+  "settings", "documents", "tasks", "eve",
 ]
 
 /** Roles que siempre tienen full access — no consultan DB */
