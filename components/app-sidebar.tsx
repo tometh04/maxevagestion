@@ -56,6 +56,12 @@ interface NavItem {
   collapsible?: boolean
 }
 
+// Feature flag temporal: el módulo "Agente IA / Eve" solo aparece en el sidebar
+// para este email mientras se valida en producción (soft-launch). Comparado en
+// minúsculas. Para liberar a todos los roles habilitados, eliminar este gate
+// en canShowModule().
+const EVE_SIDEBAR_ALLOWED_EMAIL = "mypupybox@gmail.com"
+
 const allNavigation: NavItem[] = [
   // 1. Resumen
   {
@@ -265,6 +271,12 @@ export function AppSidebar({ userRole, resolvedPermissions, user, ...props }: Ap
   // Con permisos dinámicos: usa la matrix resuelta (checkResolvedPermission).
   // Sin matrix (fallback): usa la lógica estática original.
   function canShowModule(module: string): boolean {
+    // Feature flag "Agente IA / Eve": soft-launch limitado por email mientras
+    // se valida en producción. Solo este usuario lo ve en el sidebar, además
+    // de cumplir el permiso de módulo normal. Quitar este gate para GA.
+    if (module === "eve" && user.email.toLowerCase() !== EVE_SIDEBAR_ALLOWED_EMAIL) {
+      return false
+    }
     if (resolvedPermissions) {
       return checkResolvedPermission(resolvedPermissions, module, "read")
     }
