@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { getUserAgencyIds } from "@/lib/permissions-api"
+import { buildExchangeRateMap, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
 
 export const dynamic = "force-dynamic"
 
@@ -54,30 +55,6 @@ export async function GET(request: Request) {
       )
     }
 
-    // ── Cobros pendientes a clientes (payments) ──────────────────────────────
-    let customerQuery = (supabase.from("payments") as any)
-      .select("id, amount, currency, amount_usd, date_due, agency_id")
-      .eq("org_id", orgId)
-      .eq("direction", "INCOME")
-      .eq("payer_type", "CUSTOMER")
-      .eq("status", "PENDING")
-
-    if (agencyIdFilter && agencyIdFilter !== "ALL") {
-      customerQuery = customerQuery.eq("agency_id", agencyIdFilter)
-    } else {
-      customerQuery = customerQuery.in("agency_id", agencyIds)
-    }
-
-    const { data: customerPayments } = await customerQuery
-
-    // ── Pagos pendientes a operadores (operator_payments) ───────────────────
-    // operator_payments no tiene agency_id propio — la agencia viene de la
-    // operación relacionada. Filtramos por org_id en SQL y por agency en JS.
-    const { data: operatorPayments } = await (supabase.from("operator_payments") as any)
-      .select("id, amount, paid_amount, currency, due_date, status, operations!operation_id(agency_id)")
-      .eq("org_id", orgId)
-      .in("status", ["PENDING", "OVERDUE"])
-
     // ── Clasificación por urgencia ───────────────────────────────────────────
     type Bucket = { count: number; totalUsd: number }
     const empty = (): { overdue: Bucket; near: Bucket; ok: Bucket } => ({
@@ -86,22 +63,102 @@ export async function GET(request: Request) {
       ok: { count: 0, totalUsd: 0 },
     })
 
+    // ── Cobros pendientes a clientes ─────────────────────────────────────────
+    // La deuda del cliente es IMPLÍCITA: sale_amount_total − Σ(pagos INCOME /
+    // payer_type=CUSTOMER / status=PAID). NO existe como filas payments con
+    // status=PENDING — el sistema solo materializa los cobros reales como PAID.
+    // Por eso el semáforo daba SIEMPRE 0 en "Cobros a Clientes" (bug reportado
+    // por VICO 2026-06-29): filtraba payments status=PENDING que nunca existen.
+    // Se computa por operación igual que el reporte de deudores
+    // (/api/accounting/debts-sales), usando departure_date como vencimiento del
+    // cobro (hay que cobrar antes del viaje). Se convierte a USD para el total.
+    let opsQuery = (supabase.from("operations") as any)
+      .select("id, sale_amount_total, sale_currency, currency, departure_date, created_at, agency_id")
+      .eq("org_id", orgId)
+      .neq("status", "CANCELLED")
+      .gt("sale_amount_total", 0)
+
+    if (agencyIdFilter && agencyIdFilter !== "ALL") {
+      opsQuery = opsQuery.eq("agency_id", agencyIdFilter)
+    } else {
+      opsQuery = opsQuery.in("agency_id", agencyIds)
+    }
+
+    const { data: ops } = await opsQuery
+    const opList = (ops || []) as any[]
+
+    // Pagos PAID del cliente por operación (chunked: .in() revienta URL con >300 UUIDs).
+    type RawPayment = { amount: number; currency: string; exchange_rate: number | null; amount_usd: number | null }
+    const paidByOperation: Record<string, RawPayment[]> = {}
+    const opIds = opList.map((o) => o.id)
+    const chunkSize = 200
+    for (let i = 0; i < opIds.length; i += chunkSize) {
+      const chunk = opIds.slice(i, i + chunkSize)
+      const { data: payments } = await (supabase.from("payments") as any)
+        .select("operation_id, amount, amount_usd, currency, exchange_rate, status, direction, payer_type")
+        .in("operation_id", chunk)
+        .eq("org_id", orgId)
+        .eq("direction", "INCOME")
+        .eq("payer_type", "CUSTOMER")
+      for (const p of payments || []) {
+        if (p.status !== "PAID") continue
+        ;(paidByOperation[p.operation_id] ||= []).push({
+          amount: Number(p.amount) || 0,
+          currency: p.currency || "ARS",
+          exchange_rate: p.exchange_rate != null ? Number(p.exchange_rate) : null,
+          amount_usd: p.amount_usd != null ? Number(p.amount_usd) : null,
+        })
+      }
+    }
+
+    // Tasa de cambio para convertir deudas ARS a USD (map por fecha + fallback).
+    const latestRate = (await getLatestExchangeRate(supabase)) || DEFAULT_USD_ARS_FALLBACK_RATE
+    const arsDates = opList
+      .filter((o) => (o.sale_currency || o.currency || "USD") === "ARS")
+      .map((o) => o.departure_date || o.created_at)
+    const getRate = await buildExchangeRateMap(supabase, arsDates)
+
     const customerResult = empty()
-    for (const p of customerPayments || []) {
-      const amtUsd = p.amount_usd != null
-        ? Number(p.amount_usd)
-        : p.currency === "USD"
-          ? Number(p.amount || 0)
-          : 0
-      const dueDate = p.date_due as string | null
+    for (const op of opList) {
+      const saleCurrency = op.sale_currency || op.currency || "USD"
+      const saleAmount = Number(op.sale_amount_total) || 0
+      const rateForOp = getRate(op.departure_date || op.created_at) || latestRate
+
+      // Netear pagos en la moneda de la venta y recién después convertir a USD.
+      let paidInSaleCurrency = 0
+      for (const p of paidByOperation[op.id] || []) {
+        if (p.currency === saleCurrency) {
+          paidInSaleCurrency += p.amount
+        } else if (saleCurrency === "ARS" && p.currency === "USD") {
+          paidInSaleCurrency += p.amount * (p.exchange_rate || rateForOp)
+        } else if (saleCurrency === "USD" && p.currency === "ARS") {
+          paidInSaleCurrency += p.amount_usd != null ? p.amount_usd : p.amount / (p.exchange_rate || rateForOp)
+        } else {
+          paidInSaleCurrency += p.amount
+        }
+      }
+
+      const debtInSaleCurrency = Math.max(0, saleAmount - paidInSaleCurrency)
+      if (debtInSaleCurrency < 0.01) continue
+      const debtUsd = saleCurrency === "ARS" ? debtInSaleCurrency / rateForOp : debtInSaleCurrency
+
+      const dueDate = op.departure_date as string | null
       let bucket: "overdue" | "near" | "ok" = "ok"
       if (dueDate) {
         if (dueDate < todayStr) bucket = "overdue"
         else if (dueDate <= nearDeadlineStr) bucket = "near"
       }
       customerResult[bucket].count++
-      customerResult[bucket].totalUsd += amtUsd
+      customerResult[bucket].totalUsd += debtUsd
     }
+
+    // ── Pagos pendientes a operadores (operator_payments) ───────────────────
+    // operator_payments no tiene agency_id propio — la agencia viene de la
+    // operación relacionada. Filtramos por org_id en SQL y por agency en JS.
+    const { data: operatorPayments } = await (supabase.from("operator_payments") as any)
+      .select("id, amount, paid_amount, currency, due_date, status, operations!operation_id(agency_id)")
+      .eq("org_id", orgId)
+      .in("status", ["PENDING", "OVERDUE"])
 
     const operatorResult = empty()
     for (const p of operatorPayments || []) {
