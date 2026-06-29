@@ -232,8 +232,19 @@ export async function PATCH(
     // Validación overrides de comisión (29/04 — Tomi opción B):
     // Si vienen los dos absolutos y hay seller secondary efectivo (en el
     // body o en la op actual), validar suma ≤ comisión del principal.
-    const effectiveSecondaryId =
+    const effectivePrimarySellerId = body.seller_id ?? currentOp.seller_id
+    let effectiveSecondaryId =
       body.seller_secondary_id !== undefined ? body.seller_secondary_id : currentOp.seller_secondary_id
+    // Guard (2026-06-29): un vendedor no puede ser su propio secundario. Si
+    // coinciden, se anula el secundario para no disparar el split 50/50 que
+    // reduce la comisión a la mitad (ver POST /api/operations y caso Milla Cero).
+    if (effectiveSecondaryId && effectiveSecondaryId === effectivePrimarySellerId) {
+      effectiveSecondaryId = null
+      body.seller_secondary_id = null
+      body.commission_split = null
+      body.commission_pct_primary = null
+      body.commission_pct_secondary = null
+    }
     if (
       effectiveSecondaryId &&
       body.commission_pct_primary != null &&
