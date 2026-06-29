@@ -872,11 +872,16 @@ export function NewOperationDialog({
                         </FormControl>
                         <SelectContent>
                           <SelectItem value="none">Sin vendedor secundario</SelectItem>
-                          {sellers.map((seller) => (
-                            <SelectItem key={seller.id} value={seller.id}>
-                              {seller.name}
-                            </SelectItem>
-                          ))}
+                          {/* Excluir al vendedor principal: no puede ser su propio
+                              secundario (dispararía el split 50/50 y le cobraría
+                              la mitad de la comisión). */}
+                          {sellers
+                            .filter((seller) => seller.id !== form.watch("seller_id"))
+                            .map((seller) => (
+                              <SelectItem key={seller.id} value={seller.id}>
+                                {seller.name}
+                              </SelectItem>
+                            ))}
                         </SelectContent>
                       </Select>
                       <FormMessage />

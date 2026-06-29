@@ -91,6 +91,14 @@ export async function POST(request: Request) {
       itr_localizador,
     } = body
 
+    // Guard (2026-06-29): un vendedor no puede ser su propio secundario.
+    // Si el secundario coincide con el principal, se dispara el split 50/50
+    // y la comisión del vendedor queda a la mitad (caso Milla Cero
+    // OP-...F790FA44: 25% sobre USD 103 daba USD 12,88 en vez de USD 25,75).
+    // Normalizamos a "sin secundario" para que cobre la comisión completa.
+    const normalizedSecondaryId =
+      seller_secondary_id && seller_secondary_id !== seller_id ? seller_secondary_id : null
+
     // Cross-tenant fix (2026-05-18): validar que la agency_id pertenezca a la org del user.
     // Sin esto, un user de org A podría crear operaciones en una agency de org B.
     if (agency_id) {
@@ -136,7 +144,7 @@ export async function POST(request: Request) {
     // Si vienen los dos campos absolutos, la suma no puede exceder el %
     // que comisiona el vendedor principal. Sólo aplica con secundario.
     if (
-      seller_secondary_id &&
+      normalizedSecondaryId &&
       commission_pct_primary != null &&
       commission_pct_secondary != null
     ) {
@@ -270,10 +278,10 @@ export async function POST(request: Request) {
       agency_id,
       lead_id: lead_id || null,
       seller_id,
-      seller_secondary_id: seller_secondary_id || null,
-      commission_split: seller_secondary_id ? (commission_split ?? 50) : null,
-      commission_pct_primary: seller_secondary_id && commission_pct_primary != null ? Number(commission_pct_primary) : null,
-      commission_pct_secondary: seller_secondary_id && commission_pct_secondary != null ? Number(commission_pct_secondary) : null,
+      seller_secondary_id: normalizedSecondaryId,
+      commission_split: normalizedSecondaryId ? (commission_split ?? 50) : null,
+      commission_pct_primary: normalizedSecondaryId && commission_pct_primary != null ? Number(commission_pct_primary) : null,
+      commission_pct_secondary: normalizedSecondaryId && commission_pct_secondary != null ? Number(commission_pct_secondary) : null,
       operator_id: primaryOperatorId, // Operador principal (compatibilidad hacia atrás)
       type,
       product_type: inferredProductType,
@@ -401,7 +409,7 @@ export async function POST(request: Request) {
       const commissionOp = {
         ...op,
         seller_id: op.seller_primary_id || op.seller_id || seller_id,
-        seller_secondary_id: op.seller_secondary_id || seller_secondary_id || null,
+        seller_secondary_id: op.seller_secondary_id || normalizedSecondaryId || null,
         sale_amount_total: Number(op.sale_amount_total) || 0,
         operator_cost: Number(op.operator_cost) || totalOperatorCost || 0,
         margin_amount: Number(op.margin_amount) || marginAmount || 0,
