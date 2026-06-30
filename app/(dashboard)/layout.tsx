@@ -10,7 +10,7 @@ import { TawkWidget } from "@/components/integrations/tawk-widget"
 import { isTawkUser } from "@/lib/tawk-config"
 import { OnboardingTour } from "@/components/onboarding/onboarding-tour"
 import { isOnboardingEligible } from "@/lib/onboarding/eligibility"
-import { sanitizeOnboardingState } from "@/lib/onboarding/steps"
+import { getOrgOnboardingState } from "@/lib/onboarding/server"
 import { CheckinReminderModal } from "@/components/alerts/checkin-reminder-modal"
 import {
   SidebarInset,
@@ -76,12 +76,11 @@ export default async function DashboardLayout({
   }))
 
   // Onboarding de bienvenida: visible para cuentas nuevas (<30 días) con rol
-  // capaz de hacer el setup. El progreso vive en users.onboarding_state, así
-  // que sobrevive cross-device/sesión (ya no es localStorage).
+  // capaz de hacer el setup. El progreso vive a nivel ORG (organization_settings)
+  // para que se comparta entre admins y no se rehagan pasos ya completados.
   const onboardingEligible = isOnboardingEligible(user)
-  const onboardingState = onboardingEligible
-    ? sanitizeOnboardingState((user as any).onboarding_state)
-    : null
+  const onboardingState =
+    onboardingEligible && user.org_id ? await getOrgOnboardingState(user.org_id) : null
 
   t.end(`role=${user.role} agencies=${agencies.length}`)
 

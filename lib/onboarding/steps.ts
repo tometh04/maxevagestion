@@ -49,6 +49,13 @@ export const ONBOARDING_STEPS: OnboardingStep[] = [
 
 export const ONBOARDING_STEP_KEYS = ONBOARDING_STEPS.map((s) => s.key)
 
+// Key bajo la que se guarda el estado del onboarding en organization_settings
+// (KV por org). El progreso es a nivel ORGANIZACIÓN: los pasos (datos de
+// empresa, invitar equipo, cuenta financiera, AFIP) son hechos de la agencia,
+// no del usuario. Si el admin 1 completó hasta el paso 3, el admin 2 ve ese
+// mismo progreso y no rehace lo ya hecho.
+export const ONBOARDING_SETTINGS_KEY = "onboarding_state"
+
 // Estado persistido en users.onboarding_state. El estado transitorio del tour
 // (paso activo, modales abiertos) NO se persiste — solo el progreso real.
 export interface PersistedOnboardingState {

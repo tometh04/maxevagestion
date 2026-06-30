@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { makeTimer } from "@/lib/perf-log"
 import { OnboardingChecklist } from "@/components/onboarding/onboarding-checklist"
 import { isOnboardingEligible } from "@/lib/onboarding/eligibility"
-import { sanitizeOnboardingState } from "@/lib/onboarding/steps"
+import { getOrgOnboardingState } from "@/lib/onboarding/server"
 
 const DashboardPageClient = dynamic(
   () =>
@@ -132,11 +132,10 @@ export default async function DashboardPage() {
   }
 
   // Onboarding de bienvenida: solo cuentas nuevas (<30 días) con rol de setup.
-  // Progreso persistido en users.onboarding_state.
+  // Progreso a nivel ORG (organization_settings) — compartido entre admins.
   const onboardingEligible = isOnboardingEligible(user)
-  const onboardingState = onboardingEligible
-    ? sanitizeOnboardingState((user as any).onboarding_state)
-    : null
+  const onboardingState =
+    onboardingEligible && user.org_id ? await getOrgOnboardingState(user.org_id) : null
 
   return (
     <>
