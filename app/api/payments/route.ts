@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
+import { createAdminClient, createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
 import { getUserAgencyIds } from "@/lib/permissions-api"
@@ -726,17 +726,31 @@ export async function POST(request: Request) {
       ip_address: getClientIP(request) || undefined,
     })
 
-    // Auto-asignar pago al pasajero seleccionado si se indicó quién abona
+    // Auto-asignar pago al pasajero seleccionado si se indicó quién abona.
+    // Usa admin client (no createServerClient): la tabla
+    // payment_passenger_allocations sufre el "RLS fantasma" documentado en
+    // /api/payments/allocations — el INSERT vía RLS user-auth devuelve 200
+    // pero no persiste nada. Por eso el auto-asignado fallaba en silencio y el
+    // cliente tenía que ir a "Asignar Pagos a Pasajeros" manualmente.
+    // Justificado: ya validamos arriba que la operación pertenece al org del
+    // user, y operation_customer_id viene del select del propio detalle.
     if (payer_operation_customer_id && payer_type === "CUSTOMER" && payment?.id) {
       try {
-        await (supabase.from("payment_passenger_allocations") as any)
+        const admin = createAdminClient()
+        const { data: insertedAlloc, error: allocError } = await (admin.from("payment_passenger_allocations") as any)
           .insert({
             payment_id: payment.id,
             operation_customer_id: payer_operation_customer_id,
             amount: parseFloat(amount),
             currency: currency || "USD",
-            created_by: user.id,
+            created_by: isValidUuid(user.id) ? user.id : null,
           })
+          .select()
+        if (allocError) {
+          console.warn("[payments POST] Error auto-asignando pago a pasajero (non-fatal):", allocError)
+        } else if (!insertedAlloc || insertedAlloc.length === 0) {
+          console.warn("[payments POST] Auto-asignado a pasajero devolvió 0 rows (revisar permisos/triggers).")
+        }
       } catch (allocError) {
         console.warn("[payments POST] Error auto-asignando pago a pasajero (non-fatal):", allocError)
       }
