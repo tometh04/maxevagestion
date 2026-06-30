@@ -53,12 +53,17 @@ export const ONBOARDING_STEP_KEYS = ONBOARDING_STEPS.map((s) => s.key)
 // (paso activo, modales abiertos) NO se persiste — solo el progreso real.
 export interface PersistedOnboardingState {
   completedSteps: string[]
+  // dismissed: se cerró el modal de bienvenida ("lo hago después"). El welcome
+  // no vuelve a auto-aparecer, pero el checklist sigue como recordatorio.
   dismissed: boolean
+  // hidden: el usuario descartó el onboarding por completo (X en el checklist).
+  // No vuelve a aparecer nada — ni welcome ni checklist.
+  hidden: boolean
   completedAt?: string | null
 }
 
 export function emptyOnboardingState(): PersistedOnboardingState {
-  return { completedSteps: [], dismissed: false, completedAt: null }
+  return { completedSteps: [], dismissed: false, hidden: false, completedAt: null }
 }
 
 // Normaliza/valida un estado arbitrario (viene de DB o del body de la API)
@@ -81,6 +86,7 @@ export function sanitizeOnboardingState(raw: unknown): PersistedOnboardingState 
   return {
     completedSteps,
     dismissed: obj.dismissed === true,
+    hidden: obj.hidden === true,
     completedAt: typeof obj.completedAt === "string" ? obj.completedAt : null,
   }
 }

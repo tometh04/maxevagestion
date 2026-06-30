@@ -18,6 +18,7 @@ interface OnboardingState {
   // Persistido en DB (users.onboarding_state):
   completedSteps: string[]
   dismissed: boolean
+  hidden: boolean
   completedAt: string | null
   // Transitorio (solo en memoria, no se persiste):
   tourActive: boolean
@@ -29,6 +30,7 @@ function initialFrom(initial?: PersistedOnboardingState | null): OnboardingState
   return {
     completedSteps: s.completedSteps,
     dismissed: s.dismissed,
+    hidden: s.hidden,
     completedAt: s.completedAt ?? null,
     tourActive: false,
     tourStepIndex: 0,
@@ -41,6 +43,7 @@ function persistState(state: OnboardingState) {
   const payload: PersistedOnboardingState = {
     completedSteps: state.completedSteps,
     dismissed: state.dismissed,
+    hidden: state.hidden,
     completedAt: state.completedAt ?? null,
   }
   try {
@@ -64,7 +67,11 @@ export function useOnboarding(initial?: PersistedOnboardingState | null) {
     // Auto-mostrar el modal de bienvenida si todavía no se descartó ni se
     // completó. El estado inicial ya viene del server (props), no de localStorage.
     setState((prev) => {
-      if (!prev.dismissed && prev.completedSteps.length < ONBOARDING_STEPS.length) {
+      if (
+        !prev.dismissed &&
+        !prev.hidden &&
+        prev.completedSteps.length < ONBOARDING_STEPS.length
+      ) {
         setShowWelcome(true)
       }
       return prev
@@ -164,10 +171,19 @@ export function useOnboarding(initial?: PersistedOnboardingState | null) {
     })
   }, [])
 
+  // Descartar el onboarding por completo: no vuelve a aparecer ni el welcome
+  // ni el checklist. Persiste hidden=true.
+  const hideChecklist = useCallback(() => {
+    setShowWelcome(false)
+    setShowCompletion(false)
+    update({ hidden: true, dismissed: true, tourActive: false }, true)
+  }, [update])
+
   const resetOnboarding = useCallback(() => {
     const fresh: OnboardingState = {
       completedSteps: [],
       dismissed: false,
+      hidden: false,
       completedAt: null,
       tourActive: false,
       tourStepIndex: 0,
@@ -197,6 +213,7 @@ export function useOnboarding(initial?: PersistedOnboardingState | null) {
     closeTour,
     closeCompletion,
     completeStepByKey,
+    hideChecklist,
     resetOnboarding,
   }
 }
