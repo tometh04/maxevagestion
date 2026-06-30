@@ -5,16 +5,21 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import { X, ChevronRight, ChevronLeft, Rocket, PartyPopper } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ONBOARDING_STEPS, useOnboarding } from "./use-onboarding"
+import type { PersistedOnboardingState } from "@/lib/onboarding/steps"
 
-const ALLOWED_EMAILS = ["mypupybox@gmail.com"]
-
-export function OnboardingTour({ userEmail }: { userEmail: string }) {
+export function OnboardingTour({
+  enabled,
+  initialState,
+}: {
+  enabled: boolean
+  initialState?: PersistedOnboardingState | null
+}) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const ob = useOnboarding()
+  const ob = useOnboarding(initialState)
 
-  if (!ALLOWED_EMAILS.includes(userEmail)) return null
+  if (!enabled) return null
   if (!ob.mounted) return null
 
   return (

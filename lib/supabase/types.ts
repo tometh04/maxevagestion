@@ -8849,6 +8849,7 @@ export type Database = {
           legal_accepted_at: string | null
           legal_version: string | null
           name: string
+          onboarding_state: Json | null
           org_id: string | null
           role: string
           updated_at: string | null
@@ -8865,6 +8866,7 @@ export type Database = {
           legal_accepted_at?: string | null
           legal_version?: string | null
           name: string
+          onboarding_state?: Json | null
           org_id?: string | null
           role: string
           updated_at?: string | null
@@ -8881,6 +8883,7 @@ export type Database = {
           legal_accepted_at?: string | null
           legal_version?: string | null
           name?: string
+          onboarding_state?: Json | null
           org_id?: string | null
           role?: string
           updated_at?: string | null

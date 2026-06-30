@@ -1,95 +1,80 @@
 "use client"
 
 import { useState, useCallback, useEffect } from "react"
+import {
+  ONBOARDING_STEPS,
+  emptyOnboardingState,
+  sanitizeOnboardingState,
+  type OnboardingStep,
+  type PersistedOnboardingState,
+} from "@/lib/onboarding/steps"
 
-export interface OnboardingStep {
-  key: string
-  title: string
-  description: string
-  route: string
-  icon: string
-}
-
-export const ONBOARDING_STEPS: OnboardingStep[] = [
-  {
-    key: "empresa",
-    title: "Completar datos de empresa",
-    description:
-      'Cargá razón social, CUIT, dirección y logo. Esta info aparece en facturas y presupuestos. Completá los campos en el tab "Mi Empresa" y hacé click en Guardar.',
-    route: "/settings?tab=interface",
-    icon: "🏢",
-  },
-  {
-    key: "usuarios",
-    title: "Invitar a tu equipo",
-    description:
-      "Sumá vendedores, contadores o administradores. Cada rol ve solo lo que le corresponde. Usá el botón Invitar usuario.",
-    route: "/settings?tab=users",
-    icon: "👥",
-  },
-  {
-    key: "cuenta",
-    title: "Crear una cuenta financiera",
-    description:
-      "Necesitás al menos una cuenta (caja, banco, billetera) para registrar cobros y pagos. Usá el botón + Nueva cuenta.",
-    route: "/accounting/financial-accounts",
-    icon: "💰",
-  },
-  {
-    key: "afip",
-    title: "Conectar AFIP",
-    description:
-      "Habilitá la facturación electrónica para emitir facturas A, B y C. Subí tu certificado digital y configurá el punto de venta.",
-    route: "/settings?tab=afip",
-    icon: "📄",
-  },
-]
+// Re-export para compatibilidad con los imports existentes
+// (`import { ONBOARDING_STEPS, useOnboarding } from "./use-onboarding"`).
+export { ONBOARDING_STEPS }
+export type { OnboardingStep }
 
 interface OnboardingState {
+  // Persistido en DB (users.onboarding_state):
   completedSteps: string[]
   dismissed: boolean
+  completedAt: string | null
+  // Transitorio (solo en memoria, no se persiste):
   tourActive: boolean
   tourStepIndex: number
 }
 
-const STORAGE_KEY = "vibook_onboarding"
+function initialFrom(initial?: PersistedOnboardingState | null): OnboardingState {
+  const s = initial ? sanitizeOnboardingState(initial) : emptyOnboardingState()
+  return {
+    completedSteps: s.completedSteps,
+    dismissed: s.dismissed,
+    completedAt: s.completedAt ?? null,
+    tourActive: false,
+    tourStepIndex: 0,
+  }
+}
 
-function loadState(): OnboardingState {
-  if (typeof window === "undefined") {
-    return { completedSteps: [], dismissed: false, tourActive: false, tourStepIndex: 0 }
+// Persiste solo el subconjunto real de progreso. keepalive: true para que el
+// request sobreviva si el tour navega a otra ruta inmediatamente después.
+function persistState(state: OnboardingState) {
+  const payload: PersistedOnboardingState = {
+    completedSteps: state.completedSteps,
+    dismissed: state.dismissed,
+    completedAt: state.completedAt ?? null,
   }
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) return JSON.parse(raw)
-  } catch {}
-  return { completedSteps: [], dismissed: false, tourActive: false, tourStepIndex: 0 }
-}
-
-function saveState(state: OnboardingState) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+    void fetch("/api/onboarding/state", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      keepalive: true,
+    }).catch(() => {})
   } catch {}
 }
 
-export function useOnboarding() {
-  const [state, setState] = useState<OnboardingState>(loadState)
+export function useOnboarding(initial?: PersistedOnboardingState | null) {
+  const [state, setState] = useState<OnboardingState>(() => initialFrom(initial))
   const [showWelcome, setShowWelcome] = useState(false)
   const [showCompletion, setShowCompletion] = useState(false)
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
     setMounted(true)
-    const s = loadState()
-    setState(s)
-    if (!s.dismissed && s.completedSteps.length < ONBOARDING_STEPS.length) {
-      setShowWelcome(true)
-    }
+    // Auto-mostrar el modal de bienvenida si todavía no se descartó ni se
+    // completó. El estado inicial ya viene del server (props), no de localStorage.
+    setState((prev) => {
+      if (!prev.dismissed && prev.completedSteps.length < ONBOARDING_STEPS.length) {
+        setShowWelcome(true)
+      }
+      return prev
+    })
   }, [])
 
-  const update = useCallback((partial: Partial<OnboardingState>) => {
+  const update = useCallback((partial: Partial<OnboardingState>, persist = false) => {
     setState((prev) => {
       const next = { ...prev, ...partial }
-      saveState(next)
+      if (persist) persistState(next)
       return next
     })
   }, [])
@@ -108,7 +93,7 @@ export function useOnboarding() {
 
   const dismissWelcome = useCallback(() => {
     setShowWelcome(false)
-    update({ dismissed: true })
+    update({ dismissed: true }, true)
   }, [update])
 
   const completeCurrentStep = useCallback(() => {
@@ -123,10 +108,11 @@ export function useOnboarding() {
       const next: OnboardingState = {
         ...prev,
         completedSteps,
+        completedAt: allDone ? prev.completedAt ?? new Date().toISOString() : prev.completedAt,
         tourStepIndex: allDone ? prev.tourStepIndex : nextIndex,
         tourActive: !allDone && nextIndex < ONBOARDING_STEPS.length,
       }
-      saveState(next)
+      persistState(next)
       if (allDone || nextIndex >= ONBOARDING_STEPS.length) {
         setShowCompletion(true)
       }
@@ -138,43 +124,42 @@ export function useOnboarding() {
     setState((prev) => {
       const nextIndex = prev.tourStepIndex + 1
       if (nextIndex >= ONBOARDING_STEPS.length) {
-        const next = { ...prev, tourActive: false }
-        saveState(next)
         if (prev.completedSteps.length >= ONBOARDING_STEPS.length) {
           setShowCompletion(true)
         }
-        return next
+        return { ...prev, tourActive: false }
       }
-      const next = { ...prev, tourStepIndex: nextIndex }
-      saveState(next)
-      return next
+      return { ...prev, tourStepIndex: nextIndex }
     })
   }, [])
 
   const prevStep = useCallback(() => {
     setState((prev) => {
       if (prev.tourStepIndex <= 0) return prev
-      const next = { ...prev, tourStepIndex: prev.tourStepIndex - 1 }
-      saveState(next)
-      return next
+      return { ...prev, tourStepIndex: prev.tourStepIndex - 1 }
     })
   }, [])
 
   const closeTour = useCallback(() => {
-    update({ tourActive: false, dismissed: true })
+    update({ tourActive: false, dismissed: true }, true)
   }, [update])
 
   const closeCompletion = useCallback(() => {
     setShowCompletion(false)
-    update({ tourActive: false, dismissed: true })
+    update({ tourActive: false, dismissed: true }, true)
   }, [update])
 
   const completeStepByKey = useCallback((key: string) => {
     setState((prev) => {
       if (prev.completedSteps.includes(key)) return prev
       const completedSteps = [...prev.completedSteps, key]
-      const next = { ...prev, completedSteps }
-      saveState(next)
+      const allDone = completedSteps.length >= ONBOARDING_STEPS.length
+      const next: OnboardingState = {
+        ...prev,
+        completedSteps,
+        completedAt: allDone ? prev.completedAt ?? new Date().toISOString() : prev.completedAt,
+      }
+      persistState(next)
       return next
     })
   }, [])
@@ -183,10 +168,11 @@ export function useOnboarding() {
     const fresh: OnboardingState = {
       completedSteps: [],
       dismissed: false,
+      completedAt: null,
       tourActive: false,
       tourStepIndex: 0,
     }
-    saveState(fresh)
+    persistState(fresh)
     setState(fresh)
     setShowWelcome(true)
     setShowCompletion(false)

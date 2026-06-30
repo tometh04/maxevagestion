@@ -5,14 +5,19 @@ import { Check, ChevronRight, Rocket } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { ONBOARDING_STEPS, useOnboarding } from "./use-onboarding"
+import type { PersistedOnboardingState } from "@/lib/onboarding/steps"
 
-const ALLOWED_EMAILS = ["mypupybox@gmail.com"]
-
-export function OnboardingChecklist({ userEmail }: { userEmail: string }) {
+export function OnboardingChecklist({
+  enabled,
+  initialState,
+}: {
+  enabled: boolean
+  initialState?: PersistedOnboardingState | null
+}) {
   const router = useRouter()
-  const ob = useOnboarding()
+  const ob = useOnboarding(initialState)
 
-  if (!ALLOWED_EMAILS.includes(userEmail)) return null
+  if (!enabled) return null
   if (!ob.mounted) return null
   if (ob.allDone && ob.dismissed) return null
   if (ob.tourActive) return null
