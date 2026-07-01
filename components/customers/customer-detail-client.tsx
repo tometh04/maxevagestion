@@ -243,19 +243,21 @@ export function CustomerDetailClient({
                     <p className="text-xs font-medium text-muted-foreground">Total Gastado</p>
                     <p className="text-2xl font-semibold tabular-nums tracking-tight text-success">
                       {(() => {
-                        // Sumar todos los pagos pagados del cliente (INCOME = pagos recibidos del cliente)
+                        // Total gastado NETO = cobros INCOME − devoluciones EXPENSE.
+                        // Un reintegro le baja lo que gastó neto el cliente.
                         const totalPaid = payments
-                          .filter((p: any) => p.status === "PAID" && p.direction === "INCOME")
+                          .filter((p: any) => p.status === "PAID" && (p.direction === "INCOME" || p.direction === "EXPENSE"))
                           .reduce((sum: number, p: any) => {
                             // Convertir a ARS si es necesario
                             const amount = parseFloat(p.amount || 0)
+                            const sign = p.direction === "EXPENSE" ? -1 : 1
                             if (p.currency === "USD") {
                               // Buscar el exchange_rate en el payment o usar tasa aproximada
                               // Los pagos pueden tener exchange_rate si se guardo al crear el pago
                               const exchangeRate = p.exchange_rate || 1450 // Fallback si no hay tasa guardada
-                              return sum + (amount * exchangeRate)
+                              return sum + sign * (amount * exchangeRate)
                             }
-                            return sum + amount
+                            return sum + sign * amount
                           }, 0)
 
                         return `ARS ${totalPaid.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`

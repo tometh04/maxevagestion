@@ -149,17 +149,22 @@ export async function GET(request: Request) {
       for (let i = 0; i < operationIds.length; i += chunkSize) {
         const chunk = operationIds.slice(i, i + chunkSize)
 
+        // Deuda NETA (CxC): cobros INCOME (+) − devoluciones EXPENSE (-). Ya NO
+        // filtramos direction=INCOME; el signo se aplica al acumular pagosPorOp.
         const { data: paymentsChunk, error: paymentsError } = await supabase
           .from("payments")
-          .select("operation_id, amount, amount_usd, currency, exchange_rate, status")
+          .select("operation_id, amount, amount_usd, currency, exchange_rate, status, direction")
           .in("operation_id", chunk)
-          .eq("direction", "INCOME")
           .eq("payer_type", "CUSTOMER")
           .eq("status", "PAID")
         if (paymentsError) {
           console.error("[Balance] Error fetching customer payments:", paymentsError)
         }
-        if (paymentsChunk) customerPayments.push(...paymentsChunk)
+        if (paymentsChunk) {
+          customerPayments.push(
+            ...paymentsChunk.filter((p: any) => p.direction === "INCOME" || p.direction === "EXPENSE")
+          )
+        }
 
         const { data: opCustChunk } = await supabase
           .from("operation_customers")
@@ -195,6 +200,9 @@ export async function GET(request: Request) {
             amountUSD = (Number(p.amount) || 0) / tcParaCalculos
           }
           
+          // sign resta las devoluciones (EXPENSE) del aporte neto del cliente.
+          amountUSD *= p.direction === "EXPENSE" ? -1 : 1
+
           if (!isNaN(amountUSD)) {
             pagosPorOp[p.operation_id] += amountUSD
           }

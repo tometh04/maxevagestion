@@ -94,15 +94,19 @@ export async function GET(request: Request) {
     let paymentsData: any[] = []
     
     if (operationIds.length > 0) {
+      // Deuda/cobrado NETO: cobros INCOME (+) − devoluciones EXPENSE (-) del
+      // cliente. Ya NO filtramos direction=INCOME: traemos ambas y aplicamos el
+      // signo al acumular más abajo.
       const { data: payments } = await supabase
         .from("payments")
-        .select("operation_id, amount, amount_usd, currency, exchange_rate, status")
+        .select("operation_id, amount, amount_usd, currency, exchange_rate, status, direction")
         .in("operation_id", operationIds)
-        .eq("direction", "INCOME")
         .eq("payer_type", "CUSTOMER")
         .eq("status", "PAID")
-      
-      paymentsData = payments || []
+
+      paymentsData = (payments || []).filter(
+        (p: any) => p.direction === "INCOME" || p.direction === "EXPENSE"
+      )
     }
 
     // Obtener tasa de cambio más reciente como fallback
@@ -140,7 +144,9 @@ export async function GET(request: Request) {
         amountUsd = parseFloat(payment.amount_usd) || amount
       }
 
-      paymentsByOperation[payment.operation_id] += amountUsd
+      // sign resta las devoluciones (EXPENSE) del cobrado neto del cliente.
+      const sign = payment.direction === "EXPENSE" ? -1 : 1
+      paymentsByOperation[payment.operation_id] += sign * amountUsd
     }
 
     // Procesar operaciones

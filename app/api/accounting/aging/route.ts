@@ -167,23 +167,26 @@ export async function GET(request: Request) {
         const chunkSize = 200
         for (let i = 0; i < allOperationIds.length; i += chunkSize) {
           const chunk = allOperationIds.slice(i, i + chunkSize)
+          // Deuda NETA: cobros INCOME (+) − devoluciones EXPENSE (-) del cliente.
+          // Ya NO filtramos direction=INCOME: traemos ambas y aplicamos el signo.
           const { data: payments } = await supabase
             .from("payments")
             .select("operation_id, amount, amount_usd, currency, exchange_rate, status, direction")
             .eq("org_id", userOrgId) // Cross-tenant fix: filtro explícito, no confiar en RLS
             .in("operation_id", chunk)
-            .eq("direction", "INCOME")
             .eq("payer_type", "CUSTOMER")
 
           if (payments) {
             payments.forEach((payment: any) => {
+              if (payment.direction !== "INCOME" && payment.direction !== "EXPENSE") return
               const opId = payment.operation_id
               if (!paymentsByOperation[opId]) {
                 paymentsByOperation[opId] = { paidUsd: 0, paidArs: 0 }
               }
               if (payment.status === "PAID") {
+                const sign = payment.direction === "EXPENSE" ? -1 : 1
                 if (payment.currency === "ARS") {
-                  paymentsByOperation[opId].paidArs += Number(payment.amount) || 0
+                  paymentsByOperation[opId].paidArs += sign * (Number(payment.amount) || 0)
                 }
                 let paidUsd = 0
                 if (payment.amount_usd != null) {
@@ -193,7 +196,7 @@ export async function GET(request: Request) {
                 } else if (payment.currency === "ARS" && payment.exchange_rate) {
                   paidUsd = (Number(payment.amount) || 0) / Number(payment.exchange_rate)
                 }
-                paymentsByOperation[opId].paidUsd += paidUsd
+                paymentsByOperation[opId].paidUsd += sign * paidUsd
               }
             })
           }

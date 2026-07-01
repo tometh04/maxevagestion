@@ -88,7 +88,10 @@ export async function GET(request: Request) {
     const opList = (ops || []) as any[]
 
     // Pagos PAID del cliente por operación (chunked: .in() revienta URL con >300 UUIDs).
-    type RawPayment = { amount: number; currency: string; exchange_rate: number | null; amount_usd: number | null }
+    // Deuda NETA: cobros INCOME (sign +1) − devoluciones EXPENSE (sign -1). Una
+    // devolución reduce lo aportado neto por el cliente → sube su deuda. Por eso
+    // ya NO filtramos direction=INCOME: traemos ambas y aplicamos el signo.
+    type RawPayment = { amount: number; currency: string; exchange_rate: number | null; amount_usd: number | null; sign: number }
     const paidByOperation: Record<string, RawPayment[]> = {}
     const opIds = opList.map((o) => o.id)
     const chunkSize = 200
@@ -98,15 +101,16 @@ export async function GET(request: Request) {
         .select("operation_id, amount, amount_usd, currency, exchange_rate, status, direction, payer_type")
         .in("operation_id", chunk)
         .eq("org_id", orgId)
-        .eq("direction", "INCOME")
         .eq("payer_type", "CUSTOMER")
       for (const p of payments || []) {
         if (p.status !== "PAID") continue
+        if (p.direction !== "INCOME" && p.direction !== "EXPENSE") continue
         ;(paidByOperation[p.operation_id] ||= []).push({
           amount: Number(p.amount) || 0,
           currency: p.currency || "ARS",
           exchange_rate: p.exchange_rate != null ? Number(p.exchange_rate) : null,
           amount_usd: p.amount_usd != null ? Number(p.amount_usd) : null,
+          sign: p.direction === "EXPENSE" ? -1 : 1,
         })
       }
     }
@@ -125,17 +129,20 @@ export async function GET(request: Request) {
       const rateForOp = getRate(op.departure_date || op.created_at) || latestRate
 
       // Netear pagos en la moneda de la venta y recién después convertir a USD.
+      // sign resta las devoluciones (EXPENSE) del total aportado por el cliente.
       let paidInSaleCurrency = 0
       for (const p of paidByOperation[op.id] || []) {
+        let converted: number
         if (p.currency === saleCurrency) {
-          paidInSaleCurrency += p.amount
+          converted = p.amount
         } else if (saleCurrency === "ARS" && p.currency === "USD") {
-          paidInSaleCurrency += p.amount * (p.exchange_rate || rateForOp)
+          converted = p.amount * (p.exchange_rate || rateForOp)
         } else if (saleCurrency === "USD" && p.currency === "ARS") {
-          paidInSaleCurrency += p.amount_usd != null ? p.amount_usd : p.amount / (p.exchange_rate || rateForOp)
+          converted = p.amount_usd != null ? p.amount_usd : p.amount / (p.exchange_rate || rateForOp)
         } else {
-          paidInSaleCurrency += p.amount
+          converted = p.amount
         }
+        paidInSaleCurrency += p.sign * converted
       }
 
       const debtInSaleCurrency = Math.max(0, saleAmount - paidInSaleCurrency)

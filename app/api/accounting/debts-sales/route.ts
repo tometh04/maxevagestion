@@ -100,7 +100,9 @@ export async function GET(request: Request) {
     // la tasa de la operación. Antes se pre-sumaba a USD y un pago ARS sin
     // exchange_rate ni amount_usd se contaba como 0 → operaciones ARS pagadas
     // en ARS (T/C "-") figuraban como deuda fantasma.
-    type RawPayment = { amount: number; currency: string; exchange_rate: number | null; amount_usd: number | null }
+    // Deuda NETA: cobros INCOME (+) − devoluciones EXPENSE (-) del cliente. Por
+    // eso ya NO filtramos direction=INCOME: traemos ambas y guardamos el signo.
+    type RawPayment = { amount: number; currency: string; exchange_rate: number | null; amount_usd: number | null; sign: number }
     let paymentsByOperation: Record<string, RawPayment[]> = {}
     if (allOperationIds.length > 0 && (user as any).org_id) {
       const userOrgId = (user as any).org_id as string
@@ -112,18 +114,19 @@ export async function GET(request: Request) {
           .select("operation_id, amount, amount_usd, currency, exchange_rate, status, direction")
           .in("operation_id", chunk)
           .eq("org_id", userOrgId)
-          .eq("direction", "INCOME")
           .eq("payer_type", "CUSTOMER")
 
         if (payments) {
           payments.forEach((payment: any) => {
             if (payment.status !== "PAID") return
+            if (payment.direction !== "INCOME" && payment.direction !== "EXPENSE") return
             const opId = payment.operation_id
             ;(paymentsByOperation[opId] ||= []).push({
               amount: Number(payment.amount) || 0,
               currency: payment.currency || "ARS",
               exchange_rate: payment.exchange_rate != null ? Number(payment.exchange_rate) : null,
               amount_usd: payment.amount_usd != null ? Number(payment.amount_usd) : null,
+              sign: payment.direction === "EXPENSE" ? -1 : 1,
             })
           })
         }
@@ -303,17 +306,20 @@ export async function GET(request: Request) {
         const opPayments = paymentsByOperation[opId] || []
         let paidInSaleCurrency = 0
         for (const p of opPayments) {
+          let converted: number
           if (p.currency === saleCurrency) {
-            paidInSaleCurrency += p.amount
+            converted = p.amount
           } else if (saleCurrency === "ARS" && p.currency === "USD") {
-            paidInSaleCurrency += p.amount * (p.exchange_rate || rateForOp)
+            converted = p.amount * (p.exchange_rate || rateForOp)
           } else if (saleCurrency === "USD" && p.currency === "ARS") {
-            paidInSaleCurrency += p.amount_usd != null
+            converted = p.amount_usd != null
               ? p.amount_usd
               : p.amount / (p.exchange_rate || rateForOp)
           } else {
-            paidInSaleCurrency += p.amount
+            converted = p.amount
           }
+          // sign resta las devoluciones (EXPENSE) del aporte neto del cliente.
+          paidInSaleCurrency += p.sign * converted
         }
 
         const debtInSaleCurrency = Math.max(0, saleAmount - paidInSaleCurrency)
