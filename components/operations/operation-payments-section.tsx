@@ -182,6 +182,7 @@ export function OperationPaymentsSection({
   const router = useRouter()
   const [incomeDialogOpen, setIncomeDialogOpen] = useState(false)
   const [expenseDialogOpen, setExpenseDialogOpen] = useState(false)
+  const [refundDialogOpen, setRefundDialogOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null)
@@ -219,7 +220,7 @@ export function OperationPaymentsSection({
       status: string
     }>
     pendingBody: Record<string, unknown>
-    kind: "income" | "expense"
+    kind: "income" | "expense" | "refund"
     message?: string
   }
   const [duplicateAlert, setDuplicateAlert] = useState<DuplicateInfo | null>(null)
@@ -300,7 +301,7 @@ export function OperationPaymentsSection({
 
   // Cargar cuentas financieras cuando se abre cualquier diálogo
   useEffect(() => {
-    if (incomeDialogOpen || expenseDialogOpen || editDialogOpen) {
+    if (incomeDialogOpen || expenseDialogOpen || editDialogOpen || refundDialogOpen) {
       const fetchFinancialAccounts = async () => {
         try {
           const response = await fetch("/api/accounting/financial-accounts?excludeAccountingOnly=true")
@@ -318,7 +319,7 @@ export function OperationPaymentsSection({
       }
       fetchFinancialAccounts()
     }
-  }, [incomeDialogOpen, expenseDialogOpen, editDialogOpen])
+  }, [incomeDialogOpen, expenseDialogOpen, editDialogOpen, refundDialogOpen])
 
   // Pagos pendientes (los auto-generados que nunca se pagaron)
   const pendingPayments = payments.filter(p => p.status === "PENDING")
@@ -502,6 +503,26 @@ export function OperationPaymentsSection({
       notes: "",
     },
   })
+
+  // Devolución al cliente (reintegro de seña): egreso hacia el CLIENTE.
+  // payer_type=CUSTOMER + direction=EXPENSE. Solo caja: baja el saldo de la
+  // cuenta elegida, no toca la deuda del cliente ni el P&L.
+  const refundForm = useForm<PaymentFormValues>({
+    resolver: zodResolver(paymentSchema),
+    defaultValues: {
+      payer_type: "CUSTOMER",
+      direction: "EXPENSE",
+      method: "Transferencia",
+      amount: 0,
+      currency: (currency === "ARS" ? "ARS" : "USD"),
+      financial_account_id: "",
+      exchange_rate: undefined,
+      date_paid: new Date(),
+      notes: "",
+    },
+  })
+  const refundCurrency = refundForm.watch("currency")
+  const refundNeedsExchangeRate = refundCurrency === "ARS"
 
   useEffect(() => {
     const currentOperatorPaymentId = expenseForm.getValues("operator_payment_id")
@@ -734,7 +755,10 @@ export function OperationPaymentsSection({
   const opCurrency = currency || "USD"
   const currencySymbol = opCurrency === "ARS" ? "$" : "USD"
 
-  const customerPayments = payments.filter(p => p.payer_type === "CUSTOMER" && p.status === "PAID")
+  // Solo INCOME cuenta como "pagado por el cliente". Las devoluciones
+  // (payer_type=CUSTOMER + direction=EXPENSE) son egresos de caja y NO deben
+  // inflar totalPaidByCustomer ni reducir la deuda del cliente.
+  const customerPayments = payments.filter(p => p.payer_type === "CUSTOMER" && p.status === "PAID" && p.direction === "INCOME")
   const operatorExpensePayments = payments.filter(p => p.payer_type === "OPERATOR" && p.status === "PAID")
   const baseOperatorPayments = getOperationBaseOperatorPayments({
     operatorPayments,
@@ -802,7 +826,7 @@ export function OperationPaymentsSection({
   // El user confirma → re-POST con ?force=true.
   const submitPaymentWithDuplicateCheck = async (
     body: Record<string, unknown>,
-    kind: "income" | "expense",
+    kind: "income" | "expense" | "refund",
     options: { force?: boolean; onSuccess: () => void; onError: (msg: string) => void }
   ) => {
     const url = options.force ? "/api/payments?force=true" : "/api/payments"
@@ -832,7 +856,14 @@ export function OperationPaymentsSection({
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}))
-      options.onError(error?.error || (kind === "income" ? "Error al registrar cobro" : "Error al registrar pago"))
+      options.onError(
+        error?.error ||
+          (kind === "income"
+            ? "Error al registrar cobro"
+            : kind === "refund"
+              ? "Error al registrar la devolución"
+              : "Error al registrar pago")
+      )
       return
     }
 
@@ -975,6 +1006,61 @@ export function OperationPaymentsSection({
     }
   }
 
+  const onSubmitRefund = async (values: PaymentFormValues) => {
+    if (!values.financial_account_id) {
+      toast.error("Debe seleccionar una cuenta financiera")
+      return
+    }
+    if (refundNeedsExchangeRate && !values.exchange_rate) {
+      toast.error("Debe ingresar el tipo de cambio para devoluciones en ARS")
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      const datePaidStr = values.date_paid.toISOString().split("T")[0]
+      const body: Record<string, unknown> = {
+        operation_id: operationId,
+        payer_type: "CUSTOMER",
+        direction: "EXPENSE",
+        method: values.method,
+        amount: values.amount,
+        currency: values.currency,
+        financial_account_id: values.financial_account_id,
+        exchange_rate: refundNeedsExchangeRate ? values.exchange_rate : null,
+        date_paid: datePaidStr,
+        date_due: datePaidStr,
+        status: "PAID",
+        notes: values.notes || null,
+      }
+
+      await submitPaymentWithDuplicateCheck(body, "refund", {
+        onSuccess: () => {
+          setRefundDialogOpen(false)
+          refundForm.reset({
+            payer_type: "CUSTOMER",
+            direction: "EXPENSE",
+            method: "Transferencia",
+            amount: 0,
+            currency: (currency === "ARS" ? "ARS" : "USD"),
+            financial_account_id: "",
+            exchange_rate: undefined,
+            date_paid: new Date(),
+            notes: "",
+          })
+          toast.success("Devolución registrada")
+          router.refresh()
+        },
+        onError: (msg) => toast.error(msg),
+      })
+    } catch (error) {
+      console.error("Error registering refund:", error)
+      toast.error(error instanceof Error ? error.message : "Error al registrar la devolución")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   // Handler cuando el user confirma "Crear igual" en el AlertDialog de duplicado.
   // Re-postea con ?force=true para bypassear la detección.
   const handleConfirmDuplicate = async () => {
@@ -992,12 +1078,21 @@ export function OperationPaymentsSection({
             setApplyRg5617(false)
             setApplyRg3819(false)
             setPayerOperationCustomerId(null)
+          } else if (kind === "refund") {
+            setRefundDialogOpen(false)
+            refundForm.reset()
           } else {
             setExpenseDialogOpen(false)
             expenseForm.reset()
           }
           router.refresh()
-          toast.success(kind === "income" ? "Cobro registrado" : "Pago registrado")
+          toast.success(
+            kind === "income"
+              ? "Cobro registrado"
+              : kind === "refund"
+                ? "Devolución registrada"
+                : "Pago registrado"
+          )
         },
         onError: (msg) => toast.error(msg),
       })
@@ -1193,6 +1288,19 @@ export function OperationPaymentsSection({
               Registrar Pago
             </Button>
             )}
+            {/* Botón Registrar Devolución - egreso hacia el cliente (reintegro de seña).
+                Mueve plata fuera de caja → solo ADMIN y SUPER_ADMIN. */}
+            {(userRole === "ADMIN" || userRole === "SUPER_ADMIN") && (
+              <Button
+                onClick={() => setRefundDialogOpen(true)}
+                size="sm"
+                variant="outline"
+                className="text-accent-coral border-accent-coral/40 hover:text-accent-coral/80"
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Registrar Devolución
+              </Button>
+            )}
           </div>
         </div>
         <div style={{ padding: 16 }}>
@@ -1228,9 +1336,14 @@ export function OperationPaymentsSection({
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        <Badge variant={payment.direction === "INCOME" ? "default" : "destructive"}>
-                          {payment.direction === "INCOME" ? "Ingreso" : "Egreso"}
-                        </Badge>
+                        {(() => {
+                          const isRefund = payment.direction === "EXPENSE" && payment.payer_type === "CUSTOMER"
+                          return (
+                            <Badge variant={payment.direction === "INCOME" ? "default" : "destructive"}>
+                              {payment.direction === "INCOME" ? "Ingreso" : isRefund ? "Devolución" : "Egreso"}
+                            </Badge>
+                          )
+                        })()}
                         <div className="flex flex-col">
                           <span className="text-xs text-muted-foreground">
                             {payment.payer_type === "CUSTOMER" ? "Cliente" : "Operador"}
@@ -1762,6 +1875,228 @@ export function OperationPaymentsSection({
                     </>
                   ) : (
                     "Registrar Cobro"
+                  )}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog para registrar devolución al cliente (reintegro de seña).
+          Egreso payer_type=CUSTOMER + direction=EXPENSE. Solo ADMIN/SUPER_ADMIN. */}
+      <Dialog open={refundDialogOpen} onOpenChange={setRefundDialogOpen}>
+        <DialogContent className="max-w-md max-h-[95vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Registrar Devolución</DialogTitle>
+            <DialogDescription>
+              Reintegro de dinero al cliente (ej: seña de una salida cancelada). Descuenta
+              el monto de la cuenta financiera elegida. No modifica la deuda del cliente.
+            </DialogDescription>
+          </DialogHeader>
+
+          <Form {...refundForm}>
+            <form onSubmit={refundForm.handleSubmit(onSubmitRefund)} className="flex flex-col flex-1 min-h-0">
+              <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5 -mr-2 pr-2">
+              {/* Sub-card: Método y Monto */}
+              <div className="rounded-[var(--vb-r-sm)] border border-[var(--vb-border)] bg-[var(--vb-hover)] p-4 space-y-4">
+                <div className="flex items-center gap-1.5">
+                  <Banknote className="h-3.5 w-3.5 text-accent-coral" />
+                  <span className="text-xs font-medium text-foreground/70">Devolución</span>
+                </div>
+                <FormField
+                  control={refundForm.control}
+                  name="method"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Método</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {paymentMethods.map((method) => (
+                            <SelectItem key={method.value} value={method.value}>
+                              {method.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={refundForm.control}
+                    name="amount"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Monto</FormLabel>
+                        <FormControl>
+                          <DecimalInput {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={refundForm.control}
+                    name="currency"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Moneda</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="ARS">ARS</SelectItem>
+                            <SelectItem value="USD">USD</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </div>
+
+              {refundNeedsExchangeRate && (
+                <FormField
+                  control={refundForm.control}
+                  name="exchange_rate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Tipo de Cambio (ARS por 1 USD)</FormLabel>
+                      <FormControl>
+                        <DecimalInput placeholder="Ej: 1200" {...field} />
+                      </FormControl>
+                      <p className="text-xs text-muted-foreground">
+                        Se usa para registrar el equivalente en USD de la devolución.
+                      </p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+
+              {/* Sub-card: Fecha y Cuenta (origen de la devolución) */}
+              <div className="rounded-[var(--vb-r-sm)] border border-[var(--vb-border)] bg-[var(--vb-hover)] p-4 space-y-4">
+                <div className="flex items-center gap-1.5">
+                  <Landmark className="h-3.5 w-3.5 text-accent-coral" />
+                  <span className="text-xs font-medium text-foreground/70">Origen de la devolución</span>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={refundForm.control}
+                    name="date_paid"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-col">
+                        <FormLabel>Fecha</FormLabel>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                variant={"outline"}
+                                className={cn(
+                                  "w-full pl-3 text-left font-normal",
+                                  !field.value && "text-muted-foreground"
+                                )}
+                              >
+                                {field.value ? (
+                                  format(field.value, "PPP", { locale: es })
+                                ) : (
+                                  <span>Seleccionar fecha</span>
+                                )}
+                                <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={field.value}
+                              onSelect={field.onChange}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={refundForm.control}
+                    name="financial_account_id"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Cuenta Financiera *</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Seleccionar cuenta" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {financialAccounts
+                              .filter((acc) => acc.currency === refundForm.watch("currency"))
+                              .map((account) => (
+                                <SelectItem key={account.id} value={account.id}>
+                                  {account.name} ({account.currency})
+                                  {account.current_balance !== undefined && userRole !== "SELLER" && (
+                                    <span className="text-xs text-muted-foreground ml-2">
+                                      - Balance: {account.current_balance.toLocaleString("es-AR", {
+                                        style: "currency",
+                                        currency: account.currency,
+                                      })}
+                                    </span>
+                                  )}
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </div>
+
+              <FormField
+                control={refundForm.control}
+                name="notes"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="flex items-center gap-1.5"><StickyNote className="h-3 w-3 text-muted-foreground" /> Notas (opcional)</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Motivo de la devolución, comprobante, etc." {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              </div>{/* fin wrapper scrollable */}
+
+              <DialogFooter className="px-6 py-3 border-t border-[var(--vb-border)]">
+                <Button type="button" variant="outline" onClick={() => setRefundDialogOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={isLoading}>
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Guardando...
+                    </>
+                  ) : (
+                    "Registrar Devolución"
                   )}
                 </Button>
               </DialogFooter>

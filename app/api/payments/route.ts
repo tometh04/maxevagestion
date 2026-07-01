@@ -770,6 +770,12 @@ export async function POST(request: Request) {
     // Si status no se especifica, el default es PENDING, así que no crear movimientos
     if (finalStatus === "PAID") {
       try {
+        // Devolución al cliente (feature reintegro de seña): egreso con
+        // payer_type=CUSTOMER + direction=EXPENSE. Se trata "solo caja" — baja
+        // el saldo de la cuenta vía ledger type=EXPENSE, pero NO impacta P&L ni
+        // la deuda del cliente (esa se sigue calculando solo con INCOME).
+        const isCustomerRefund = direction === "EXPENSE" && payer_type === "CUSTOMER"
+
         // 2. Obtener datos de la operación para seller_id y operator_id (si existe operation_id)
         let sellerId: string | null = null
         let operatorId: string | null = null
@@ -832,13 +838,17 @@ export async function POST(request: Request) {
             operation_id,
             lead_id: null,
             type: ledgerType,
-            concept: direction === "INCOME" 
-              ? passengerName 
+            concept: direction === "INCOME"
+              ? passengerName
                 ? `${passengerName} (${operationCode})`
                 : `Pago de cliente recibido - Op. ${operationCode}`
-              : passengerName
-                ? `Pago a operador - ${passengerName} (${operationCode})`
-                : `Pago a operador - Op. ${operationCode}`,
+              : isCustomerRefund
+                ? passengerName
+                  ? `Devolución a cliente - ${passengerName} (${operationCode})`
+                  : `Devolución a cliente - Op. ${operationCode}`
+                : passengerName
+                  ? `Pago a operador - ${passengerName} (${operationCode})`
+                  : `Pago a operador - Op. ${operationCode}`,
             currency: currency as "ARS" | "USD",
             amount_original: parseFloat(amount),
             exchange_rate: exchangeRate,
@@ -913,7 +923,11 @@ export async function POST(request: Request) {
             financial_account_id: accountId,
             user_id: user.id,
             type: direction === "INCOME" ? "INCOME" : "EXPENSE",
-            category: direction === "INCOME" ? "SALE" : "OPERATOR_PAYMENT",
+            category: direction === "INCOME"
+              ? "SALE"
+              : isCustomerRefund
+                ? "CUSTOMER_REFUND"
+                : "OPERATOR_PAYMENT",
             amount: parseFloat(amount),
             currency: currency,
             movement_date: date_paid || new Date().toISOString().split("T")[0],
@@ -2297,7 +2311,13 @@ export async function PATCH(request: Request) {
             financial_account_id: finalAccountId,
             user_id: user.id,
             type: existingPayment.direction === "INCOME" ? "INCOME" : "EXPENSE",
-            category: existingPayment.direction === "INCOME" ? "SALE" : "OPERATOR_PAYMENT",
+            // Preservar la categoría de devolución al cliente al re-crear el
+            // movimiento de caja tras editar (misma lógica que el POST).
+            category: existingPayment.direction === "INCOME"
+              ? "SALE"
+              : (existingPayment.direction === "EXPENSE" && existingPayment.payer_type === "CUSTOMER")
+                ? "CUSTOMER_REFUND"
+                : "OPERATOR_PAYMENT",
             amount: finalAmount,
             currency: finalCurrency,
             movement_date: finalDatePaid,
