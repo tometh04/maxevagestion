@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react"
-import { ColumnDef } from "@tanstack/react-table"
+import { ColumnDef, OnChangeFn, SortingState } from "@tanstack/react-table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
@@ -123,6 +123,10 @@ export function OperationsTable({
   const [searchInput, setSearchInput] = useState("")
   const debouncedSearch = useDebounce(searchInput, 500)
 
+  // Estado de ordenamiento server-side. El sort viaja al API (no se reordena
+  // solo la página cargada). Default vacío → API ordena por operation_date desc.
+  const [sorting, setSorting] = useState<SortingState>([])
+
   // Estado de paginación server-side
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(50)
@@ -190,6 +194,13 @@ export function OperationsTable({
         params.append("search", debouncedSearch)
       }
 
+      // Ordenamiento server-side
+      const sort = sorting[0]
+      if (sort) {
+        params.append("sortBy", sort.id)
+        params.append("sortOrder", sort.desc ? "desc" : "asc")
+      }
+
       // Agregar parámetros de paginación
       params.append("page", page.toString())
       params.append("limit", limit.toString())
@@ -213,7 +224,13 @@ export function OperationsTable({
     } finally {
       setLoading(false)
     }
-  }, [filters, page, limit, debouncedSearch, toast])
+  }, [filters, page, limit, debouncedSearch, sorting, toast])
+
+  // Al cambiar el orden, volver a página 1 (el sort aplica a todo el dataset).
+  const handleSortingChange: OnChangeFn<SortingState> = useCallback((updater) => {
+    setSorting((prev) => (typeof updater === "function" ? updater(prev) : updater))
+    setPage(1)
+  }, [])
 
   const handleDeleteClick = useCallback((operation: Operation) => {
     setDeletingOperation(operation)
@@ -385,6 +402,8 @@ export function OperationsTable({
       },
       {
         accessorKey: "customer_name",
+        // Campo computado post-query (join cliente principal): no ordenable server-side.
+        enableSorting: false,
         header: ({ column }) => (
           <DataTableColumnHeader column={column} title="Cliente" />
         ),
@@ -439,6 +458,8 @@ export function OperationsTable({
       },
       {
         accessorKey: "sellers.name",
+        // Campo de tabla relacionada: no ordenable server-side en este listado.
+        enableSorting: false,
         header: ({ column }) => (
           <DataTableColumnHeader column={column} title="Vend." />
         ),
@@ -461,6 +482,8 @@ export function OperationsTable({
       },
       {
         accessorKey: "operators",
+        // Relación multi-operador: no ordenable server-side en este listado.
+        enableSorting: false,
         header: ({ column }) => (
           <DataTableColumnHeader column={column} title="Operador(es)" />
         ),
@@ -535,6 +558,8 @@ export function OperationsTable({
         },
         {
           accessorKey: "paid_amount",
+          // Computado desde payments post-query: no ordenable server-side.
+          enableSorting: false,
           header: ({ column }) => (
             <DataTableColumnHeader column={column} title="Monto Cobrado" className="justify-end" />
           ),
@@ -549,6 +574,8 @@ export function OperationsTable({
         },
         {
           accessorKey: "pending_amount",
+          // Computado desde payments post-query: no ordenable server-side.
+          enableSorting: false,
           header: ({ column }) => (
             <DataTableColumnHeader column={column} title="A cobrar" className="justify-end" />
           ),
@@ -565,6 +592,8 @@ export function OperationsTable({
         },
         {
           accessorKey: "operator_paid_amount",
+          // Computado desde operator_payments post-query: no ordenable server-side.
+          enableSorting: false,
           header: ({ column }) => (
             <DataTableColumnHeader column={column} title="Pagado" className="justify-end" />
           ),
@@ -579,6 +608,8 @@ export function OperationsTable({
         },
         {
           accessorKey: "operator_pending_amount",
+          // Computado desde operator_payments post-query: no ordenable server-side.
+          enableSorting: false,
           header: ({ column }) => (
             <DataTableColumnHeader column={column} title="A pagar" className="justify-end" />
           ),
@@ -697,6 +728,9 @@ export function OperationsTable({
           columns={columns}
           data={operations}
           showPagination={false}
+          manualSorting
+          sorting={sorting}
+          onSortingChange={handleSortingChange}
         />
         
         {/* Paginación server-side */}

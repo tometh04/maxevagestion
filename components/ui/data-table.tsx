@@ -4,6 +4,7 @@ import * as React from "react"
 import {
   ColumnDef,
   ColumnFiltersState,
+  OnChangeFn,
   SortingState,
   VisibilityState,
   flexRender,
@@ -41,6 +42,12 @@ interface DataTableProps<TData, TValue> {
   searchKey?: string
   searchPlaceholder?: string
   showPagination?: boolean // Si es false, no muestra la paginación client-side
+  // Ordenamiento server-side (opcional). Cuando se pasan estas props, la tabla
+  // NO ordena client-side (evita reordenar solo la página cargada); delega el
+  // sort al consumidor, que re-fetchea del server con el nuevo orden.
+  manualSorting?: boolean
+  sorting?: SortingState
+  onSortingChange?: OnChangeFn<SortingState>
 }
 
 export function DataTable<TData, TValue>({
@@ -49,8 +56,13 @@ export function DataTable<TData, TValue>({
   searchKey,
   searchPlaceholder = "Buscar...",
   showPagination = true,
+  manualSorting = false,
+  sorting: controlledSorting,
+  onSortingChange: controlledOnSortingChange,
 }: DataTableProps<TData, TValue>) {
-  const [sorting, setSorting] = React.useState<SortingState>([])
+  const [internalSorting, setInternalSorting] = React.useState<SortingState>([])
+  const sorting = controlledSorting ?? internalSorting
+  const setSorting = controlledOnSortingChange ?? setInternalSorting
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
     []
   )
@@ -82,9 +94,12 @@ export function DataTable<TData, TValue>({
     columns,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
+    // manualSorting=true → el server ya devuelve los datos ordenados; la tabla
+    // no debe reordenar client-side (solo tendría la página cargada).
+    manualSorting,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
+    getSortedRowModel: manualSorting ? undefined : getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     onColumnVisibilityChange: setColumnVisibility,
     onRowSelectionChange: setRowSelection,
