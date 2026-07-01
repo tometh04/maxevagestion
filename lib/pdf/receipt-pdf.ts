@@ -477,10 +477,26 @@ export async function generateReceiptPdf(data: ReceiptPdfData): Promise<void> {
   const drawSummaryCard = () => {
     const sameCurrency = data.currency === receiptCurrency
 
-    // Modo devolución: card simple con el monto reintegrado. Sin "total cobrado",
-    // "saldo pendiente" ni historial de cobros (no aplican a un reintegro).
+    // Modo devolución: card con el monto reintegrado + el motivo/concepto
+    // adentro (con wrapping). Sin "total cobrado", "saldo pendiente" ni
+    // historial de cobros (no aplican a un reintegro).
     if (isRefund) {
-      const refundCardHeight = sameCurrency ? 26 : 32
+      const padX = 6
+      const innerWidth = contentWidth - padX * 2
+
+      // Medir las líneas del motivo con el tamaño real de render (9pt)
+      const motivoText = normalizeText(data.concepto, "")
+      doc.setFont("helvetica", "normal")
+      doc.setFontSize(9)
+      const motivoLines: string[] = motivoText
+        ? (doc.splitTextToSize(motivoText, innerWidth) as string[])
+        : []
+
+      // Alto: bloque del monto (label + monto [+ línea de moneda]) + divisor +
+      // bloque del motivo (label + líneas) + padding
+      const heroBlockHeight = sameCurrency ? 21 : 27
+      const motivoBlockHeight = motivoLines.length > 0 ? 6 + motivoLines.length * 4 : 0
+      const refundCardHeight = heroBlockHeight + motivoBlockHeight + 6
       ensureSpace(refundCardHeight + 4)
 
       doc.setFillColor(255, 255, 255)
@@ -488,7 +504,6 @@ export async function generateReceiptPdf(data: ReceiptPdfData): Promise<void> {
       doc.setLineWidth(0.4)
       doc.roundedRect(margin, y, contentWidth, refundCardHeight, 4, 4, "FD")
 
-      const padX = 6
       doc.setFont("helvetica", "bold")
       doc.setFontSize(7.5)
       doc.setTextColor(...brandColor)
@@ -508,6 +523,25 @@ export async function generateReceiptPdf(data: ReceiptPdfData): Promise<void> {
           margin + padX,
           y + 24
         )
+      }
+
+      if (motivoLines.length > 0) {
+        const motivoTop = y + heroBlockHeight
+
+        // Divisor fino separando monto del motivo
+        doc.setDrawColor(241, 245, 249)
+        doc.setLineWidth(0.3)
+        doc.line(margin + padX, motivoTop - 2, pageWidth - margin - padX, motivoTop - 2)
+
+        doc.setFont("helvetica", "bold")
+        doc.setFontSize(7.1)
+        doc.setTextColor(100, 116, 139)
+        doc.text("MOTIVO", margin + padX, motivoTop + 2)
+
+        doc.setFont("helvetica", "normal")
+        doc.setFontSize(9)
+        doc.setTextColor(31, 41, 55)
+        doc.text(motivoLines, margin + padX, motivoTop + 6)
       }
 
       y += refundCardHeight + 6
@@ -811,7 +845,7 @@ export async function generateReceiptPdf(data: ReceiptPdfData): Promise<void> {
 
   drawSectionHeading(
     isRefund ? "Detalle de la devolución" : "Resumen financiero",
-    isRefund ? `Concepto: ${normalizeText(data.concepto)}` : `Totales en ${receiptCurrency}`
+    isRefund ? undefined : `Totales en ${receiptCurrency}`
   )
   drawSummaryCard()
 
