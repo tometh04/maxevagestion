@@ -60,6 +60,8 @@ export async function GET(request: NextRequest) {
         reference,
         date_paid,
         date_due,
+        payer_type,
+        direction,
         operation_id,
         operation_service_id,
         operations:operation_id (
@@ -106,6 +108,10 @@ export async function GET(request: NextRequest) {
     if (!payment) {
       return NextResponse.json({ error: "Pago no encontrado", paymentId }, { status: 404 })
     }
+
+    // Devolución al cliente (payer_type=CUSTOMER + direction=EXPENSE): el
+    // comprobante cambia de "recibo de cobro" a "comprobante de devolución".
+    const isRefund = payment.direction === "EXPENSE" && payment.payer_type === "CUSTOMER"
 
     const receiptScope = getReceiptScope(payment.operation_service_id)
     const operation = firstRelation((payment as any).operations) as any
@@ -235,8 +241,10 @@ export async function GET(request: NextRequest) {
     const pdfTermsText = getOrg("pdf_terms_receipt_text", "") || getOrg("pdf_terms_text", "")
     const agencyCity = agency?.city || getOrg("city", "Rosario")
     const agencyName = agency?.name || companyName
-    const receiptNumber = `1000-${paymentId.replace(/-/g, "").slice(-8).toUpperCase()}`
-    const receiptFileName = buildReceiptFileName(customerLastName, receiptNumber)
+    const receiptNumber = `${isRefund ? "DEV" : "1000"}-${paymentId.replace(/-/g, "").slice(-8).toUpperCase()}`
+    const receiptFileName = isRefund
+      ? `comprobante-devolucion-${(customerLastName || "cliente").toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${receiptNumber}.pdf`
+      : buildReceiptFileName(customerLastName, receiptNumber)
 
     const fechaPago = payment.date_paid || payment.date_due || new Date().toISOString()
     const fechaFormateada = format(parseDateValue(fechaPago), "d 'de' MMMM 'de' yyyy", { locale: es })
@@ -251,14 +259,22 @@ export async function GET(request: NextRequest) {
       : ""
 
     let concepto = payment.reference || ""
-    if (!concepto && receiptScope === "SERVICE" && serviceLabel) {
-      concepto = `Pago servicio ${serviceLabel}${service?.description ? ` - ${service.description}` : ""}`
-    }
-    if (!concepto && operation?.destination) {
-      concepto = `Pago viaje ${operation.destination}`
-    }
-    if (!concepto) {
-      concepto = "Pago de servicios turisticos"
+    if (isRefund) {
+      if (!concepto) {
+        concepto = operation?.destination
+          ? `Devolución de dinero - ${operation.destination}`
+          : "Devolución de dinero al cliente"
+      }
+    } else {
+      if (!concepto && receiptScope === "SERVICE" && serviceLabel) {
+        concepto = `Pago servicio ${serviceLabel}${service?.description ? ` - ${service.description}` : ""}`
+      }
+      if (!concepto && operation?.destination) {
+        concepto = `Pago viaje ${operation.destination}`
+      }
+      if (!concepto) {
+        concepto = "Pago de servicios turisticos"
+      }
     }
 
     // Obtener payer_name en query separada para ser defensivos si la columna no existe aún
@@ -299,6 +315,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       currentPaymentId: payment.id,
+      mode: isRefund ? "REFUND" : "PAYMENT",
       receiptNumber,
       receiptScope,
       fechaFormateada,
@@ -342,8 +359,10 @@ export async function GET(request: NextRequest) {
       serviceLabel,
       serviceDescription: service?.description || "",
       serviceOperatorName: serviceOperator?.name || "",
-      paymentHistory,
-      perceptions,
+      // En modo devolución no mostramos el historial de cobros ni percepciones
+      // (son conceptos de ingreso que confundirían el comprobante de reintegro).
+      paymentHistory: isRefund ? [] : paymentHistory,
+      perceptions: isRefund ? [] : perceptions,
       payerName,
     })
   } catch (error: any) {

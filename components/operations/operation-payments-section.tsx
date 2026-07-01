@@ -1465,6 +1465,23 @@ export function OperationPaymentsSection({
                             </Button>
                           </>
                         )}
+                        {/* Comprobante de devolución - filas de reintegro al cliente */}
+                        {payment.status === "PAID" && payment.direction === "EXPENSE" && payment.payer_type === "CUSTOMER" && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-accent-teal hover:text-accent-teal/80 hover:bg-accent-teal/10"
+                            onClick={() => handleDownloadReceipt(payment.id)}
+                            disabled={downloadingReceiptId === payment.id}
+                            title="Descargar comprobante de devolución"
+                          >
+                            {downloadingReceiptId === payment.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <FileText className="h-4 w-4" />
+                            )}
+                          </Button>
+                        )}
                         {/* Botón de editar - solo ADMIN/SUPER_ADMIN/CONTABLE */}
                         {canEditPayments && (
                           <Button
