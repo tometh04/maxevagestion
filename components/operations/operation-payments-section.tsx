@@ -755,10 +755,13 @@ export function OperationPaymentsSection({
   const opCurrency = currency || "USD"
   const currencySymbol = opCurrency === "ARS" ? "$" : "USD"
 
-  // Solo INCOME cuenta como "pagado por el cliente". Las devoluciones
-  // (payer_type=CUSTOMER + direction=EXPENSE) son egresos de caja y NO deben
-  // inflar totalPaidByCustomer ni reducir la deuda del cliente.
-  const customerPayments = payments.filter(p => p.payer_type === "CUSTOMER" && p.status === "PAID" && p.direction === "INCOME")
+  // "Pagado por el cliente" (neto) = cobros INCOME − devoluciones.
+  // Una devolución (payer_type=CUSTOMER + direction=EXPENSE) es plata que le
+  // reintegramos al cliente: baja lo que pagó neto y por lo tanto SUBE su deuda
+  // de nuevo. Antes se excluían por completo (ni sumaban ni restaban), así que
+  // tras un reintegro la deuda quedaba mal (más baja de lo que debía).
+  const customerIncomePayments = payments.filter(p => p.payer_type === "CUSTOMER" && p.status === "PAID" && p.direction === "INCOME")
+  const customerRefundPayments = payments.filter(p => p.payer_type === "CUSTOMER" && p.status === "PAID" && p.direction === "EXPENSE")
   const operatorExpensePayments = payments.filter(p => p.payer_type === "OPERATOR" && p.status === "PAID")
   const baseOperatorPayments = getOperationBaseOperatorPayments({
     operatorPayments,
@@ -790,7 +793,9 @@ export function OperationPaymentsSection({
     return paymentAmount
   }
 
-  const totalPaidByCustomer = customerPayments.reduce((sum, p) => sum + calculateAmountInOpCurrency(p), 0)
+  const totalCollectedFromCustomer = customerIncomePayments.reduce((sum, p) => sum + calculateAmountInOpCurrency(p), 0)
+  const totalRefundedToCustomer = customerRefundPayments.reduce((sum, p) => sum + calculateAmountInOpCurrency(p), 0)
+  const totalPaidByCustomer = totalCollectedFromCustomer - totalRefundedToCustomer
   const totalPaidToOperatorByPayments = operatorExpensePayments.reduce((sum, p) => sum + calculateAmountInOpCurrency(p), 0)
   const totalRegisteredOperatorAmount = baseOperatorPayments.reduce((sum, payment) => {
     return sum + (Number(payment.amount) || 0)
