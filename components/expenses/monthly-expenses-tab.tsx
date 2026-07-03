@@ -50,6 +50,10 @@ interface Totals {
   count: number
   countRecurring: number
   countVariable: number
+  arsRecurring: number
+  arsVariable: number
+  usdRecurring: number
+  usdVariable: number
 }
 
 interface MonthlyExpensesTabProps {
@@ -58,7 +62,7 @@ interface MonthlyExpensesTabProps {
 
 export function MonthlyExpensesTab({ agencies }: MonthlyExpensesTabProps) {
   const [expenses, setExpenses] = useState<Expense[]>([])
-  const [totals, setTotals] = useState<Totals>({ ars: 0, usd: 0, count: 0, countRecurring: 0, countVariable: 0 })
+  const [totals, setTotals] = useState<Totals>({ ars: 0, usd: 0, count: 0, countRecurring: 0, countVariable: 0, arsRecurring: 0, arsVariable: 0, usdRecurring: 0, usdVariable: 0 })
   const [loading, setLoading] = useState(true)
 
   // Default to current month
@@ -91,7 +95,7 @@ export function MonthlyExpensesTab({ agencies }: MonthlyExpensesTabProps) {
       if (res.ok) {
         const data = await res.json()
         setExpenses(data.expenses || [])
-        setTotals(data.totals || { ars: 0, usd: 0, count: 0, countRecurring: 0, countVariable: 0 })
+        setTotals(data.totals || { ars: 0, usd: 0, count: 0, countRecurring: 0, countVariable: 0, arsRecurring: 0, arsVariable: 0, usdRecurring: 0, usdVariable: 0 })
       }
     } catch (err) {
       console.error("Error fetching monthly expenses:", err)
@@ -158,14 +162,22 @@ export function MonthlyExpensesTab({ agencies }: MonthlyExpensesTabProps) {
               <Repeat className="h-4 w-4 text-primary" />
               <span className="text-xs font-medium text-muted-foreground">Gastos Fijos</span>
             </div>
-            <p className="text-2xl font-semibold tabular-nums tracking-tight">{totals.countRecurring}</p>
+            <p className="text-2xl font-semibold tabular-nums tracking-tight">{formatCurrency(totals.arsRecurring, "ARS")}</p>
+            {totals.usdRecurring > 0 && (
+              <p className="text-sm font-medium tabular-nums text-success">{formatCurrency(totals.usdRecurring, "USD")}</p>
+            )}
+            <p className="text-xs text-muted-foreground mt-1">{totals.countRecurring} {totals.countRecurring === 1 ? "gasto" : "gastos"}</p>
         </div>
         <div className="rounded-xl border border-border/40 p-5">
             <div className="flex items-center gap-2 mb-2">
               <Receipt className="h-4 w-4 text-accent-coral" />
               <span className="text-xs font-medium text-muted-foreground">Gastos Variables</span>
             </div>
-            <p className="text-2xl font-semibold tabular-nums tracking-tight">{totals.countVariable}</p>
+            <p className="text-2xl font-semibold tabular-nums tracking-tight">{formatCurrency(totals.arsVariable, "ARS")}</p>
+            {totals.usdVariable > 0 && (
+              <p className="text-sm font-medium tabular-nums text-success">{formatCurrency(totals.usdVariable, "USD")}</p>
+            )}
+            <p className="text-xs text-muted-foreground mt-1">{totals.countVariable} {totals.countVariable === 1 ? "gasto" : "gastos"}</p>
         </div>
       </div>
 
