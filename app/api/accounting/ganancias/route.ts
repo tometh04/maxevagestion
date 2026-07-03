@@ -2,6 +2,9 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
+import { getOrgFeatureFlag } from "@/lib/settings/org-features"
+import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
+import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
 
 // Subcategorías de cuentas contables consideradas como gastos deducibles
 const SUBCATEGORIAS_DEDUCIBLES = [
@@ -50,10 +53,20 @@ export async function GET(request: Request) {
 
     // Get all operations in the quarter with their margins
     const { data: operations } = await (supabase.from("operations") as any)
-      .select("id, file_code, destination, sale_amount_total, operator_cost, margin_amount, sale_currency, status, created_at")
+      .select("id, file_code, destination, sale_amount_total, operator_cost, operator_cost_currency, margin_amount, sale_currency, currency, status, created_at")
       .gte("created_at", startOfDayAR(startDate))
       .lte("created_at", endOfDayAR(endDate))
       .in("status", ["CONFIRMED", "CLOSED"])
+
+    // Servicios adicionales (operation_services): si la flag está ON, el margen
+    // del cuarto incluye el neto (saleExtra − costExtra) de los servicios. Es un
+    // reporte de resultado: sumar solo el neto para NO inflar el margen.
+    const includeServices = (user as any).org_id
+      ? await getOrgFeatureFlag(supabase, (user as any).org_id, FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL)
+      : false
+    const serviceExtras = includeServices && (operations || []).length > 0
+      ? await getServiceExtrasByOperation(supabase, (operations || []) as any[], (user as any).org_id)
+      : {}
 
     // Get expenses (gastos) in the quarter
     const { data: expenses, error: expensesError } = await (supabase.from("ledger_movements") as any)
@@ -80,7 +93,9 @@ export async function GET(request: Request) {
     let totalMarginUSD = 0
     let totalMarginARS = 0
     for (const op of (operations || [])) {
-      const margin = Number(op.margin_amount) || 0
+      const extra = (serviceExtras as any)[op.id]
+      const netServiceMargin = extra ? (extra.saleExtra - extra.costExtra) : 0
+      const margin = (Number(op.margin_amount) || 0) + netServiceMargin
       if (op.sale_currency === "USD") totalMarginUSD += margin
       else totalMarginARS += margin
     }

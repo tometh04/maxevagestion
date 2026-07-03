@@ -3,6 +3,9 @@ import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { subMonths, format } from "date-fns"
 import { buildExchangeRateMap, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
+import { getOrgFeatureFlag } from "@/lib/settings/org-features"
+import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
+import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
 
 export async function GET(request: Request) {
   try {
@@ -143,6 +146,24 @@ export async function GET(request: Request) {
       console.error("Error building exchange rate map for customers:", err)
     }
 
+    // Servicios adicionales (operation_services): si la flag está ON, sumamos
+    // su venta a sale_amount_total para que el gasto del cliente refleje también
+    // los servicios extra que compró.
+    const includeServices = await getOrgFeatureFlag(
+      supabase, user.org_id, FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL
+    )
+    const opsForExtras: { id: string; sale_currency?: string | null; currency?: string | null }[] = []
+    const seenOpIds = new Set<string>()
+    for (const oc of operationsData) {
+      const op = oc.operations as any
+      if (!op?.id || seenOpIds.has(op.id)) continue
+      seenOpIds.add(op.id)
+      opsForExtras.push({ id: op.id, sale_currency: op.sale_currency, currency: op.currency })
+    }
+    const serviceExtras = includeServices && opsForExtras.length > 0
+      ? await getServiceExtrasByOperation(supabase, opsForExtras, user.org_id)
+      : {}
+
     // Agregar datos de operaciones (convertidos a USD)
     const inactiveThreshold = subMonths(new Date(), inactiveMonths)
 
@@ -153,7 +174,7 @@ export async function GET(request: Request) {
       const stats = customerStats[oc.customer_id]
 
       if (["CONFIRMED", "TRAVELLED", "CLOSED"].includes(op.status)) {
-        const saleAmount = parseFloat(op.sale_amount_total || "0")
+        const saleAmount = (parseFloat(op.sale_amount_total || "0") || 0) + ((serviceExtras as any)[op.id]?.saleExtra || 0)
         const saleCurrency = op.sale_currency || op.currency || "USD"
 
         let saleAmountUsd = saleAmount

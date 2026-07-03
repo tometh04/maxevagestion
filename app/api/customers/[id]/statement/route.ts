@@ -4,6 +4,9 @@ import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule, isOwnDataOnly } from "@/lib/permissions"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
+import { getOrgFeatureFlag } from "@/lib/settings/org-features"
+import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
+import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
 
 // Escapar HTML para prevenir XSS
 function escapeHtml(str: string | null | undefined): string {
@@ -97,16 +100,64 @@ export async function GET(
       payments = paymentsData || []
     }
 
-    // Calcular totales
-    const totalOwed = payments
-      .filter(p => p.status === "PENDING" && p.direction === "CUSTOMER_TO_AGENCY")
-      .reduce((sum, p) => sum + (p.amount || 0), 0)
+    // Traer las operaciones del cliente con su venta para computar la deuda.
+    // La deuda del cliente es IMPLÍCITA: sale_amount_total − Σ(cobros PAID del
+    // cliente) + Σ(devoluciones). NO existe como filas payments con status=PENDING.
+    // El código anterior filtraba `status==="PENDING" && direction==="CUSTOMER_TO_AGENCY"`
+    // — ese valor de direction ni siquiera existe (los cobros usan INCOME/EXPENSE con
+    // payer_type=CUSTOMER), así que el resumen daba SIEMPRE 0. Se replica el cálculo
+    // del semáforo (/api/accounting/payments-semaphore) y del reporte de deudores.
+    let operationsData: any[] = []
+    if (operationIds.length > 0) {
+      const { data: opsData } = await (supabase.from("operations") as any)
+        .select("id, sale_amount_total, sale_currency, currency")
+        .in("id", operationIds)
+        .eq("org_id", (user as any).org_id)
+      operationsData = opsData || []
+    }
 
-    const totalPaid = payments
-      .filter(p => p.status === "PAID" && p.direction === "CUSTOMER_TO_AGENCY")
-      .reduce((sum, p) => sum + (p.amount || 0), 0)
+    // Total aportado NETO por el cliente por operación (cobros INCOME − devoluciones
+    // EXPENSE), solo pagos del cliente (payer_type=CUSTOMER) en estado PAID.
+    let totalPaid = 0
+    const paidByOperation: Record<string, number> = {}
+    for (const p of payments) {
+      if (p.payer_type !== "CUSTOMER") continue
+      if (p.status !== "PAID") continue
+      if (p.direction !== "INCOME" && p.direction !== "EXPENSE") continue
+      const signed = (p.direction === "EXPENSE" ? -1 : 1) * (Number(p.amount) || 0)
+      totalPaid += signed
+      paidByOperation[p.operation_id] = (paidByOperation[p.operation_id] || 0) + signed
+    }
 
-    const currency = payments[0]?.currency || "ARS"
+    // Servicios adicionales (operation_services): si la flag está ON, sumamos su
+    // venta a sale_amount_total para que un servicio impago cuente como deuda.
+    // saleExtra viene en la moneda de venta de la op (mismo criterio nominal que
+    // el resto del estado de cuenta). Read-time, no destructivo.
+    const includeServices = await getOrgFeatureFlag(
+      supabase, (user as any).org_id, FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL
+    )
+    const serviceExtras = includeServices && operationsData.length > 0
+      ? await getServiceExtrasByOperation(supabase, operationsData, (user as any).org_id)
+      : {}
+
+    // Deuda neta = Σ max(0, venta − aportado neto) por operación.
+    let totalSale = 0
+    let totalOwed = 0
+    for (const op of operationsData) {
+      const sale = (Number(op.sale_amount_total) || 0) + (serviceExtras[op.id]?.saleExtra || 0)
+      totalSale += sale
+      totalOwed += Math.max(0, sale - (paidByOperation[op.id] || 0))
+    }
+
+    // Moneda de referencia: la de la venta (fallback a la del primer pago).
+    // Limitación pre-existente: si el cliente opera en monedas mixtas, los totales
+    // se suman nominalmente sin convertir (igual que el comportamiento previo).
+    const currency =
+      operationsData[0]?.sale_currency || operationsData[0]?.currency || payments[0]?.currency || "ARS"
+
+    // Movimientos a mostrar: solo pagos/devoluciones del cliente. Un estado de
+    // cuenta del cliente no debe incluir pagos a operadores (payer_type=OPERATOR).
+    const customerMovements = payments.filter((p: any) => p.payer_type === "CUSTOMER")
     const today = format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: es })
 
     // Generar HTML del PDF
@@ -284,7 +335,7 @@ export async function GET(
   <div class="summary-cards">
     <div class="summary-card total">
       <h3>Total Operaciones</h3>
-      <div class="amount">${currency} ${(totalPaid + totalOwed).toLocaleString("es-AR")}</div>
+      <div class="amount">${currency} ${totalSale.toLocaleString("es-AR")}</div>
     </div>
     <div class="summary-card paid">
       <h3>Total Pagado</h3>
@@ -309,19 +360,22 @@ export async function GET(
       </tr>
     </thead>
     <tbody>
-      ${payments.length === 0 
+      ${customerMovements.length === 0
         ? `<tr><td colspan="5" style="text-align: center; color: hsl(226 12% 48%);">No hay movimientos registrados</td></tr>`
-        : payments.map(p => {
+        : customerMovements.map(p => {
+            const isRefund = p.direction === "EXPENSE"
             const isOverdue = p.status === "PENDING" && new Date(p.date_due) < new Date()
             const statusClass = p.status === "PAID" ? "status-paid" : (isOverdue ? "status-overdue" : "status-pending")
-            const statusLabel = p.status === "PAID" ? "Pagado" : (isOverdue ? "Vencido" : "Pendiente")
+            const statusLabel = p.status === "PAID" ? (isRefund ? "Devolución" : "Pagado") : (isOverdue ? "Vencido" : "Pendiente")
+            const concept = escapeHtml(p.description) || (isRefund ? "Devolución al cliente" : "Pago cliente")
+            const amountLabel = `${isRefund ? "-" : ""}${p.currency} ${p.amount?.toLocaleString("es-AR")}`
             return `
               <tr>
                 <td>${format(new Date(p.date_due), "dd/MM/yyyy")}</td>
-                <td>${escapeHtml(p.description) || (p.direction === "CUSTOMER_TO_AGENCY" ? "Pago cliente" : "Pago a operador")}</td>
+                <td>${concept}</td>
                 <td>${escapeHtml(p.operations?.destination) || "-"}</td>
                 <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
-                <td style="text-align: right; font-weight: 600;">${p.currency} ${p.amount?.toLocaleString("es-AR")}</td>
+                <td style="text-align: right; font-weight: 600;">${amountLabel}</td>
               </tr>
             `
           }).join("")

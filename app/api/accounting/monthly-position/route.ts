@@ -4,6 +4,9 @@ import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
 import { getExchangeRate, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
 import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
+import { getOrgFeatureFlag } from "@/lib/settings/org-features"
+import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
+import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
 
 export const dynamic = 'force-dynamic'
 
@@ -138,6 +141,21 @@ export async function GET(request: Request) {
       console.error("[Balance] Error fetching operations:", opsError)
     }
 
+    // Servicios adicionales (operation_services): si la flag está ON, sumamos su
+    // venta a sale_amount_total para que la deuda (CxC) refleje también los
+    // servicios extra impagos del cliente.
+    const includeServices = await getOrgFeatureFlag(
+      supabase, userOrgId, FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL
+    )
+    const serviceExtras: Record<string, { saleExtra: number; costExtra: number }> =
+      includeServices && operations && operations.length > 0
+        ? await getServiceExtrasByOperation(
+            supabase,
+            (operations as any[]).map(op => ({ id: op.id, sale_currency: op.sale_currency, currency: op.currency })),
+            userOrgId
+          )
+        : {}
+
     if (operations && operations.length > 0) {
       const operationIds = (operations as any[]).map(op => op.id)
 
@@ -212,8 +230,8 @@ export async function GET(request: Request) {
       // Calcular deuda por operación
       for (const op of operations as any[]) {
         const saleCurrency = op.sale_currency || op.currency || "USD"
-        const saleAmount = Number(op.sale_amount_total) || 0
-        
+        const saleAmount = (Number(op.sale_amount_total) || 0) + (serviceExtras[op.id]?.saleExtra || 0)
+
         if (saleAmount <= 0) continue
         
         let ventaUSD = saleAmount

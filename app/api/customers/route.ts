@@ -5,6 +5,9 @@ import { canAccessModule } from "@/lib/permissions"
 import { applyCustomersFilters, getUserAgencyIds, canPerformAction } from "@/lib/permissions-api"
 import { resolveUserPermissions } from "@/lib/permissions-agency"
 import { checkDuplicateCustomer, sendCustomerNotifications } from "@/lib/customers/customer-service"
+import { getOrgFeatureFlag } from "@/lib/settings/org-features"
+import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
+import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
 
 export const dynamic = 'force-dynamic'
 
@@ -89,6 +92,30 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Error al obtener clientes" }, { status: 500 })
     }
 
+    // Servicios adicionales (operation_services): si la flag está ON, sumamos su
+    // venta a sale_amount_total para que el gasto total del cliente refleje también
+    // los servicios extra que compró.
+    const orgId = (user as any).org_id || null
+    const includeServices = orgId
+      ? await getOrgFeatureFlag(supabase, orgId, FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL)
+      : false
+    let serviceExtras: Record<string, { saleExtra: number; costExtra: number }> = {}
+    if (includeServices && orgId) {
+      const opsForExtras: { id: string; sale_currency?: string | null; currency?: string | null }[] = []
+      const seenOpIds = new Set<string>()
+      for (const customer of (customers || []) as any[]) {
+        for (const oc of (customer.operation_customers || []) as any[]) {
+          const op = oc.operations
+          if (!op?.id || seenOpIds.has(op.id)) continue
+          seenOpIds.add(op.id)
+          opsForExtras.push({ id: op.id, sale_currency: op.sale_currency, currency: op.currency })
+        }
+      }
+      if (opsForExtras.length > 0) {
+        serviceExtras = await getServiceExtrasByOperation(supabase, opsForExtras, orgId)
+      }
+    }
+
     // Calculate trips and total spent for each customer.
     // Regla: NO mezclar monedas. totalSpentByCurrency = { USD: X, ARS: Y }.
     const customersWithStats = (customers || []).map((customer: any) => {
@@ -105,7 +132,7 @@ export async function GET(request: Request) {
           const op = oc.operations
           if (!op) return
           const cur = op.sale_currency || op.currency || "USD"
-          const amt = parseFloat(op.sale_amount_total || 0) || 0
+          const amt = (parseFloat(op.sale_amount_total || 0) || 0) + (serviceExtras[op.id]?.saleExtra || 0)
           totalSpentByCurrency[cur] = (totalSpentByCurrency[cur] || 0) + amt
         })
 

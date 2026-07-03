@@ -3,6 +3,9 @@ import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { startOfMonth, endOfMonth, subMonths, format } from "date-fns"
 import { buildExchangeRateMap, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
+import { getOrgFeatureFlag } from "@/lib/settings/org-features"
+import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
+import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
 
 export async function GET(request: Request) {
   try {
@@ -28,7 +31,7 @@ export async function GET(request: Request) {
 
     // Query base - include sale_currency for conversion
     let query = (supabase.from("operations") as any)
-      .select("destination, sale_amount_total, sale_currency, operator_cost, margin_amount, margin_percentage, currency, departure_date, created_at")
+      .select("id, destination, sale_amount_total, sale_currency, operator_cost, margin_amount, margin_percentage, currency, departure_date, created_at")
       .in("status", ["CONFIRMED", "TRAVELLED", "CLOSED"])
       .gte("departure_date", startDate.toISOString())
       .lte("departure_date", endDate.toISOString())
@@ -65,6 +68,21 @@ export async function GET(request: Request) {
       console.error("Error building exchange rate map for profitability:", err)
     }
 
+    // Servicios adicionales (operation_services): si la flag está ON, sumamos su
+    // venta a sale_amount_total y su costo a operator_cost. Este es un reporte de
+    // rentabilidad: para NO inflar el margen sumamos también el costExtra (el
+    // margen crece solo en el neto saleExtra − costExtra).
+    const includeServices = (user as any).org_id
+      ? await getOrgFeatureFlag(supabase, (user as any).org_id, FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL)
+      : false
+    const opsListForExtras = operationsArray.map((op: any) => ({
+      id: op.id, sale_currency: op.sale_currency, currency: op.currency,
+    }))
+    const serviceExtras: Record<string, { saleExtra: number; costExtra: number }> =
+      includeServices && opsListForExtras.length > 0
+        ? await getServiceExtrasByOperation(supabase, opsListForExtras, (user as any).org_id)
+        : {}
+
     // Agrupar por destino (convertido a USD)
     const byDestination: Record<string, {
       destination: string
@@ -88,9 +106,11 @@ export async function GET(request: Request) {
         }
       }
 
-      const saleAmount = parseFloat(op.sale_amount_total || "0")
-      const costAmount = parseFloat(op.operator_cost || "0")
-      const marginAmount = parseFloat(op.margin_amount || "0")
+      const saleExtra = serviceExtras[op.id]?.saleExtra || 0
+      const costExtra = serviceExtras[op.id]?.costExtra || 0
+      const saleAmount = (parseFloat(op.sale_amount_total || "0") || 0) + saleExtra
+      const costAmount = (parseFloat(op.operator_cost || "0") || 0) + costExtra
+      const marginAmount = (parseFloat(op.margin_amount || "0") || 0) + (saleExtra - costExtra)
       const saleCurrency = op.sale_currency || op.currency || "USD"
 
       let saleUsd = saleAmount

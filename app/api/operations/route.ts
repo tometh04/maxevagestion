@@ -17,6 +17,8 @@ import { checkLimit } from "@/lib/billing/limits"
 import { getSellerPercentage } from "@/lib/commissions/calculate"
 import { calculateOperationBalances, roundMoney } from "@/lib/operations/operation-financials"
 import { getOrgFeatureFlag } from "@/lib/settings/org-features"
+import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
+import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
 
 export async function POST(request: Request) {
   try {
@@ -1396,6 +1398,19 @@ export async function GET(request: Request) {
       }
     }
 
+    // Servicios adicionales: si la flag está ON, sumar su venta a sale_amount_total
+    // para que "A cobrar" (pending_amount) refleje servicios impagos del cliente.
+    const includeServicesInSale = await getOrgFeatureFlag(
+      supabase, (user as any).org_id, FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL
+    )
+    const saleServiceExtras = includeServicesInSale && operationIds.length > 0
+      ? await getServiceExtrasByOperation(
+          supabase,
+          (operations || []).map((op: any) => ({ id: op.id, sale_currency: op.sale_currency, currency: op.currency })),
+          (user as any).org_id
+        )
+      : {}
+
     // Enriquecer operaciones con datos de pagos y cliente principal
     const enrichedOperations = (operations || []).map((op: any) => {
       const mainCustomer = op.operation_customers?.find(
@@ -1414,7 +1429,7 @@ export async function GET(request: Request) {
         currency: op.currency || "ARS" 
       }
       const balances = calculateOperationBalances({
-        saleAmount: op.sale_amount_total,
+        saleAmount: (Number(op.sale_amount_total) || 0) + ((saleServiceExtras as any)[op.id]?.saleExtra || 0),
         operatorCost: op.operator_cost,
         customerPaid: paymentData.customer_paid,
         operatorPaid: paymentData.operator_paid,

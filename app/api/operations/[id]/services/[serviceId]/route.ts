@@ -3,6 +3,29 @@ import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canPerformAction, getUserAgencyIds, resolveOperationAccessScope } from "@/lib/permissions-api"
 import { calculateCommission, createOrUpdateCommissionRecords } from "@/lib/commissions/calculate"
+import { getOpenOperatorPaymentStatus } from "@/lib/accounting/operator-payment-settlement"
+import { getOrgFeatureFlag } from "@/lib/settings/org-features"
+import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
+
+// Epsilon monetario para comparar montos (evita falsos negativos por float).
+const MONEY_EPSILON = 0.005
+
+/**
+ * Calcula el nuevo `amount` de un operator_payment al re-sincronizar contra un
+ * costo editado, sin romper el invariante `paid_amount ≤ amount`. Si el costo
+ * baja por debajo de lo ya pagado, se topa en `paid_amount` (deuda saldada) en
+ * vez de dejar amount < paid (pendiente negativo) o conservar un amount viejo
+ * (pendiente fantasma). Ver A5 auditoría cost-decrease.
+ */
+function reconcileOperatorPaymentAmount(newCostAmount: number, paidAmount: number, dueDate: string | null) {
+  const targetAmount = Math.max(newCostAmount, paidAmount)
+  const fullyPaid = paidAmount + MONEY_EPSILON >= targetAmount
+  return {
+    amount: targetAmount,
+    status: fullyPaid ? ("PAID" as const) : getOpenOperatorPaymentStatus(dueDate),
+    belowPaid: newCostAmount < paidAmount,
+  }
+}
 
 /**
  * Recalcula los totales de la operación (sale_amount_total, operator_cost, margin)
@@ -18,11 +41,24 @@ import { calculateCommission, createOrUpdateCommissionRecords } from "@/lib/comm
 async function recalculateOperationTotals(supabase: any, operationId: string) {
   // Obtener la moneda base de la operación para filtrar servicios.
   const { data: opCurrencyRow } = await (supabase.from("operations") as any)
-    .select("sale_currency, operator_cost_currency, currency")
+    .select("sale_currency, operator_cost_currency, currency, org_id")
     .eq("id", operationId)
     .single()
 
   if (!opCurrencyRow) return
+
+  // 🔴 Flag include_services_in_sale_total (2026-07-03): con la flag ON, la venta
+  // de los servicios se suma a sale_amount_total EN READ-TIME (endpoints/RPC), y
+  // sale_amount_total representa SIEMPRE la venta base pura. Si acá lo
+  // sobreescribiéramos con Σservicios, la deuda pasaría a contar doble
+  // (base+Σsvc en read-time sobre un total que ya es Σsvc) y perderíamos la base
+  // en ops mixtas. Por eso, con la flag ON, NO tocamos los totales de la op:
+  // los gestiona el read-time. Con la flag OFF se conserva el comportamiento
+  // legacy (recalc pisa los totales desde servicios).
+  const includeServices = await getOrgFeatureFlag(
+    supabase, opCurrencyRow.org_id, FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL
+  )
+  if (includeServices) return
 
   const opSaleCurrency = opCurrencyRow.sale_currency || opCurrencyRow.currency || "USD"
   const opCostCurrency = opCurrencyRow.operator_cost_currency || opCurrencyRow.currency || "USD"
@@ -241,7 +277,7 @@ export async function PATCH(
 
       if (currentService.operator_payment_id) {
         const { data: opPayment } = await (supabase.from("operator_payments") as any)
-          .select("id, status, amount")
+          .select("id, status, amount, paid_amount, due_date")
           .eq("id", currentService.operator_payment_id)
           .eq("org_id", (user as any).org_id)
           .single()
@@ -249,14 +285,21 @@ export async function PATCH(
         if (opPayment?.status === "PAID") {
           if (costChanged) warnings.push("El pago al operador ya fue registrado como pagado. El monto no se actualizó automáticamente.")
         } else if (opPayment && Number(opPayment.amount) !== newCostAmount) {
+          // Clamp para no dejar amount < paid_amount (pendiente negativo/fantasma).
+          const paidAmount = Number(opPayment.paid_amount || 0)
+          const rec = reconcileOperatorPaymentAmount(newCostAmount, paidAmount, opPayment.due_date)
           await (supabase.from("operator_payments") as any)
-            .update({ amount: newCostAmount, updated_at: new Date().toISOString() })
+            .update({ amount: rec.amount, status: rec.status, updated_at: new Date().toISOString() })
             .eq("id", currentService.operator_payment_id)
+            .eq("org_id", (user as any).org_id)
+          if (rec.belowPaid) {
+            warnings.push(`El nuevo costo (${newCostAmount}) es menor a lo ya pagado (${paidAmount}); la deuda quedó saldada.`)
+          }
         }
       } else if (effectiveOperatorId) {
         // Fallback: el servicio no tiene operator_payment_id vinculado, buscar por operation_id + operator_id
         const { data: opPayment } = await (supabase.from("operator_payments") as any)
-          .select("id, status, amount")
+          .select("id, status, amount, paid_amount, due_date")
           .eq("operation_id", operationId)
           .eq("operator_id", effectiveOperatorId)
           .eq("org_id", (user as any).org_id)
@@ -265,11 +308,17 @@ export async function PATCH(
           .maybeSingle()
 
         if (opPayment && Number(opPayment.amount) !== newCostAmount) {
+          const paidAmount = Number(opPayment.paid_amount || 0)
+          const rec = reconcileOperatorPaymentAmount(newCostAmount, paidAmount, opPayment.due_date)
           const { error: opPayErr } = await (supabase.from("operator_payments") as any)
-            .update({ amount: newCostAmount, updated_at: new Date().toISOString() })
+            .update({ amount: rec.amount, status: rec.status, updated_at: new Date().toISOString() })
             .eq("id", opPayment.id)
+            .eq("org_id", (user as any).org_id)
 
           if (!opPayErr) {
+            if (rec.belowPaid) {
+              warnings.push(`El nuevo costo (${newCostAmount}) es menor a lo ya pagado (${paidAmount}); la deuda quedó saldada.`)
+            }
             // Vincular para futuros updates
             await (supabase.from("operation_services") as any)
               .update({ operator_payment_id: opPayment.id })

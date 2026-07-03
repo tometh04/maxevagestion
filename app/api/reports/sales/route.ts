@@ -2,6 +2,9 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { getExchangeRate, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
+import { getOrgFeatureFlag } from "@/lib/settings/org-features"
+import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
+import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
 
 export async function GET(request: Request) {
   try {
@@ -76,6 +79,19 @@ export async function GET(request: Request) {
     // Obtener tasa de cambio más reciente como fallback
     const latestExchangeRate = await getLatestExchangeRate(supabase) || DEFAULT_USD_ARS_FALLBACK_RATE
 
+    // Servicios adicionales (operation_services): si la flag está ON, sumamos su
+    // venta a sale_amount_total para que la venta bruta refleje también los
+    // servicios extra que compró el cliente.
+    const includeServices = await getOrgFeatureFlag(
+      supabase, user.org_id, FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL
+    )
+    const opsList = (operations || []).map((op: any) => ({
+      id: op.id, sale_currency: op.sale_currency, currency: op.currency,
+    }))
+    const serviceExtras = includeServices && opsList.length > 0
+      ? await getServiceExtrasByOperation(supabase, opsList, user.org_id)
+      : {}
+
     // Calcular totales
     const totals = {
       count: operations?.length || 0,
@@ -92,7 +108,7 @@ export async function GET(request: Request) {
 
     for (const op of operations || []) {
       const saleCurrency = op.sale_currency || op.currency || "USD"
-      const saleAmount = Number(op.sale_amount_total) || 0
+      const saleAmount = (Number(op.sale_amount_total) || 0) + ((serviceExtras as any)[op.id]?.saleExtra || 0)
       const costAmount = Number(op.operator_cost) || 0
       const marginAmount = Number(op.margin_amount) || 0
 
@@ -157,7 +173,7 @@ export async function GET(request: Request) {
 
       grouped[key].count++
       const saleCurrency = op.sale_currency || op.currency || "USD"
-      const saleAmount = Number(op.sale_amount_total) || 0
+      const saleAmount = (Number(op.sale_amount_total) || 0) + ((serviceExtras as any)[op.id]?.saleExtra || 0)
       const marginAmount = Number(op.margin_amount) || 0
 
       // Obtener tasa de cambio histórica
@@ -216,7 +232,7 @@ export async function GET(request: Request) {
 
       bySeller[sellerId].count++
       const saleCurrency = op.sale_currency || op.currency || "USD"
-      const saleAmount = Number(op.sale_amount_total) || 0
+      const saleAmount = (Number(op.sale_amount_total) || 0) + ((serviceExtras as any)[op.id]?.saleExtra || 0)
       const marginAmount = Number(op.margin_amount) || 0
 
       // Obtener tasa de cambio histórica

@@ -6,6 +6,9 @@ import { getUserAgencyIds } from "@/lib/permissions-api"
 import { applyCustomersFilters } from "@/lib/permissions-api"
 import { buildExchangeRateMap, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
 import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
+import { getOrgFeatureFlag } from "@/lib/settings/org-features"
+import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
+import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
 
 export const dynamic = 'force-dynamic'
 
@@ -226,6 +229,29 @@ export async function GET(request: Request) {
       }
     }
     const getRate = await buildExchangeRateMap(supabase, allArsDates)
+
+    // Servicios adicionales (operation_services): si la org tiene la flag ON,
+    // sumamos su venta a sale_amount_total para que un servicio impago cuente
+    // como deuda del cliente. Read-time, no destructivo. El pago del servicio ya
+    // está en paymentsByOperation, así que no hay doble conteo.
+    const includeServices = await getOrgFeatureFlag(
+      supabase, (user as any).org_id, FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL
+    )
+    let serviceExtras: Record<string, { saleExtra: number; costExtra: number }> = {}
+    if (includeServices && (user as any).org_id) {
+      const opsForExtras: { id: string; sale_currency?: string | null; currency?: string | null }[] = []
+      const seenOpIds = new Set<string>()
+      for (const customer of customersList) {
+        for (const oc of (customer.operation_customers || []) as any[]) {
+          const operation = oc.operations
+          if (!operation?.id || seenOpIds.has(operation.id)) continue
+          seenOpIds.add(operation.id)
+          opsForExtras.push({ id: operation.id, sale_currency: operation.sale_currency, currency: operation.currency })
+        }
+      }
+      serviceExtras = await getServiceExtrasByOperation(supabase, opsForExtras, (user as any).org_id)
+    }
+
     for (const customer of customersList) {
       const operations = (customer.operation_customers || []) as any[]
       const operationsWithDebt: Array<{
@@ -291,7 +317,8 @@ export async function GET(request: Request) {
 
         const opId = operation.id
         const saleCurrency = operation.sale_currency || operation.currency || "USD"
-        const saleAmount = Number(operation.sale_amount_total) || 0
+        // saleExtra ya viene en la moneda de venta de la op (dedup por moneda en el helper).
+        const saleAmount = (Number(operation.sale_amount_total) || 0) + (serviceExtras[opId]?.saleExtra || 0)
 
         // Tasa ARS/USD de la operación (por fecha, con fallback a la última).
         const operationDate = operation.departure_date || operation.created_at

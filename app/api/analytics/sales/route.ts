@@ -3,6 +3,9 @@ import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { buildExchangeRateMap, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
 import { parseOperationDateField } from "@/lib/analytics/date-filter"
+import { getOrgFeatureFlag } from "@/lib/settings/org-features"
+import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
+import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
 
 // Forzar ruta dinámica (usa cookies para autenticación)
 export const dynamic = 'force-dynamic'
@@ -51,6 +54,10 @@ export async function GET(request: Request) {
       //
       // OJO: el RPC solo filtra por created_at. Si el caller pidió otro
       // dateField, saltamos el RPC para que el fallback respete dateField.
+      // Flag per-org: sumar operation_services a venta/margen/costo también en el fast-path.
+      const includeServicesRpc = await getOrgFeatureFlag(
+        supabase, user.org_id, FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL
+      )
       if (dateField === "created_at") {
       try {
         const t0 = Date.now()
@@ -65,6 +72,7 @@ export async function GET(request: Request) {
             p_date_to: dateTo || null,
             p_agency_id: agencyId && agencyId !== "ALL" ? agencyId : null,
             p_seller_id: sellerId && sellerId !== "ALL" ? sellerId : null,
+            p_include_services: includeServicesRpc,
           }
         )
 
@@ -102,7 +110,7 @@ export async function GET(request: Request) {
         return NextResponse.json({ totals: {}, byMonth: [], message: "user sin org_id" })
       }
 
-      let query = supabase.from("operations").select("sale_amount_total, sale_currency, margin_amount, operator_cost, currency, created_at, departure_date")
+      let query = supabase.from("operations").select("id, sale_amount_total, sale_currency, margin_amount, operator_cost, currency, created_at, departure_date")
         .eq("org_id", user.org_id)
 
       // Apply role-based filtering
@@ -167,12 +175,25 @@ export async function GET(request: Request) {
         console.error("Error building exchange rate map for sales:", err)
       }
 
+      // Servicios adicionales (operation_services): si la flag está ON, sumamos
+      // su venta a sale_amount_total para que la venta bruta refleje también los
+      // servicios extra vendidos al cliente.
+      const includeServices = await getOrgFeatureFlag(
+        supabase, user.org_id, FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL
+      )
+      const opsList = operationsArray.map((op: any) => ({
+        id: op.id, sale_currency: op.sale_currency, currency: op.currency,
+      }))
+      const serviceExtras = includeServices && opsList.length > 0
+        ? await getServiceExtrasByOperation(supabase, opsList, user.org_id)
+        : {}
+
       let totalSalesUSD = 0
       let totalMarginUSD = 0
       let totalCostUSD = 0
 
       for (const op of operationsArray) {
-        const saleAmount = parseFloat(op.sale_amount_total || "0")
+        const saleAmount = (parseFloat(op.sale_amount_total || "0") || 0) + ((serviceExtras as any)[op.id]?.saleExtra || 0)
         const marginAmount = parseFloat(op.margin_amount || "0")
         const costAmount = parseFloat(op.operator_cost || "0")
         const saleCurrency = op.sale_currency || op.currency || "USD"

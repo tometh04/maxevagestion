@@ -3,6 +3,9 @@ import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { getUserAgencyIds } from "@/lib/permissions-api"
 import { buildExchangeRateMap, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
+import { getOrgFeatureFlag } from "@/lib/settings/org-features"
+import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
+import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
 
 // Forzar ruta dinámica
 export const dynamic = 'force-dynamic'
@@ -131,11 +134,19 @@ export async function GET(request: Request) {
           const getRate = await buildExchangeRateMap(supabase, arsDates)
           const latestExchangeRate = await getLatestExchangeRate(supabase) || DEFAULT_USD_ARS_FALLBACK_RATE
 
+          // Servicios adicionales: si la flag está ON, sumar su venta al total.
+          const includeServices = await getOrgFeatureFlag(
+            supabase, userOrgId, FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL
+          )
+          const serviceExtras = includeServices && filteredOperations.length > 0
+            ? await getServiceExtrasByOperation(supabase, filteredOperations as any[], userOrgId)
+            : {}
+
           // Calcular deuda para cada operación
           for (const operation of filteredOperations) {
             const op = operation as any
             const saleCurrency = op.sale_currency || op.currency || "USD"
-            const saleAmount = Number(op.sale_amount_total) || 0
+            const saleAmount = (Number(op.sale_amount_total) || 0) + ((serviceExtras as any)[op.id]?.saleExtra || 0)
 
             // Convertir sale_amount_total a USD
             let saleAmountUsd = saleAmount

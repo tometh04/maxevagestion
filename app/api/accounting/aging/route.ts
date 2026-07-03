@@ -4,6 +4,9 @@ import { getCurrentUser } from "@/lib/auth"
 import { getUserAgencyIds, applyCustomersFilters } from "@/lib/permissions-api"
 import { resolveUserPermissions, assertPermission } from "@/lib/permissions-agency"
 import { getExchangeRate, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
+import { getOrgFeatureFlag } from "@/lib/settings/org-features"
+import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
+import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
 
 export const dynamic = "force-dynamic"
 
@@ -203,6 +206,26 @@ export async function GET(request: Request) {
         }
       }
 
+      // Servicios adicionales (operation_services): si la flag está ON, sumamos su
+      // venta a sale_amount_total para que un servicio impago cuente como deuda.
+      const includeServices = await getOrgFeatureFlag(
+        supabase, userOrgId, FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL
+      )
+      let serviceExtras: Record<string, { saleExtra: number; costExtra: number }> = {}
+      if (includeServices && allOperationIds.length > 0) {
+        const opsForExtras: { id: string; sale_currency?: string | null; currency?: string | null }[] = []
+        const seenOpIds = new Set<string>()
+        for (const customer of (customers || []) as any[]) {
+          for (const oc of (customer.operation_customers || []) as any[]) {
+            const operation = oc.operations
+            if (!operation?.id || seenOpIds.has(operation.id)) continue
+            seenOpIds.add(operation.id)
+            opsForExtras.push({ id: operation.id, sale_currency: operation.sale_currency, currency: operation.currency })
+          }
+        }
+        serviceExtras = await getServiceExtrasByOperation(supabase, opsForExtras, userOrgId)
+      }
+
       // Process each customer/operation for aging
       for (const customer of (customers || []) as any[]) {
         const customerName = `${customer.first_name || ""} ${customer.last_name || ""}`.trim() || "Sin nombre"
@@ -219,7 +242,7 @@ export async function GET(request: Request) {
 
           const opId = operation.id
           const saleCurrency = operation.sale_currency || operation.currency || "USD"
-          const saleAmount = Number(operation.sale_amount_total) || 0
+          const saleAmount = (Number(operation.sale_amount_total) || 0) + (serviceExtras[operation.id]?.saleExtra || 0)
 
           // Convert sale amount to USD
           let saleAmountUsd = saleAmount
