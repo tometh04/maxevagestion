@@ -71,7 +71,9 @@ export async function GET(request: Request) {
         // todas las p_agency_ids.
         p_agency_id:
           agencyIdFilter && agencyIdFilter !== "ALL" ? agencyIdFilter : null,
-        p_include_services: includeServices,
+        // Deploy-safe: solo pasar el param cuando la flag está ON (requiere la
+        // migración 20260703000001 aplicada). Omitido → funciona con el RPC viejo.
+        ...(includeServices ? { p_include_services: true } : {}),
       }
     )
 

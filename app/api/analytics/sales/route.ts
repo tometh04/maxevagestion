@@ -72,7 +72,8 @@ export async function GET(request: Request) {
             p_date_to: dateTo || null,
             p_agency_id: agencyId && agencyId !== "ALL" ? agencyId : null,
             p_seller_id: sellerId && sellerId !== "ALL" ? sellerId : null,
-            p_include_services: includeServicesRpc,
+            // Deploy-safe: solo con la flag ON (requiere migración 20260703000001).
+            ...(includeServicesRpc ? { p_include_services: true } : {}),
           }
         )
 
