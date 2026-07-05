@@ -40,6 +40,7 @@ export const getCurrentUser = cache(async (): Promise<{ user: User; session: { u
       default_commission_percentage: null,
       legal_accepted_at: null,
       legal_version: null,
+      onboarding_state: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       roles: ['SUPER_ADMIN'],

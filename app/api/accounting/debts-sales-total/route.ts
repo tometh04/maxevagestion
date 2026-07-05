@@ -3,6 +3,8 @@ import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { getUserAgencyIds } from "@/lib/permissions-api"
 import { resolveUserPermissions, assertPermission } from "@/lib/permissions-agency"
+import { getOrgFeatureFlag } from "@/lib/settings/org-features"
+import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
 
 export const dynamic = "force-dynamic"
 
@@ -46,6 +48,11 @@ export async function GET(request: Request) {
       )
     }
 
+    // Flag per-org: sumar operation_services impagos a la deuda.
+    const includeServices = await getOrgFeatureFlag(
+      supabase, user.org_id, FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL
+    )
+
     const t0 = Date.now()
     const { data, error } = await (supabase.rpc as any)(
       "accounting_debts_sales_total",
@@ -64,6 +71,9 @@ export async function GET(request: Request) {
         // todas las p_agency_ids.
         p_agency_id:
           agencyIdFilter && agencyIdFilter !== "ALL" ? agencyIdFilter : null,
+        // Deploy-safe: solo pasar el param cuando la flag está ON (requiere la
+        // migración 20260703000001 aplicada). Omitido → funciona con el RPC viejo.
+        ...(includeServices ? { p_include_services: true } : {}),
       }
     )
 

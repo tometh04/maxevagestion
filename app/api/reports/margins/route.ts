@@ -6,6 +6,9 @@ import {
   getLatestExchangeRate,
   DEFAULT_USD_ARS_FALLBACK_RATE,
 } from "@/lib/accounting/exchange-rates"
+import { getOrgFeatureFlag } from "@/lib/settings/org-features"
+import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
+import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
 
 /**
  * GET /api/reports/margins
@@ -101,6 +104,21 @@ export async function GET(request: Request) {
     // (antes hacía 1 query por operation = N+1 lento). Reutiliza tasas
     // contiguas y cachea fallback latest.
     // -----------------------------------------------------------------------
+    // Servicios adicionales (operation_services): si la flag está ON, sumamos su
+    // venta a sale_amount_total y su costo a operator_cost. Este es un reporte de
+    // MARGEN: para NO inflar el margen sumamos también el costExtra (el margen
+    // crece solo en el neto saleExtra − costExtra).
+    const includeServices = await getOrgFeatureFlag(
+      supabase, user.org_id, FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL
+    )
+    const opsListForExtras = (operations || []).map((op: any) => ({
+      id: op.id, sale_currency: op.sale_currency, currency: op.currency,
+    }))
+    const serviceExtras: Record<string, { saleExtra: number; costExtra: number }> =
+      includeServices && opsListForExtras.length > 0
+        ? await getServiceExtrasByOperation(supabase, opsListForExtras, user.org_id)
+        : {}
+
     const opDates = (operations || []).map(
       (op: any) => op.departure_date || op.operation_date || op.created_at
     )
@@ -141,9 +159,11 @@ export async function GET(request: Request) {
 
     for (const op of operations || []) {
       const saleCurrency = op.sale_currency || op.currency || "USD"
-      const sale = Number(op.sale_amount_total) || 0
-      const cost = Number(op.operator_cost) || 0
-      const margin = Number(op.margin_amount) || 0
+      const saleExtra = serviceExtras[op.id]?.saleExtra || 0
+      const costExtra = serviceExtras[op.id]?.costExtra || 0
+      const sale = (Number(op.sale_amount_total) || 0) + saleExtra
+      const cost = (Number(op.operator_cost) || 0) + costExtra
+      const margin = (Number(op.margin_amount) || 0) + (saleExtra - costExtra)
       const opDate = op.departure_date || op.operation_date || op.created_at
 
       if (saleCurrency === "ARS") {
@@ -217,9 +237,11 @@ export async function GET(request: Request) {
 
         bucket.count++
 
-        const sale = Number(op.sale_amount_total) || 0
-        const cost = Number(op.operator_cost) || 0
-        const margin = Number(op.margin_amount) || 0
+        const saleExtra = serviceExtras[op.id]?.saleExtra || 0
+        const costExtra = serviceExtras[op.id]?.costExtra || 0
+        const sale = (Number(op.sale_amount_total) || 0) + saleExtra
+        const cost = (Number(op.operator_cost) || 0) + costExtra
+        const margin = (Number(op.margin_amount) || 0) + (saleExtra - costExtra)
         const saleCur = op.sale_currency || op.currency || "USD"
         const opDate = op.departure_date || op.operation_date || op.created_at
 

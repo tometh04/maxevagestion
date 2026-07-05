@@ -3,6 +3,9 @@ import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { getUserAgencyIds } from "@/lib/permissions-api"
 import { buildExchangeRateMap, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
+import { getOrgFeatureFlag } from "@/lib/settings/org-features"
+import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
+import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
 
 // Forzar ruta dinámica
 export const dynamic = 'force-dynamic'
@@ -91,11 +94,12 @@ export async function GET(request: Request) {
           const allPayments: any[] = []
           for (let i = 0; i < operationIds.length; i += chunkSize) {
             const chunk = operationIds.slice(i, i + chunkSize)
+            // Deuda NETA: cobros INCOME (+) − devoluciones EXPENSE (-) del cliente.
+            // Ya NO filtramos direction=INCOME: traemos ambas y aplicamos el signo.
             const { data: payments } = await supabase
               .from("payments")
               .select("operation_id, amount, amount_usd, currency, exchange_rate, status, direction")
               .in("operation_id", chunk)
-              .eq("direction", "INCOME")
               .eq("payer_type", "CUSTOMER")
               .eq("status", "PAID")
             if (payments) allPayments.push(...payments)
@@ -104,6 +108,7 @@ export async function GET(request: Request) {
           // Agrupar pagos por operación
           if (allPayments.length > 0) {
             allPayments.forEach((payment: any) => {
+              if (payment.direction !== "INCOME" && payment.direction !== "EXPENSE") return
               const opId = payment.operation_id
               if (!paymentsByOperation[opId]) {
                 paymentsByOperation[opId] = 0
@@ -117,7 +122,8 @@ export async function GET(request: Request) {
               } else if (payment.currency === "ARS" && payment.exchange_rate) {
                 paidUsd = (Number(payment.amount) || 0) / Number(payment.exchange_rate)
               }
-              paymentsByOperation[opId] += paidUsd
+              const sign = payment.direction === "EXPENSE" ? -1 : 1
+              paymentsByOperation[opId] += sign * paidUsd
             })
           }
 
@@ -128,11 +134,19 @@ export async function GET(request: Request) {
           const getRate = await buildExchangeRateMap(supabase, arsDates)
           const latestExchangeRate = await getLatestExchangeRate(supabase) || DEFAULT_USD_ARS_FALLBACK_RATE
 
+          // Servicios adicionales: si la flag está ON, sumar su venta al total.
+          const includeServices = await getOrgFeatureFlag(
+            supabase, userOrgId, FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL
+          )
+          const serviceExtras = includeServices && filteredOperations.length > 0
+            ? await getServiceExtrasByOperation(supabase, filteredOperations as any[], userOrgId)
+            : {}
+
           // Calcular deuda para cada operación
           for (const operation of filteredOperations) {
             const op = operation as any
             const saleCurrency = op.sale_currency || op.currency || "USD"
-            const saleAmount = Number(op.sale_amount_total) || 0
+            const saleAmount = (Number(op.sale_amount_total) || 0) + ((serviceExtras as any)[op.id]?.saleExtra || 0)
 
             // Convertir sale_amount_total a USD
             let saleAmountUsd = saleAmount

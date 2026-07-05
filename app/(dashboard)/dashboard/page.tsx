@@ -9,6 +9,8 @@ import { getAfipServiceForOrg } from "@/lib/afip/afip-service"
 import { Skeleton } from "@/components/ui/skeleton"
 import { makeTimer } from "@/lib/perf-log"
 import { OnboardingChecklist } from "@/components/onboarding/onboarding-checklist"
+import { isOnboardingEligible } from "@/lib/onboarding/eligibility"
+import { getOrgOnboardingState } from "@/lib/onboarding/server"
 
 const DashboardPageClient = dynamic(
   () =>
@@ -129,9 +131,15 @@ export default async function DashboardPage() {
     sellerId: "ALL",
   }
 
+  // Onboarding de bienvenida: solo cuentas nuevas (<30 días) con rol de setup.
+  // Progreso a nivel ORG (organization_settings) — compartido entre admins.
+  const onboardingEligible = isOnboardingEligible(user)
+  const onboardingState =
+    onboardingEligible && user.org_id ? await getOrgOnboardingState(user.org_id) : null
+
   return (
     <>
-      <OnboardingChecklist userEmail={user.email} />
+      <OnboardingChecklist enabled={onboardingEligible} initialState={onboardingState} />
       {afipNotConfigured && user.org_id && (
         <AfipNotConfiguredBanner orgId={user.org_id} />
       )}

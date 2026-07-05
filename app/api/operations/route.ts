@@ -17,6 +17,8 @@ import { checkLimit } from "@/lib/billing/limits"
 import { getSellerPercentage } from "@/lib/commissions/calculate"
 import { calculateOperationBalances, roundMoney } from "@/lib/operations/operation-financials"
 import { getOrgFeatureFlag } from "@/lib/settings/org-features"
+import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
+import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
 
 export async function POST(request: Request) {
   try {
@@ -1163,7 +1165,41 @@ export async function GET(request: Request) {
     const requestedLimit = parseInt(searchParams.get("limit") || "50")
     const limit = Math.min(requestedLimit, 200) // Máximo 200 para mejor rendimiento
     const offset = (page - 1) * limit
-    
+
+    // Ordenamiento server-side (fix VICO 2026-07-01): el listado paginado 50/pág
+    // hacía que el sort por columna del cliente (TanStack) reordenara SOLO la
+    // página cargada, no todo el dataset. Resultado: ordenar "Viaje" ascendente
+    // no traía los próximos viajes reales. Ahora el sort viaja al server.
+    // Whitelist de columnas ordenables (deben ser columnas reales de operations,
+    // no campos computados post-query como paid_amount/customer_name).
+    const SORTABLE_FIELDS = new Set([
+      "operation_date",
+      "departure_date",
+      "type",
+      "destination",
+      "status",
+      "sale_amount_total",
+      "margin_amount",
+      "reservation_code_air",
+      "reservation_code_hotel",
+    ])
+    const sortByParam = searchParams.get("sortBy")
+    const sortBy = sortByParam && SORTABLE_FIELDS.has(sortByParam) ? sortByParam : null
+    const sortAscending = searchParams.get("sortOrder") === "asc"
+
+    // Helper: aplica el orden pedido + tie-breaker estable por created_at
+    // (necesario para paginación consistente cuando hay empates en el campo).
+    const applyOrder = (q: any) => {
+      if (sortBy) {
+        return q
+          .order(sortBy, { ascending: sortAscending, nullsFirst: false })
+          .order("created_at", { ascending: false })
+      }
+      return q
+        .order("operation_date", { ascending: false, nullsFirst: false })
+        .order("created_at", { ascending: false })
+    }
+
     // Aplicar mismos filtros al countQuery (ya declarado arriba)
     try {
       countQuery = applyOperationsFilters(countQuery, user, agencyIds)
@@ -1191,8 +1227,8 @@ export async function GET(request: Request) {
     // OPTIMIZADO: Ejecutar count y query de datos en paralelo
     const [{ count }, operationsResult] = await Promise.all([
       countQuery,
-      query
-        .select(`
+      applyOrder(
+        query.select(`
           *,
           sellers:seller_id(name),
           sellers_secondary:seller_secondary_id(name),
@@ -1202,17 +1238,15 @@ export async function GET(request: Request) {
           operation_customers(role, customers:customer_id(id, first_name, last_name)),
           operation_operators(id, cost, cost_currency, notes, operators:operator_id(id, name))
         `)
-        .order("operation_date", { ascending: false, nullsFirst: false })
-        .order("created_at", { ascending: false })
-        .range(offset, offset + limit - 1)
+      ).range(offset, offset + limit - 1)
     ])
 
     let { data: operations, error } = operationsResult
 
     // Si hay error y es porque operation_operators no existe, intentar sin esa relación
     if (error && (error.message?.includes("operation_operators") || error.message?.includes("relation") || error.code === "PGRST116")) {
-      const retryResult = await query
-        .select(`
+      const retryResult = await applyOrder(
+        query.select(`
           *,
           sellers:seller_id(name),
           sellers_secondary:seller_secondary_id(name),
@@ -1221,9 +1255,7 @@ export async function GET(request: Request) {
           leads:lead_id(contact_name, destination),
           operation_customers(role, customers:customer_id(id, first_name, last_name))
         `)
-        .order("operation_date", { ascending: false, nullsFirst: false })
-        .order("created_at", { ascending: false })
-        .range(offset, offset + limit - 1)
+      ).range(offset, offset + limit - 1)
       
       if (retryResult.error) {
         console.error("Error fetching operations:", retryResult.error)
@@ -1366,6 +1398,19 @@ export async function GET(request: Request) {
       }
     }
 
+    // Servicios adicionales: si la flag está ON, sumar su venta a sale_amount_total
+    // para que "A cobrar" (pending_amount) refleje servicios impagos del cliente.
+    const includeServicesInSale = await getOrgFeatureFlag(
+      supabase, (user as any).org_id, FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL
+    )
+    const saleServiceExtras = includeServicesInSale && operationIds.length > 0
+      ? await getServiceExtrasByOperation(
+          supabase,
+          (operations || []).map((op: any) => ({ id: op.id, sale_currency: op.sale_currency, currency: op.currency })),
+          (user as any).org_id
+        )
+      : {}
+
     // Enriquecer operaciones con datos de pagos y cliente principal
     const enrichedOperations = (operations || []).map((op: any) => {
       const mainCustomer = op.operation_customers?.find(
@@ -1384,7 +1429,7 @@ export async function GET(request: Request) {
         currency: op.currency || "ARS" 
       }
       const balances = calculateOperationBalances({
-        saleAmount: op.sale_amount_total,
+        saleAmount: (Number(op.sale_amount_total) || 0) + ((saleServiceExtras as any)[op.id]?.saleExtra || 0),
         operatorCost: op.operator_cost,
         customerPaid: paymentData.customer_paid,
         operatorPaid: paymentData.operator_paid,

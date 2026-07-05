@@ -1,19 +1,25 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import { Check, ChevronRight, Rocket } from "lucide-react"
+import { Check, ChevronRight, Rocket, X } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { ONBOARDING_STEPS, useOnboarding } from "./use-onboarding"
+import type { PersistedOnboardingState } from "@/lib/onboarding/steps"
 
-const ALLOWED_EMAILS = ["mypupybox@gmail.com"]
-
-export function OnboardingChecklist({ userEmail }: { userEmail: string }) {
+export function OnboardingChecklist({
+  enabled,
+  initialState,
+}: {
+  enabled: boolean
+  initialState?: PersistedOnboardingState | null
+}) {
   const router = useRouter()
-  const ob = useOnboarding()
+  const ob = useOnboarding(initialState)
 
-  if (!ALLOWED_EMAILS.includes(userEmail)) return null
+  if (!enabled) return null
   if (!ob.mounted) return null
+  if (ob.hidden) return null
   if (ob.allDone && ob.dismissed) return null
   if (ob.tourActive) return null
 
@@ -27,9 +33,19 @@ export function OnboardingChecklist({ userEmail }: { userEmail: string }) {
             <Rocket className="h-4 w-4 text-primary" />
             Configurá tu agencia
           </CardTitle>
-          <span className="text-xs text-muted-foreground">
-            {ob.completedCount} de {ob.totalSteps} completos
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">
+              {ob.completedCount} de {ob.totalSteps} completos
+            </span>
+            <button
+              onClick={ob.hideChecklist}
+              title="No volver a mostrar"
+              aria-label="Descartar configuración"
+              className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
         <Progress value={pct} className="mt-2 h-1" />
       </CardHeader>

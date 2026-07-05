@@ -11,7 +11,8 @@ import { Input } from "@/components/ui/input"
 import { DecimalInput } from "@/components/ui/decimal-input"
 import { DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
 import { Badge } from "@/components/ui/badge"
-import { Save, Loader2, Info } from "lucide-react"
+import { Save, Loader2, Info, AlertTriangle } from "lucide-react"
+import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
 import {
   Breadcrumb,
   BreadcrumbList,
@@ -52,6 +53,10 @@ export function FinancesSettingsPageClient() {
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  // Flag per-org (organization_settings, separado de financial_settings):
+  // contar servicios adicionales impagos como deuda del cliente (CxC).
+  const [includeServicesInDebt, setIncludeServicesInDebt] = useState(false)
+  const [savingFlag, setSavingFlag] = useState(false)
   const [settings, setSettings] = useState<FinancialSettings>({
     primary_currency: "USD",
     enabled_currencies: ["ARS", "USD"],
@@ -84,6 +89,23 @@ export function FinancesSettingsPageClient() {
 
       const data = await response.json()
       setSettings((prev) => ({ ...prev, ...data }))
+
+      // Cargar la feature flag desde organization_settings (store separado).
+      try {
+        const flagRes = await fetch(
+          `/api/settings/organization?key=${FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL}`
+        )
+        if (flagRes.ok) {
+          const flagJson = await flagRes.json()
+          const row = (flagJson.data || []).find(
+            (r: any) => r.key === FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL
+          )
+          const v = String(row?.value ?? "").trim().toLowerCase()
+          setIncludeServicesInDebt(v === "true" || v === "1" || v === "yes")
+        }
+      } catch {
+        // Non-fatal: si falla, el toggle queda en su default (false).
+      }
     } catch (error: any) {
       console.error("Error loading settings:", error)
       toast({
@@ -123,6 +145,41 @@ export function FinancesSettingsPageClient() {
       })
     } finally {
       setSaving(false)
+    }
+  }
+
+  const saveIncludeServicesFlag = async (checked: boolean) => {
+    const prev = includeServicesInDebt
+    setIncludeServicesInDebt(checked) // optimista
+    setSavingFlag(true)
+    try {
+      const res = await fetch("/api/settings/organization", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key: FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL,
+          value: checked ? "true" : "false",
+        }),
+      })
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}))
+        throw new Error(e.error || "No se pudo guardar")
+      }
+      toast({
+        title: "Configuración guardada",
+        description: checked
+          ? "Los servicios adicionales impagos ahora cuentan como deuda del cliente."
+          : "Los servicios adicionales ya no se cuentan en la deuda.",
+      })
+    } catch (err: any) {
+      setIncludeServicesInDebt(prev) // revertir
+      toast({
+        title: "Error",
+        description: err.message || "No se pudo guardar la configuración",
+        variant: "destructive",
+      })
+    } finally {
+      setSavingFlag(false)
     }
   }
 
@@ -187,6 +244,7 @@ export function FinancesSettingsPageClient() {
         <TabsList>
           <TabsTrigger value="currencies">Monedas</TabsTrigger>
           <TabsTrigger value="taxes">Impuestos</TabsTrigger>
+          <TabsTrigger value="operations">Operaciones</TabsTrigger>
         </TabsList>
 
         {/* Tab: Monedas */}
@@ -503,6 +561,56 @@ export function FinancesSettingsPageClient() {
                     setSettings({ ...settings, iibb_convenio_multilateral: checked })
                   }
                 />
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Tab: Operaciones */}
+        <TabsContent value="operations" className="space-y-4">
+          <Card className="rounded-xl border-border/40">
+            <CardHeader>
+              <CardTitle>Servicios adicionales en la deuda</CardTitle>
+              <CardDescription>
+                Cómo se contabilizan los servicios extra (asistencia, asiento, transfer, etc.)
+                cargados en una operación, además del viaje base.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-start justify-between gap-4 rounded-lg border border-border/40 bg-muted/10 p-4">
+                <div className="space-y-1">
+                  <Label htmlFor="include_services_in_sale_total" className="text-sm font-medium">
+                    Contar servicios adicionales impagos como deuda del cliente (CxC)
+                  </Label>
+                  <p className="text-xs text-muted-foreground max-w-xl">
+                    Si un cliente compró un servicio extra (asistencia, asiento, etc.) con precio de
+                    venta y todavía no lo pagó, ese monto se cuenta como cuenta por cobrar y suma a
+                    la venta en reportes y dashboard. Afecta toda la historia al instante y es
+                    reversible.
+                  </p>
+                </div>
+                <Switch
+                  id="include_services_in_sale_total"
+                  checked={includeServicesInDebt}
+                  disabled={savingFlag}
+                  onCheckedChange={saveIncludeServicesFlag}
+                />
+              </div>
+
+              <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3">
+                <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                <div className="text-xs text-muted-foreground space-y-1">
+                  <p>
+                    <strong>Activalo solo si cargás los servicios como extras aparte del precio
+                    base.</strong> Si el precio base de la operación ya incluye el servicio y además
+                    lo cargás como servicio adicional (por ejemplo, solo para el itinerario), la
+                    deuda se contaría duplicada.
+                  </p>
+                  <p>
+                    Ante la duda, pedile al equipo técnico que corra la auditoría de servicios antes
+                    de activarlo.
+                  </p>
+                </div>
               </div>
             </CardContent>
           </Card>

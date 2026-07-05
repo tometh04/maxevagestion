@@ -3,6 +3,9 @@ import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { getUserAgencyIds } from "@/lib/permissions-api"
 import { buildExchangeRateMap, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
+import { getOrgFeatureFlag } from "@/lib/settings/org-features"
+import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
+import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
 
 export const dynamic = "force-dynamic"
 
@@ -72,11 +75,21 @@ export async function GET(request: Request) {
     // Se computa por operación igual que el reporte de deudores
     // (/api/accounting/debts-sales), usando departure_date como vencimiento del
     // cobro (hay que cobrar antes del viaje). Se convierte a USD para el total.
+    // Servicios adicionales: si la flag está ON, una op con venta base 0 puede
+    // tener servicios impagos → deuda. Por eso NO filtramos .gt("sale_amount_total",0)
+    // cuando la flag está ON (esas ops quedarían fuera del fetch). Con flag OFF se
+    // conserva el filtro por perf.
+    const includeServices = await getOrgFeatureFlag(
+      supabase, orgId, FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL
+    )
+
     let opsQuery = (supabase.from("operations") as any)
       .select("id, sale_amount_total, sale_currency, currency, departure_date, created_at, agency_id")
       .eq("org_id", orgId)
       .neq("status", "CANCELLED")
-      .gt("sale_amount_total", 0)
+    if (!includeServices) {
+      opsQuery = opsQuery.gt("sale_amount_total", 0)
+    }
 
     if (agencyIdFilter && agencyIdFilter !== "ALL") {
       opsQuery = opsQuery.eq("agency_id", agencyIdFilter)
@@ -87,8 +100,15 @@ export async function GET(request: Request) {
     const { data: ops } = await opsQuery
     const opList = (ops || []) as any[]
 
+    const serviceExtras = includeServices && opList.length > 0
+      ? await getServiceExtrasByOperation(supabase, opList, orgId)
+      : {}
+
     // Pagos PAID del cliente por operación (chunked: .in() revienta URL con >300 UUIDs).
-    type RawPayment = { amount: number; currency: string; exchange_rate: number | null; amount_usd: number | null }
+    // Deuda NETA: cobros INCOME (sign +1) − devoluciones EXPENSE (sign -1). Una
+    // devolución reduce lo aportado neto por el cliente → sube su deuda. Por eso
+    // ya NO filtramos direction=INCOME: traemos ambas y aplicamos el signo.
+    type RawPayment = { amount: number; currency: string; exchange_rate: number | null; amount_usd: number | null; sign: number }
     const paidByOperation: Record<string, RawPayment[]> = {}
     const opIds = opList.map((o) => o.id)
     const chunkSize = 200
@@ -98,15 +118,16 @@ export async function GET(request: Request) {
         .select("operation_id, amount, amount_usd, currency, exchange_rate, status, direction, payer_type")
         .in("operation_id", chunk)
         .eq("org_id", orgId)
-        .eq("direction", "INCOME")
         .eq("payer_type", "CUSTOMER")
       for (const p of payments || []) {
         if (p.status !== "PAID") continue
+        if (p.direction !== "INCOME" && p.direction !== "EXPENSE") continue
         ;(paidByOperation[p.operation_id] ||= []).push({
           amount: Number(p.amount) || 0,
           currency: p.currency || "ARS",
           exchange_rate: p.exchange_rate != null ? Number(p.exchange_rate) : null,
           amount_usd: p.amount_usd != null ? Number(p.amount_usd) : null,
+          sign: p.direction === "EXPENSE" ? -1 : 1,
         })
       }
     }
@@ -121,21 +142,24 @@ export async function GET(request: Request) {
     const customerResult = empty()
     for (const op of opList) {
       const saleCurrency = op.sale_currency || op.currency || "USD"
-      const saleAmount = Number(op.sale_amount_total) || 0
+      const saleAmount = (Number(op.sale_amount_total) || 0) + ((serviceExtras as any)[op.id]?.saleExtra || 0)
       const rateForOp = getRate(op.departure_date || op.created_at) || latestRate
 
       // Netear pagos en la moneda de la venta y recién después convertir a USD.
+      // sign resta las devoluciones (EXPENSE) del total aportado por el cliente.
       let paidInSaleCurrency = 0
       for (const p of paidByOperation[op.id] || []) {
+        let converted: number
         if (p.currency === saleCurrency) {
-          paidInSaleCurrency += p.amount
+          converted = p.amount
         } else if (saleCurrency === "ARS" && p.currency === "USD") {
-          paidInSaleCurrency += p.amount * (p.exchange_rate || rateForOp)
+          converted = p.amount * (p.exchange_rate || rateForOp)
         } else if (saleCurrency === "USD" && p.currency === "ARS") {
-          paidInSaleCurrency += p.amount_usd != null ? p.amount_usd : p.amount / (p.exchange_rate || rateForOp)
+          converted = p.amount_usd != null ? p.amount_usd : p.amount / (p.exchange_rate || rateForOp)
         } else {
-          paidInSaleCurrency += p.amount
+          converted = p.amount
         }
+        paidInSaleCurrency += p.sign * converted
       }
 
       const debtInSaleCurrency = Math.max(0, saleAmount - paidInSaleCurrency)

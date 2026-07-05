@@ -194,9 +194,21 @@ export function PassengerBalancesSection({
     }
   }, [operationId])
 
+  // Signal para re-fetchear allocations cuando cambia el set de cobros del
+  // cliente (ej. tras registrar un cobro con "¿Quién abona?": el diálogo hace
+  // router.refresh() que actualiza el prop `payments`). Sin esto, el useEffect
+  // de fetch sólo corre al montar y la asignación automática no se ve hasta un
+  // reload completo (F5).
+  const customerPaymentsKey = payments
+    .filter((p) => p.payer_type === "CUSTOMER" && p.direction === "INCOME" && p.status === "PAID")
+    .map((p) => p.id)
+    .sort()
+    .join(",")
+
   useEffect(() => {
     fetchAllocations()
-  }, [fetchAllocations])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchAllocations, customerPaymentsKey])
 
   // Only INCOME + PAID customer payments can be allocated
   const customerPayments = payments.filter(

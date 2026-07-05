@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
+import { createAdminClient, createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
 import { getUserAgencyIds } from "@/lib/permissions-api"
@@ -726,17 +726,31 @@ export async function POST(request: Request) {
       ip_address: getClientIP(request) || undefined,
     })
 
-    // Auto-asignar pago al pasajero seleccionado si se indicó quién abona
+    // Auto-asignar pago al pasajero seleccionado si se indicó quién abona.
+    // Usa admin client (no createServerClient): la tabla
+    // payment_passenger_allocations sufre el "RLS fantasma" documentado en
+    // /api/payments/allocations — el INSERT vía RLS user-auth devuelve 200
+    // pero no persiste nada. Por eso el auto-asignado fallaba en silencio y el
+    // cliente tenía que ir a "Asignar Pagos a Pasajeros" manualmente.
+    // Justificado: ya validamos arriba que la operación pertenece al org del
+    // user, y operation_customer_id viene del select del propio detalle.
     if (payer_operation_customer_id && payer_type === "CUSTOMER" && payment?.id) {
       try {
-        await (supabase.from("payment_passenger_allocations") as any)
+        const admin = createAdminClient()
+        const { data: insertedAlloc, error: allocError } = await (admin.from("payment_passenger_allocations") as any)
           .insert({
             payment_id: payment.id,
             operation_customer_id: payer_operation_customer_id,
             amount: parseFloat(amount),
             currency: currency || "USD",
-            created_by: user.id,
+            created_by: isValidUuid(user.id) ? user.id : null,
           })
+          .select()
+        if (allocError) {
+          console.warn("[payments POST] Error auto-asignando pago a pasajero (non-fatal):", allocError)
+        } else if (!insertedAlloc || insertedAlloc.length === 0) {
+          console.warn("[payments POST] Auto-asignado a pasajero devolvió 0 rows (revisar permisos/triggers).")
+        }
       } catch (allocError) {
         console.warn("[payments POST] Error auto-asignando pago a pasajero (non-fatal):", allocError)
       }
@@ -756,6 +770,12 @@ export async function POST(request: Request) {
     // Si status no se especifica, el default es PENDING, así que no crear movimientos
     if (finalStatus === "PAID") {
       try {
+        // Devolución al cliente (feature reintegro de seña): egreso con
+        // payer_type=CUSTOMER + direction=EXPENSE. Se trata "solo caja" — baja
+        // el saldo de la cuenta vía ledger type=EXPENSE, pero NO impacta P&L ni
+        // la deuda del cliente (esa se sigue calculando solo con INCOME).
+        const isCustomerRefund = direction === "EXPENSE" && payer_type === "CUSTOMER"
+
         // 2. Obtener datos de la operación para seller_id y operator_id (si existe operation_id)
         let sellerId: string | null = null
         let operatorId: string | null = null
@@ -818,13 +838,17 @@ export async function POST(request: Request) {
             operation_id,
             lead_id: null,
             type: ledgerType,
-            concept: direction === "INCOME" 
-              ? passengerName 
+            concept: direction === "INCOME"
+              ? passengerName
                 ? `${passengerName} (${operationCode})`
                 : `Pago de cliente recibido - Op. ${operationCode}`
-              : passengerName
-                ? `Pago a operador - ${passengerName} (${operationCode})`
-                : `Pago a operador - Op. ${operationCode}`,
+              : isCustomerRefund
+                ? passengerName
+                  ? `Devolución a cliente - ${passengerName} (${operationCode})`
+                  : `Devolución a cliente - Op. ${operationCode}`
+                : passengerName
+                  ? `Pago a operador - ${passengerName} (${operationCode})`
+                  : `Pago a operador - Op. ${operationCode}`,
             currency: currency as "ARS" | "USD",
             amount_original: parseFloat(amount),
             exchange_rate: exchangeRate,
@@ -899,7 +923,11 @@ export async function POST(request: Request) {
             financial_account_id: accountId,
             user_id: user.id,
             type: direction === "INCOME" ? "INCOME" : "EXPENSE",
-            category: direction === "INCOME" ? "SALE" : "OPERATOR_PAYMENT",
+            category: direction === "INCOME"
+              ? "SALE"
+              : isCustomerRefund
+                ? "CUSTOMER_REFUND"
+                : "OPERATOR_PAYMENT",
             amount: parseFloat(amount),
             currency: currency,
             movement_date: date_paid || new Date().toISOString().split("T")[0],
@@ -2283,7 +2311,13 @@ export async function PATCH(request: Request) {
             financial_account_id: finalAccountId,
             user_id: user.id,
             type: existingPayment.direction === "INCOME" ? "INCOME" : "EXPENSE",
-            category: existingPayment.direction === "INCOME" ? "SALE" : "OPERATOR_PAYMENT",
+            // Preservar la categoría de devolución al cliente al re-crear el
+            // movimiento de caja tras editar (misma lógica que el POST).
+            category: existingPayment.direction === "INCOME"
+              ? "SALE"
+              : (existingPayment.direction === "EXPENSE" && existingPayment.payer_type === "CUSTOMER")
+                ? "CUSTOMER_REFUND"
+                : "OPERATOR_PAYMENT",
             amount: finalAmount,
             currency: finalCurrency,
             movement_date: finalDatePaid,

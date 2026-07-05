@@ -3,6 +3,8 @@ import { es } from "date-fns/locale"
 
 export interface ReceiptPdfData {
   currentPaymentId?: string
+  /** "PAYMENT" (recibo de cobro, default) | "REFUND" (comprobante de devolución al cliente). */
+  mode?: "PAYMENT" | "REFUND"
   receiptNumber: string
   receiptScope?: "OPERATION" | "SERVICE"
   fechaFormateada: string
@@ -236,6 +238,7 @@ export async function generateReceiptPdf(data: ReceiptPdfData): Promise<void> {
   const contentWidth = pageWidth - margin * 2
   const footerReserve = 22
   const headerHeight = 33
+  const isRefund = data.mode === "REFUND"
   const receiptCurrency = data.receiptCurrency || data.currency
   const receivedNow = data.amountInReceiptCurrency ?? data.amount
   const companyName = normalizeText(data.companyName || data.agencyName, "Mi Empresa")
@@ -328,11 +331,11 @@ export async function generateReceiptPdf(data: ReceiptPdfData): Promise<void> {
       })
     }
 
-    // Pestaña derecha: solo "RECIBO Nº" sin redundancia
+    // Pestaña derecha: "RECIBO Nº" (cobro) o "COMPROBANTE Nº" (devolución)
     doc.setTextColor(...brandColor)
     doc.setFont("helvetica", "bold")
     doc.setFontSize(8.5)
-    doc.text("RECIBO Nº", pageWidth - margin, headerTop + 4, { align: "right" })
+    doc.text(isRefund ? "COMPROBANTE Nº" : "RECIBO Nº", pageWidth - margin, headerTop + 4, { align: "right" })
 
     doc.setTextColor(31, 41, 55)
     doc.setFont("helvetica", "bold")
@@ -473,6 +476,78 @@ export async function generateReceiptPdf(data: ReceiptPdfData): Promise<void> {
   // tipografía menor con divisores finos. Saldo pendiente con leve fondo brand solo si > 0.
   const drawSummaryCard = () => {
     const sameCurrency = data.currency === receiptCurrency
+
+    // Modo devolución: card con el monto reintegrado + el motivo/concepto
+    // adentro (con wrapping). Sin "total cobrado", "saldo pendiente" ni
+    // historial de cobros (no aplican a un reintegro).
+    if (isRefund) {
+      const padX = 6
+      const innerWidth = contentWidth - padX * 2
+
+      // Medir las líneas del motivo con el tamaño real de render (9pt)
+      const motivoText = normalizeText(data.concepto, "")
+      doc.setFont("helvetica", "normal")
+      doc.setFontSize(9)
+      const motivoLines: string[] = motivoText
+        ? (doc.splitTextToSize(motivoText, innerWidth) as string[])
+        : []
+
+      // Alto: bloque del monto (label + monto [+ línea de moneda]) + divisor +
+      // bloque del motivo (label + líneas) + padding
+      const heroBlockHeight = sameCurrency ? 21 : 27
+      const motivoBlockHeight = motivoLines.length > 0 ? 6 + motivoLines.length * 4 : 0
+      const refundCardHeight = heroBlockHeight + motivoBlockHeight + 6
+      ensureSpace(refundCardHeight + 4)
+
+      doc.setFillColor(255, 255, 255)
+      doc.setDrawColor(229, 231, 235)
+      doc.setLineWidth(0.4)
+      doc.roundedRect(margin, y, contentWidth, refundCardHeight, 4, 4, "FD")
+
+      doc.setFont("helvetica", "bold")
+      doc.setFontSize(7.5)
+      doc.setTextColor(...brandColor)
+      doc.text("DEVUELTO EN ESTE COMPROBANTE", margin + padX, y + 8)
+
+      doc.setFont("helvetica", "bold")
+      doc.setFontSize(18)
+      doc.setTextColor(15, 23, 42)
+      doc.text(formatCurrencyValue(receiptCurrency, receivedNow), margin + padX, y + 17)
+
+      if (!sameCurrency) {
+        doc.setFont("helvetica", "normal")
+        doc.setFontSize(8)
+        doc.setTextColor(107, 114, 128)
+        doc.text(
+          `Entregado: ${formatCurrencyValue(data.currency, data.amount)}`,
+          margin + padX,
+          y + 24
+        )
+      }
+
+      if (motivoLines.length > 0) {
+        const motivoTop = y + heroBlockHeight
+
+        // Divisor fino separando monto del motivo
+        doc.setDrawColor(241, 245, 249)
+        doc.setLineWidth(0.3)
+        doc.line(margin + padX, motivoTop - 2, pageWidth - margin - padX, motivoTop - 2)
+
+        doc.setFont("helvetica", "bold")
+        doc.setFontSize(7.1)
+        doc.setTextColor(100, 116, 139)
+        doc.text("MOTIVO", margin + padX, motivoTop + 2)
+
+        doc.setFont("helvetica", "normal")
+        doc.setFontSize(9)
+        doc.setTextColor(31, 41, 55)
+        doc.text(motivoLines, margin + padX, motivoTop + 6)
+      }
+
+      y += refundCardHeight + 6
+      return
+    }
+
     const cardHeight = 56
     ensureSpace(cardHeight + 4)
 
@@ -680,7 +755,9 @@ export async function generateReceiptPdf(data: ReceiptPdfData): Promise<void> {
       }
 
       doc.text(
-        "Este recibo es válido como comprobante de pago. No válido como factura.",
+        isRefund
+          ? "Comprobante de devolución de dinero al cliente. No válido como factura."
+          : "Este recibo es válido como comprobante de pago. No válido como factura.",
         pageWidth / 2,
         footerY + 3.2,
         { align: "center" }
@@ -766,7 +843,10 @@ export async function generateReceiptPdf(data: ReceiptPdfData): Promise<void> {
     }
   )
 
-  drawSectionHeading("Resumen financiero", `Totales en ${receiptCurrency}`)
+  drawSectionHeading(
+    isRefund ? "Detalle de la devolución" : "Resumen financiero",
+    isRefund ? undefined : `Totales en ${receiptCurrency}`
+  )
   drawSummaryCard()
 
   if (paymentHistory.length > 0) {

@@ -3,6 +3,9 @@ import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
+import { getOrgFeatureFlag } from "@/lib/settings/org-features"
+import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
+import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
 
 export async function GET(request: Request) {
   try {
@@ -58,6 +61,20 @@ export async function GET(request: Request) {
         }
 
         const { data: ops } = await query.limit(1000)
+
+        // Servicios adicionales (operation_services): si la flag está ON, sumamos
+        // su venta a sale_amount_total para que la venta_total exportada refleje
+        // también los servicios extra vendidos al cliente.
+        const includeServices = await getOrgFeatureFlag(
+          supabase, user.org_id, FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL
+        )
+        const opsList = (ops || []).map((op: any) => ({
+          id: op.id, sale_currency: op.sale_currency, currency: op.currency,
+        }))
+        const serviceExtras = includeServices && opsList.length > 0
+          ? await getServiceExtrasByOperation(supabase, opsList, user.org_id)
+          : {}
+
         data = (ops || []).map((op: any) => ({
           fecha_salida: op.departure_date ? format(new Date(op.departure_date), "dd/MM/yyyy") : "",
           destino: op.destination || "",
@@ -65,7 +82,7 @@ export async function GET(request: Request) {
           estado: op.status || "",
           adultos: op.adults || 0,
           menores: op.children || 0,
-          venta_total: op.sale_amount_total || 0,
+          venta_total: (Number(op.sale_amount_total) || 0) + ((serviceExtras as any)[op.id]?.saleExtra || 0),
           costo_operador: op.operator_cost || 0,
           margen: op.margin_amount || 0,
           moneda: op.currency || "ARS",

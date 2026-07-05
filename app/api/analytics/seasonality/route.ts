@@ -4,6 +4,9 @@ import { getCurrentUser } from "@/lib/auth"
 import { startOfMonth, endOfMonth, subMonths, format, getMonth, getYear } from "date-fns"
 import { es } from "date-fns/locale"
 import { buildExchangeRateMap, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
+import { getOrgFeatureFlag } from "@/lib/settings/org-features"
+import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
+import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
 
 export async function GET(request: Request) {
   try {
@@ -29,7 +32,7 @@ export async function GET(request: Request) {
 
     // Query base - include sale_currency for conversion
     let query = (supabase.from("operations") as any)
-      .select("sale_amount_total, sale_currency, margin_amount, currency, departure_date, created_at")
+      .select("id, sale_amount_total, sale_currency, margin_amount, currency, departure_date, created_at")
       .in("status", ["CONFIRMED", "TRAVELLED", "CLOSED"])
       .gte("created_at", startDate.toISOString())
       .lte("created_at", endDate.toISOString())
@@ -90,12 +93,25 @@ export async function GET(request: Request) {
       }
     }
 
+    // Servicios adicionales (operation_services): si la flag está ON, sumamos
+    // su venta a sale_amount_total para que la venta bruta mensual refleje también
+    // los servicios extra vendidos al cliente.
+    const includeServices = (user as any).org_id
+      ? await getOrgFeatureFlag(supabase, (user as any).org_id, FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL)
+      : false
+    const opsList = operationsArray.map((op: any) => ({
+      id: op.id, sale_currency: op.sale_currency, currency: op.currency,
+    }))
+    const serviceExtras = includeServices && opsList.length > 0
+      ? await getServiceExtrasByOperation(supabase, opsList, (user as any).org_id)
+      : {}
+
     // Agregar datos de operaciones (convertidos a USD)
     for (const op of operationsArray) {
       const date = new Date(op.created_at)
       const key = format(date, "yyyy-MM")
       if (monthsData[key]) {
-        const saleAmount = parseFloat(op.sale_amount_total || "0")
+        const saleAmount = (parseFloat(op.sale_amount_total || "0") || 0) + ((serviceExtras as any)[op.id]?.saleExtra || 0)
         const marginAmount = parseFloat(op.margin_amount || "0")
         const saleCurrency = op.sale_currency || op.currency || "USD"
 

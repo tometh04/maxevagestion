@@ -5,6 +5,9 @@ import { getUserAgencyIds } from "@/lib/permissions-api"
 import { subMonths, startOfMonth, endOfMonth, format, parseISO, differenceInDays, eachDayOfInterval, startOfDay, endOfDay } from "date-fns"
 import { es } from "date-fns/locale"
 import { getExchangeRate, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
+import { getOrgFeatureFlag } from "@/lib/settings/org-features"
+import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
+import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
 
 export const dynamic = 'force-dynamic'
 
@@ -113,6 +116,29 @@ export async function GET(request: Request) {
     // Obtener tasa de cambio más reciente como fallback
     const latestExchangeRate = await getLatestExchangeRate(supabase) || DEFAULT_USD_ARS_FALLBACK_RATE
 
+    // Servicios adicionales (operation_services): si la flag está ON, sumamos su
+    // venta a sale_amount_total para que el gasto del cliente refleje también los
+    // servicios extra que compró.
+    const includeServices = await getOrgFeatureFlag(
+      supabase, userOrgId, FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL
+    )
+    let serviceExtras: Record<string, { saleExtra: number; costExtra: number }> = {}
+    if (includeServices) {
+      const opsForExtras: { id: string; sale_currency?: string | null; currency?: string | null }[] = []
+      const seenOpIds = new Set<string>()
+      for (const customer of filteredCustomers as any[]) {
+        for (const oc of (customer.operation_customers || []) as any[]) {
+          const op = oc.operations
+          if (!op?.id || seenOpIds.has(op.id)) continue
+          seenOpIds.add(op.id)
+          opsForExtras.push({ id: op.id, sale_currency: op.sale_currency, currency: op.currency })
+        }
+      }
+      if (opsForExtras.length > 0) {
+        serviceExtras = await getServiceExtrasByOperation(supabase, opsForExtras, userOrgId)
+      }
+    }
+
     // Estadísticas generales
     const totalCustomers = filteredCustomers.length
 
@@ -208,8 +234,8 @@ export async function GET(request: Request) {
       let totalSpent = 0
       for (const op of operations) {
         const saleCurrency = op.sale_currency || op.currency || "USD"
-        const saleAmount = parseFloat(op.sale_amount_total) || 0
-        
+        const saleAmount = (parseFloat(op.sale_amount_total) || 0) + ((serviceExtras as any)[op.id]?.saleExtra || 0)
+
         if (saleCurrency === "ARS") {
           const operationDate = op.departure_date || op.created_at
           let exchangeRate = await getExchangeRate(supabase, operationDate ? new Date(operationDate) : new Date())

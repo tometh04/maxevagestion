@@ -68,6 +68,18 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const { key, value } = body
 
+    // Guard de rol para feature flags: cambiar `features.*` (ej. contar servicios
+    // en la deuda) impacta contabilidad de toda la org → solo roles financieros.
+    if (typeof key === "string" && key.startsWith("features.")) {
+      const allowed = ["ADMIN", "SUPER_ADMIN", "CONTABLE"]
+      if (!allowed.includes(user.role)) {
+        return Response.json(
+          { error: "No tenés permiso para cambiar esta configuración" },
+          { status: 403 }
+        )
+      }
+    }
+
     const supabase = await createServerClient()
     const updatedAt = new Date().toISOString()
     const syncAddressKeys = key === "address" || key === "company_address"

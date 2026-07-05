@@ -8,6 +8,9 @@ import {
   getLatestExchangeRate,
   DEFAULT_USD_ARS_FALLBACK_RATE,
 } from "@/lib/accounting/exchange-rates"
+import { getOrgFeatureFlag } from "@/lib/settings/org-features"
+import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
+import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
 
 /**
  * GET /api/reports/closing?months=6&agencyId=ALL
@@ -194,6 +197,19 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: opsErr.message }, { status: 500 })
     }
 
+    // Servicios adicionales (operation_services): si la flag está ON, sumamos su
+    // venta a sale_amount_total para que el total de ventas del cierre incluya
+    // los servicios extra vendidos al cliente.
+    const includeServices = await getOrgFeatureFlag(
+      supabase, user.org_id, FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL
+    )
+    const opsList = (operations || []).map((op: any) => ({
+      id: op.id, sale_currency: op.sale_currency, currency: op.currency,
+    }))
+    const serviceExtras = includeServices && opsList.length > 0
+      ? await getServiceExtrasByOperation(supabase, opsList, user.org_id)
+      : {}
+
     // ---------------------------------------------------------------------
     // 3. Cash movements EXPENSE no-turísticos (Variables + Impuestos one-off)
     //
@@ -320,7 +336,8 @@ export async function GET(request: Request) {
       if (!b) continue
       const cur = op.sale_currency || op.currency || "USD"
       const fxDate = op.departure_date || op.operation_date
-      b.total_sales_usd += toUsd(Number(op.sale_amount_total) || 0, cur, fxDate)
+      const saleAmount = (Number(op.sale_amount_total) || 0) + ((serviceExtras as any)[op.id]?.saleExtra || 0)
+      b.total_sales_usd += toUsd(saleAmount, cur, fxDate)
       b.total_margin_usd += toUsd(Number(op.margin_amount) || 0, cur, fxDate)
       b.ops_count++
     }

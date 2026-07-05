@@ -148,15 +148,28 @@ export async function GET(request: Request) {
     // Sort all by movement_date descending
     allExpenses.sort((a, b) => new Date(b.movement_date).getTime() - new Date(a.movement_date).getTime())
 
-    // Calculate totals
+    // Calculate totals. El total ARS/USD suma AMBOS tipos (fijos + variables).
+    // Además desglosamos el monto por tipo para mostrarlo en las tarjetas.
     let totalARS = 0
     let totalUSD = 0
+    let arsRecurring = 0
+    let arsVariable = 0
+    let usdRecurring = 0
+    let usdVariable = 0
     let countRecurring = 0
     let countVariable = 0
     for (const e of allExpenses) {
-      if (e.currency === "ARS") totalARS += e.amount
-      else if (e.currency === "USD") totalUSD += e.amount
-      if (e.expense_type === "recurring") countRecurring++
+      const isRecurring = e.expense_type === "recurring"
+      if (e.currency === "ARS") {
+        totalARS += e.amount
+        if (isRecurring) arsRecurring += e.amount
+        else arsVariable += e.amount
+      } else if (e.currency === "USD") {
+        totalUSD += e.amount
+        if (isRecurring) usdRecurring += e.amount
+        else usdVariable += e.amount
+      }
+      if (isRecurring) countRecurring++
       else countVariable++
     }
 
@@ -168,6 +181,10 @@ export async function GET(request: Request) {
         count: allExpenses.length,
         countRecurring,
         countVariable,
+        arsRecurring: roundMoney(arsRecurring),
+        arsVariable: roundMoney(arsVariable),
+        usdRecurring: roundMoney(usdRecurring),
+        usdVariable: roundMoney(usdVariable),
       },
     })
   } catch (error: any) {

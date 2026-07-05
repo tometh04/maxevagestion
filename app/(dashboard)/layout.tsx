@@ -9,6 +9,8 @@ import { PerfNavLogger } from "@/components/perf-nav-logger"
 import { TawkWidget } from "@/components/integrations/tawk-widget"
 import { isTawkUser } from "@/lib/tawk-config"
 import { OnboardingTour } from "@/components/onboarding/onboarding-tour"
+import { isOnboardingEligible } from "@/lib/onboarding/eligibility"
+import { getOrgOnboardingState } from "@/lib/onboarding/server"
 import { CheckinReminderModal } from "@/components/alerts/checkin-reminder-modal"
 import {
   SidebarInset,
@@ -73,6 +75,13 @@ export default async function DashboardLayout({
     name: ua.agencies?.name || "Sin nombre",
   }))
 
+  // Onboarding de bienvenida: visible para cuentas nuevas (<30 días) con rol
+  // capaz de hacer el setup. El progreso vive a nivel ORG (organization_settings)
+  // para que se comparta entre admins y no se rehagan pasos ya completados.
+  const onboardingEligible = isOnboardingEligible(user)
+  const onboardingState =
+    onboardingEligible && user.org_id ? await getOrgOnboardingState(user.org_id) : null
+
   t.end(`role=${user.role} agencies=${agencies.length}`)
 
   return (
@@ -122,7 +131,7 @@ export default async function DashboardLayout({
             (ver components/integrations/tawk-widget.tsx). Default: solo
             mypupybox@gmail.com. Cero impacto en otros tenants. */}
         <TawkWidget userEmail={user.email} />
-        <OnboardingTour userEmail={user.email} />
+        <OnboardingTour enabled={onboardingEligible} initialState={onboardingState} />
         <CheckinReminderModal />
       </SidebarProvider>
     </BrandProvider>
