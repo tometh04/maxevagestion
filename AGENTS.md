@@ -1,398 +1,663 @@
 # AGENTS.md
 
-This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
+Guia para agentes y desarrolladores que trabajan en este repositorio.
 
-## Project Overview
+La fuente de verdad es el codigo actual. Algunos documentos historicos del repo
+siguen mencionando MAXEVA, Lozada o Trello como arquitectura principal; tratar
+esas referencias como contexto legacy salvo que el codigo actual lo confirme.
 
-**MAXEVA GESTION** is a comprehensive travel agency management system (ERP) built with Next.js 14+ App Router, TypeScript, Supabase (PostgreSQL), and shadcn/ui. The system manages the complete business flow: leads from Trello → operations → payments → accounting → commissions.
+## Proyecto
 
-**Status**: ~98% complete, production-ready with some improvements pending.
+Vibook / MAXEVA Gestion es un SaaS multi-tenant para agencias de viajes. Conserva
+el nucleo ERP historico de ventas, operaciones, pagos, caja, contabilidad,
+comisiones, documentos y alertas, pero hoy tambien incluye:
 
-## Development Commands
+- Billing, paywall y onboarding por Mercado Pago.
+- Platform admin global separado de los roles de tenant.
+- Permisos dinamicos por agencia y soporte multi-rol.
+- Integraciones Manychat, Callbell, ChatSell, Eve, Emilia, WhatsApp/WHA Control,
+  AFIP, OpenAI, web push y Tawk.
+- Imports masivos, soporte, knowledge base, feature flags por tenant y crons en
+  Railway.
+
+La regla mental correcta para trabajar aca es: primero multi-tenant, permisos,
+service role e invariantes financieras; despues el modulo funcional.
+
+## Comandos
 
 ```bash
-# Development
-npm run dev              # Start dev server on port 3044
-npm start               # Start production server on port 3005
+# Desarrollo
+npm run dev              # Next dev server en puerto 3067
+npm start                # Next production server en puerto 3005
 
-# Build
-npm run build           # Build for production
-npm run lint            # Run ESLint
+# Build y lint
+npm run build            # Build production
+npm run lint             # next lint + check de createAdminClient allowlist
+npm run check:admin-client
 
 # Testing
-npm run test            # Run Jest tests
-npm run test:watch      # Run tests in watch mode
-npm run test:coverage   # Run tests with coverage report
+npm run test
+npm run test:watch
+npm run test:coverage
+npm run test:isolation
 
-# Database
-npm run db:generate     # Generate TypeScript types from Supabase schema
-npm run db:seed         # Seed database with initial data
-npm run db:seed:mock    # Seed database with mock data for testing
-npm run db:check        # Verify tables exist in database
+# Database / scripts
+npm run db:generate      # Regenera lib/supabase/types.ts
+npm run db:seed
+npm run db:seed:mock
+npm run db:check
 ```
 
-## Architecture Overview
+`npm run lint` ejecuta `scripts/check-admin-client.sh`. Si agregas un uso legitimo
+de `createAdminClient()`, tambien tenes que actualizar
+`scripts/admin-client-allowlist.txt` con una justificacion concreta.
 
-### Tech Stack
-- **Frontend**: Next.js 15+ (App Router), React 18, TypeScript
-- **UI Components**: shadcn/ui (Radix UI primitives) - ONLY use these components
-- **Styling**: TailwindCSS with custom configuration
-- **Database**: Supabase (PostgreSQL) with Row Level Security
-- **Authentication**: Supabase Auth with role-based access control
-- **External Integrations**:
-  - OpenAI GPT-4o (OCR for documents, AI Copilot)
-  - Trello API (bidirectional sync for sales pipeline)
+## Stack
 
-### Project Structure
+- Next.js 15 App Router, React 18, TypeScript.
+- Supabase Postgres/Auth/Storage con RLS.
+- `@supabase/ssr` para server/browser clients.
+- TailwindCSS + shadcn/ui/Radix + tokens Vibook en `app/globals.css`.
+- Jest para unit/route tests; Playwright esta instalado para pruebas browser.
+- OpenAI para OCR, AI/Cerebro y algunos clasificadores.
+- Mercado Pago para suscripciones.
+- AFIP SDK para facturacion electronica.
 
-```
-maxevagestion/
-├── app/
-│   ├── (auth)/              # Authentication pages (login, reset-password, etc.)
-│   ├── (dashboard)/         # Protected dashboard pages
-│   │   ├── dashboard/       # Main dashboard with KPIs
-│   │   ├── sales/leads/     # Leads management (Kanban + Table)
-│   │   ├── operations/      # Operations CRUD
-│   │   ├── customers/       # Customer management
-│   │   ├── operators/       # Operator/supplier management
-│   │   ├── cash/            # Cash flow and payments
-│   │   ├── accounting/      # Ledger, IVA, financial accounts, operator payments
-│   │   ├── alerts/          # Automated alert system
-│   │   ├── reports/         # Business reports and analytics
-│   │   ├── my/              # Seller-specific views (commissions, balance)
-│   │   └── settings/        # System configuration
-│   ├── api/                 # Next.js API routes
-│   └── layout.tsx           # Root layout
-├── components/
-│   ├── ui/                  # shadcn/ui components (DO NOT modify, regenerate if needed)
-│   ├── dashboard/           # Dashboard-specific components
-│   ├── sales/               # Sales and leads components
-│   ├── cash/                # Cash and payment components
-│   └── settings/            # Settings components
-├── lib/
-│   ├── accounting/          # Accounting logic (ledger, IVA, FX, commissions)
-│   ├── ai/                  # AI Copilot tools and context
-│   ├── alerts/              # Alert generation logic
-│   ├── commissions/         # Commission calculation
-│   ├── permissions.ts       # Role-based permission system
-│   ├── auth.ts              # Authentication utilities
-│   ├── supabase/            # Supabase clients (client.ts, server.ts, types.ts)
-│   └── trello/              # Trello integration
-├── supabase/migrations/     # Database migration SQL files
-└── scripts/                 # Utility scripts (seed, verify-tables, etc.)
+## Estructura de alto nivel
+
+```text
+app/
+  (auth)/                 Auth, reset password, invites
+  (dashboard)/            Aplicacion principal protegida del tenant
+  admin/                  Platform admin global
+  onboarding/             Alta de tenant y billing
+  paywall/                Bloqueo/regularizacion de suscripcion
+  cotizacion/             Vistas publicas por token
+  api/                    APIs, webhooks, crons, billing, AI, imports
+components/
+  ui/                     Base shadcn/ui
+  <dominio>/              Componentes por modulo de producto
+lib/
+  supabase/               Clients, admin scope, tipos
+  auth*, permissions*     Auth, roles, permisos dinamicos
+  accounting/             Ledger, FX, IVA, journal, operator payments
+  billing/                Planes, guard, state machine MP, limites
+  integrations/           Manychat, Callbell, ChatSell, Eve, HMAC/secrets
+  ai/, emilia/, invoices/, afip/, payments/, operations/, ...
+supabase/migrations/      Schema, RLS, SaaS, billing, hardening
+scripts/                  Seeds, checks, imports, fixes, QA
 ```
 
-## Key Architectural Patterns
+## Reglas no negociables
 
-### 1. Role-Based Access Control (RBAC)
+1. **Multi-tenant first**: todo endpoint user-facing debe exigir `user.org_id` y
+   filtrar explicitamente por `org_id` cuando la tabla lo tenga.
+2. **No confiar solo en RLS**: RLS es defensa en profundidad, no la unica capa.
+3. **`SUPER_ADMIN` no es global**: normalmente es owner/admin dentro de un tenant.
+   El acceso global real vive en `platform_admins` y se valida con
+   `isPlatformAdmin()`.
+4. **`createAdminClient()` bypasea RLS**: usarlo solo en casos justificados y
+   listados en `scripts/admin-client-allowlist.txt`.
+5. **Si hay tenant conocido, scopear**: preferir `createOrgAdminScope(orgId)` o
+   queries con `.eq("org_id", orgId)`.
+6. **Writes financieros requieren idempotencia**: usar idempotency keys, CAS
+   guards, validacion de saldo y tests cuando corresponda.
+7. **No silenciar fallas contables criticas**: notificaciones pueden fallar sin
+   romper el flujo; ledger, caja, counterparts, FX, percepciones, operator
+   payments y billing no deben quedar inconsistentes sin alerta/audit.
+8. **No exponer secrets al browser**: nunca usar service role ni secrets privados
+   en componentes cliente.
 
-**Roles** (defined in `lib/permissions.ts`):
-- `SUPER_ADMIN` - Full access to everything
-- `ADMIN` - Operational and financial access
-- `CONTABLE` - Accounting-focused access
-- `SELLER` - Limited to own leads/operations/commissions
-- `VIEWER` - Read-only access
+## Contrato de arquitectura y system design
 
-**Permission Checks**:
-- Use `canPerformAction(role, module, permission)` for granular checks
-- Use `shouldShowInSidebar(role, moduleId)` for UI visibility
-- API routes MUST call `getCurrentUser()` to verify authentication
+Este archivo es el contrato de trabajo del repo. Las reglas de arquitectura no
+son sugerencias: si una tarea pide una solucion que las rompe, primero explicitar
+el conflicto y proponer el cambio de diseno minimo.
 
-### 2. Supabase Client Usage
+### Capas permitidas
 
-**Server Components & API Routes**:
-```typescript
-import { createServerClient } from '@/lib/supabase/server'
-const supabase = await createServerClient()
+Flujo normal para funcionalidades user-facing:
+
+```txt
+UI / Client Component
+  -> Server Component, Server Action o API route
+  -> lib/<bounded-context>/ servicio de dominio
+  -> Supabase client scoped al request
+  -> PostgreSQL / RLS / constraints / triggers
 ```
 
-**Client Components**:
-```typescript
-import { createClient } from '@/lib/supabase/client'
-const supabase = createClient()
+Reglas:
+
+- La UI no debe contener reglas de negocio criticas, calculos financieros,
+  autorizacion ni acceso directo con service role.
+- La API route o Server Action posee transporte, auth, parsing, validacion y
+  mapeo de errores.
+- `lib/<dominio>/` posee reglas de negocio, invariantes, idempotencia y
+  transformaciones testeables.
+- La base de datos posee constraints, RLS, indices y triggers cuando protegen
+  integridad compartida entre flujos.
+- No crear "god routes" ni helpers genericos que mezclen tenant, permisos,
+  finanzas e integraciones.
+
+### Bounded contexts
+
+Respetar los limites naturales del sistema:
+
+- `auth`, `permissions`, `billing` y `platform-admin` definen acceso.
+- `organizations`, `agencies`, `users` y membership definen tenancy.
+- `operations`, `customers`, `operators` y `sales` definen negocio operativo.
+- `payments`, `cash`, `accounting`, `invoices`, `afip`, `commissions` y
+  `operator-payments` definen plata, impuestos y ledger.
+- `integrations`, `webhooks`, `notifications`, `manychat`, `callbell`,
+  `chatsell`, `emilia` y `trello` definen bordes externos.
+- `ai` y `cerebro` consumen herramientas controladas; no deben saltear permisos
+  ni inventar acceso directo a tablas sensibles.
+
+Si una modificacion cruza contextos, definir primero el ownership de datos y el
+contrato entre modulos. No duplicar reglas de un contexto en otro para "salir
+rapido".
+
+### Reglas de decision
+
+- Nuevo flujo de dinero: disenar idempotencia, atomicidad, auditoria y pruebas
+  antes de escribir UI.
+- Nueva tabla o columna sensible: agregar migracion, RLS/policies, indices,
+  tipos regenerados y documentar impacto multi-tenant.
+- Nueva integracion externa: validar firma/token, registrar evento entrante,
+  hacer procesamiento idempotente y evitar logs con secrets.
+- Nuevo permiso o rol: actualizar `lib/permissions.ts`,
+  `lib/permissions-agency.ts` si aplica, UI sidebar/actions y tests.
+- Nuevo dashboard o pantalla operacional: usar componentes existentes,
+  server-side data loading cuando sea posible y acciones que refresquen estado
+  sin exigir F5.
+- Nueva abstraccion: crearla solo si reduce duplicacion real o encapsula una
+  regla de dominio estable. Evitar wrappers sin comportamiento.
+- Cambio cross-cutting: agregar o actualizar una nota tecnica en `docs/` antes
+  de dejar reglas implicitas en el codigo.
+
+### Anti-patrones a evitar
+
+- Query user-facing sin `org_id` cuando la tabla es tenant-scoped.
+- `createAdminClient()` en endpoints de usuario sin allowlist y justificacion.
+- "Arreglar" permisos ocultando botones pero dejando la API abierta.
+- Calculos de ledger, saldo, comision, IVA, AFIP o billing dentro de componentes.
+- Payloads `req.json()` sin validacion para writes.
+- Casts `as any` para tapar tipos stale despues de migraciones.
+- Refactors grandes mezclados con cambios de comportamiento.
+- Copiar patrones legacy de Trello si el flujo actual usa integraciones modernas.
+
+## Flujo de trabajo para agentes y humanos
+
+Antes de editar:
+
+1. Leer este `AGENTS.md`, el archivo tocado, sus tests cercanos, migraciones
+   relevantes y docs del contexto.
+2. Identificar el bounded context, la capa donde corresponde el cambio y los
+   invariantes que no pueden romperse.
+3. Si la tarea es ambigua en negocio, dinero, seguridad o datos multi-tenant,
+   frenar y pedir aclaracion concreta.
+
+Durante la implementacion:
+
+- Preferir cambios verticales chicos: contrato/API, dominio, UI y test focalizado.
+- Mantener la convencion local del modulo antes de introducir una nueva.
+- No ampliar permisos, service role, scopes de datos ni dependencias externas por
+  conveniencia.
+- Si se toca una regla compartida, buscar consumidores con `rg` y revisar el
+  impacto real.
+
+Antes de cerrar:
+
+- Ejecutar el check mas especifico disponible y reportar si no se pudo correr.
+- Revisar el diff buscando fuga de tenant, fuga de permisos, stale UI, errores
+  silenciosos e inconsistencias financieras.
+- Para UI, validar estados de loading, empty, error, disabled y responsive cuando
+  el cambio sea visible para usuarios.
+
+## Skills, reglas y enforcement del proyecto
+
+Si se usan agentes, este repo debe combinar tres capas:
+
+- **`AGENTS.md`**: contrato durable del repo. Debe mantenerse practico y cerca de
+  reglas que se repiten. Si un subdirectorio necesita reglas especiales, agregar
+  un `AGENTS.md` o `AGENTS.override.md` mas cercano a ese codigo.
+- **`.agents/skills`**: workflows reutilizables. Ya existe `impeccable` para UI.
+  Se pueden agregar skills de arquitectura, debugging o TDD al proyecto si el
+  equipo los usa repetidamente.
+- **`CLAUDE.md`**: adaptador para Claude Code. Debe importar este archivo con
+  `@AGENTS.md` y dejar reglas largas o path-specific en `.claude/rules/`.
+- **Checks ejecutables**: lint, tests, scripts, hooks o CI. Todo invariant que
+  deba ser obligatorio debe estar respaldado por codigo, no solo por texto.
+
+El enfoque de repos como `mattpocock/skills` aplica bien como workflow
+project-level: skills chicas, composables y enfocadas en diagnostico,
+arquitectura, TDD, review o modelado de dominio. No deben reemplazar las reglas
+locales de este archivo. Si se adopta una skill externa, adaptarla al vocabulario
+del repo y no permitir que contradiga multi-tenancy, permisos o finanzas.
+
+Usar skills cuando el trabajo sea repetible y tenga pasos claros. Usar
+`AGENTS.md` para reglas de arquitectura y comandos. Usar scripts/tests para
+enforcement.
+
+## Auth, tenants y permisos
+
+### Usuario actual
+
+Usar siempre:
+
+```ts
+import { getCurrentUser } from "@/lib/auth"
+
+const { user } = await getCurrentUser()
 ```
 
-**IMPORTANT**: NEVER use service role key on the client. Always use appropriate client based on context.
+`getCurrentUser()` devuelve el row de `users` y agrega `user.roles`, fusionando
+`role` + `additional_roles`. Usa `React.cache()` para deduplicar dentro del
+mismo request.
 
-### 3. Accounting System
+El bypass `DISABLE_AUTH=true` solo es valido en `NODE_ENV=development`. Fuera de
+development, `instrumentation.ts`, `middleware.ts` y `lib/auth.ts` lo bloquean o
+lo ignoran defensivamente.
 
-The system implements **double-entry bookkeeping** via `ledger_movements` table:
+### Roles actuales
 
-- Every financial transaction creates TWO ledger movements (debit + credit)
-- Automatic ledger creation when:
-  - Payment marked as PAID → creates ledger_movement
-  - Cash movement created → creates ledger_movement
-  - Lead deposit received → creates ledger_movement
-  - Lead converted to operation → transfers ledger_movements
-  - Commission paid → creates ledger_movement
+Roles definidos en `lib/permissions.ts`:
 
-**Multi-currency Support**:
-- All amounts stored in original currency + ARS equivalent
-- FX gains/losses automatically detected and recorded
-- Service: `lib/accounting/fx.ts`
+- `SUPER_ADMIN`
+- `ORG_OWNER`
+- `ADMIN`
+- `CONTABLE`
+- `SELLER`
+- `VIEWER`
+- `POST_VENTA`
 
-**Key Services**:
-- `lib/accounting/ledger.ts` - Core ledger logic
-- `lib/accounting/iva.ts` - VAT/IVA calculations
-- `lib/accounting/fx.ts` - Foreign exchange handling
-- `lib/commissions/calculate.ts` - Commission calculations
+`ORG_OWNER` es alias SaaS de owner de tenant. `POST_VENTA` gestiona seguimiento
+post-cierre. Los usuarios pueden tener roles adicionales.
 
-### 4. Trello Integration
+### Permisos
 
-**Bidirectional Sync**:
-- Trello cards → Leads (via webhooks in real-time)
-- Leads → Trello cards (when creating/updating leads)
-- Automatic field extraction: phone, email, destination, seller assignment
-- Webhooks handled at `/api/trello/webhook` (NO authentication required)
+Hay dos capas:
 
-**Configuration**: Settings → Trello tab
+- Defaults estaticos en `lib/permissions.ts`.
+- Overrides dinamicos por agencia en `lib/permissions-agency.ts`, tabla
+  `agency_role_permissions`.
 
-### 5. Alert System
+Patron recomendado en APIs:
 
-Automatic generation of alerts for:
-- Payment reminders (customer & operator)
-- Upcoming trips (48-72h before departure)
-- Missing documentation
-- Low cash balance
-- IVA payments due
-- FX losses
+```ts
+import { getUserAgencyIds, canPerformAction } from "@/lib/permissions-api"
+import { resolveUserPermissions } from "@/lib/permissions-agency"
 
-Service: `lib/alerts/generate.ts`
+const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
+const perms = await resolveUserPermissions(
+  supabase as any,
+  user.id,
+  user.org_id,
+  (user as any).roles ?? [user.role],
+  agencyIds
+)
 
-## Development Guidelines
-
-### UI Components
-
-**CRITICAL**: ONLY use shadcn/ui components from `components/ui/`. Do NOT create custom UI primitives.
-
-Common components:
-- Forms: `Form`, `Input`, `Select`, `Textarea`, `Checkbox`, `RadioGroup`
-- Data: `Table`, `Card`, `Badge`, `Separator`
-- Overlays: `Dialog`, `Sheet`, `AlertDialog`, `Popover`, `DropdownMenu`
-- Navigation: `Tabs`, `Accordion`, `Command` (for search)
-
-To add new shadcn/ui components:
-```bash
-npx shadcn@latest add [component-name]
-```
-
-### TypeScript Types
-
-**Database Types**: Auto-generated from Supabase schema at `lib/supabase/types.ts`
-
-Regenerate types after schema changes:
-```bash
-npm run db:generate
-```
-
-**Type Safety**: Project uses strict TypeScript. NEVER use `any` without strong justification.
-
-### API Route Pattern
-
-Standard API route structure:
-```typescript
-import { createServerClient } from '@/lib/supabase/server'
-import { getCurrentUser } from '@/lib/auth'
-import { canPerformAction } from '@/lib/permissions'
-
-export async function GET(req: Request) {
-  const { user } = await getCurrentUser()
-
-  if (!canPerformAction(user.role, 'module-name', 'read')) {
-    return Response.json({ error: 'Forbidden' }, { status: 403 })
-  }
-
-  const supabase = await createServerClient()
-
-  // Query logic with role-based filtering
-  let query = supabase.from('table_name').select('*')
-
-  if (user.role === 'SELLER') {
-    query = query.eq('seller_id', user.id)
-  }
-
-  const { data, error } = await query
-
-  if (error) {
-    return Response.json({ error: error.message }, { status: 500 })
-  }
-
-  return Response.json({ data })
+if (!canPerformAction(user, "operations", "write", perms)) {
+  return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 }
 ```
 
-### Database Queries
+Para listados, usar helpers existentes cuando apliquen:
 
-**Filtering by Role**:
-- `SELLER` role: ALWAYS filter by `seller_id` or `seller_primary_id`
-- `ADMIN`/`SUPER_ADMIN`: Can see all data
-- Apply filters BEFORE executing query
+- `applyLeadsFilters`
+- `applyOperationsFilters`
+- `applyCustomersFilters`
+- `getScopedAgenciesForUser`
 
-**Pagination**: Use `.range(from, to)` for large datasets
+## Supabase clients
 
-**Joins**: Prefer single query with `.select()` joins over multiple queries
+### Server/auth-aware
 
-### Testing
+```ts
+import { createServerClient } from "@/lib/supabase/server"
 
-Tests located in `__tests__/` directories next to source files.
-
-Existing test coverage:
-- `lib/accounting/__tests__/` - Ledger, IVA, FX logic
-- `lib/alerts/__tests__/` - Alert generation
-- `lib/commissions/__tests__/` - Commission calculation
-- `lib/permissions/__tests__/` - Permission system
-
-Run tests before committing changes to accounting/permission logic.
-
-## Important Implementation Notes
-
-### Authentication Bypass in Development
-
-**CURRENT STATE**: Authentication is bypassed when `DISABLE_AUTH=true` in `.env.local`
-- Located in: `middleware.ts` and `lib/auth.ts`
-- Returns mock SUPER_ADMIN user in development
-- **TODO**: REMOVE before production deployment
-
-### File Upload & OCR
-
-Documents uploaded to Supabase Storage bucket: `documents`
-
-OCR Process:
-1. Upload document → Supabase Storage
-2. Create record in `documents` table
-3. Call `/api/documents/parse` with document ID
-4. OpenAI Vision extracts data (name, document number, DOB, etc.)
-5. Auto-create/update customer record
-6. Return parsed data for user confirmation
-
-### Commission Calculation
-
-Triggered when operation reaches `CONFIRMED` or `CLOSED` status:
-
-```
-Margin = sale_amount_total - operator_cost
-Commission = Margin × commission_percentage
+const supabase = await createServerClient()
 ```
 
-Split between `seller_primary` and `seller_secondary` if applicable.
+### Browser
 
-Service: `lib/commissions/calculate.ts`
-
-### AI Copilot
-
-Uses OpenAI function calling with tools defined in `lib/ai/tools.ts`:
-- Get sales summary
-- Get due payments
-- Get seller performance
-- Get top destinations
-- Get operator balances
-- Search customers/operations
-
-Context includes complete database schema for accurate queries.
-
-## Environment Variables
-
-Required in `.env.local`:
-```env
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
-NEXT_PUBLIC_APP_URL=https://app.vibook.ai    # Base URL — usada en MP checkout, WhatsApp receipts, invites
-CRON_SECRET=your_cron_secret                 # Shared con Railway Cron Services para llamar /api/cron/*
-OPENAI_API_KEY=your_openai_key  # Optional, for OCR and AI Copilot
-EMILIA_API_KEY=your_emilia_api_key           # Required for Emilia/Vibook travel search (wsk_xxx format)
-EMILIA_API_URL=https://api.vibook.ai/search  # Optional, defaults to vibook.ai
-DISABLE_AUTH=true                # DEVELOPMENT ONLY - Remove for production
+```ts
+import { supabase } from "@/lib/supabase/client"
 ```
 
-Ver `.env.example` y `docs/testing-railway-migration.md` para la matriz completa (Resend, MP, AFIP, Trello, VAPID, Manychat, Amadeus, Geoapify, etc.).
+### Admin/service role
 
-## Hosting & Deployment
+```ts
+import { createAdminClient } from "@/lib/supabase/server"
+```
 
-**Producción**: Railway (antes Vercel). Dominio: `app.vibook.ai`. El dominio legacy `maxevagestion.com` hace redirect 301 al nuevo.
+`createAdminClient()` bypasea RLS. Casos legitimos:
 
-**Cron jobs**: 7 Railway Cron Services independientes (uno por endpoint), cada uno corre un `curl -X POST` contra `/api/cron/<name>` con header `Authorization: Bearer $CRON_SECRET`. El archivo `vercel.json` fue removido — Railway no lo lee. Todos los endpoints `/api/cron/*` son **POST con Bearer auth** (no hay `x-vercel-cron-secret`).
+- Crons cross-tenant.
+- Webhooks server-to-server donde la org se resuelve por token/firma.
+- Platform admin protegido por `isPlatformAdmin()`.
+- Auth/onboarding pre-session.
+- Billing escrito por webhooks o flujos anti-forge.
+- Imports validados que inyectan `org_id`.
+- Storage o write-validated flows documentados.
+- Audit/security logs fire-and-forget.
 
-Endpoints cron existentes (ver `app/api/cron/`): `recurring-payments`, `alerts`, `payment-reminders`, `notifications`, `whatsapp`, `task-reminders`, `exchange-rates`.
+Todo uso nuevo debe estar en `scripts/admin-client-allowlist.txt`.
 
-## Database Schema Notes
+Para operaciones admin dentro de un tenant conocido:
 
-### Core Tables
-- `users` - System users with roles
-- `agencies` - Multiple agencies (Rosario, Madero, etc.)
-- `leads` - Sales leads from Trello or manual entry
-- `operations` - Confirmed travel operations
-- `customers` - Client information
-- `operators` - Travel operators/suppliers
-- `payments` - Customer and operator payments
-- `cash_movements` - Cash flow transactions
-- `ledger_movements` - Double-entry accounting ledger
-- `financial_accounts` - Chart of accounts
-- `commission_records` - Commission tracking
-- `commission_rules` - Commission calculation rules
-- `documents` - Uploaded documents with OCR data
-- `alerts` - Automated system alerts
-- `iva_sales` / `iva_purchases` - VAT tracking
-- `settings_trello` - Trello integration configuration
+```ts
+import { createOrgAdminScope } from "@/lib/supabase/admin-scope"
 
-### Key Relationships
-- Operations → Customers (many-to-many via `operation_customers`)
-- Operations → Operators (many-to-one)
-- Operations → Payments (one-to-many)
-- Payments → Ledger Movements (one-to-many)
-- Operations → Commission Records (one-to-many)
+const scope = createOrgAdminScope(user.org_id)
+await scope.insert("cash_movements", data)
+```
 
-## Known Issues & TODOs
+## Patron canonico de API user-facing
 
-See `ROADMAP.md` for complete list. Key items:
+```ts
+import { NextResponse } from "next/server"
+import { getCurrentUser } from "@/lib/auth"
+import { createServerClient } from "@/lib/supabase/server"
+import { getUserAgencyIds, canPerformAction } from "@/lib/permissions-api"
+import { resolveUserPermissions } from "@/lib/permissions-agency"
 
-**High Priority**:
-- Remove authentication bypass before production
-- Add rate limiting to API routes
-- Improve test coverage (currently ~20%, target 60%+)
-- Add audit logs for sensitive operations
+export async function POST(request: Request) {
+  const { user } = await getCurrentUser()
+  if (!user.org_id) {
+    return NextResponse.json(
+      { error: "Usuario sin organizacion asociada" },
+      { status: 400 }
+    )
+  }
 
-**Medium Priority**:
-- Implement global search (Cmd+K)
-- Add dark mode support
-- Optimize database queries with additional indexes
-- Add export functionality for leads/operations
+  const supabase = await createServerClient()
+  const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
+  const perms = await resolveUserPermissions(
+    supabase as any,
+    user.id,
+    user.org_id,
+    (user as any).roles ?? [user.role],
+    agencyIds
+  )
 
-**Low Priority**:
-- Operation timeline view
-- Persistent AI Copilot conversation history
-- Advanced accounting reports (Balance Sheet, P&L)
+  if (!canPerformAction(user, "module", "write", perms)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  }
 
-## Debugging Tips
+  const body = await request.json()
+  // Preferir Zod en endpoints nuevos o cuando se toque validacion.
 
-**Common Issues**:
+  const { data, error } = await (supabase.from("table_name") as any)
+    .select("*")
+    .eq("org_id", user.org_id)
 
-1. **"Missing Supabase environment variables"**
-   - Check `.env.local` exists and has correct variables
-   - Restart dev server after changes
+  if (error) {
+    return NextResponse.json({ error: "Error interno" }, { status: 500 })
+  }
 
-2. **Permission errors (403)**
-   - Verify user role in database
-   - Check permission matrix in `lib/permissions.ts`
-   - Ensure API route calls `getCurrentUser()`
+  return NextResponse.json({ data })
+}
+```
 
-3. **Trello sync not working**
-   - Verify webhook is active in Trello
-   - Check `/api/trello/webhook` logs
-   - Verify Trello settings in Settings → Trello
+No usar patrones antiguos que permitan "SUPER_ADMIN ve todo" sin `org_id`. En
+SaaS, un `SUPER_ADMIN` normalmente ve todo su tenant, no todos los tenants.
 
-4. **Ledger movements not creating**
-   - Check if payment status is `PAID`
-   - Verify `lib/accounting/ledger.ts` functions are called
-   - Check for duplicate prevention logic
+## Webhooks e integraciones
 
-**Logging**: Check console for errors. API routes log to server console, not browser.
+Webhooks no tienen session de usuario. El patron seguro es:
 
-## Additional Resources
+1. Resolver org por token/config (`org_integrations`, URL token o external ref).
+2. Verificar HMAC/secret cuando exista.
+3. Leer body crudo si la firma lo requiere.
+4. Registrar idempotencia en `webhook_event_log` o equivalente.
+5. Usar admin client server-side.
+6. Inyectar `org_id` en todo write.
 
-- `README.md` - User-facing documentation
-- `CONFIGURACION_SUPABASE.md` - Supabase setup guide
-- `GUIA_TESTING.md` - End-to-end testing guide
-- `docs/testing-railway-migration.md` - QA checklist post-migración Vercel → Railway (20 flujos que dependen de env vars)
-- `ROADMAP.md` - Development roadmap and pending tasks
-- `.cursor/ESTADO-COMPLETO-PROYECTO.md` - Detailed project status analysis
+Archivos relevantes:
+
+- `lib/integrations/hmac.ts`
+- `lib/integrations/secrets.ts`
+- `app/api/integrations/manychat/[token]/webhook/route.ts`
+- `app/api/integrations/callbell-in/[token]/webhook/route.ts`
+- `app/api/integrations/chatsell/[token]/webhook/route.ts`
+- `app/api/integrations/eve-in/[token]/webhook/route.ts`
+
+`app/api/webhooks/manychat/route.ts` es legacy con `X-API-Key`. No usarlo como
+modelo para integraciones nuevas; preferir HMAC + token por tenant.
+
+## Crons
+
+Todos los endpoints bajo `/api/cron/*` deben validar:
+
+```ts
+import { checkCronAuth } from "@/lib/cron/auth"
+
+const auth = checkCronAuth(request, "cron-name")
+if (!auth.authorized) {
+  return NextResponse.json({ error: "Unauthorized", reason: auth.reason }, { status: 401 })
+}
+```
+
+Los crons corren en Railway Cron Services y llaman con:
+
+```text
+Authorization: Bearer $CRON_SECRET
+```
+
+Son cross-tenant por diseno; pueden usar admin client, pero todo write debe
+preservar `org_id`.
+
+## Billing, paywall y platform admin
+
+### Billing
+
+Archivos clave:
+
+- `lib/billing/plans.ts`
+- `lib/billing/guard.ts`
+- `lib/billing/state-machine.ts`
+- `lib/billing/limits.ts`
+- `app/api/billing/*`
+- `app/onboarding/billing/*`
+- `app/(dashboard)/settings/subscription/page.tsx`
+
+El acceso al dashboard se protege por:
+
+- `middleware.ts`
+- `assertSubscriptionActive()` en `app/(dashboard)/layout.tsx`
+- RLS/tenant isolation
+
+Cambios en billing deben probar state machine, grace periods, reactivacion,
+regularizacion y webhooks de Mercado Pago.
+
+### Platform admin
+
+`app/admin` es global. No usar `users.role` para autorizarlo. Usar:
+
+```ts
+import { isPlatformAdmin } from "@/lib/auth/platform"
+```
+
+Los platform admins viven en tabla `platform_admins`.
+
+## Contabilidad, caja y pagos
+
+El modulo financiero es de alta criticidad. Antes de tocarlo, revisar los
+invariantes y tests existentes.
+
+Archivos clave:
+
+- `lib/accounting/ledger.ts`
+- `lib/accounting/payment-counterparts.ts`
+- `lib/accounting/operator-payment-settlement.ts`
+- `lib/accounting/journal-entries.ts`
+- `lib/accounting/fx.ts`
+- `lib/accounting/iva.ts`
+- `lib/accounting/withholding-rules.ts`
+- `app/api/payments/route.ts`
+- `app/api/payments/mark-paid/route.ts`
+- `app/api/cash/movements/route.ts`
+- `app/api/accounting/operator-payments/*`
+
+Reglas:
+
+- `createLedgerMovement()` recibe el client Supabase del caller y debe resolver
+  `org_id`; si no puede, falla.
+- Para pagos y mark-paid, preservar idempotency key, CAS guards y validacion de
+  saldo.
+- Para egresos, validar saldo suficiente.
+- Para pagos a operadores, mantener sincronizados `payments`, `operator_payments`,
+  `ledger_movements`, `cash_movements` y journal entries.
+- Para multi-currency, no mezclar ARS/USD sin TC real; revisar `amount_usd`,
+  `exchange_rate`, `sale_currency` y `operator_cost_currency`.
+- Si un side effect no bloqueante falla, loguear y generar alerta si puede dejar
+  una revision manual pendiente.
+
+## AI, Cerebro y OpenAI
+
+`app/api/ai/route.ts` usa OpenAI y puede ejecutar SQL readonly via RPC
+`execute_readonly_query`. Es una superficie sensible.
+
+Reglas:
+
+- Mantener filtro obligatorio por `org_id`.
+- No ampliar SQL libre sin allowlist fuerte.
+- Preferir tools curados en `lib/ai/tools.ts` para nuevas capacidades.
+- No confiar en contenido de leads/clientes como instrucciones del sistema.
+- Si se toca schema/prompt hardcodeado, verificar contra `lib/supabase/types.ts`
+  o migraciones recientes.
+
+OCR/documentos y clasificadores tambien usan OpenAI; manejar falta de API key de
+forma degradada y nunca exponerla al cliente.
+
+## UI y frontend
+
+### Sistema visual
+
+- `components/ui` contiene la base shadcn/ui.
+- `app/globals.css` define tokens Vibook, dark mode, gradientes, sidebar y
+  `.light-force`.
+- `tailwind.config.js` expone colores semanticos y tokens de marca.
+- `components/app-sidebar.tsx` define navegacion principal y filtra con permisos
+  resueltos.
+
+### Regla practica
+
+Preferir componentes de `components/ui` para controles comunes. No crear una
+primitiva nueva si ya existe una equivalente. Aun asi, el repo actual tiene
+componentes de dominio con `<button>`, `<input>` y markup nativo; no hacer
+refactors cosmeticos masivos salvo que el cambio lo requiera.
+
+Para UI nueva:
+
+- Usar tokens semanticos (`background`, `card`, `muted`, `primary`, `border`,
+  `accent-*`) en lugar de colores hardcodeados.
+- Mantener compatibilidad con dark mode salvo pantallas que usen explicitamente
+  `.light-force` como admin.
+- Seguir patrones de sidebar/header/layout existentes.
+- No agregar texto explicativo innecesario dentro de la app.
+- Para dashboards/operaciones, priorizar densidad, lectura rapida, tablas y
+  acciones claras sobre layouts de marketing.
+
+## Integraciones activas y legacy
+
+Activas/relevantes:
+
+- Manychat / CRM advanced.
+- Callbell.
+- ChatSell.
+- Eve.
+- Emilia.
+- WHA Control / WhatsApp.
+- Mercado Pago.
+- AFIP.
+- OpenAI.
+- Web push.
+- Tawk allowlist.
+
+Trello es legacy/residual. Quedan columnas como `trello_url`,
+`trello_list_id`, `trello_full_data` y tabla `settings_trello`, pero no asumir
+que Trello es la integracion activa. Ver codigo actual antes de tocarlo.
+
+## Validacion
+
+Zod existe en `lib/validation.ts` y en schemas de import. Para endpoints nuevos
+o cambios de payload, preferir `safeParse`/`parse` y respuestas 400 claras.
+
+El repo todavia tiene muchos `request.json()` manuales y muchos `any`; no ampliar
+esa deuda sin motivo.
+
+## Testing
+
+Tests relevantes:
+
+- Permisos/tenancy: `lib/__tests__/permissions*.test.ts`,
+  `lib/permissions/__tests__`.
+- Contabilidad: `lib/accounting/__tests__`.
+- Billing: `lib/billing/*.test.ts`.
+- Imports: `lib/import/schemas/*.test.ts`.
+- Alertas: `lib/alerts/__tests__`.
+- Comisiones: `lib/commissions/__tests__`.
+- Route tests en subcarpetas `app/api/**/__tests__` cuando existan.
+
+Reglas:
+
+- Cambios en permisos, tenancy, billing, pagos, caja, contabilidad, comisiones,
+  AFIP o imports requieren tests focalizados.
+- Si se toca `createAdminClient()`, correr `npm run check:admin-client`.
+- Si se agregan migraciones o columnas, correr/regenerar tipos con
+  `npm run db:generate` cuando aplique.
+- Para cambios solo Markdown no hace falta correr test suite.
+
+## Variables de entorno
+
+Ver `.env.example` como fuente base. Variables criticas:
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `NEXT_PUBLIC_APP_URL`
+- `CRON_SECRET`
+- `OPENAI_API_KEY`
+- `WEBHOOK_SECRET_ENCRYPTION_KEY`
+- Mercado Pago envs
+- AFIP envs/config por tenant
+- VAPID/web push
+- Manychat/Callbell/Emilia segun integracion
+
+`DISABLE_AUTH=true` es solo desarrollo local.
+
+## Documentacion y estado
+
+Documentos utiles:
+
+- `docs/README.md`
+- `docs/architecture/AUDITORIA_ARQUITECTURA_AGENTS.md`
+- `docs/runbooks/BUGS-TRIAGE.md`
+- `docs/runbooks/HANDOVER.md`
+- `docs/testing/testing-railway-migration.md`
+- `docs/testing/GUIA_TESTING.md`
+- `docs/setup/CONFIGURACION_SUPABASE.md`
+
+`README.md` y algunas guias Trello pueden estar desactualizadas. Verificar contra
+codigo antes de usarlas como fuente.
+
+No crear Markdown suelto en la raiz salvo `README.md`, `AGENTS.md`, `CLAUDE.md`
+u otro archivo requerido por una herramienta. Para nuevos documentos, seguir el
+scaffold de `docs/README.md`.
+
+## Debugging rapido
+
+- 403: revisar `user.org_id`, role, `additional_roles`, matriz dinamica,
+  `agency_role_permissions`, `getUserAgencyIds` y filtros por agencia.
+- Datos de otro tenant: buscar queries sin `.eq("org_id", user.org_id)` o uso
+  indebido de `createAdminClient()`.
+- Billing/paywall: revisar `organizations.subscription_status`,
+  `current_period_ends_at`, `trial_ends_at`, middleware y `lib/billing/guard.ts`.
+- Cron 401: revisar `CRON_SECRET` en app principal y Railway Cron Service;
+  `checkCronAuth` loguea diagnostico seguro.
+- Ledger/caja inconsistente: revisar `payments`, `ledger_movements`,
+  `cash_movements`, `operator_payments`, counterparts y journal entries.
+- AFIP: revisar `lib/afip/check-org-health.ts`, settings de org/agencia y logs de
+  invoices.

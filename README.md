@@ -8,7 +8,7 @@ Sistema completo de gestión para agencia de viajes construido con Next.js 14, T
 **Última actualización:** Diciembre 2025  
 **Estado:** ✅ Listo para Producción
 
-Ver [ROADMAP.md](./ROADMAP.md) para tareas pendientes y [GUIA_TESTING.md](./GUIA_TESTING.md) para testing completo.
+Ver [ROADMAP.md](./docs/roadmap/ROADMAP.md) para tareas pendientes y [GUIA_TESTING.md](./docs/testing/GUIA_TESTING.md) para testing completo.
 
 ## 🚀 Stack Tecnológico
 
@@ -184,7 +184,7 @@ npm run db:seed         # Ejecutar seed de datos (desarrollo)
 
 ## 🔄 Próximas Mejoras
 
-Ver [ROADMAP.md](./ROADMAP.md) para la lista completa de tareas pendientes y mejoras futuras.
+Ver [ROADMAP.md](./docs/roadmap/ROADMAP.md) para la lista completa de tareas pendientes y mejoras futuras.
 
 ## 📄 Licencia
 

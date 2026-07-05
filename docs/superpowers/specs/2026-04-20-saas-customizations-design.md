@@ -405,4 +405,4 @@ Total para "SaaS se siente propio de cada tenant" (sprints 1–3): **~2 semanas 
 
 ---
 
-**Next step**: antes de ejecutar este spec, resolver pendientes operacionales (AFIP end-to-end, landing vibook integration, MP live test, UI dialogs padding). Ver `ROADMAP-SAAS.md` sección "Pendientes post-launch".
+**Next step**: antes de ejecutar este spec, resolver pendientes operacionales (AFIP end-to-end, landing vibook integration, MP live test, UI dialogs padding). Ver `docs/roadmap/ROADMAP-SAAS.md` sección "Pendientes post-launch".
