@@ -130,39 +130,39 @@ export function FlightResultCard({
     <Card className={cn("overflow-hidden border-border/50", selected && "ring-2 ring-primary")}>
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-3">
-          <div className="flex items-start gap-3 flex-1">
-            <Checkbox 
+          <div className="flex items-start gap-3 flex-1 min-w-0">
+            <Checkbox
               checked={selected}
               onCheckedChange={handleCheckboxChange}
-              className="mt-1"
+              className="mt-1 shrink-0"
             />
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1">
-                <Plane className="h-4 w-4 text-primary" />
-                <span className="font-semibold">{flight.airline.name}</span>
-                <Badge variant="secondary" className="text-xs">
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-1">
+                <Plane className="h-4 w-4 text-primary shrink-0" />
+                <span className="font-semibold truncate">{flight.airline.name}</span>
+                <Badge variant="secondary" className="text-xs shrink-0">
                   {flight.airline.code}
                 </Badge>
                 {flight.provider ? (
                   <Badge
                     variant="outline"
-                    className="text-[10px] font-semibold uppercase tracking-wide"
+                    className="text-[10px] font-semibold uppercase tracking-wide shrink-0"
                   >
                     {flight.provider}
                   </Badge>
                 ) : null}
               </div>
               <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                <Users className="h-3 w-3" />
-                <span>
+                <Users className="h-3 w-3 shrink-0" />
+                <span className="truncate">
                   {flight.adults} adulto{flight.adults > 1 ? "s" : ""}
                   {childrens > 0 && `, ${childrens} niño${childrens > 1 ? "s" : ""}`}
                 </span>
               </div>
             </div>
           </div>
-          <div className="text-right">
-            <div className="text-2xl font-bold text-primary">
+          <div className="text-right shrink-0">
+            <div className="text-2xl font-bold text-primary whitespace-nowrap">
               {formatPrice(flight.price.amount, flight.price.currency)}
             </div>
             <div className="text-xs text-muted-foreground">
