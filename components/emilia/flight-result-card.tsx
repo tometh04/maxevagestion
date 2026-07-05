@@ -59,6 +59,8 @@ interface FlightData {
   children?: number
   departure_date: string
   return_date?: string
+  /** Mayorista de origen, si la API de Emilia lo envía para el vuelo. */
+  provider?: string | null
   legs: FlightLeg[]
 }
 
@@ -141,6 +143,14 @@ export function FlightResultCard({
                 <Badge variant="secondary" className="text-xs">
                   {flight.airline.code}
                 </Badge>
+                {flight.provider ? (
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] font-semibold uppercase tracking-wide"
+                  >
+                    {flight.provider}
+                  </Badge>
+                ) : null}
               </div>
               <div className="flex items-center gap-1 text-sm text-muted-foreground">
                 <Users className="h-3 w-3" />

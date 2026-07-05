@@ -245,6 +245,15 @@ export function transformFlight(flight: ApiFlight): any {
   const cabinClass =
     (flight as any).cabin?.class ?? firstSegment?.cabinClass ?? null
 
+  // Mayorista de origen: los vuelos hoy no siempre lo traen. Si el proveedor lo
+  // envía (bajo cualquiera de estas claves), lo preservamos para la bandera de
+  // la card. Si no viene, queda null y la bandera no se muestra.
+  const provider =
+    (flight as any).provider ??
+    (flight as any).wholesaler ??
+    (flight as any).mayorista ??
+    null
+
   return {
     id: flight.id,
     airline: flight.airline,
@@ -255,6 +264,7 @@ export function transformFlight(flight: ApiFlight): any {
     departure_date: flight.departure_date,
     return_date: flight.return_date,
     cabin_class: cabinClass,
+    provider,
     legs: transformedLegs,
   }
 }
