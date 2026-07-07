@@ -29,6 +29,7 @@ import { PurchaseInvoicesSection } from "@/components/operations/purchase-invoic
 import { OperationSaleInvoicesSection } from "@/components/operations/operation-invoices-section"
 import { OperationFacturacionSection } from "@/components/operations/operation-facturacion-section"
 import { OperationPaymentsSection } from "@/components/operations/operation-payments-section"
+import { SendStatementButton } from "@/components/operations/send-statement-button"
 import { PassengerBalancesSection } from "@/components/operations/passenger-balances-section"
 import {
   Breadcrumb,
@@ -193,6 +194,13 @@ export function OperationDetailClient({
     () => new Map(operators.map((operator) => [operator.id, operator.name])),
     [operators]
   )
+  // Email sugerido para "Enviar detalle al pasajero": cliente MAIN (o el primero).
+  const mainCustomerEmail = useMemo(() => {
+    const main =
+      (customers || []).find((c: any) => c.role === "MAIN")?.customers ||
+      (customers || [])[0]?.customers
+    return main?.email || ""
+  }, [customers])
 
   const handleEditSuccess = () => {
     router.refresh()
@@ -313,6 +321,12 @@ export function OperationDetailClient({
             </Badge>
           )}
           <Badge variant="secondary" className="bg-secondary/60 text-secondary-foreground">{statusLabels[operation.status] || operation.status}</Badge>
+          {!isSupportMode && (
+            <SendStatementButton
+              operationId={operation.id}
+              defaultEmail={mainCustomerEmail}
+            />
+          )}
           {canEditOperation && (
             <Button variant="outline" size="sm" asChild>
               <Link href={`/operations/billing/new?operationId=${operation.id}`}>

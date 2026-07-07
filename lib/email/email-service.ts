@@ -336,6 +336,90 @@ export async function sendQuotationEmail(
 }
 
 /**
+ * Enviar el "Detalle de la Operación" (Liquidación de Servicios) al pasajero,
+ * con el PDF adjunto. Documento de respaldo de la reserva confirmada: qué
+ * servicios contrató, a qué valor y hasta cuándo tiene para pagar.
+ *
+ * Modelado sobre sendQuotationEmail (mismo patrón de pdfBuffer + branding).
+ */
+export async function sendOperationStatementEmail(
+  to: string,
+  data: {
+    customerName: string
+    destination: string
+    fileCode: string
+    totalAmount: string
+    dueDate: string
+    agencyName: string
+  },
+  pdfBuffer: Buffer,
+  supabase?: any
+): Promise<SendEmailResult> {
+  let orgSettings: OrgSettings | undefined
+  if (supabase) {
+    orgSettings = await getOrgSettings(supabase)
+  }
+  const companyName = orgSettings?.companyName || data.agencyName
+  const org = orgSettings || { companyName, address: '', phone: '', email: '', website: '', logo: '' }
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: hsl(222 47% 11%); max-width: 600px; margin: 0 auto; padding: 20px;">
+  ${generateEmailHeader(org, 'Confirmación de Servicios', VIBOOK_EMAIL_GRADIENT_SUCCESS)}
+
+  <div style="background: hsl(224 28% 97%); padding: 30px; border: 1px solid hsl(224 18% 92%);">
+    <p style="font-size: 18px;">Hola <strong>${data.customerName}</strong>,</p>
+
+    <p>Te adjuntamos la confirmación de los servicios turísticos solicitados a <strong>${companyName}</strong> para tu viaje a <strong>${data.destination}</strong>.</p>
+
+    <div style="background: hsl(0 0% 100%); padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid hsl(160 58% 42%);">
+      <table style="width: 100%; border-collapse: collapse;">
+        <tr>
+          <td style="padding: 8px 0; color: hsl(226 12% 48%);">Expediente:</td>
+          <td style="padding: 8px 0; text-align: right; font-weight: bold;">${data.fileCode}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0; color: hsl(226 12% 48%);">Importe a pagar:</td>
+          <td style="padding: 8px 0; text-align: right; font-weight: bold; font-size: 20px; color: hsl(160 58% 42%);">${data.totalAmount}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0; color: hsl(226 12% 48%);">Fecha máxima de pago:</td>
+          <td style="padding: 8px 0; text-align: right; font-weight: bold;">${data.dueDate}</td>
+        </tr>
+      </table>
+    </div>
+
+    <p>En el PDF adjunto encontrás el detalle completo de los servicios contratados.</p>
+
+    <p style="color: hsl(226 12% 48%); font-size: 14px;">
+      Todos los servicios detallados están sujetos al pago efectivo de los mismos.
+      Si necesitás asistencia, estamos a tu disposición.
+    </p>
+  </div>
+
+  ${generateEmailFooter(org)}
+</body>
+</html>
+  `
+
+  return sendEmail({
+    to,
+    subject: `Confirmación de servicios turísticos - ${data.destination}`,
+    html,
+    attachments: [{
+      filename: `detalle-operacion-${data.fileCode}.pdf`,
+      content: pdfBuffer,
+      contentType: "application/pdf",
+    }],
+  })
+}
+
+/**
  * Enviar confirmación de pago
  */
 export async function sendPaymentConfirmationEmail(
