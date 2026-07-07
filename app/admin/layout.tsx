@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
-import { Building2, BarChart3, ScrollText, LogOut, CircleDollarSign, LifeBuoy } from "lucide-react"
+import { Building2, BarChart3, ScrollText, LogOut, CircleDollarSign, LifeBuoy, Megaphone } from "lucide-react"
 import { getCurrentUser } from "@/lib/auth"
 import { createServerClient } from "@/lib/supabase/server"
 import { isPlatformAdmin } from "@/lib/auth/platform"
@@ -50,6 +50,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <SidebarLink href="/admin/metrics" icon={BarChart3} label="Métricas" />
           <SidebarLink href="/admin/billing" icon={CircleDollarSign} label="Billing" />
           <SidebarLink href="/admin/tickets" icon={LifeBuoy} label="Tickets soporte" />
+          <SidebarLink href="/admin/announcements" icon={Megaphone} label="Novedades" />
           <SidebarLink href="/admin/audit" icon={ScrollText} label="Audit log" />
         </nav>
 

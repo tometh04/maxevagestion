@@ -6,6 +6,7 @@ import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Search } from "lucide-react"
 import { CommandMenu } from "@/components/command-menu"
 import { NotificationBell } from "@/components/notifications/notification-bell"
+import { AnnouncementsBell } from "@/components/notifications/announcements-bell"
 
 const getPageTitle = (pathname: string): string => {
   const routes: Record<string, string> = {
@@ -68,6 +69,7 @@ export function SiteHeader() {
               <span className="flex-1 text-left">Buscar...</span>
               <kbd className="hidden sm:inline-flex items-center gap-0.5 rounded border border-border/60 bg-background px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground">⌘K</kbd>
             </button>
+            <AnnouncementsBell />
             <NotificationBell />
           </div>
         </div>

@@ -46,6 +46,9 @@ npm run db:generate      # Regenera lib/supabase/types.ts
 npm run db:seed
 npm run db:seed:mock
 npm run db:check
+
+# Novedades / changelog global (visible a todos los usuarios)
+npm run announce -- --title "..." --body "..." --type NEW   # NEW | IMPROVEMENT | FIX
 ```
 
 `npm run lint` ejecuta `scripts/check-admin-client.sh`. Si agregas un uso legitimo
@@ -213,6 +216,26 @@ Antes de cerrar:
   silenciosos e inconsistencias financieras.
 - Para UI, validar estados de loading, empty, error, disabled y responsive cuando
   el cambio sea visible para usuarios.
+- Si el cambio impacta al usuario final (feature nueva, mejora visible, o un fix
+  de gran gravedad), publicar una novedad con `npm run announce` (ver mas abajo).
+
+### Novedades del producto (changelog global)
+
+vibook tiene un changelog global que se muestra a todos los usuarios de todas las
+orgs via un llamador (icono megafono) arriba a la derecha, al lado de la campana.
+Fuente: tabla `announcements`; se carga con `npm run announce` (service role, no
+requiere server ni platform admin) o a mano desde `/admin/announcements` (requiere
+platform admin).
+
+Regla: publicar SOLO cuando el usuario final deba enterarse. En la duda, no publicar.
+
+- `NEW`: funcionalidad nueva usable. `IMPROVEMENT`: mejora visible de algo existente.
+- `FIX`: solo fixes de gran gravedad / alto impacto (algo roto que la gente sufria,
+  calculo contable/financiero mal, flujo que no se podia completar). Los bugfixes
+  chicos, internos o cosmeticos NO se publican.
+- NO publicar refactors ni cambios internos sin impacto visible.
+- `--title` y `--body` en espanol, orientados al usuario (sin jerga tecnica ni
+  nombres de archivo). `--draft` deja la novedad sin publicar para revisarla antes.
 
 ## Skills, reglas y enforcement del proyecto
 
