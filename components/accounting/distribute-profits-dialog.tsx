@@ -164,7 +164,7 @@ export function DistributeProfitsDialog({
             <Loader2 className="h-6 w-6 animate-spin" />
           </div>
         ) : (
-          <div className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
+          <div className="py-5 space-y-5 max-h-[75vh] overflow-y-auto">
             {/* Alerta de validación de porcentajes */}
             {totalPercentage > 0 && (
               <Alert variant={isValid ? "default" : "destructive"}>

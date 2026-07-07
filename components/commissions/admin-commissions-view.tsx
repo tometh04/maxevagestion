@@ -1016,7 +1016,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
             </DialogDescription>
           </DialogHeader>
 
-          <div className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
+          <div className="py-5 space-y-5 max-h-[75vh] overflow-y-auto">
             {/* Commissions list grouped by currency */}
             {(["USD", "ARS"] as const).map((cur) => {
               const comms = dialogCommissionsByCurrency[cur]

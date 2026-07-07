@@ -1540,7 +1540,7 @@ export function OperationPaymentsSection({
 
           <Form {...incomeForm}>
             <form onSubmit={incomeForm.handleSubmit(onSubmitIncome)} className="flex flex-col flex-1 min-h-0">
-              <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5 -mr-2 pr-2">
+              <div className="flex-1 overflow-y-auto py-5 space-y-5 -mr-2 pr-2">
               {/* Sub-card: Método y Monto */}
               <div className="rounded-[var(--vb-r-sm)] border border-[var(--vb-border)] bg-[var(--vb-hover)] p-4 space-y-4">
                 <div className="flex items-center gap-1.5">
@@ -1919,7 +1919,7 @@ export function OperationPaymentsSection({
 
           <Form {...refundForm}>
             <form onSubmit={refundForm.handleSubmit(onSubmitRefund)} className="flex flex-col flex-1 min-h-0">
-              <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5 -mr-2 pr-2">
+              <div className="flex-1 overflow-y-auto py-5 space-y-5 -mr-2 pr-2">
               {/* Sub-card: Método y Monto */}
               <div className="rounded-[var(--vb-r-sm)] border border-[var(--vb-border)] bg-[var(--vb-hover)] p-4 space-y-4">
                 <div className="flex items-center gap-1.5">
@@ -2149,7 +2149,7 @@ export function OperationPaymentsSection({
 
             <Form {...editForm}>
               <form onSubmit={editForm.handleSubmit(onSubmitEdit)} className="flex flex-col flex-1 min-h-0">
-                <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5 -mr-2 pr-2">
+                <div className="flex-1 overflow-y-auto py-5 space-y-5 -mr-2 pr-2">
                 {/* Sub-card: Método y Monto */}
                 <div className="rounded-[var(--vb-r-sm)] border border-[var(--vb-border)] bg-[var(--vb-hover)] p-4 space-y-4">
                   <div className="flex items-center gap-1.5">
@@ -2477,7 +2477,7 @@ export function OperationPaymentsSection({
             
             <Form {...expenseForm}>
               <form onSubmit={expenseForm.handleSubmit(onSubmitExpense)} className="flex flex-col flex-1 min-h-0">
-                <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5 -mr-2 pr-2">
+                <div className="flex-1 overflow-y-auto py-5 space-y-5 -mr-2 pr-2">
                 {/* Operador / Deuda pendiente
                     Bug fix 2026-05-21 (VICO): cuando una operación tiene
                     múltiples operation_operators del mismo operador (Tower

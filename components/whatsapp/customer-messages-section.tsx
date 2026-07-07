@@ -206,7 +206,7 @@ export function CustomerMessagesSection({
               Nuevo Mensaje
             </Button>
           </DialogTrigger>
-          <DialogContent className="px-6 py-5">
+          <DialogContent className="py-5">
             <DialogHeader>
               <DialogTitle>Enviar Mensaje a {customerName}</DialogTitle>
             </DialogHeader>

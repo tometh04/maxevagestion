@@ -258,7 +258,7 @@ export function MarkPaidDialog({
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(handleSubmit)} className="flex flex-col overflow-hidden flex-1">
-            <div className="px-6 py-5 space-y-5 overflow-y-auto flex-1">
+            <div className="py-5 space-y-5 overflow-y-auto flex-1">
             {/* Resumen del pago */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4">
               <div className="grid grid-cols-2 gap-2 text-sm">

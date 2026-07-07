@@ -452,7 +452,7 @@ export function BulkPaymentDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto min-h-0 px-6 py-5 space-y-6">
+        <div className="flex-1 overflow-y-auto min-h-0 py-5 space-y-6">
           {/* Paso 1: Seleccionar Operador */}
           <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-3">
             <div className="flex items-center gap-1.5">

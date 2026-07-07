@@ -722,7 +722,7 @@ export function NewOperationDialog({
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col flex-1 overflow-hidden min-h-0">
-        <div className="flex-1 overflow-y-auto min-h-0 px-6 py-6 space-y-7">
+        <div className="flex-1 overflow-y-auto min-h-0 py-6 space-y-7">
 
         {/* Mostrar error del API */}
         {apiError && (
@@ -1787,7 +1787,7 @@ export function NewOperationDialog({
               Crea un nuevo operador/proveedor para asignarlo a esta operación
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 px-6 py-5">
+          <div className="space-y-4 py-5">
             <div className="space-y-2">
               <Label htmlFor="new-operator-name">Nombre del operador *</Label>
               <Input

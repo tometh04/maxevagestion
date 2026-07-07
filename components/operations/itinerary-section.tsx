@@ -531,7 +531,7 @@ export function ItinerarySection({ operationId, operation }: ItinerarySectionPro
               {selectedType === "HOTEL" ? "Hotel" : selectedType === "FLIGHT" ? "Vuelo" : selectedType === "TRANSFER" ? "Traslado" : selectedType === "CAR" ? "Auto" : "Nota"}
             </DialogTitle>
           </DialogHeader>
-          <div className="px-6 py-5 space-y-5">
+          <div className="py-5 space-y-5">
             {(selectedType === "HOTEL") && (
               <>
                 <div className="grid grid-cols-3 gap-3">

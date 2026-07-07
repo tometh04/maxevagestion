@@ -226,7 +226,7 @@ export function DocumentsSection({
               <DialogHeader>
                 <DialogTitle>Subir Documento</DialogTitle>
               </DialogHeader>
-              <div className="px-6 py-5 space-y-5">
+              <div className="py-5 space-y-5">
                 <div>
                   <label className="text-sm font-medium mb-2 block">Tipo de Documento</label>
                   <Select value={documentType} onValueChange={setDocumentType}>

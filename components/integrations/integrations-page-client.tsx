@@ -328,7 +328,7 @@ export function IntegrationsPageClient() {
                   Nueva Integración
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-md px-6 py-5 space-y-5">
+              <DialogContent className="max-w-md py-5 space-y-5">
                 <DialogHeader>
                   <DialogTitle>Nueva Integración</DialogTitle>
                   <DialogDescription>

@@ -296,7 +296,7 @@ export function NewLeadDialog({
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(handleSubmit)} className="flex flex-col overflow-hidden flex-1">
-            <div className="px-6 py-5 space-y-5 overflow-y-auto flex-1">
+            <div className="py-5 space-y-5 overflow-y-auto flex-1">
             {/* Banner agencia seleccionada
                 Bug fix 2026-05-20: imposible no ver en qué agencia se está
                 creando el lead. Si no hay agencia (caso "ALL" o empty),

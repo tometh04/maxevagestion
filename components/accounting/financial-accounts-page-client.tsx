@@ -1092,7 +1092,7 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
               Cambiá el nombre o ajustá el saldo. Si cambiás el saldo, se crea un movimiento de ajuste en el libro mayor (queda en el historial).
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-5 px-6 py-4">
+          <div className="space-y-5 py-4">
             <div>
               <Label htmlFor="edit-name">Nombre</Label>
               <Input

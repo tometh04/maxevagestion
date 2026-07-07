@@ -1070,7 +1070,7 @@ export function OperationServicesSection({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-4 px-6 py-4 flex-1 min-h-0 overflow-y-auto">
+          <div className="grid gap-4 py-4 flex-1 min-h-0 overflow-y-auto">
             {/* Tipo */}
             <div className="grid gap-1.5">
               <Label>Tipo de servicio *</Label>

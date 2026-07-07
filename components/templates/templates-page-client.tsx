@@ -532,7 +532,7 @@ export function TemplatesPageClient() {
 
       {/* Dialog crear template */}
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="max-w-4xl px-6 py-5">
+        <DialogContent className="max-w-4xl py-5">
           <DialogHeader>
             <DialogTitle>Nuevo Template PDF</DialogTitle>
             <DialogDescription>

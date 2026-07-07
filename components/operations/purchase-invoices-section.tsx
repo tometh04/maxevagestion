@@ -606,7 +606,7 @@ export function PurchaseInvoicesSection({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="px-6 py-5 space-y-5">
+          <div className="py-5 space-y-5">
             {/* Archivo adjunto (subido por OCR, aún sin guardar) */}
             {form.document_url && (
               <div className="flex items-center justify-between rounded-md border border-border/60 bg-muted/40 px-3 py-2 text-sm">

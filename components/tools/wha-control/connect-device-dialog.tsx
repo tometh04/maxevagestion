@@ -189,7 +189,7 @@ export function ConnectDeviceDialog({ open, onOpenChange, onDeviceCreated, agenc
                 Poné un nombre para identificar este teléfono y seleccioná la agencia
               </DialogDescription>
             </DialogHeader>
-            <div className="px-6 py-5 space-y-5">
+            <div className="py-5 space-y-5">
               {createError && (
                 <Alert variant="destructive">
                   <AlertCircle className="h-4 w-4" />
@@ -257,7 +257,7 @@ export function ConnectDeviceDialog({ open, onOpenChange, onDeviceCreated, agenc
                 Abrí WhatsApp en el teléfono de <strong>{name}</strong> → Dispositivos vinculados → Vincular dispositivo → Escaneá este QR
               </DialogDescription>
             </DialogHeader>
-            <div className="px-6 py-6 flex flex-col items-center space-y-4">
+            <div className="py-6 flex flex-col items-center space-y-4">
               {qrTimedOut ? (
                 <div className="flex flex-col items-center space-y-4">
                   <div className="flex h-[288px] w-[288px] items-center justify-center rounded-xl border border-border/40">
@@ -318,7 +318,7 @@ export function ConnectDeviceDialog({ open, onOpenChange, onDeviceCreated, agenc
             <DialogHeader>
               <DialogTitle>Vinculado exitosamente</DialogTitle>
             </DialogHeader>
-            <div className="px-6 py-8 flex flex-col items-center space-y-4">
+            <div className="py-8 flex flex-col items-center space-y-4">
               <div className="flex h-16 w-16 items-center justify-center rounded-full bg-success/10 dark:bg-success/30">
                 <CheckCircle2 className="h-8 w-8 text-success dark:text-success" />
               </div>

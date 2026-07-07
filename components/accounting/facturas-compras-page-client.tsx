@@ -490,7 +490,7 @@ export function FacturasComprasPageClient({ agencies }: FacturasComprasPageClien
               Para consultar comprobantes recibidos, se necesita la clave fiscal del portal de AFIP.
             </DialogDescription>
           </DialogHeader>
-          <div className="px-6 py-5 space-y-4">
+          <div className="py-5 space-y-4">
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-3">
               <div className="flex items-center gap-1.5">
                 <ShieldAlert className="h-3.5 w-3.5 text-foreground/70" />

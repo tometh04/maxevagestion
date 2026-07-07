@@ -340,7 +340,7 @@ export function PassengersSection({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="px-6 py-5 space-y-5">
+          <div className="py-5 space-y-5">
             {/* Búsqueda */}
             <div className="space-y-2">
               <Label>Buscar cliente</Label>

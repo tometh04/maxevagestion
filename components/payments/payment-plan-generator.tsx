@@ -201,7 +201,7 @@ export function PaymentPlanGenerator({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
+        <div className="py-5 space-y-5 max-h-[75vh] overflow-y-auto">
           {/* Información del total */}
           <div className="rounded-xl border border-border/40 bg-muted/20 p-4">
             <div className="flex justify-between items-center">
