@@ -12,6 +12,7 @@
  */
 
 import { getAfipServiceForOrg } from "@/lib/afip/afip-service"
+import { getEmisorCuit } from "@/lib/afip/afip-config"
 import { renderInvoicePdf } from "@/lib/pdf/invoice-pdf"
 
 export interface InvoicePdfResult {
@@ -93,9 +94,16 @@ export async function buildInvoicePdf(params: {
     .eq("id", invoice.agency_id)
     .single()
 
-  // Emisor CUIT via AfipService (scopeado por org_id)
+  // Emisor CUIT via AfipService (scopeado por org_id). Si la agencia factura
+  // en nombre de una sociedad (representada), el emisor del comprobante y del
+  // QR AFIP es el CUIT de la sociedad, NO el del titular del certificado.
   const afipSvc = await getAfipServiceForOrg(supabase, invoice.org_id)
-  const emisorCuit = (afipSvc as any)?.config?.cuit || ""
+  const afipCfg = (afipSvc as any)?.config as
+    | { cuit?: string; cuit_representada?: string }
+    | undefined
+  const emisorCuit = afipCfg?.cuit
+    ? getEmisorCuit({ cuit: afipCfg.cuit, cuit_representada: afipCfg.cuit_representada })
+    : ""
 
   // Branding per-tenant (mismas keys/aliases que el route original)
   const { data: orgSettings } = await (supabase.from("organization_settings") as any)

@@ -41,6 +41,8 @@ export async function getAfipConfigForAgency(
     const afipConfig: Partial<AfipConfig> = {
       api_key: config.api_key || '',
       cuit: config.cuit || '',
+      // Emisor representada (persona física facturando por una sociedad). Opcional.
+      cuit_representada: config.cuit_representada || undefined,
       point_of_sale: config.point_of_sale || config.pointOfSale || 1,
       environment: config.environment || 'production',
       base_url: config.base_url || config.baseUrl,
@@ -90,6 +92,8 @@ export async function saveAfipConfigForAgency(
     const configData = {
       api_key: config.api_key,
       cuit: config.cuit,
+      // Emisor representada (sociedad). Se persiste solo si vino en la config.
+      cuit_representada: config.cuit_representada || undefined,
       point_of_sale: config.point_of_sale,
       environment: config.environment || 'production',
       base_url: config.base_url,

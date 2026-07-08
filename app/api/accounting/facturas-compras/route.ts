@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { hasPermission } from "@/lib/permissions"
 import { createServerClient } from "@/lib/supabase/server"
 import { getAfipConfigForAgency } from "@/lib/afip/afip-helpers"
+import { getEmisorCuit } from "@/lib/afip/afip-config"
 
 /**
  * POST /api/accounting/facturas-compras
@@ -55,20 +56,28 @@ export async function POST(request: Request) {
     const Afip = require("@afipsdk/afip.js")
 
     // For automations, we mainly need the access_token (API key)
-    // CUIT and production flag also set the sdk-environment header
+    // CUIT and production flag also set the sdk-environment header.
+    // Emisor/representada: los comprobantes RECIBIDOS son los de la sociedad
+    // emisora; el LOGIN al portal sigue siendo el titular del cert (persona
+    // física con Clave Fiscal).
+    const emisorCuit = getEmisorCuit(afipConfig)
+    const loginCuit = String(afipConfig.cuit).replace(/[-\s]/g, "")
     const afip = new Afip({
-      CUIT: afipConfig.cuit,
+      CUIT: Number(emisorCuit),
       production: true, // Always use production for portal automations
       access_token: afipConfig.api_key,
     })
 
-    const cuitStr = String(afipConfig.cuit).replace(/[-\s]/g, "")
+    const cuitStr = String(emisorCuit).replace(/[-\s]/g, "")
 
     // Call "mis-comprobantes" automation with filter t=R (Recibidos)
     // Params follow AfipSDK docs: https://afipsdk.com/docs/automations/mis-comprobantes/api/
+    // cuit = titular de los comprobantes (sociedad); username = quien loguea
+    // con Clave Fiscal (persona física titular del cert). En el caso normal
+    // ambos coinciden.
     const result = await afip.CreateAutomation("mis-comprobantes", {
       cuit: cuitStr,
-      username: cuitStr,
+      username: loginCuit,
       password: afipPassword,
       filters: {
         t: "R", // R = Recibidos (received), E = Emitidos (issued)

@@ -11,6 +11,7 @@ import {
   TipoComprobante,
 } from './types'
 import type { AfipConfig } from './afip-config'
+import { getEmisorCuit } from './afip-config'
 
 /**
  * Crea una instancia del SDK de AFIP con la configuración de la agencia
@@ -21,7 +22,10 @@ function createAfipInstance(config: AfipConfig) {
   /* eslint-disable-next-line */
   const Afip = require('@afipsdk/afip.js')
   return new Afip({
-    CUIT: Number(config.cuit),
+    // Emisor (representada): si la config tiene cuit_representada, el SDK emite
+    // en nombre de la sociedad. La autenticación sigue usando el cert del
+    // titular (config.cert/key = config.cuit).
+    CUIT: Number(getEmisorCuit(config)),
     production: config.environment === 'production',
     access_token: config.api_key,
     // Certificado PEM inline (requerido cuando afipsdk.com no tiene el cert en su servidor)

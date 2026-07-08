@@ -7,7 +7,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { AfipConfig } from "./afip-config"
-import { isAfipConfigValid } from "./afip-config"
+import { isAfipConfigValid, getEmisorCuit } from "./afip-config"
 import { afipRateCache } from "./rate-cache"
 import { diffVoucher, type VoucherFields, type VoucherDiff } from "./diff"
 import { getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
@@ -33,7 +33,9 @@ function createAfipSdkInstance(config: AfipConfig): AfipSdkInstance {
   // eslint-disable-next-line
   const Afip = require("@afipsdk/afip.js")
   return new Afip({
-    CUIT: Number(config.cuit),
+    // Emisor (representada): factura a nombre de la sociedad si está seteado.
+    // WSAA autentica con el cert del titular (config.cert/key), no con este CUIT.
+    CUIT: Number(getEmisorCuit(config)),
     production: config.environment === "production",
     access_token: config.api_key,
     ...(config.cert && { cert: config.cert }),

@@ -20,6 +20,9 @@ export const dynamic = 'force-dynamic'
 const setupAfipSchema = z.object({
   agency_id: z.string().uuid("ID de agencia inválido"),
   cuit: z.string().min(1, "CUIT es requerido"),
+  // CUIT de la sociedad emisora (representada). Opcional: solo cuando una
+  // persona física factura en nombre de una persona jurídica.
+  cuit_representada: z.string().optional(),
   // Usuario de ARCA (puede ser el CUIT o un usuario específico)
   username: z.string().min(1, "Usuario de ARCA es requerido"),
   // Password/Clave Fiscal
@@ -58,13 +61,27 @@ export async function POST(request: Request) {
       )
     }
 
-    // Validar formato de CUIT
+    // Validar formato de CUIT del titular (login/cert)
     const formattedCuit = formatCuit(validatedData.cuit)
     if (!isValidCuit(formattedCuit)) {
       return NextResponse.json(
         { error: "CUIT inválido. Debe tener 11 dígitos." },
         { status: 400 }
       )
+    }
+
+    // CUIT representada (sociedad) — opcional. Emisor cuando una persona física
+    // factura por una persona jurídica.
+    let representadaCuit: string | undefined
+    if (validatedData.cuit_representada && validatedData.cuit_representada.trim()) {
+      representadaCuit = formatCuit(validatedData.cuit_representada)
+      if (!isValidCuit(representadaCuit)) {
+        return NextResponse.json(
+          { error: "CUIT de la sociedad (representada) inválido. Debe tener 11 dígitos." },
+          { status: 400 }
+        )
+      }
+      if (representadaCuit === formattedCuit) representadaCuit = undefined
     }
 
     // Obtener API Key (de body o env vars)
@@ -98,11 +115,11 @@ export async function POST(request: Request) {
       )
     }
 
-    // Guardar configuración en la base de datos
+    // Guardar configuración en la base de datos (con representada si aplica)
     const saveResult = await saveAfipConfigForAgency(
       supabase,
       validatedData.agency_id,
-      setupResult.config,
+      { ...setupResult.config, cuit_representada: representadaCuit },
       user.id
     )
 

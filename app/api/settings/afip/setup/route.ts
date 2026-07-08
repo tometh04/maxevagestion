@@ -22,7 +22,16 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { agency_id, cuit: bodyCuit, punto_venta, environment = "production", cert_id, cert, key } = body
+    const {
+      agency_id,
+      cuit: bodyCuit,
+      cuit_representada: bodyCuitRepresentada,
+      punto_venta,
+      environment = "production",
+      cert_id,
+      cert,
+      key,
+    } = body
 
     if (!agency_id || !punto_venta) {
       return NextResponse.json(
@@ -44,10 +53,27 @@ export async function POST(request: Request) {
       )
     }
 
-    // Validar CUIT
+    // Validar CUIT del titular (cert)
     const cuitClean = formatCuit(rawCuit)
     if (!isValidCuit(cuitClean)) {
       return NextResponse.json({ error: "El CUIT debe tener 11 dígitos" }, { status: 400 })
+    }
+
+    // CUIT representada (sociedad) — opcional. Si vino, validarlo. Es el emisor
+    // cuando una persona física factura en nombre de una persona jurídica.
+    let cuitRepresentadaClean: string | undefined
+    if (bodyCuitRepresentada && String(bodyCuitRepresentada).trim()) {
+      cuitRepresentadaClean = formatCuit(String(bodyCuitRepresentada))
+      if (!isValidCuit(cuitRepresentadaClean)) {
+        return NextResponse.json(
+          { error: "El CUIT de la sociedad (representada) debe tener 11 dígitos" },
+          { status: 400 }
+        )
+      }
+      // Si es igual al del titular, no es representación → guardarlo como vacío.
+      if (cuitRepresentadaClean === cuitClean) {
+        cuitRepresentadaClean = undefined
+      }
     }
 
     // Validar punto de venta
@@ -76,6 +102,7 @@ export async function POST(request: Request) {
       {
         api_key,
         cuit: cuitClean,
+        cuit_representada: cuitRepresentadaClean,
         point_of_sale: ptoVtaNum,
         environment: environment as "sandbox" | "production",
         cert_id: cert_id || undefined,
@@ -98,6 +125,7 @@ export async function POST(request: Request) {
       message: "AFIP configurado correctamente",
       config: {
         cuit: cuitClean,
+        cuit_representada: cuitRepresentadaClean || null,
         environment,
         punto_venta: ptoVtaNum,
         has_cert: !!(cert),

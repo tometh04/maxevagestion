@@ -40,6 +40,10 @@ export async function GET(request: Request) {
       has_cert: !!(config.cert && config.key),
       config: {
         cuit: maskCuit(config.cuit),
+        // Emisor representada (sociedad) si la persona física factura en su nombre.
+        cuit_representada: config.cuit_representada
+          ? maskCuit(config.cuit_representada)
+          : null,
         environment: config.environment,
         punto_venta: config.point_of_sale,
       },

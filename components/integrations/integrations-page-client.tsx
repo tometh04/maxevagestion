@@ -90,6 +90,7 @@ export function IntegrationsPageClient() {
   const [afipSetupData, setAfipSetupData] = useState({
     agency_id: '',
     cuit: '',
+    cuit_representada: '',
     username: '',
     password: '',
     point_of_sale: 1,
@@ -215,7 +216,7 @@ export function IntegrationsPageClient() {
 
       setShowNewDialog(false)
       setFormData({ name: '', integration_type: '', description: '', config: {}, sync_enabled: false, sync_frequency: 'manual' })
-      setAfipSetupData({ agency_id: agencies[0]?.id || '', cuit: '', username: '', password: '', point_of_sale: 1, environment: 'production' })
+      setAfipSetupData({ agency_id: agencies[0]?.id || '', cuit: '', cuit_representada: '', username: '', password: '', point_of_sale: 1, environment: 'production' })
       loadIntegrations()
     } catch (error: any) {
       toast.error(error.message || 'Error al configurar AFIP')
@@ -372,6 +373,20 @@ export function IntegrationsPageClient() {
                         </p>
                       </div>
                       <div>
+                        <Label>CUIT de la sociedad emisora (opcional)</Label>
+                        <Input
+                          type="text"
+                          value={afipSetupData.cuit_representada}
+                          onChange={(e) => setAfipSetupData({ ...afipSetupData, cuit_representada: e.target.value })}
+                          placeholder="30-12345678-9"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Solo si una persona física factura en nombre de una sociedad (S.A.S., S.R.L.).
+                          Es el CUIT que aparece como emisor. Requiere que la sociedad te haya delegado
+                          el servicio wsfe en AFIP. Si facturás con tu propio CUIT, dejalo vacío.
+                        </p>
+                      </div>
+                      <div>
                         <Label>Usuario de ARCA *</Label>
                         <Input 
                           type="text"
@@ -503,7 +518,7 @@ export function IntegrationsPageClient() {
                   <Button variant="outline" onClick={() => {
                     setShowNewDialog(false)
                     setFormData({ name: '', integration_type: '', description: '', config: {}, sync_enabled: false, sync_frequency: 'manual' })
-                    setAfipSetupData({ agency_id: agencies[0]?.id || '', cuit: '', username: '', password: '', point_of_sale: 1, environment: 'production' })
+                    setAfipSetupData({ agency_id: agencies[0]?.id || '', cuit: '', cuit_representada: '', username: '', password: '', point_of_sale: 1, environment: 'production' })
                   }}>
                     Cancelar
                   </Button>

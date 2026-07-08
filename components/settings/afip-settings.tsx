@@ -47,6 +47,9 @@ import {
 const afipSchema = z.object({
   agency_id: z.string().min(1, "Seleccioná una agencia"),
   cuit: z.string(),
+  // CUIT de la sociedad emisora (opcional). Solo cuando una persona física
+  // factura en nombre de una persona jurídica (representada).
+  cuit_representada: z.string().optional(),
   password: z.string(),
   punto_venta: z.coerce.number().min(1, "Mínimo 1").max(9999, "Máximo 9999"),
   environment: z.enum(["production", "sandbox"]),
@@ -75,6 +78,7 @@ interface AfipStatus {
   has_cert?: boolean
   config?: {
     cuit: string
+    cuit_representada?: string | null
     environment: string
     punto_venta: number
   }
@@ -146,6 +150,7 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
     defaultValues: {
       agency_id: selectedAgencyId,
       cuit: "",
+      cuit_representada: "",
       password: "",
       punto_venta: 1,
       environment: "production",
@@ -368,6 +373,8 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
         body: JSON.stringify({
           agency_id: values.agency_id,
           cuit: cuitForParams,
+          // Emisor representada (sociedad). Solo dígitos; vacío = sin representación.
+          cuit_representada: (values.cuit_representada || "").replace(/\D/g, "") || undefined,
           punto_venta: values.punto_venta,
           environment: values.environment,
           cert_id: certData?.cert_id || certData?.id,
@@ -535,7 +542,9 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
             )}
             <div className="grid grid-cols-3 gap-4 text-sm">
               <div>
-                <span className="text-muted-foreground">CUIT</span>
+                <span className="text-muted-foreground">
+                  {afipStatus.config?.cuit_representada ? "CUIT titular (cert)" : "CUIT"}
+                </span>
                 <p className="font-mono font-medium mt-0.5">{afipStatus.config?.cuit}</p>
               </div>
               <div>
@@ -549,6 +558,12 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
                 </p>
               </div>
             </div>
+            {afipStatus.config?.cuit_representada && (
+              <div className="text-xs text-muted-foreground">
+                <span className="font-medium">Factura en nombre de la sociedad: </span>
+                <span className="font-mono">{afipStatus.config.cuit_representada}</span>
+              </div>
+            )}
             {/* Lista de puntos de venta WSFE detectados en AFIP (cuando los hay) */}
             {posStatus.has_ws_points && posStatus.points.length > 0 && (
               <div className="text-xs text-muted-foreground">
@@ -728,11 +743,13 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
                     name="cuit"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>CUIT de la Empresa</FormLabel>
+                        <FormLabel>CUIT del titular (Clave Fiscal)</FormLabel>
                         <FormControl>
                           <Input {...field} placeholder="20-12345678-9" className="font-mono" />
                         </FormControl>
-                        <FormDescription>11 dígitos sin guiones</FormDescription>
+                        <FormDescription>
+                          El CUIT que entra a AFIP con Clave Fiscal (titular del certificado). 11 dígitos sin guiones.
+                        </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -754,6 +771,31 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
                     )}
                   />
                 </div>
+
+                {/* CUIT representada (opcional) — persona física facturando por una sociedad */}
+                <FormField
+                  control={form.control}
+                  name="cuit_representada"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        CUIT de la sociedad emisora{" "}
+                        <span className="text-muted-foreground font-normal">(opcional)</span>
+                      </FormLabel>
+                      <FormControl>
+                        <Input {...field} placeholder="30-12345678-9" className="font-mono" />
+                      </FormControl>
+                      <FormDescription>
+                        Completá esto <strong>solo</strong> si una persona física factura en nombre de
+                        una sociedad (S.A.S., S.R.L., S.A.). Es el CUIT que aparece en la factura como
+                        emisor. Requiere que la sociedad te haya delegado el servicio{" "}
+                        <span className="font-mono">wsfe</span> a tu computador fiscal en el
+                        Administrador de Relaciones de AFIP. Si facturás con tu propio CUIT, dejalo vacío.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
                 {/* Clave Fiscal */}
                 <FormField

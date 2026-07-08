@@ -3,6 +3,7 @@ import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { getUserAgencyIds } from "@/lib/permissions-api"
 import { getAfipConfigForAgency } from "@/lib/afip/afip-helpers"
+import { getEmisorCuit } from "@/lib/afip/afip-config"
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -44,7 +45,9 @@ export async function GET(request: Request) {
       steps[steps.length - 1] = { step: "1_get_config", status: "error", error: "No hay config AFIP para esta agencia" }
       return NextResponse.json({ steps })
     }
-    steps[steps.length - 1] = { step: "1_get_config", status: "ok", data: { cuit: afipConfig.cuit, environment: afipConfig.environment } }
+    // Emisor de la factura: sociedad (representada) si aplica, si no el titular.
+    const emisorCuit = getEmisorCuit(afipConfig)
+    steps[steps.length - 1] = { step: "1_get_config", status: "ok", data: { cuit: afipConfig.cuit, cuit_representada: afipConfig.cuit_representada || null, emisor_cuit: emisorCuit, environment: afipConfig.environment } }
 
     // Step 2: Crear instancia SDK
     steps.push({ step: "2_create_sdk_instance", status: "running" })
@@ -52,7 +55,8 @@ export async function GET(request: Request) {
     const apiKey = process.env.AFIP_SDK_API_KEY || afipConfig.api_key || ''
     const isProd = afipConfig.environment === 'production'
     const afip = new Afip({
-      CUIT: Number(afipConfig.cuit),
+      // Emisor (representada). El cert del titular autentica en WSAA.
+      CUIT: Number(emisorCuit),
       production: isProd,
       access_token: apiKey,
       ...(afipConfig.cert && { cert: afipConfig.cert }),
@@ -61,7 +65,7 @@ export async function GET(request: Request) {
     steps[steps.length - 1] = {
       step: "2_create_sdk_instance",
       status: "ok",
-      data: { cuit: afipConfig.cuit, production: isProd, has_cert: !!(afipConfig.cert), has_key: !!(afipConfig.key) }
+      data: { cuit: afipConfig.cuit, emisor_cuit: emisorCuit, production: isProd, has_cert: !!(afipConfig.cert), has_key: !!(afipConfig.key) }
     }
 
     // Step 3: Obtener Token/Sign (v1/afip/auth)
