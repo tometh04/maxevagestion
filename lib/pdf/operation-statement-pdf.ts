@@ -128,6 +128,9 @@ export function generateOperationStatementPdf(
   labelValue("Vendedor", data.sellerName, col2, y)
   y += 13
   labelValue("Fecha de salida", fmtDate(data.departureDate), marginLeft, y)
+  labelValue("Fecha de regreso", fmtDate(data.returnDate), col2, y)
+  y += 13
+  labelValue("Destino", data.destination, marginLeft, y)
   labelValue("Total de pasajeros", String(data.passengerCount), col2, y)
   y += 13
   labelValue(
@@ -136,7 +139,6 @@ export function generateOperationStatementPdf(
     marginLeft,
     y
   )
-  labelValue("Destino", data.destination, col2, y)
   y += 16
 
   // ============ LISTADO DE SERVICIOS ============
@@ -152,11 +154,20 @@ export function generateOperationStatementPdf(
 
   y = sectionHeading("Listado de Servicios Contratados", y)
 
-  // Columnas: Servicio | Cant | Detalle | Importe
+  // La columna IMPORTE (precio de venta por servicio) solo se muestra si al menos
+  // un servicio tiene monto de venta cargado. Si ninguno lo tiene, se oculta para
+  // no mostrar una columna llena de "-" (el total sigue apareciendo en VALORES).
+  // Nunca se muestra el costo: acá solo vive `sale_amount`.
+  const showAmounts = data.services.some((s) => s.amount != null)
+
+  // Columnas: Servicio | Cant | Detalle | (Importe)
   const colService = marginLeft + 3
   const colQty = marginLeft + 75
   const colDetail = marginLeft + 92
   const colAmount = rightEdge - 3
+  // Borde derecho del texto de detalle: si hay columna de importe, dejar lugar;
+  // si no, el detalle ocupa hasta el margen derecho.
+  const detailRightEdge = showAmounts ? colAmount - 14 : rightEdge - 3
 
   // Encabezado de tabla
   y += 5
@@ -166,7 +177,9 @@ export function generateOperationStatementPdf(
   doc.text("SERVICIO", colService, y)
   doc.text("CANT", colQty, y)
   doc.text("DETALLE", colDetail, y)
-  doc.text("IMPORTE", colAmount, y, { align: "right" })
+  if (showAmounts) {
+    doc.text("IMPORTE", colAmount, y, { align: "right" })
+  }
   y += 2
   doc.setDrawColor(...LIGHT_ROW)
   doc.setLineWidth(0.3)
@@ -184,7 +197,7 @@ export function generateOperationStatementPdf(
   let rowIdx = 0
   for (const svc of data.services) {
     ensureSpace(9)
-    const detailLines = doc.splitTextToSize(svc.description || "-", colAmount - colDetail - 14)
+    const detailLines = doc.splitTextToSize(svc.description || "-", detailRightEdge - colDetail)
     const rowHeight = Math.max(7, 3 + detailLines.length * 4)
 
     // Zebra striping
@@ -205,9 +218,11 @@ export function generateOperationStatementPdf(
     doc.setTextColor(...GRAY)
     doc.text(detailLines, colDetail, y)
 
-    doc.setTextColor(...DARK)
-    doc.setFont("helvetica", "bold")
-    doc.text(fmtMoney(svc.amount, svc.currency), colAmount, y, { align: "right" })
+    if (showAmounts) {
+      doc.setTextColor(...DARK)
+      doc.setFont("helvetica", "bold")
+      doc.text(fmtMoney(svc.amount, svc.currency), colAmount, y, { align: "right" })
+    }
 
     y += rowHeight
     rowIdx++
