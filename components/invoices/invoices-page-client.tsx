@@ -5,7 +5,8 @@ import { useToast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { Loader2, Plus, Send, Eye, Download, Search, Filter, User, DollarSign, ShieldCheck, AlertCircle, RefreshCw, FileMinus, FilePlus } from "lucide-react"
+import { Loader2, Plus, Send, Eye, Download, Search, Filter, User, DollarSign, ShieldCheck, AlertCircle, RefreshCw, FileMinus, FilePlus, Mail } from "lucide-react"
+import { SendDocumentEmailDialog } from "@/components/shared/send-document-email-dialog"
 import { useRouter } from "next/navigation"
 import {
   DropdownMenu,
@@ -573,6 +574,19 @@ export function InvoicesPageClient() {
                           <Download className="h-4 w-4" />
                         </Button>
                       )}
+                      {invoice.status === 'authorized' && (
+                        <SendDocumentEmailDialog
+                          endpoint={`/api/invoices/${invoice.id}/send`}
+                          title="Enviar factura por email"
+                          description="Se enviará la factura con el PDF adjunto (incluye el QR de AFIP)."
+                          downloadUrl={`/api/invoices/${invoice.id}/pdf`}
+                          successMessage="Factura enviada"
+                        >
+                          <Button variant="outline" size="icon" title="Enviar por email">
+                            <Mail className="h-4 w-4" />
+                          </Button>
+                        </SendDocumentEmailDialog>
+                      )}
                       {invoice.status === 'authorized' && invoice.cae && (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -911,6 +925,20 @@ export function InvoicesPageClient() {
                 <Download className="mr-2 h-4 w-4" />
                 Descargar PDF
               </Button>
+            )}
+            {selectedInvoice?.status === 'authorized' && (
+              <SendDocumentEmailDialog
+                endpoint={`/api/invoices/${selectedInvoice.id}/send`}
+                title="Enviar factura por email"
+                description="Se enviará la factura con el PDF adjunto (incluye el QR de AFIP)."
+                downloadUrl={`/api/invoices/${selectedInvoice.id}/pdf`}
+                successMessage="Factura enviada"
+              >
+                <Button variant="outline">
+                  <Mail className="mr-2 h-4 w-4" />
+                  Enviar por email
+                </Button>
+              </SendDocumentEmailDialog>
             )}
           </DialogFooter>
         </DialogContent>

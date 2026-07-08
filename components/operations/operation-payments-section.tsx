@@ -49,7 +49,8 @@ import { Input } from "@/components/ui/input"
 import { DecimalInput } from "@/components/ui/decimal-input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
-import { CalendarIcon, Plus, Loader2, Trash2, FileText, Download, MessageSquare, Pencil, CheckCircle2, CreditCard, Banknote, Landmark, StickyNote, Receipt } from "lucide-react"
+import { CalendarIcon, Plus, Loader2, Trash2, FileText, Download, MessageSquare, Pencil, CheckCircle2, CreditCard, Banknote, Landmark, StickyNote, Receipt, Mail } from "lucide-react"
+import { SendDocumentEmailDialog } from "@/components/shared/send-document-email-dialog"
 import { Switch } from "@/components/ui/switch"
 import { Checkbox } from "@/components/ui/checkbox"
 import { format } from "date-fns"
@@ -1468,24 +1469,56 @@ export function OperationPaymentsSection({
                                 <MessageSquare className="h-4 w-4" />
                               )}
                             </Button>
+                            <SendDocumentEmailDialog
+                              endpoint={`/api/payments/${payment.id}/receipt/send`}
+                              title="Enviar recibo por email"
+                              description="Se enviará el recibo de pago con el PDF adjunto."
+                              successMessage="Recibo enviado"
+                            >
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-primary hover:text-primary/80 hover:bg-primary/10"
+                                title="Enviar recibo por email"
+                              >
+                                <Mail className="h-4 w-4" />
+                              </Button>
+                            </SendDocumentEmailDialog>
                           </>
                         )}
                         {/* Comprobante de devolución - filas de reintegro al cliente */}
                         {payment.status === "PAID" && payment.direction === "EXPENSE" && payment.payer_type === "CUSTOMER" && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-accent-teal hover:text-accent-teal/80 hover:bg-accent-teal/10"
-                            onClick={() => handleDownloadReceipt(payment.id)}
-                            disabled={downloadingReceiptId === payment.id}
-                            title="Descargar comprobante de devolución"
-                          >
-                            {downloadingReceiptId === payment.id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <FileText className="h-4 w-4" />
-                            )}
-                          </Button>
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-accent-teal hover:text-accent-teal/80 hover:bg-accent-teal/10"
+                              onClick={() => handleDownloadReceipt(payment.id)}
+                              disabled={downloadingReceiptId === payment.id}
+                              title="Descargar comprobante de devolución"
+                            >
+                              {downloadingReceiptId === payment.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <FileText className="h-4 w-4" />
+                              )}
+                            </Button>
+                            <SendDocumentEmailDialog
+                              endpoint={`/api/payments/${payment.id}/receipt/send`}
+                              title="Enviar comprobante por email"
+                              description="Se enviará el comprobante de devolución con el PDF adjunto."
+                              successMessage="Comprobante enviado"
+                            >
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-primary hover:text-primary/80 hover:bg-primary/10"
+                                title="Enviar comprobante por email"
+                              >
+                                <Mail className="h-4 w-4" />
+                              </Button>
+                            </SendDocumentEmailDialog>
+                          </>
                         )}
                         {/* Botón de editar - solo ADMIN/SUPER_ADMIN/CONTABLE */}
                         {canEditPayments && (

@@ -72,6 +72,18 @@ interface InfoItem {
   note?: string
 }
 
+/**
+ * Logo ya resuelto para embeber en el PDF. En el path client-side lo produce
+ * `loadPdfImageData` (canvas). En el path server-side se pasa solo el dataUrl
+ * (base64) y las dimensiones/formato se resuelven con doc.getImageProperties.
+ */
+export interface ReceiptLogoImage {
+  dataUrl: string
+  format?: string
+  width?: number
+  height?: number
+}
+
 function formatMoney(amount: number): string {
   return amount.toLocaleString("es-AR", {
     minimumFractionDigits: 2,
@@ -229,7 +241,16 @@ export async function downloadReceiptPdf(paymentId: string): Promise<void> {
   await generateReceiptPdf(data)
 }
 
-export async function generateReceiptPdf(data: ReceiptPdfData): Promise<void> {
+/**
+ * Núcleo de render del recibo, isomórfico (corre en browser y en Node). Recibe
+ * el logo YA resuelto para no depender de canvas. No descarga ni guarda: los
+ * wrappers (generateReceiptPdf client / generateReceiptPdfBuffer server) deciden
+ * la salida.
+ */
+async function renderReceiptDoc(
+  data: ReceiptPdfData,
+  logoImage?: ReceiptLogoImage | null
+): Promise<any> {
   const { default: jsPDF } = await import("jspdf")
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" })
   const pageWidth = doc.internal.pageSize.getWidth()
@@ -262,23 +283,23 @@ export async function generateReceiptPdf(data: ReceiptPdfData): Promise<void> {
   const paymentHistory = data.paymentHistory || []
   const contextItems: InfoItem[] = []
   let y = 0
-  let logoData:
-    | {
-        dataUrl: string
-        format: "PNG"
-        width: number
-        height: number
-      }
-    | null = null
 
-  // Logo del tenant. Antes había un fallback a "/lozada-logo.png" hardcoded
-  // que aparecía en recibos de TODAS las agencias si no tenían su propio logo.
-  // En SaaS multi-tenant eso es un leak de marca → eliminado.
-  if (data.brandLogo) {
+  // Logo del tenant, ya resuelto por el wrapper. Si vino sin dimensiones
+  // (path server-side, solo dataUrl base64), se calculan con getImageProperties.
+  // Si falla, el recibo se renderiza solo con texto (multi-tenant: nunca un
+  // logo hardcoded que se filtre entre agencias).
+  let logoData: ReceiptLogoImage | null = logoImage ?? null
+  if (logoData && (!logoData.width || !logoData.height || !logoData.format)) {
     try {
-      logoData = await loadPdfImageData(data.brandLogo)
+      const props = (doc as any).getImageProperties(logoData.dataUrl)
+      logoData = {
+        dataUrl: logoData.dataUrl,
+        format: logoData.format || props.fileType || "PNG",
+        width: props.width,
+        height: props.height,
+      }
     } catch {
-      // Si falla la carga del logo del tenant, el recibo se renderiza solo con texto.
+      logoData = null
     }
   }
 
@@ -305,8 +326,9 @@ export async function generateReceiptPdf(data: ReceiptPdfData): Promise<void> {
 
     if (logoData) {
       const logoHeight = 14
-      const logoWidth = (logoData.width / logoData.height) * logoHeight
-      doc.addImage(logoData.dataUrl, logoData.format, margin, headerTop, logoWidth, logoHeight)
+      const ratio = (logoData.width || 1) / (logoData.height || 1)
+      const logoWidth = ratio * logoHeight
+      doc.addImage(logoData.dataUrl, logoData.format || "PNG", margin, headerTop, logoWidth, logoHeight)
       textStartX += logoWidth + 5
     }
 
@@ -905,5 +927,34 @@ export async function generateReceiptPdf(data: ReceiptPdfData): Promise<void> {
   }
 
   addFooters()
+  return doc
+}
+
+/**
+ * Wrapper CLIENT-SIDE: resuelve el logo del tenant vía canvas (loadPdfImageData)
+ * y descarga el PDF. Comportamiento idéntico al histórico — NO cambiar.
+ */
+export async function generateReceiptPdf(data: ReceiptPdfData): Promise<void> {
+  let logoImage: ReceiptLogoImage | null = null
+  if (data.brandLogo) {
+    try {
+      logoImage = await loadPdfImageData(data.brandLogo)
+    } catch {
+      // Si falla la carga del logo del tenant, el recibo se renderiza solo con texto.
+    }
+  }
+  const doc = await renderReceiptDoc(data, logoImage)
   doc.save(data.receiptFileName || `recibo-${data.receiptNumber}.pdf`)
+}
+
+/**
+ * Wrapper SERVER-SIDE: recibe el logo ya resuelto como dataUrl base64 (sin
+ * canvas) y devuelve el PDF como ArrayBuffer para adjuntarlo por email.
+ */
+export async function generateReceiptPdfBuffer(
+  data: ReceiptPdfData,
+  logoImage?: ReceiptLogoImage | null
+): Promise<ArrayBuffer> {
+  const doc = await renderReceiptDoc(data, logoImage)
+  return doc.output("arraybuffer")
 }

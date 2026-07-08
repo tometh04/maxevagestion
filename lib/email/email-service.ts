@@ -420,6 +420,165 @@ export async function sendOperationStatementEmail(
 }
 
 /**
+ * Enviar una factura AFIP al cliente por email, con el PDF adjunto.
+ * Modelado sobre sendOperationStatementEmail.
+ */
+export async function sendInvoiceEmail(
+  to: string,
+  data: {
+    customerName: string
+    invoiceLabel: string   // ej. "Factura B 0004-00000123"
+    total: string          // ya formateado con moneda
+    agencyName: string
+  },
+  pdfBuffer: Buffer,
+  filename: string,
+  supabase?: any
+): Promise<SendEmailResult> {
+  let orgSettings: OrgSettings | undefined
+  if (supabase) {
+    orgSettings = await getOrgSettings(supabase)
+  }
+  const companyName = orgSettings?.companyName || data.agencyName
+  const org = orgSettings || { companyName, address: '', phone: '', email: '', website: '', logo: '' }
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: hsl(222 47% 11%); max-width: 600px; margin: 0 auto; padding: 20px;">
+  ${generateEmailHeader(org, 'Comprobante Fiscal', VIBOOK_EMAIL_GRADIENT)}
+
+  <div style="background: hsl(224 28% 97%); padding: 30px; border: 1px solid hsl(224 18% 92%);">
+    <p style="font-size: 18px;">Hola <strong>${data.customerName}</strong>,</p>
+
+    <p>Te adjuntamos tu comprobante fiscal emitido por <strong>${companyName}</strong>.</p>
+
+    <div style="background: hsl(0 0% 100%); padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid hsl(232 76% 58%);">
+      <table style="width: 100%; border-collapse: collapse;">
+        <tr>
+          <td style="padding: 8px 0; color: hsl(226 12% 48%);">Comprobante:</td>
+          <td style="padding: 8px 0; text-align: right; font-weight: bold;">${data.invoiceLabel}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0; color: hsl(226 12% 48%);">Total:</td>
+          <td style="padding: 8px 0; text-align: right; font-weight: bold; font-size: 20px; color: hsl(232 76% 58%);">${data.total}</td>
+        </tr>
+      </table>
+    </div>
+
+    <p>El PDF adjunto es tu comprobante fiscal oficial con el código QR de AFIP.</p>
+
+    <p style="color: hsl(226 12% 48%); font-size: 14px;">
+      Conservá este comprobante. Si necesitás asistencia, estamos a tu disposición.
+    </p>
+  </div>
+
+  ${generateEmailFooter(org)}
+</body>
+</html>
+  `
+
+  return sendEmail({
+    to,
+    subject: `${data.invoiceLabel} - ${companyName}`,
+    html,
+    attachments: [{
+      filename,
+      content: pdfBuffer,
+      contentType: "application/pdf",
+    }],
+  })
+}
+
+/**
+ * Enviar un recibo de pago (o comprobante de devolución) al cliente por email,
+ * con el PDF adjunto. Modelado sobre sendOperationStatementEmail.
+ */
+export async function sendReceiptEmail(
+  to: string,
+  data: {
+    customerName: string
+    receiptNumber: string
+    amount: string          // ya formateado con moneda
+    mode: "PAYMENT" | "REFUND"
+    destination?: string
+    agencyName: string
+  },
+  pdfBuffer: Buffer,
+  filename: string,
+  supabase?: any
+): Promise<SendEmailResult> {
+  let orgSettings: OrgSettings | undefined
+  if (supabase) {
+    orgSettings = await getOrgSettings(supabase)
+  }
+  const companyName = orgSettings?.companyName || data.agencyName
+  const org = orgSettings || { companyName, address: '', phone: '', email: '', website: '', logo: '' }
+
+  const isRefund = data.mode === "REFUND"
+  const docLabel = isRefund ? "comprobante de devolución" : "recibo de pago"
+  const subtitle = isRefund ? "Comprobante de Devolución" : "Recibo de Pago"
+  const gradient = isRefund ? VIBOOK_EMAIL_GRADIENT_WARNING : VIBOOK_EMAIL_GRADIENT_SUCCESS
+  const accent = isRefund ? "hsl(10 78% 66%)" : "hsl(160 58% 42%)"
+  const amountLabel = isRefund ? "Monto devuelto" : "Monto recibido"
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: hsl(222 47% 11%); max-width: 600px; margin: 0 auto; padding: 20px;">
+  ${generateEmailHeader(org, subtitle, gradient)}
+
+  <div style="background: hsl(224 28% 97%); padding: 30px; border: 1px solid hsl(224 18% 92%);">
+    <p style="font-size: 18px;">Hola <strong>${data.customerName}</strong>,</p>
+
+    <p>Te adjuntamos el ${docLabel} emitido por <strong>${companyName}</strong>${data.destination ? ` por tu viaje a <strong>${data.destination}</strong>` : ""}.</p>
+
+    <div style="background: hsl(0 0% 100%); padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid ${accent};">
+      <table style="width: 100%; border-collapse: collapse;">
+        <tr>
+          <td style="padding: 8px 0; color: hsl(226 12% 48%);">Comprobante Nº:</td>
+          <td style="padding: 8px 0; text-align: right; font-weight: bold;">${data.receiptNumber}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0; color: hsl(226 12% 48%);">${amountLabel}:</td>
+          <td style="padding: 8px 0; text-align: right; font-weight: bold; font-size: 20px; color: ${accent};">${data.amount}</td>
+        </tr>
+      </table>
+    </div>
+
+    <p>En el PDF adjunto encontrás el detalle completo del ${docLabel}.</p>
+
+    <p style="color: hsl(226 12% 48%); font-size: 14px;">
+      Conservá este comprobante. Si necesitás asistencia, estamos a tu disposición.
+    </p>
+  </div>
+
+  ${generateEmailFooter(org)}
+</body>
+</html>
+  `
+
+  return sendEmail({
+    to,
+    subject: `${subtitle} Nº ${data.receiptNumber} - ${companyName}`,
+    html,
+    attachments: [{
+      filename,
+      content: pdfBuffer,
+      contentType: "application/pdf",
+    }],
+  })
+}
+
+/**
  * Enviar confirmación de pago
  */
 export async function sendPaymentConfirmationEmail(
