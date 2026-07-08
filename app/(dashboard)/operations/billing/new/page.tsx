@@ -1123,11 +1123,11 @@ export default function NewInvoicePage() {
                     </SelectTrigger>
                     <SelectContent>
                       {filteredOperations.length === 0 ? (
-                        <SelectItem value="" disabled>
-                          {formData.customer_id 
-                            ? "Este cliente no tiene operaciones" 
+                        <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                          {formData.customer_id
+                            ? "Este cliente no tiene operaciones"
                             : "Seleccione un cliente primero"}
-                        </SelectItem>
+                        </div>
                       ) : (
                         filteredOperations.map(op => (
                           <SelectItem key={op.id} value={op.id}>

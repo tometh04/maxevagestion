@@ -27,6 +27,10 @@ import { toast } from "sonner"
 import { Loader2, Building2, Phone, DollarSign } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
+// Radix Select v2 lanza runtime error si un SelectItem tiene value="".
+// Usamos un centinela para la opción "sin modo" y lo mapeamos a null.
+const AGENCY_DEFAULT = "__AGENCY_DEFAULT__"
+
 const operatorSchema = z.object({
   name: z.string().min(1, "Nombre es requerido"),
   contact_name: z.string().optional(),
@@ -292,8 +296,8 @@ export function EditOperatorDialog({
                   <FormItem>
                     <FormLabel>Modo de cálculo de costo</FormLabel>
                     <Select
-                      value={field.value ?? ""}
-                      onValueChange={(v) => field.onChange(v === "" ? null : v)}
+                      value={field.value ?? AGENCY_DEFAULT}
+                      onValueChange={(v) => field.onChange(v === AGENCY_DEFAULT ? null : v)}
                     >
                       <FormControl>
                         <SelectTrigger>
@@ -301,7 +305,7 @@ export function EditOperatorDialog({
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="">Usar default de agencia</SelectItem>
+                        <SelectItem value={AGENCY_DEFAULT}>Usar default de agencia</SelectItem>
                         <SelectItem value="SIMPLE">Simple — ingresar costo neto</SelectItem>
                         <SelectItem value="COMMISSIONABLE">Comisionable — ingresar precio bruto</SelectItem>
                       </SelectContent>
