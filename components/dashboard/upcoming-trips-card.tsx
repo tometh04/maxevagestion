@@ -9,32 +9,8 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Plane, ChevronRight, MapPin, Users, Calendar, RotateCcw } from "lucide-react"
 import { format, differenceInDays } from "date-fns"
 import { es } from "date-fns/locale"
-import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 import Link from "next/link"
-
-interface Operation {
-  id: string
-  file_code: string
-  destination: string
-  departure_date: string
-  return_date: string | null
-  adults: number
-  children: number
-  infants: number
-  status: string
-  sellers?: { name: string } | null
-}
-
-interface CheckinEvent {
-  operationId: string
-  fileCode: string
-  destination: string
-  date: Date
-  dateStr: string
-  isReturn: boolean
-  totalPax: number
-  sellerName?: string | null
-}
+import { buildCheckinEvents, type CheckinEvent, type CheckinOperation } from "@/lib/operations/checkin-events"
 
 interface UpcomingTripsCardProps {
   agencyId?: string
@@ -66,7 +42,7 @@ export function UpcomingTripsCard({ agencyId, sellerId }: UpcomingTripsCardProps
       if (agencyId && agencyId !== "ALL") params.set("agencyId", agencyId)
       if (sellerId && sellerId !== "ALL") params.set("sellerId", sellerId)
 
-      let data: { operations?: Operation[] } = { operations: [] }
+      let data: { operations?: CheckinOperation[] } = { operations: [] }
       try {
         const response = await fetch(`/api/operations/upcoming-trips?${params.toString()}`)
         if (response.ok) {
@@ -79,47 +55,10 @@ export function UpcomingTripsCard({ agencyId, sellerId }: UpcomingTripsCardProps
         if (fallback.ok) data = await fallback.json()
       }
 
-      // Construir lista de eventos de check-in (salida + regreso) con fecha futura
-      const checkinEvents: CheckinEvent[] = []
-
-      for (const op of data.operations ?? []) {
-        const totalPax = op.adults + op.children + op.infants
-        const sellerName = op.sellers?.name ?? null
-
-        const departureDate = parseDateOnlyLocal(op.departure_date) ?? new Date(op.departure_date)
-        if (departureDate >= todayDate) {
-          checkinEvents.push({
-            operationId: op.id,
-            fileCode: op.file_code,
-            destination: op.destination,
-            date: departureDate,
-            dateStr: op.departure_date,
-            isReturn: false,
-            totalPax,
-            sellerName,
-          })
-        }
-
-        if (op.return_date) {
-          const returnDate = parseDateOnlyLocal(op.return_date) ?? new Date(op.return_date)
-          if (returnDate >= todayDate) {
-            checkinEvents.push({
-              operationId: op.id,
-              fileCode: op.file_code,
-              destination: op.destination,
-              date: returnDate,
-              dateStr: op.return_date,
-              isReturn: true,
-              totalPax,
-              sellerName,
-            })
-          }
-        }
-      }
-
-      // Ordenar por fecha más próxima y tomar los primeros 10
-      checkinEvents.sort((a, b) => a.date.getTime() - b.date.getTime())
-      setEvents(checkinEvents.slice(0, 10))
+      // Construir eventos de check-in (salida + regreso) con el helper compartido.
+      // Tomamos hasta 30 (el resto se ve en /operations/check-ins).
+      const checkinEvents = buildCheckinEvents(data.operations ?? [], todayDate)
+      setEvents(checkinEvents.slice(0, 30))
     } catch (error) {
       console.error("Error fetching upcoming check-ins:", error)
     } finally {
@@ -150,7 +89,7 @@ export function UpcomingTripsCard({ agencyId, sellerId }: UpcomingTripsCardProps
           </CardTitle>
           <CardDescription className="text-xs">Salidas y regresos confirmados</CardDescription>
         </div>
-        <Link href="/operations?status=CONFIRMED">
+        <Link href="/operations/check-ins">
           <Button variant="ghost" size="sm" className="h-7 text-xs">
             Ver todos
             <ChevronRight className="h-3 w-3 ml-1" />

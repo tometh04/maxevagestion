@@ -32,6 +32,7 @@ import {
   ChevronRight,
   ExternalLink,
   Plane,
+  PlaneLanding,
   DollarSign,
   Bell,
   Users,
@@ -42,7 +43,7 @@ import Link from "next/link"
 
 interface CalendarEvent {
   id: string
-  type: "CHECKIN" | "CHECKOUT" | "DEPARTURE" | "PAYMENT_DUE" | "QUOTATION_EXPIRY" | "FOLLOW_UP" | "REMINDER"
+  type: "CHECKIN" | "CHECKOUT" | "DEPARTURE" | "RETURN" | "PAYMENT_DUE" | "QUOTATION_EXPIRY" | "FOLLOW_UP" | "REMINDER"
   title: string
   date: string
   description?: string
@@ -55,6 +56,7 @@ const typeConfig: Record<string, { label: string; icon: typeof Plane; className:
   CHECKIN: { label: "Check-in", icon: Hotel, className: "bg-primary/15 text-primary border-primary/20" },
   CHECKOUT: { label: "Check-out", icon: Hotel, className: "bg-accent-violet/15 text-accent-violet border-accent-violet/20" },
   DEPARTURE: { label: "Salida", icon: Plane, className: "bg-success/15 text-success border-success/20" },
+  RETURN: { label: "Regreso", icon: PlaneLanding, className: "bg-sky-500/15 text-sky-600 border-sky-500/20" },
   PAYMENT_DUE: { label: "Pago", icon: DollarSign, className: "bg-accent-coral/15 text-accent-coral border-accent-coral/20" },
   QUOTATION_EXPIRY: { label: "Cotización", icon: CalendarDays, className: "bg-accent-coral/15 text-accent-coral border-accent-coral/20" },
   FOLLOW_UP: { label: "Seguimiento", icon: Users, className: "bg-accent-violet/15 text-accent-violet border-accent-violet/20" },

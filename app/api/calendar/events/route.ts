@@ -62,7 +62,7 @@ export async function GET(request: Request) {
     // Salidas de operaciones (vuelos) y check-in/check-out de hoteles
     // Para product_type HOTEL/CRUCERO: departure_date = check-in, checkout_date = check-out
     let departuresQuery = (supabase.from("operations") as any)
-      .select("id, destination, departure_date, checkout_date, product_type, file_code, seller_id, agency_id")
+      .select("id, destination, departure_date, return_date, checkout_date, product_type, file_code, seller_id, agency_id")
       .not("departure_date", "is", null)
     departuresQuery = applyOperationFilters(departuresQuery)
     const { data: departures } = await departuresQuery
@@ -106,6 +106,19 @@ export async function GET(request: Request) {
             color: "#2CA77F",
             operationId: op.id,
           })
+          // Regreso del viaje (vuelo/paquete) desde return_date.
+          // HOTEL/CRUCERO ya cubren la vuelta con el Check-out (checkout_date).
+          if (op.return_date) {
+            events.push({
+              id: `return-${op.id}`,
+              type: "RETURN",
+              title: `Regreso: ${op.destination}`,
+              date: op.return_date,
+              description: op.file_code || undefined,
+              color: "#0EA5E9",
+              operationId: op.id,
+            })
+          }
         }
       }
     }

@@ -38,7 +38,7 @@ export async function GET(request: Request) {
     const agencyId = searchParams.get("agencyId")
     const sellerId = searchParams.get("sellerId")
     const limitParam = parseInt(searchParams.get("limit") || "50", 10)
-    const limit = Math.min(Math.max(limitParam, 1), 100)
+    const limit = Math.min(Math.max(limitParam, 1), 300)
 
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
 
