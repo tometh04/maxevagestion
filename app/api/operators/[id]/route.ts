@@ -109,7 +109,8 @@ export async function PATCH(
     const { name, contact_name, contact_email, contact_phone, credit_limit, admin_fee_percentage, cost_calculation_mode, commission_percentage } = body
 
     // Validations
-    if (!name) {
+    const trimmedName = typeof name === "string" ? name.trim() : ""
+    if (!trimmedName) {
       return NextResponse.json({ error: "El nombre es requerido" }, { status: 400 })
     }
 
@@ -125,7 +126,7 @@ export async function PATCH(
 
     // Update operator
     const updatePayload: any = {
-      name,
+      name: trimmedName,
       contact_name: contact_name || null,
       contact_email: contact_email || null,
       contact_phone: contact_phone || null,
@@ -149,7 +150,16 @@ export async function PATCH(
 
     if (updateError || !operator) {
       console.error("Error updating operator:", updateError)
-      return NextResponse.json({ error: "Error al actualizar operador" }, { status: 400 })
+      if ((updateError as any)?.code === "23505") {
+        return NextResponse.json(
+          { error: "Ya existe un operador con ese nombre" },
+          { status: 409 },
+        )
+      }
+      return NextResponse.json(
+        { error: (updateError as any)?.message || "Error al actualizar operador" },
+        { status: 400 },
+      )
     }
 
     return NextResponse.json({ success: true, operator })

@@ -258,10 +258,20 @@ export async function POST(request: Request) {
 
     const body = await request.json()
 
-    const { name, contact_name, contact_email, contact_phone, credit_limit, admin_fee_percentage } = body
+    const {
+      name,
+      contact_name,
+      contact_email,
+      contact_phone,
+      credit_limit,
+      admin_fee_percentage,
+      cost_calculation_mode,
+      commission_percentage,
+    } = body
 
     // Validations
-    if (!name) {
+    const trimmedName = typeof name === "string" ? name.trim() : ""
+    if (!trimmedName) {
       return NextResponse.json({ error: "El nombre es requerido" }, { status: 400 })
     }
 
@@ -269,24 +279,41 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Tu usuario no tiene organización asociada" }, { status: 400 })
     }
 
-    // Create operator (org-scoped)
+    // Create operator (org-scoped). cost_calculation_mode / commission_percentage
+    // se persisten acá también (antes se ignoraban en el create y solo quedaban
+    // en el edit posterior).
     const { data: operator, error: createError } = await (supabase
       .from("operators") as any)
       .insert({
         org_id: user.org_id,
-        name,
+        name: trimmedName,
         contact_name: contact_name || null,
         contact_email: contact_email || null,
         contact_phone: contact_phone || null,
         credit_limit: credit_limit || null,
         admin_fee_percentage: typeof admin_fee_percentage === "number" ? admin_fee_percentage : 0,
+        cost_calculation_mode: cost_calculation_mode || null,
+        commission_percentage: typeof commission_percentage === "number" ? commission_percentage : 0,
       })
       .select()
       .single()
 
     if (createError || !operator) {
       console.error("Error creating operator:", createError)
-      return NextResponse.json({ error: "Error al crear operador" }, { status: 400 })
+      // 23505 = unique_violation. La constraint operators_org_name_unique impide
+      // dos operadores con el mismo nombre en la org → mensaje claro para el usuario.
+      if (createError?.code === "23505") {
+        return NextResponse.json(
+          { error: "Ya existe un operador con ese nombre" },
+          { status: 409 },
+        )
+      }
+      // Para el resto, exponer el motivo real (antes se enmascaraba con un genérico
+      // "Error al crear operador" que hacía imposible diagnosticar).
+      return NextResponse.json(
+        { error: createError?.message || "Error al crear operador" },
+        { status: 400 },
+      )
     }
 
     // Invalidar caché de operadores
