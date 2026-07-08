@@ -40,7 +40,7 @@ export default async function OperationsPage() {
     supabase
       .from("users")
       .select("id, name")
-      .in("role", ["SELLER", "ADMIN", "SUPER_ADMIN"])
+      .in("role", ["SELLER", "ADMIN", "SUPER_ADMIN", "POST_VENTA"])
       .eq("is_active", true)
       .eq("org_id", (user as any).org_id),
     supabase

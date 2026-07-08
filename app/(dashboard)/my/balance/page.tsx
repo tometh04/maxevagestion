@@ -19,8 +19,8 @@ import { DollarSign, TrendingUp, Calendar } from "lucide-react"
 export default async function MyBalancePage() {
   const { user } = await getCurrentUser()
 
-  // Permitir acceso a SELLER, ADMIN y SUPER_ADMIN (si tienen operaciones asignadas)
-  if (!["SELLER", "ADMIN", "SUPER_ADMIN"].includes(user.role)) {
+  // Permitir acceso a SELLER, ADMIN, SUPER_ADMIN y POST_VENTA (si tienen operaciones asignadas)
+  if (!["SELLER", "ADMIN", "SUPER_ADMIN", "POST_VENTA"].includes(user.role)) {
     return (
       <div className="space-y-6">
         <div>

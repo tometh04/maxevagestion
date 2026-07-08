@@ -42,7 +42,7 @@ export default async function ReportsPage() {
   // users de otros tenants antes del filter post-fetch.
   let sellersQuery = (supabase.from("users") as any)
     .select("id, name, user_agencies(agency_id)")
-    .in("role", ["SELLER", "ADMIN", "SUPER_ADMIN"])
+    .in("role", ["SELLER", "ADMIN", "SUPER_ADMIN", "POST_VENTA"])
     .eq("org_id", (user as any).org_id)
     .order("name")
 

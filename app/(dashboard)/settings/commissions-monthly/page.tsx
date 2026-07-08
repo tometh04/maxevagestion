@@ -37,7 +37,7 @@ export default async function CommissionsMonthlyRulesPage() {
       .select("id, name, email, role")
       .eq("org_id", user.org_id)
       .eq("is_active", true)
-      .in("role", ["SELLER", "ADMIN", "SUPER_ADMIN"])
+      .in("role", ["SELLER", "ADMIN", "SUPER_ADMIN", "POST_VENTA"])
       .order("name"),
   ])
 

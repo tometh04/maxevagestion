@@ -87,7 +87,7 @@ export async function AdvancedCRMKanban({ orgId }: AdvancedCRMKanbanProps) {
       .from("users")
       .select("id, name")
       .eq("org_id", orgId)
-      .in("role", ["SELLER", "ADMIN", "SUPER_ADMIN"])
+      .in("role", ["SELLER", "ADMIN", "SUPER_ADMIN", "POST_VENTA"])
       .eq("is_active", true),
 
     // Operators (catálogo de la org para conversión a operación)

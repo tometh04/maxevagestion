@@ -168,7 +168,7 @@ function QuotationsTab() {
       try {
         const { data: { user } } = await supabaseClient.auth.getUser()
         const [sellersRes, agenciesRes] = await Promise.all([
-          supabaseClient.from("users").select("id, name").eq("role", "SELLER").order("name"),
+          supabaseClient.from("users").select("id, name").in("role", ["SELLER", "POST_VENTA"]).order("name"),
           supabaseClient.from("agencies").select("id, name").order("name"),
         ])
         setSellers((sellersRes.data as any) || [])
