@@ -27,8 +27,8 @@ import {
   type HotelFilterOptions,
   type MealPlanFilter,
 } from "@/lib/emilia/result-filters"
-import { getPublicQuotationPdfPath } from "@/lib/quotations/public-links"
-import { tryDownloadQuotationHtmlPDFById } from "@/lib/pdf/quotation-pdf-html"
+import { getPublicQuotationPath } from "@/lib/quotations/public-links"
+import { downloadQuotationPdfFromPriceDialog } from "@/lib/pdf/quotation-pdf-html"
 import { QuotationPdfPriceDialog } from "@/components/sales/quotation-pdf-price-dialog"
 
 const MAX_HOTELS = 4
@@ -532,7 +532,10 @@ export function LeadEmiliaChat({ lead, onBack, onQuotationCreated, initialConver
   const [generating, setGenerating] = useState(false)
   const [createdQuotation, setCreatedQuotation] = useState<any | null>(null)
   // Cotización con el dialog "Cambiar precio" abierto antes de generar el PDF
-  const [pdfPriceQuotation, setPdfPriceQuotation] = useState<{ id: string; public_token: string } | null>(null)
+  const [pdfPriceQuotation, setPdfPriceQuotation] = useState<{
+    id: string
+    public_token: string | null
+  } | null>(null)
   // Cargando el prompt sugerido (gpt). Loading sutil: se llena una sola vez.
   const [promptLoading, setPromptLoading] = useState(false)
 
@@ -1067,18 +1070,27 @@ export function LeadEmiliaChat({ lead, onBack, onQuotationCreated, initialConver
               <div className="font-semibold">Cotización {createdQuotation.quotation_number} creada</div>
               <div className="text-xs opacity-80">{(createdQuotation.quotation_options?.length || 1)} opción(es) · vinculada al lead</div>
             </div>
-            <Button size="sm" variant="outline" onClick={() => window.open(`/cotizacion/${createdQuotation.public_token}`, "_blank")}>
-              <ExternalLink className="h-3.5 w-3.5 mr-1" /> Ver
-            </Button>
             {createdQuotation.public_token && (
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => setPdfPriceQuotation({ id: createdQuotation.id, public_token: createdQuotation.public_token })}
+                onClick={() => window.open(getPublicQuotationPath(createdQuotation.public_token), "_blank")}
               >
-                <FileText className="h-3.5 w-3.5 mr-1" /> Generar PDF
+                <ExternalLink className="h-3.5 w-3.5 mr-1" /> Ver
               </Button>
             )}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                setPdfPriceQuotation({
+                  id: createdQuotation.id,
+                  public_token: createdQuotation.public_token ?? null,
+                })
+              }
+            >
+              <FileText className="h-3.5 w-3.5 mr-1" /> Generar PDF
+            </Button>
             <Button size="sm" variant="ghost" onClick={() => setCreatedQuotation(null)}>
               <X className="h-3.5 w-3.5" />
             </Button>
@@ -1086,21 +1098,16 @@ export function LeadEmiliaChat({ lead, onBack, onQuotationCreated, initialConver
         )}
       </div>
 
-      {/* Cambiar precio antes de generar el PDF */}
+      {/* Mismo modal reutilizado en CRM → Cotizaciones → Editar borrador / Generar PDF */}
       <QuotationPdfPriceDialog
         quotationId={pdfPriceQuotation?.id ?? null}
         onClose={() => setPdfPriceQuotation(null)}
         onGenerate={async () => {
           if (!pdfPriceQuotation) return
-          // Vuelos/hoteles usan el diseño HTML nuevo con logo de la org;
-          // el resto mantiene la vista print pública
-          try {
-            const handled = await tryDownloadQuotationHtmlPDFById(pdfPriceQuotation.id)
-            if (handled) return
-          } catch (err) {
-            console.error("Error generando PDF HTML, fallback a vista print:", err)
-          }
-          window.open(getPublicQuotationPdfPath(pdfPriceQuotation.public_token), "_blank", "noopener,noreferrer")
+          await downloadQuotationPdfFromPriceDialog({
+            quotationId: pdfPriceQuotation.id,
+            publicToken: pdfPriceQuotation.public_token,
+          })
         }}
       />
 

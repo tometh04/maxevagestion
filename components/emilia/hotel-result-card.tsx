@@ -13,6 +13,7 @@ import {
   ChevronRight,
 } from "lucide-react"
 import { RoomGroupSelector } from "./room-group-selector"
+import { truncateEurovipsAddress } from "@/lib/emilia/display-text"
 import { cn } from "@/lib/utils"
 
 // Interfaces según la especificación
@@ -196,6 +197,13 @@ export function HotelResultCard({
     onSelectionChange?.(hotel.id, checked)
   }
 
+  // EUROVIPS a veces concatena política/URLs/tel en address; recortar para no inflar la card.
+  const fullAddress = hotel.address
+    ? String(hotel.address).replace(/\s+/g, " ").trim()
+    : ""
+  const visibleAddress = fullAddress ? truncateEurovipsAddress(fullAddress) : ""
+  const isAddressTruncated = Boolean(fullAddress) && visibleAddress !== fullAddress
+
   return (
     <Card className={cn("overflow-hidden border-border/50", selected && "ring-2 ring-primary")}>
       <HotelImageCarousel
@@ -228,10 +236,14 @@ export function HotelResultCard({
               <span>{hotel.city}</span>
             </div>
 
-            {/* Address */}
-            <div className="text-xs text-muted-foreground">
-              {hotel.address}
-            </div>
+            {visibleAddress ? (
+              <div
+                className="text-xs text-muted-foreground"
+                title={isAddressTruncated ? fullAddress : undefined}
+              >
+                {visibleAddress}
+              </div>
+            ) : null}
 
             {/* Dates */}
             <div className="flex items-center gap-2 text-sm">

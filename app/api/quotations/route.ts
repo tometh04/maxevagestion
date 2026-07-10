@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { randomUUID } from "node:crypto"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { normalizeQuotationPricingMode } from "@/lib/quotations/presentation"
@@ -184,6 +185,9 @@ export async function POST(request: Request) {
         currency: currency || "USD",
         pricing_mode: normalizeQuotationPricingMode(pricing_mode ?? "PER_PERSON"),
         status: "DRAFT",
+        // Token público desde el alta: permite Generar PDF / link público sin
+        // esperar un PATCH (flujo Emilia y "Editar borrador" en CRM).
+        public_token: randomUUID(),
         package_description: package_description || null,
         notes: notes || null,
         internal_notes: internal_notes || null,

@@ -1,4 +1,7 @@
-import { truncateEurovipsPolicy } from "@/lib/emilia/display-text"
+import {
+  truncateEurovipsAddress,
+  truncateEurovipsPolicy,
+} from "@/lib/emilia/display-text"
 
 /**
  * Transformadores de datos de la API externa de viajes
@@ -278,6 +281,10 @@ export function transformFlights(flights: ApiFlight[]): any[] {
 function truncateHotelPolicyFields(hotel: any): any {
   return {
     ...hotel,
+    address:
+      typeof hotel?.address === "string"
+        ? truncateEurovipsAddress(hotel.address)
+        : hotel?.address,
     policy_cancellation:
       typeof hotel?.policy_cancellation === "string"
         ? truncateEurovipsPolicy(hotel.policy_cancellation)

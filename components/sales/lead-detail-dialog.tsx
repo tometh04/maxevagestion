@@ -34,8 +34,8 @@ import {
 } from "@/components/ui/alert-dialog"
 import { toast } from "sonner"
 import { getQuotationOptionPricing } from "@/lib/quotations/presentation"
-import { getPublicQuotationPdfPath } from "@/lib/quotations/public-links"
-import { tryDownloadQuotationHtmlPDFById } from "@/lib/pdf/quotation-pdf-html"
+import { getPublicQuotationPath } from "@/lib/quotations/public-links"
+import { downloadQuotationPdfFromPriceDialog } from "@/lib/pdf/quotation-pdf-html"
 import { QuotationPdfPriceDialog } from "@/components/sales/quotation-pdf-price-dialog"
 import { LeadEmiliaChat } from "@/components/sales/lead-emilia-chat"
 
@@ -228,8 +228,11 @@ export function LeadDetailDialog({
   const [convertDialogOpen, setConvertDialogOpen] = useState(false)
   const [quotationDialogOpen, setQuotationDialogOpen] = useState(false)
   const [editingQuotationId, setEditingQuotationId] = useState<string | null>(null)
-  // Cotización con el dialog "Cambiar precio" abierto antes de generar el PDF
-  const [pdfPriceQuotation, setPdfPriceQuotation] = useState<{ id: string; public_token: string } | null>(null)
+  // Cotización con el dialog "Cambiar precio" / Generar PDF (mismo modal que Emilia)
+  const [pdfPriceQuotation, setPdfPriceQuotation] = useState<{
+    id: string
+    public_token: string | null
+  } | null>(null)
   const [mode, setMode] = useState<"detail" | "emilia">("detail")
   // Conversación que ya trajo el gate de "Cotizar" (perf: el chat evita re-fetchear).
   const [emiliaConversation, setEmiliaConversation] = useState<{ id: string } | null | undefined>(undefined)
@@ -773,6 +776,7 @@ export function LeadDetailDialog({
                           </div>
                         </div>
                         <div className="flex items-center gap-1 ml-2">
+                          {/* Mismo modal que "Generar PDF" post-Emilia: precio + adicionales + PDF */}
                           {q.status === "DRAFT" && (
                             <Button
                               variant="ghost"
@@ -780,8 +784,10 @@ export function LeadDetailDialog({
                               className="h-7 w-7 p-0"
                               onClick={(e) => {
                                 e.stopPropagation()
-                                setEditingQuotationId(q.id)
-                                setQuotationDialogOpen(true)
+                                setPdfPriceQuotation({
+                                  id: q.id,
+                                  public_token: q.public_token,
+                                })
                               }}
                               title="Editar borrador"
                             >
@@ -795,27 +801,28 @@ export function LeadDetailDialog({
                               className="h-7 w-7 p-0"
                               onClick={(e) => {
                                 e.stopPropagation()
-                                window.open(`/cotizacion/${q.public_token}`, "_blank")
+                                window.open(getPublicQuotationPath(q.public_token!), "_blank")
                               }}
                               title="Ver cotización pública"
                             >
                               <Eye className="h-3.5 w-3.5" />
                             </Button>
                           )}
-                          {q.public_token && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 w-7 p-0"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setPdfPriceQuotation({ id: q.id, public_token: q.public_token! })
-                              }}
-                              title="Generar PDF"
-                            >
-                              <Download className="h-3.5 w-3.5" />
-                            </Button>
-                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setPdfPriceQuotation({
+                                id: q.id,
+                                public_token: q.public_token,
+                              })
+                            }}
+                            title="Generar PDF"
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                          </Button>
                         </div>
                       </div>
                     )
@@ -1179,22 +1186,20 @@ export function LeadDetailDialog({
         />
       )}
 
-      {/* Cambiar precio antes de generar el PDF de una cotización */}
+      {/* Mismo modal Generar PDF que Emilia: precio, adicionales y descarga */}
       <QuotationPdfPriceDialog
         quotationId={pdfPriceQuotation?.id ?? null}
         onClose={() => setPdfPriceQuotation(null)}
         onGenerate={async () => {
           if (!pdfPriceQuotation) return
           loadQuotations() // refrescar totales mostrados en la lista
-          // Vuelos/hoteles usan el diseño HTML nuevo con logo de la org;
-          // el resto mantiene la vista print pública
-          try {
-            const handled = await tryDownloadQuotationHtmlPDFById(pdfPriceQuotation.id)
-            if (handled) return
-          } catch (err) {
-            console.error("Error generando PDF HTML, fallback a vista print:", err)
+          const result = await downloadQuotationPdfFromPriceDialog({
+            quotationId: pdfPriceQuotation.id,
+            publicToken: pdfPriceQuotation.public_token,
+          })
+          if (result === "none") {
+            toast.error("No se pudo generar el PDF de esta cotización")
           }
-          window.open(getPublicQuotationPdfPath(pdfPriceQuotation.public_token), "_blank", "noopener,noreferrer")
         }}
       />
 

@@ -1,6 +1,8 @@
 import {
+  EUROVIPS_ADDRESS_MAX_LENGTH,
   EUROVIPS_DESCRIPTION_MAX_LENGTH,
   EUROVIPS_POLICY_MAX_LENGTH,
+  truncateEurovipsAddress,
   truncateEurovipsDescription,
   truncateEurovipsPolicy,
 } from "../display-text"
@@ -26,6 +28,24 @@ describe("Emilia display text helpers", () => {
     expect(result.length).toBeLessThanOrEqual(EUROVIPS_POLICY_MAX_LENGTH)
     expect(result).toContain("misma categoria y regimen")
     expect(result.endsWith("...")).toBe(true)
+  })
+
+  it("recorta direcciones basura de EUROVIPS a 90 caracteres", () => {
+    const address =
+      "Si selecciona dos o mas hab. deben ser de la misma REGIMEN; verifique que las mismas tengan el " +
+      "INDICADO ENTRE PARENTESISJ.E. irasquin , 47297583500" +
+      "https://d2poxrheyfxwbo.cloudfront.net/hotel/demo ".repeat(10)
+
+    const result = truncateEurovipsAddress(address)
+
+    expect(result.length).toBeLessThanOrEqual(EUROVIPS_ADDRESS_MAX_LENGTH)
+    expect(result.endsWith("...")).toBe(true)
+  })
+
+  it("deja direcciones cortas intactas", () => {
+    expect(truncateEurovipsAddress("J.E. Irausquin Boulevard #230")).toBe(
+      "J.E. Irausquin Boulevard #230"
+    )
   })
 
   it("normaliza espacios antes de medir", () => {
