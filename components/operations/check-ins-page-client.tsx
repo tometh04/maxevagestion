@@ -37,12 +37,17 @@ export function CheckInsPageClient() {
       const params = new URLSearchParams()
       params.set("dateFrom", from.toISOString().split("T")[0])
       params.set("dateTo", to.toISOString().split("T")[0])
-      params.set("status", "CONFIRMED")
+      // Traer todos los estados (Reservado, Confirmado, En viaje, Viajado) y
+      // excluir solo las Canceladas más abajo. Antes filtraba status=CONFIRMED,
+      // lo que ocultaba las Reservadas (estado por defecto al crear una op) y
+      // por eso sus salidas/regresos no aparecían en la agenda.
+      params.set("status", "ALL")
       params.set("limit", "300")
 
       const res = await fetch(`/api/operations/upcoming-trips?${params.toString()}`)
       const data: { operations?: CheckinOperation[] } = res.ok ? await res.json() : { operations: [] }
-      setEvents(buildCheckinEvents(data.operations ?? [], todayDate))
+      const visibleOps = (data.operations ?? []).filter((op) => op.status !== "CANCELLED")
+      setEvents(buildCheckinEvents(visibleOps, todayDate))
     } catch (error) {
       console.error("Error fetching check-ins:", error)
     } finally {
