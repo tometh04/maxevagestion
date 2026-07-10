@@ -9,7 +9,8 @@ import {
   type GeneralData,
   type LeadInfo,
 } from "../quotation-mapper"
-import { transformFlights, transformHotels } from "../transformers"
+import { EUROVIPS_POLICY_MAX_LENGTH } from "../display-text"
+import { sanitizeEmiliaMetaForStorage, transformFlights, transformHotels } from "../transformers"
 
 describe("parseStars", () => {
   it.each([
@@ -513,5 +514,32 @@ describe("integración raw → transformers → buildQuotationPayload", () => {
     expect(item.nights).toBe(13)
     expect(item.checkin_date).toBe("2026-07-02")
     expect(item.checkout_date).toBe("2026-07-15")
+  })
+
+  it("hotel: recorta policy_lodging largo antes de serializar cards", () => {
+    const longPolicy = "Si selecciona dos o mas habitaciones deben ser de la misma categoria y regimen. " +
+      "Cargo de Cancelacion desde: 09-07-2026, hasta: 20-08-2026: 9999. ".repeat(40)
+
+    const [hotel] = transformHotels([{ ...rawHotel, policy_lodging: longPolicy } as any]) as EurovipsHotel[]
+
+    expect(hotel.policy_lodging.length).toBeLessThanOrEqual(EUROVIPS_POLICY_MAX_LENGTH)
+    expect(hotel.policy_lodging).toContain("Si selecciona")
+    expect(hotel.policy_lodging.endsWith("...")).toBe(true)
+  })
+
+  it("hotel: recorta policy_lodging dentro de emilia_meta.combinedData", () => {
+    const longPolicy = "Si selecciona dos o mas habitaciones deben ser de la misma categoria y regimen. " +
+      "https://d2poxrheyfxwbo.cloudfront.net/hotel/demo ".repeat(80)
+    const meta = {
+      combinedData: {
+        hotels: [{ ...rawHotel, policy_lodging: longPolicy }],
+      },
+    }
+
+    const sanitized = sanitizeEmiliaMetaForStorage(meta)
+
+    expect(meta.combinedData.hotels[0].policy_lodging.length).toBeGreaterThan(EUROVIPS_POLICY_MAX_LENGTH)
+    expect(sanitized.combinedData.hotels[0].policy_lodging.length).toBeLessThanOrEqual(EUROVIPS_POLICY_MAX_LENGTH)
+    expect(sanitized.combinedData.hotels[0].policy_lodging.endsWith("...")).toBe(true)
   })
 })

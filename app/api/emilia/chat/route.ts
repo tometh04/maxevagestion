@@ -7,7 +7,7 @@ import {
     generateTitle,
     buildAssistantContent,
 } from "@/lib/emilia/utils"
-import { transformFlights, transformHotels } from "@/lib/emilia/transformers"
+import { sanitizeEmiliaMetaForStorage, transformFlights, transformHotels } from "@/lib/emilia/transformers"
 
 interface ChatRequest {
     message: string
@@ -312,7 +312,7 @@ export async function POST(request: Request) {
         // `data.assistant_message.content.text`. Usarlo directo cuando esté
         // disponible; si no (shape legacy /search), caer a buildAssistantContent.
         const emiliaText = data.assistant_message?.content?.text as string | undefined
-        const emiliaMeta = data.assistant_message?.meta
+        const emiliaMeta = sanitizeEmiliaMetaForStorage(data.assistant_message?.meta)
         const assistantContent = {
             text: emiliaText || buildAssistantContent(normalizedDataForContent),
             cards: resultsFlights || resultsHotels ? {
@@ -396,6 +396,12 @@ export async function POST(request: Request) {
 
         return NextResponse.json({
             ...data,
+            assistant_message: data.assistant_message
+                ? {
+                    ...data.assistant_message,
+                    meta: emiliaMeta,
+                }
+                : data.assistant_message,
             status: responseStatus, // Asegurar que siempre haya status
             results: normalizedResults,
             requestType: derivedRequestType,

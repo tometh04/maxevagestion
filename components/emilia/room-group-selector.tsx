@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Bed, Check, Circle } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { truncateEurovipsDescription } from "@/lib/emilia/display-text"
 
 interface HotelRoom {
   type: string
@@ -53,14 +54,23 @@ export function RoomGroupSelector({
     groupedRooms[type].sort((a, b) => a.total_price - b.total_price)
   })
 
+  const collapsedRooms = Object.values(groupedRooms)
+    .map((group) => group[0]) // Primera de cada grupo
+    .slice(0, maxInitialRooms)
+
+  if (!showAll && selectedRoomId && !collapsedRooms.some((room) => room.occupancy_id === selectedRoomId)) {
+    const selectedRoom = rooms.find((room) => room.occupancy_id === selectedRoomId)
+    if (selectedRoom) {
+      collapsedRooms.unshift(selectedRoom)
+    }
+  }
+
   // Obtener habitaciones a mostrar
-  const visibleRooms = showAll
-    ? rooms
-    : Object.values(groupedRooms)
-      .map((group) => group[0]) // Primera de cada grupo
-      .slice(0, maxInitialRooms)
+  const visibleRooms = showAll ? rooms : collapsedRooms
 
   const hiddenCount = rooms.length - visibleRooms.length
+  const expandableCount = rooms.length - collapsedRooms.length
+  const hasExpandableRooms = expandableCount > 0
 
   return (
     <div className="space-y-3">
@@ -87,14 +97,16 @@ export function RoomGroupSelector({
         })}
       </div>
 
-      {hiddenCount > 0 && !showAll && (
+      {hasExpandableRooms && (
         <Button
           variant="outline"
           size="sm"
-          onClick={() => setShowAll(true)}
+          onClick={() => setShowAll((value) => !value)}
           className="w-full"
         >
-          Ver más opciones ({hiddenCount} más)
+          {showAll
+            ? "Ver menos"
+            : `Ver ${hiddenCount} habitaci${hiddenCount === 1 ? "ón" : "ones"} más`}
         </Button>
       )}
     </div>
@@ -128,6 +140,9 @@ function RoomCard({
   }
 
   const priceDifference = room.total_price - cheapestPrice
+  const translatedDescription = translateRoomDescription(room.description)
+  const visibleDescription = truncateEurovipsDescription(translatedDescription)
+  const isDescriptionTruncated = visibleDescription !== translatedDescription.trim()
   const reasons = getPriceDifferenceReasons(room.description)
 
   const availabilityConfig = {
@@ -188,10 +203,13 @@ function RoomCard({
           </div>
         )}
 
-        {/* Descripción completa (sin truncar) para que el vendedor vea el tipo
-            de habitación y régimen completos. */}
-        <p className="text-sm text-muted-foreground whitespace-pre-line">
-          {translateRoomDescription(room.description)}
+        {/* EUROVIPS puede devolver descripciones largas; la card muestra un
+            resumen estable y conserva el texto completo como tooltip. */}
+        <p
+          className="text-sm text-muted-foreground"
+          title={isDescriptionTruncated ? translatedDescription : undefined}
+        >
+          {visibleDescription}
         </p>
 
         {/* Disponibilidad */}

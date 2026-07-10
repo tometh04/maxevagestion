@@ -1,3 +1,5 @@
+import { truncateEurovipsPolicy } from "@/lib/emilia/display-text"
+
 /**
  * Transformadores de datos de la API externa de viajes
  * Convierte la estructura de la API al formato esperado por los componentes del frontend
@@ -273,15 +275,48 @@ export function transformFlights(flights: ApiFlight[]): any[] {
   return flights.map(transformFlight)
 }
 
+function truncateHotelPolicyFields(hotel: any): any {
+  return {
+    ...hotel,
+    policy_cancellation:
+      typeof hotel?.policy_cancellation === "string"
+        ? truncateEurovipsPolicy(hotel.policy_cancellation)
+        : hotel?.policy_cancellation,
+    policy_lodging:
+      typeof hotel?.policy_lodging === "string"
+        ? truncateEurovipsPolicy(hotel.policy_lodging)
+        : hotel?.policy_lodging,
+  }
+}
+
+export function sanitizeEmiliaMetaForStorage(meta: any): any {
+  const hotels = meta?.combinedData?.hotels
+  if (!Array.isArray(hotels)) {
+    return meta
+  }
+
+  return {
+    ...meta,
+    combinedData: {
+      ...meta.combinedData,
+      hotels: hotels.map(truncateHotelPolicyFields),
+    },
+  }
+}
+
 export function transformHotels(hotels: any[]): any[] {
   // Los hoteles ya vienen en el formato correcto según la especificación
   // Solo agregamos occupancy_id si no existe
-  return hotels.map((hotel) => ({
-    ...hotel,
-    rooms: hotel.rooms?.map((room: any, idx: number) => ({
-      ...room,
-      occupancy_id: room.occupancy_id || `room-${hotel.id}-${idx}`,
-    })),
-  }))
+  return hotels.map((hotel) => {
+    const safeHotel = truncateHotelPolicyFields(hotel)
+
+    return {
+      ...safeHotel,
+      rooms: safeHotel.rooms?.map((room: any, idx: number) => ({
+        ...room,
+        occupancy_id: room.occupancy_id || `room-${hotel.id}-${idx}`,
+      })),
+    }
+  })
 }
 
