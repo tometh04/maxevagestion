@@ -25,9 +25,14 @@ import { notifyBillingSlack } from "@/lib/billing/slack-notify"
  *    preapproval_plan. No traen preapproval_id directamente, así que
  *    matcheamos por payer_email.
  *
- * MP reintenta hasta recibir 2xx. Persistimos el raw event primero y respondemos
- * 200 incluso si el procesamiento posterior falla — así no perdemos el mensaje
- * y MP no reenvía innecesariamente.
+ * Idempotencia y reintentos:
+ *  MP reintenta hasta recibir 2xx. Persistimos el raw event con status
+ *  "received". Solo devolvemos 200 (y lo marcamos "processed") cuando el evento
+ *  quedó APLICADO o es terminal-no-recuperable. Si la falla es transitoria
+ *  (fetch a MP falló, o todavía no podemos linkear la org), devolvemos 5xx SIN
+ *  marcar processed → MP reintenta y en el reintento re-procesamos el mismo raw
+ *  event (no lo tratamos como duplicado). Así un cobro exitoso nunca se pierde
+ *  en silencio.
  */
 export async function POST(request: Request) {
   const xSignature = request.headers.get("x-signature")
@@ -66,27 +71,66 @@ export async function POST(request: Request) {
   const admin = createAdminClient() as any
 
   // 2. Persistir raw event (audit). Idempotencia por UNIQUE(external_id, event_type).
+  //    status "received" → todavía no procesado. Se marca "processed" al final.
   const eventType = typeToEventType(type)
   const insertRes = await admin
     .from("billing_events")
     .insert({
       event_type: eventType,
       external_id: resolvedId ? String(resolvedId) : null,
+      status: "received",
       payload: { type, body, query: Object.fromEntries(url.searchParams) },
     })
     .select("id")
     .single()
 
-  // Postgres 23505 = unique_violation → webhook duplicado (MP retryeó), OK
-  if (insertRes.error?.code === "23505") {
-    return NextResponse.json({ ok: true, duplicate: true })
+  let rawEventId: string | null = insertRes.data?.id ?? null
+
+  if (insertRes.error) {
+    if (insertRes.error.code === "23505") {
+      // Ya lo vimos antes (MP retryeó). ¿Ya se procesó?
+      const { data: existing } = await admin
+        .from("billing_events")
+        .select("id, status")
+        .eq("external_id", resolvedId ? String(resolvedId) : null)
+        .eq("event_type", eventType)
+        .maybeSingle()
+      if (existing?.status === "processed") {
+        return NextResponse.json({ ok: true, duplicate: true })
+      }
+      // Existe pero no se procesó (un intento anterior devolvió 5xx). Reprocesar.
+      rawEventId = existing?.id ?? null
+    } else {
+      // 23514 (check_violation) u otro: NO lo tragamos. Antes esto se ignoraba y
+      // perdíamos la traza de que el webhook llegó. Log + alerta explícita.
+      console.error("mp-webhook: raw event insert failed", insertRes.error)
+      logSecurityEvent({
+        eventType: "mp_webhook_raw_insert_failed",
+        severity: "ERROR",
+        requestPath: "/api/billing/mp-webhook",
+        details: { code: insertRes.error.code, message: insertRes.error.message, type, dataId: resolvedId },
+      })
+      notifyBillingSlack({
+        event: "BILLING_ALERT",
+        orgName: "—",
+        details: `No se pudo persistir el raw event del webhook MP (${insertRes.error.code}). type=${type} id=${resolvedId}. Revisar constraint/migraciones de billing_events.`,
+        severity: "error",
+      })
+      // Seguimos procesando igual: perder el audit no debe impedir aplicar el cobro.
+      rawEventId = null
+    }
   }
 
-  const rawInsert = insertRes.data
+  const markProcessed = async () => {
+    if (rawEventId) {
+      await admin.from("billing_events").update({ status: "processed" }).eq("id", rawEventId)
+    }
+  }
 
   // 3. Solo procesamos tipos relevantes
   if (!resolvedId || !isProcessableType(type)) {
-    return NextResponse.json({ ok: true, event_id: rawInsert?.id })
+    await markProcessed()
+    return NextResponse.json({ ok: true, event_id: rawEventId })
   }
 
   // 4. Fetch estado fresh
@@ -98,7 +142,9 @@ export async function POST(request: Request) {
     if (type === "subscription_authorized_payment") {
       const preapprovalId = body?.preapproval_id || body?.data?.preapproval_id
       if (!preapprovalId) {
+        // Terminal: sin preapproval_id no hay forma de resolver. No reintentar.
         console.warn("mp-webhook: subscription_authorized_payment sin preapproval_id")
+        await markProcessed()
         return NextResponse.json({ ok: true, warning: "missing preapproval_id" })
       }
       preapproval = await fetchPreapproval(String(preapprovalId))
@@ -116,6 +162,8 @@ export async function POST(request: Request) {
       } else {
         const payerEmail = paymentDetails?.payer?.email
         if (!payerEmail) {
+          // Terminal: sin email ni subscription_id no se puede linkear.
+          await markProcessed()
           return NextResponse.json({ ok: true, warning: "payment sin payer.email ni subscription_id" })
         }
         const found = await searchPreapprovalsByPayerEmail(payerEmail, 5)
@@ -126,7 +174,10 @@ export async function POST(request: Request) {
           return tb - ta
         })[0]
         if (!candidate) {
-          return NextResponse.json({ ok: true, warning: "no preapproval para payer_email" })
+          // Transitorio: el preapproval puede tardar en aparecer en el search.
+          // 5xx → MP reintenta más tarde (y el cron de reconcile es red final).
+          console.warn("mp-webhook: no preapproval para payer_email (retryable)", { payerEmail })
+          return NextResponse.json({ error: "no preapproval para payer_email (retry)" }, { status: 503 })
         }
         preapproval = candidate
       }
@@ -139,8 +190,10 @@ export async function POST(request: Request) {
       preapproval = await fetchPreapproval(String(resolvedId))
     }
   } catch (err: any) {
-    console.error("mp-webhook: fetch failed", err?.message || err)
-    return NextResponse.json({ ok: true, warning: "fetch failed" })
+    // Falla transitoria de MP (outage/timeout). NO marcamos processed → 5xx para
+    // que MP reintente. Antes esto devolvía 200 y perdía el webhook para siempre.
+    console.error("mp-webhook: fetch failed (retryable)", err?.message || err)
+    return NextResponse.json({ error: "fetch failed (retry)" }, { status: 503 })
   }
 
   // Resolver orgId:
@@ -159,41 +212,76 @@ export async function POST(request: Request) {
   }
   if (!orgId && type === "payment") {
     // Fallback para flow preapproval_plan sin external_reference:
-    // matchear por mp_preapproval_plan_id contra el último CHECKOUT_INITIATED pending.
+    // matchear por mp_preapproval_plan_id contra CHECKOUT_INITIATED pending.
+    // Como el preapproval_plan es COMPARTIDO entre tenants, NO alcanza con el
+    // plan_id: cross-checkeamos el payer_email del pago contra el del checkout
+    // para no atribuir el cobro a la org equivocada.
     const planId = paymentDetails?.point_of_interaction?.transaction_data?.plan_id
+    const payerEmail = (paymentDetails?.payer?.email || "").toLowerCase()
     if (planId) {
-      const { data: initiated } = await admin
+      const { data: initiatedRows } = await admin
         .from("billing_events")
-        .select("id, org_id")
+        .select("id, org_id, payload")
         .eq("event_type", "CHECKOUT_INITIATED")
         .eq("status", "pending")
         .contains("payload", { mp_preapproval_plan_id: planId })
         .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle()
+        .limit(10)
 
-      if (initiated?.org_id) {
-        orgId = initiated.org_id
-        consumedCheckoutEventId = initiated.id
+      const rows = (initiatedRows ?? []) as Array<{ id: string; org_id: string; payload: any }>
+      // Preferir match por payer_email; si no hay email en el pago, no adivinar.
+      const matched = payerEmail
+        ? rows.find((r) => String(r.payload?.payer_email || "").toLowerCase() === payerEmail)
+        : undefined
+
+      if (matched?.org_id) {
+        orgId = matched.org_id
+        consumedCheckoutEventId = matched.id
+      } else if (rows.length === 1 && !payerEmail) {
+        // Único candidato y sin email para desambiguar → aceptamos.
+        orgId = rows[0].org_id
+        consumedCheckoutEventId = rows[0].id
+      } else if (rows.length > 1) {
+        // Ambigüedad real entre tenants: no linkear a ciegas. Alertar.
+        console.warn("mp-webhook: múltiples CHECKOUT_INITIATED para el plan, sin match por email", {
+          planId, payerEmail, candidates: rows.length,
+        })
+        notifyBillingSlack({
+          event: "BILLING_ALERT",
+          orgName: "—",
+          details: `Pago MP no atribuible unívocamente (plan compartido ${planId}, ${rows.length} checkouts pendientes, sin match por email). Revisar manualmente.`,
+          severity: "warning",
+        })
       }
     }
   }
   if (!orgId) {
     // Primer webhook del flow preapproval_plan — la org aún no tiene el id
-    // persistido. Lo hará /api/billing/sync cuando el user vuelva al back_url.
-    return NextResponse.json({ ok: true, warning: "no external_reference (pending sync)" })
+    // persistido. /api/billing/sync lo hará cuando el user vuelva al back_url,
+    // o el cron billing-reconcile (Fase 3) lo recupera. Devolvemos 5xx para que
+    // MP reintente: en el reintento el mp_preapproval_id ya puede estar seteado.
+    return NextResponse.json({ error: "org no resuelta aún (retry)" }, { status: 503 })
   }
 
-  // 5. Idempotencia por last_modified
+  // 5. Idempotencia por last_modified.
   const { data: org } = await admin
     .from("organizations")
     .select("id, name, subscription_status, current_period_ends_at, mp_last_synced_at, trial_ends_at")
     .eq("id", orgId)
     .maybeSingle()
-  if (!org) return NextResponse.json({ ok: true, warning: "org not found" })
+  if (!org) {
+    // Terminal: la org no existe. No reintentar.
+    await markProcessed()
+    return NextResponse.json({ ok: true, warning: "org not found" })
+  }
 
-  if (org.mp_last_synced_at && preapproval.last_modified) {
+  // Solo aplicamos el short-circuit "stale" cuando NO hay un evento de pago:
+  // un subscription_authorized_payment/payment approved o rejected debe aplicarse
+  // aunque el last_modified del preapproval no haya avanzado (el cambio está en el
+  // pago, no en el preapproval). La state machine es idempotente.
+  if (!paymentEvent && org.mp_last_synced_at && preapproval.last_modified) {
     if (new Date(org.mp_last_synced_at).getTime() >= new Date(preapproval.last_modified).getTime()) {
+      await markProcessed()
       return NextResponse.json({ ok: true, stale: true })
     }
   }
@@ -222,6 +310,7 @@ export async function POST(request: Request) {
       await admin.from("organizations")
         .update({ mp_last_synced_at: preapproval.last_modified, mp_preapproval_id: preapproval.id })
         .eq("id", orgId)
+      await markProcessed()
       return NextResponse.json({
         ok: true,
         skipped_race_condition: true,
@@ -254,7 +343,19 @@ export async function POST(request: Request) {
     updates.current_period_ends_at = transition.current_period_ends_at
   }
 
-  await admin.from("organizations").update(updates).eq("id", orgId)
+  const { error: orgUpdateErr } = await admin.from("organizations").update(updates).eq("id", orgId)
+  if (orgUpdateErr) {
+    // Falla contable crítica: no marcar processed → MP reintenta. Alerta.
+    console.error("mp-webhook: org update failed", orgId, orgUpdateErr)
+    notifyBillingSlack({
+      event: "BILLING_ALERT",
+      orgName: org.name || orgId,
+      orgId,
+      details: `No se pudo actualizar subscription_status en webhook MP (${orgUpdateErr.code}). Reintentará.`,
+      severity: "error",
+    })
+    return NextResponse.json({ error: "org update failed (retry)" }, { status: 503 })
+  }
 
   if (transition.event_type) {
     await admin.from("billing_events").insert({
@@ -335,9 +436,10 @@ export async function POST(request: Request) {
     })
   }
 
+  await markProcessed()
   return NextResponse.json({
     ok: true,
-    event_id: rawInsert?.id,
+    event_id: rawEventId,
     applied_status: transition.subscription_status,
   })
 }
