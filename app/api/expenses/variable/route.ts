@@ -220,6 +220,7 @@ export async function POST(request: Request) {
         receipt_number: null,
         notes: notes || null,
         created_by: user.id,
+        category_id: category_id || null,
         movement_date: movement_date || new Date().toISOString(),
       },
       supabase

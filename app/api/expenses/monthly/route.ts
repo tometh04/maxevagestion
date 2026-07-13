@@ -49,13 +49,35 @@ export async function GET(request: Request) {
       agencyAccountIds = (agencyAccounts || []).map((a: any) => a.id as string)
     }
 
+    // Enriquecimiento de categorías (para el resumen por categoría / torta).
+    // recurring_payment_categories es la fuente compartida de categorías con color.
+    const { data: catRows } = await (supabase.from("recurring_payment_categories") as any)
+      .select("id, name, color")
+      .eq("org_id", userOrgId)
+    const categoryById = new Map<string, { id: string; name: string; color: string | null }>(
+      (catRows || []).map((c: any) => [c.id, c])
+    )
+
+    // Los gastos recurrentes viven en ledger_movements con concepto
+    // "Gasto recurrente: <description>" y NO conservan category_id. Recuperamos la
+    // categoría matcheando la description contra recurring_payments (scopeado por org).
+    const { data: recRows } = await (supabase.from("recurring_payments") as any)
+      .select("description, category_id")
+      .eq("org_id", userOrgId)
+    const recCategoryIdByDescription = new Map<string, string>()
+    for (const r of recRows || []) {
+      if (r.description && r.category_id) {
+        recCategoryIdByDescription.set(String(r.description).trim(), r.category_id)
+      }
+    }
+
     const allExpenses: any[] = []
 
     // 1. RECURRING EXPENSES (paid): from ledger_movements
     if (!typeFilter || typeFilter === "recurring") {
       let recQuery = (supabase.from("ledger_movements") as any)
         .select(`
-          id, type, concept, currency, amount_original,
+          id, type, concept, currency, amount_original, category_id,
           movement_date, created_at, account_id, notes, receipt_number,
           financial_accounts:account_id (id, name, currency),
           users:created_by (id, name)
@@ -83,12 +105,18 @@ export async function GET(request: Request) {
             .replace("Gasto recurrente:", "")
             .trim()
 
+          // Preferir la categoría persistida en el asiento (pagos nuevos);
+          // fallback a matching por descripción para pagos históricos.
+          const recCategoryId = e.category_id || recCategoryIdByDescription.get(description) || null
+          const recCat = recCategoryId ? categoryById.get(recCategoryId) : null
+
           allExpenses.push({
             id: e.id,
             expense_type: "recurring",
             description,
             provider_name: null,
-            category: "Recurrente",
+            category: recCat?.name || "Recurrente",
+            category_color: recCat?.color || null,
             amount: Number(e.amount_original),
             currency: e.currency,
             movement_date: e.movement_date,
@@ -127,12 +155,14 @@ export async function GET(request: Request) {
 
       if (!varError && variables) {
         for (const v of variables) {
+          const varCat = v.category_id ? categoryById.get(v.category_id) : null
           allExpenses.push({
             id: v.id,
             expense_type: "variable",
             description: v.category || v.notes || "Gasto variable",
             provider_name: null,
-            category: v.category || null,
+            category: v.category || varCat?.name || null,
+            category_color: varCat?.color || null,
             amount: Number(v.amount),
             currency: v.currency,
             movement_date: v.movement_date,

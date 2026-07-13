@@ -148,6 +148,7 @@ export async function POST(request: Request) {
         receipt_number: reference || null,
         notes: reference || null,
         created_by: user.id,
+        category_id: recurringPayment.category_id || null,
         movement_date: payment_date || new Date().toISOString(),
       },
       supabase
