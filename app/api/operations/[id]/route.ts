@@ -18,6 +18,7 @@ type IncomingOperatorPayload = {
   product_type?: string | null
   notes?: string | null
   sale_amount?: number
+  passenger_detail?: any
 }
 
 function normalizeIncomingOperators(
@@ -36,6 +37,7 @@ function normalizeIncomingOperators(
       cost_currency: ((operatorData.cost_currency || fallbackCurrency || "USD").toUpperCase() === "ARS" ? "ARS" : "USD") as "ARS" | "USD",
       product_type: operatorData.product_type || null,
       notes: operatorData.notes || null,
+      passenger_detail: operatorData.passenger_detail ?? null,
     }))
 }
 
@@ -403,6 +405,7 @@ export async function PATCH(
         product_type: operatorData.product_type || null,
         notes: operatorData.notes || null,
         sale_amount: Number(operatorData.sale_amount) || 0,
+        passenger_detail: operatorData.passenger_detail ?? null,
       }))
 
       const { error: rpcError } = await (supabase.rpc as any)("replace_operation_operators", {
@@ -754,9 +757,31 @@ export async function PATCH(
               }
 
               if (newCost < paidAmount) {
-                if (amountChanged) {
+                // 🔴 Bug fix (A5 auditoría cost-decrease): el costo bajó POR DEBAJO
+                // de lo ya pagado. No podemos poner amount < paid_amount (rompería el
+                // invariante paid ≤ amount que asumen los reportes de saldo). Antes se
+                // CONSERVABA el amount viejo → dejaba un pendiente FANTASMA de
+                // (amount_viejo − paid) al operador (síntoma reportado en la nota
+                // project_operator_payment_cost_decrease_drift).
+                //
+                // Fix: bajar amount hasta paid_amount, el mínimo seguro. Resultado:
+                // pendiente = 0, status = PAID, sin pendiente fantasma. El sobrepago
+                // (paid − newCost) es un crédito al operador que hoy NO se modela;
+                // queda documentado en auditWarnings y lo detecta el cron
+                // audit-operator-debt-drift. El costo real sigue en operation_operators.cost.
+                if (currentAmount !== paidAmount || currencyChangedLocal) {
+                  await (supabase.from("operator_payments") as any)
+                    .update({
+                      amount: paidAmount,
+                      currency: operatorData.cost_currency,
+                      status: "PAID",
+                      updated_at: new Date().toISOString(),
+                    })
+                    .eq("id", opPay.id)
+                    .eq("org_id", (user as any).org_id)
+
                   auditWarnings.push(
-                    `operator_payment ${opPay.id.slice(0, 8)} conserva amount ${currentAmount} porque new_cost (${newCost}) < paid_amount (${paidAmount}) rompería el balance`
+                    `operator_payment ${opPay.id.slice(0, 8)} saldado: amount ${currentAmount}→${paidAmount} (costo ${newCost} < pagado ${paidAmount}; sobrepago ${(paidAmount - newCost).toFixed(2)} no modelado como crédito)`
                   )
                 }
                 continue

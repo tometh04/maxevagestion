@@ -16,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { DecimalInput } from "@/components/ui/decimal-input"
+import { serviceKind, PASSENGER_DETAIL_FIELDS, sanitizePassengerDetail } from "@/lib/operations/service-kind"
 import {
   Select,
   SelectContent,
@@ -210,7 +211,7 @@ export function NewOperationDialog({
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
   const [useMultipleOperators, setUseMultipleOperators] = useState(false)
-  const [operatorList, setOperatorList] = useState<Array<{operator_id: string, cost: string | number, cost_currency: "ARS" | "USD", product_type?: string, notes?: string}>>([])
+  const [operatorList, setOperatorList] = useState<Array<{operator_id: string, cost: string | number, cost_currency: "ARS" | "USD", product_type?: string, notes?: string, passenger_detail?: Record<string, string>}>>([])
   const [settings, setSettings] = useState<OperationSettings | null>(null)
   const [apiError, setApiError] = useState<string | null>(null)
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
@@ -601,7 +602,7 @@ export function NewOperationDialog({
         // Incluir lead_id si hay un lead
         ...(lead ? { lead_id: lead.id } : {}),
         operator_id: useMultipleOperators ? null : (values.operator_id || null),
-        operators: useMultipleOperators && operatorList.length > 0 ? operatorList.map(op => ({ ...op, cost: Number(op.cost) || 0 })) : undefined,
+        operators: useMultipleOperators && operatorList.length > 0 ? operatorList.map(op => ({ ...op, cost: Number(op.cost) || 0, passenger_detail: sanitizePassengerDetail(op.passenger_detail) })) : undefined,
         seller_secondary_id: values.seller_secondary_id || null,
         commission_split: values.seller_secondary_id ? (values.commission_split ?? 50) : null,
         // Overrides absolutos (29/04 — Tomi opción B): si hay secondary, persistir
@@ -1137,6 +1138,32 @@ export function NewOperationDialog({
                         </SelectContent>
                       </Select>
                     </div>
+                      </div>
+
+                      {/* Detalle para el pasajero (opcional), según el tipo de servicio.
+                          Se exporta en el PDF "Detalle de la Operación". */}
+                      <div className="pt-3 border-t border-border/40">
+                        <label className="text-xs font-medium text-muted-foreground mb-2 block">
+                          Detalle para el pasajero (opcional)
+                        </label>
+                        <div className="grid gap-3 grid-cols-1 md:grid-cols-2">
+                          {PASSENGER_DETAIL_FIELDS[serviceKind(op.product_type)].map((f) => (
+                            <div key={f.key}>
+                              <label className="text-xs font-medium mb-1.5 block">{f.label}</label>
+                              <Input
+                                type={f.type === "date" ? "date" : "text"}
+                                value={op.passenger_detail?.[f.key] || ""}
+                                onChange={(e) =>
+                                  updateOperator(index, "passenger_detail", {
+                                    ...op.passenger_detail,
+                                    [f.key]: e.target.value,
+                                  })
+                                }
+                                className="h-9 text-sm"
+                              />
+                            </div>
+                          ))}
+                        </div>
                       </div>
                   </div>
                 ))}

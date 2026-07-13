@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { parseDateOnlyLocal } from "@/lib/utils/date-only"
+import { serviceKind, PASSENGER_DETAIL_FIELDS, sanitizePassengerDetail } from "@/lib/operations/service-kind"
 import * as z from "zod"
 import {
   Dialog,
@@ -202,7 +203,7 @@ export function EditOperationDialog({
   const [customOperationTypes, setCustomOperationTypes] = useState<Array<{ value: string; label: string }>>([])
 
   // Estado para múltiples operadores
-  type OperatorEntry = { operator_id: string; cost: string | number; cost_currency: "ARS" | "USD"; product_type?: string; notes?: string; id?: string }
+  type OperatorEntry = { operator_id: string; cost: string | number; cost_currency: "ARS" | "USD"; product_type?: string; notes?: string; id?: string; passenger_detail?: Record<string, string> }
   const [useMultipleOperators, setUseMultipleOperators] = useState(false)
   const [operatorList, setOperatorList] = useState<OperatorEntry[]>([])
   const [operatorsLoaded, setOperatorsLoaded] = useState(false)
@@ -303,6 +304,7 @@ export function EditOperationDialog({
         cost_currency: (oo.cost_currency || operationCostCurrency) as "ARS" | "USD",
         product_type: oo.product_type || undefined,
         notes: oo.notes || undefined,
+        passenger_detail: (oo.passenger_detail && typeof oo.passenger_detail === "object") ? oo.passenger_detail : undefined,
       }))
 
     // 1) Preferir los operadores que ya trajo el server (prop). Es confiable y
@@ -572,6 +574,7 @@ export function EditOperationDialog({
           cost_currency: op.cost_currency || values.currency || "USD",
           product_type: op.product_type || null,
           notes: op.notes || null,
+          passenger_detail: sanitizePassengerDetail(op.passenger_detail),
         }))
         // El operador principal es el primero de la lista
         payload.operator_id = operatorList[0].operator_id || null
@@ -984,6 +987,32 @@ export function EditOperationDialog({
                               <SelectItem value="USD">USD</SelectItem>
                             </SelectContent>
                           </Select>
+                        </div>
+                      </div>
+
+                      {/* Detalle para el pasajero (opcional), según el tipo de servicio.
+                          Se exporta en el PDF "Detalle de la Operación". */}
+                      <div className="pt-3 border-t border-border/40">
+                        <label className="text-xs font-medium text-muted-foreground mb-2 block">
+                          Detalle para el pasajero (opcional)
+                        </label>
+                        <div className="grid gap-3 grid-cols-1 md:grid-cols-2">
+                          {PASSENGER_DETAIL_FIELDS[serviceKind(op.product_type)].map((f) => (
+                            <div key={f.key}>
+                              <label className="text-xs font-medium mb-1.5 block">{f.label}</label>
+                              <Input
+                                type={f.type === "date" ? "date" : "text"}
+                                value={op.passenger_detail?.[f.key] || ""}
+                                onChange={(e) =>
+                                  updateOperatorField(index, "passenger_detail", {
+                                    ...op.passenger_detail,
+                                    [f.key]: e.target.value,
+                                  })
+                                }
+                                className="h-9 text-sm"
+                              />
+                            </div>
+                          ))}
                         </div>
                       </div>
                     </div>

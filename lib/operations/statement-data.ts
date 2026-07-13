@@ -34,6 +34,7 @@ import {
   FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL,
 } from "@/lib/feature-flags"
 import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
+import { serviceKind, type ServiceKind } from "@/lib/operations/service-kind"
 
 export interface StatementCompany {
   name: string
@@ -113,16 +114,32 @@ function fmtShort(d: string | null | undefined): string {
   return m ? `${m[3]}/${m[2]}/${m[1]}` : String(d)
 }
 
-/** Normaliza el product_type a HOTEL | FLIGHT | OTHER (para mapear con los tramos). */
-function serviceKind(rawType: string | null | undefined): "HOTEL" | "FLIGHT" | "OTHER" {
-  const t = String(rawType || "")
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "") // sacar acentos (AÉREO -> AEREO)
-    .trim()
-    .toUpperCase()
-  if (["HOTEL", "ALOJAMIENTO", "HOSPEDAJE"].includes(t)) return "HOTEL"
-  if (["FLIGHT", "AEREO", "VUELO", "AIR"].includes(t)) return "FLIGHT"
-  return "OTHER"
+/** Une las partes no vacías de un detalle con " · ". */
+function joinDetail(parts: (string | null | undefined)[]): string {
+  return parts
+    .map((p) => (p ?? "").toString().trim())
+    .filter(Boolean)
+    .join(" · ")
+}
+
+/**
+ * Compone el detalle del pasajero a partir del objeto estructurado
+ * (operation_operators.passenger_detail) cargado por la agencia, según el tipo.
+ * Devuelve "" si no hay nada cargado (el caller cae al fallback de tramos).
+ */
+function structuredDetail(pd: any, kind: ServiceKind): string {
+  if (!pd || typeof pd !== "object") return ""
+  if (kind === "HOTEL") {
+    const range =
+      pd.checkin && pd.checkout
+        ? `Del ${fmtShort(pd.checkin)} al ${fmtShort(pd.checkout)}`
+        : ""
+    return joinDetail([pd.hotel_name, pd.room_type, pd.meal_plan, range])
+  }
+  if (kind === "FLIGHT") {
+    return joinDetail([pd.airline, pd.flight_info, fmtShort(pd.flight_date)])
+  }
+  return (pd.detail || "").toString().trim()
 }
 
 /**
@@ -150,7 +167,7 @@ export async function buildOperationStatementData(params: {
       agencies:agency_id(name),
       leads:lead_id(contact_name, contact_email),
       operation_customers(role, customers:customer_id(first_name, last_name, email)),
-      operation_operators(product_type, sale_amount, cost, cost_currency, operators:operator_id(name))
+      operation_operators(product_type, sale_amount, cost, cost_currency, passenger_detail, operators:operator_id(name))
     `)
     .eq("id", operationId)
     .eq("org_id", orgId)
@@ -240,13 +257,17 @@ export async function buildOperationStatementData(params: {
   for (const oo of (op.operation_operators || []) as any[]) {
     const amount = Number(oo.sale_amount)
     const kind = serviceKind(oo.product_type)
-    let description = ""
-    if (kind === "HOTEL") {
-      const leg = hotelLegs.shift()
-      description = leg ? hotelDetailFromLeg(leg) : op.hotel_name || ""
-    } else if (kind === "FLIGHT") {
-      const leg = flightLegs.shift()
-      description = leg ? flightDetailFromLeg(leg) : op.airline_name || ""
+    // Prioridad: detalle estructurado cargado por la agencia > tramos > campos
+    // de la operación > blanco. NUNCA el operador mayorista.
+    let description = structuredDetail(oo.passenger_detail, kind)
+    if (!description) {
+      if (kind === "HOTEL") {
+        const leg = hotelLegs.shift()
+        description = leg ? hotelDetailFromLeg(leg) : op.hotel_name || ""
+      } else if (kind === "FLIGHT") {
+        const leg = flightLegs.shift()
+        description = leg ? flightDetailFromLeg(leg) : op.airline_name || ""
+      }
     }
     services.push({
       label: labelForType(oo.product_type),
