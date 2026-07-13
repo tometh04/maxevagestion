@@ -64,6 +64,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Organización no encontrada" }, { status: 404 })
   }
 
+  // Una org CANCELLED cuenta como reactivación implícita: aunque el user NO
+  // mande reactivate=true (típico cuando la guarda lo redirige a
+  // /onboarding/billing y elige plan), no lo frenamos con el 409 "ya tenés
+  // suscripción activa" — su preapproval viejo ya está cerrado en MP. Sin esto,
+  // una org que quedó CANCELLED (p.ej. porque MP canceló el preapproval al
+  // rechazar el pago) queda en un callejón sin salida para volver a pagar.
+  const wantsReactivation =
+    isReactivation || (org.subscription_status === "CANCELLED" && !isRegularize)
+
   // Guard: ya hay preapproval activo (salvo que sea reactivación/regularización)
   if (isRegularize) {
     if (org.subscription_status !== "PAST_DUE") {
@@ -82,7 +91,7 @@ export async function POST(request: Request) {
         console.warn("[checkout:regularize] cancel old preapproval failed (non-blocking)", err?.message)
       }
     }
-  } else if (isReactivation) {
+  } else if (wantsReactivation) {
     if (org.subscription_status !== "CANCELLED") {
       return NextResponse.json(
         { error: "Solo se puede reactivar una suscripción cancelada" },
@@ -126,7 +135,7 @@ export async function POST(request: Request) {
   // Calcular start_date para reactivaciones (no cobrar doble)
   // NOTA: para regularize (PAST_DUE) NUNCA ponemos start_date — queremos cobro inmediato.
   let startDate: string | undefined = undefined
-  if (isReactivation && !isRegularize && org.current_period_ends_at) {
+  if (wantsReactivation && !isRegularize && org.current_period_ends_at) {
     const periodEnd = new Date(org.current_period_ends_at)
     if (periodEnd.getTime() > Date.now()) {
       // Todavía tiene período pagado — MP arranca a cobrar después del end.
@@ -203,12 +212,14 @@ export async function POST(request: Request) {
   const orgUpdates: Record<string, any> = {
     has_used_trial: true,
   }
-  if (isReactivation || isRegularize) {
+  if (wantsReactivation || isRegularize) {
     orgUpdates.subscription_status = "PENDING_PAYMENT"
   }
-  if (isRegularize) {
-    // Limpiar preapproval_id viejo (ya lo cancelamos arriba). El nuevo se
-    // escribirá cuando MP notifique subscription_preapproval.created vía webhook.
+  if (isRegularize || wantsReactivation) {
+    // Limpiar preapproval_id viejo (regularize ya lo canceló arriba; en
+    // reactivación de una org CANCELLED el viejo ya está cerrado en MP). Así el
+    // reconcile no re-fetchea un preapproval cancelado y no revierte el estado.
+    // El nuevo se escribe cuando MP notifique subscription_preapproval.created.
     orgUpdates.mp_preapproval_id = null
   }
   await admin.from("organizations").update(orgUpdates).eq("id", orgId)
