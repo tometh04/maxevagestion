@@ -13,6 +13,11 @@ export function MpSnapshot({ orgId }: { orgId: string }) {
   const [relinking, setRelinking] = useState(false)
   const [relinkResult, setRelinkResult] = useState<any>(null)
 
+  // Link de pago per-org: preapproval atado al email real de MP del cliente.
+  const [payerEmail, setPayerEmail] = useState("")
+  const [genLoading, setGenLoading] = useState(false)
+  const [genResult, setGenResult] = useState<any>(null)
+
   async function load() {
     setLoading(true)
     const res = await fetch(`/api/admin/orgs/${orgId}/mp-snapshot`)
@@ -40,6 +45,24 @@ export function MpSnapshot({ orgId }: { orgId: string }) {
       setRelinkResult({ ok: false, message: err?.message || "Error de red" })
     } finally {
       setRelinking(false)
+    }
+  }
+
+  async function generateLink() {
+    setGenLoading(true)
+    setGenResult(null)
+    try {
+      const res = await fetch(`/api/admin/orgs/${orgId}/mp-preapproval-link`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ payer_email: payerEmail.trim() }),
+      })
+      const body = await res.json()
+      setGenResult(body.ok ? body : { ok: false, message: body.error || "No se pudo generar" })
+    } catch (err: any) {
+      setGenResult({ ok: false, message: err?.message || "Error de red" })
+    } finally {
+      setGenLoading(false)
     }
   }
 
@@ -134,6 +157,63 @@ export function MpSnapshot({ orgId }: { orgId: string }) {
                       ? ` (candidatos: ${relinkResult.candidates})`
                       : ""}
                   </span>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="border-t pt-3 mt-1">
+            <div className="font-semibold mb-1">Generar link de pago per-org</div>
+            <p className="text-muted-foreground mb-2">
+              Crea un preapproval atado al email real de la cuenta de Mercado Pago
+              del cliente (mejor aprobación antifraude que el link genérico). El
+              cliente debe pagarlo con esa cuenta. No cambia el estado hasta que
+              el pago se aprueba.
+            </p>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <input
+                type="email"
+                value={payerEmail}
+                onChange={(e) => setPayerEmail(e.target.value)}
+                placeholder="email de la cuenta MP del cliente"
+                className="flex-1 border rounded px-2 py-1 bg-background"
+              />
+              <button
+                onClick={generateLink}
+                disabled={genLoading || !payerEmail.trim()}
+                className="border rounded px-3 py-1 font-medium disabled:opacity-50"
+              >
+                {genLoading ? "Generando..." : "Generar link"}
+              </button>
+            </div>
+            {genResult && (
+              <div
+                className={`mt-2 rounded p-2 ${
+                  genResult.ok
+                    ? "bg-green-500/10 text-green-700 dark:text-green-400"
+                    : "bg-red-500/10 text-red-700 dark:text-red-400"
+                }`}
+              >
+                {genResult.ok ? (
+                  <div className="space-y-1">
+                    <div>Link generado ✓ (payer: {genResult.payer_email})</div>
+                    <a
+                      href={genResult.init_point}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline break-all"
+                    >
+                      {genResult.init_point}
+                    </a>
+                    <button
+                      onClick={() => navigator.clipboard?.writeText(genResult.init_point)}
+                      className="block border rounded px-2 py-0.5 text-[11px] mt-1"
+                    >
+                      Copiar link
+                    </button>
+                  </div>
+                ) : (
+                  <span>{genResult.message}</span>
                 )}
               </div>
             )}
