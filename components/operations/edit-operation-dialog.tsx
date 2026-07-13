@@ -68,6 +68,8 @@ const operationSchema = z.object({
   itr_localizador: z.string().optional().nullable(),
   airline_name: z.string().optional().nullable(),
   hotel_name: z.string().optional().nullable(),
+  // Fecha máxima para que el cliente complete el pago (la usa el PDF de detalle).
+  customer_payment_deadline: z.date().optional().nullable(),
 })
 
 type OperationFormValues = z.infer<typeof operationSchema>
@@ -106,6 +108,7 @@ interface Operation {
   departure_date: string
   return_date?: string | null
   operation_date?: string | null
+  customer_payment_deadline?: string | null
   adults: number
   children: number
   infants: number
@@ -375,6 +378,7 @@ export function EditOperationDialog({
       itr_localizador: operation.itr_localizador || null,
       airline_name: operation.airline_name || null,
       hotel_name: operation.hotel_name || null,
+      customer_payment_deadline: parseDateOnlyLocal(operation.customer_payment_deadline) ?? null,
     },
   })
 
@@ -414,6 +418,7 @@ export function EditOperationDialog({
         reservation_code_air: operation.reservation_code_air || null,
         reservation_code_hotel: operation.reservation_code_hotel || null,
         itr_localizador: operation.itr_localizador || null,
+        customer_payment_deadline: parseDateOnlyLocal(operation.customer_payment_deadline) ?? null,
       })
     }
   }, [operation?.id, operationCurrency])
@@ -551,6 +556,10 @@ export function EditOperationDialog({
         departure_date: values.departure_date.toISOString().split("T")[0],
         // 2026-05-19: fecha real de venta editable (para corregir files históricos)
         operation_date: values.operation_date ? values.operation_date.toISOString().split("T")[0] : undefined,
+        // Fecha máxima de pago del cliente (usada por el PDF de detalle).
+        customer_payment_deadline: values.customer_payment_deadline
+          ? values.customer_payment_deadline.toISOString().split("T")[0]
+          : null,
         // Mantener sale_currency y operator_cost_currency sincronizados con currency
         sale_currency: values.currency,
         operator_cost_currency: values.currency,
@@ -1221,6 +1230,27 @@ export function EditOperationDialog({
                   </FormItem>
                   )
                 }}
+              />
+
+              <FormField
+                control={form.control}
+                name="customer_payment_deadline"
+                render={({ field }) => (
+                  <FormItem className="flex flex-col">
+                    <FormLabel>Fecha máxima de pago del cliente</FormLabel>
+                    <FormControl>
+                      <DateInputWithCalendar
+                        value={field.value || undefined}
+                        onChange={field.onChange}
+                        placeholder="dd/MM/yyyy"
+                      />
+                    </FormControl>
+                    <span className="text-[10px] text-muted-foreground">
+                      Hasta cuándo tiene el pasajero para pagar. Suele vencer ~1 mes antes de la salida. Aparece en el PDF de detalle.
+                    </span>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
             </div>
             </div>

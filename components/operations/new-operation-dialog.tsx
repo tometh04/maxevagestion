@@ -106,6 +106,8 @@ const operationSchema = z.object({
   // distinto al reservation_code de aero/hotel). Ya está en BD via
   // migration 128.
   itr_localizador: z.string().optional().nullable(),
+  // Fecha máxima para que el cliente complete el pago (la usa el PDF de detalle).
+  customer_payment_deadline: z.date().optional().nullable(),
 })
 
 type OperationFormValues = z.infer<typeof operationSchema>
@@ -422,6 +424,7 @@ export function NewOperationDialog({
       hotel_name: null,
       operation_date: null,
       itr_localizador: null,
+      customer_payment_deadline: null,
       operators: [],
     },
   })
@@ -454,6 +457,7 @@ export function NewOperationDialog({
         reservation_code_hotel: null,
         operation_date: null,
         itr_localizador: null,
+        customer_payment_deadline: null,
         operators: [],
       })
     }
@@ -625,6 +629,8 @@ export function NewOperationDialog({
         // fallback (comportamiento legacy preservado).
         operation_date: values.operation_date ? values.operation_date.toISOString().split("T")[0] : null,
         itr_localizador: values.itr_localizador || null,
+        // Fecha máxima de pago del cliente (usada por el PDF de detalle).
+        customer_payment_deadline: values.customer_payment_deadline ? values.customer_payment_deadline.toISOString().split("T")[0] : null,
         sale_currency: values.sale_currency || values.currency || "USD",
         operator_cost_currency: values.operator_cost_currency || values.currency || "USD",
         // Si hay múltiples operadores, el costo total ya está calculado en operator_cost
@@ -1409,6 +1415,27 @@ export function NewOperationDialog({
                   </FormItem>
                   )
                 }}
+              />
+
+              <FormField
+                control={form.control}
+                name="customer_payment_deadline"
+                render={({ field }) => (
+                  <FormItem className="flex flex-col">
+                    <FormLabel>Fecha máxima de pago del cliente</FormLabel>
+                    <FormControl>
+                      <DateInputWithCalendar
+                        value={field.value || undefined}
+                        onChange={field.onChange}
+                        placeholder="dd/MM/yyyy"
+                      />
+                    </FormControl>
+                    <span className="text-[10px] text-muted-foreground">
+                      Hasta cuándo tiene el pasajero para pagar. Suele vencer ~1 mes antes de la salida. Aparece en el PDF de detalle.
+                    </span>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
             </div>
               </div>{/* End Ruta card */}

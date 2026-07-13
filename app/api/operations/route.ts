@@ -91,6 +91,8 @@ export async function POST(request: Request) {
       // (migration 128) pero el endpoint POST no lo aceptaba en create.
       // Solo se podía setear vía PATCH (edit). Ahora aceptamos en ambos.
       itr_localizador,
+      // Fecha máxima de pago del cliente (la usa el PDF de detalle).
+      customer_payment_deadline,
     } = body
 
     // Guard (2026-06-29): un vendedor no puede ser su propio secundario.
@@ -314,6 +316,7 @@ export async function POST(request: Request) {
       airline_name: airline_name || null,
       hotel_name: hotel_name || null,
       itr_localizador: itr_localizador || null,
+      customer_payment_deadline: customer_payment_deadline || null,
     }
 
     // ============================================
