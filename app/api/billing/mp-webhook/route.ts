@@ -7,6 +7,7 @@ import {
   verifyWebhookSignature,
 } from "@/lib/billing/mercadopago"
 import { transitionFromMP, type MPPaymentEvent, type MPPreapproval } from "@/lib/billing/state-machine"
+import { isAccessAllowed } from "@/lib/billing/access"
 import { logSecurityEvent } from "@/lib/security/audit"
 import { notifyBillingSlack } from "@/lib/billing/slack-notify"
 
@@ -328,6 +329,24 @@ export async function POST(request: Request) {
       trial_ends_at: org.trial_ends_at,
     }
   )
+
+  // Guard: un preapproval PENDING (nuevo intento de pago recién creado, aún sin
+  // autorizar) NO debe revocar el acceso que la org ya tiene. Si está con acceso
+  // vigente (PAST_DUE en gracia, TRIALING, ACTIVE, CANCELLED con período), lo
+  // preservamos hasta que el pago se apruebe o se venza la gracia. NO persistimos
+  // el mp_preapproval_id del pending para que el reconcile tampoco la baje; el
+  // evento authorized posterior resuelve por external_reference y setea todo.
+  if (transition.subscription_status === "PENDING_PAYMENT" && isAccessAllowed(org as any)) {
+    await admin.from("organizations")
+      .update({ mp_last_synced_at: preapproval.last_modified })
+      .eq("id", orgId)
+    await markProcessed()
+    return NextResponse.json({
+      ok: true,
+      preserved_access: true,
+      kept_status: org.subscription_status,
+    })
+  }
 
   const updates: Record<string, any> = {
     subscription_status: transition.subscription_status,
