@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { fetchPreapproval } from "@/lib/billing/mercadopago"
 import { transitionFromMP, type MPPreapproval } from "@/lib/billing/state-machine"
 import { relinkPreapproval } from "@/lib/billing/relink-preapproval"
+import { isSilentChargeFailure } from "@/lib/billing/payment-health"
 import { checkCronAuth } from "@/lib/cron/auth"
 import { notifyBillingSlack } from "@/lib/billing/slack-notify"
 
@@ -91,12 +92,49 @@ export async function POST(request: Request) {
         })
       }
 
+      // Hardening: cobro de renovación fallido "en silencio". MP puede seguir
+      // diciendo authorized aunque un cobro no haya entrado (reintenta días antes
+      // de pausar). Alertamos (NO auto-transicionamos) para revisión manual.
+      const effectiveStatus = changed ? transition.subscription_status : org.subscription_status
+      let silentFailure = false
+      if (
+        isSilentChargeFailure({
+          effectiveStatus,
+          mpStatus: pa.status,
+          nextPaymentDate: (pa as any).next_payment_date,
+          lastChargedDate: (pa as any).summarized?.last_charged_date,
+        })
+      ) {
+        silentFailure = true
+        await admin.from("billing_events").insert({
+          org_id: org.id,
+          event_type: "RECONCILED",
+          external_id: org.mp_preapproval_id,
+          status: pa.status,
+          payload: {
+            alert: "silent_charge_failure",
+            mp_status: pa.status,
+            next_payment_date: (pa as any).next_payment_date,
+            last_charged_date: (pa as any).summarized?.last_charged_date ?? null,
+            note: "Org figura ACTIVE pero el cobro del ciclo vigente no se ejecutó en MP.",
+          },
+        })
+        notifyBillingSlack({
+          event: "BILLING_ALERT",
+          orgName: org.name || org.id,
+          orgId: org.id,
+          details: `Posible cobro de renovación NO ejecutado: MP dice authorized, next_payment_date ${(pa as any).next_payment_date} ya venció y no hay último cobro que lo cubra. Revisar manualmente (no se cambió el estado).`,
+          severity: "warning",
+        })
+      }
+
       results.push({
         orgId: org.id,
         drifted: changed,
         from: org.subscription_status,
         to: transition.subscription_status,
         mpStatus: pa.status,
+        silent_charge_failure: silentFailure,
       })
     } catch (err: any) {
       console.error("reconcile failed for org", org.id, err?.message)
