@@ -212,9 +212,11 @@ export async function POST(request: Request) {
   const orgUpdates: Record<string, any> = {
     has_used_trial: true,
   }
-  if (wantsReactivation || isRegularize) {
-    orgUpdates.subscription_status = "PENDING_PAYMENT"
-  }
+  // NO bajamos subscription_status a PENDING_PAYMENT acá. Antes lo hacíamos en
+  // regularize/reactivación, pero eso revoca la gracia ANTES de que el cliente
+  // pague: si el pago falla o abandona, quedaba bloqueado sin gracia. Ahora
+  // dejamos el estado como está (PAST_DUE en gracia, etc.) y el webhook lo mueve
+  // a ACTIVE cuando el pago se aprueba, o expira la gracia sola.
   if (isRegularize || wantsReactivation) {
     // Limpiar preapproval_id viejo (regularize ya lo canceló arriba; en
     // reactivación de una org CANCELLED el viejo ya está cerrado en MP). Así el

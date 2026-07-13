@@ -4,6 +4,7 @@ import { fetchPreapproval } from "@/lib/billing/mercadopago"
 import { transitionFromMP, type MPPreapproval } from "@/lib/billing/state-machine"
 import { relinkPreapproval } from "@/lib/billing/relink-preapproval"
 import { isSilentChargeFailure } from "@/lib/billing/payment-health"
+import { isAccessAllowed } from "@/lib/billing/access"
 import { checkCronAuth } from "@/lib/cron/auth"
 import { notifyBillingSlack } from "@/lib/billing/slack-notify"
 
@@ -49,7 +50,13 @@ export async function POST(request: Request) {
         trial_ends_at: org.trial_ends_at,
       })
 
-      const changed = transition.subscription_status !== org.subscription_status
+      // Guard (igual que el webhook): un preapproval PENDING no revoca acceso
+      // vigente. Si la org está en gracia/trial/activa, no la bajamos a
+      // PENDING_PAYMENT por un intento de pago sin autorizar.
+      const pendingWouldRevoke =
+        transition.subscription_status === "PENDING_PAYMENT" && isAccessAllowed(org as any)
+      const changed =
+        transition.subscription_status !== org.subscription_status && !pendingWouldRevoke
       if (changed) {
         drifted += 1
         const updates: Record<string, any> = {
