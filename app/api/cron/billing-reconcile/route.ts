@@ -2,8 +2,13 @@ import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { fetchPreapproval } from "@/lib/billing/mercadopago"
 import { transitionFromMP, type MPPreapproval } from "@/lib/billing/state-machine"
+import { relinkPreapproval } from "@/lib/billing/relink-preapproval"
 import { checkCronAuth } from "@/lib/cron/auth"
 import { notifyBillingSlack } from "@/lib/billing/slack-notify"
+
+// Ventana para considerar un CHECKOUT_INITIATED como "reciente" al buscar orgs
+// que pagaron pero nunca se linkearon (7 días cubre reintentos y demoras).
+const UNLINKED_LOOKBACK_MS = 7 * 24 * 3600 * 1000
 
 /**
  * POST /api/cron/billing-reconcile
@@ -159,6 +164,63 @@ export async function POST(request: Request) {
     }
   }
 
+  // --- Fase 3: Recuperar orgs que pagaron pero nunca se linkearon ---
+  // El flow preapproval_plan depende de que el cliente vuelva a /api/billing/sync.
+  // Si no vuelve (cierra la pestaña) o falla, la org queda PENDING_PAYMENT con
+  // mp_preapproval_id NULL — invisible a las Fases 1 y 2 (ambas exigen
+  // mp_preapproval_id). Acá las buscamos por su CHECKOUT_INITIATED reciente y
+  // resolvemos el preapproval en MP por billing_email. Este es el fix directo
+  // del síntoma "el cliente pagó pero no quedó registrado".
+  const unlinkedCutoff = new Date(Date.now() - UNLINKED_LOOKBACK_MS).toISOString()
+  const { data: pendingCheckouts } = await admin
+    .from("billing_events")
+    .select("org_id, created_at")
+    .eq("event_type", "CHECKOUT_INITIATED")
+    .eq("status", "pending")
+    .gte("created_at", unlinkedCutoff)
+    .order("created_at", { ascending: false })
+
+  const unlinkedOrgIds = Array.from(
+    new Set((pendingCheckouts ?? []).map((r: any) => r.org_id).filter(Boolean))
+  ) as string[]
+
+  const relinkResults: any[] = []
+  for (const candidateOrgId of unlinkedOrgIds) {
+    // Solo orgs realmente sin linkear (mp_preapproval_id NULL). Las que ya
+    // tienen id se cubren en Fase 1.
+    const { data: candidateOrg } = await admin
+      .from("organizations")
+      .select("id, subscription_status, mp_preapproval_id")
+      .eq("id", candidateOrgId)
+      .maybeSingle()
+
+    if (!candidateOrg || candidateOrg.mp_preapproval_id) continue
+    if (!["PENDING_PAYMENT", "TRIAL"].includes(candidateOrg.subscription_status)) continue
+
+    try {
+      const res = await relinkPreapproval({
+        admin,
+        orgId: candidateOrgId,
+        auditEventType: "RECONCILED",
+        source: "billing-reconcile:phase3-unlinked",
+      })
+      relinkResults.push({ orgId: candidateOrgId, ...res })
+
+      if (res.linked && res.to_status && res.to_status !== "PENDING_PAYMENT") {
+        notifyBillingSlack({
+          event: "RECONCILED",
+          orgName: candidateOrgId,
+          orgId: candidateOrgId,
+          details: `Org sin linkear recuperada: pagó pero nunca volvió a /sync. Estado aplicado: ${res.to_status}.`,
+          severity: "warning",
+        })
+      }
+    } catch (err: any) {
+      console.error("reconcile: relink phase3 failed for org", candidateOrgId, err?.message)
+      relinkResults.push({ orgId: candidateOrgId, error: err?.message || String(err) })
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     processed: results.length,
@@ -167,6 +229,10 @@ export async function POST(request: Request) {
     expired_trials: {
       processed: expiredResults.length,
       results: expiredResults,
+    },
+    unlinked_recovery: {
+      candidates: unlinkedOrgIds.length,
+      results: relinkResults,
     },
   })
 }

@@ -1,6 +1,34 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
-import { createPreapprovalPlan } from "./mercadopago"
+import {
+  createPreapprovalPlan,
+  mpNotificationUrl,
+  updatePreapprovalPlan,
+} from "./mercadopago"
 import type { PlanId } from "./plans"
+
+/**
+ * Planes ya backfilleados con notification_url en este proceso. Evita pegarle a
+ * MP en cada checkout de un plan cacheado: solo intentamos el backfill una vez
+ * por plan_id por instancia (cold start). Los planes nuevos ya nacen con la URL.
+ */
+const notificationBackfilled = new Set<string>()
+
+async function backfillPlanNotificationUrl(mpPreapprovalPlanId: string): Promise<void> {
+  const url = mpNotificationUrl()
+  if (!url) return
+  if (notificationBackfilled.has(mpPreapprovalPlanId)) return
+  notificationBackfilled.add(mpPreapprovalPlanId)
+  try {
+    await updatePreapprovalPlan(mpPreapprovalPlanId, { notification_url: url })
+  } catch (err: any) {
+    // Best-effort: el webhook del panel de MP sigue siendo el fallback.
+    console.warn(
+      "[mp-plans] backfill notification_url falló (non-blocking)",
+      mpPreapprovalPlanId,
+      err?.message || err
+    )
+  }
+}
 
 export interface BuildPlanKeyInput {
   plan: PlanId | "CUSTOM"
@@ -77,6 +105,9 @@ export async function ensureMpPlan(
     .maybeSingle()
 
   if (existing) {
+    // Backfill best-effort: planes cacheados antes del fix no tienen
+    // notification_url. No bloquea el checkout.
+    await backfillPlanNotificationUrl(existing.mp_preapproval_plan_id)
     return {
       plan_key,
       mp_preapproval_plan_id: existing.mp_preapproval_plan_id,

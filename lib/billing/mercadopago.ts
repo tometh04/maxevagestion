@@ -49,6 +49,38 @@ function mpWebhookSecret(): string | undefined {
 }
 
 /**
+ * URL a la que MP debe notificar los eventos de esta suscripción.
+ *
+ * La incluimos en el body de cada preapproval / preapproval_plan que creamos
+ * para NO depender de que la URL esté cargada a mano en el panel de MP: si el
+ * panel está mal o apunta al dominio viejo, MP igual notifica acá.
+ *
+ * Devuelve undefined cuando NEXT_PUBLIC_APP_URL no es un host público https
+ * (localhost / IP privada en dev) — MP rechaza notification_url no accesibles,
+ * así que en ese caso caemos al webhook configurado en el panel/sandbox.
+ */
+export function mpNotificationUrl(): string | undefined {
+  const raw = (process.env.NEXT_PUBLIC_APP_URL || "").trim()
+  if (!raw) return undefined
+  const withScheme = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`
+  let parsed: URL
+  try {
+    parsed = new URL(`${withScheme.replace(/\/+$/, "")}/api/billing/mp-webhook`)
+  } catch {
+    return undefined
+  }
+  // MP exige https público. En dev (localhost/127.0.0.1) omitimos para no romper
+  // la creación del preapproval.
+  const host = parsed.hostname
+  const isLocal =
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    host.endsWith(".local")
+  if (parsed.protocol !== "https:" || isLocal) return undefined
+  return parsed.toString()
+}
+
+/**
  * True si la integración MP está corriendo contra sandbox (test mode).
  * Útil para que la UI muestre un banner y no se confundan tokens reales con
  * tokens de prueba. La env `MP_USE_SANDBOX=true` activa el modo y exige
@@ -128,7 +160,8 @@ export async function createPreapproval(params: CreatePreapprovalParams): Promis
     autoRecurring.start_date = params.startDate
   }
 
-  const body = {
+  const notificationUrl = mpNotificationUrl()
+  const body: Record<string, any> = {
     reason,
     external_reference: params.orgId,
     payer_email: params.payerEmail,
@@ -136,12 +169,15 @@ export async function createPreapproval(params: CreatePreapprovalParams): Promis
     auto_recurring: autoRecurring,
     status: "pending",
   }
+  if (notificationUrl) body.notification_url = notificationUrl
 
-  // Logging verbose temporal para debug del 500 intermitente (quitar post-fix).
-  const tokenPresent = !!(process.env.MERCADOPAGO_ACCESS_TOKEN || process.env.MP_ACCESS_TOKEN)
-  const tokenLen = (process.env.MERCADOPAGO_ACCESS_TOKEN || process.env.MP_ACCESS_TOKEN || "").length
-  console.log("[mp.createPreapproval] POST body:", JSON.stringify(body))
-  console.log("[mp.createPreapproval] token present:", tokenPresent, "len:", tokenLen)
+  // Log sin PII: no volcamos el body (trae payer_email). Solo metadatos útiles.
+  console.log("[mp.createPreapproval] POST", {
+    orgId: params.orgId,
+    plan: params.plan,
+    amount,
+    hasNotificationUrl: !!notificationUrl,
+  })
 
   const res = await fetch(`${MP_API}/preapproval`, {
     method: "POST",
@@ -323,14 +359,20 @@ export async function createPreapprovalPlan(
     autoRecurring.free_trial = { frequency: 7, frequency_type: "days" }
   }
 
-  const body = {
+  const notificationUrl = mpNotificationUrl()
+  const body: Record<string, any> = {
     reason: params.reason,
     auto_recurring: autoRecurring,
     back_url: params.backUrl,
     // Nota: NO payer_email. Cualquier user puede usar el plan.
   }
+  if (notificationUrl) body.notification_url = notificationUrl
 
-  console.log("[mp.createPreapprovalPlan] POST body:", JSON.stringify(body))
+  console.log("[mp.createPreapprovalPlan] POST", {
+    reason: params.reason,
+    amount: params.amount,
+    hasNotificationUrl: !!notificationUrl,
+  })
 
   const res = await fetch(`${MP_API}/preapproval_plan`, {
     method: "POST",
@@ -418,6 +460,30 @@ export async function searchPreapprovalsByPlanId(
   }
   const data = await res.json()
   return (data?.results as any[]) ?? []
+}
+
+/**
+ * Actualiza un preapproval_plan existente (PUT). Usado para backfillear
+ * notification_url en planes cacheados que se crearon antes de que
+ * empezáramos a mandarla en el body.
+ */
+export async function updatePreapprovalPlan(
+  planId: string,
+  patch: { notification_url?: string }
+): Promise<any> {
+  const res = await fetch(`${MP_API}/preapproval_plan/${planId}`, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${mpAccessToken()}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(patch),
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`MP update preapproval_plan failed (${res.status}): ${text}`)
+  }
+  return await res.json()
 }
 
 /** Fetch preapproval_plan existente (GET). Útil para cache/reuso. */
