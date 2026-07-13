@@ -34,6 +34,7 @@ import {
   FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL,
 } from "@/lib/feature-flags"
 import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
+import { serviceKind, type ServiceKind } from "@/lib/operations/service-kind"
 
 export interface StatementCompany {
   name: string
@@ -106,11 +107,39 @@ function labelForType(rawType: string | null | undefined): string {
   return t.charAt(0).toUpperCase() + t.slice(1).toLowerCase()
 }
 
-/** Devuelve la menor fecha (string YYYY-MM-DD) de una lista, ignorando nulls. */
-function minDate(dates: (string | null | undefined)[]): string | null {
-  const valid = dates.filter((d): d is string => !!d)
-  if (valid.length === 0) return null
-  return valid.reduce((min, d) => (d < min ? d : min))
+/** Formatea una fecha YYYY-MM-DD a dd/MM/yyyy (sin dependencias). */
+function fmtShort(d: string | null | undefined): string {
+  if (!d) return ""
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(d))
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : String(d)
+}
+
+/** Une las partes no vacías de un detalle con " · ". */
+function joinDetail(parts: (string | null | undefined)[]): string {
+  return parts
+    .map((p) => (p ?? "").toString().trim())
+    .filter(Boolean)
+    .join(" · ")
+}
+
+/**
+ * Compone el detalle del pasajero a partir del objeto estructurado
+ * (operation_operators.passenger_detail) cargado por la agencia, según el tipo.
+ * Devuelve "" si no hay nada cargado (el caller cae al fallback de tramos).
+ */
+function structuredDetail(pd: any, kind: ServiceKind): string {
+  if (!pd || typeof pd !== "object") return ""
+  if (kind === "HOTEL") {
+    const range =
+      pd.checkin && pd.checkout
+        ? `Del ${fmtShort(pd.checkin)} al ${fmtShort(pd.checkout)}`
+        : ""
+    return joinDetail([pd.hotel_name, pd.room_type, pd.meal_plan, range])
+  }
+  if (kind === "FLIGHT") {
+    return joinDetail([pd.airline, pd.flight_info, fmtShort(pd.flight_date)])
+  }
+  return (pd.detail || "").toString().trim()
 }
 
 /**
@@ -133,11 +162,12 @@ export async function buildOperationStatementData(params: {
       id, file_code, destination, departure_date, return_date,
       sale_amount_total, sale_currency, currency, operator_cost_currency,
       adults, children, infants, agency_id,
+      hotel_name, airline_name, customer_payment_deadline,
       sellers:seller_id(name),
       agencies:agency_id(name),
       leads:lead_id(contact_name, contact_email),
       operation_customers(role, customers:customer_id(first_name, last_name, email)),
-      operation_operators(product_type, sale_amount, cost, cost_currency, operators:operator_id(name))
+      operation_operators(product_type, sale_amount, cost, cost_currency, passenger_detail, operators:operator_id(name))
     `)
     .eq("id", operationId)
     .eq("org_id", orgId)
@@ -190,16 +220,58 @@ export async function buildOperationStatementData(params: {
     FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL
   )
 
+  // --- Tramos del viaje (operation_legs): fuente del detalle para el pasajero
+  //     (hotel / aerolínea / fechas). NO tiene org_id → se filtra por el
+  //     agency_id de la operación (ya scopeada por org). ---
+  const { data: legs } = await supabase
+    .from("operation_legs")
+    .select("order_index, destination, departure_date, airline_name, hotel_name, checkin_date, checkout_date")
+    .eq("operation_id", operationId)
+    .eq("agency_id", op.agency_id)
+    .order("order_index", { ascending: true })
+
+  // Colas por tipo: se consumen en orden a medida que aparecen líneas de ese tipo.
+  const hotelLegs = ((legs || []) as any[]).filter((l) => l.hotel_name)
+  const flightLegs = ((legs || []) as any[]).filter((l) => l.airline_name || l.departure_date)
+
+  const hotelDetailFromLeg = (leg: any): string => {
+    const range =
+      leg.checkin_date && leg.checkout_date
+        ? ` · Del ${fmtShort(leg.checkin_date)} al ${fmtShort(leg.checkout_date)}`
+        : ""
+    return `${leg.hotel_name || ""}${range}`.trim()
+  }
+  const flightDetailFromLeg = (leg: any): string => {
+    const date = leg.departure_date ? ` · ${fmtShort(leg.departure_date)}` : ""
+    return `${leg.airline_name || ""}${date}`.trim()
+  }
+
   // --- Líneas de servicios ---
   const services: StatementServiceLine[] = []
 
-  // Servicios base (operation_operators): representan el desglose de la venta
-  // base. En orgs estilo Milla Cero acá viven ALOJAMIENTO / EXCURSIONES / VUELO.
+  // Servicios base (operation_operators): una línea por operador contratado.
+  // El DETALLE que ve el pasajero sale de los tramos (hotel/aerolínea/fechas),
+  // NUNCA del operador mayorista (genera confusión). Fallback: hotel_name /
+  // airline_name de la operación; si no hay, queda en blanco (el label del tipo
+  // ya identifica el servicio).
   for (const oo of (op.operation_operators || []) as any[]) {
     const amount = Number(oo.sale_amount)
+    const kind = serviceKind(oo.product_type)
+    // Prioridad: detalle estructurado cargado por la agencia > tramos > campos
+    // de la operación > blanco. NUNCA el operador mayorista.
+    let description = structuredDetail(oo.passenger_detail, kind)
+    if (!description) {
+      if (kind === "HOTEL") {
+        const leg = hotelLegs.shift()
+        description = leg ? hotelDetailFromLeg(leg) : op.hotel_name || ""
+      } else if (kind === "FLIGHT") {
+        const leg = flightLegs.shift()
+        description = leg ? flightDetailFromLeg(leg) : op.airline_name || ""
+      }
+    }
     services.push({
       label: labelForType(oo.product_type),
-      description: oo.operators?.name || "",
+      description,
       quantity: passengerCount,
       amount: Number.isFinite(amount) && amount > 0 ? roundMoney(amount) : null,
       currency,
@@ -222,7 +294,7 @@ export async function buildOperationStatementData(params: {
       const amount = Number(svc.sale_amount)
       services.push({
         label: labelForType(svc.service_type),
-        description: svc.description || svc.operators?.name || "",
+        description: svc.description || "",
         quantity: passengerCount,
         amount: Number.isFinite(amount) && amount > 0 ? roundMoney(amount) : null,
         currency,
@@ -250,31 +322,11 @@ export async function buildOperationStatementData(params: {
   }
   const totalAmount = roundMoney((Number(op.sale_amount_total) || 0) + serviceExtra)
 
-  // --- Vencimiento: menor due_date del operador (no-PAID); fallback pagos del cliente ---
-  const { data: operatorPayments } = await supabase
-    .from("operator_payments")
-    .select("due_date, status")
-    .eq("operation_id", operationId)
-    .eq("org_id", orgId)
-
-  let dueDate = minDate(
-    (operatorPayments || [])
-      .filter((p: any) => p.status !== "PAID")
-      .map((p: any) => p.due_date)
-  )
-
-  if (!dueDate) {
-    const { data: customerPayments } = await supabase
-      .from("payments")
-      .select("date_due, status, payer_type")
-      .eq("operation_id", operationId)
-      .eq("org_id", orgId)
-    dueDate = minDate(
-      (customerPayments || [])
-        .filter((p: any) => p.payer_type === "CUSTOMER" && p.status !== "PAID")
-        .map((p: any) => p.date_due)
-    )
-  }
+  // --- Vencimiento: fecha máxima de pago del cliente, cargada por la agencia en
+  //     la operación. Si no está cargada, queda null → el PDF muestra "a convenir".
+  //     (Antes se derivaba de operator_payments/payments y daba la fecha de salida,
+  //     lo que confundía al pasajero.) ---
+  const dueDate: string | null = op.customer_payment_deadline || null
 
   return {
     operationId: op.id,

@@ -16,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { DecimalInput } from "@/components/ui/decimal-input"
+import { serviceKind, PASSENGER_DETAIL_FIELDS, sanitizePassengerDetail } from "@/lib/operations/service-kind"
 import {
   Select,
   SelectContent,
@@ -106,6 +107,8 @@ const operationSchema = z.object({
   // distinto al reservation_code de aero/hotel). Ya está en BD via
   // migration 128.
   itr_localizador: z.string().optional().nullable(),
+  // Fecha máxima para que el cliente complete el pago (la usa el PDF de detalle).
+  customer_payment_deadline: z.date().optional().nullable(),
 })
 
 type OperationFormValues = z.infer<typeof operationSchema>
@@ -208,7 +211,7 @@ export function NewOperationDialog({
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
   const [useMultipleOperators, setUseMultipleOperators] = useState(false)
-  const [operatorList, setOperatorList] = useState<Array<{operator_id: string, cost: string | number, cost_currency: "ARS" | "USD", product_type?: string, notes?: string}>>([])
+  const [operatorList, setOperatorList] = useState<Array<{operator_id: string, cost: string | number, cost_currency: "ARS" | "USD", product_type?: string, notes?: string, passenger_detail?: Record<string, string>}>>([])
   const [settings, setSettings] = useState<OperationSettings | null>(null)
   const [apiError, setApiError] = useState<string | null>(null)
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
@@ -422,6 +425,7 @@ export function NewOperationDialog({
       hotel_name: null,
       operation_date: null,
       itr_localizador: null,
+      customer_payment_deadline: null,
       operators: [],
     },
   })
@@ -454,6 +458,7 @@ export function NewOperationDialog({
         reservation_code_hotel: null,
         operation_date: null,
         itr_localizador: null,
+        customer_payment_deadline: null,
         operators: [],
       })
     }
@@ -597,7 +602,7 @@ export function NewOperationDialog({
         // Incluir lead_id si hay un lead
         ...(lead ? { lead_id: lead.id } : {}),
         operator_id: useMultipleOperators ? null : (values.operator_id || null),
-        operators: useMultipleOperators && operatorList.length > 0 ? operatorList.map(op => ({ ...op, cost: Number(op.cost) || 0 })) : undefined,
+        operators: useMultipleOperators && operatorList.length > 0 ? operatorList.map(op => ({ ...op, cost: Number(op.cost) || 0, passenger_detail: sanitizePassengerDetail(op.passenger_detail) })) : undefined,
         seller_secondary_id: values.seller_secondary_id || null,
         commission_split: values.seller_secondary_id ? (values.commission_split ?? 50) : null,
         // Overrides absolutos (29/04 — Tomi opción B): si hay secondary, persistir
@@ -625,6 +630,8 @@ export function NewOperationDialog({
         // fallback (comportamiento legacy preservado).
         operation_date: values.operation_date ? values.operation_date.toISOString().split("T")[0] : null,
         itr_localizador: values.itr_localizador || null,
+        // Fecha máxima de pago del cliente (usada por el PDF de detalle).
+        customer_payment_deadline: values.customer_payment_deadline ? values.customer_payment_deadline.toISOString().split("T")[0] : null,
         sale_currency: values.sale_currency || values.currency || "USD",
         operator_cost_currency: values.operator_cost_currency || values.currency || "USD",
         // Si hay múltiples operadores, el costo total ya está calculado en operator_cost
@@ -1132,6 +1139,32 @@ export function NewOperationDialog({
                       </Select>
                     </div>
                       </div>
+
+                      {/* Detalle para el pasajero (opcional), según el tipo de servicio.
+                          Se exporta en el PDF "Detalle de la Operación". */}
+                      <div className="pt-3 border-t border-border/40">
+                        <label className="text-xs font-medium text-muted-foreground mb-2 block">
+                          Detalle para el pasajero (opcional)
+                        </label>
+                        <div className="grid gap-3 grid-cols-1 md:grid-cols-2">
+                          {PASSENGER_DETAIL_FIELDS[serviceKind(op.product_type)].map((f) => (
+                            <div key={f.key}>
+                              <label className="text-xs font-medium mb-1.5 block">{f.label}</label>
+                              <Input
+                                type={f.type === "date" ? "date" : "text"}
+                                value={op.passenger_detail?.[f.key] || ""}
+                                onChange={(e) =>
+                                  updateOperator(index, "passenger_detail", {
+                                    ...op.passenger_detail,
+                                    [f.key]: e.target.value,
+                                  })
+                                }
+                                className="h-9 text-sm"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                   </div>
                 ))}
                 </div>
@@ -1409,6 +1442,27 @@ export function NewOperationDialog({
                   </FormItem>
                   )
                 }}
+              />
+
+              <FormField
+                control={form.control}
+                name="customer_payment_deadline"
+                render={({ field }) => (
+                  <FormItem className="flex flex-col">
+                    <FormLabel>Fecha máxima de pago del cliente</FormLabel>
+                    <FormControl>
+                      <DateInputWithCalendar
+                        value={field.value || undefined}
+                        onChange={field.onChange}
+                        placeholder="dd/MM/yyyy"
+                      />
+                    </FormControl>
+                    <span className="text-[10px] text-muted-foreground">
+                      Hasta cuándo tiene el pasajero para pagar. Suele vencer ~1 mes antes de la salida. Aparece en el PDF de detalle.
+                    </span>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
             </div>
               </div>{/* End Ruta card */}

@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { parseDateOnlyLocal } from "@/lib/utils/date-only"
+import { serviceKind, PASSENGER_DETAIL_FIELDS, sanitizePassengerDetail } from "@/lib/operations/service-kind"
 import * as z from "zod"
 import {
   Dialog,
@@ -68,6 +69,8 @@ const operationSchema = z.object({
   itr_localizador: z.string().optional().nullable(),
   airline_name: z.string().optional().nullable(),
   hotel_name: z.string().optional().nullable(),
+  // Fecha máxima para que el cliente complete el pago (la usa el PDF de detalle).
+  customer_payment_deadline: z.date().optional().nullable(),
 })
 
 type OperationFormValues = z.infer<typeof operationSchema>
@@ -106,6 +109,7 @@ interface Operation {
   departure_date: string
   return_date?: string | null
   operation_date?: string | null
+  customer_payment_deadline?: string | null
   adults: number
   children: number
   infants: number
@@ -199,7 +203,7 @@ export function EditOperationDialog({
   const [customOperationTypes, setCustomOperationTypes] = useState<Array<{ value: string; label: string }>>([])
 
   // Estado para múltiples operadores
-  type OperatorEntry = { operator_id: string; cost: string | number; cost_currency: "ARS" | "USD"; product_type?: string; notes?: string; id?: string }
+  type OperatorEntry = { operator_id: string; cost: string | number; cost_currency: "ARS" | "USD"; product_type?: string; notes?: string; id?: string; passenger_detail?: Record<string, string> }
   const [useMultipleOperators, setUseMultipleOperators] = useState(false)
   const [operatorList, setOperatorList] = useState<OperatorEntry[]>([])
   const [operatorsLoaded, setOperatorsLoaded] = useState(false)
@@ -300,6 +304,7 @@ export function EditOperationDialog({
         cost_currency: (oo.cost_currency || operationCostCurrency) as "ARS" | "USD",
         product_type: oo.product_type || undefined,
         notes: oo.notes || undefined,
+        passenger_detail: (oo.passenger_detail && typeof oo.passenger_detail === "object") ? oo.passenger_detail : undefined,
       }))
 
     // 1) Preferir los operadores que ya trajo el server (prop). Es confiable y
@@ -375,6 +380,7 @@ export function EditOperationDialog({
       itr_localizador: operation.itr_localizador || null,
       airline_name: operation.airline_name || null,
       hotel_name: operation.hotel_name || null,
+      customer_payment_deadline: parseDateOnlyLocal(operation.customer_payment_deadline) ?? null,
     },
   })
 
@@ -414,6 +420,7 @@ export function EditOperationDialog({
         reservation_code_air: operation.reservation_code_air || null,
         reservation_code_hotel: operation.reservation_code_hotel || null,
         itr_localizador: operation.itr_localizador || null,
+        customer_payment_deadline: parseDateOnlyLocal(operation.customer_payment_deadline) ?? null,
       })
     }
   }, [operation?.id, operationCurrency])
@@ -551,6 +558,10 @@ export function EditOperationDialog({
         departure_date: values.departure_date.toISOString().split("T")[0],
         // 2026-05-19: fecha real de venta editable (para corregir files históricos)
         operation_date: values.operation_date ? values.operation_date.toISOString().split("T")[0] : undefined,
+        // Fecha máxima de pago del cliente (usada por el PDF de detalle).
+        customer_payment_deadline: values.customer_payment_deadline
+          ? values.customer_payment_deadline.toISOString().split("T")[0]
+          : null,
         // Mantener sale_currency y operator_cost_currency sincronizados con currency
         sale_currency: values.currency,
         operator_cost_currency: values.currency,
@@ -563,6 +574,7 @@ export function EditOperationDialog({
           cost_currency: op.cost_currency || values.currency || "USD",
           product_type: op.product_type || null,
           notes: op.notes || null,
+          passenger_detail: sanitizePassengerDetail(op.passenger_detail),
         }))
         // El operador principal es el primero de la lista
         payload.operator_id = operatorList[0].operator_id || null
@@ -977,6 +989,32 @@ export function EditOperationDialog({
                           </Select>
                         </div>
                       </div>
+
+                      {/* Detalle para el pasajero (opcional), según el tipo de servicio.
+                          Se exporta en el PDF "Detalle de la Operación". */}
+                      <div className="pt-3 border-t border-border/40">
+                        <label className="text-xs font-medium text-muted-foreground mb-2 block">
+                          Detalle para el pasajero (opcional)
+                        </label>
+                        <div className="grid gap-3 grid-cols-1 md:grid-cols-2">
+                          {PASSENGER_DETAIL_FIELDS[serviceKind(op.product_type)].map((f) => (
+                            <div key={f.key}>
+                              <label className="text-xs font-medium mb-1.5 block">{f.label}</label>
+                              <Input
+                                type={f.type === "date" ? "date" : "text"}
+                                value={op.passenger_detail?.[f.key] || ""}
+                                onChange={(e) =>
+                                  updateOperatorField(index, "passenger_detail", {
+                                    ...op.passenger_detail,
+                                    [f.key]: e.target.value,
+                                  })
+                                }
+                                className="h-9 text-sm"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1221,6 +1259,27 @@ export function EditOperationDialog({
                   </FormItem>
                   )
                 }}
+              />
+
+              <FormField
+                control={form.control}
+                name="customer_payment_deadline"
+                render={({ field }) => (
+                  <FormItem className="flex flex-col">
+                    <FormLabel>Fecha máxima de pago del cliente</FormLabel>
+                    <FormControl>
+                      <DateInputWithCalendar
+                        value={field.value || undefined}
+                        onChange={field.onChange}
+                        placeholder="dd/MM/yyyy"
+                      />
+                    </FormControl>
+                    <span className="text-[10px] text-muted-foreground">
+                      Hasta cuándo tiene el pasajero para pagar. Suele vencer ~1 mes antes de la salida. Aparece en el PDF de detalle.
+                    </span>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
             </div>
             </div>

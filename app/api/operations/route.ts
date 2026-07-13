@@ -91,6 +91,8 @@ export async function POST(request: Request) {
       // (migration 128) pero el endpoint POST no lo aceptaba en create.
       // Solo se podía setear vía PATCH (edit). Ahora aceptamos en ambos.
       itr_localizador,
+      // Fecha máxima de pago del cliente (la usa el PDF de detalle).
+      customer_payment_deadline,
     } = body
 
     // Guard (2026-06-29): un vendedor no puede ser su propio secundario.
@@ -174,7 +176,7 @@ export async function POST(request: Request) {
     }
 
     // Procesar operadores: soportar formato nuevo (array) y formato antiguo (operator_id + operator_cost)
-    let operatorsList: Array<{operator_id: string, cost: number, cost_currency: string, product_type?: string, notes?: string}> = []
+    let operatorsList: Array<{operator_id: string, cost: number, cost_currency: string, product_type?: string, notes?: string, passenger_detail?: any}> = []
     let totalOperatorCost = 0
     let finalOperatorCostCurrency = operator_cost_currency || currency || "USD"
     let primaryOperatorId: string | null = operator_id || null
@@ -193,7 +195,8 @@ export async function POST(request: Request) {
           cost: Number(op.cost),
           cost_currency: op.cost_currency || currency || "USD",
           product_type: op.product_type || undefined,
-          notes: op.notes || undefined
+          notes: op.notes || undefined,
+          passenger_detail: op.passenger_detail ?? undefined
         })
         totalOperatorCost += Number(op.cost)
         // Usar la moneda del primer operador como moneda principal
@@ -314,6 +317,7 @@ export async function POST(request: Request) {
       airline_name: airline_name || null,
       hotel_name: hotel_name || null,
       itr_localizador: itr_localizador || null,
+      customer_payment_deadline: customer_payment_deadline || null,
     }
 
     // ============================================
@@ -497,7 +501,8 @@ export async function POST(request: Request) {
           cost: operatorData.cost,
           cost_currency: operatorData.cost_currency,
           product_type: operatorData.product_type || null,
-          notes: operatorData.notes || null
+          notes: operatorData.notes || null,
+          passenger_detail: operatorData.passenger_detail ?? null
         }))
         
         const { error: opOpError } = await (supabase.from("operation_operators") as any)

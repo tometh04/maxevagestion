@@ -1,9 +1,10 @@
 "use client"
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Receipt, Repeat, TrendingDown } from "lucide-react"
+import { PieChart, Receipt, Repeat, TrendingDown } from "lucide-react"
 import { MonthlyExpensesTab } from "./monthly-expenses-tab"
 import { VariableExpensesTab } from "./variable-expenses-tab"
+import { ExpensesSummaryTab } from "./expenses-summary-tab"
 import { RecurringPaymentsPageClient } from "@/components/accounting/recurring-payments-page-client"
 
 interface Agency {
@@ -25,8 +26,12 @@ export function GastosPageClient({ agencies }: GastosPageClientProps) {
         </p>
       </div>
 
-      <Tabs defaultValue="egresos" className="space-y-4">
+      <Tabs defaultValue="resumen" className="space-y-4">
         <TabsList>
+          <TabsTrigger value="resumen" className="gap-2">
+            <PieChart className="h-4 w-4" />
+            Resumen
+          </TabsTrigger>
           <TabsTrigger value="egresos" className="gap-2">
             <TrendingDown className="h-4 w-4" />
             Egresos del Mes
@@ -40,6 +45,10 @@ export function GastosPageClient({ agencies }: GastosPageClientProps) {
             Fijos / Recurrentes
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="resumen">
+          <ExpensesSummaryTab agencies={agencies} />
+        </TabsContent>
 
         <TabsContent value="egresos">
           <MonthlyExpensesTab agencies={agencies} />
