@@ -6,6 +6,7 @@ import { calculateCommission, createOrUpdateCommissionRecords } from "@/lib/comm
 import { getOpenOperatorPaymentStatus } from "@/lib/accounting/operator-payment-settlement"
 import { getOrgFeatureFlag } from "@/lib/settings/org-features"
 import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
+import { shouldSkipOperatorModelRecalc } from "@/lib/operations/recalc-guard"
 
 // Epsilon monetario para comparar montos (evita falsos negativos por float).
 const MONEY_EPSILON = 0.005
@@ -63,6 +64,11 @@ async function recalculateOperationTotals(supabase: any, operationId: string) {
   const opSaleCurrency = opCurrencyRow.sale_currency || opCurrencyRow.currency || "USD"
   const opCostCurrency = opCurrencyRow.operator_cost_currency || opCurrencyRow.currency || "USD"
 
+  // Contar operadores: define si la op usa el modelo operador (ver guard abajo).
+  const { count: operatorRowCount } = await (supabase.from("operation_operators") as any)
+    .select("id", { count: "exact", head: true })
+    .eq("operation_id", operationId)
+
   // Sumar todos los servicios activos de la operación, separando por moneda.
   const { data: services } = await (supabase.from("operation_services") as any)
     .select("sale_amount, sale_currency, cost_amount, cost_currency")
@@ -70,19 +76,21 @@ async function recalculateOperationTotals(supabase: any, operationId: string) {
 
   if (!services) return
 
-  // 🔴 GUARD (incidente VICO 2026-06-26, op a3bb84e1): NO sobreescribir los
-  // totales de la operación a partir de un set VACÍO de operation_services.
-  // Existen dos modelos de compra independientes:
+  // 🔴 GUARD modelo operador (incidentes VICO a3bb84e1 y OP-20260518-3C89DA03):
+  // NO sobreescribir los totales de la operación a partir de operation_services
+  // cuando la op usa el modelo operador. Existen dos modelos de compra
+  // independientes:
   //   - operation_services (modelo nuevo: hoteles/vuelos/transfers por servicio)
-  //   - operation_operators / campos legacy en operations (modelo operador)
+  //   - operation_operators / campos base en operations (modelo operador)
   // El POST de servicios NUNCA escribe operation_operators, así que una op
   // cargada por el modelo operador tiene 0 operation_services. Si un usuario
-  // agrega un servicio y luego lo borra, esta función sumaba un set vacío y
-  // ponía sale_amount_total = operator_cost = margin = 0, destruyendo los
-  // totales reales (que siguen vivos en operation_operators y operator_payments).
-  // Regla: si no quedan operation_services, los totales los gestiona el otro
-  // modelo (trigger operation_operators / edición manual) — no tocar nada.
-  if (services.length === 0) return
+  // agrega un servicio y luego lo borra (→ 0 servicios) o lo edita (→ 1 servicio
+  // con sale/cost 0), esta función sumaba ese set y ponía sale_amount_total /
+  // operator_cost / margin = 0, destruyendo los totales reales (que siguen
+  // vivos en operation_operators y operator_payments).
+  // Regla: si hay operadores, o no quedan servicios, los totales los gestiona el
+  // otro modelo (trigger operation_operators / edición manual) — no tocar nada.
+  if (shouldSkipOperatorModelRecalc(operatorRowCount ?? 0, services.length)) return
 
   const totalSale = (services as any[]).reduce((sum: number, s: any) => {
     return s.sale_currency === opSaleCurrency ? sum + (Number(s.sale_amount) || 0) : sum
