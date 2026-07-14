@@ -1,482 +1,255 @@
 import { getCurrentUser } from "@/lib/auth"
 import { createServerClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { generateClientId, generateRequestIdFromClientId } from "@/lib/emilia/utils"
+import { persistEmiliaTurnFailure, persistEmiliaTurnResult } from "@/lib/emilia/turn-result"
 import {
-    generateRequestId,
-    generateClientId,
-    generateTitle,
-    buildAssistantContent,
-} from "@/lib/emilia/utils"
-import { sanitizeEmiliaMetaForStorage, transformFlights, transformHotels } from "@/lib/emilia/transformers"
-import {
-    canAccessEmiliaLeadAgency,
-    resolveEmiliaOrganizationAccess,
-    resolveLeadEmiliaAccess,
+  canAccessEmiliaLeadAgency,
+  resolveEmiliaOrganizationAccess,
+  resolveLeadEmiliaAccess,
 } from "@/lib/emilia/access"
 import { enforceUserRateLimit } from "@/lib/rate-limit"
 import { z } from "zod"
 
 const chatRequestSchema = z.object({
-    message: z.string().trim().min(1).max(4000),
-    conversationId: z.string().uuid(),
-    clientId: z.string().uuid().optional(),
+  message: z.string().trim().min(1).max(4000),
+  conversationId: z.string().uuid(),
+  clientId: z.string().uuid().optional(),
 })
 
-export async function POST(request: Request) {
-    try {
-        const { user } = await getCurrentUser()
-        if (!user) {
-            return NextResponse.json({ error: "No autorizado" }, { status: 401 })
-        }
-        if (!user.org_id) {
-            return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
-        }
-
-        const rateLimitBlock = enforceUserRateLimit(user.id, "/api/emilia/chat:POST", "AI_COPILOT")
-        if (rateLimitBlock) return rateLimitBlock
-
-        const parsedBody = chatRequestSchema.safeParse(await request.json())
-        if (!parsedBody.success) {
-            return NextResponse.json(
-                { error: "Solicitud inválida", details: parsedBody.error.flatten().fieldErrors },
-                { status: 400 }
-            )
-        }
-        const { message, conversationId, clientId } = parsedBody.data
-
-        const supabase = await createServerClient()
-
-        // 1. Cargar conversación de la DB
-        const { data: conversation, error: convError } = await supabase
-            .from("conversations")
-            .select("*")
-            .eq("id", conversationId)
-            .eq("org_id", user.org_id)
-            .eq("user_id", user.id)
-            .single()
-
-        if (convError || !conversation) {
-            return NextResponse.json(
-                { error: "Conversación no encontrada" },
-                { status: 404 }
-            )
-        }
-
-        const leadId = (conversation as any).lead_id as string | null | undefined
-        if (leadId) {
-            const leadAccess = await resolveLeadEmiliaAccess(supabase, user)
-            if (!leadAccess.allowed) {
-                return NextResponse.json(
-                    { error: leadAccess.message, code: leadAccess.code },
-                    { status: leadAccess.status }
-                )
-            }
-
-            const { data: lead } = await supabase
-                .from("leads")
-                .select("id, agency_id")
-                .eq("id", leadId)
-                .eq("org_id", user.org_id)
-                .maybeSingle()
-
-            if (!lead || !canAccessEmiliaLeadAgency(leadAccess, (lead as any).agency_id)) {
-                return NextResponse.json({ error: "Lead no encontrado" }, { status: 404 })
-            }
-        } else {
-            const organizationAccess = await resolveEmiliaOrganizationAccess(supabase, user)
-            if (!organizationAccess.allowed) {
-                return NextResponse.json(
-                    { error: organizationAccess.message, code: organizationAccess.code },
-                    { status: organizationAccess.status }
-                )
-            }
-        }
-
-        // 2. Obtener últimos 10 mensajes para contexto
-        const { data: recentMessages } = await supabase
-            .from("messages")
-            .select("role, content, created_at")
-            .eq("conversation_id", conversationId)
-            .order("created_at", { ascending: false })
-            .limit(10)
-
-        const conversationHistory = (recentMessages || [])
-            .reverse()
-            .map((msg: any) => ({
-                role: msg.role,
-                content: msg.content?.text || "",
-                timestamp: msg.created_at,
-            }))
-
-        // 3. Guardar mensaje del usuario en la DB
-        const userClientId = clientId || generateClientId()
-        const requestId = generateRequestId()
-
-        const { error: userMsgError } = await (supabase.from("messages") as any)
-            .insert({
-                conversation_id: conversationId,
-                role: "user",
-                content: { text: message },
-                client_id: userClientId,
-                api_request_id: requestId,
-            })
-
-        if (userMsgError) {
-            // Si es error de duplicado, ignorar (idempotencia)
-            if (!userMsgError.message?.includes("duplicate") && !userMsgError.message?.includes("unique")) {
-                console.error("Error saving user message:", userMsgError)
-                return NextResponse.json(
-                    { error: "Error al guardar mensaje" },
-                    { status: 500 }
-                )
-            }
-        }
-
-        // 4. Configuración de la API externa
-        const EMILIA_API_URL = process.env.EMILIA_API_URL || "https://api.vibook.ai/v1/emilia/turn"
-        const EMILIA_API_KEY = process.env.EMILIA_API_KEY
-
-        if (!EMILIA_API_KEY) {
-            console.error("EMILIA_API_KEY no configurada en .env.local")
-            return NextResponse.json(
-                { error: "Emilia no está configurada. Contactá al administrador para configurar EMILIA_API_KEY." },
-                { status: 503 }
-            )
-        }
-
-        // 5. Llamar a la API externa con contexto
-        // Body shape de /v1/emilia/turn:
-        //   - request_id: ÚNICO por turno (idempotencia/cache). Ya lo genera
-        //     generateRequestId() en cada POST → no se reutiliza entre turnos.
-        //   - external_conversation_ref: ESTABLE durante todo el chat para que
-        //     Emilia mantenga el contexto conversacional. Usamos nuestro
-        //     conversationId (id de la tabla conversations), que es estable por
-        //     lead+vendedor. Sin esto, Emilia trata cada turno como chat nuevo.
-        void conversationHistory // el endpoint mantiene contexto vía external_conversation_ref
-        const apiPayload = {
-            request_id: requestId,
-            external_conversation_ref: conversationId,
-            message,
-            mode: "agency",
-            workspace_mode: "standard",
-            language: "es",
-        }
-
-        const configuredTimeout = Number(process.env.EMILIA_API_TIMEOUT_MS || 65000)
-        const timeoutMs = Number.isFinite(configuredTimeout) && configuredTimeout > 0
-            ? configuredTimeout
-            : 65000
-        const controller = new AbortController()
-        const timeout = setTimeout(() => controller.abort(), timeoutMs)
-        let response: Response
-        try {
-            response = await fetch(EMILIA_API_URL, {
-                method: "POST",
-                headers: {
-                    "X-API-Key": EMILIA_API_KEY,
-                    "Content-Type": "application/json",
-                    "User-Agent": "Emilia-API-Client/1.0 (https://app.vibook.ai)",
-                    "Origin": "https://app.vibook.ai",
-                },
-                body: JSON.stringify(apiPayload),
-                signal: controller.signal,
-            })
-        } catch (error: any) {
-            if (error?.name === "AbortError") {
-                console.warn("[Emilia API] Timeout", {
-                    orgId: user.org_id,
-                    userId: user.id,
-                    requestId,
-                    timeoutMs,
-                })
-                return NextResponse.json(
-                    { error: "Emilia tardó demasiado en responder. Intentá nuevamente." },
-                    { status: 504 }
-                )
-            }
-            throw error
-        } finally {
-            clearTimeout(timeout)
-        }
-
-        if (!response.ok) {
-            const errorText = await response.text()
-
-            let errorData: any
-            try {
-                errorData = JSON.parse(errorText)
-            } catch {
-                errorData = { message: errorText }
-            }
-
-            console.error("[Emilia API] Error:", {
-                status: response.status,
-                message: errorData?.message || errorText,
-                orgId: user.org_id,
-                userId: user.id,
-                requestId,
-            })
-
-            if (response.status === 429) {
-                return NextResponse.json(
-                    { error: "Demasiadas solicitudes. Por favor, espera un momento." },
-                    { status: 429 }
-                )
-            }
-
-            if (response.status === 401) {
-                return NextResponse.json(
-                    {
-                        error: "API key inválida o expirada. Contactá al administrador.",
-                    },
-                    { status: 401 }
-                )
-            }
-
-            if (response.status === 403) {
-                return NextResponse.json(
-                    {
-                        error: "Sin permisos para realizar búsquedas. Contactá al administrador.",
-                    },
-                    { status: 403 }
-                )
-            }
-
-            return NextResponse.json(
-                {
-                    error: `Error al procesar la búsqueda (${response.status})`,
-                    debug: process.env.NODE_ENV === 'development' ? errorData : undefined
-                },
-                { status: response.status }
-            )
-        }
-
-        const data = await response.json()
-
-        // Manejar caso de información incompleta
-        if (data.status === "incomplete" || data.request_type === "missing_info_request") {
-
-            // Guardar mensaje del asistente pidiendo más información
-            const assistantClientId = generateClientId()
-            const assistantContent = {
-                text: data.message || "Necesito más información para completar la búsqueda. ¿Podrías especificar las fechas, cantidad de personas y destino?",
-                metadata: {
-                    request_type: "missing_info_request",
-                    missing_fields: data.missing_fields || [],
-                    suggested_followups: data.suggested_followups || [],
-                },
-            }
-
-            await (supabase.from("messages") as any)
-                .insert({
-                    conversation_id: conversationId,
-                    role: "assistant",
-                    content: assistantContent,
-                    client_id: assistantClientId,
-                    api_request_id: requestId,
-                    api_search_id: data.search_id,
-                })
-
-            // Actualizar conversación
-            await (supabase.from("conversations") as any)
-                .update({ last_message_at: new Date().toISOString() })
-                .eq("id", conversationId)
-                .eq("org_id", user.org_id)
-                .eq("user_id", user.id)
-
-            return NextResponse.json({
-                status: "incomplete",
-                message: assistantContent.text,
-                missing_fields: data.missing_fields || [],
-                suggested_followups: data.suggested_followups || [],
-                timestamp: new Date().toISOString(),
-            })
-        }
-
-        // 6. Transformar los datos de la API al formato del frontend
-        // La API puede devolver resultados en tres formatos según versión:
-        // 1. data.results.flights (formato anidado legacy)
-        // 2. data.flights (formato plano legacy)
-        // 3. data.assistant_message.meta.combinedData.flights (shape nuevo /v1/emilia/turn)
-        const metaCombined = data.assistant_message?.meta?.combinedData
-        const flightsRaw =
-          metaCombined?.flights ??
-          data.results?.flights ??
-          data.flights
-        const hotelsRaw =
-          metaCombined?.hotels ??
-          data.results?.hotels ??
-          data.hotels
-
-        // Normalizar: el shape nuevo viene como array plano. Los shapes legacy
-        // vienen como { count, items: [] }. Unificamos a { count, items }.
-        const flightsData =
-          Array.isArray(flightsRaw)
-            ? { count: flightsRaw.length, items: flightsRaw }
-            : flightsRaw
-        const hotelsData =
-          Array.isArray(hotelsRaw)
-            ? { count: hotelsRaw.length, items: hotelsRaw }
-            : hotelsRaw
-
-        const transformedFlights = flightsData?.items
-            ? transformFlights(flightsData.items)
-            : undefined
-
-        const transformedHotels = hotelsData?.items
-            ? transformHotels(hotelsData.items)
-            : undefined
-
-        // Construir objetos de resultados transformados
-        const resultsFlights = transformedFlights
-            ? {
-                count: flightsData.count,
-                items: transformedFlights,
-            }
-            : flightsData
-
-        const resultsHotels = transformedHotels
-            ? {
-                count: hotelsData.count,
-                items: transformedHotels,
-            }
-            : hotelsData
-
-        // requestType: derivar de los resultados REALES. El data.requestType de
-        // Emilia puede venir mal (ej. "hotels-only" en una búsqueda de vuelos);
-        // si no hay resultados, caer al tipo del request parseado.
-        const parsedReqType =
-            data.assistant_message?.meta?.parsedRequest?.requestType ??
-            data.emilia?.parsed_request?.requestType ??
-            data.parsed_request?.requestType
-        const derivedRequestType =
-            resultsFlights && resultsHotels ? "combined"
-            : resultsFlights ? "flights-only"
-            : resultsHotels ? "hotels-only"
-            : parsedReqType === "flights" ? "flights-only"
-            : parsedReqType === "hotels" ? "hotels-only"
-            : parsedReqType === "combined" ? "combined"
-            : data.requestType
-
-        // 7. Guardar mensaje del asistente
-        // Normalizar data para buildAssistantContent (debe tener results)
-        const normalizedDataForContent = {
-            ...data,
-            results: resultsFlights || resultsHotels ? {
-                flights: resultsFlights,
-                hotels: resultsHotels,
-            } : data.results,
-        }
-
-        const assistantClientId = generateClientId()
-        // El shape nuevo /v1/emilia/turn entrega el texto real en
-        // `data.assistant_message.content.text`. Usarlo directo cuando esté
-        // disponible; si no (shape legacy /search), caer a buildAssistantContent.
-        const emiliaText = data.assistant_message?.content?.text as string | undefined
-        const emiliaMeta = sanitizeEmiliaMetaForStorage(data.assistant_message?.meta)
-        const assistantContent = {
-            text: emiliaText || buildAssistantContent(normalizedDataForContent),
-            cards: resultsFlights || resultsHotels ? {
-                flights: resultsFlights,
-                hotels: resultsHotels,
-                requestType: derivedRequestType,
-            } : undefined,
-            metadata: {
-                search_id: data.search_id,
-                results_count: (resultsFlights?.count || 0) + (resultsHotels?.count || 0),
-                // Preservar meta de Emilia (originalRequest, confidence, messageType...)
-                // para que se pueda leer al rehidratar el historial desde DB.
-                emilia_meta: emiliaMeta,
-            },
-        }
-
-        const { error: assistantMsgError } = await (supabase.from("messages") as any)
-            .insert({
-                conversation_id: conversationId,
-                role: "assistant",
-                content: assistantContent,
-                client_id: assistantClientId,
-                api_request_id: requestId,
-                api_search_id: data.search_id,
-            })
-
-        if (assistantMsgError) {
-            console.error("Error saving assistant message:", assistantMsgError)
-        }
-
-        // 7. Actualizar contexto y título de la conversación
-        const updates: any = {
-            last_message_at: new Date().toISOString(),
-        }
-
-        // El request parseado puede venir en distintos lugares según el shape.
-        const parsedRequestForCtx =
-            data.parsed_request ??
-            data.emilia?.parsed_request ??
-            data.assistant_message?.meta?.parsedRequest ??
-            null
-
-        // Guardar contexto para próxima búsqueda
-        if (data.context_management?.action === "save" && data.context_management?.context_to_save) {
-            updates.last_search_context = data.context_management.context_to_save
-        } else if (parsedRequestForCtx) {
-            updates.last_search_context = parsedRequestForCtx
-        }
-
-        // Generar título automático si es la primera búsqueda exitosa
-        if ((conversation as any).title?.startsWith("Chat ") && data.status === "completed" && parsedRequestForCtx) {
-            updates.title = generateTitle(parsedRequestForCtx)
-        }
-
-        await (supabase.from("conversations") as any)
-            .update(updates)
-            .eq("id", conversationId)
-            .eq("org_id", user.org_id)
-            .eq("user_id", user.id)
-
-        // 8. Asegurar que siempre haya un status válido
-        // Si la API no devuelve status, inferirlo de los resultados
-        let responseStatus = data.status
-        if (!responseStatus) {
-            if (flightsData || hotelsData) {
-                responseStatus = "completed"
-            } else if (data.message && !data.error) {
-                responseStatus = "completed" // Asumir completado si hay mensaje sin error
-            } else {
-                responseStatus = "completed" // Default a completed
-            }
-        }
-
-        // 8. Retornar respuesta completa con datos transformados
-        // Normalizar la estructura para que siempre tenga results
-        const normalizedResults = resultsFlights || resultsHotels ? {
-            flights: resultsFlights,
-            hotels: resultsHotels,
-        } : (data.results || (flightsData || hotelsData ? {
-            flights: resultsFlights,
-            hotels: resultsHotels,
-        } : undefined))
-
-        return NextResponse.json({
-            ...data,
-            assistant_message: data.assistant_message
-                ? {
-                    ...data.assistant_message,
-                    meta: emiliaMeta,
-                }
-                : data.assistant_message,
-            status: responseStatus, // Asegurar que siempre haya status
-            results: normalizedResults,
-            requestType: derivedRequestType,
-            timestamp: new Date().toISOString(),
-            conversationTitle: updates.title || (conversation as any).title,
-        })
-    } catch (error: any) {
-        console.error("Error en /api/emilia/chat:", error?.message || error)
-        return NextResponse.json(
-            { error: error?.message || "Error interno del servidor" },
-            { status: 500 }
-        )
-    }
+function getAsyncEmiliaUrl() {
+  if (process.env.EMILIA_API_ASYNC_URL) return process.env.EMILIA_API_ASYNC_URL
+  const configured = process.env.EMILIA_API_URL
+  if (!configured) return "https://api.vibook.ai/v1/emilia/turns"
+  return configured.endsWith("/turn") ? `${configured}s` : configured
 }
 
+export async function POST(request: Request) {
+  try {
+    const { user } = await getCurrentUser()
+    if (!user) return NextResponse.json({ error: "No autorizado" }, { status: 401 })
+    if (!user.org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
+    const rateLimitBlock = enforceUserRateLimit(user.id, "/api/emilia/chat:POST", "AI_COPILOT")
+    if (rateLimitBlock) return rateLimitBlock
+
+    const parsedBody = chatRequestSchema.safeParse(await request.json())
+    if (!parsedBody.success) {
+      return NextResponse.json(
+        { error: "Solicitud inválida", details: parsedBody.error.flatten().fieldErrors },
+        { status: 400 }
+      )
+    }
+    const { message, conversationId, clientId } = parsedBody.data
+    const supabase = await createServerClient()
+    const { data: conversation, error: convError } = await supabase
+      .from("conversations")
+      .select("*")
+      .eq("id", conversationId)
+      .eq("org_id", user.org_id)
+      .eq("user_id", user.id)
+      .single()
+
+    if (convError || !conversation) {
+      return NextResponse.json({ error: "Conversación no encontrada" }, { status: 404 })
+    }
+
+    const leadId = (conversation as any).lead_id as string | null | undefined
+    if (leadId) {
+      const leadAccess = await resolveLeadEmiliaAccess(supabase, user)
+      if (!leadAccess.allowed) {
+        return NextResponse.json(
+          { error: leadAccess.message, code: leadAccess.code },
+          { status: leadAccess.status }
+        )
+      }
+      const { data: lead } = await supabase
+        .from("leads")
+        .select("id, agency_id")
+        .eq("id", leadId)
+        .eq("org_id", user.org_id)
+        .maybeSingle()
+      if (!lead || !canAccessEmiliaLeadAgency(leadAccess, (lead as any).agency_id)) {
+        return NextResponse.json({ error: "Lead no encontrado" }, { status: 404 })
+      }
+    } else {
+      const organizationAccess = await resolveEmiliaOrganizationAccess(supabase, user)
+      if (!organizationAccess.allowed) {
+        return NextResponse.json(
+          { error: organizationAccess.message, code: organizationAccess.code },
+          { status: organizationAccess.status }
+        )
+      }
+    }
+
+    const userClientId = clientId || generateClientId()
+    const requestId = generateRequestIdFromClientId(userClientId)
+    const userContent = {
+      text: message,
+      metadata: { emilia_job: { request_id: requestId, status: "dispatching" } },
+    }
+    const { error: userMessageError } = await supabase.from("messages").insert({
+      conversation_id: conversationId,
+      role: "user",
+      content: userContent,
+      client_id: userClientId,
+      api_request_id: requestId,
+    } as any)
+    const duplicateUserMessage = userMessageError?.code === "23505"
+      || userMessageError?.message?.includes("duplicate")
+      || userMessageError?.message?.includes("unique")
+    if (userMessageError && !duplicateUserMessage) {
+      console.error("Error saving user message:", userMessageError)
+      return NextResponse.json({ error: "Error al guardar mensaje" }, { status: 500 })
+    }
+
+    const apiKey = process.env.EMILIA_API_KEY
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: "Emilia no está configurada. Contactá al administrador para configurar EMILIA_API_KEY." },
+        { status: 503 }
+      )
+    }
+
+    const apiPayload = {
+      request_id: requestId,
+      external_conversation_ref: conversationId,
+      message,
+      mode: "agency",
+      workspace_mode: "standard",
+      language: "es",
+    }
+    const configuredTimeout = Number(process.env.EMILIA_API_DISPATCH_TIMEOUT_MS || 15_000)
+    const timeoutMs = Number.isFinite(configuredTimeout) && configuredTimeout > 0 ? configuredTimeout : 15_000
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), timeoutMs)
+    let response: Response
+    try {
+      response = await fetch(getAsyncEmiliaUrl(), {
+        method: "POST",
+        headers: {
+          "X-API-Key": apiKey,
+          "Content-Type": "application/json",
+          "User-Agent": "Emilia-API-Client/1.0 (https://app.vibook.ai)",
+          "Origin": "https://app.vibook.ai",
+        },
+        body: JSON.stringify(apiPayload),
+        signal: controller.signal,
+        cache: "no-store",
+      })
+    } catch (error: any) {
+      if (error?.name === "AbortError") {
+        return NextResponse.json(
+          { error: "No se pudo iniciar la búsqueda de Emilia. Intentá nuevamente." },
+          { status: 504 }
+        )
+      }
+      throw error
+    } finally {
+      clearTimeout(timeout)
+    }
+
+    const data = await response.json().catch(async () => ({ message: await response.text().catch(() => "") }))
+    if (!response.ok) {
+      console.error("[Emilia API] Error:", {
+        status: response.status,
+        message: data?.error?.message || data?.message,
+        orgId: user.org_id,
+        userId: user.id,
+        requestId,
+      })
+      if (response.status === 429) {
+        return NextResponse.json({ error: "Demasiadas solicitudes. Por favor, espera un momento." }, { status: 429 })
+      }
+      if (response.status === 401) {
+        return NextResponse.json({ error: "API key inválida o expirada. Contactá al administrador." }, { status: 401 })
+      }
+      if (response.status === 403) {
+        return NextResponse.json({ error: "Sin permisos para realizar búsquedas. Contactá al administrador." }, { status: 403 })
+      }
+      return NextResponse.json(
+        { error: data?.error?.message || `Error al iniciar la búsqueda (${response.status})` },
+        { status: response.status }
+      )
+    }
+
+    if (data.status === "queued" || data.status === "processing") {
+      await supabase
+        .from("messages")
+        .update({
+          content: {
+            text: message,
+            metadata: {
+              emilia_job: {
+                job_id: data.job_id,
+                request_id: data.request_id || requestId,
+                status: data.status,
+              },
+            },
+          },
+        } as any)
+        .eq("conversation_id", conversationId)
+        .eq("client_id", userClientId)
+
+      return NextResponse.json({
+        job_id: data.job_id,
+        request_id: data.request_id || requestId,
+        status: data.status,
+        stage: data.stage,
+        poll_after_ms: data.poll_after_ms || 1500,
+      }, { status: 202 })
+    }
+
+    if (data.status === "failed") {
+      const failureMessage = data?.error?.message || "Emilia no pudo completar la búsqueda. Intentá nuevamente."
+      await persistEmiliaTurnFailure({
+        supabase,
+        conversationId,
+        requestId,
+        jobId: data.job_id,
+        message: failureMessage,
+      })
+      await supabase
+        .from("messages")
+        .update({
+          content: {
+            text: message,
+            metadata: { emilia_job: { job_id: data.job_id, request_id: requestId, status: "failed" } },
+          },
+        } as any)
+        .eq("conversation_id", conversationId)
+        .eq("client_id", userClientId)
+      return NextResponse.json({ status: "failed", error: { message: failureMessage } }, { status: 502 })
+    }
+
+    const result = data.result || data
+    const normalized = await persistEmiliaTurnResult({
+      supabase,
+      conversation,
+      conversationId,
+      orgId: user.org_id,
+      userId: user.id,
+      requestId: data.request_id || requestId,
+      data: result,
+      jobId: data.job_id,
+    })
+    if (data.job_id) {
+      await supabase
+        .from("messages")
+        .update({
+          content: {
+            text: message,
+            metadata: { emilia_job: { job_id: data.job_id, request_id: data.request_id || requestId, status: "completed" } },
+          },
+        } as any)
+        .eq("conversation_id", conversationId)
+        .eq("client_id", userClientId)
+    }
+    return NextResponse.json(normalized)
+  } catch (error: any) {
+    console.error("Error en /api/emilia/chat:", error?.message || error)
+    return NextResponse.json({ error: error?.message || "Error interno del servidor" }, { status: 500 })
+  }
+}

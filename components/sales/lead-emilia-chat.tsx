@@ -13,6 +13,8 @@ import { cn } from "@/lib/utils"
 import { FlightResultCard } from "@/components/emilia/flight-result-card"
 import { HotelResultCard } from "@/components/emilia/hotel-result-card"
 import { buildQuotationPayload, type EmiliaFlight, type EurovipsHotel } from "@/lib/emilia/quotation-mapper"
+import { generateClientId } from "@/lib/emilia/utils"
+import { waitForEmiliaJob } from "@/lib/emilia/async-turn"
 import {
   filterFlights,
   filterHotels,
@@ -538,6 +540,7 @@ export function LeadEmiliaChat({ lead, onBack, onQuotationCreated, initialConver
   } | null>(null)
   // Cargando el prompt sugerido (gpt). Loading sutil: se llena una sola vez.
   const [promptLoading, setPromptLoading] = useState(false)
+  const pendingJobControllerRef = useRef<AbortController | null>(null)
 
   // Selección
   const [selectedFlightId, setSelectedFlightId] = useState<string | null>(null)
@@ -605,7 +608,11 @@ export function LeadEmiliaChat({ lead, onBack, onQuotationCreated, initialConver
       }
     }
     init()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+      pendingJobControllerRef.current?.abort()
+      pendingJobControllerRef.current = null
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lead.id])
 
@@ -652,6 +659,30 @@ export function LeadEmiliaChat({ lead, onBack, onQuotationCreated, initialConver
           }
         })
         setMessages(msgs)
+        const pendingMessage = [...(json?.messages || [])].reverse().find((message: any) => {
+          const job = message.content?.metadata?.emilia_job
+          return message.role === "user" && job?.job_id
+            && (job.status === "queued" || job.status === "processing")
+        })
+        const pendingJob = pendingMessage?.content?.metadata?.emilia_job
+        if (pendingJob?.job_id) {
+          const controller = new AbortController()
+          pendingJobControllerRef.current?.abort()
+          pendingJobControllerRef.current = controller
+          setSending(true)
+          void waitForEmiliaJob({
+            jobId: pendingJob.job_id,
+            conversationId: convId,
+            signal: controller.signal,
+          }).then(() => loadHistory(convId)).catch((error) => {
+            if (error?.name !== "AbortError") {
+              toast.error(error?.message || "No se pudo retomar la búsqueda")
+            }
+          }).finally(() => {
+            if (pendingJobControllerRef.current === controller) pendingJobControllerRef.current = null
+            setSending(false)
+          })
+        }
         return msgs.length
       }
     } catch {
@@ -666,18 +697,32 @@ export function LeadEmiliaChat({ lead, onBack, onQuotationCreated, initialConver
     setInput("")
     setMessages(prev => [...prev, { role: "user", text }])
     setSending(true)
+    const clientId = generateClientId()
+    const controller = new AbortController()
+    pendingJobControllerRef.current?.abort()
+    pendingJobControllerRef.current = controller
     try {
       const res = await fetch("/api/emilia/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, conversationId }),
+        body: JSON.stringify({ message: text, conversationId, clientId }),
+        signal: controller.signal,
       })
-      const data = await res.json()
+      const initialData = await res.json()
       if (!res.ok) {
-        const errText = data?.error || (res.status === 429 ? "Demasiadas búsquedas. Esperá unos segundos." : "No pude buscar ahora.")
+        const errText = initialData?.error?.message || initialData?.error
+          || (res.status === 429 ? "Demasiadas búsquedas. Esperá unos segundos." : "No pude buscar ahora.")
         setMessages(prev => [...prev, { role: "assistant", text: errText }])
         return
       }
+      const data = initialData.status === "queued" || initialData.status === "processing"
+        ? await waitForEmiliaJob({
+          jobId: initialData.job_id,
+          conversationId,
+          pollAfterMs: initialData.poll_after_ms,
+          signal: controller.signal,
+        })
+        : initialData
       if (data.status === "incomplete") {
         setMessages(prev => [...prev, {
           role: "assistant",
@@ -697,8 +742,10 @@ export function LeadEmiliaChat({ lead, onBack, onQuotationCreated, initialConver
         meta: data?.assistant_message?.meta,
       }])
     } catch (err: any) {
+      if (err?.name === "AbortError") return
       setMessages(prev => [...prev, { role: "assistant", text: "Error de red: " + (err?.message || "") }])
     } finally {
+      if (pendingJobControllerRef.current === controller) pendingJobControllerRef.current = null
       setSending(false)
     }
   }

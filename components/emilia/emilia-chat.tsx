@@ -22,6 +22,7 @@ import { toast } from "sonner"
 import { FlightResultCard } from "./flight-result-card"
 import { HotelResultCard } from "./hotel-result-card"
 import { generateClientId } from "@/lib/emilia/utils"
+import { waitForEmiliaJob } from "@/lib/emilia/async-turn"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 interface Message {
@@ -41,6 +42,11 @@ interface MessageContent {
     metadata?: {
         search_id?: string
         results_count?: number
+        emilia_job?: {
+            job_id?: string
+            request_id?: string
+            status?: "dispatching" | "queued" | "processing" | "completed" | "failed"
+        }
     }
 }
 
@@ -164,6 +170,7 @@ export function EmiliaChat({ conversationId, userId, userName, onConversationUpd
 
     const scrollAreaRef = useRef<HTMLDivElement>(null)
     const inputRef = useRef<HTMLInputElement>(null)
+    const pendingJobControllerRef = useRef<AbortController | null>(null)
 
     const scrollToBottom = useCallback(() => {
         if (scrollAreaRef.current) {
@@ -176,6 +183,7 @@ export function EmiliaChat({ conversationId, userId, userName, onConversationUpd
 
     // Cargar mensajes cuando cambia la conversación
     useEffect(() => {
+        let cancelled = false
         const loadMessages = async () => {
             // CASO 1: No hay conversación seleccionada
             if (!conversationId) {
@@ -198,7 +206,43 @@ export function EmiliaChat({ conversationId, userId, userName, onConversationUpd
                 const response = await fetch(`/api/emilia/conversations/${conversationId}`)
                 if (response.ok) {
                     const data = await response.json()
-                    setMessages(data.messages || [])
+                    const storedMessages = data.messages || []
+                    if (!cancelled) setMessages(storedMessages)
+                    const pendingMessage = [...storedMessages].reverse().find((message: Message) => {
+                        const job = message.content?.metadata?.emilia_job
+                        return message.role === "user" && job?.job_id
+                            && (job.status === "queued" || job.status === "processing")
+                    })
+                    const pendingJob = pendingMessage?.content?.metadata?.emilia_job
+                    if (pendingJob?.job_id && !cancelled) {
+                        const controller = new AbortController()
+                        pendingJobControllerRef.current?.abort()
+                        pendingJobControllerRef.current = controller
+                        setIsLoading(true)
+                        void waitForEmiliaJob({
+                            jobId: pendingJob.job_id,
+                            conversationId,
+                            signal: controller.signal,
+                        }).then(async () => {
+                            const refreshed = await fetch(`/api/emilia/conversations/${conversationId}`)
+                            if (refreshed.ok && !cancelled) {
+                                const refreshedData = await refreshed.json()
+                                setMessages(refreshedData.messages || [])
+                            }
+                        }).catch(async (error) => {
+                            if (error?.name !== "AbortError") {
+                                toast.error(error?.message || "No se pudo retomar la búsqueda")
+                                const refreshed = await fetch(`/api/emilia/conversations/${conversationId}`)
+                                if (refreshed.ok && !cancelled) {
+                                    const refreshedData = await refreshed.json()
+                                    setMessages(refreshedData.messages || [])
+                                }
+                            }
+                        }).finally(() => {
+                            if (pendingJobControllerRef.current === controller) pendingJobControllerRef.current = null
+                            if (!cancelled) setIsLoading(false)
+                        })
+                    }
                 } else {
                     console.error("Error loading messages")
                     setMessages([])
@@ -212,6 +256,11 @@ export function EmiliaChat({ conversationId, userId, userName, onConversationUpd
         }
 
         loadMessages()
+        return () => {
+            cancelled = true
+            pendingJobControllerRef.current?.abort()
+            pendingJobControllerRef.current = null
+        }
     }, [conversationId])
 
     useEffect(() => {
@@ -235,6 +284,9 @@ export function EmiliaChat({ conversationId, userId, userName, onConversationUpd
         setMessages((prev) => [...prev, optimisticMessage])
         setInput("")
         setIsLoading(true)
+        const controller = new AbortController()
+        pendingJobControllerRef.current?.abort()
+        pendingJobControllerRef.current = controller
 
         try {
             const response = await fetch("/api/emilia/chat", {
@@ -245,14 +297,23 @@ export function EmiliaChat({ conversationId, userId, userName, onConversationUpd
                     conversationId,
                     clientId,
                 }),
+                signal: controller.signal,
             })
 
+            const initialData = await response.json()
+
             if (!response.ok) {
-                const error = await response.json()
-                throw new Error(error.error || "Error al procesar la solicitud")
+                throw new Error(initialData.error?.message || initialData.error || "Error al procesar la solicitud")
             }
 
-            const data = await response.json()
+            const data = initialData.status === "queued" || initialData.status === "processing"
+                ? await waitForEmiliaJob({
+                    jobId: initialData.job_id,
+                    conversationId,
+                    pollAfterMs: initialData.poll_after_ms,
+                    signal: controller.signal,
+                })
+                : initialData
 
             // Construir mensaje del asistente
             const assistantContent: MessageContent = {
@@ -293,6 +354,7 @@ export function EmiliaChat({ conversationId, userId, userName, onConversationUpd
                 onConversationUpdated?.(data.conversationTitle)
             }
         } catch (error: any) {
+            if (error?.name === "AbortError") return
             console.error("Error sending message:", error)
 
             const errorContent = error.message || "Error al procesar la solicitud"
@@ -310,6 +372,7 @@ export function EmiliaChat({ conversationId, userId, userName, onConversationUpd
                 return [...filtered, optimisticMessage, errorMessage]
             })
         } finally {
+            if (pendingJobControllerRef.current === controller) pendingJobControllerRef.current = null
             setIsLoading(false)
             inputRef.current?.focus()
         }
