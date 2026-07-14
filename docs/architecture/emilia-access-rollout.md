@@ -68,7 +68,7 @@ Los errores de permiso o tenancy no abren el cotizador como fallback.
 
 ## Despliegue
 
-1. Aplicar `20260714000001_harden_emilia_access_for_global_promo.sql`.
+1. Aplicar `20260714000002_harden_emilia_access_for_global_promo.sql`.
 2. Configurar `EMILIA_API_URL`, `EMILIA_API_KEY` y, sólo si se quiere cambiar el
    corte, `EMILIA_PROMOTION_END_AT` en Railway.
 3. Desplegar la aplicación.
