@@ -1,6 +1,7 @@
 import { getCurrentUser } from "@/lib/auth"
 import { createServerClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { resolveEmiliaOrganizationAccess } from "@/lib/emilia/access"
 
 // GET /api/emilia/conversations/[id] - Obtener conversación con mensajes
 export async function GET(
@@ -12,15 +13,26 @@ export async function GET(
     if (!user) {
       return NextResponse.json({ error: "No autorizado" }, { status: 401 })
     }
+    if (!user.org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
 
     const { id: conversationId } = await params
     const supabase = await createServerClient()
+    const access = await resolveEmiliaOrganizationAccess(supabase, user)
+    if (!access.allowed) {
+      return NextResponse.json(
+        { error: access.message, code: access.code },
+        { status: access.status }
+      )
+    }
 
     // Obtener conversación
     const { data: conversation, error: convError } = await supabase
       .from("conversations")
       .select("*")
       .eq("id", conversationId)
+      .eq("org_id", user.org_id)
       .eq("user_id", user.id)
       .single()
 
@@ -82,15 +94,26 @@ export async function DELETE(
     if (!user) {
       return NextResponse.json({ error: "No autorizado" }, { status: 401 })
     }
+    if (!user.org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
 
     const { id: conversationId } = await params
     const supabase = await createServerClient()
+    const access = await resolveEmiliaOrganizationAccess(supabase, user)
+    if (!access.allowed) {
+      return NextResponse.json(
+        { error: access.message, code: access.code },
+        { status: access.status }
+      )
+    }
 
     // Verificar que la conversación pertenece al usuario
     const { data: conversation, error: checkError } = await supabase
       .from("conversations")
       .select("id")
       .eq("id", conversationId)
+      .eq("org_id", user.org_id)
       .eq("user_id", user.id)
       .single()
 
@@ -105,6 +128,8 @@ export async function DELETE(
     const { error: updateError } = await (supabase.from("conversations") as any)
       .update({ state: "closed" })
       .eq("id", conversationId)
+      .eq("org_id", user.org_id)
+      .eq("user_id", user.id)
 
     if (updateError) {
       console.error("Error closing conversation:", updateError)
@@ -123,4 +148,3 @@ export async function DELETE(
     )
   }
 }
-

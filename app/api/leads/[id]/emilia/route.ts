@@ -2,20 +2,22 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { getOrgFeatureFlag } from "@/lib/settings/org-features"
-import { FEATURE_FLAG_LEAD_EMILIA_CHAT, isLeadEmiliaChatBetaUser } from "@/lib/feature-flags"
 import {
   buildFallbackPrompt,
   type LeadInput,
 } from "@/lib/emilia/lead-context"
 import { fetchListPrompt } from "@/lib/emilia/list-prompt"
+import {
+  canAccessEmiliaLeadAgency,
+  resolveLeadEmiliaAccess,
+} from "@/lib/emilia/access"
 
 export const dynamic = "force-dynamic"
 
 /**
  * GET /api/leads/[id]/emilia
  * Devuelve la conversación activa vinculada al lead, o null si no hay.
- * 403 si la feature flag no está activa para la org del user.
+ * Durante la promoción acceden todos los planes; luego sólo Enterprise/custom.
  */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: leadId } = await params
@@ -23,34 +25,24 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   if (!user.org_id) {
     return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
   }
-  // Beta CERRADA: solo el/los usuario(s) allowlisteado(s), además del flag de org.
-  if (!isLeadEmiliaChatBetaUser(user.email)) {
-    return NextResponse.json(
-      { error: "Feature en beta — no disponible para tu usuario" },
-      { status: 403 }
-    )
-  }
 
   const supabase = (await createServerClient()) as any
-
-  // Perf: beta gate + validación del lead en paralelo (queries independientes).
-  const [flagOn, leadRes] = await Promise.all([
-    getOrgFeatureFlag(supabase, user.org_id, FEATURE_FLAG_LEAD_EMILIA_CHAT),
-    supabase
-      .from("leads")
-      .select("id, agency_id, agencies!inner(org_id)")
-      .eq("id", leadId)
-      .maybeSingle(),
-  ])
-  if (!flagOn) {
+  const access = await resolveLeadEmiliaAccess(supabase, user)
+  if (!access.allowed) {
     return NextResponse.json(
-      { error: "Feature en beta — no disponible para tu organización" },
-      { status: 403 }
+      { error: access.message, code: access.code },
+      { status: access.status }
     )
   }
-  // Multi-tenant defense: validar que el lead pertenece a la org del user
-  const lead = leadRes.data
-  if (!lead || (lead as any).agencies?.org_id !== user.org_id) {
+
+  const { data: lead } = await supabase
+    .from("leads")
+    .select("id, agency_id")
+    .eq("id", leadId)
+    .eq("org_id", user.org_id)
+    .maybeSingle()
+
+  if (!lead || !canAccessEmiliaLeadAgency(access, (lead as any).agency_id)) {
     return NextResponse.json({ error: "Lead no encontrado" }, { status: 404 })
   }
 
@@ -58,6 +50,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const { data: conv } = await supabase
     .from("conversations")
     .select("id, title, state, last_message_at, created_at")
+    .eq("org_id", user.org_id)
     .eq("lead_id", leadId)
     .eq("user_id", user.id)
     .eq("state", "active")
@@ -81,34 +74,24 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   if (!user.org_id) {
     return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
   }
-  // Beta CERRADA: solo el/los usuario(s) allowlisteado(s), además del flag de org.
-  if (!isLeadEmiliaChatBetaUser(user.email)) {
-    return NextResponse.json(
-      { error: "Feature en beta — no disponible para tu usuario" },
-      { status: 403 }
-    )
-  }
 
   const supabase = (await createServerClient()) as any
-
-  // Perf: beta gate + datos del lead en paralelo (queries independientes).
-  const [flagOn, leadRes] = await Promise.all([
-    getOrgFeatureFlag(supabase, user.org_id, FEATURE_FLAG_LEAD_EMILIA_CHAT),
-    supabase
-      .from("leads")
-      .select("id, contact_name, destination, region, notes, list_name, agency_id, agencies!inner(org_id)")
-      .eq("id", leadId)
-      .maybeSingle(),
-  ])
-  if (!flagOn) {
+  const access = await resolveLeadEmiliaAccess(supabase, user)
+  if (!access.allowed) {
     return NextResponse.json(
-      { error: "Feature en beta — no disponible para tu organización" },
-      { status: 403 }
+      { error: access.message, code: access.code },
+      { status: access.status }
     )
   }
-  // Multi-tenant defense + obtener datos del lead para el prompt
-  const lead = leadRes.data
-  if (!lead || (lead as any).agencies?.org_id !== user.org_id) {
+
+  const { data: lead } = await supabase
+    .from("leads")
+    .select("id, contact_name, destination, region, notes, list_name, agency_id")
+    .eq("id", leadId)
+    .eq("org_id", user.org_id)
+    .maybeSingle()
+
+  if (!lead || !canAccessEmiliaLeadAgency(access, (lead as any).agency_id)) {
     return NextResponse.json({ error: "Lead no encontrado" }, { status: 404 })
   }
 
@@ -132,6 +115,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   const { data: existing } = await supabase
     .from("conversations")
     .select("id")
+    .eq("org_id", user.org_id)
     .eq("lead_id", leadId)
     .eq("user_id", user.id)
     .eq("state", "active")
@@ -146,6 +130,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     const { data: created, error: createErr } = await supabase
       .from("conversations")
       .insert({
+        org_id: user.org_id,
         user_id: user.id,
         lead_id: leadId,
         title: `Cotización ${(lead as any).contact_name}`,
@@ -155,10 +140,28 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       .select("id")
       .single()
     if (createErr || !created) {
-      console.error("Error creando conversación lead-emilia:", createErr?.message)
-      return NextResponse.json({ error: "No se pudo crear la conversación" }, { status: 500 })
+      if (createErr?.code === "23505") {
+        const { data: concurrentConversation } = await supabase
+          .from("conversations")
+          .select("id")
+          .eq("org_id", user.org_id)
+          .eq("lead_id", leadId)
+          .eq("user_id", user.id)
+          .eq("state", "active")
+          .maybeSingle()
+        if (concurrentConversation) {
+          conversationId = (concurrentConversation as any).id
+        } else {
+          console.error("Conflicto creando conversación lead-emilia sin fila recuperable")
+          return NextResponse.json({ error: "No se pudo crear la conversación" }, { status: 500 })
+        }
+      } else {
+        console.error("Error creando conversación lead-emilia:", createErr?.message)
+        return NextResponse.json({ error: "No se pudo crear la conversación" }, { status: 500 })
+      }
+    } else {
+      conversationId = (created as any).id
     }
-    conversationId = (created as any).id
   }
 
   // Perf: NO bloqueamos la creación de la conversación con la llamada a

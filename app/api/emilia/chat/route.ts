@@ -8,12 +8,19 @@ import {
     buildAssistantContent,
 } from "@/lib/emilia/utils"
 import { sanitizeEmiliaMetaForStorage, transformFlights, transformHotels } from "@/lib/emilia/transformers"
+import {
+    canAccessEmiliaLeadAgency,
+    resolveEmiliaOrganizationAccess,
+    resolveLeadEmiliaAccess,
+} from "@/lib/emilia/access"
+import { enforceUserRateLimit } from "@/lib/rate-limit"
+import { z } from "zod"
 
-interface ChatRequest {
-    message: string
-    conversationId: string
-    clientId?: string
-}
+const chatRequestSchema = z.object({
+    message: z.string().trim().min(1).max(4000),
+    conversationId: z.string().uuid(),
+    clientId: z.string().uuid().optional(),
+})
 
 export async function POST(request: Request) {
     try {
@@ -21,23 +28,21 @@ export async function POST(request: Request) {
         if (!user) {
             return NextResponse.json({ error: "No autorizado" }, { status: 401 })
         }
+        if (!user.org_id) {
+            return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+        }
 
-        const body: ChatRequest = await request.json()
-        const { message, conversationId, clientId } = body
+        const rateLimitBlock = enforceUserRateLimit(user.id, "/api/emilia/chat:POST", "AI_COPILOT")
+        if (rateLimitBlock) return rateLimitBlock
 
-        if (!message?.trim()) {
+        const parsedBody = chatRequestSchema.safeParse(await request.json())
+        if (!parsedBody.success) {
             return NextResponse.json(
-                { error: "El mensaje es requerido" },
+                { error: "Solicitud inválida", details: parsedBody.error.flatten().fieldErrors },
                 { status: 400 }
             )
         }
-
-        if (!conversationId) {
-            return NextResponse.json(
-                { error: "conversationId es requerido" },
-                { status: 400 }
-            )
-        }
+        const { message, conversationId, clientId } = parsedBody.data
 
         const supabase = await createServerClient()
 
@@ -46,6 +51,7 @@ export async function POST(request: Request) {
             .from("conversations")
             .select("*")
             .eq("id", conversationId)
+            .eq("org_id", user.org_id)
             .eq("user_id", user.id)
             .single()
 
@@ -54,6 +60,36 @@ export async function POST(request: Request) {
                 { error: "Conversación no encontrada" },
                 { status: 404 }
             )
+        }
+
+        const leadId = (conversation as any).lead_id as string | null | undefined
+        if (leadId) {
+            const leadAccess = await resolveLeadEmiliaAccess(supabase, user)
+            if (!leadAccess.allowed) {
+                return NextResponse.json(
+                    { error: leadAccess.message, code: leadAccess.code },
+                    { status: leadAccess.status }
+                )
+            }
+
+            const { data: lead } = await supabase
+                .from("leads")
+                .select("id, agency_id")
+                .eq("id", leadId)
+                .eq("org_id", user.org_id)
+                .maybeSingle()
+
+            if (!lead || !canAccessEmiliaLeadAgency(leadAccess, (lead as any).agency_id)) {
+                return NextResponse.json({ error: "Lead no encontrado" }, { status: 404 })
+            }
+        } else {
+            const organizationAccess = await resolveEmiliaOrganizationAccess(supabase, user)
+            if (!organizationAccess.allowed) {
+                return NextResponse.json(
+                    { error: organizationAccess.message, code: organizationAccess.code },
+                    { status: organizationAccess.status }
+                )
+            }
         }
 
         // 2. Obtener últimos 10 mensajes para contexto
@@ -97,7 +133,7 @@ export async function POST(request: Request) {
         }
 
         // 4. Configuración de la API externa
-        const EMILIA_API_URL = process.env.EMILIA_API_URL || "https://api.vibook.ai/search"
+        const EMILIA_API_URL = process.env.EMILIA_API_URL || "https://api.vibook.ai/v1/emilia/turn"
         const EMILIA_API_KEY = process.env.EMILIA_API_KEY
 
         if (!EMILIA_API_KEY) {
@@ -126,16 +162,42 @@ export async function POST(request: Request) {
             language: "es",
         }
 
-        const response = await fetch(EMILIA_API_URL, {
-            method: "POST",
-            headers: {
-                "X-API-Key": EMILIA_API_KEY,
-                "Content-Type": "application/json",
-                "User-Agent": "Emilia-API-Client/1.0 (https://app.vibook.ai)",
-                "Origin": "https://app.vibook.ai",
-            },
-            body: JSON.stringify(apiPayload),
-        })
+        const configuredTimeout = Number(process.env.EMILIA_API_TIMEOUT_MS || 65000)
+        const timeoutMs = Number.isFinite(configuredTimeout) && configuredTimeout > 0
+            ? configuredTimeout
+            : 65000
+        const controller = new AbortController()
+        const timeout = setTimeout(() => controller.abort(), timeoutMs)
+        let response: Response
+        try {
+            response = await fetch(EMILIA_API_URL, {
+                method: "POST",
+                headers: {
+                    "X-API-Key": EMILIA_API_KEY,
+                    "Content-Type": "application/json",
+                    "User-Agent": "Emilia-API-Client/1.0 (https://app.vibook.ai)",
+                    "Origin": "https://app.vibook.ai",
+                },
+                body: JSON.stringify(apiPayload),
+                signal: controller.signal,
+            })
+        } catch (error: any) {
+            if (error?.name === "AbortError") {
+                console.warn("[Emilia API] Timeout", {
+                    orgId: user.org_id,
+                    userId: user.id,
+                    requestId,
+                    timeoutMs,
+                })
+                return NextResponse.json(
+                    { error: "Emilia tardó demasiado en responder. Intentá nuevamente." },
+                    { status: 504 }
+                )
+            }
+            throw error
+        } finally {
+            clearTimeout(timeout)
+        }
 
         if (!response.ok) {
             const errorText = await response.text()
@@ -147,7 +209,13 @@ export async function POST(request: Request) {
                 errorData = { message: errorText }
             }
 
-            console.error("[Emilia API] Error:", response.status, errorData?.message || errorText)
+            console.error("[Emilia API] Error:", {
+                status: response.status,
+                message: errorData?.message || errorText,
+                orgId: user.org_id,
+                userId: user.id,
+                requestId,
+            })
 
             if (response.status === 429) {
                 return NextResponse.json(
@@ -160,10 +228,6 @@ export async function POST(request: Request) {
                 return NextResponse.json(
                     {
                         error: "API key inválida o expirada. Contactá al administrador.",
-                        debug: process.env.NODE_ENV === 'development' ? {
-                            apiKeyPrefix: EMILIA_API_KEY?.substring(0, 20),
-                            errorDetails: errorData
-                        } : undefined
                     },
                     { status: 401 }
                 )
@@ -173,11 +237,6 @@ export async function POST(request: Request) {
                 return NextResponse.json(
                     {
                         error: "Sin permisos para realizar búsquedas. Contactá al administrador.",
-                        debug: process.env.NODE_ENV === 'development' ? {
-                            apiKeyPrefix: EMILIA_API_KEY?.substring(0, 20),
-                            host: request.headers.get('host'),
-                            errorDetails: errorData
-                        } : undefined
                     },
                     { status: 403 }
                 )
@@ -222,6 +281,8 @@ export async function POST(request: Request) {
             await (supabase.from("conversations") as any)
                 .update({ last_message_at: new Date().toISOString() })
                 .eq("id", conversationId)
+                .eq("org_id", user.org_id)
+                .eq("user_id", user.id)
 
             return NextResponse.json({
                 status: "incomplete",
@@ -370,6 +431,8 @@ export async function POST(request: Request) {
         await (supabase.from("conversations") as any)
             .update(updates)
             .eq("id", conversationId)
+            .eq("org_id", user.org_id)
+            .eq("user_id", user.id)
 
         // 8. Asegurar que siempre haya un status válido
         // Si la API no devuelve status, inferirlo de los resultados

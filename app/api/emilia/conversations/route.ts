@@ -1,6 +1,7 @@
 import { getCurrentUser } from "@/lib/auth"
 import { createServerClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { resolveEmiliaOrganizationAccess } from "@/lib/emilia/access"
 
 // GET /api/emilia/conversations - Listar conversaciones del usuario
 export async function GET(request: Request) {
@@ -9,17 +10,28 @@ export async function GET(request: Request) {
     if (!user) {
       return NextResponse.json({ error: "No autorizado" }, { status: 401 })
     }
+    if (!user.org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
 
     const { searchParams } = new URL(request.url)
     const state = searchParams.get("state") || "active"
     const limit = parseInt(searchParams.get("limit") || "50")
 
     const supabase = await createServerClient()
+    const access = await resolveEmiliaOrganizationAccess(supabase, user)
+    if (!access.allowed) {
+      return NextResponse.json(
+        { error: access.message, code: access.code },
+        { status: access.status }
+      )
+    }
 
     // Query para obtener conversaciones
     const { data: conversations, error } = await supabase
       .from("conversations")
       .select("*")
+      .eq("org_id", user.org_id)
       .eq("user_id", user.id)
       .eq("state", state)
       .order("last_message_at", { ascending: false })
@@ -79,8 +91,18 @@ export async function POST(request: Request) {
     if (!user) {
       return NextResponse.json({ error: "No autorizado" }, { status: 401 })
     }
+    if (!user.org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
 
     const supabase = await createServerClient()
+    const access = await resolveEmiliaOrganizationAccess(supabase, user)
+    if (!access.allowed) {
+      return NextResponse.json(
+        { error: access.message, code: access.code },
+        { status: access.status }
+      )
+    }
 
     // Crear nueva conversación con título temporal
     const now = new Date()
@@ -92,6 +114,7 @@ export async function POST(request: Request) {
 
     const { data: conversation, error } = await (supabase.from("conversations") as any)
       .insert({
+        org_id: user.org_id,
         user_id: user.id,
         title: `Chat ${dateStr}`,
         state: "active",
@@ -124,4 +147,3 @@ export async function POST(request: Request) {
     )
   }
 }
-

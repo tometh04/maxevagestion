@@ -1675,8 +1675,10 @@ export type Database = {
           channel: string
           created_at: string | null
           id: string
+          lead_id: string | null
           last_message_at: string | null
           last_search_context: Json | null
+          org_id: string | null
           state: string
           title: string
           updated_at: string | null
@@ -1686,8 +1688,10 @@ export type Database = {
           channel?: string
           created_at?: string | null
           id?: string
+          lead_id?: string | null
           last_message_at?: string | null
           last_search_context?: Json | null
+          org_id?: string | null
           state?: string
           title?: string
           updated_at?: string | null
@@ -1697,14 +1701,31 @@ export type Database = {
           channel?: string
           created_at?: string | null
           id?: string
+          lead_id?: string | null
           last_message_at?: string | null
           last_search_context?: Json | null
+          org_id?: string | null
           state?: string
           title?: string
           updated_at?: string | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "conversations_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversations_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       custom_plans: {
         Row: {

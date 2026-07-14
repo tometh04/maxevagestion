@@ -9,6 +9,9 @@ import {
   prepareQuotationOptionsForPersistence,
   QuotationStructurePersistenceError,
 } from "@/lib/quotations/persistence"
+import { canPerformAction, getUserAgencyIds } from "@/lib/permissions-api"
+import { resolveUserPermissions } from "@/lib/permissions-agency"
+import type { UserRole } from "@/lib/permissions"
 
 export const dynamic = "force-dynamic"
 
@@ -28,7 +31,25 @@ function getQuotationPersistenceLogContext(error: unknown) {
 export async function GET(request: Request) {
   try {
     const { user } = await getCurrentUser()
+    if (!user.org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
     const supabase: any = await createServerClient()
+    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as UserRole)
+    const permissions = await resolveUserPermissions(
+      supabase,
+      user.id,
+      user.org_id,
+      user.roles ?? [user.role],
+      agencyIds
+    )
+    if (!canPerformAction(user, "leads", "read", permissions)) {
+      return NextResponse.json({ error: "No tiene permiso para ver cotizaciones" }, { status: 403 })
+    }
+    if (agencyIds.length === 0) {
+      return NextResponse.json({ data: [] })
+    }
+
     const { searchParams } = new URL(request.url)
 
     let query = supabase
@@ -39,6 +60,8 @@ export async function GET(request: Request) {
         seller:seller_id(id, name, email),
         quotation_options(*)
       `)
+      .eq("org_id", user.org_id)
+      .in("agency_id", agencyIds)
       .order("created_at", { ascending: false })
 
     // Filtro por vendedor (SELLER solo ve las suyas)
@@ -66,6 +89,9 @@ export async function GET(request: Request) {
     // Filtro por agencia
     const agencyId = searchParams.get("agency_id")
     if (agencyId && agencyId !== "ALL") {
+      if (!agencyIds.includes(agencyId)) {
+        return NextResponse.json({ error: "Agencia no encontrada" }, { status: 404 })
+      }
       query = query.eq("agency_id", agencyId)
     }
 
@@ -97,6 +123,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
     }
     const supabase: any = await createServerClient()
+    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as UserRole)
+    const permissions = await resolveUserPermissions(
+      supabase,
+      user.id,
+      user.org_id,
+      user.roles ?? [user.role],
+      agencyIds
+    )
+    if (!canPerformAction(user, "leads", "write", permissions)) {
+      return NextResponse.json({ error: "No tiene permiso para crear cotizaciones" }, { status: 403 })
+    }
+
     const body = await request.json()
 
     const {
@@ -126,6 +164,35 @@ export async function POST(request: Request) {
     if (!departure_date) return NextResponse.json({ error: "departure_date es requerido" }, { status: 400 })
     if (!options || !Array.isArray(options) || options.length === 0) {
       return NextResponse.json({ error: "Se requiere al menos una opción" }, { status: 400 })
+    }
+
+    // El body nunca decide tenancy. La agencia y el lead deben pertenecer a la
+    // org autenticada y estar dentro del scope real del usuario.
+    if (!agencyIds.includes(agency_id)) {
+      return NextResponse.json({ error: "Agencia no encontrada" }, { status: 404 })
+    }
+
+    const { data: agency } = await supabase
+      .from("agencies")
+      .select("id")
+      .eq("id", agency_id)
+      .eq("org_id", user.org_id)
+      .maybeSingle()
+    if (!agency) {
+      return NextResponse.json({ error: "Agencia no encontrada" }, { status: 404 })
+    }
+
+    if (lead_id) {
+      const { data: lead } = await supabase
+        .from("leads")
+        .select("id")
+        .eq("id", lead_id)
+        .eq("org_id", user.org_id)
+        .eq("agency_id", agency_id)
+        .maybeSingle()
+      if (!lead) {
+        return NextResponse.json({ error: "Lead no encontrado" }, { status: 404 })
+      }
     }
 
     let preparedOptions
@@ -222,6 +289,7 @@ export async function POST(request: Request) {
         .from("quotations")
         .delete()
         .eq("id", quotation.id)
+        .eq("org_id", user.org_id)
 
       if (rollbackError) {
         console.error("Error rolling back quotation after POST failure:", {
@@ -245,6 +313,7 @@ export async function POST(request: Request) {
         quotation_items(*)
       `)
       .eq("id", quotation.id)
+      .eq("org_id", user.org_id)
       .single()
 
     return NextResponse.json({ data: fullQuotation }, { status: 201 })

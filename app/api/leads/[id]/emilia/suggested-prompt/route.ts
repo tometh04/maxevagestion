@@ -2,14 +2,16 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { getOrgFeatureFlag } from "@/lib/settings/org-features"
-import { FEATURE_FLAG_LEAD_EMILIA_CHAT, isLeadEmiliaChatBetaUser } from "@/lib/feature-flags"
 import {
   buildFallbackPrompt,
   buildOpenAIInstructions,
   type LeadInput,
 } from "@/lib/emilia/lead-context"
 import { fetchListPrompt } from "@/lib/emilia/list-prompt"
+import {
+  canAccessEmiliaLeadAgency,
+  resolveLeadEmiliaAccess,
+} from "@/lib/emilia/access"
 
 export const dynamic = "force-dynamic"
 
@@ -30,28 +32,24 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   if (!user.org_id) {
     return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
   }
-  // Beta CERRADA: solo el/los usuario(s) allowlisteado(s), además del flag de org.
-  if (!isLeadEmiliaChatBetaUser(user.email)) {
-    return NextResponse.json(
-      { error: "Feature en beta — no disponible para tu usuario" },
-      { status: 403 }
-    )
-  }
 
   const supabase = (await createServerClient()) as any
-
-  const flagOn = await getOrgFeatureFlag(supabase, user.org_id, FEATURE_FLAG_LEAD_EMILIA_CHAT)
-  if (!flagOn) {
-    return NextResponse.json({ error: "Feature en beta — no disponible" }, { status: 403 })
+  const access = await resolveLeadEmiliaAccess(supabase, user)
+  if (!access.allowed) {
+    return NextResponse.json(
+      { error: access.message, code: access.code },
+      { status: access.status }
+    )
   }
 
   // Multi-tenant defense: el lead debe pertenecer a la org del user.
   const { data: lead } = await supabase
     .from("leads")
-    .select("contact_name, destination, region, notes, list_name, agency_id, agencies!inner(org_id)")
+    .select("contact_name, destination, region, notes, list_name, agency_id")
     .eq("id", leadId)
+    .eq("org_id", user.org_id)
     .maybeSingle()
-  if (!lead || (lead as any).agencies?.org_id !== user.org_id) {
+  if (!lead || !canAccessEmiliaLeadAgency(access, (lead as any).agency_id)) {
     return NextResponse.json({ error: "Lead no encontrado" }, { status: 404 })
   }
 

@@ -241,6 +241,7 @@ export function LeadDetailDialog({
   const [deleting, setDeleting] = useState(false)
   const [archiving, setArchiving] = useState(false)
   const [claiming, setClaiming] = useState(false)
+  const [openingQuotation, setOpeningQuotation] = useState(false)
   const [editingNotes, setEditingNotes] = useState(false)
   const [notesValue, setNotesValue] = useState(lead?.notes || "")
   const [savingNotes, setSavingNotes] = useState(false)
@@ -353,6 +354,7 @@ export function LeadDetailDialog({
     if (!open) {
       setMode("detail")
       setEmiliaConversation(undefined)
+      setOpeningQuotation(false)
     }
   }, [open])
 
@@ -483,6 +485,47 @@ export function LeadDetailDialog({
     } finally {
       setDeleting(false)
       setDeleteDialogOpen(false)
+    }
+  }
+
+  const openManualQuotation = () => {
+    setEditingQuotationId(null)
+    setQuotationDialogOpen(true)
+  }
+
+  const handleStartQuotation = async () => {
+    if (openingQuotation) return
+    setOpeningQuotation(true)
+
+    try {
+      const response = await fetch(`/api/leads/${lead.id}/emilia`)
+      const json = await response.json().catch(() => ({}))
+
+      if (response.ok) {
+        // Reutilizamos la conversación del gate para evitar otro GET al montar.
+        setEmiliaConversation(json?.data ?? null)
+        setMode("emilia")
+        return
+      }
+
+      if (json?.code === "emilia_plan_required") {
+        toast.info("Emilia requiere el plan Enterprise. Abrimos el cotizador manual.")
+        openManualQuotation()
+        return
+      }
+
+      if (response.status === 403 || response.status === 404) {
+        toast.error(json?.error || "No tiene acceso para cotizar este lead")
+        return
+      }
+
+      toast.warning("Emilia no está disponible en este momento. Abrimos el cotizador manual.")
+      openManualQuotation()
+    } catch {
+      toast.warning("No se pudo conectar con Emilia. Abrimos el cotizador manual.")
+      openManualQuotation()
+    } finally {
+      setOpeningQuotation(false)
     }
   }
 
@@ -1038,29 +1081,16 @@ export function LeadDetailDialog({
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={async () => {
-                      // Beta gate: si la feature flag está ON para la org, abrir chat embebido.
-                      // Si está OFF (403) o hay error, caer al QuotationBuilder clásico.
-                      try {
-                        const res = await fetch(`/api/leads/${lead.id}/emilia`)
-                        if (res.ok) {
-                          // Perf: reusamos la conversación del gate para que el
-                          // chat NO repita el GET en su init.
-                          const json = await res.json().catch(() => ({}))
-                          setEmiliaConversation(json?.data ?? null)
-                          setMode("emilia")
-                          return
-                        }
-                      } catch {
-                        // network error → fallback al builder clásico
-                      }
-                      setEditingQuotationId(null)
-                      setQuotationDialogOpen(true)
-                    }}
+                    onClick={handleStartQuotation}
+                    disabled={openingQuotation}
                     className="shrink-0"
                   >
-                    <FileText className="h-3.5 w-3.5" />
-                    <span className="ml-1.5">Cotizar</span>
+                    {openingQuotation ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <FileText className="h-3.5 w-3.5" />
+                    )}
+                    <span className="ml-1.5">{openingQuotation ? "Abriendo..." : "Cotizar"}</span>
                   </Button>
                   {onConvert && agencies.length > 0 && sellers.length > 0 && (
                     <Button

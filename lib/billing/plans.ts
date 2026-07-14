@@ -73,7 +73,7 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
       "Operaciones y clientes ilimitados",
       "CRM con pipeline Kanban",
       "Facturación electrónica AFIP self-serve",
-      "Emilia IA — cotizaciones automáticas",
+      "Emilia IA promocional hasta el 11/08/2026",
       "WhatsApp integrado (multi-dispositivo)",
       "Dashboard multi-agencia",
       "Contabilidad automática + reportes",
@@ -96,6 +96,7 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
     },
     features: [
       "Todo lo de PRO",
+      "Emilia IA — cotizaciones automáticas sin vencimiento",
       "Bot de automatización Meta/Google Ads → CRM",
       "Webhook dedicado para tus fuentes de leads",
       "Onboarding 1-a-1 y migración asistida",

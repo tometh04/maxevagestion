@@ -24,8 +24,8 @@ export const getCurrentUser = cache(async (): Promise<{ user: User; session: { u
     const mockUser: User = {
       // Dev: usuario REAL (SUPER_ADMIN) de la org Oficial Testing Vibook.
       // Debe existir en `users` para no violar FKs (quotations.seller_id,
-      // created_by, conversations, etc.) y tener la beta `features.lead_emilia_chat`
-      // activada, así el chat de Emilia abre en dev Y la cotización se crea.
+      // created_by, conversations, etc.) y una organización activa, así el
+      // chat de Emilia abre en dev Y la cotización se crea.
       // Un mock con id/org inexistentes hace que los endpoints org-scoped
       // devuelvan 400 y los inserts con FK al user fallen.
       id: '4da8ab16-d81c-4c03-88c6-f4f1da740b61',
