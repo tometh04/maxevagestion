@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useRef } from "react"
 import { Megaphone, Sparkles, TrendingUp, Wrench } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -47,6 +47,11 @@ export function AnnouncementsBell() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [open, setOpen] = useState(false)
+  // "Llamador": globito que aparece cuando hay novedades sin leer y se
+  // desvanece solo a los ~6s (o al abrir/clickear). Se muestra una sola vez
+  // por sesión para no ser molesto en cada polling.
+  const [showCallout, setShowCallout] = useState(false)
+  const calloutShownRef = useRef(false)
 
   const fetchAnnouncements = useCallback(async () => {
     try {
@@ -80,9 +85,20 @@ export function AnnouncementsBell() {
     return () => clearInterval(interval)
   }, [fetchAnnouncements])
 
+  // Mostrar el llamador una sola vez cuando se detectan novedades sin leer.
+  useEffect(() => {
+    if (unreadCount > 0 && !open && !calloutShownRef.current) {
+      calloutShownRef.current = true
+      setShowCallout(true)
+      const t = setTimeout(() => setShowCallout(false), 6000)
+      return () => clearTimeout(t)
+    }
+  }, [unreadCount, open])
+
   const handleOpenChange = (next: boolean) => {
     setOpen(next)
     if (next) {
+      setShowCallout(false)
       fetchAnnouncements()
       // Al abrir, marcamos todas como leídas para limpiar el indicador.
       if (unreadCount > 0) markAllRead()
@@ -91,14 +107,41 @@ export function AnnouncementsBell() {
 
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
-      <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative" title="Novedades">
-          <Megaphone className="h-5 w-5" />
-          {unreadCount > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-destructive ring-2 ring-background" />
-          )}
-        </Button>
-      </PopoverTrigger>
+      <div className="relative">
+        <PopoverTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="relative"
+            title="Novedades"
+          >
+            {/* Halo pulsante cuando hay novedades sin leer */}
+            {unreadCount > 0 && !open && (
+              <span className="absolute inset-0 rounded-full bg-primary/25 animate-ping" />
+            )}
+            <Megaphone className={`h-5 w-5 relative ${unreadCount > 0 && !open ? "text-primary" : ""}`} />
+            {unreadCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-destructive ring-2 ring-background" />
+            )}
+          </Button>
+        </PopoverTrigger>
+
+        {/* Llamador: globito que invita a abrir las novedades */}
+        {showCallout && unreadCount > 0 && !open && (
+          <button
+            type="button"
+            onClick={() => handleOpenChange(true)}
+            className="absolute right-0 top-full mt-2 z-50 flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-lg animate-in fade-in slide-in-from-top-1 duration-300"
+          >
+            <span
+              className="absolute -top-1 right-3 h-2 w-2 rotate-45 bg-primary"
+              aria-hidden="true"
+            />
+            <Sparkles className="h-3.5 w-3.5" />
+            ¡Hay novedades! Mirá acá
+          </button>
+        )}
+      </div>
       <PopoverContent className="w-96 p-0" align="end">
         <div className="flex items-center gap-2 px-4 py-3 border-b border-border/50">
           <Sparkles className="h-4 w-4 text-primary" />

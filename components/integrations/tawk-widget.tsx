@@ -85,11 +85,33 @@ export function TawkWidget({ userEmail }: { userEmail: string | null | undefined
               }
             }
 
+            // Auto-minimizar el saludo proactivo a los 5s de aparecer, salvo
+            // que haya una conversación en curso (para no interrumpir al user).
+            var tawkMinimizeTimer = null;
+            function autoMinimizeTawkSoon() {
+              if (tawkMinimizeTimer) clearTimeout(tawkMinimizeTimer);
+              tawkMinimizeTimer = setTimeout(function() {
+                try {
+                  if (window.Tawk_API.isChatOngoing && window.Tawk_API.isChatOngoing()) return;
+                  if (window.Tawk_API.minimize) window.Tawk_API.minimize();
+                } catch (e) {}
+              }, 5000);
+            }
+            function cancelAutoMinimizeTawk() {
+              if (tawkMinimizeTimer) { clearTimeout(tawkMinimizeTimer); tawkMinimizeTimer = null; }
+            }
+
             window.Tawk_API.onLoad = function() {
               repositionTawkToCenter();
               // Reaplicar tras maximizar/minimizar (Tawk re-monta el iframe)
               window.Tawk_API.onChatMinimized = repositionTawkToCenter;
-              window.Tawk_API.onChatMaximized = repositionTawkToCenter;
+              window.Tawk_API.onChatMaximized = function() {
+                repositionTawkToCenter();
+                autoMinimizeTawkSoon();
+              };
+              // Si el user realmente arranca a chatear, no lo minimizamos.
+              window.Tawk_API.onChatStarted = cancelAutoMinimizeTawk;
+              window.Tawk_API.onChatMessageVisitor = cancelAutoMinimizeTawk;
               // Triple-tap defensivo por las dudas
               setTimeout(repositionTawkToCenter, 500);
               setTimeout(repositionTawkToCenter, 2000);
