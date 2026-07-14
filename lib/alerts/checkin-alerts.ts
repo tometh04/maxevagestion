@@ -164,6 +164,31 @@ export async function generateCheckinAlerts(): Promise<CheckinAlertResult> {
 
   if (departures.length === 0 && returns.length === 0) return result
 
+  // Titular (cliente MAIN) por operación → identifica la reserva en el aviso
+  // (dos reservas al mismo destino/fecha se veían idénticas). Batch por op ids
+  // de la ventana (ya scopeadas). Formato "Apellido, Nombre".
+  const titularByOp = new Map<string, string>()
+  const opIds = Array.from(
+    new Set([...(departures as any[]), ...(returns as any[])].map((o) => o.id))
+  )
+  if (opIds.length > 0) {
+    const { data: ocRows } = await (supabase.from("operation_customers") as any)
+      .select("operation_id, role, customers:customer_id(first_name, last_name)")
+      .in("operation_id", opIds)
+    const rowsByOp = new Map<string, any[]>()
+    for (const row of (ocRows ?? []) as any[]) {
+      const arr = rowsByOp.get(row.operation_id) ?? []
+      arr.push(row)
+      rowsByOp.set(row.operation_id, arr)
+    }
+    rowsByOp.forEach((rows, opId) => {
+      const main = rows.find((r: any) => r.role === "MAIN") ?? rows[0]
+      const c = main?.customers
+      const name = c ? [c.last_name, c.first_name].filter(Boolean).join(", ") : ""
+      if (name) titularByOp.set(opId, name)
+    })
+  }
+
   // Cache de usuario POST_VENTA por org para evitar queries repetidas
   const postVentaCache = new Map<string, string | null>()
 
@@ -221,9 +246,13 @@ export async function generateCheckinAlerts(): Promise<CheckinAlertResult> {
       year: "numeric",
     })
     const airlineFragment = op.airline_name ? ` (${op.airline_name})` : ""
+    // "Check-in próximo" (no "pendiente") para preservar el matcher de WhatsApp
+    // (generate-from-operations ilike '%Check-in próximo%') y el texto familiar.
+    const titular = titularByOp.get(op.id)
+    const titularFragment = titular ? ` — ${titular}` : ""
     const description = isReturn
-      ? `Check-in pendiente${airlineFragment}: ${op.destination} — Regreso ${dateLabel}`
-      : `Check-in pendiente${airlineFragment}: ${op.destination} — Salida ${dateLabel}`
+      ? `Check-in próximo${airlineFragment}: ${op.destination}${titularFragment} — Regreso ${dateLabel}`
+      : `Check-in próximo${airlineFragment}: ${op.destination}${titularFragment} — Salida ${dateLabel}`
 
     await supabase.from("alerts").insert({
       org_id: op.org_id,

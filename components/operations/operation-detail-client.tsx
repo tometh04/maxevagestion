@@ -79,6 +79,7 @@ const typeLabels: Record<string, string> = {
   MIXED: "Mixto",
   ASSISTANCE: "Asistencia al Viajero",
   ACTIVITY: "Actividad",
+  CAR: "Alquiler de Auto",
 }
 
 const alertTypeLabels: Record<string, string> = {

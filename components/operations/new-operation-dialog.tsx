@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { DecimalInput } from "@/components/ui/decimal-input"
 import { serviceKind, PASSENGER_DETAIL_FIELDS, sanitizePassengerDetail } from "@/lib/operations/service-kind"
 import {
@@ -79,7 +80,7 @@ const operationSchema = z.object({
   commission_pct_secondary: z.coerce.number().min(0).max(100).optional().nullable(),
   operator_id: z.string().optional().nullable(),
   operators: z.array(operatorSchema).optional(),
-  type: z.enum(["FLIGHT", "HOTEL", "PACKAGE", "CRUISE", "TRANSFER", "MIXED", "ASSISTANCE"]),
+  type: z.enum(["FLIGHT", "HOTEL", "PACKAGE", "CRUISE", "TRANSFER", "MIXED", "ASSISTANCE", "ACTIVITY", "CAR"]),
   customer_id: z.string().optional().nullable(),
   origin: z.string().optional(),
   destination: z.string().optional(), // Validación dinámica en backend
@@ -109,6 +110,8 @@ const operationSchema = z.object({
   itr_localizador: z.string().optional().nullable(),
   // Fecha máxima para que el cliente complete el pago (la usa el PDF de detalle).
   customer_payment_deadline: z.date().optional().nullable(),
+  // Info adicional libre para el pasajero (la usa el PDF de detalle).
+  passenger_notes: z.string().optional().nullable(),
 })
 
 type OperationFormValues = z.infer<typeof operationSchema>
@@ -122,6 +125,7 @@ const operationTypeOptions = [
   { value: "MIXED", label: "Mixto" },
   { value: "ASSISTANCE", label: "Asistencia al Viajero" },
   { value: "ACTIVITY", label: "Actividad" },
+  { value: "CAR", label: "Alquiler de Auto" },
 ]
 
 // Estados de leads que NO son destinos
@@ -426,6 +430,7 @@ export function NewOperationDialog({
       operation_date: null,
       itr_localizador: null,
       customer_payment_deadline: null,
+      passenger_notes: "",
       operators: [],
     },
   })
@@ -459,6 +464,7 @@ export function NewOperationDialog({
         operation_date: null,
         itr_localizador: null,
         customer_payment_deadline: null,
+        passenger_notes: "",
         operators: [],
       })
     }
@@ -632,6 +638,8 @@ export function NewOperationDialog({
         itr_localizador: values.itr_localizador || null,
         // Fecha máxima de pago del cliente (usada por el PDF de detalle).
         customer_payment_deadline: values.customer_payment_deadline ? values.customer_payment_deadline.toISOString().split("T")[0] : null,
+        // Info adicional para el pasajero (usada por el PDF de detalle).
+        passenger_notes: values.passenger_notes?.trim() || null,
         sale_currency: values.sale_currency || values.currency || "USD",
         operator_cost_currency: values.operator_cost_currency || values.currency || "USD",
         // Si hay múltiples operadores, el costo total ya está calculado en operator_cost
@@ -1465,6 +1473,28 @@ export function NewOperationDialog({
                 )}
               />
             </div>
+
+              <FormField
+                control={form.control}
+                name="passenger_notes"
+                render={({ field }) => (
+                  <FormItem className="flex flex-col mt-4">
+                    <FormLabel>Información adicional para el pasajero</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        rows={3}
+                        placeholder="Ej: All inclusive · Traslados incluidos · Habitación vista al mar"
+                        value={field.value || ""}
+                        onChange={field.onChange}
+                      />
+                    </FormControl>
+                    <span className="text-[10px] text-muted-foreground">
+                      Texto libre que aparece en el PDF de detalle que se manda al pasajero.
+                    </span>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               </div>{/* End Ruta card */}
 
               {/* Sub-group: Pasajeros */}

@@ -93,6 +93,8 @@ export async function POST(request: Request) {
       itr_localizador,
       // Fecha máxima de pago del cliente (la usa el PDF de detalle).
       customer_payment_deadline,
+      // Info adicional libre para el pasajero (la usa el PDF de detalle).
+      passenger_notes,
     } = body
 
     // Guard (2026-06-29): un vendedor no puede ser su propio secundario.
@@ -318,6 +320,7 @@ export async function POST(request: Request) {
       hotel_name: hotel_name || null,
       itr_localizador: itr_localizador || null,
       customer_payment_deadline: customer_payment_deadline || null,
+      passenger_notes: passenger_notes || null,
     }
 
     // ============================================
@@ -1616,25 +1619,11 @@ async function generateOperationAlerts(
   
   const alertsToCreate: any[] = []
 
-  // 1. ALERTA DE CHECK-IN (30 días antes de la salida o check-in_date si existe)
-  const checkInDate = checkin_date || departure_date
-  if (checkInDate) {
-    const checkInDateObj = new Date(checkInDate + 'T12:00:00')
-    const checkInAlertDate = new Date(checkInDateObj)
-    checkInAlertDate.setDate(checkInAlertDate.getDate() - 30)
-
-    if (checkInAlertDate >= today) {
-      alertsToCreate.push({
-        org_id: operationOrgId,
-        operation_id: operationId,
-        user_id: seller_id,
-        type: "UPCOMING_TRIP",
-        description: `✈️ Check-in próximo: ${destination} - ${checkin_date ? `Check-in ${checkin_date}` : `Salida ${departure_date}`}`,
-        date_due: checkInAlertDate.toISOString().split("T")[0],
-        status: "PENDING",
-      })
-    }
-  }
+  // 1. ALERTA DE CHECK-IN: se generaba acá a 30 días hardcodeados al alta.
+  //    Removido (2026-07-14): el check-in ahora lo genera el cron diario
+  //    lib/alerts/checkin-alerts.ts, que respeta la anticipación (horas)
+  //    configurable por org en Configuración → Operaciones → Alertas. Así el
+  //    aviso es autogestionable y no duplica con el del cron.
 
   // 2. ALERTA DE CHECK-OUT (día antes del regreso o checkout_date si existe)
   const checkOutDate = checkout_date || return_date

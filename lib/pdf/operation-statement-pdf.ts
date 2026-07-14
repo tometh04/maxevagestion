@@ -230,6 +230,19 @@ export function generateOperationStatementPdf(
 
   y += 8
 
+  // ============ INFORMACIÓN ADICIONAL (opcional) ============
+  if (data.passengerNotes && data.passengerNotes.trim()) {
+    const notesLines = doc.splitTextToSize(data.passengerNotes.trim(), contentWidth - 6)
+    ensureSpace(14 + notesLines.length * 4)
+    y = sectionHeading("Información adicional", y)
+    y += 6
+    doc.setFontSize(9)
+    doc.setFont("helvetica", "normal")
+    doc.setTextColor(...DARK)
+    doc.text(notesLines, marginLeft + 3, y)
+    y += notesLines.length * 4 + 8
+  }
+
   // ============ VALORES ============
   ensureSpace(30)
   y = sectionHeading("Valores", y)

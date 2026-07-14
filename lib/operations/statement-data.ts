@@ -76,6 +76,8 @@ export interface OperationStatementData {
   currency: string
   totalAmount: number
   dueDate: string | null
+  // Info adicional libre para el pasajero (opcional)
+  passengerNotes: string | null
   // Destinatario sugerido (cliente MAIN o lead)
   recipientEmail: string | null
 }
@@ -162,7 +164,7 @@ export async function buildOperationStatementData(params: {
       id, file_code, destination, departure_date, return_date,
       sale_amount_total, sale_currency, currency, operator_cost_currency,
       adults, children, infants, agency_id,
-      hotel_name, airline_name, customer_payment_deadline,
+      hotel_name, airline_name, customer_payment_deadline, passenger_notes,
       sellers:seller_id(name),
       agencies:agency_id(name),
       leads:lead_id(contact_name, contact_email),
@@ -343,6 +345,7 @@ export async function buildOperationStatementData(params: {
     currency,
     totalAmount,
     dueDate,
+    passengerNotes: op.passenger_notes || null,
     recipientEmail,
   }
 }

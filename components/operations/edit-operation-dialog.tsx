@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { DecimalInput } from "@/components/ui/decimal-input"
 import {
   Select,
@@ -48,7 +49,7 @@ const operationSchema = z.object({
   commission_pct_primary: z.coerce.number().min(0).max(100).optional().nullable(),
   commission_pct_secondary: z.coerce.number().min(0).max(100).optional().nullable(),
   operator_id: z.string().optional().nullable(),
-  type: z.enum(["FLIGHT", "HOTEL", "PACKAGE", "CRUISE", "TRANSFER", "MIXED", "ASSISTANCE"]),
+  type: z.enum(["FLIGHT", "HOTEL", "PACKAGE", "CRUISE", "TRANSFER", "MIXED", "ASSISTANCE", "ACTIVITY", "CAR"]),
   origin: z.string().optional(),
   destination: z.string().min(1, "El destino es requerido"),
   departure_date: z.date({
@@ -71,6 +72,8 @@ const operationSchema = z.object({
   hotel_name: z.string().optional().nullable(),
   // Fecha máxima para que el cliente complete el pago (la usa el PDF de detalle).
   customer_payment_deadline: z.date().optional().nullable(),
+  // Info adicional libre para el pasajero (la usa el PDF de detalle).
+  passenger_notes: z.string().optional().nullable(),
 })
 
 type OperationFormValues = z.infer<typeof operationSchema>
@@ -84,6 +87,7 @@ const operationTypeOptions = [
   { value: "MIXED", label: "Mixto" },
   { value: "ASSISTANCE", label: "Asistencia al Viajero" },
   { value: "ACTIVITY", label: "Actividad" },
+  { value: "CAR", label: "Alquiler de Auto" },
 ]
 
 const standardStatusOptions = [
@@ -110,6 +114,7 @@ interface Operation {
   return_date?: string | null
   operation_date?: string | null
   customer_payment_deadline?: string | null
+  passenger_notes?: string | null
   adults: number
   children: number
   infants: number
@@ -381,6 +386,7 @@ export function EditOperationDialog({
       airline_name: operation.airline_name || null,
       hotel_name: operation.hotel_name || null,
       customer_payment_deadline: parseDateOnlyLocal(operation.customer_payment_deadline) ?? null,
+      passenger_notes: operation.passenger_notes || "",
     },
   })
 
@@ -421,6 +427,7 @@ export function EditOperationDialog({
         reservation_code_hotel: operation.reservation_code_hotel || null,
         itr_localizador: operation.itr_localizador || null,
         customer_payment_deadline: parseDateOnlyLocal(operation.customer_payment_deadline) ?? null,
+        passenger_notes: operation.passenger_notes || "",
       })
     }
   }, [operation?.id, operationCurrency])
@@ -562,6 +569,8 @@ export function EditOperationDialog({
         customer_payment_deadline: values.customer_payment_deadline
           ? values.customer_payment_deadline.toISOString().split("T")[0]
           : null,
+        // Info adicional para el pasajero (usada por el PDF de detalle).
+        passenger_notes: values.passenger_notes?.trim() || null,
         // Mantener sale_currency y operator_cost_currency sincronizados con currency
         sale_currency: values.currency,
         operator_cost_currency: values.currency,
@@ -1282,6 +1291,28 @@ export function EditOperationDialog({
                 )}
               />
             </div>
+
+              <FormField
+                control={form.control}
+                name="passenger_notes"
+                render={({ field }) => (
+                  <FormItem className="flex flex-col mt-4">
+                    <FormLabel>Información adicional para el pasajero</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        rows={3}
+                        placeholder="Ej: All inclusive · Traslados incluidos · Habitación vista al mar"
+                        value={field.value || ""}
+                        onChange={field.onChange}
+                      />
+                    </FormControl>
+                    <span className="text-[10px] text-muted-foreground">
+                      Texto libre que aparece en el PDF de detalle que se manda al pasajero.
+                    </span>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             </div>
 
             {/* Pasajeros */}
