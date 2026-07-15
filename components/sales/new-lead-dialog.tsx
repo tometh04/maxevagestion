@@ -49,7 +49,7 @@ const REGION_TO_LIST: Record<string, string> = {
 
 const leadSchema = z.object({
   agency_id: z.string().min(1, "La agencia es requerida"),
-  source: z.enum(["Manychat", "Instagram", "WhatsApp", "Meta Ads", "Referido", "Cliente", "Other"]),
+  source: z.enum(["Manychat", "Agente Blanco", "Instagram", "WhatsApp", "Meta Ads", "Referido", "Cliente", "Other"]),
   status: z.enum(["NEW", "IN_PROGRESS", "QUOTED", "WON", "LOST"]),
   region: z.string().min(1, "La región es requerida"),
   destination: z.string().min(1, "El destino es requerido"),
@@ -598,6 +598,7 @@ export function NewLeadDialog({
                       </FormControl>
                       <SelectContent>
                         <SelectItem value="Manychat">Manychat</SelectItem>
+                        <SelectItem value="Agente Blanco">Agente Blanco</SelectItem>
                         <SelectItem value="Instagram">Instagram</SelectItem>
                         <SelectItem value="WhatsApp">WhatsApp</SelectItem>
                         <SelectItem value="Meta Ads">Meta Ads</SelectItem>
