@@ -232,6 +232,10 @@ export function OperationPaymentsSection({
   // Optimistic: due_date override por id para reflejar el cambio antes de router.refresh()
   const [dueDateOverrides, setDueDateOverrides] = useState<Record<string, string | null>>({})
   const operatorNameById = new Map(operators.map((operator) => [operator.id, operator.name]))
+  // Nombre de la cuenta financiera por id — para mostrar en qué cuenta impactó
+  // cada cobro/devolución del cliente (pedido VICO). Se arma desde la misma
+  // lista que puebla el dropdown al registrar el pago, así que siempre matchea.
+  const accountNameById = new Map(financialAccounts.map((a) => [a.id, a.name]))
   const customerSaleCurrency = normalizeSupportedCurrency(saleCurrency || currency)
 
   const withholdingsByPayment = useMemo(() => {
@@ -1375,6 +1379,11 @@ export function OperationPaymentsSection({
                           {payment.payer_type === "OPERATOR" && payment.operator_id && (
                             <span className="text-xs font-medium">
                               {operatorNameById.get(payment.operator_id) || "Operador seleccionado"}
+                            </span>
+                          )}
+                          {payment.payer_type === "CUSTOMER" && payment.financial_account_id && accountNameById.get(payment.financial_account_id) && (
+                            <span className="text-xs font-medium">
+                              {accountNameById.get(payment.financial_account_id)}
                             </span>
                           )}
                           {withholdingsByPayment.get(payment.id)?.map((w, i) => (
