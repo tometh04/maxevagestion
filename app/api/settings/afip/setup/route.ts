@@ -31,6 +31,9 @@ export async function POST(request: Request) {
       cert_id,
       cert,
       key,
+      // Confirmación explícita para sobreescribir un certificado manual de
+      // sociedad con el flujo automático (guard anti-pisada).
+      force,
     } = body
 
     if (!agency_id || !punto_venta) {
@@ -109,11 +112,23 @@ export async function POST(request: Request) {
         cert: cert || undefined,
         key: key || undefined,
       },
-      user.id
+      user.id,
+      { force: !!force }
     )
 
     if (!saveResult.success) {
       console.error("[AFIP Setup] Error guardando config:", saveResult.error)
+      // Guard anti-pisada: la agencia tiene un cert manual de sociedad activo.
+      if (saveResult.error?.startsWith("MANUAL_CERT_GUARD")) {
+        return NextResponse.json(
+          {
+            error:
+              "Esta agencia tiene un certificado propio de la sociedad configurado. Reconfigurar por el flujo automático lo va a reemplazar.",
+            requiresForce: true,
+          },
+          { status: 409 }
+        )
+      }
       return NextResponse.json(
         { error: `Error al guardar configuración: ${saveResult.error}` },
         { status: 500 }

@@ -2,7 +2,6 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { getUserAgencyIds } from "@/lib/permissions-api"
-import { getAfipConfigForAgency } from "@/lib/afip/afip-helpers"
 
 export const dynamic = 'force-dynamic'
 
@@ -28,22 +27,33 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "No tiene acceso a esta agencia" }, { status: 403 })
     }
 
-    // Obtener configuración de AFIP desde tabla integrations
-    const config = await getAfipConfigForAgency(supabase, agencyId)
+    // Leer la integración directamente (incluye estados 'pending' del modo manual,
+    // que getAfipConfigForAgency no devuelve porque filtra 'active').
+    const { data: integration } = await (supabase.from("integrations") as any)
+      .select("status, config")
+      .eq("agency_id", agencyId)
+      .eq("integration_type", "afip")
+      .maybeSingle()
 
-    if (!config) {
+    const config = (integration as any)?.config
+    if (!integration || !config) {
       return NextResponse.json({ configured: false })
     }
 
+    const hasCert = !!(config.cert && config.key)
+    const hasPendingCsr = !!config.pending_csr && !config.cert
+    const certMode: "auto" | "manual" = config.cert_mode === "manual" ? "manual" : "auto"
+
     return NextResponse.json({
-      configured: true,
-      has_cert: !!(config.cert && config.key),
+      // "configured" = listo para facturar (integración activa con cert)
+      configured: (integration as any).status === "active",
+      status: (integration as any).status,
+      has_cert: hasCert,
+      cert_mode: certMode,
+      has_pending_csr: hasPendingCsr,
       config: {
         cuit: maskCuit(config.cuit),
-        // Emisor representada (sociedad) si la persona física factura en su nombre.
-        cuit_representada: config.cuit_representada
-          ? maskCuit(config.cuit_representada)
-          : null,
+        cuit_representada: config.cuit_representada ? maskCuit(config.cuit_representada) : null,
         environment: config.environment,
         punto_venta: config.point_of_sale,
       },

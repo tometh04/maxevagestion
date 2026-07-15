@@ -24,6 +24,19 @@ export interface AfipConfig {
   point_of_sale: number
   environment: 'sandbox' | 'production'
   base_url?: string
+  /**
+   * Origen del certificado:
+   * - 'auto'   → generado por el flujo automático (afipsdk create-cert con Clave
+   *   Fiscal). Es el default cuando el campo está ausente (backward-compat).
+   * - 'manual' → certificado propio de la sociedad obtenido vía CSR (persona
+   *   jurídica). El guard anti-pisada protege estas configs de que el flujo
+   *   automático las sobreescriba.
+   */
+  cert_mode?: 'auto' | 'manual'
+  /** CSR pendiente (PEM). Se guarda entre que se genera y se sube el cert firmado. */
+  pending_csr?: string
+  /** Clave privada del CSR pendiente (PEM). Se mueve a `key` al activar. */
+  pending_csr_key?: string
   // Tokens y certificados (generados automáticamente)
   access_token?: string
   token_expires_at?: string

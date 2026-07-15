@@ -24,6 +24,19 @@ import {
 } from "@/components/ui/form"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -39,6 +52,11 @@ import {
   Info,
   Circle,
   ExternalLink,
+  Building2,
+  User,
+  FileText,
+  Download,
+  Upload,
 } from "lucide-react"
 
 // Schema fijo con cuit y password como strings (pueden estar vacíos).
@@ -76,6 +94,9 @@ const STEP_LABELS: Record<NonNullable<SetupStep>, string> = {
 interface AfipStatus {
   configured: boolean
   has_cert?: boolean
+  cert_mode?: "auto" | "manual"
+  has_pending_csr?: boolean
+  status?: string
   config?: {
     cuit: string
     cuit_representada?: string | null
@@ -144,6 +165,22 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
     points: [],
     error: null,
   })
+
+  // Modo de conexión: 'auto' (persona física, afipsdk) vs 'manual' (sociedad, CSR)
+  const [certMode, setCertMode] = useState<"auto" | "manual">("auto")
+  // Form del flujo manual (CSR). Estado plano, aparte del react-hook-form del automático.
+  const [manualForm, setManualForm] = useState({
+    cuit: "",
+    razon_social: "",
+    punto_venta: 1,
+    environment: "production" as "production" | "sandbox",
+  })
+  const [generatedCsr, setGeneratedCsr] = useState<string | null>(null)
+  const [uploadCertText, setUploadCertText] = useState("")
+  const [isGeneratingCsr, setIsGeneratingCsr] = useState(false)
+  const [isUploadingCert, setIsUploadingCert] = useState(false)
+  // Confirmación del guard: reconfigurar por automático pisa un cert manual
+  const [showReplaceManualConfirm, setShowReplaceManualConfirm] = useState(false)
 
   const form = useForm<AfipFormValues>({
     resolver: zodResolver(afipSchema),
@@ -381,6 +418,9 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
           // Pasar cert y key para que el SDK pueda autenticar con AFIP
           cert: certData?.cert || certData?.certificate || undefined,
           key: certData?.key || certData?.private_key || undefined,
+          // Reconfigurar por automático sobre un cert manual ya fue confirmado
+          // (guard); mandamos force para permitir el reemplazo.
+          force: afipStatus?.cert_mode === "manual",
         }),
       })
       const saveData = await saveRes.json()
@@ -405,6 +445,99 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
     } finally {
       setIsLoading(false)
       setSetupStep(null)
+    }
+  }
+
+  // ── Flujo manual / sociedad (CSR) ───────────────────────────────────────
+  const downloadText = (text: string, filename: string) => {
+    const blob = new Blob([text], { type: "application/octet-stream" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  }
+
+  const handleGenerateCsr = async () => {
+    if (!manualForm.cuit.trim() || !manualForm.razon_social.trim()) {
+      toast({ title: "Faltan datos", description: "Completá el CUIT de la sociedad y la razón social.", variant: "destructive" })
+      return
+    }
+    setIsGeneratingCsr(true)
+    try {
+      const res = await fetch("/api/settings/afip/csr/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agency_id: selectedAgencyId,
+          cuit: manualForm.cuit.replace(/\D/g, ""),
+          razon_social: manualForm.razon_social,
+          punto_venta: manualForm.punto_venta,
+          environment: manualForm.environment,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast({ title: "Error", description: data.error || "No se pudo generar la solicitud", variant: "destructive" })
+        return
+      }
+      setGeneratedCsr(data.csr)
+      downloadText(data.csr, `${manualForm.cuit.replace(/\D/g, "")}.csr`)
+      toast({ title: "Solicitud (.csr) generada ✓", description: "Se descargó el archivo. Tramitalo en AFIP y volvé a subir el certificado." })
+      await loadStatus(selectedAgencyId)
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message || "Error al generar la solicitud", variant: "destructive" })
+    } finally {
+      setIsGeneratingCsr(false)
+    }
+  }
+
+  const handleDownloadPendingCsr = () => {
+    if (generatedCsr) {
+      downloadText(generatedCsr, `${(afipStatus?.config?.cuit || "afip").replace(/[^0-9]/g, "") || "afip"}.csr`)
+      return
+    }
+    const a = document.createElement("a")
+    a.href = `/api/settings/afip/csr/download?agencyId=${selectedAgencyId}`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+  }
+
+  const handleUploadCert = async () => {
+    if (!uploadCertText.trim()) {
+      toast({ title: "Falta el certificado", description: "Pegá el certificado que te dio AFIP (.crt / .pem).", variant: "destructive" })
+      return
+    }
+    setIsUploadingCert(true)
+    try {
+      const res = await fetch("/api/settings/afip/csr/upload-cert", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agency_id: selectedAgencyId, cert: uploadCertText }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast({ title: "Error al cargar el certificado", description: data.error || "No se pudo cargar", variant: "destructive" })
+        return
+      }
+      if (data.verified) {
+        toast({ title: "¡Listo! ✓", description: data.message })
+      } else {
+        toast({ title: "Certificado cargado", description: data.message, duration: 12000 })
+      }
+      setGeneratedCsr(null)
+      setUploadCertText("")
+      setShowReconfigureForm(false)
+      await loadStatus(selectedAgencyId)
+      await checkPointsOfSale(selectedAgencyId)
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message || "Error al cargar el certificado", variant: "destructive" })
+    } finally {
+      setIsUploadingCert(false)
     }
   }
 
@@ -448,7 +581,13 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
   const needsWsfe =
     (afipStatus?.configured && afipStatus?.has_cert && posStatus.has_ws_points === false) ||
     (setupError?.isWsfe === true)
-  const showForm = (!afipStatus?.configured || showReconfigureForm) && !needsWsfe
+  // Modo manual con CSR generado pero cert todavía sin subir
+  const hasPendingCsr = afipStatus?.has_pending_csr === true
+  const isManualCert = afipStatus?.cert_mode === "manual"
+  const showForm =
+    (!afipStatus?.configured || showReconfigureForm) &&
+    !needsWsfe &&
+    !(hasPendingCsr && !showReconfigureForm)
 
   return (
     <div className="space-y-6">
@@ -507,6 +646,65 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
             setShowReconfigureForm(true)
           }}
         />
+      ) : hasPendingCsr && !showReconfigureForm ? (
+        <div className="rounded-xl border border-accent-coral bg-accent-coral/10 p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-accent-coral" />
+              <h4 className="text-sm font-semibold text-accent-coral">
+                Certificado de sociedad — falta subir el certificado
+              </h4>
+            </div>
+            <Badge variant="outline" className="border-accent-coral text-accent-coral">
+              Paso 2 de 2
+            </Badge>
+          </div>
+          <p className="text-sm text-foreground/80">
+            Ya generamos la solicitud (.csr) para el CUIT{" "}
+            <span className="font-mono font-medium">{afipStatus?.config?.cuit}</span>. Falta que la
+            tramites en AFIP y subas acá el certificado firmado.
+          </p>
+
+          <Accordion type="single" collapsible>
+            <AccordionItem value="steps" className="border rounded-lg px-3">
+              <AccordionTrigger className="text-sm">¿Cómo lo tramito en AFIP?</AccordionTrigger>
+              <AccordionContent>
+                <ManualCsrInstructions />
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+
+          <div>
+            <Button variant="outline" size="sm" onClick={handleDownloadPendingCsr}>
+              <Download className="h-4 w-4 mr-2" />
+              Descargar solicitud (.csr)
+            </Button>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-sm">Certificado firmado por AFIP (.crt / .pem)</Label>
+            <Textarea
+              value={uploadCertText}
+              onChange={(e) => setUploadCertText(e.target.value)}
+              placeholder={"-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"}
+              className="font-mono text-xs h-32"
+            />
+            <div className="flex gap-2 pt-1">
+              <Button size="sm" onClick={handleUploadCert} disabled={isUploadingCert}>
+                {isUploadingCert ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Upload className="h-4 w-4 mr-2" />
+                )}
+                Cargar certificado y activar
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setShowReconfigureForm(true)}>
+                <Settings2 className="h-4 w-4 mr-2" />
+                Reconfigurar desde cero
+              </Button>
+            </div>
+          </div>
+        </div>
       ) : afipStatus?.configured && !showReconfigureForm ? (
         <div className={`rounded-xl border p-4 space-y-4 ${needsRecert
           ? "border-accent-coral bg-accent-coral/10"
@@ -564,6 +762,13 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
                 <span className="font-mono">{afipStatus.config.cuit_representada}</span>
               </div>
             )}
+            <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+              {isManualCert ? <Building2 className="h-3 w-3" /> : <User className="h-3 w-3" />}
+              <span className="font-medium">Modo:</span>
+              {isManualCert
+                ? "Certificado propio de la sociedad"
+                : "Automático (persona física)"}
+            </div>
             {/* Lista de puntos de venta WSFE detectados en AFIP (cuando los hay) */}
             {posStatus.has_ws_points && posStatus.points.length > 0 && (
               <div className="text-xs text-muted-foreground">
@@ -605,7 +810,12 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
               <Button
                 variant={needsRecert ? "default" : "ghost"}
                 size="sm"
-                onClick={() => setShowReconfigureForm(true)}
+                onClick={() => {
+                  // Guard: si es cert manual de sociedad, confirmar antes de
+                  // entrar al flujo que puede reemplazarlo.
+                  if (isManualCert) setShowReplaceManualConfirm(true)
+                  else setShowReconfigureForm(true)
+                }}
               >
                 <Settings2 className="h-4 w-4 mr-2" />
                 Reconfigurar
@@ -625,6 +835,41 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
               {showReconfigureForm ? "Reconfigurar AFIP" : "Configurar AFIP"}
             </h4>
           </div>
+
+          {/* Selector de modo de conexión */}
+          <div className="grid sm:grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setCertMode("auto")}
+              className={`flex flex-col items-start gap-1 rounded-lg border p-3 text-left transition-colors ${
+                certMode === "auto" ? "border-primary bg-primary/5" : "border-border/40 hover:bg-muted/50"
+              }`}
+            >
+              <div className="flex items-center gap-2 font-medium text-sm">
+                <User className="h-4 w-4" /> Persona física
+              </div>
+              <span className="text-xs text-muted-foreground">
+                Automático — vibook genera el certificado con tu Clave Fiscal.
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setCertMode("manual")}
+              className={`flex flex-col items-start gap-1 rounded-lg border p-3 text-left transition-colors ${
+                certMode === "manual" ? "border-primary bg-primary/5" : "border-border/40 hover:bg-muted/50"
+              }`}
+            >
+              <div className="flex items-center gap-2 font-medium text-sm">
+                <Building2 className="h-4 w-4" /> Sociedad (S.A.S./S.R.L.)
+              </div>
+              <span className="text-xs text-muted-foreground">
+                Generás una solicitud (.csr), la tramitás en AFIP y subís el certificado.
+              </span>
+            </button>
+          </div>
+
+          {certMode === "auto" ? (
+          <>
           <p className="text-sm text-muted-foreground">
             Ingresá los datos de AFIP. La Clave Fiscal se usa solo para crear el certificado y no se almacena.
           </p>
@@ -886,8 +1131,151 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
                 </div>
               </form>
             </Form>
+          <Accordion type="single" collapsible className="mt-2">
+            <AccordionItem value="auto-help" className="border rounded-lg px-3">
+              <AccordionTrigger className="text-sm">¿Cómo funciona el modo automático?</AccordionTrigger>
+              <AccordionContent>
+                <AutoModeInstructions />
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+          </>
+          ) : (
+            <div className="space-y-4">
+              <Alert className="border-accent-teal bg-accent-teal/10">
+                <Info className="h-4 w-4 text-accent-teal" />
+                <AlertDescription className="text-accent-teal text-sm">
+                  Para sociedades: generás una solicitud de certificado (.csr), la subís a AFIP
+                  actuando como la sociedad, y volvés a cargar acá el certificado firmado. La clave
+                  privada queda en vibook; el .csr es público.
+                </AlertDescription>
+              </Alert>
+
+              <Accordion type="single" collapsible>
+                <AccordionItem value="manual-help" className="border rounded-lg px-3">
+                  <AccordionTrigger className="text-sm">Instructivo paso a paso (AFIP)</AccordionTrigger>
+                  <AccordionContent>
+                    <ManualCsrInstructions />
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label>CUIT de la sociedad</Label>
+                  <Input
+                    value={manualForm.cuit}
+                    onChange={(e) => setManualForm({ ...manualForm, cuit: e.target.value })}
+                    placeholder="30-12345678-9"
+                    className="font-mono"
+                  />
+                  <p className="text-xs text-muted-foreground">11 dígitos sin guiones</p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Punto de Venta</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={9999}
+                    value={manualForm.punto_venta}
+                    onChange={(e) =>
+                      setManualForm({ ...manualForm, punto_venta: parseInt(e.target.value) || 1 })
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">El habilitado en Web Services de AFIP</p>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Razón social</Label>
+                <Input
+                  value={manualForm.razon_social}
+                  onChange={(e) => setManualForm({ ...manualForm, razon_social: e.target.value })}
+                  placeholder="VICO TRAVEL GROUP SAS"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Entorno</Label>
+                <Select
+                  value={manualForm.environment}
+                  onValueChange={(v) =>
+                    setManualForm({ ...manualForm, environment: v as "production" | "sandbox" })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="production">Producción (facturas reales)</SelectItem>
+                    <SelectItem value="sandbox">Sandbox (pruebas)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex gap-3 pt-1">
+                <Button onClick={handleGenerateCsr} disabled={isGeneratingCsr}>
+                  {isGeneratingCsr ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Generando...
+                    </>
+                  ) : (
+                    <>
+                      <FileText className="h-4 w-4 mr-2" />
+                      Generar solicitud (.csr)
+                    </>
+                  )}
+                </Button>
+                {showReconfigureForm && (
+                  <Button type="button" variant="ghost" onClick={() => setShowReconfigureForm(false)}>
+                    Cancelar
+                  </Button>
+                )}
+              </div>
+
+              {generatedCsr && (
+                <div className="space-y-2 rounded-lg border border-success/40 bg-success/5 p-3">
+                  <p className="text-sm font-medium text-success flex items-center gap-1.5">
+                    <CheckCircle2 className="h-4 w-4" /> Solicitud generada
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Ya se descargó el archivo <span className="font-mono">.csr</span>. Tramitalo en AFIP
+                    y volvé a subir el certificado firmado (el paso 2 va a aparecer acá).
+                  </p>
+                  <Button variant="outline" size="sm" onClick={handleDownloadPendingCsr}>
+                    <Download className="h-4 w-4 mr-2" />
+                    Volver a descargar .csr
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
+
+      {/* Confirmación: reconfigurar por automático pisa un certificado manual */}
+      <AlertDialog open={showReplaceManualConfirm} onOpenChange={setShowReplaceManualConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reemplazar el certificado de la sociedad</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta agencia usa un certificado propio de la sociedad (modo manual). Si reconfigurás,
+              vas a poder volver al modo automático o generar un nuevo certificado, pero el certificado
+              actual dejará de usarse. ¿Continuar?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setShowReplaceManualConfirm(false)
+                setShowReconfigureForm(true)
+              }}
+            >
+              Continuar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
     </div>
   )
@@ -998,5 +1386,69 @@ function WsfePendingBanner({
         </Button>
       </div>
     </div>
+  )
+}
+
+/** Instructivo del modo automático (persona física). */
+function AutoModeInstructions() {
+  return (
+    <ol className="space-y-2 text-sm list-decimal ml-5 marker:text-muted-foreground">
+      <li>Ingresá tu CUIT (persona física) y tu Clave Fiscal de AFIP.</li>
+      <li>
+        vibook crea el certificado digital y autoriza el web service de facturación (WSFE)
+        automáticamente. No tenés que generar nada en AFIP web.
+      </li>
+      <li>
+        Si tu CUIT todavía no tiene un punto de venta habilitado para Web Services, AFIP lo rechaza:
+        entrá a{" "}
+        <a
+          href="https://auth.afip.gob.ar/contribuyente_/login.xhtml"
+          target="_blank"
+          rel="noreferrer noopener"
+          className="text-primary underline"
+        >
+          auth.afip.gob.ar
+        </a>{" "}
+        → Administrador de Relaciones → adherí el servicio <span className="font-mono">wsfe</span> al
+        Computador Fiscal{" "}
+        <span className="font-mono font-semibold select-all">20409378472</span>, y creá un punto de
+        venta tipo &quot;RECE para aplicativo y web services&quot;.
+      </li>
+      <li>Volvé y tocá &quot;Probar Conexión&quot;.</li>
+    </ol>
+  )
+}
+
+/** Instructivo del modo manual (sociedad, vía CSR). */
+function ManualCsrInstructions() {
+  return (
+    <ol className="space-y-2 text-sm list-decimal ml-5 marker:text-muted-foreground">
+      <li>
+        Completá el CUIT de la sociedad y la razón social, y tocá{" "}
+        <strong>&quot;Generar solicitud (.csr)&quot;</strong>. Se descarga un archivo{" "}
+        <span className="font-mono">.csr</span>.
+      </li>
+      <li>
+        Entrá a AFIP con la Clave Fiscal, <strong>actuando en representación de la sociedad</strong>.
+      </li>
+      <li>
+        Andá a <strong>&quot;Administración de Certificados Digitales&quot;</strong> →{" "}
+        <strong>Agregar alias</strong> → subí el archivo <span className="font-mono">.csr</span>. AFIP
+        firma y te deja descargar el <strong>certificado</strong> (.crt / .pem).
+      </li>
+      <li>
+        Autorizá el web service: <strong>&quot;Administrador de Relaciones&quot;</strong> → Nueva
+        Relación → servicio <em>&quot;Facturación Electrónica&quot;</em> (wsfe) → como Computador
+        Fiscal, el certificado que acabás de crear → Confirmar.
+      </li>
+      <li>
+        Verificá que el punto de venta esté creado bajo la sociedad, tipo{" "}
+        <em>&quot;RECE para aplicativo y web services&quot;</em>.
+      </li>
+      <li>
+        Volvé acá y <strong>subí el certificado firmado</strong> (paso 2). vibook valida que empareje
+        con la clave y lo activa.
+      </li>
+    </ol>
   )
 }
