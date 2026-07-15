@@ -272,14 +272,19 @@ export default function NewInvoicePage() {
         const data = await pointsOfSaleRes.json()
         setPointsOfSale(data.pointsOfSale || [])
         
-        // Seleccionar el primer punto de venta CAE disponible por defecto
+        // Seleccionar por defecto el punto de venta CONFIGURADO de la agencia
+        // (default_point_of_sale) si está entre los habilitados; si no, el
+        // primero habilitado. Antes tomaba siempre points_of_sale[0], lo que
+        // podía caer en un PV dado de baja y rechazar con error 10005.
         if (data.pointsOfSale && data.pointsOfSale.length > 0) {
           const firstAgencyWithWs = data.pointsOfSale.find((a: any) => a.has_ws_points)
           if (firstAgencyWithWs) {
+            const pvs = firstAgencyWithWs.points_of_sale as Array<{ numero: number }>
+            const configured = pvs.find(p => p.numero === firstAgencyWithWs.default_point_of_sale)
             setFormData(prev => ({
               ...prev,
               agency_id: firstAgencyWithWs.agency_id,
-              pto_vta: firstAgencyWithWs.points_of_sale[0].numero,
+              pto_vta: (configured ?? pvs[0]).numero,
             }))
           }
         }
