@@ -3,6 +3,7 @@ import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
 import { getAfipServiceForOrg } from "@/lib/afip/afip-service"
+import { normalizeReceptorDoc } from "@/lib/afip/afip-config"
 import { logSecurityEvent } from "@/lib/security/audit"
 import { isCreditNote, ledgerSign } from "@/lib/invoices/credit-note"
 
@@ -44,14 +45,21 @@ export async function POST(
       )
     }
 
-    // RLS scope: si el user no pertenece al org de la factura, no la encuentra
+    // Cross-tenant fix: filtro explícito por org, no confiar en RLS.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+    const orgId = (user as any).org_id as string
+
     const { data: invoice, error: fetchError } = await (supabase
       .from("invoices") as any)
       .select(`*, invoice_items (*)`)
       .eq("id", id)
+      .eq("org_id", orgId)
       .single()
 
     if (fetchError || !invoice) {
+      // 404 enmascarado: no confirmar existencia de facturas de otros orgs.
       return NextResponse.json({ error: "Factura no encontrada" }, { status: 404 })
     }
 
@@ -70,12 +78,14 @@ export async function POST(
       const { data: operation } = await (supabase.from("operations") as any)
         .select("sale_amount_total")
         .eq("id", invoice.operation_id)
+        .eq("org_id", orgId)
         .single()
 
       if (operation) {
         const { data: peers } = await (supabase.from("invoices") as any)
           .select("imp_total, cbte_tipo")
           .eq("operation_id", invoice.operation_id)
+          .eq("org_id", orgId)
           .eq("status", "authorized")
           .neq("id", invoice.id)
 
@@ -90,6 +100,7 @@ export async function POST(
           await (supabase.from("invoices") as any)
             .update({ status: "draft" })
             .eq("id", invoice.id)
+            .eq("org_id", orgId)
           return NextResponse.json(
             {
               error: `No se puede autorizar: otra factura completó el total vendido mientras este draft esperaba. Restante actual: $${(saleTotal - already).toFixed(2)}`,
@@ -135,6 +146,7 @@ export async function POST(
       await (supabase.from("invoices") as any)
         .update(invoiceDatePatch)
         .eq("id", invoice.id)
+        .eq("org_id", orgId)
     }
 
     // Pre-check de cotización USD
@@ -147,6 +159,7 @@ export async function POST(
         await (supabase.from("invoices") as any)
           .update({ cotizacion: oficial })
           .eq("id", id)
+          .eq("org_id", orgId)
         invoice.cotizacion = oficial
       } else {
         const delta = Math.abs(user_rate - oficial) / oficial
@@ -164,8 +177,24 @@ export async function POST(
       }
     }
 
+    // Consumidor final sin identificar: normalizar DocTipo a 99 cuando DocNro=0
+    // (regla AFIP 10015). Borradores viejos quedaron con DocTipo=96/DocNro=0 y
+    // AFIP los rechazaba. Persistimos la corrección para que el comprobante,
+    // el QR y el PDF queden consistentes con lo que emite AFIP.
+    {
+      const norm = normalizeReceptorDoc(invoice.cbte_tipo, invoice.receptor_doc_tipo, invoice.receptor_doc_nro)
+      if (norm.docTipo !== invoice.receptor_doc_tipo || norm.docNro !== String(invoice.receptor_doc_nro ?? "")) {
+        invoice.receptor_doc_tipo = norm.docTipo
+        invoice.receptor_doc_nro = norm.docNro
+        await (supabase.from("invoices") as any)
+          .update({ receptor_doc_tipo: norm.docTipo, receptor_doc_nro: norm.docNro })
+          .eq("id", id)
+          .eq("org_id", orgId)
+      }
+    }
+
     // Marcar como pending
-    await (supabase.from("invoices") as any).update({ status: "pending" }).eq("id", id)
+    await (supabase.from("invoices") as any).update({ status: "pending" }).eq("id", id).eq("org_id", orgId)
 
     // Emitir via service
     const result = await afipService.issueVoucher(invoice)
@@ -183,6 +212,7 @@ export async function POST(
           },
         })
         .eq("id", id)
+        .eq("org_id", orgId)
 
       // Audit log: rechazo AFIP. Útil para soporte cuando el tenant
       // pregunta "qué pasó con esta factura". Guarda CUIT, PV, tipo,

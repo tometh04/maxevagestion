@@ -53,6 +53,34 @@ export function getEmisorCuit(
 }
 
 /**
+ * Tipos de comprobante clase A / M que exigen CUIT del receptor (DocTipo 80,
+ * DocNro > 0). Para estos NO se normaliza a Consumidor Final.
+ */
+const CBTE_REQUIERE_CUIT = new Set([1, 2, 3, 51, 52, 53])
+
+/**
+ * Normaliza el documento del receptor para cumplir la regla AFIP (error 10015):
+ * en Factura B/C, si el DocTipo es distinto de 99 el DocNro debe ser > 0. Para
+ * un consumidor final SIN identificar (DocNro 0 o vacío) el DocTipo correcto es
+ * 99 (Consumidor Final). Casos productivos VICO tenían DocTipo=96 (DNI) con
+ * DocNro=0 → AFIP rechazaba.
+ *
+ * No toca comprobantes clase A/M (requieren CUIT y se validan aparte).
+ */
+export function normalizeReceptorDoc(
+  cbteTipo: number,
+  docTipo: number,
+  docNro: string | number | null | undefined
+): { docTipo: number; docNro: string } {
+  const digits = String(docNro ?? '').replace(/\D/g, '')
+  const nro = digits === '' ? 0 : parseInt(digits, 10)
+  if (!CBTE_REQUIERE_CUIT.has(cbteTipo) && nro === 0 && docTipo !== 99) {
+    return { docTipo: 99, docNro: '0' }
+  }
+  return { docTipo, docNro: digits }
+}
+
+/**
  * Valida que una configuración de AFIP esté completa
  */
 export function isAfipConfigValid(config: Partial<AfipConfig>): boolean {
