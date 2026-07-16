@@ -2794,6 +2794,81 @@ export type Database = {
           },
         ]
       }
+      growth_brand_profiles: {
+        Row: {
+          agency_id: string
+          brand_name: string
+          created_at: string
+          created_by: string | null
+          id: string
+          org_id: string
+          profile_data: Json
+          schema_version: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          agency_id: string
+          brand_name: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          org_id: string
+          profile_data?: Json
+          schema_version?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          agency_id?: string
+          brand_name?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          org_id?: string
+          profile_data?: Json
+          schema_version?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "growth_brand_profiles_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "growth_brand_profiles_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "growth_brand_profiles_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "growth_brand_profiles_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations_with_profile_completion"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "growth_brand_profiles_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       generated_pdfs: {
         Row: {
           agency_id: string

@@ -76,7 +76,8 @@ export function NavMain({ items, pathname }: NavMainProps) {
           {items.map((item) => {
             const hasChildren = item.items && item.items.length > 0
             const isCollapsible = item.collapsible !== false && hasChildren
-            const isActive = pathname === item.url || pathname?.startsWith(item.url + "/")
+            const itemPath = item.url.split("?")[0]
+            const isActive = pathname === itemPath || pathname?.startsWith(itemPath + "/")
 
             // Si NO es colapsable (como Dashboard), renderizar como link directo
             if (!isCollapsible) {
@@ -112,7 +113,8 @@ export function NavMain({ items, pathname }: NavMainProps) {
                     <SidebarMenuSub>
                       {item.items?.map((subItem) => {
                         const subHasChildren = subItem.items && subItem.items.length > 0
-                        const subIsActive = pathname === subItem.url || pathname?.startsWith(subItem.url + "/")
+                        const subPath = subItem.url.split("?")[0]
+                        const subIsActive = pathname === subPath || pathname?.startsWith(subPath + "/")
 
                         // Si el subitem tiene hijos (nivel 3), renderizar como collapsible
                         if (subHasChildren) {
