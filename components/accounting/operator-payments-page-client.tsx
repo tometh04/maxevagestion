@@ -310,6 +310,7 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
         "Código Operación": payment.operations?.file_code || "-",
         Destino: payment.operations?.destination || "-",
         Operador: payment.operators?.name || "-",
+        "File Servicio": payment.file_code || "-",
         "Monto Total": amount,
         Moneda: payment.currency || "ARS",
         "Monto Pagado": paidAmount,
@@ -587,7 +588,14 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                           </div>
                         )}
                       </TableCell>
-                      <TableCell>{payment.operators?.name || "-"}</TableCell>
+                      <TableCell>
+                        <div>{payment.operators?.name || "-"}</div>
+                        {payment.file_code && (
+                          <div className="text-xs text-muted-foreground font-mono mt-0.5">
+                            File: {payment.file_code}
+                          </div>
+                        )}
+                      </TableCell>
                       <TableCell className="text-right tabular-nums">
                         {formatCurrency(parseFloat(payment.amount || "0"), payment.currency)}
                       </TableCell>

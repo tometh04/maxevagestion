@@ -208,7 +208,7 @@ export function EditOperationDialog({
   const [customOperationTypes, setCustomOperationTypes] = useState<Array<{ value: string; label: string }>>([])
 
   // Estado para múltiples operadores
-  type OperatorEntry = { operator_id: string; cost: string | number; cost_currency: "ARS" | "USD"; product_type?: string; notes?: string; id?: string; passenger_detail?: Record<string, string> }
+  type OperatorEntry = { operator_id: string; cost: string | number; cost_currency: "ARS" | "USD"; product_type?: string; notes?: string; id?: string; passenger_detail?: Record<string, string>; file_code?: string; payment_due_date?: string }
   const [useMultipleOperators, setUseMultipleOperators] = useState(false)
   const [operatorList, setOperatorList] = useState<OperatorEntry[]>([])
   const [operatorsLoaded, setOperatorsLoaded] = useState(false)
@@ -310,6 +310,8 @@ export function EditOperationDialog({
         product_type: oo.product_type || undefined,
         notes: oo.notes || undefined,
         passenger_detail: (oo.passenger_detail && typeof oo.passenger_detail === "object") ? oo.passenger_detail : undefined,
+        file_code: oo.file_code || undefined,
+        payment_due_date: oo.payment_due_date || undefined,
       }))
 
     // 1) Preferir los operadores que ya trajo el server (prop). Es confiable y
@@ -584,6 +586,8 @@ export function EditOperationDialog({
           product_type: op.product_type || null,
           notes: op.notes || null,
           passenger_detail: sanitizePassengerDetail(op.passenger_detail),
+          file_code: (op.file_code || "").trim() || null,
+          payment_due_date: op.payment_due_date || null,
         }))
         // El operador principal es el primero de la lista
         payload.operator_id = operatorList[0].operator_id || null
@@ -996,6 +1000,36 @@ export function EditOperationDialog({
                               <SelectItem value="USD">USD</SelectItem>
                             </SelectContent>
                           </Select>
+                        </div>
+                      </div>
+
+                      {/* Datos internos del servicio (opcional): NO se muestran al
+                          pasajero. file_code = referencia interna de la agencia;
+                          payment_due_date = fecha máxima de pago al operador (alimenta
+                          el vencimiento del pago a operador). */}
+                      <div className="pt-3 border-t border-border/40">
+                        <label className="text-xs font-medium text-muted-foreground mb-2 block">
+                          Datos internos (opcional)
+                        </label>
+                        <div className="grid gap-3 grid-cols-1 md:grid-cols-2">
+                          <div>
+                            <label className="text-xs font-medium mb-1.5 block">N° de File (interno)</label>
+                            <Input
+                              value={op.file_code || ""}
+                              onChange={(e) => updateOperatorField(index, "file_code", e.target.value)}
+                              placeholder="Código de referencia"
+                              className="h-9 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-medium mb-1.5 block">Fecha máx. de pago</label>
+                            <Input
+                              type="date"
+                              value={op.payment_due_date || ""}
+                              onChange={(e) => updateOperatorField(index, "payment_due_date", e.target.value)}
+                              className="h-9 text-sm"
+                            />
+                          </div>
                         </div>
                       </div>
 

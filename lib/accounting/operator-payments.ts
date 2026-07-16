@@ -57,7 +57,8 @@ export async function createOperatorPayment(
   dueDate: string,
   operationId?: string | null,
   notes?: string,
-  orgId?: string | null
+  orgId?: string | null,
+  fileCode?: string | null
 ): Promise<{ id: string }> {
   const { data, error } = await (supabase.from("operator_payments") as any)
     .insert({
@@ -70,6 +71,7 @@ export async function createOperatorPayment(
       paid_amount: 0,
       notes: notes || null,
       org_id: orgId || null,
+      file_code: fileCode || null,
     })
     .select("id")
     .single()

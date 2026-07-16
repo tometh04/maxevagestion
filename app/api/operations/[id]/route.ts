@@ -19,6 +19,8 @@ type IncomingOperatorPayload = {
   notes?: string | null
   sale_amount?: number
   passenger_detail?: any
+  file_code?: string | null
+  payment_due_date?: string | null
 }
 
 function normalizeIncomingOperators(
@@ -38,6 +40,8 @@ function normalizeIncomingOperators(
       product_type: operatorData.product_type || null,
       notes: operatorData.notes || null,
       passenger_detail: operatorData.passenger_detail ?? null,
+      file_code: (operatorData.file_code && String(operatorData.file_code).trim()) || null,
+      payment_due_date: operatorData.payment_due_date || null,
     }))
 }
 
@@ -406,6 +410,8 @@ export async function PATCH(
         notes: operatorData.notes || null,
         sale_amount: Number(operatorData.sale_amount) || 0,
         passenger_detail: operatorData.passenger_detail ?? null,
+        file_code: operatorData.file_code || null,
+        payment_due_date: operatorData.payment_due_date || null,
       }))
 
       const { error: rpcError } = await (supabase.rpc as any)("replace_operation_operators", {
@@ -503,6 +509,9 @@ export async function PATCH(
           product_type: operatorData.product_type || null,
           notes: operatorData.notes || null,
           sale_amount: Number(operatorData.sale_amount) || 0,
+          passenger_detail: operatorData.passenger_detail ?? null,
+          file_code: operatorData.file_code || null,
+          payment_due_date: operatorData.payment_due_date || null,
         }))
 
         const { error: rpcError } = await (supabase.rpc as any)("replace_operation_operators", {
@@ -677,7 +686,7 @@ export async function PATCH(
               if (!opPay) {
                 if (operatorData.cost <= 0) continue
 
-                const dueDate = calculateDueDate(
+                const dueDate = operatorData.payment_due_date || calculateDueDate(
                   (operatorData.product_type || op.product_type || currentOp.product_type || null) as any,
                   op.operation_date || currentOp.operation_date || op.created_at?.split("T")[0],
                   op.checkin_date || currentOp.checkin_date || undefined,
@@ -692,7 +701,8 @@ export async function PATCH(
                   dueDate,
                   operationId,
                   `Deuda nueva por edición de operación ${op.file_code || operationId.slice(0, 8)}`,
-                  (user as any).org_id
+                  (user as any).org_id,
+                  operatorData.file_code || null
                 )
                 continue
               }
@@ -848,7 +858,7 @@ export async function PATCH(
 
           for (const operatorData of synchronizedOperators) {
             if (operatorData.cost > 0) {
-              const dueDate = calculateDueDate(
+              const dueDate = operatorData.payment_due_date || calculateDueDate(
                 (operatorData.product_type || op.product_type || currentOp.product_type || null) as any,
                 op.operation_date || currentOp.operation_date || op.created_at?.split("T")[0],
                 op.checkin_date || currentOp.checkin_date || undefined,
@@ -863,7 +873,8 @@ export async function PATCH(
                 dueDate,
                 operationId,
                 `Pago automático actualizado para operación ${op.file_code || operationId.slice(0, 8)}`,
-                (user as any).org_id
+                (user as any).org_id,
+                operatorData.file_code || null
               )
             }
           }

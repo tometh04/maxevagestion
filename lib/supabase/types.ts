@@ -4891,11 +4891,14 @@ export type Database = {
           cost: number
           cost_currency: string
           created_at: string | null
+          file_code: string | null
           id: string
           notes: string | null
           operation_id: string
           operator_id: string
           org_id: string | null
+          passenger_detail: Json | null
+          payment_due_date: string | null
           product_type: string | null
           updated_at: string | null
         }
@@ -4903,11 +4906,14 @@ export type Database = {
           cost?: number
           cost_currency?: string
           created_at?: string | null
+          file_code?: string | null
           id?: string
           notes?: string | null
           operation_id: string
           operator_id: string
           org_id?: string | null
+          passenger_detail?: Json | null
+          payment_due_date?: string | null
           product_type?: string | null
           updated_at?: string | null
         }
@@ -4915,11 +4921,14 @@ export type Database = {
           cost?: number
           cost_currency?: string
           created_at?: string | null
+          file_code?: string | null
           id?: string
           notes?: string | null
           operation_id?: string
           operator_id?: string
           org_id?: string | null
+          passenger_detail?: Json | null
+          payment_due_date?: string | null
           product_type?: string | null
           updated_at?: string | null
         }
@@ -5528,6 +5537,7 @@ export type Database = {
           created_by_user_id: string | null
           currency: string
           due_date: string
+          file_code: string | null
           id: string
           is_legacy_settled: boolean
           ledger_movement_id: string | null
@@ -5549,6 +5559,7 @@ export type Database = {
           created_by_user_id?: string | null
           currency: string
           due_date: string
+          file_code?: string | null
           id?: string
           is_legacy_settled?: boolean
           ledger_movement_id?: string | null
@@ -5570,6 +5581,7 @@ export type Database = {
           created_by_user_id?: string | null
           currency?: string
           due_date?: string
+          file_code?: string | null
           id?: string
           is_legacy_settled?: boolean
           ledger_movement_id?: string | null

@@ -178,7 +178,7 @@ export async function POST(request: Request) {
     }
 
     // Procesar operadores: soportar formato nuevo (array) y formato antiguo (operator_id + operator_cost)
-    let operatorsList: Array<{operator_id: string, cost: number, cost_currency: string, product_type?: string, notes?: string, passenger_detail?: any}> = []
+    let operatorsList: Array<{operator_id: string, cost: number, cost_currency: string, product_type?: string, notes?: string, passenger_detail?: any, file_code?: string | null, payment_due_date?: string | null}> = []
     let totalOperatorCost = 0
     let finalOperatorCostCurrency = operator_cost_currency || currency || "USD"
     let primaryOperatorId: string | null = operator_id || null
@@ -198,7 +198,9 @@ export async function POST(request: Request) {
           cost_currency: op.cost_currency || currency || "USD",
           product_type: op.product_type || undefined,
           notes: op.notes || undefined,
-          passenger_detail: op.passenger_detail ?? undefined
+          passenger_detail: op.passenger_detail ?? undefined,
+          file_code: (op.file_code && String(op.file_code).trim()) || null,
+          payment_due_date: op.payment_due_date || null
         })
         totalOperatorCost += Number(op.cost)
         // Usar la moneda del primer operador como moneda principal
@@ -505,7 +507,9 @@ export async function POST(request: Request) {
           cost_currency: operatorData.cost_currency,
           product_type: operatorData.product_type || null,
           notes: operatorData.notes || null,
-          passenger_detail: operatorData.passenger_detail ?? null
+          passenger_detail: operatorData.passenger_detail ?? null,
+          file_code: operatorData.file_code || null,
+          payment_due_date: operatorData.payment_due_date || null
         }))
         
         const { error: opOpError } = await (supabase.from("operation_operators") as any)
@@ -525,7 +529,9 @@ export async function POST(request: Request) {
       for (const operatorData of operatorsList) {
         if (operatorData.cost > 0) {
       try {
-        const dueDate = calculateDueDate(
+        // Fecha máxima de pago: si la agencia la cargó a mano en el operador, se
+        // usa como due_date; si no, se autocalcula por tipo de producto.
+        const dueDate = operatorData.payment_due_date || calculateDueDate(
           inferredProductType,
               departure_date,
           checkin_date || undefined,
@@ -540,7 +546,8 @@ export async function POST(request: Request) {
           dueDate,
           op.id, // operationId
           `Pago automático generado para operación ${operation.id}`,
-          (user as any).org_id
+          (user as any).org_id,
+          operatorData.file_code || null
         )
       } catch (error) {
             console.error(`Error creating operator payment for ${operatorData.operator_id}:`, error)
