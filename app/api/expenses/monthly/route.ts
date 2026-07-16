@@ -37,16 +37,26 @@ export async function GET(request: Request) {
     const typeFilter = searchParams.get("type") // "recurring", "variable", or null for all
     const categoryIdFilter = searchParams.get("categoryId") // optional, applies only to variable expenses
     const agencyId = searchParams.get("agencyId") // optional, filtra por agencia
+    // Criterio de atribución del filtro por agencia (toggle "Ver por"):
+    //  - "office"  (default): la oficina a la que pertenece el gasto.
+    //  - "account": la oficina de la cuenta desde la que salió la plata.
+    // Un gasto puede estar cargado a una oficina pero pagarse desde la caja de
+    // otra; ambas vistas son válidas (contable vs tesorería).
+    const agencyMode = searchParams.get("agencyMode") === "account" ? "account" : "office"
 
-    // Los gastos recurrentes viven en ledger_movements (sin agency_id), así que
-    // para filtrar por agencia mapeamos a las cuentas financieras de esa agencia.
-    let agencyAccountIds: string[] | null = null
-    if (agencyId && agencyId !== "ALL") {
-      const { data: agencyAccounts } = await (supabase.from("financial_accounts") as any)
-        .select("id")
-        .eq("agency_id", agencyId)
+    // El filtro por agencia se resuelve en memoria para poder atribuir cada
+    // gasto según el criterio elegido. Necesitamos el mapa cuenta -> oficina
+    // para el modo "account" (y como fallback del modo "office" en recurrentes,
+    // cuando el asiento no matchea ningún gasto recurrente conocido).
+    const filterByAgency = !!(agencyId && agencyId !== "ALL")
+    const accountAgencyById = new Map<string, string | null>()
+    if (filterByAgency) {
+      const { data: orgAccounts } = await (supabase.from("financial_accounts") as any)
+        .select("id, agency_id")
         .eq("org_id", userOrgId)
-      agencyAccountIds = (agencyAccounts || []).map((a: any) => a.id as string)
+      for (const a of orgAccounts || []) {
+        accountAgencyById.set(a.id as string, (a.agency_id ?? null) as string | null)
+      }
     }
 
     // Enriquecimiento de categorías (para el resumen por categoría / torta).
@@ -62,12 +72,18 @@ export async function GET(request: Request) {
     // "Gasto recurrente: <description>" y NO conservan category_id. Recuperamos la
     // categoría matcheando la description contra recurring_payments (scopeado por org).
     const { data: recRows } = await (supabase.from("recurring_payments") as any)
-      .select("description, category_id")
+      .select("description, category_id, agency_id")
       .eq("org_id", userOrgId)
     const recCategoryIdByDescription = new Map<string, string>()
+    // description -> agency_id del gasto recurrente (puede ser null = sin oficina).
+    // Se usa para atribuir el pago a su oficina real, no a la de la cuenta.
+    const recAgencyIdByDescription = new Map<string, string | null>()
     for (const r of recRows || []) {
       if (r.description && r.category_id) {
         recCategoryIdByDescription.set(String(r.description).trim(), r.category_id)
+      }
+      if (r.description) {
+        recAgencyIdByDescription.set(String(r.description).trim(), (r.agency_id ?? null) as string | null)
       }
     }
 
@@ -90,13 +106,10 @@ export async function GET(request: Request) {
       if (dateFrom) recQuery = recQuery.gte("movement_date", startOfDayAR(dateFrom))
       if (dateTo) recQuery = recQuery.lte("movement_date", endOfDayAR(dateTo))
       if (currencyParam && currencyParam !== "ALL") recQuery = recQuery.eq("currency", currencyParam)
-      // Filtro por agencia: ledger_movements no tiene agency_id, acotamos por las
-      // cuentas financieras de la agencia. Si la agencia no tiene cuentas, no hay recurrentes.
-      if (agencyAccountIds !== null) recQuery = recQuery.in("account_id", agencyAccountIds)
+      // El filtro por agencia se resuelve abajo, en memoria, atribuyendo cada
+      // pago a la oficina del gasto (no a la de la cuenta pagadora).
 
-      const { data: recurring, error: recError } = agencyAccountIds !== null && agencyAccountIds.length === 0
-        ? { data: [], error: null }
-        : await recQuery
+      const { data: recurring, error: recError } = await recQuery
 
       if (!recError && recurring) {
         for (const e of recurring) {
@@ -104,6 +117,23 @@ export async function GET(request: Request) {
             .replace("Gasto recurrente: ", "")
             .replace("Gasto recurrente:", "")
             .trim()
+
+          // Filtro por agencia según el criterio elegido:
+          //  - office:  la oficina del gasto recurrente manda; fallback a la
+          //             cuenta pagadora si el gasto no matchea o no tiene oficina.
+          //  - account: la oficina de la cuenta desde la que se pagó.
+          if (filterByAgency) {
+            let resolvedAgency: string | null
+            if (agencyMode === "account") {
+              resolvedAgency = accountAgencyById.get(e.account_id) ?? null
+            } else {
+              const ownAgency = recAgencyIdByDescription.has(description)
+                ? recAgencyIdByDescription.get(description) ?? null
+                : null
+              resolvedAgency = ownAgency ?? (accountAgencyById.get(e.account_id) ?? null)
+            }
+            if (resolvedAgency !== agencyId) continue
+          }
 
           // Preferir la categoría persistida en el asiento (pagos nuevos);
           // fallback a matching por descripción para pagos históricos.
@@ -148,13 +178,22 @@ export async function GET(request: Request) {
       if (dateTo) varQuery = varQuery.lte("movement_date", endOfDayAR(dateTo))
       if (currencyParam && currencyParam !== "ALL") varQuery = varQuery.eq("currency", currencyParam)
       if (categoryIdFilter && categoryIdFilter !== "all") varQuery = varQuery.eq("category_id", categoryIdFilter)
-      if (agencyId && agencyId !== "ALL") varQuery = varQuery.eq("agency_id", agencyId)
+      // Modo "office": el gasto variable ya guarda la oficina a la que se cargó
+      // (agency_id), así que filtramos directo en la query. Modo "account": la
+      // oficina la da la cuenta pagadora, se resuelve en memoria más abajo.
+      if (filterByAgency && agencyMode === "office") varQuery = varQuery.eq("agency_id", agencyId)
       if (user.role === "SELLER") varQuery = varQuery.eq("user_id", user.id)
 
       const { data: variables, error: varError } = await varQuery
 
       if (!varError && variables) {
         for (const v of variables) {
+          // Modo "account": filtrar por la oficina de la cuenta pagadora.
+          if (filterByAgency && agencyMode === "account") {
+            const acctAgency = accountAgencyById.get(v.financial_account_id) ?? null
+            if (acctAgency !== agencyId) continue
+          }
+
           const varCat = v.category_id ? categoryById.get(v.category_id) : null
           allExpenses.push({
             id: v.id,

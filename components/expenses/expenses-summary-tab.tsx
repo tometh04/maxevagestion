@@ -51,7 +51,7 @@ interface Expense {
 interface CategorySlice {
   category: string
   total: number
-  percent: number
+  share: number
   color: string
 }
 
@@ -76,12 +76,18 @@ export function ExpensesSummaryTab({ agencies }: ExpensesSummaryTabProps) {
   })
   const [currency, setCurrency] = useState("ARS")
   const [agencyFilter, setAgencyFilter] = useState("ALL")
+  // Criterio del filtro por agencia: "office" = oficina a la que se cargó el
+  // gasto; "account" = oficina de la cuenta desde la que salió la plata.
+  const [agencyMode, setAgencyMode] = useState<"office" | "account">("office")
 
   const fetchExpenses = useCallback(async () => {
     setLoading(true)
     try {
       const params = new URLSearchParams({ dateFrom, dateTo, currency })
-      if (agencyFilter !== "ALL") params.set("agencyId", agencyFilter)
+      if (agencyFilter !== "ALL") {
+        params.set("agencyId", agencyFilter)
+        params.set("agencyMode", agencyMode)
+      }
 
       const res = await fetch(`/api/expenses/monthly?${params}`)
       if (res.ok) {
@@ -96,7 +102,7 @@ export function ExpensesSummaryTab({ agencies }: ExpensesSummaryTabProps) {
     } finally {
       setLoading(false)
     }
-  }, [dateFrom, dateTo, currency, agencyFilter])
+  }, [dateFrom, dateTo, currency, agencyFilter, agencyMode])
 
   useEffect(() => {
     fetchExpenses()
@@ -127,7 +133,7 @@ export function ExpensesSummaryTab({ agencies }: ExpensesSummaryTabProps) {
       .map(([category, g]) => ({
         category,
         total: g.total,
-        percent: totalSum > 0 ? (g.total / totalSum) * 100 : 0,
+        share: totalSum > 0 ? (g.total / totalSum) * 100 : 0,
         dbColor: g.color,
       }))
       .sort((a, b) => b.total - a.total)
@@ -166,6 +172,20 @@ export function ExpensesSummaryTab({ agencies }: ExpensesSummaryTabProps) {
             </SelectContent>
           </Select>
         </div>
+        {agencies.length > 1 && (
+          <div className="space-y-1">
+            <Label className="text-xs font-medium text-muted-foreground">Ver por</Label>
+            <Select value={agencyMode} onValueChange={(v) => setAgencyMode(v as "office" | "account")}>
+              <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[120px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="office">Oficina del gasto</SelectItem>
+                <SelectItem value="account">Cuenta pagadora</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
         {agencies.length > 1 && (
           <div className="space-y-1">
             <Label className="text-xs font-medium text-muted-foreground">Agencia</Label>
@@ -262,7 +282,7 @@ export function ExpensesSummaryTab({ agencies }: ExpensesSummaryTabProps) {
                       {formatCurrency(slice.total)}
                     </TableCell>
                     <TableCell className="text-right tabular-nums text-muted-foreground">
-                      {slice.percent.toFixed(1)}%
+                      {slice.share.toFixed(1)}%
                     </TableCell>
                   </TableRow>
                 ))}

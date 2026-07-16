@@ -81,6 +81,9 @@ export function MonthlyExpensesTab({ agencies }: MonthlyExpensesTabProps) {
   const [typeFilter, setTypeFilter] = useState("ALL")
   const [categoryFilter, setCategoryFilter] = useState("all")
   const [agencyFilter, setAgencyFilter] = useState("ALL")
+  // Criterio del filtro por agencia: "office" = oficina a la que se cargó el
+  // gasto; "account" = oficina de la cuenta desde la que salió la plata.
+  const [agencyMode, setAgencyMode] = useState<"office" | "account">("office")
   const [categories, setCategories] = useState<Category[]>([])
 
   const fetchExpenses = useCallback(async () => {
@@ -89,7 +92,10 @@ export function MonthlyExpensesTab({ agencies }: MonthlyExpensesTabProps) {
       const params = new URLSearchParams({ dateFrom, dateTo })
       if (currencyFilter !== "ALL") params.set("currency", currencyFilter)
       if (categoryFilter !== "all") params.set("categoryId", categoryFilter)
-      if (agencyFilter !== "ALL") params.set("agencyId", agencyFilter)
+      if (agencyFilter !== "ALL") {
+        params.set("agencyId", agencyFilter)
+        params.set("agencyMode", agencyMode)
+      }
 
       const res = await fetch(`/api/expenses/monthly?${params}`)
       if (res.ok) {
@@ -102,7 +108,7 @@ export function MonthlyExpensesTab({ agencies }: MonthlyExpensesTabProps) {
     } finally {
       setLoading(false)
     }
-  }, [dateFrom, dateTo, currencyFilter, categoryFilter, agencyFilter])
+  }, [dateFrom, dateTo, currencyFilter, categoryFilter, agencyFilter, agencyMode])
 
   useEffect(() => {
     fetchExpenses()
@@ -236,6 +242,20 @@ export function MonthlyExpensesTab({ agencies }: MonthlyExpensesTabProps) {
             </SelectContent>
           </Select>
         </div>
+        {agencies.length > 1 && (
+          <div className="space-y-1">
+            <Label className="text-xs font-medium text-muted-foreground">Ver por</Label>
+            <Select value={agencyMode} onValueChange={(v) => setAgencyMode(v as "office" | "account")}>
+              <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="office">Oficina del gasto</SelectItem>
+                <SelectItem value="account">Cuenta pagadora</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
         {agencies.length > 1 && (
           <div className="space-y-1">
             <Label className="text-xs font-medium text-muted-foreground">Agencia</Label>
