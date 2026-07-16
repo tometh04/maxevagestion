@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useEffect, useState } from "react"
-import { usePathname } from "next/navigation"
+import { usePathname, useSearchParams } from "next/navigation"
 import {
   LayoutDashboard,
   ShoppingCart,
@@ -13,6 +13,7 @@ import {
   Wrench,
   HelpCircle,
   Bot,
+  Megaphone,
 } from "lucide-react"
 import Link from "next/link"
 import { shouldShowInSidebar, type UserRole } from "@/lib/permissions"
@@ -54,6 +55,7 @@ interface NavItem {
   items?: NavSubItem[]
   module?: "dashboard" | "leads" | "operations" | "customers" | "operators" | "cash" | "accounting" | "alerts" | "reports" | "settings" | "commissions" | "eve"
   collapsible?: boolean
+  requiresGrowthStudio?: boolean
 }
 
 // Feature flag temporal: el módulo "Agente IA / Eve" solo aparece en el sidebar
@@ -83,7 +85,18 @@ const allNavigation: NavItem[] = [
       { title: "Estadísticas", url: "/sales/statistics" },
     ],
   },
-  // 3. Clientes
+  // 3. Growth Studio
+  {
+    title: "Growth Studio",
+    url: "/growth-studio",
+    icon: Megaphone,
+    requiresGrowthStudio: true,
+    items: [
+      { title: "Inicio", url: "/growth-studio" },
+      { title: "Mi marca", url: "/growth-studio/brand" },
+    ],
+  },
+  // 4. Clientes
   {
     title: "Clientes",
     url: "/customers",
@@ -165,6 +178,7 @@ const allNavigation: NavItem[] = [
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   userRole: UserRole
   resolvedPermissions?: ResolvedPermissionsMatrix | null
+  growthStudioEnabled?: boolean
   user: {
     name: string
     email: string
@@ -172,8 +186,16 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   }
 }
 
-export function AppSidebar({ userRole, resolvedPermissions, user, ...props }: AppSidebarProps) {
+export function AppSidebar({
+  userRole,
+  resolvedPermissions,
+  growthStudioEnabled = false,
+  user,
+  ...props
+}: AppSidebarProps) {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const selectedAgencyId = searchParams.get("agencyId")
   const [brandLogo, setBrandLogo] = useState<string | null>(null)
   const [companyName, setCompanyName] = useState<string | null>(null)
   // Salud AFIP — usado para mostrar badge en "Facturación" si la org
@@ -284,8 +306,24 @@ export function AppSidebar({ userRole, resolvedPermissions, user, ...props }: Ap
   }
 
   // Filtrar navegación según permisos
-  const navigation = allNavigation
+  const contextualNavigation = allNavigation.map((item) => {
+    if (!item.requiresGrowthStudio || !selectedAgencyId) return item
+    const query = `?agencyId=${encodeURIComponent(selectedAgencyId)}`
+    return {
+      ...item,
+      url: `${item.url}${query}`,
+      items: item.items?.map((subItem) => ({
+        ...subItem,
+        url: `${subItem.url}${query}`,
+      })),
+    }
+  })
+
+  const navigation = contextualNavigation
     .map((item) => {
+      if (item.requiresGrowthStudio && !growthStudioEnabled) {
+        return null
+      }
       // Filtrar items principales por módulo
       // Si tiene subitems con módulos propios, no filtrar aquí — se filtra abajo por subitem
       if (item.module && !item.items?.some((sub) => sub.module)) {

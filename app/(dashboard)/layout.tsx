@@ -24,6 +24,7 @@ import { createServerClient } from "@/lib/supabase/server"
 import { getUserAgencyIds } from "@/lib/permissions-api"
 import { resolveUserPermissions, type ResolvedPermissionsMatrix } from "@/lib/permissions-agency"
 import { getEffectiveAgencyScopeRole } from "@/lib/permissions"
+import { resolveGrowthStudioOrganizationAccess } from "@/lib/growth-studio/access"
 
 export default async function DashboardLayout({
   children,
@@ -60,14 +61,16 @@ export default async function DashboardLayout({
   // determinar qué agencias son visibles; luego la resolución fusiona todos los roles.
   const effectiveRole = getEffectiveAgencyScopeRole((user as any).roles ?? [user.role as any])
   const agencyIds = await getUserAgencyIds(supabase, user.id, effectiveRole)
-  let resolvedPermissions: ResolvedPermissionsMatrix | null = null
-  if (user.org_id) {
-    resolvedPermissions = await resolveUserPermissions(
-      supabase as any, user.id, user.org_id,
-      (user as any).roles ?? [user.role],
-      agencyIds
-    )
-  }
+  const [resolvedPermissions, growthStudioAccess] = await Promise.all([
+    user.org_id
+      ? resolveUserPermissions(
+          supabase as any, user.id, user.org_id,
+          (user as any).roles ?? [user.role],
+          agencyIds
+        )
+      : Promise.resolve<ResolvedPermissionsMatrix | null>(null),
+    resolveGrowthStudioOrganizationAccess(supabase, user),
+  ])
   t.mark("resolvePermissions")
 
   const agencies = (userAgencies || []).map((ua: any) => ({
@@ -99,6 +102,7 @@ export default async function DashboardLayout({
           collapsible="icon"
           userRole={user.role as any}
           resolvedPermissions={resolvedPermissions}
+          growthStudioEnabled={growthStudioAccess.allowed}
           user={{
             name: user.name,
             email: user.email,
