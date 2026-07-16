@@ -35,7 +35,6 @@ const access = {
   allowed: true as const,
   organization: {
     id: user.org_id,
-    plan: "ENTERPRISE",
     subscription_status: "ACTIVE",
     current_period_ends_at: null,
     trial_ends_at: null,
@@ -70,12 +69,12 @@ describe("GET /api/growth-studio/brand-profile", () => {
     expect(body.data.agency).toEqual({ id: agencyId, name: "Centro" })
   })
 
-  it("devuelve 403 cuando el tenant no tiene entitlement", async () => {
+  it("devuelve 403 cuando la suscripción del tenant está inactiva", async () => {
     jest.mocked(resolveGrowthStudioAccess).mockResolvedValue({
       allowed: false,
       status: 403,
-      code: "growth_studio_plan_required",
-      message: "Plan Enterprise requerido",
+      code: "subscription_inactive",
+      message: "Suscripción inactiva",
     })
 
     const response = await GET(

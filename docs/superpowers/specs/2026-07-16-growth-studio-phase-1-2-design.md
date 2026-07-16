@@ -9,14 +9,14 @@
 
 ## Resumen ejecutivo
 
-La primera entrega incorpora **Growth Studio** como una sección nueva del sidebar de Vibook, ubicada inmediatamente después de **CRM Ventas**. Estará disponible para todos los roles de organizaciones con plan `ENTERPRISE` y suscripción vigente.
+La primera entrega incorpora **Growth Studio** como una sección nueva del sidebar de Vibook, ubicada inmediatamente después de **CRM Ventas**. Temporalmente estará disponible para todos los roles y planes de organizaciones con suscripción vigente.
 
 El módulo tendrá dos entradas:
 
 - `Inicio`: selección obligatoria de agencia y resumen del estado del perfil.
 - `Mi marca`: alta y edición del perfil de marca de la agencia seleccionada.
 
-El perfil pertenece a una agencia, no a un usuario ni a toda la organización. Solo puede existir un perfil activo por agencia. Todos los roles podrán leerlo y editarlo, pero únicamente dentro del alcance de agencias que ya poseen en Vibook. El plan Enterprise no ampliará el acceso de un usuario a agencias que hoy no puede consultar.
+El perfil pertenece a una agencia, no a un usuario ni a toda la organización. Solo puede existir un perfil activo por agencia. Todos los roles podrán leerlo y editarlo, pero únicamente dentro del alcance de agencias que ya poseen en Vibook. La habilitación general no amplía el acceso de un usuario a agencias que hoy no puede consultar.
 
 Esta entrega no incluye campañas, generación con OpenAI, créditos, biblioteca de contenidos, publicaciones ni administración específica del feature desde Platform Admin.
 
@@ -30,7 +30,7 @@ Esta entrega no incluye campañas, generación con OpenAI, créditos, biblioteca
 | Ruta base | `/growth-studio` |
 | Ubicación | Sección nueva después de `CRM Ventas` |
 | Submenú inicial | `Inicio` y `Mi marca` |
-| Entitlement | Plan `ENTERPRISE` con suscripción vigente |
+| Entitlement temporal | Cualquier plan con suscripción vigente |
 | Roles | Todos los roles del tenant pueden leer y editar |
 | Dueño del perfil | Agencia |
 | Selección de agencia | Obligatoria |
@@ -42,21 +42,20 @@ Esta entrega no incluye campañas, generación con OpenAI, créditos, biblioteca
 
 ### Regla exacta de acceso de la primera entrega
 
-La organización puede usar Growth Studio cuando se cumplen ambas condiciones:
+La organización puede usar Growth Studio cuando se cumple esta condición:
 
 1. La suscripción permite entrar a Vibook según `isAccessAllowed()`.
-2. `organizations.plan === "ENTERPRISE"`.
 
-Un `custom_plan_id` no habilita Growth Studio por sí solo en esta entrega. Si luego se quiere vender como extra de un custom plan, se agregará un entitlement explícito, por ejemplo `growth_studio`, dentro de `custom_plans.features.extras`.
+`organizations.plan` y `custom_plan_id` no participan temporalmente en la decisión. STARTER, PRO, ENTERPRISE, CUSTOM y organizaciones legacy sin plan reciben el mismo resultado si la suscripción está vigente.
 
-La administración del plan ya pertenece al contexto `platform-admin`/`billing`; no se crea un feature flag editable por el tenant. Esto evita que un administrador de agencia pueda habilitar un producto Enterprise desde `organization_settings`.
+Esta apertura es una decisión de rollout, no un permiso configurable por el tenant. Cuando se defina el packaging comercial definitivo, deberá introducirse un entitlement explícito y testeado en lugar de volver a dispersar comparaciones de planes.
 
 ---
 
 ## Objetivos
 
 1. Dar acceso seguro y coherente a Growth Studio desde el sidebar y por URL directa.
-2. Permitir que cualquier rol de una organización Enterprise configure el perfil de marca de una agencia accesible.
+2. Permitir que cualquier rol de una organización activa configure el perfil de marca de una agencia accesible.
 3. Mantener el contexto de agencia durante la navegación y evitar escrituras ambiguas.
 4. Preparar un contrato de perfil que las fases futuras puedan consumir para generar contenido.
 5. Introducir el mínimo cambio posible en billing, permisos y base de datos.
@@ -124,7 +123,7 @@ Cada corte vertical empieza por el comportamiento observable:
 flowchart LR
   A["Auth / Users"] -->|usuario y roles| G["Growth Studio"]
   O["Organizations / Agencies"] -->|tenant y agencias accesibles| G
-  B["Billing"] -->|entitlement Enterprise y suscripción| G
+  B["Billing"] -->|suscripción vigente| G
   P["Platform Admin"] -->|administra el plan, no el perfil| B
   G -->|perfil de marca por agencia| DB[("growth_brand_profiles")]
   G -. futuro .-> C["Campaigns"]
@@ -136,7 +135,7 @@ flowchart LR
 |---|---|---|
 | `auth` | Usuario autenticado y roles efectivos | Upstream; Growth Studio no modifica usuarios |
 | `organizations/agencies` | Tenant y asignación de agencias | Upstream; define las agencias seleccionables |
-| `billing` | Suscripción y plan | Upstream; define el entitlement Enterprise |
+| `billing` | Estado de suscripción | Upstream; define si la organización está habilitada |
 | `platform-admin` | Administración global de organizaciones y planes | Controla acceso indirectamente mediante billing |
 | `permissions` | Permisos operativos configurables por agencia | No participa en esta entrega porque todos los roles pueden editar |
 | `growth-studio` | Perfil de marca por agencia | Dueño del agregado `BrandProfile` |
@@ -222,15 +221,15 @@ La visibilidad se calcula en servidor y se pasa a `AppSidebar` como un booleano 
 - Con más de una, el usuario debe elegir antes de ver o editar el perfil.
 - Al navegar entre `Inicio` y `Mi marca`, el link conserva `agencyId`.
 - Un `agencyId` inválido, de otra organización o fuera del scope del usuario se trata como recurso no encontrado (`404`) para no filtrar existencia.
-- Un usuario Enterprise sin agencias accesibles ve un estado vacío accionable; no una página de plan denegado.
+- Un usuario sin agencias accesibles ve un estado vacío accionable; no una página de acceso denegado.
 
 La URL es la fuente de verdad para evitar estado global oculto y conservar el contexto tras refresh o link compartido.
 
 ### Estados requeridos
 
 1. Loading inicial.
-2. Organización sin entitlement: acceso denegado con CTA hacia suscripción.
-3. Enterprise sin agencias accesibles.
+2. Organización con suscripción inactiva: acceso denegado con CTA hacia suscripción.
+3. Usuario sin agencias accesibles.
 4. Varias agencias pendientes de selección.
 5. Agencia sin perfil: onboarding corto y CTA `Configurar mi marca`.
 6. Perfil parcial: porcentaje y campos pendientes.
@@ -407,8 +406,8 @@ Semántica: upsert idempotente sobre `(org_id, agency_id)`. `created_by` se cons
 - No usar service role.
 - No registrar el contenido completo del perfil en logs.
 - El upsert usa la clave tenant-agencia y nunca un ID suministrado por el cliente.
-- Una organización Enterprise no obtiene acceso si su suscripción está bloqueada.
-- Un downgrade deja de mostrar y servir el módulo, pero no elimina el perfil. Al volver a Enterprise, el contenido reaparece.
+- Una organización no obtiene acceso si su suscripción está bloqueada.
+- Un cambio de plan no oculta ni elimina el perfil mientras dure la habilitación general.
 
 ---
 
@@ -416,12 +415,10 @@ Semántica: upsert idempotente sobre `(org_id, agency_id)`. `created_by` se cons
 
 ### Acceso
 
-- Enterprise + suscripción vigente → permitido.
-- PRO/FREE → denegado.
-- Enterprise con suscripción bloqueada → denegado.
-- Custom plan sin extra explícito → denegado.
+- STARTER/PRO/ENTERPRISE/CUSTOM/legacy + suscripción vigente → permitido.
+- Cualquier plan con suscripción bloqueada → denegado.
 - Usuario sin `org_id` → error controlado.
-- Todos los roles conocidos → permitidos si el tenant es Enterprise.
+- Todos los roles conocidos → permitidos si el tenant está activo.
 
 ### Scope de agencias
 
@@ -443,13 +440,13 @@ Semántica: upsert idempotente sobre `(org_id, agency_id)`. `created_by` se cons
 - PUT crea.
 - Segundo PUT actualiza la misma fila.
 - Payload no válido devuelve `400`.
-- Sin plan devuelve `403`.
+- Suscripción inactiva devuelve `403`.
 - Scope inválido devuelve `404`.
 - Todas las queries contienen `org_id` y `agency_id`.
 
 ### UI/E2E
 
-- Sidebar visible únicamente para Enterprise.
+- Sidebar visible para cualquier plan con suscripción vigente.
 - URL directa sin acceso muestra acceso denegado.
 - Con una agencia se conserva el contexto al navegar.
 - Con varias, el formulario no aparece hasta seleccionar.
@@ -490,9 +487,9 @@ No se automatiza un `DROP TABLE` destructivo.
 
 ## Criterios de aceptación
 
-- [ ] Una organización Enterprise con suscripción vigente ve Growth Studio después de CRM Ventas.
-- [ ] Una organización no Enterprise no lo ve y obtiene acceso denegado por URL directa.
-- [ ] Todos los roles del tenant Enterprise pueden abrir y editar.
+- [ ] Una organización con suscripción vigente ve Growth Studio después de CRM Ventas, sin importar el plan.
+- [ ] Una organización con suscripción inactiva no lo ve y obtiene acceso denegado por URL directa.
+- [ ] Todos los roles del tenant activo pueden abrir y editar.
 - [ ] Ningún rol accede a una agencia fuera de su scope actual.
 - [ ] La selección de agencia es inequívoca y permanece en la URL.
 - [ ] Existe un único perfil por agencia.

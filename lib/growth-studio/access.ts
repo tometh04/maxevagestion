@@ -1,17 +1,16 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
-import { isAccessAllowed, type BillingOrg } from "@/lib/billing/access"
+import type { BillingOrg } from "@/lib/billing/access"
 import { getUserAgencyIds } from "@/lib/permissions-api"
 import {
   getEffectiveAgencyScopeRole,
   type UserRole,
 } from "@/lib/permissions"
 import type { Database } from "@/lib/supabase/types"
-import { isGrowthStudioEnterprisePlan } from "@/lib/growth-studio/access-rules"
+import { hasGrowthStudioEntitlement } from "@/lib/growth-studio/access-rules"
 
 export {
   canAccessGrowthStudioAgency,
   hasGrowthStudioEntitlement,
-  isGrowthStudioEnterprisePlan,
 } from "@/lib/growth-studio/access-rules"
 
 export interface GrowthStudioAccessUser {
@@ -23,7 +22,6 @@ export interface GrowthStudioAccessUser {
 
 export interface GrowthStudioOrganization extends BillingOrg {
   id: string
-  plan: string | null
 }
 
 export interface GrowthStudioAgency {
@@ -35,7 +33,6 @@ export type GrowthStudioAccessDeniedCode =
   | "missing_organization"
   | "organization_not_found"
   | "subscription_inactive"
-  | "growth_studio_plan_required"
   | "access_check_failed"
 
 export type GrowthStudioOrganizationAccessResult =
@@ -72,7 +69,7 @@ export async function resolveGrowthStudioOrganizationAccess(
 
   const { data, error } = await supabase
     .from("organizations")
-    .select("id, plan, subscription_status, current_period_ends_at, trial_ends_at")
+    .select("id, subscription_status, current_period_ends_at, trial_ends_at")
     .eq("id", user.org_id)
     .maybeSingle()
 
@@ -100,21 +97,12 @@ export async function resolveGrowthStudioOrganizationAccess(
   }
 
   const organization = data as GrowthStudioOrganization
-  if (!isAccessAllowed(organization)) {
+  if (!hasGrowthStudioEntitlement(organization)) {
     return {
       allowed: false,
       status: 403,
       code: "subscription_inactive",
       message: "La suscripción no permite usar Growth Studio",
-    }
-  }
-
-  if (!isGrowthStudioEnterprisePlan(organization)) {
-    return {
-      allowed: false,
-      status: 403,
-      code: "growth_studio_plan_required",
-      message: "Growth Studio está disponible con el plan Enterprise",
     }
   }
 

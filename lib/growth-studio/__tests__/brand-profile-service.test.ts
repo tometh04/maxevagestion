@@ -26,7 +26,6 @@ const access = {
   allowed: true as const,
   organization: {
     id: row.org_id,
-    plan: "ENTERPRISE",
     subscription_status: "ACTIVE",
     current_period_ends_at: null,
     trial_ends_at: null,
