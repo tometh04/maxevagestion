@@ -11,7 +11,7 @@
 
 Implementar un corte vertical usable de Growth Studio:
 
-1. Entitlement Enterprise y defensa por URL/API.
+1. Acceso para organizaciones activas y defensa por URL/API.
 2. Nueva sección de sidebar después de CRM Ventas.
 3. Selección obligatoria de una agencia accesible.
 4. CRUD del perfil de marca por agencia.
@@ -26,7 +26,7 @@ No avanzar con campañas, OpenAI, créditos, biblioteca ni Platform Admin espec�
 El trabajo se divide en cortes pequeños. Cada tarea comienza con un test observable que falla y termina con refactor y verificación. No se inicia la tarea siguiente con tests rojos.
 
 ```text
-Fase 1A  Contrato de acceso Enterprise
+Fase 1A  Contrato de acceso por suscripción
    ↓
 Fase 1B  Protección de rutas + sidebar
    ↓
@@ -82,10 +82,8 @@ Esperado: rama `codex/growth-studio-phase-1`; ningún archivo ajeno stageado.
 
 ### Test primero
 
-- [ ] Enterprise + ACTIVE permite.
-- [ ] Enterprise + período cancelado todavía vigente respeta `isAccessAllowed()`.
-- [ ] PRO/FREE deniega con código `growth_studio_plan_required`.
-- [ ] Custom plan por sí solo deniega.
+- [ ] STARTER/PRO/ENTERPRISE/CUSTOM/legacy + ACTIVE permite.
+- [ ] Cualquier plan con período cancelado todavía vigente respeta `isAccessAllowed()`.
 - [ ] Suscripción bloqueada deniega con `subscription_inactive`.
 - [ ] Usuario sin organización deniega.
 - [ ] Error de consulta se convierte en resultado controlado y no filtra detalles.
@@ -97,9 +95,8 @@ Crear:
 
 ```ts
 resolveGrowthStudioAccess(supabase, user)
-  -> organization plan/subscription
+  -> organization subscription
   -> isAccessAllowed(organization)
-  -> organization.plan === "ENTERPRISE"
   -> getUserAgencyIds(...)
   -> consulta nombres con .eq("org_id", user.org_id).in("id", agencyIds)
 ```
@@ -143,9 +140,9 @@ npx jest lib/growth-studio/__tests__/access.test.ts --runInBand
 Agregar test de server behavior o test de helper de presentación para:
 
 - [ ] Access allowed renderiza children.
-- [ ] Plan no permitido renderiza página de acceso denegado.
+- [ ] Suscripción inactiva renderiza página de acceso denegado.
 - [ ] Error de access check muestra estado seguro y reintentable.
-- [ ] Enterprise sin agencias muestra estado vacío, no plan denied.
+- [ ] Usuario sin agencias muestra estado vacío, no access denied.
 
 ### Implementación
 
@@ -153,7 +150,7 @@ Agregar test de server behavior o test de helper de presentación para:
 - [ ] Usar request-scoped Supabase client.
 - [ ] Resolver acceso con `resolveGrowthStudioAccess()`.
 - [ ] No hacer redirect a una ruta pública ni perder el layout de Vibook.
-- [ ] La página denied explica que Growth Studio pertenece a Enterprise y ofrece CTA a `/settings/subscription`.
+- [ ] La página denied explica que la suscripción está inactiva y ofrece CTA a `/settings/subscription`.
 - [ ] No revelar datos del plan o de otras organizaciones.
 
 ### Verificación
@@ -351,7 +348,7 @@ Usar request-scoped client. No service role y no entry en admin allowlist.
 - [ ] Segundo PUT → actualiza la misma identidad tenant-agencia.
 - [ ] Body inválido → `400`.
 - [ ] Usuario sin org → `400`.
-- [ ] Plan no Enterprise → `403`.
+- [ ] Suscripción inactiva → `403`.
 - [ ] Agencia fuera de scope → `404`.
 - [ ] Error DB → `500` genérico.
 
@@ -491,9 +488,9 @@ git diff --check
 
 Con sesión autenticada:
 
-1. Enterprise, rol org-wide, una agencia.
-2. Enterprise, rol limitado, varias/agencia asignada.
-3. No Enterprise por URL directa.
+1. STARTER/PRO/ENTERPRISE/CUSTOM, rol org-wide, una agencia.
+2. Cualquier plan activo, rol limitado, varias/agencia asignada.
+3. Suscripción inactiva por URL directa.
 4. Crear perfil.
 5. Editar y refrescar.
 6. Intentar `agencyId` de otra organización.
@@ -553,7 +550,7 @@ Regenerar tipos desde el proyecto aplicado, correr nuevamente TypeScript/build, 
 - [ ] Reportar comandos ejecutados y resultados.
 - [ ] Reportar migración aplicada con project ref, no solo “Supabase listo”.
 - [ ] Informar cualquier check no ejecutado.
-- [ ] No publicar anuncio global durante esta entrega: es Enterprise y todavía no incluye el valor completo de campañas/generación.
+- [ ] No publicar anuncio global durante esta entrega: el módulo todavía no incluye el valor completo de campañas/generación.
 - [ ] Preparar la próxima spec recién después de feedback real del perfil de marca.
 
 ---
@@ -563,7 +560,7 @@ Regenerar tipos desde el proyecto aplicado, correr nuevamente TypeScript/build, 
 Cada commit debe excluir los cambios preexistentes de Emilia.
 
 1. `docs(growth-studio): define phase 1 and 2 design`
-2. `test(growth-studio): define enterprise access contract`
+2. `test(growth-studio): define subscription access contract`
 3. `feat(growth-studio): add protected navigation shell`
 4. `feat(growth-studio): add tenant-scoped brand profile schema`
 5. `feat(growth-studio): add brand profile domain and api`
@@ -578,7 +575,7 @@ No se mezcla la migración productiva con cambios ajenos ni se usa `git add .`.
 
 La entrega está terminada cuando:
 
-- Growth Studio aparece en Enterprise y no en otros planes.
+- Growth Studio aparece en todos los planes con suscripción vigente.
 - La URL directa aplica el mismo entitlement.
 - Todos los roles pueden editar perfiles de sus agencias accesibles.
 - El contexto de agencia es obligatorio y persistente en URL.
