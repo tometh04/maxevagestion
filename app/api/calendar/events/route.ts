@@ -45,20 +45,6 @@ export async function GET(request: Request) {
     checkinsQuery = applyOperationFilters(checkinsQuery)
     const { data: checkins } = await checkinsQuery
 
-    if (checkins) {
-      for (const op of checkins) {
-        events.push({
-          id: `checkin-${op.id}`,
-          type: "CHECKIN",
-          title: `Check-in: ${op.destination}`,
-          date: op.checkin_date,
-          description: op.file_code || undefined,
-          color: "#4F5BD5",
-          operationId: op.id,
-        })
-      }
-    }
-
     // Salidas de operaciones (vuelos) y check-in/check-out de hoteles
     // Para product_type HOTEL/CRUCERO: departure_date = check-in, checkout_date = check-out
     let departuresQuery = (supabase.from("operations") as any)
@@ -67,18 +53,76 @@ export async function GET(request: Request) {
     departuresQuery = applyOperationFilters(departuresQuery)
     const { data: departures } = await departuresQuery
 
+    // ────────────────────────────────────────────────────────────
+    // Titular (cliente MAIN) por operación → identifica la reserva en el
+    // calendario, igual que el aviso de check-in (lib/alerts/checkin-alerts.ts).
+    // Dos reservas al mismo destino/fecha se veían idénticas ("Salida: Madrid").
+    // Se resuelve en tiempo de lectura, así aplica a todas las ops (viejas y nuevas).
+    // Formato "Apellido, Nombre". Batch por los op ids ya scopeados arriba.
+    // ────────────────────────────────────────────────────────────
+    const titularByOp = new Map<string, string>()
+    // Carga (batch) los titulares de las op ids que todavía no resolvimos.
+    // Idempotente: se puede llamar varias veces; solo busca lo que falta.
+    const loadTitulars = async (ids: (string | null | undefined)[]) => {
+      const missing = Array.from(
+        new Set(ids.filter((id): id is string => !!id && !titularByOp.has(id)))
+      )
+      if (missing.length === 0) return
+      const { data: ocRows } = await (supabase.from("operation_customers") as any)
+        .select("operation_id, role, customers:customer_id(first_name, last_name)")
+        .in("operation_id", missing)
+      const rowsByOp = new Map<string, any[]>()
+      for (const row of (ocRows || []) as any[]) {
+        const arr = rowsByOp.get(row.operation_id) ?? []
+        arr.push(row)
+        rowsByOp.set(row.operation_id, arr)
+      }
+      rowsByOp.forEach((rows, opId) => {
+        const main = rows.find((r: any) => r.role === "MAIN") ?? rows[0]
+        const c = main?.customers
+        const name = c ? [c.last_name, c.first_name].filter(Boolean).join(", ") : ""
+        if (name) titularByOp.set(opId, name)
+      })
+    }
+
+    await loadTitulars([
+      ...(checkins || []).map((op: any) => op.id),
+      ...(departures || []).map((op: any) => op.id),
+    ])
+
+    // Sufijo " — Apellido, Nombre" si la op tiene titular; string vacío si no.
+    const titularSuffix = (opId: string): string => {
+      const titular = titularByOp.get(opId)
+      return titular ? ` — ${titular}` : ""
+    }
+
+    if (checkins) {
+      for (const op of checkins) {
+        events.push({
+          id: `checkin-${op.id}`,
+          type: "CHECKIN",
+          title: `Check-in: ${op.destination}${titularSuffix(op.id)}`,
+          date: op.checkin_date,
+          description: op.file_code || undefined,
+          color: "#4F5BD5",
+          operationId: op.id,
+        })
+      }
+    }
+
     const hotelTypes = new Set(["HOTEL", "CRUCERO"])
 
     if (departures) {
       for (const op of departures) {
         const isHotel = hotelTypes.has(op.product_type)
+        const titular = titularSuffix(op.id)
 
         if (isHotel) {
           // Check-in del hotel (desde departure_date)
           events.push({
             id: `departure-${op.id}`,
             type: "CHECKIN",
-            title: `Check-in: ${op.destination}`,
+            title: `Check-in: ${op.destination}${titular}`,
             date: op.departure_date,
             description: op.file_code || undefined,
             color: "#4F5BD5",
@@ -89,7 +133,7 @@ export async function GET(request: Request) {
             events.push({
               id: `checkout-${op.id}`,
               type: "CHECKOUT",
-              title: `Check-out: ${op.destination}`,
+              title: `Check-out: ${op.destination}${titular}`,
               date: op.checkout_date,
               description: op.file_code || undefined,
               color: "#8B82E8",
@@ -100,7 +144,7 @@ export async function GET(request: Request) {
           events.push({
             id: `departure-${op.id}`,
             type: "DEPARTURE",
-            title: `Salida: ${op.destination}`,
+            title: `Salida: ${op.destination}${titular}`,
             date: op.departure_date,
             description: op.file_code || undefined,
             color: "#2CA77F",
@@ -112,7 +156,7 @@ export async function GET(request: Request) {
             events.push({
               id: `return-${op.id}`,
               type: "RETURN",
-              title: `Regreso: ${op.destination}`,
+              title: `Regreso: ${op.destination}${titular}`,
               date: op.return_date,
               description: op.file_code || undefined,
               color: "#0EA5E9",
@@ -190,12 +234,19 @@ export async function GET(request: Request) {
         .in("operation_id", allowedOpIdsForAlerts)
 
       if (alerts) {
+        // Las alertas guardan su texto al generarse (UPCOMING_TRIP check-in/check-out,
+        // etc.) y no incluyen el titular. Lo agregamos en tiempo de lectura sobre la
+        // línea secundaria, así el nombre aparece retroactivamente en alertas viejas y
+        // nuevas sin tocar el string persistido.
+        await loadTitulars((alerts as any[]).map((a: any) => a.operation_id))
         for (const alert of alerts) {
+          const titular = alert.operation_id ? titularByOp.get(alert.operation_id) : undefined
           events.push({
             id: `alert-${alert.id}`,
             type: "REMINDER",
             title: alert.description,
             date: alert.date_due.split("T")[0],
+            description: titular ? `Titular: ${titular}` : undefined,
             color: "#4F5BD5",
             operationId: alert.operation_id || undefined,
           })
