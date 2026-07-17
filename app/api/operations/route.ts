@@ -4,7 +4,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { generateFileCode } from "@/lib/accounting/file-code"
 import { transferLeadToOperation, getOrCreateDefaultAccount, createLedgerMovement, calculateARSEquivalent } from "@/lib/accounting/ledger"
 import { createSaleIVA, createPurchaseIVA } from "@/lib/accounting/iva"
-import { createOperatorPayment, calculateDueDate } from "@/lib/accounting/operator-payments"
+import { createOperatorPayment, calculateDueDate, sanitizeDueDate } from "@/lib/accounting/operator-payments"
 import { canPerformAction, getUserAgencyIds } from "@/lib/permissions-api"
 import { resolveUserPermissions } from "@/lib/permissions-agency"
 import { revalidateTag, CACHE_TAGS } from "@/lib/cache"
@@ -201,7 +201,7 @@ export async function POST(request: Request) {
           notes: op.notes || undefined,
           passenger_detail: op.passenger_detail ?? undefined,
           file_code: (op.file_code && String(op.file_code).trim()) || null,
-          payment_due_date: op.payment_due_date || null
+          payment_due_date: sanitizeDueDate(op.payment_due_date)
         })
         totalOperatorCost += Number(op.cost)
         // Usar la moneda del primer operador como moneda principal

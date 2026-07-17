@@ -4,7 +4,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { updateSaleIVA, updatePurchaseIVA, deleteSaleIVA, deletePurchaseIVA, createPurchaseIVA } from "@/lib/accounting/iva"
 import { invalidateBalanceCache } from "@/lib/accounting/ledger"
 import { revalidateTag, CACHE_TAGS } from "@/lib/cache"
-import { createOperatorPayment, calculateDueDate } from "@/lib/accounting/operator-payments"
+import { createOperatorPayment, calculateDueDate, sanitizeDueDate } from "@/lib/accounting/operator-payments"
 import { getOpenOperatorPaymentStatus } from "@/lib/accounting/operator-payment-settlement"
 import { logAudit, getClientIP } from "@/lib/audit"
 import { enforceUserRateLimit } from "@/lib/rate-limit"
@@ -41,7 +41,7 @@ function normalizeIncomingOperators(
       notes: operatorData.notes || null,
       passenger_detail: operatorData.passenger_detail ?? null,
       file_code: (operatorData.file_code && String(operatorData.file_code).trim()) || null,
-      payment_due_date: operatorData.payment_due_date || null,
+      payment_due_date: sanitizeDueDate(operatorData.payment_due_date),
     }))
 }
 

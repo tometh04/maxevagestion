@@ -45,6 +45,19 @@ export function calculateDueDate(
 }
 
 /**
+ * Sanitiza una fecha máxima de pago (payment_due_date) provista por el cliente.
+ * Devuelve el string solo si tiene formato YYYY-MM-DD; caso contrario null.
+ * Evita que un payload malformado por API directa rompa el INSERT en la columna
+ * DATE (la UI usa <input type="date"> y nunca manda basura, pero validamos igual
+ * por el invariante de validar inputs externos).
+ */
+export function sanitizeDueDate(value: unknown): string | null {
+  if (typeof value !== "string") return null
+  const s = value.trim()
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null
+}
+
+/**
  * Crear pago a operador
  * @param operationId - ID de la operación (opcional para pagos manuales)
  * @param orgId - org_id del tenant (obligatorio para que el registro sea visible en el sistema)
