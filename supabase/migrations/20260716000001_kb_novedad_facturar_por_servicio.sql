@@ -7,12 +7,12 @@
 
 -- Categoría "Novedades" (sort_order 0 = arriba de todo)
 INSERT INTO kb_categories (id, name, slug, icon, sort_order) VALUES
-  ('a0000000-0000-0000-0000-000000000009', 'Novedades', 'novedades', 'Sparkles', 0)
+  ('a0000000-0000-0000-0000-000000000015', 'Novedades', 'novedades', 'Sparkles', 0)
 ON CONFLICT (slug) DO NOTHING;
 
 -- Artículo: facturar por servicio
 INSERT INTO kb_articles (category_id, title, slug, summary, sort_order, content) VALUES
-('a0000000-0000-0000-0000-000000000009',
+('a0000000-0000-0000-0000-000000000015',
  'Nuevo: Facturá por servicio (vuelo y hotel por separado)',
  'novedad-facturar-por-servicio',
  'Ahora podés emitir la factura de cada servicio de una operación por separado — por ejemplo, primero el vuelo y después el hotel.',
