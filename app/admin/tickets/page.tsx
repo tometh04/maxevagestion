@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import {
   LifeBuoy, RefreshCw, MessageCircle, Building2, Mail,
-  Clock, ChevronDown,
+  Clock, ChevronDown, Bug, Lightbulb, HelpCircle, ExternalLink,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -40,6 +40,11 @@ interface Ticket {
   user_email: string
   org_name: string | null
   conversation_id: string | null
+  category: string | null
+  severity: string | null
+  priority: string | null
+  linear_issue_url: string | null
+  linear_identifier: string | null
 }
 
 const STATUS_CONFIG: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
@@ -47,6 +52,23 @@ const STATUS_CONFIG: Record<string, { label: string; variant: "default" | "secon
   in_progress: { label: "En progreso", variant: "default" },
   resolved: { label: "Resuelto", variant: "secondary" },
   closed: { label: "Cerrado", variant: "outline" },
+}
+
+const CATEGORY_CONFIG: Record<string, { label: string; icon: typeof Bug }> = {
+  bug: { label: "Bug", icon: Bug },
+  improvement: { label: "Mejora", icon: Lightbulb },
+  question: { label: "Consulta", icon: HelpCircle },
+}
+
+const PRIORITY_CONFIG: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; className?: string }> = {
+  urgent: { label: "Urgente", variant: "destructive" },
+  high: { label: "Alta", variant: "default", className: "bg-orange-500 hover:bg-orange-500" },
+  normal: { label: "Normal", variant: "secondary" },
+  low: { label: "Baja", variant: "outline" },
+}
+
+const SEVERITY_LABELS: Record<string, string> = {
+  low: "Baja", medium: "Media", high: "Alta", critical: "Crítica",
 }
 
 function formatDate(d: string) {
@@ -64,11 +86,12 @@ export default function AdminTicketsPage() {
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState("all")
+  const [categoryFilter, setCategoryFilter] = useState("all")
 
   const fetchTickets = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/admin/support/tickets?status=${filter}`)
+      const res = await fetch(`/api/admin/support/tickets?status=${filter}&category=${categoryFilter}`)
       const data = await res.json()
       setTickets(data.tickets || [])
     } catch {
@@ -76,7 +99,7 @@ export default function AdminTicketsPage() {
     } finally {
       setLoading(false)
     }
-  }, [filter])
+  }, [filter, categoryFilter])
 
   useEffect(() => {
     fetchTickets()
@@ -135,19 +158,30 @@ export default function AdminTicketsPage() {
         </div>
       </div>
 
-      {/* Filter */}
-      <div className="flex items-center gap-3 mb-4">
-        <span className="text-sm text-muted-foreground">Filtrar por estado:</span>
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <span className="text-sm text-muted-foreground">Filtrar:</span>
         <Select value={filter} onValueChange={setFilter}>
-          <SelectTrigger className="w-48">
+          <SelectTrigger className="w-40">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Todos</SelectItem>
+            <SelectItem value="all">Todos los estados</SelectItem>
             <SelectItem value="open">Abiertos</SelectItem>
             <SelectItem value="in_progress">En progreso</SelectItem>
             <SelectItem value="resolved">Resueltos</SelectItem>
             <SelectItem value="closed">Cerrados</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+          <SelectTrigger className="w-40">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos los tipos</SelectItem>
+            <SelectItem value="bug">Bugs</SelectItem>
+            <SelectItem value="improvement">Mejoras</SelectItem>
+            <SelectItem value="question">Consultas</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -158,6 +192,8 @@ export default function AdminTicketsPage() {
           <TableHeader>
             <TableRow>
               <TableHead>Asunto</TableHead>
+              <TableHead>Tipo</TableHead>
+              <TableHead>Prioridad</TableHead>
               <TableHead>Usuario</TableHead>
               <TableHead>Organización</TableHead>
               <TableHead>Estado</TableHead>
@@ -168,19 +204,22 @@ export default function AdminTicketsPage() {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                   Cargando...
                 </TableCell>
               </TableRow>
             ) : tickets.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                   No hay tickets {filter !== "all" ? `con estado "${STATUS_CONFIG[filter]?.label}"` : ""}
                 </TableCell>
               </TableRow>
             ) : (
               tickets.map((ticket) => {
                 const cfg = STATUS_CONFIG[ticket.status] || STATUS_CONFIG.open
+                const catCfg = ticket.category ? CATEGORY_CONFIG[ticket.category] : null
+                const CatIcon = catCfg?.icon
+                const prioCfg = ticket.priority ? PRIORITY_CONFIG[ticket.priority] : null
                 return (
                   <TableRow key={ticket.id} className="cursor-pointer hover:bg-accent/50" onClick={() => router.push(`/admin/tickets/${ticket.id}`)}>
                     <TableCell>
@@ -191,13 +230,51 @@ export default function AdminTicketsPage() {
                             {ticket.description}
                           </p>
                         )}
-                        {ticket.conversation_id && (
-                          <span className="inline-flex items-center gap-1 text-[10px] text-primary mt-1">
-                            <MessageCircle className="h-3 w-3" />
-                            Con conversación IA
-                          </span>
-                        )}
+                        <div className="flex items-center gap-2 mt-1">
+                          {ticket.conversation_id && (
+                            <span className="inline-flex items-center gap-1 text-[10px] text-primary">
+                              <MessageCircle className="h-3 w-3" />
+                              Con conversación IA
+                            </span>
+                          )}
+                          {ticket.linear_issue_url && (
+                            <a
+                              href={ticket.linear_issue_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="inline-flex items-center gap-1 text-[10px] text-primary hover:underline"
+                            >
+                              <ExternalLink className="h-3 w-3" />
+                              {ticket.linear_identifier || "Ver en Linear"}
+                            </a>
+                          )}
+                        </div>
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      {catCfg && CatIcon ? (
+                        <span className="inline-flex items-center gap-1.5 text-sm">
+                          <CatIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                          {catCfg.label}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {prioCfg ? (
+                        <Badge variant={prioCfg.variant} className={prioCfg.className}>
+                          {prioCfg.label}
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                      {ticket.severity && (
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                          Sev: {SEVERITY_LABELS[ticket.severity] || ticket.severity}
+                        </p>
+                      )}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1.5 text-sm">

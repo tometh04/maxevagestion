@@ -16,21 +16,37 @@ export async function GET(req: NextRequest) {
   const admin = createAdminClient()
   const url = new URL(req.url)
   const status = url.searchParams.get("status")
+  const category = url.searchParams.get("category")
+
+  // Orden por prioridad (urgent → low) y luego por fecha, para que funcione
+  // como backlog priorizado y no como inbox plano. La columna priority es text
+  // (low/normal/high/urgent) así que ordenamos por rank numérico en JS.
+  const PRIORITY_RANK: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3 }
 
   let query = (admin as any)
     .from("support_tickets")
     .select(`
       id, subject, description, status, created_at, updated_at,
-      user_id, org_id, conversation_id
+      user_id, org_id, conversation_id,
+      category, severity, priority, ai_rationale,
+      linear_issue_url, linear_identifier
     `)
-    .order("created_at", { ascending: false })
-    .limit(100)
+    .limit(200)
 
   if (status && status !== "all") {
     query = query.eq("status", status)
   }
+  if (category && category !== "all") {
+    query = query.eq("category", category)
+  }
 
-  const { data: tickets, error } = await query
+  const { data: rawTickets, error } = await query
+  const tickets = (rawTickets || []).sort((a: any, b: any) => {
+    const pa = PRIORITY_RANK[a.priority] ?? 2
+    const pb = PRIORITY_RANK[b.priority] ?? 2
+    if (pa !== pb) return pa - pb
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  })
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }

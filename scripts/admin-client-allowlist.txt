@@ -99,6 +99,7 @@ app/api/import/users/route.ts                                            # IMPOR
 app/api/integrations/manychat/[token]/webhook/route.ts                   # WEBHOOK_S2S — ManyChat bot pega, org via token.
 app/api/integrations/callbell-in/[token]/webhook/route.ts                # WEBHOOK_S2S — Callbell pega, org via token.
 app/api/webhooks/manychat/route.ts                                       # WEBHOOK_S2S — legacy Manychat webhook (API key auth).
+app/api/webhooks/linear/route.ts                                         # WEBHOOK_S2S — Linear pega al cambiar estado de issue (firma HMAC), sin session; update por linear_issue_id.
 app/api/public/quotations/[token]/route.ts                               # WEBHOOK_S2S — aceptación de cotización pública; org_id del token.
 
 # ─── WHA_CONTROL ───────────────────────────────────────────────────────────────
