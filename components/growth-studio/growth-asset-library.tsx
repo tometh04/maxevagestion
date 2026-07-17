@@ -18,6 +18,7 @@ import {
   Upload,
 } from "lucide-react"
 import { AgencyContextSelector } from "@/components/growth-studio/agency-context-selector"
+import { GenerationProgress } from "@/components/growth-studio/generation-progress"
 import { useGrowthStudio } from "@/components/growth-studio/growth-studio-provider"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -183,6 +184,7 @@ export function GrowthAssetLibrary() {
                 <SelectField label="Calidad" value={quality} onChange={(value) => setQuality(value as Quality)} options={[{ value: "low", label: "Baja" }, { value: "medium", label: "Media" }, { value: "high", label: "Alta" }]} />
                 <Button className="sm:ml-auto" disabled={Boolean(busy)} onClick={() => void generateImage()}>{busy === "generate" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ImagePlus className="mr-2 h-4 w-4" />}Generar imagen</Button>
               </div>
+              {busy === "generate" && <GenerationProgress kind="image" className="mt-5" />}
             </div>
             <div className="grid gap-3 border-t pt-5 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
               <FileAction label="Subir imagen" detail="PNG, JPEG o WebP hasta 10 MB" icon={<Upload className="h-4 w-4" />} loading={busy === "upload"} disabled={Boolean(busy)} onFile={(file) => void uploadFile(file, "upload")} />
