@@ -93,6 +93,8 @@ const allNavigation: NavItem[] = [
     requiresGrowthStudio: true,
     items: [
       { title: "Inicio", url: "/growth-studio" },
+      { title: "Campañas", url: "/growth-studio/campaigns" },
+      { title: "Biblioteca", url: "/growth-studio/library" },
       { title: "Mi marca", url: "/growth-studio/brand" },
     ],
   },

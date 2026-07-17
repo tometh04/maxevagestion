@@ -4,7 +4,7 @@ export function hasGrowthStudioEntitlement(
   organization: Pick<
     BillingOrg,
     "subscription_status" | "current_period_ends_at" | "trial_ends_at"
-  >
+  > & { plan?: unknown }
 ): boolean {
   return isAccessAllowed(organization)
 }
