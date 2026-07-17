@@ -1,11 +1,19 @@
 /** @jest-environment node */
 
+jest.mock("@/lib/growth-studio/brand-profile-service", () => ({
+  getBrandProfile: jest.fn(),
+}))
+
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/lib/supabase/types"
 import {
+  generateGrowthAsset,
   listGrowthAssets,
   uploadGrowthAsset,
 } from "@/lib/growth-studio/asset-service"
+import type { GrowthStudioAiProvider } from "@/lib/growth-studio/ai-provider"
+import { GrowthStudioAiTimeoutError } from "@/lib/growth-studio/ai-provider"
+import { getBrandProfile } from "@/lib/growth-studio/brand-profile-service"
 import {
   GrowthStudioAssetNotFoundError,
   GrowthStudioAssetValidationError,
@@ -35,6 +43,11 @@ function context(supabase: SupabaseClient<Database>) {
 }
 
 describe("Growth Studio asset service", () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+    ;(getBrandProfile as jest.Mock).mockResolvedValue(null)
+  })
+
   it("rechaza una agencia fuera del alcance antes de tocar storage", async () => {
     const from = jest.fn()
     const storage = { from: jest.fn() }
@@ -100,5 +113,54 @@ describe("Growth Studio asset service", () => {
     expect(assetsQuery.eq).toHaveBeenNthCalledWith(1, "org_id", orgId)
     expect(assetsQuery.eq).toHaveBeenNthCalledWith(2, "agency_id", agencyId)
     expect(result).toEqual({ assets: [], logoUrl: null })
+  })
+
+  it("marca la reserva como fallida cuando OpenAI supera el timeout", async () => {
+    const requestId = "55555555-5555-4555-8555-555555555555"
+    const rpc = jest
+      .fn()
+      .mockResolvedValueOnce({
+        data: [{ request_id: requestId, remaining: 11, is_existing: false }],
+        error: null,
+      })
+      .mockResolvedValueOnce({ data: null, error: null })
+    const supabase = {
+      rpc,
+      from: jest.fn(),
+      storage: { from: jest.fn() },
+    } as unknown as SupabaseClient<Database>
+    const provider: GrowthStudioAiProvider = {
+      textModel: "test-text-model",
+      imageModel: "test-image-model",
+      generateConcepts: jest.fn(),
+      generateChannels: jest.fn(),
+      generateImage: jest.fn().mockRejectedValue(new GrowthStudioAiTimeoutError()),
+    }
+
+    await expect(
+      generateGrowthAsset(
+        context(supabase),
+        {
+          agencyId,
+          campaignId: null,
+          visualDirection: "Amanecer en una playa del Caribe",
+          format: "instagram_feed",
+          quality: "medium",
+          idempotencyKey: "timeout-test-1",
+        },
+        provider
+      )
+    ).rejects.toBeInstanceOf(GrowthStudioAiTimeoutError)
+
+    expect(rpc).toHaveBeenLastCalledWith(
+      "finish_growth_studio_generation",
+      expect.objectContaining({
+        p_org_id: orgId,
+        p_agency_id: agencyId,
+        p_request_id: requestId,
+        p_status: "failed",
+        p_error_code: "provider_timeout",
+      })
+    )
   })
 })

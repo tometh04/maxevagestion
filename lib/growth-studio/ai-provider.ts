@@ -12,6 +12,7 @@ import {
 export const GROWTH_STUDIO_CONCEPTS_PROMPT_VERSION = "concepts.v1"
 export const GROWTH_STUDIO_CHANNELS_PROMPT_VERSION = "channels.v1"
 export const GROWTH_STUDIO_IMAGE_PROMPT_VERSION = "image.v1"
+export const GROWTH_STUDIO_IMAGE_TIMEOUT_MS = 4 * 60 * 1000
 
 export type GrowthStudioImageQuality = "low" | "medium" | "high"
 export type GrowthStudioImageFormat = "instagram_feed" | "instagram_story"
@@ -53,6 +54,13 @@ export class GrowthStudioAiProviderError extends Error {
   constructor(message = "No se pudo generar el contenido") {
     super(message)
     this.name = "GrowthStudioAiProviderError"
+  }
+}
+
+export class GrowthStudioAiTimeoutError extends GrowthStudioAiProviderError {
+  constructor() {
+    super("La imagen demoró demasiado en generarse. Volvé a intentarlo")
+    this.name = "GrowthStudioAiTimeoutError"
   }
 }
 
@@ -167,13 +175,19 @@ export function createOpenAIGrowthStudioProvider(): GrowthStudioAiProvider {
       ].join("\n")
 
       try {
-        const response = await client.images.generate({
-          model: imageModel,
-          prompt,
-          size,
-          quality: input.quality,
-          n: 1,
-        })
+        const response = await client.images.generate(
+          {
+            model: imageModel,
+            prompt,
+            size,
+            quality: input.quality,
+            n: 1,
+          },
+          {
+            timeout: GROWTH_STUDIO_IMAGE_TIMEOUT_MS,
+            maxRetries: 0,
+          }
+        )
         const base64 = response.data?.[0]?.b64_json
         if (!base64) {
           throw new GrowthStudioAiProviderError("La imagen no pudo procesarse")
@@ -187,6 +201,15 @@ export function createOpenAIGrowthStudioProvider(): GrowthStudioAiProvider {
         }
       } catch (error) {
         if (error instanceof GrowthStudioAiProviderError) throw error
+        if (error instanceof OpenAI.APIConnectionTimeoutError) {
+          console.warn("[growth-studio-ai] Timeout generando imagen", {
+            model: imageModel,
+            quality: input.quality,
+            format: input.format,
+            timeoutMs: GROWTH_STUDIO_IMAGE_TIMEOUT_MS,
+          })
+          throw new GrowthStudioAiTimeoutError()
+        }
         console.error("[growth-studio-ai] Falló la generación de imagen", {
           model: imageModel,
           quality: input.quality,
@@ -205,4 +228,3 @@ export function findConcept(
 ): CampaignConcept | null {
   return concepts.variants.find((variant) => variant.index === index) ?? null
 }
-

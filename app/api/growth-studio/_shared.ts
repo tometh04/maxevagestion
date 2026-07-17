@@ -20,6 +20,7 @@ import {
 import {
   GrowthStudioAiConfigurationError,
   GrowthStudioAiProviderError,
+  GrowthStudioAiTimeoutError,
 } from "@/lib/growth-studio/ai-provider"
 import {
   GrowthStudioAssetNotFoundError,
@@ -81,6 +82,12 @@ export function growthStudioApiError(error: unknown): NextResponse {
     return NextResponse.json(
       { error: error.message, code: "generation_in_progress" },
       { status: 409 }
+    )
+  }
+  if (error instanceof GrowthStudioAiTimeoutError) {
+    return NextResponse.json(
+      { error: error.message, code: "generation_timeout" },
+      { status: 504 }
     )
   }
   if (error instanceof GrowthStudioAiConfigurationError) {
