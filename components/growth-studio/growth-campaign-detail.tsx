@@ -16,6 +16,7 @@ import {
   ThumbsDown,
   ThumbsUp,
 } from "lucide-react"
+import { GenerationProgress } from "@/components/growth-studio/generation-progress"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import {
@@ -235,6 +236,7 @@ export function GrowthCampaignDetail({ campaignId }: { campaignId: string }) {
 
       <section className="rounded-2xl border bg-card p-5 sm:p-7">
         <StepHeading step="1" title="Elegí un concepto" description="Generamos tres caminos distintos para la misma campaña." complete={Boolean(campaign.selectedConceptIndex)} />
+        {pending === "concepts" && <GenerationProgress kind="concepts" className="mt-6" />}
         {concepts.length === 0 ? (
           <div className="mt-6 rounded-xl bg-muted/40 px-5 py-8 text-center">
             <Sparkles className="mx-auto h-7 w-7 text-primary" />
@@ -262,6 +264,8 @@ export function GrowthCampaignDetail({ campaignId }: { campaignId: string }) {
 
       <section className="rounded-2xl border bg-card p-5 sm:p-7">
         <StepHeading step="2" title="Adaptá a cada canal" description="Un mismo concepto con el formato y la extensión adecuados para cada medio." complete={Boolean(adaptations)} />
+        {pending === "channels" && <GenerationProgress kind="channels" className="mt-6" />}
+        {pending === "image" && <GenerationProgress kind="image" className="mt-6" />}
         {!campaign.selectedConceptIndex ? (
           <p className="mt-6 rounded-xl bg-muted/40 px-5 py-6 text-sm text-muted-foreground">Elegí uno de los tres conceptos para continuar.</p>
         ) : !adaptations ? (
