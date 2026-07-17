@@ -19,6 +19,7 @@ import { calculateOperationBalances, roundMoney } from "@/lib/operations/operati
 import { getOrgFeatureFlag } from "@/lib/settings/org-features"
 import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
 import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
+import { ledgerSign } from "@/lib/invoices/credit-note"
 
 export async function POST(request: Request) {
   try {
@@ -1413,6 +1414,28 @@ export async function GET(request: Request) {
       }
     }
 
+    // Facturación (2026-07-16): estado de facturado por operación para mostrar
+    // una columna en el listado sin tener que abrir op x op. Una operación está
+    // facturada si tiene facturas AFIP con status="authorized" asociadas. Sumamos
+    // con signo contable (NC restan, ND/facturas suman) igual que el guard de
+    // POST /api/invoices, para reflejar cancelaciones por nota de crédito.
+    // Cross-tenant: filtro explícito por org_id (no confiar en RLS).
+    const invoicedByOp: Record<string, number> = {}
+    if (operationIds.length > 0) {
+      const { data: authInvoices } = await supabase
+        .from("invoices")
+        .select("operation_id, imp_total, cbte_tipo")
+        .eq("org_id", (user as any).org_id)
+        .eq("status", "authorized")
+        .in("operation_id", operationIds)
+      for (const inv of (authInvoices || []) as any[]) {
+        const opId = inv.operation_id
+        if (!opId) continue
+        invoicedByOp[opId] =
+          (invoicedByOp[opId] || 0) + ledgerSign(inv.cbte_tipo) * (Number(inv.imp_total) || 0)
+      }
+    }
+
     // Servicios adicionales: si la flag está ON, sumar su venta a sale_amount_total
     // para que "A cobrar" (pending_amount) refleje servicios impagos del cliente.
     const includeServicesInSale = await getOrgFeatureFlag(
@@ -1450,9 +1473,23 @@ export async function GET(request: Request) {
         operatorPaid: paymentData.operator_paid,
       })
       
+      // Estado de facturación: comparamos lo facturado (neto de NC) contra la
+      // venta total. Total vs Parcial vs No facturado. Mismo criterio de
+      // comparación que el guard de creación de facturas (imp_total comparable
+      // a sale_amount_total).
+      const invoicedAmount = invoicedByOp[op.id] || 0
+      const saleTotalForInvoice = Number(op.sale_amount_total) || 0
+      let invoice_status: "INVOICED" | "PARTIAL" | "NOT_INVOICED" = "NOT_INVOICED"
+      if (invoicedAmount > 0.01) {
+        invoice_status =
+          invoicedAmount >= saleTotalForInvoice - 0.01 ? "INVOICED" : "PARTIAL"
+      }
+
       return {
         ...op,
         customer_name: customerName,
+        invoice_status,
+        invoiced_amount: roundMoney(invoicedAmount),
         paid_amount: paymentData.customer_paid, // Monto Cobrado
         scheduled_pending_amount: paymentData.customer_pending,
         pending_amount: balances.customerPending, // A cobrar

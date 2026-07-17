@@ -48,6 +48,10 @@ interface DataTableProps<TData, TValue> {
   manualSorting?: boolean
   sorting?: SortingState
   onSortingChange?: OnChangeFn<SortingState>
+  // Si se pasa, la visibilidad de columnas (mostrar/ocultar desde "Vista")
+  // se guarda en localStorage bajo esta clave y se restaura al volver a
+  // entrar / refrescar. Opt-in: sin persistKey el comportamiento no cambia.
+  persistKey?: string
 }
 
 export function DataTable<TData, TValue>({
@@ -59,7 +63,9 @@ export function DataTable<TData, TValue>({
   manualSorting = false,
   sorting: controlledSorting,
   onSortingChange: controlledOnSortingChange,
+  persistKey,
 }: DataTableProps<TData, TValue>) {
+  const storageKey = persistKey ? `datatable-cols:${persistKey}` : null
   const [internalSorting, setInternalSorting] = React.useState<SortingState>([])
   const sorting = controlledSorting ?? internalSorting
   const setSorting = controlledOnSortingChange ?? setInternalSorting
@@ -80,6 +86,17 @@ export function DataTable<TData, TValue>({
       const initial: VisibilityState = {}
       if (searchKey === "searchText") {
         initial.searchText = false
+      }
+      // Restaurar selección guardada del usuario (mostrar/ocultar columnas).
+      if (storageKey && typeof window !== "undefined") {
+        try {
+          const saved = window.localStorage.getItem(storageKey)
+          if (saved) {
+            return { ...initial, ...(JSON.parse(saved) as VisibilityState) }
+          }
+        } catch {
+          // localStorage corrupto o no disponible → usar defaults.
+        }
       }
       return initial
     })
@@ -125,6 +142,16 @@ export function DataTable<TData, TValue>({
       table.getColumn(searchKey)?.setFilterValue(debouncedSearch)
     }
   }, [debouncedSearch, searchKey, table])
+
+  // Persistir la visibilidad de columnas elegida por el usuario.
+  React.useEffect(() => {
+    if (!storageKey || typeof window === "undefined") return
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify(columnVisibility))
+    } catch {
+      // Cuota llena / storage bloqueado → ignorar, no romper la tabla.
+    }
+  }, [columnVisibility, storageKey])
 
   // Sticky horizontal scrollbar: sync a bottom-sticky scrollbar with the table
   const tableScrollRef = React.useRef<HTMLDivElement>(null)

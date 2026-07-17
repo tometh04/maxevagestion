@@ -83,6 +83,8 @@ interface Operation {
   reservation_code_air?: string | null
   reservation_code_hotel?: string | null
   type?: string | null
+  invoice_status?: "INVOICED" | "PARTIAL" | "NOT_INVOICED"
+  invoiced_amount?: number
 }
 
 interface OperationsTableProps {
@@ -645,6 +647,45 @@ export function OperationsTable({
     }
 
     cols.push({
+      accessorKey: "invoice_status",
+      enableSorting: false,
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Facturado" />
+      ),
+      cell: ({ row }) => {
+        const st = row.original.invoice_status || "NOT_INVOICED"
+        if (st === "INVOICED") {
+          return (
+            <Badge variant="success" className="text-[10px] px-1.5 py-0">
+              Facturado
+            </Badge>
+          )
+        }
+        if (st === "PARTIAL") {
+          const amount = row.original.invoiced_amount
+          return (
+            <Badge
+              variant="coral"
+              className="text-[10px] px-1.5 py-0"
+              title={
+                amount != null
+                  ? `Facturado ${row.original.currency} ${amount.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  : undefined
+              }
+            >
+              Parcial
+            </Badge>
+          )
+        }
+        return (
+          <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground">
+            No facturado
+          </Badge>
+        )
+      },
+    })
+
+    cols.push({
       accessorKey: "status",
       header: ({ column }) => (
         <DataTableColumnHeader column={column} title="Estado" />
@@ -732,6 +773,7 @@ export function OperationsTable({
           manualSorting
           sorting={sorting}
           onSortingChange={handleSortingChange}
+          persistKey="operations-table"
         />
         
         {/* Paginación server-side */}
