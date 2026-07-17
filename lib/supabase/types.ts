@@ -2794,6 +2794,99 @@ export type Database = {
           },
         ]
       }
+      growth_assets: {
+        Row: {
+          agency_id: string
+          archived_at: string | null
+          campaign_id: string | null
+          created_at: string
+          created_by: string | null
+          generation_request_id: string | null
+          height: number | null
+          id: string
+          metadata: Json
+          mime_type: string
+          org_id: string
+          original_file_name: string | null
+          source: string
+          storage_path: string
+          updated_at: string
+          width: number | null
+        }
+        Insert: {
+          agency_id: string
+          archived_at?: string | null
+          campaign_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          generation_request_id?: string | null
+          height?: number | null
+          id?: string
+          metadata?: Json
+          mime_type: string
+          org_id: string
+          original_file_name?: string | null
+          source: string
+          storage_path: string
+          updated_at?: string
+          width?: number | null
+        }
+        Update: {
+          agency_id?: string
+          archived_at?: string | null
+          campaign_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          generation_request_id?: string | null
+          height?: number | null
+          id?: string
+          metadata?: Json
+          mime_type?: string
+          org_id?: string
+          original_file_name?: string | null
+          source?: string
+          storage_path?: string
+          updated_at?: string
+          width?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "growth_assets_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "growth_assets_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "growth_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "growth_assets_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "growth_assets_generation_request_id_fkey"
+            columns: ["generation_request_id"]
+            isOneToOne: false
+            referencedRelation: "growth_generation_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "growth_assets_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       growth_brand_profiles: {
         Row: {
           agency_id: string
@@ -2865,6 +2958,315 @@ export type Database = {
             columns: ["updated_by"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      growth_campaign_revisions: {
+        Row: {
+          agency_id: string
+          campaign_id: string
+          created_at: string
+          created_by: string | null
+          generation_request_id: string | null
+          id: string
+          kind: string
+          org_id: string
+          payload: Json
+          version: number
+        }
+        Insert: {
+          agency_id: string
+          campaign_id: string
+          created_at?: string
+          created_by?: string | null
+          generation_request_id?: string | null
+          id?: string
+          kind: string
+          org_id: string
+          payload: Json
+          version?: number
+        }
+        Update: {
+          agency_id?: string
+          campaign_id?: string
+          created_at?: string
+          created_by?: string | null
+          generation_request_id?: string | null
+          id?: string
+          kind?: string
+          org_id?: string
+          payload?: Json
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "growth_campaign_revisions_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "growth_campaign_revisions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "growth_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "growth_campaign_revisions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "growth_campaign_revisions_generation_request_id_fkey"
+            columns: ["generation_request_id"]
+            isOneToOne: false
+            referencedRelation: "growth_generation_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "growth_campaign_revisions_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      growth_campaigns: {
+        Row: {
+          agency_id: string
+          brief_data: Json
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string
+          org_id: string
+          selected_concept_index: number | null
+          source_id: string | null
+          source_snapshot: Json | null
+          source_type: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          agency_id: string
+          brief_data: Json
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name: string
+          org_id: string
+          selected_concept_index?: number | null
+          source_id?: string | null
+          source_snapshot?: Json | null
+          source_type?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          agency_id?: string
+          brief_data?: Json
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+          org_id?: string
+          selected_concept_index?: number | null
+          source_id?: string | null
+          source_snapshot?: Json | null
+          source_type?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "growth_campaigns_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "growth_campaigns_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "growth_campaigns_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      growth_generation_requests: {
+        Row: {
+          agency_id: string
+          campaign_id: string | null
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          error_code: string | null
+          id: string
+          idempotency_key: string
+          input_snapshot: Json
+          kind: string
+          model: string
+          org_id: string
+          output_snapshot: Json | null
+          prompt_version: string
+          quality: string | null
+          status: string
+          updated_at: string
+          usage_data: Json | null
+        }
+        Insert: {
+          agency_id: string
+          campaign_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          error_code?: string | null
+          id?: string
+          idempotency_key: string
+          input_snapshot: Json
+          kind: string
+          model: string
+          org_id: string
+          output_snapshot?: Json | null
+          prompt_version: string
+          quality?: string | null
+          status?: string
+          updated_at?: string
+          usage_data?: Json | null
+        }
+        Update: {
+          agency_id?: string
+          campaign_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          error_code?: string | null
+          id?: string
+          idempotency_key?: string
+          input_snapshot?: Json
+          kind?: string
+          model?: string
+          org_id?: string
+          output_snapshot?: Json | null
+          prompt_version?: string
+          quality?: string | null
+          status?: string
+          updated_at?: string
+          usage_data?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "growth_generation_requests_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "growth_generation_requests_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "growth_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "growth_generation_requests_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "growth_generation_requests_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      growth_studio_events: {
+        Row: {
+          agency_id: string
+          asset_id: string | null
+          campaign_id: string | null
+          created_at: string
+          created_by: string | null
+          event_type: string
+          id: string
+          org_id: string
+          payload: Json
+        }
+        Insert: {
+          agency_id: string
+          asset_id?: string | null
+          campaign_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          event_type: string
+          id?: string
+          org_id: string
+          payload?: Json
+        }
+        Update: {
+          agency_id?: string
+          asset_id?: string | null
+          campaign_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          event_type?: string
+          id?: string
+          org_id?: string
+          payload?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "growth_studio_events_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "growth_studio_events_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "growth_assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "growth_studio_events_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "growth_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "growth_studio_events_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "growth_studio_events_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -9813,6 +10215,23 @@ export type Database = {
       }
     }
     Functions: {
+      can_access_growth_studio_agency: {
+        Args: { p_agency_id: string; p_org_id: string }
+        Returns: boolean
+      }
+      finish_growth_studio_generation: {
+        Args: {
+          p_agency_id: string
+          p_created_by: string
+          p_error_code: string | null
+          p_org_id: string
+          p_output_snapshot: Json | null
+          p_request_id: string
+          p_status: string
+          p_usage_data: Json | null
+        }
+        Returns: undefined
+      }
       _bulk_import_result: {
         Args: { conflicts_arr: Json[]; inserted_count: number }
         Returns: Json
@@ -9999,6 +10418,25 @@ export type Database = {
       replace_operation_operators: {
         Args: { p_operation_id: string; p_operators: Json }
         Returns: undefined
+      }
+      reserve_growth_studio_generation: {
+        Args: {
+          p_agency_id: string
+          p_campaign_id: string | null
+          p_created_by: string
+          p_idempotency_key: string
+          p_input_snapshot: Json
+          p_kind: string
+          p_model: string
+          p_org_id: string
+          p_prompt_version: string
+          p_quality: string | null
+        }
+        Returns: {
+          is_existing: boolean
+          remaining: number
+          request_id: string
+        }[]
       }
       search_global_unaccent: {
         Args: {
