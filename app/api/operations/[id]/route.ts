@@ -948,11 +948,22 @@ export async function PATCH(
     }
 
     // ============================================
-    // REASIGNAR OPERATOR_PAYMENTS SI CAMBIÓ EL OPERADOR
+    // REASIGNAR OPERATOR_PAYMENTS SI CAMBIÓ EL OPERADOR (SOLO PATH LEGACY MONO-OPERADOR)
     // ============================================
+    // 🔴 Bug fix (Lozada VG, op multi-operador "todo figura Sudameria"): este bloque
+    // es lógica legacy de operación con UN solo operador. `body.operator_id` es SIEMPRE
+    // el operador PRIMARIO (= operatorList[0]). En una operación multi-operador,
+    // reasignar a ciegas TODAS las deudas pendientes del viejo primario al nuevo
+    // COLAPSABA las deudas por servicio al operador primario (ej: la deuda de FTA
+    // quedaba con operator_id = Sudameria), y luego un pago a FTA se imputaba a Sudameria.
+    //
+    // Cuando usesIncomingOperators=true, los operator_payments YA se sincronizaron
+    // por línea con su operator_id correcto en el bloque de sync de arriba
+    // (guardado por operatorArtifactsChanged = usesIncomingOperators). Por eso acá
+    // solo corremos la reasignación en el path legacy (sin array de operadores).
     const oldOperatorId = currentOp.operator_id
     const newOperatorId = body.operator_id
-    if (newOperatorId && newOperatorId !== oldOperatorId) {
+    if (!usesIncomingOperators && newOperatorId && newOperatorId !== oldOperatorId) {
       try {
         // Reasignar todos los operator_payments pendientes al nuevo operador
         const { data: reassigned, error: reassignError } = await (supabase.from("operator_payments") as any)
