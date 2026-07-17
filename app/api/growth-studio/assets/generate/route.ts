@@ -8,6 +8,10 @@ import {
   parseJsonBody,
 } from "@/app/api/growth-studio/_shared"
 
+// Deja margen para que el timeout de OpenAI cierre la reserva antes de que
+// termine el ciclo de vida del request en runtimes que respetan maxDuration.
+export const maxDuration = 300
+
 export async function POST(request: Request) {
   try {
     const payload = growthAssetGenerationSchema.parse(await parseJsonBody(request))
@@ -23,4 +27,3 @@ export async function POST(request: Request) {
     return growthStudioApiError(error)
   }
 }
-

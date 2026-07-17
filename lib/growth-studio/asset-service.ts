@@ -6,6 +6,7 @@ import { hasAgencyAccess } from "@/lib/growth-studio/application-context"
 import { getBrandProfile } from "@/lib/growth-studio/brand-profile-service"
 import {
   GROWTH_STUDIO_IMAGE_PROMPT_VERSION,
+  GrowthStudioAiTimeoutError,
   type GrowthStudioAiProvider,
 } from "@/lib/growth-studio/ai-provider"
 import type { GrowthAssetGenerationInput } from "@/lib/growth-studio/asset-schema"
@@ -431,9 +432,12 @@ export async function generateGrowthAsset(
       context,
       input.agencyId,
       reservation.requestId,
-      "image_generation_failed"
+      error instanceof GrowthStudioAiTimeoutError
+        ? "provider_timeout"
+        : "image_generation_failed"
     )
     if (
+      error instanceof GrowthStudioAiTimeoutError ||
       error instanceof GrowthStudioAssetValidationError ||
       error instanceof GrowthStudioAssetPersistenceError ||
       error instanceof GrowthStudioGenerationError
