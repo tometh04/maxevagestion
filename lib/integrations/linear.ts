@@ -91,6 +91,56 @@ function resolveLabelIds(input: {
   return ids.filter((x): x is string => typeof x === "string" && x.length > 0)
 }
 
+// Cache en memoria (por instancia) de label name -> id ya resueltos, para no
+// consultar/crear el label en cada ticket. Best-effort; si la instancia se
+// recicla se vuelve a resolver.
+const labelIdCache = new Map<string, string>()
+
+/**
+ * Resuelve el ID de un label por NOMBRE dentro del team: lo busca y, si no
+ * existe, lo crea. Devuelve null si falla (no debe romper la creación del issue).
+ * Se usa para el label "cliente" que identifica los tickets cargados desde el
+ * producto, sin obligar a copiar IDs a mano.
+ */
+async function getOrCreateLabelIdByName(
+  apiKey: string,
+  teamId: string,
+  name: string,
+): Promise<string | null> {
+  const cacheKey = `${teamId}:${name.toLowerCase()}`
+  const cached = labelIdCache.get(cacheKey)
+  if (cached) return cached
+
+  // 1. Buscar un label existente con ese nombre (case-insensitive).
+  const found = await linearRequest<{
+    team: { labels: { nodes: { id: string; name: string }[] } } | null
+  }>(
+    apiKey,
+    `query($teamId: String!) { team(id: $teamId) { labels(first: 250) { nodes { id name } } } }`,
+    { teamId },
+  )
+  const existing = found?.team?.labels?.nodes?.find(
+    (l) => l.name.toLowerCase() === name.toLowerCase(),
+  )
+  if (existing) {
+    labelIdCache.set(cacheKey, existing.id)
+    return existing.id
+  }
+
+  // 2. No existe -> crearlo scopeado al team.
+  const created = await linearRequest<{
+    issueLabelCreate: { success: boolean; issueLabel: { id: string } | null }
+  }>(
+    apiKey,
+    `mutation($input: IssueLabelCreateInput!) { issueLabelCreate(input: $input) { success issueLabel { id } } }`,
+    { input: { teamId, name, color: "#4EA7FC" } },
+  )
+  const newId = created?.issueLabelCreate?.issueLabel?.id ?? null
+  if (newId) labelIdCache.set(cacheKey, newId)
+  else console.error(`[linear] no se pudo crear/resolver el label "${name}"`)
+  return newId
+}
+
 const ISSUE_CREATE_MUTATION = `
   mutation IssueCreate($input: IssueCreateInput!) {
     issueCreate(input: $input) {
@@ -114,7 +164,16 @@ export async function createLinearIssue(input: {
   const config = getConfig()
   if (!config) return null
 
-  const labelIds = resolveLabelIds({ category: input.category, severity: input.severity })
+  // Label "cliente" aplicado a TODOS los tickets de soporte, para distinguir en
+  // Linear los que cargan los clientes desde el producto. Nombre configurable
+  // por env (default "Cliente"); se auto-crea si no existe.
+  const clientLabelName = process.env.LINEAR_CLIENT_LABEL || "Cliente"
+  const clientLabelId = await getOrCreateLabelIdByName(config.apiKey, config.teamId, clientLabelName)
+
+  const labelIds = [
+    ...(clientLabelId ? [clientLabelId] : []),
+    ...resolveLabelIds({ category: input.category, severity: input.severity }),
+  ]
 
   const data = await linearRequest<{
     issueCreate: { success: boolean; issue: CreatedLinearIssue | null }
