@@ -52,30 +52,16 @@ export async function POST(req: NextRequest) {
     userType,
   })
 
-  const { data: ticket, error } = await (supabase as any)
-    .from('support_tickets')
-    .insert({
-      user_id: sessionUser.id,
-      org_id: appUser.org_id || '00000000-0000-0000-0000-000000000000',
-      conversation_id: body.conversationId || null,
-      subject: body.subject.trim(),
-      description: body.description?.trim() || null,
-      category: classification.category,
-      severity: classification.severity,
-      priority: classification.priority,
-      ai_rationale: classification.rationale,
-      ai_classified_at: new Date().toISOString(),
-    })
-    .select('id, subject, status, created_at')
-    .single()
+  // Bugs y mejoras → issue en Linear ANTES del insert, para poder guardar el
+  // linear_issue_id en el mismo INSERT (el UPDATE posterior pasaba por la policy
+  // RLS org_id IN user_org_ids() y matcheaba 0 filas → el id nunca se persistía).
+  // Best-effort: nunca rompe la creación del ticket (patrón notifyApprovers).
+  let linearFields: {
+    linear_issue_id?: string
+    linear_issue_url?: string
+    linear_identifier?: string
+  } = {}
 
-  if (error) {
-    console.error('Error creating ticket:', error)
-    return NextResponse.json({ error: 'Error creating ticket' }, { status: 500 })
-  }
-
-  // Bugs y mejoras → issue en Linear para que lo ataque un desarrollador.
-  // Best-effort: nunca rompe la respuesta al usuario (patrón notifyApprovers).
   if (classification.category === 'bug' || classification.category === 'improvement') {
     try {
       let orgName: string | null = null
@@ -92,7 +78,6 @@ export async function POST(req: NextRequest) {
         `**Reportado por:** ${appUser.email || sessionUser.id}`,
         orgName ? `**Organización:** ${orgName}` : `**Org ID:** ${appUser.org_id || '—'}`,
         `**Severidad:** ${classification.severity}`,
-        `**Ticket:** ${ticket.id}`,
       ].join('  ·  ')
 
       const description = [
@@ -113,18 +98,38 @@ export async function POST(req: NextRequest) {
       })
 
       if (issue) {
-        await (supabase as any)
-          .from('support_tickets')
-          .update({
-            linear_issue_id: issue.id,
-            linear_issue_url: issue.url,
-            linear_identifier: issue.identifier,
-          })
-          .eq('id', ticket.id)
+        linearFields = {
+          linear_issue_id: issue.id,
+          linear_issue_url: issue.url,
+          linear_identifier: issue.identifier,
+        }
       }
     } catch (err) {
       console.error('Error creando issue en Linear (no bloqueante):', err)
     }
+  }
+
+  const { data: ticket, error } = await (supabase as any)
+    .from('support_tickets')
+    .insert({
+      user_id: sessionUser.id,
+      org_id: appUser.org_id || '00000000-0000-0000-0000-000000000000',
+      conversation_id: body.conversationId || null,
+      subject: body.subject.trim(),
+      description: body.description?.trim() || null,
+      category: classification.category,
+      severity: classification.severity,
+      priority: classification.priority,
+      ai_rationale: classification.rationale,
+      ai_classified_at: new Date().toISOString(),
+      ...linearFields,
+    })
+    .select('id, subject, status, created_at')
+    .single()
+
+  if (error) {
+    console.error('Error creating ticket:', error)
+    return NextResponse.json({ error: 'Error creating ticket' }, { status: 500 })
   }
 
   return NextResponse.json({ ticket })
