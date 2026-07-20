@@ -194,6 +194,44 @@ export async function createLinearIssue(input: {
   return data.issueCreate.issue
 }
 
+/**
+ * Firma que vibook agrega a los comentarios que postea en Linear (respuestas del
+ * ticket → comentario). El webhook de Comment ignora los comentarios que la
+ * contienen, para no reimportarlos como respuesta (evita el loop/duplicado).
+ */
+export const APP_COMMENT_SIGNATURE = "↩ vía vibook"
+
+const COMMENT_CREATE_MUTATION = `
+  mutation CommentCreate($input: CommentCreateInput!) {
+    commentCreate(input: $input) { success comment { id } }
+  }
+`
+
+/**
+ * Postea un comentario en un issue de Linear (respuesta del ticket → Linear).
+ * Best-effort: devuelve false si no se pudo, sin lanzar. Antepone la firma
+ * APP_COMMENT_SIGNATURE para que el webhook no lo reimporte.
+ */
+export async function createLinearComment(
+  issueId: string,
+  body: string,
+): Promise<boolean> {
+  const config = getConfig()
+  if (!config) return false
+
+  const signedBody = `${body}\n\n_${APP_COMMENT_SIGNATURE}_`
+  const data = await linearRequest<{ commentCreate: { success: boolean } }>(
+    config.apiKey,
+    COMMENT_CREATE_MUTATION,
+    { input: { issueId, body: signedBody } },
+  )
+  if (!data?.commentCreate?.success) {
+    console.error("[linear] commentCreate no devolvió success")
+    return false
+  }
+  return true
+}
+
 export type LinearDiagnostics = {
   env: { LINEAR_API_KEY: boolean; LINEAR_TEAM_ID: boolean; LINEAR_WEBHOOK_SECRET: boolean }
   configuredTeamId: string | null

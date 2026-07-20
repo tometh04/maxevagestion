@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/server'
+import { createLinearComment } from '@/lib/integrations/linear'
 
 export async function GET(
   _req: NextRequest,
@@ -44,9 +45,11 @@ export async function POST(
 ) {
   const { id } = await params
   let sessionUser: any
+  let appUser: any
   try {
-    const { session } = await getCurrentUser()
+    const { user, session } = await getCurrentUser()
     sessionUser = session.user
+    appUser = user
   } catch {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -61,7 +64,7 @@ export async function POST(
   // Verify ticket belongs to user
   const { data: ticket } = await (supabase as any)
     .from('support_tickets')
-    .select('id')
+    .select('id, linear_issue_id')
     .eq('id', id)
     .eq('user_id', sessionUser.id)
     .single()
@@ -84,6 +87,20 @@ export async function POST(
   if (error) {
     console.error('Error creating reply:', error)
     return NextResponse.json({ error: 'Error creating reply' }, { status: 500 })
+  }
+
+  // Two-way: replicar la respuesta del cliente como comentario en Linear.
+  // Best-effort, no bloquea la respuesta.
+  if (ticket.linear_issue_id) {
+    try {
+      const author = appUser?.name || appUser?.email || 'Cliente'
+      await createLinearComment(
+        ticket.linear_issue_id,
+        `**${author}** (cliente) respondió:\n\n${content.trim()}`,
+      )
+    } catch (err) {
+      console.error('Error posteando comentario en Linear (no bloqueante):', err)
+    }
   }
 
   return NextResponse.json({ reply })

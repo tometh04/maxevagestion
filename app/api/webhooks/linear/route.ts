@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import crypto from "crypto"
 import { createAdminClient } from "@/lib/supabase/server"
-import { mapLinearStateToTicketStatus } from "@/lib/integrations/linear"
+import { mapLinearStateToTicketStatus, APP_COMMENT_SIGNATURE } from "@/lib/integrations/linear"
 
 /**
  * POST /api/webhooks/linear
@@ -50,7 +50,11 @@ export async function POST(request: Request) {
       const authorName: string =
         payload?.data?.user?.name || payload?.data?.user?.displayName || "Linear"
 
-      if (commentIssueId && body?.trim()) {
+      // Ignorar los comentarios que posteó vibook (llevan la firma) para no
+      // reimportarlos como respuesta y generar un duplicado/loop.
+      const isOwnComment = !!body && body.includes(APP_COMMENT_SIGNATURE)
+
+      if (commentIssueId && body?.trim() && !isOwnComment) {
         const admin = createAdminClient()
         const { data: ticket } = await (admin as any)
           .from("support_tickets")
