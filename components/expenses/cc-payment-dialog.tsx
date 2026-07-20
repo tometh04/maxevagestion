@@ -27,6 +27,8 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { CreditCard, Landmark, Plus, Trash2, AlertCircle, CheckCircle2 } from "lucide-react"
 import { toast } from "sonner"
 import { useDefaultCurrency } from "@/hooks/use-default-currency"
+// Fix UTC shift en fechas DATE (VICO 2026-05-22)
+import { formatDateOnlyLocal } from "@/lib/utils/date-only"
 
 interface Category {
   id: string
@@ -83,7 +85,7 @@ export function CCPaymentDialog({ open, onOpenChange, onSuccess }: CCPaymentDial
 
   const getDefaultDate = () => {
     const now = new Date()
-    return now.toISOString().split("T")[0]
+    return formatDateOnlyLocal(now) ?? ""
   }
 
   const form = useForm<CCPaymentFormValues>({

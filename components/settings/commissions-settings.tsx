@@ -49,6 +49,8 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Percent, Plus, Info, Settings2, Calendar, Wallet } from "lucide-react"
 import { toast } from "sonner"
+// Fix UTC shift en fechas DATE (VICO 2026-05-22)
+import { parseDateOnlyLocal, formatDateOnlyLocal } from "@/lib/utils/date-only"
 
 // Umbral de cobranza (% de la venta cobrado) a partir del cual una comisión
 // PENDING se puede pagar al vendedor. Configurable por agencia:
@@ -102,7 +104,7 @@ export function CommissionsSettings() {
       value: 0,
       destination_region: null,
       agency_id: null,
-      valid_from: new Date().toISOString().split("T")[0],
+      valid_from: formatDateOnlyLocal(new Date()) ?? "",
       valid_to: null,
     },
   })
@@ -189,7 +191,7 @@ export function CommissionsSettings() {
         value: 0,
         destination_region: null,
         agency_id: null,
-        valid_from: new Date().toISOString().split("T")[0],
+        valid_from: formatDateOnlyLocal(new Date()) ?? "",
         valid_to: null,
       })
     }
@@ -372,9 +374,9 @@ export function CommissionsSettings() {
                       {rule.basis === "FIXED_PERCENTAGE" ? `${rule.value}%` : `$${rule.value.toLocaleString("es-AR")}`}
                     </TableCell>
                     <TableCell className="text-sm">{rule.destination_region || "Todas"}</TableCell>
-                    <TableCell className="text-sm">{format(new Date(rule.valid_from), "dd/MM/yyyy", { locale: es })}</TableCell>
+                    <TableCell className="text-sm">{format(parseDateOnlyLocal(rule.valid_from) ?? new Date(rule.valid_from), "dd/MM/yyyy", { locale: es })}</TableCell>
                     <TableCell className="text-sm">
-                      {rule.valid_to ? format(new Date(rule.valid_to), "dd/MM/yyyy", { locale: es }) : "Sin límite"}
+                      {rule.valid_to ? format(parseDateOnlyLocal(rule.valid_to) ?? new Date(rule.valid_to), "dd/MM/yyyy", { locale: es }) : "Sin límite"}
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1">

@@ -26,6 +26,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { formatDateOnlyLocal } from "@/lib/utils/date-only"
 
 // Función para formatear números completos con separadores de miles
 function formatNumber(value: number): string {
@@ -216,8 +217,8 @@ export function DashboardPageClient({
       prevDateFrom.setDate(prevDateFrom.getDate() - daysDiff)
       
       const prevParams = new URLSearchParams()
-      prevParams.set("dateFrom", prevDateFrom.toISOString().split("T")[0])
-      prevParams.set("dateTo", prevDateTo.toISOString().split("T")[0])
+      prevParams.set("dateFrom", formatDateOnlyLocal(prevDateFrom) ?? "")
+      prevParams.set("dateTo", formatDateOnlyLocal(prevDateTo) ?? "")
       // Mismo dateField que el periodo actual para que la comparación sea apples-to-apples.
       prevParams.set("dateField", dateTypeToField(filters.dateType))
       if (filters.agencyId !== "ALL") {

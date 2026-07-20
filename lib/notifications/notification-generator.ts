@@ -1,5 +1,6 @@
 import { SupabaseClient } from "@supabase/supabase-js"
 import { addDays, isBefore, isWithinInterval, startOfDay, endOfDay } from "date-fns"
+import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 
 interface NotificationData {
   user_id: string
@@ -60,7 +61,7 @@ export async function generatePaymentDueNotifications(supabase: SupabaseClient) 
       alert_type: "PAYMENT_DUE",
       severity: "WARNING",
       title: `Pago próximo a vencer`,
-      message: `Pago de ${payment.currency} ${payment.amount} para ${operation.destination} vence el ${new Date(payment.date_due).toLocaleDateString("es-AR")}`,
+      message: `Pago de ${payment.currency} ${payment.amount} para ${operation.destination} vence el ${(parseDateOnlyLocal(payment.date_due) ?? new Date(payment.date_due)).toLocaleDateString("es-AR")}`,
       date_due: payment.date_due,
       is_resolved: false,
     })
@@ -115,7 +116,7 @@ export async function generateOverduePaymentNotifications(supabase: SupabaseClie
       alert_type: "PAYMENT_OVERDUE",
       severity: "CRITICAL",
       title: `Pago vencido`,
-      message: `Pago de ${payment.currency} ${payment.amount} para ${operation.destination} venció el ${new Date(payment.date_due).toLocaleDateString("es-AR")}`,
+      message: `Pago de ${payment.currency} ${payment.amount} para ${operation.destination} venció el ${(parseDateOnlyLocal(payment.date_due) ?? new Date(payment.date_due)).toLocaleDateString("es-AR")}`,
       date_due: payment.date_due,
       is_resolved: false,
     })

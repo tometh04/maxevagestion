@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
-import { parseDateOnlyLocal } from "@/lib/utils/date-only"
+import { parseDateOnlyLocal, formatDateOnlyLocal } from "@/lib/utils/date-only"
 import { Badge } from "@/components/ui/badge"
 import {
   Table,
@@ -195,6 +195,8 @@ export function OperationPaymentsSection({
   const [bankTaxRateIncome, setBankTaxRateIncome] = useState<string>("0.6")
   const [applyBankTaxExpense, setApplyBankTaxExpense] = useState(false)
   const [bankTaxRateExpense, setBankTaxRateExpense] = useState<string>("0.6")
+  const [applyBankTaxEdit, setApplyBankTaxEdit] = useState(false)
+  const [bankTaxRateEdit, setBankTaxRateEdit] = useState<string>("0.6")
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [editingPayment, setEditingPayment] = useState<any>(null)
   const [markAsPaid, setMarkAsPaid] = useState(false)
@@ -381,7 +383,7 @@ export function OperationPaymentsSection({
   }
 
   const handleSaveDueDate = async (operatorPaymentId: string, date: Date | undefined) => {
-    const dueDateStr = date ? date.toISOString().split("T")[0] : null
+    const dueDateStr = date ? formatDateOnlyLocal(date) : null
     setSavingDueDateId(operatorPaymentId)
     try {
       const res = await fetch(`/api/accounting/operator-payments/${operatorPaymentId}`, {
@@ -652,6 +654,29 @@ export function OperationPaymentsSection({
       })
     : editPaymentCurrency === "ARS"
 
+  // Bank tax (Ley 25413): computed values for EDIT dialog — mismo patrón que
+  // los diálogos de crear (income/expense). El impuesto solo se ofrece cuando
+  // la cuenta financiera seleccionada tiene una tasa configurada (> 0).
+  const watchedEditAccountId = editForm.watch("financial_account_id")
+  const watchedEditAmount = editForm.watch("amount")
+  const selectedEditAccount = useMemo(
+    () => financialAccounts.find((a) => a.id === watchedEditAccountId) || null,
+    [financialAccounts, watchedEditAccountId]
+  )
+  const editAccountHasBankTax = selectedEditAccount?.bank_tax_rate != null && selectedEditAccount.bank_tax_rate > 0
+  const bankTaxAmountEdit = useMemo(() => {
+    if (!applyBankTaxEdit || !watchedEditAmount) return 0
+    const rate = Number(bankTaxRateEdit) || 0
+    return Math.round(watchedEditAmount * (rate / 100) * 100) / 100
+  }, [applyBankTaxEdit, watchedEditAmount, bankTaxRateEdit])
+
+  useEffect(() => {
+    if (selectedEditAccount?.bank_tax_rate != null && selectedEditAccount.bank_tax_rate > 0) {
+      setBankTaxRateEdit(String(selectedEditAccount.bank_tax_rate))
+    }
+    setApplyBankTaxEdit(false)
+  }, [selectedEditAccount])
+
   const formatSaleCurrencyPreview = (amount: number, paymentCurrency: string, exchangeRate?: number | null) => {
     const equivalent = calculateAmountInSaleCurrency({
       amount,
@@ -728,13 +753,16 @@ export function OperationPaymentsSection({
           amount: values.amount,
           currency: values.currency,
           method: values.method,
-          date_paid: values.date_paid.toISOString().split("T")[0],
+          date_paid: formatDateOnlyLocal(values.date_paid),
           exchange_rate: editNeedsExchangeRate ? values.exchange_rate : null,
           financial_account_id: values.financial_account_id || null,
           notes: values.notes,
           markAsPaid: markAsPaid || undefined,
           apply_rg5617: markAsPaid ? applyRg5617Edit : undefined,
           apply_rg3819: markAsPaid ? applyRg3819Edit : undefined,
+          // Ley 25413: solo mandamos el impuesto si el user lo tildó y hay monto.
+          bank_tax_rate: applyBankTaxEdit && bankTaxAmountEdit > 0 ? Number(bankTaxRateEdit) : undefined,
+          bank_tax_amount: applyBankTaxEdit && bankTaxAmountEdit > 0 ? bankTaxAmountEdit : undefined,
         }),
       })
 
@@ -895,7 +923,7 @@ export function OperationPaymentsSection({
     setIsLoading(true)
     try {
       const { payer_type, direction, payer_name, ...restValues } = values
-      const datePaidStr = values.date_paid.toISOString().split("T")[0]
+      const datePaidStr = formatDateOnlyLocal(values.date_paid)
       const body: Record<string, unknown> = {
         operation_id: operationId,
         payer_type: "CUSTOMER",
@@ -988,8 +1016,8 @@ export function OperationPaymentsSection({
         ...restValues,
         financial_account_id: values.financial_account_id,
         exchange_rate: values.currency === "ARS" ? values.exchange_rate : null,
-        date_paid: values.date_paid.toISOString().split("T")[0],
-        date_due: values.date_paid.toISOString().split("T")[0],
+        date_paid: formatDateOnlyLocal(values.date_paid),
+        date_due: formatDateOnlyLocal(values.date_paid),
         status: "PAID",
       }
 
@@ -1028,7 +1056,7 @@ export function OperationPaymentsSection({
 
     setIsLoading(true)
     try {
-      const datePaidStr = values.date_paid.toISOString().split("T")[0]
+      const datePaidStr = formatDateOnlyLocal(values.date_paid)
       const body: Record<string, unknown> = {
         operation_id: operationId,
         payer_type: "CUSTOMER",
@@ -1340,7 +1368,7 @@ export function OperationPaymentsSection({
                         try {
                           const d = payment.date_paid || payment.date_due
                           if (!d) return "-"
-                          return format(new Date(d), "dd/MM/yyyy", { locale: es })
+                          return format(parseDateOnlyLocal(d) ?? new Date(d), "dd/MM/yyyy", { locale: es })
                         } catch { return "-" }
                       })()}
                     </TableCell>
@@ -2409,6 +2437,45 @@ export function OperationPaymentsSection({
                     />
                   )}
                 </div>
+
+                {/* Bank tax (Ley 25413) — deducción semi-automática al editar,
+                    misma lógica que los diálogos de crear (income/expense) */}
+                {editAccountHasBankTax && (
+                  <div className="rounded-[var(--vb-r-sm)] border border-[var(--vb-border)] bg-background/60 p-3 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="bank-tax-edit"
+                        checked={applyBankTaxEdit}
+                        onCheckedChange={(checked) => setApplyBankTaxEdit(checked === true)}
+                      />
+                      <label htmlFor="bank-tax-edit" className="text-sm font-medium cursor-pointer flex items-center gap-1.5">
+                        <Landmark className="h-3.5 w-3.5 text-muted-foreground" />
+                        Deducir imp. Ley 25413 (déb/créd bancarios)
+                      </label>
+                    </div>
+                    {applyBankTaxEdit && (
+                      <div className="ml-6 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs text-muted-foreground whitespace-nowrap">Tasa %</label>
+                          <DecimalInput
+                            value={bankTaxRateEdit}
+                            onChange={(v) => setBankTaxRateEdit(String(v))}
+                            className="h-7 w-20 text-xs"
+                          />
+                        </div>
+                        {bankTaxAmountEdit > 0 && (
+                          <p className="text-xs text-muted-foreground">
+                            Se creará un egreso automático de{" "}
+                            <span className="font-medium text-destructive">
+                              {bankTaxAmountEdit.toLocaleString("es-AR", { style: "currency", currency: editForm.watch("currency") })}
+                            </span>
+                            {" "}en la misma cuenta (impuesto bancario).
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <FormField
                   control={editForm.control}

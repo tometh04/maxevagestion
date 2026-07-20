@@ -34,6 +34,7 @@ import { CalendarIcon, User, MapPin, UserCheck, StickyNote } from "lucide-react"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { cn } from "@/lib/utils"
+import { formatDateOnlyLocal } from "@/lib/utils/date-only"
 import { toast } from "sonner"
 import { useLeadRegions } from "@/lib/hooks/use-lead-regions"
 
@@ -266,7 +267,7 @@ export function NewLeadDialog({
           deposit_amount: values.deposit_amount || null,
           deposit_currency: values.deposit_currency || null,
           deposit_method: values.deposit_method || null,
-          deposit_date: values.deposit_date ? values.deposit_date.toISOString().split("T")[0] : null,
+          deposit_date: values.deposit_date ? formatDateOnlyLocal(values.deposit_date) : null,
         }),
       })
 

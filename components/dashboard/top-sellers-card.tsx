@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Trophy, Medal, Award, TrendingUp } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { formatDateOnlyLocal } from "@/lib/utils/date-only"
 
 interface Seller {
   id: string
@@ -36,8 +37,8 @@ export function TopSellersCard({ agencyId, sellerId, dateFrom, dateTo }: TopSell
       
       const params = new URLSearchParams()
       // Siempre usar el mes en curso (no depender de filtros del dashboard)
-      params.set("dateFrom", firstDayOfMonth.toISOString().split("T")[0])
-      params.set("dateTo", lastDayOfMonth.toISOString().split("T")[0])
+      params.set("dateFrom", formatDateOnlyLocal(firstDayOfMonth) ?? "")
+      params.set("dateTo", formatDateOnlyLocal(lastDayOfMonth) ?? "")
       if (agencyId && agencyId !== "ALL") {
         params.set("agencyId", agencyId)
       }

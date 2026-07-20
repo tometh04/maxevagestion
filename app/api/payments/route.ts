@@ -25,6 +25,7 @@ import {
   mapPaymentMethodToLedgerMethod,
   removePaymentCounterpartMovement,
 } from "@/lib/accounting/payment-counterparts"
+import { todayInArgentina } from "@/lib/utils/date-only"
 import { revalidateTag, CACHE_TAGS } from "@/lib/cache"
 import { logAudit, getClientIP } from "@/lib/audit"
 import {
@@ -911,8 +912,8 @@ export async function POST(request: Request) {
             console.error("⚠️ CRITICAL: link retry failed — rolling back payment + ledger:", {
               paymentId: payment.id, ledgerMovementId, error: retryError,
             })
-            await (supabase.from("ledger_movements") as any).delete().eq("id", ledgerMovementId)
-            await (supabase.from("payments") as any).delete().eq("id", payment.id)
+            await (supabase.from("ledger_movements") as any).delete().eq("id", ledgerMovementId).eq("org_id", user.org_id)
+            await (supabase.from("payments") as any).delete().eq("id", payment.id).eq("org_id", user.org_id)
             return NextResponse.json(
               {
                 error: "No se pudo vincular el pago al libro mayor. La operación se revirtió por completo, reintentá. Si vuelve a fallar avisá a soporte.",
@@ -962,8 +963,8 @@ export async function POST(request: Request) {
           console.error("⚠️ CRITICAL: cash_movement insert failed — rolling back:", {
             paymentId: payment.id, ledgerMovementId, error: cashMovementError,
           })
-          await (supabase.from("ledger_movements") as any).delete().eq("id", ledgerMovementId)
-          await (supabase.from("payments") as any).delete().eq("id", payment.id)
+          await (supabase.from("ledger_movements") as any).delete().eq("id", ledgerMovementId).eq("org_id", user.org_id)
+          await (supabase.from("payments") as any).delete().eq("id", payment.id).eq("org_id", user.org_id)
           return NextResponse.json(
             {
               error: `No se pudo crear el movimiento de caja: ${cashMovementError.message}. La operación se revirtió, reintentá.`,
@@ -1889,6 +1890,8 @@ export async function PATCH(request: Request) {
       markAsPaid,
       apply_rg5617: patchApplyRg5617,
       apply_rg3819: patchApplyRg3819,
+      bank_tax_rate: patchBankTaxRate,
+      bank_tax_amount: patchBankTaxAmount,
     } = body
 
     if (!paymentId) {
@@ -2385,6 +2388,87 @@ export async function PATCH(request: Request) {
           operatorId: existingPayment.payer_type === "OPERATOR" ? operatorId : null,
           userId: user.id,
         })
+
+        // ============================================
+        // LEY 25413: Impuesto déb/créd bancarios (edición)
+        // Paridad con el POST (creación): si el user tildó el impuesto en el
+        // diálogo de editar, recreamos el EXPENSE del impuesto (ledger +
+        // cash_movement) en la misma cuenta. El movimiento viejo del impuesto (si
+        // existía) ya se borró en el bloque de reversión 2c-bis, así que esto no
+        // duplica. Si el user NO lo tildó, no se recrea → queda removido.
+        // ============================================
+        if (
+          patchBankTaxRate != null &&
+          patchBankTaxAmount != null &&
+          Number(patchBankTaxAmount) > 0
+        ) {
+          try {
+            const taxAmount = Number(patchBankTaxAmount)
+            const taxRate = Number(patchBankTaxRate)
+            const taxConcept = `Imp. Ley 25413 (${taxRate}%) — Pago Op. ${existingPayment.operation_id ? existingPayment.operation_id.slice(0, 8) : "N/A"}`
+
+            // Cleanup previo: borrar cualquier impuesto Ley 25413 anterior de este
+            // pago antes de recrearlo, para no duplicar si el pago ya tenía uno.
+            // El impuesto NO tiene FK al payment: se identifica por el marcador en
+            // las notas ("vinculado a payment <id>"). Solo corre en esta rama —si
+            // el user NO tildó el impuesto, el impuesto previo queda intacto.
+            await (supabase.from("ledger_movements") as any)
+              .delete()
+              .eq("org_id", user.org_id)
+              .eq("type", "EXPENSE")
+              .ilike("notes", `%vinculado a payment ${paymentId}%`)
+
+            let taxAmountARS = taxAmount
+            if (finalCurrency === "USD" && exchangeRate) {
+              taxAmountARS = calculateARSEquivalent(taxAmount, "USD", exchangeRate)
+            }
+
+            // 1. ledger_movement EXPENSE del impuesto. Las notas llevan el
+            //    marcador "vinculado a payment <id>" que usa el cleanup 2c-bis.
+            await createLedgerMovement(
+              {
+                operation_id: existingPayment.operation_id || null,
+                lead_id: null,
+                type: "EXPENSE",
+                concept: taxConcept,
+                currency: finalCurrency as "ARS" | "USD",
+                amount_original: taxAmount,
+                exchange_rate: finalCurrency === "USD" ? exchangeRate : null,
+                amount_ars_equivalent: taxAmountARS,
+                method: ledgerMethod,
+                account_id: finalAccountId,
+                seller_id: sellerId,
+                notes: `Impuesto bancario automático vinculado a payment ${paymentId}. Tasa: ${taxRate}%.`,
+                created_by: user.id,
+              },
+              supabase
+            )
+
+            // 2. cash_movement para que aparezca en Caja (mismo comportamiento
+            //    que el POST). Nota: comparte payment_id con el pago principal.
+            await (supabase.from("cash_movements") as any)
+              .insert({
+                operation_id: existingPayment.operation_id || null,
+                payment_id: paymentId,
+                cash_box_id: null,
+                financial_account_id: finalAccountId,
+                user_id: user.id,
+                type: "EXPENSE",
+                category: "BANK_TAX",
+                amount: taxAmount,
+                currency: finalCurrency,
+                movement_date: finalDatePaid || todayInArgentina(),
+                notes: taxConcept,
+                is_touristic: false,
+                agency_id: agencyId,
+              })
+
+            console.log(`✅ Bank tax Ley 25413 (edición): ${taxAmount} ${finalCurrency} (${taxRate}%) para payment ${paymentId}`)
+          } catch (bankTaxError) {
+            // No romper la edición — el pago principal ya quedó actualizado.
+            console.error("Error recreando movimiento de impuesto bancario Ley 25413 (edición):", bankTaxError)
+          }
+        }
 
       } catch (accountingError) {
         console.error("Error recreating accounting movements:", accountingError)

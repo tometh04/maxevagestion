@@ -6,6 +6,7 @@ import { es } from "date-fns/locale"
 import { getOrgFeatureFlag } from "@/lib/settings/org-features"
 import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
 import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
+import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 
 export async function GET(request: Request) {
   try {
@@ -216,8 +217,8 @@ export async function GET(request: Request) {
             ? allPayments.filter((p: any) => p.seller_id === user.id || p.operations?.seller_id === user.id)
             : allPayments
           data = filteredByRole.slice(0, 1000).map((p: any) => ({
-            fecha_vencimiento: p.date_due ? format(new Date(p.date_due), "dd/MM/yyyy") : "",
-            fecha_pago: p.date_paid ? format(new Date(p.date_paid), "dd/MM/yyyy") : "",
+            fecha_vencimiento: p.date_due ? format(parseDateOnlyLocal(p.date_due) ?? new Date(p.date_due), "dd/MM/yyyy") : "",
+            fecha_pago: p.date_paid ? format(parseDateOnlyLocal(p.date_paid) ?? new Date(p.date_paid), "dd/MM/yyyy") : "",
             monto: p.amount || 0,
             moneda: p.currency || "ARS",
             estado: p.status || "",
@@ -244,8 +245,8 @@ export async function GET(request: Request) {
 
         const { data: payments } = await query.limit(1000)
         data = (payments || []).map((p: any) => ({
-          fecha_vencimiento: p.date_due ? format(new Date(p.date_due), "dd/MM/yyyy") : "",
-          fecha_pago: p.date_paid ? format(new Date(p.date_paid), "dd/MM/yyyy") : "",
+          fecha_vencimiento: p.date_due ? format(parseDateOnlyLocal(p.date_due) ?? new Date(p.date_due), "dd/MM/yyyy") : "",
+          fecha_pago: p.date_paid ? format(parseDateOnlyLocal(p.date_paid) ?? new Date(p.date_paid), "dd/MM/yyyy") : "",
           monto: p.amount || 0,
           moneda: p.currency || "ARS",
           estado: p.status || "",

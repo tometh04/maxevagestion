@@ -22,6 +22,8 @@ import {
 import { Pie, PieChart, Cell } from "recharts"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 import { Loader2, PieChart as PieChartIcon } from "lucide-react"
+// Fix UTC shift en fechas DATE (VICO 2026-05-22)
+import { formatDateOnlyLocal } from "@/lib/utils/date-only"
 
 // Paleta categórica de respaldo (para categorías sin color propio). Tonos
 // distinguibles que funcionan en light/dark. La categoría usa su color propio
@@ -66,13 +68,13 @@ export function ExpensesSummaryTab({ agencies }: ExpensesSummaryTabProps) {
   const [dateFrom, setDateFrom] = useState(() => {
     const d = new Date()
     d.setDate(1)
-    return d.toISOString().split("T")[0]
+    return formatDateOnlyLocal(d) ?? ""
   })
   const [dateTo, setDateTo] = useState(() => {
     const d = new Date()
     d.setMonth(d.getMonth() + 1)
     d.setDate(0) // último día del mes actual
-    return d.toISOString().split("T")[0]
+    return formatDateOnlyLocal(d) ?? ""
   })
   const [currency, setCurrency] = useState("ARS")
   const [agencyFilter, setAgencyFilter] = useState("ALL")

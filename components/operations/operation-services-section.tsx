@@ -59,6 +59,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { cn } from "@/lib/utils"
+import { parseDateOnlyLocal, formatDateOnlyLocal } from "@/lib/utils/date-only"
 import { downloadReceiptPdf } from "@/lib/pdf/receipt-pdf"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
@@ -652,8 +653,8 @@ export function OperationServicesSection({
       currency: values.currency,
       financial_account_id: values.financial_account_id,
       exchange_rate: requiresManualExchangeRate ? values.exchange_rate : null,
-      date_paid: values.date_paid.toISOString().split("T")[0],
-      date_due: values.date_paid.toISOString().split("T")[0],
+      date_paid: formatDateOnlyLocal(values.date_paid),
+      date_due: formatDateOnlyLocal(values.date_paid),
       status: "PAID",
       notes: values.notes,
     }
@@ -970,7 +971,7 @@ export function OperationServicesSection({
                             try {
                               const d = p.date_paid || p.date_due
                               if (!d) return "-"
-                              return format(new Date(d), "dd/MM/yyyy", { locale: es })
+                              return format(parseDateOnlyLocal(d) ?? new Date(d), "dd/MM/yyyy", { locale: es })
                             } catch { return "-" }
                           })()}
                         </TableCell>

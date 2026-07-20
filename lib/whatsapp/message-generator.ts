@@ -1,6 +1,7 @@
 import { SupabaseClient } from "@supabase/supabase-js"
 import { addDays, format, isToday, isTomorrow, startOfDay } from "date-fns"
 import { es } from "date-fns/locale"
+import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 
 interface MessageTemplate {
   id: string
@@ -160,7 +161,7 @@ export async function generatePaymentReminders(supabase: SupabaseClient): Promis
 
     const message = replaceVariables(template.template, {
       nombre: mainCustomer.first_name,
-      fecha_vencimiento: format(new Date(payment.date_due), "dd/MM/yyyy"),
+      fecha_vencimiento: format(parseDateOnlyLocal(payment.date_due) ?? new Date(payment.date_due), "dd/MM/yyyy"),
       monto: payment.amount.toLocaleString("es-AR"),
       moneda: payment.currency,
       destino: payment.operations?.destination || "tu viaje",

@@ -31,6 +31,7 @@ import {
   FormMessage,
 } from "@/components/ui/form"
 import { DatePicker } from "@/components/ui/date-picker"
+import { formatDateOnlyLocal } from "@/lib/utils/date-only"
 import { Loader2, CreditCard, DollarSign, Calendar } from "lucide-react"
 import { toast } from "sonner"
 
@@ -92,7 +93,7 @@ export function NewPaymentDialog({
       amount: 0,
       currency: defaultCurrency as "ARS" | "USD",
       financial_account_id: "",
-      date_due: new Date().toISOString().split("T")[0],
+      date_due: formatDateOnlyLocal(new Date()) ?? "",
       reference: "",
     },
   })

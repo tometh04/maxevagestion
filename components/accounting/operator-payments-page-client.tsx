@@ -320,7 +320,7 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
           : "-",
         Estado: displayStatus,
         "Fecha Pago": payment.paid_at
-          ? format(new Date(payment.paid_at), "dd/MM/yyyy", { locale: es })
+          ? format(parseDateOnlyLocal(payment.paid_at) ?? new Date(payment.paid_at), "dd/MM/yyyy", { locale: es })
           : "-",
         "Parcial": paidAmount > 0 && paidAmount < amount ? "Sí" : "No",
       }

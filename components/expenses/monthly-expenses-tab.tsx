@@ -22,6 +22,8 @@ import {
 } from "@/components/ui/table"
 import { Loader2, DollarSign, Repeat, Receipt, TrendingDown } from "lucide-react"
 import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
+// Fix UTC shift en fechas DATE (VICO 2026-05-22)
+import { formatDateOnlyLocal } from "@/lib/utils/date-only"
 
 interface Expense {
   id: string
@@ -69,13 +71,13 @@ export function MonthlyExpensesTab({ agencies }: MonthlyExpensesTabProps) {
   const [dateFrom, setDateFrom] = useState(() => {
     const d = new Date()
     d.setDate(1)
-    return d.toISOString().split("T")[0]
+    return formatDateOnlyLocal(d) ?? ""
   })
   const [dateTo, setDateTo] = useState(() => {
     const d = new Date()
     d.setMonth(d.getMonth() + 1)
     d.setDate(0) // last day of current month
-    return d.toISOString().split("T")[0]
+    return formatDateOnlyLocal(d) ?? ""
   })
   const [currencyFilter, setCurrencyFilter] = useState("ALL")
   const [typeFilter, setTypeFilter] = useState("ALL")

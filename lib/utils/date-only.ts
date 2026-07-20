@@ -67,3 +67,27 @@ export function formatDateOnlyLocal(d: Date | null | undefined): string | null {
   const day = String(d.getDate()).padStart(2, "0")
   return `${y}-${m}-${day}`
 }
+
+/**
+ * Devuelve la fecha de HOY en zona horaria Argentina (America/Argentina/Buenos_Aires)
+ * como string "YYYY-MM-DD".
+ *
+ * Problema que resuelve:
+ *   En el navegador `new Date().toISOString().split("T")[0]` usa UTC, así que
+ *   después de las 21:00 ART devuelve el DÍA SIGUIENTE. En el server (Railway,
+ *   TZ=UTC) `formatDateOnlyLocal(new Date())` tampoco sirve porque los getters
+ *   locales están en UTC. Este helper fija explícitamente la zona Argentina, así
+ *   que da la misma fecha del calendario que ve el usuario, corra donde corra.
+ *
+ * Usar para cualquier "fecha de hoy por defecto" que se persista en una columna
+ * DATE (date_paid, date_due, due_date, withholding_date, operation_date, etc.).
+ */
+export function todayInArgentina(): string {
+  // en-CA formatea como "YYYY-MM-DD"; timeZone fija el día calendario argentino.
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Argentina/Buenos_Aires",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date())
+}

@@ -38,6 +38,8 @@ import { Users, Plus, Wallet, ArrowDownCircle, Trash2, Loader2, Calendar } from 
 import { toast } from "sonner"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
+// Fix UTC shift en fechas DATE (VICO 2026-05-22)
+import { formatDateOnlyLocal } from "@/lib/utils/date-only"
 
 interface Partner {
   id: string
@@ -90,7 +92,7 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
   const [selectedPartnerId, setSelectedPartnerId] = useState("")
   const [withdrawalAmount, setWithdrawalAmount] = useState("")
   const [withdrawalCurrency, setWithdrawalCurrency] = useState("USD")
-  const [withdrawalDate, setWithdrawalDate] = useState(new Date().toISOString().split("T")[0])
+  const [withdrawalDate, setWithdrawalDate] = useState(formatDateOnlyLocal(new Date()) ?? "")
   const [withdrawalDescription, setWithdrawalDescription] = useState("")
   const [withdrawalAccountId, setWithdrawalAccountId] = useState("")
   const [withdrawalExchangeRate, setWithdrawalExchangeRate] = useState("")
@@ -289,7 +291,7 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
     setSelectedPartnerId("")
     setWithdrawalAmount("")
     setWithdrawalCurrency("USD")
-    setWithdrawalDate(new Date().toISOString().split("T")[0])
+    setWithdrawalDate(formatDateOnlyLocal(new Date()) ?? "")
     setWithdrawalDescription("")
     setWithdrawalAccountId("")
     setWithdrawalExchangeRate("")

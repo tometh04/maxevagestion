@@ -18,6 +18,7 @@ import {
 } from "lucide-react"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
+import { formatDateOnlyLocal } from "@/lib/utils/date-only"
 
 /**
  * Normaliza un invoice_number al formato AFIP estándar: "0001-00000099"
@@ -115,7 +116,7 @@ export function PurchaseInvoicesSection({
     operator_id: "",
     invoice_type: "FACTURA_A",
     invoice_number: "",
-    invoice_date: new Date().toISOString().split("T")[0],
+    invoice_date: formatDateOnlyLocal(new Date()) ?? "",
     emitter_cuit: "",
     emitter_name: "",
     currency: currency || "USD",
@@ -236,7 +237,7 @@ export function PurchaseInvoicesSection({
   const resetForm = () => {
     setForm({
       operator_id: "", invoice_type: "FACTURA_A", invoice_number: "",
-      invoice_date: new Date().toISOString().split("T")[0],
+      invoice_date: formatDateOnlyLocal(new Date()) ?? "",
       emitter_cuit: "", emitter_name: "", currency: currency || "USD",
       net_amount: "", iva_rate: "21", iva_amount: "",
       perception_iva: "0", perception_iibb: "0", other_taxes: "0",

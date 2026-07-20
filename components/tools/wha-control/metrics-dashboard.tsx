@@ -8,6 +8,8 @@ import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Loader2, MessageCircle, MessageSquareText, Clock, Users, AlertCircle, UserPlus, Send, FileText } from "lucide-react"
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip, Legend } from "recharts"
+// Fix UTC shift en fechas DATE (VICO 2026-05-22)
+import { formatDateOnlyLocal } from "@/lib/utils/date-only"
 
 interface Agency {
   id: string
@@ -59,9 +61,9 @@ export function MetricsDashboard({ agencies }: MetricsDashboardProps) {
   const [dateFrom, setDateFrom] = useState(() => {
     const d = new Date()
     d.setDate(d.getDate() - 30)
-    return d.toISOString().split("T")[0]
+    return formatDateOnlyLocal(d) ?? ""
   })
-  const [dateTo, setDateTo] = useState(() => new Date().toISOString().split("T")[0])
+  const [dateTo, setDateTo] = useState(() => formatDateOnlyLocal(new Date()) ?? "")
   const [summary, setSummary] = useState<Summary | null>(null)
   const [timeseries, setTimeseries] = useState<TimeseriesPoint[]>([])
   const [includeGroups, setIncludeGroups] = useState(false)

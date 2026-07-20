@@ -33,6 +33,7 @@ import { Label } from "@/components/ui/label"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { cn } from "@/lib/utils"
+import { formatDateOnlyLocal } from "@/lib/utils/date-only"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { useToast } from "@/hooks/use-toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -626,18 +627,18 @@ export function NewOperationDialog({
         })() : { commission_pct_primary: null, commission_pct_secondary: null }),
         origin: values.origin || null,
         customer_id: values.customer_id || null,
-        return_date: values.return_date ? values.return_date.toISOString().split("T")[0] : null,
+        return_date: values.return_date ? formatDateOnlyLocal(values.return_date) : null,
         checkin_date: null,
         checkout_date: null,
-        departure_date: values.departure_date ? values.departure_date.toISOString().split("T")[0] : null,
+        departure_date: values.departure_date ? formatDateOnlyLocal(values.departure_date) : null,
         // operation_date = fecha de venta (cuándo se cerró la op). Puede
         // ser distinta a created_at si se carga retroactivamente. Si el
         // user no la setea, queda null y el backend usa created_at como
         // fallback (comportamiento legacy preservado).
-        operation_date: values.operation_date ? values.operation_date.toISOString().split("T")[0] : null,
+        operation_date: values.operation_date ? formatDateOnlyLocal(values.operation_date) : null,
         itr_localizador: values.itr_localizador || null,
         // Fecha máxima de pago del cliente (usada por el PDF de detalle).
-        customer_payment_deadline: values.customer_payment_deadline ? values.customer_payment_deadline.toISOString().split("T")[0] : null,
+        customer_payment_deadline: values.customer_payment_deadline ? formatDateOnlyLocal(values.customer_payment_deadline) : null,
         // Info adicional para el pasajero (usada por el PDF de detalle).
         passenger_notes: values.passenger_notes?.trim() || null,
         sale_currency: values.sale_currency || values.currency || "USD",

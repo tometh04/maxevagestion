@@ -26,6 +26,8 @@ import {
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
 import { toast } from "sonner"
+// Fix UTC shift en fechas DATE (VICO 2026-05-22)
+import { formatDateOnlyLocal } from "@/lib/utils/date-only"
 import { ArrowRight, ArrowUpFromLine, ArrowDownToLine, CalendarIcon, Loader2, StickyNote, Plus, ExternalLink } from "lucide-react"
 
 interface FinancialAccount {
@@ -166,7 +168,7 @@ export function TransferAccountDialog({
           to_account_id: values.to_account_id,
           amount: values.amount,
           currency: values.currency,
-          transfer_date: values.transfer_date.toISOString().split("T")[0],
+          transfer_date: formatDateOnlyLocal(values.transfer_date),
           notes: values.notes || null,
           ...(isCrossCurrency ? { exchange_rate: values.exchange_rate } : {}),
         }),

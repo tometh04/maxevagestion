@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { parseDateOnlyLocal } from "@/lib/utils/date-only"
+import { parseDateOnlyLocal, formatDateOnlyLocal } from "@/lib/utils/date-only"
 import { serviceKind, PASSENGER_DETAIL_FIELDS, sanitizePassengerDetail } from "@/lib/operations/service-kind"
 import * as z from "zod"
 import {
@@ -563,13 +563,13 @@ export function EditOperationDialog({
           ? Number(values.commission_pct_secondary)
           : null,
         origin: values.origin || null,
-        return_date: values.return_date ? values.return_date.toISOString().split("T")[0] : null,
-        departure_date: values.departure_date.toISOString().split("T")[0],
+        return_date: values.return_date ? formatDateOnlyLocal(values.return_date) : null,
+        departure_date: formatDateOnlyLocal(values.departure_date),
         // 2026-05-19: fecha real de venta editable (para corregir files históricos)
-        operation_date: values.operation_date ? values.operation_date.toISOString().split("T")[0] : undefined,
+        operation_date: values.operation_date ? formatDateOnlyLocal(values.operation_date) : undefined,
         // Fecha máxima de pago del cliente (usada por el PDF de detalle).
         customer_payment_deadline: values.customer_payment_deadline
-          ? values.customer_payment_deadline.toISOString().split("T")[0]
+          ? formatDateOnlyLocal(values.customer_payment_deadline)
           : null,
         // Info adicional para el pasajero (usada por el PDF de detalle).
         passenger_notes: values.passenger_notes?.trim() || null,

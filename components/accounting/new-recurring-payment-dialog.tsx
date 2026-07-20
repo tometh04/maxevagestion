@@ -43,6 +43,8 @@ import { toast } from "sonner"
 import { Check, ChevronsUpDown, Plus, Search, Building2, DollarSign, Calendar, FileText } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useDefaultCurrency } from "@/hooks/use-default-currency"
+// Fix UTC shift en fechas DATE (VICO 2026-05-22)
+import { formatDateOnlyLocal } from "@/lib/utils/date-only"
 
 const recurringPaymentSchema = z.object({
   provider_name: z.string().min(3, "El proveedor debe tener al menos 3 caracteres"),
@@ -100,7 +102,7 @@ export function NewRecurringPaymentDialog({
       amount: 0,
       currency: defaultCurrency,
       frequency: "MONTHLY",
-      start_date: new Date().toISOString().split("T")[0],
+      start_date: formatDateOnlyLocal(new Date()) ?? "",
       end_date: null,
       description: "",
       notes: null,

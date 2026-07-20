@@ -3,6 +3,7 @@ import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canPerformAction } from "@/lib/permissions-api"
 import { createWhatsAppMessage } from "@/lib/whatsapp/whatsapp-service"
+import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 
 /**
  * POST /api/whatsapp/send-receipt
@@ -79,7 +80,7 @@ export async function POST(request: Request) {
     const customerName = `${mainCustomer.first_name || ""} ${mainCustomer.last_name || ""}`.trim()
     const amount = `${payment.currency} ${Number(payment.amount).toLocaleString("es-AR", { minimumFractionDigits: 2 })}`
     const receiptNumber = receiptData.receiptNumber || `1000-${paymentId.slice(-8).toUpperCase()}`
-    const fechaPago = receiptData.fechaFormateada || new Date(payment.date_paid || payment.date_due).toLocaleDateString("es-AR")
+    const fechaPago = receiptData.fechaFormateada || (parseDateOnlyLocal(payment.date_paid || payment.date_due) ?? new Date(payment.date_paid || payment.date_due)).toLocaleDateString("es-AR")
 
     // Variables para el template
     const variables = {

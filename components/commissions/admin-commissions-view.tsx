@@ -40,7 +40,7 @@ import { CommissionsSettings } from "@/components/settings/commissions-settings"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 // Fix UTC shift en fechas DATE (VICO 2026-05-22)
-import { parseDateOnlyLocal } from "@/lib/utils/date-only"
+import { parseDateOnlyLocal, formatDateOnlyLocal } from "@/lib/utils/date-only"
 import {
   DollarSign,
   Users,
@@ -194,7 +194,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
   const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([])
   const [payAccountId, setPayAccountId] = useState("")
   const [payExchangeRate, setPayExchangeRate] = useState("")
-  const [payDate, setPayDate] = useState(() => new Date().toISOString().split("T")[0])
+  const [payDate, setPayDate] = useState(() => formatDateOnlyLocal(new Date()) ?? "")
   const [payNotes, setPayNotes] = useState("")
   const [paySubmitting, setPaySubmitting] = useState(false)
 
@@ -379,7 +379,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
     setPayAmounts(amounts)
     setPayAccountId("")
     setPayExchangeRate("")
-    setPayDate(new Date().toISOString().split("T")[0])
+    setPayDate(formatDateOnlyLocal(new Date()) ?? "")
     setPayNotes("")
     setPayDialogOpen(true)
     fetchFinancialAccounts()

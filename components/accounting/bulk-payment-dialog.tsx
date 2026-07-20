@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 // Fix UTC shift en fechas DATE (VICO 2026-05-22)
-import { parseDateOnlyLocal } from "@/lib/utils/date-only"
+import { parseDateOnlyLocal, formatDateOnlyLocal } from "@/lib/utils/date-only"
 import Link from "next/link"
 import {
   Dialog,
@@ -116,7 +116,7 @@ export function BulkPaymentDialog({
   const [paymentCurrency, setPaymentCurrency] = useState<"ARS" | "USD">("USD")
   const [exchangeRate, setExchangeRate] = useState<string>("")
   const [receiptNumber, setReceiptNumber] = useState<string>("")
-  const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().split("T")[0])
+  const [paymentDate, setPaymentDate] = useState<string>(formatDateOnlyLocal(new Date()) ?? "")
   const [notes, setNotes] = useState<string>("")
   
   const [submitting, setSubmitting] = useState(false)

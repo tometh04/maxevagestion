@@ -7,6 +7,7 @@ import { es } from "date-fns/locale"
 import { getOrgFeatureFlag } from "@/lib/settings/org-features"
 import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
 import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
+import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 
 // Escapar HTML para prevenir XSS
 function escapeHtml(str: string | null | undefined): string {
@@ -371,7 +372,7 @@ export async function GET(
             const amountLabel = `${isRefund ? "-" : ""}${p.currency} ${p.amount?.toLocaleString("es-AR")}`
             return `
               <tr>
-                <td>${format(new Date(p.date_due), "dd/MM/yyyy")}</td>
+                <td>${format(parseDateOnlyLocal(p.date_due) ?? new Date(p.date_due), "dd/MM/yyyy")}</td>
                 <td>${concept}</td>
                 <td>${escapeHtml(p.operations?.destination) || "-"}</td>
                 <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
