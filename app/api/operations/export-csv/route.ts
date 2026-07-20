@@ -169,16 +169,32 @@ export async function GET(request: Request) {
       "codigo_reserva_hotel",
     ]
 
-    const csvRows: string[] = [headers.join(",")]
+    // Separador ";" (no ","): Excel en español (Argentina) usa el punto y coma
+    // como separador de lista y la coma como decimal. Con "," Excel-ES metía
+    // todas las columnas en la celda A ("archivo todo roto"). Ver también la
+    // directiva `sep=;` que se antepone al final.
+    const DELIM = ";"
+
+    const csvRows: string[] = [headers.join(DELIM)]
 
     const csvEscape = (value: any): string => {
       if (value === null || value === undefined) return ""
       const str = String(value)
-      // Si contiene coma, comillas, salto de línea → escapar con comillas dobles
-      if (/[",\n\r]/.test(str)) {
+      // Escapar con comillas si contiene el separador (;), comillas o saltos de
+      // línea. NO se escapa por coma: los montos decimales usan coma (1234,56).
+      if (/[";\n\r]/.test(str)) {
         return `"${str.replace(/"/g, '""')}"`
       }
       return str
+    }
+
+    // Montos y porcentajes: decimal argentino con coma para que Excel-ES los
+    // interprete como número. Sin separador de miles (rompería el parseo).
+    const numEs = (value: any): string => {
+      if (value === null || value === undefined || value === "") return ""
+      const n = typeof value === "number" ? value : Number(value)
+      if (!Number.isFinite(n)) return String(value)
+      return String(n).replace(".", ",")
     }
 
     const customerName = (c: any): string => {
@@ -212,18 +228,18 @@ export async function GET(request: Request) {
         op.adults,
         op.children,
         op.infants,
-        op.sale_amount_total,
+        numEs(op.sale_amount_total),
         op.sale_currency,
         op.currency,
-        op.operator_cost,
+        numEs(op.operator_cost),
         op.operator_cost_currency,
-        op.margin_amount,
-        op.margin_percentage,
-        op.billing_margin_amount,
-        op.billing_margin_percentage,
-        op.commission_split,
-        op.commission_pct_primary,
-        op.commission_pct_secondary,
+        numEs(op.margin_amount),
+        numEs(op.margin_percentage),
+        numEs(op.billing_margin_amount),
+        numEs(op.billing_margin_percentage),
+        numEs(op.commission_split),
+        numEs(op.commission_pct_primary),
+        numEs(op.commission_pct_secondary),
         op.sellers?.name,
         op.sellers?.email,
         op.sellers_secondary?.name,
@@ -240,12 +256,15 @@ export async function GET(request: Request) {
         op.reservation_code_hotel,
       ].map(csvEscape)
 
-      csvRows.push(row.join(","))
+      csvRows.push(row.join(DELIM))
     }
 
-    // BOM para que Excel detecte UTF-8 (sino se rompen los acentos)
+    // BOM para que Excel detecte UTF-8 (sino se rompen los acentos).
+    // `sep=;` es una directiva que Excel lee en la 1ra línea para fijar el
+    // separador en cualquier locale (evita depender de la config regional).
+    // Line endings CRLF: es lo que espera Excel en Windows.
     const BOM = "﻿"
-    const csv = BOM + csvRows.join("\n")
+    const csv = BOM + "sep=;\r\n" + csvRows.join("\r\n")
 
     const today = new Date().toISOString().slice(0, 10)
     const filenameBase = truncated
