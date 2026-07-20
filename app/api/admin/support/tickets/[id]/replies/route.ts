@@ -19,7 +19,7 @@ export async function GET(
 
   const { data: ticket } = await (admin as any)
     .from('support_tickets')
-    .select('id, subject, description, status, created_at, updated_at, user_id, org_id')
+    .select('id, subject, description, status, created_at, updated_at, user_id, org_id, category, severity, priority, ai_rationale, linear_issue_url, linear_identifier')
     .eq('id', id)
     .single()
 
