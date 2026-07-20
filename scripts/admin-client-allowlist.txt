@@ -66,6 +66,8 @@ app/api/admin/orgs/[id]/seed-chart-of-accounts/route.ts                  # PLATF
 app/api/admin/orgs/[id]/seed-manychat-lists/route.ts                     # PLATFORM_ADMIN — seedear listas Manychat de un tenant.
 app/api/admin/orgs/[id]/suspend/route.ts                                 # PLATFORM_ADMIN — suspender tenant.
 app/api/admin/orgs/[id]/unsuspend/route.ts                               # PLATFORM_ADMIN — desuspender tenant.
+app/api/admin/support/tickets/route.ts                                   # PLATFORM_ADMIN — backlog de tickets cross-org (listar/estado/borrar); gated por isPlatformAdmin.
+app/api/admin/support/tickets/[id]/replies/route.ts                      # PLATFORM_ADMIN — hilo de respuestas de cualquier tenant; gated por isPlatformAdmin.
 
 # ─── CRON JOBS ─────────────────────────────────────────────────────────────────
 # Cross-tenant por diseño: procesan todos los orgs; insertos llevan org_id explícito.

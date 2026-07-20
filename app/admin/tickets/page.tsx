@@ -5,9 +5,12 @@ import { useRouter } from "next/navigation"
 import {
   LifeBuoy, RefreshCw, MessageCircle, Building2, Mail,
   Clock, ChevronDown, Bug, Lightbulb, HelpCircle, ExternalLink,
+  Search, Trash2, X, AlertTriangle,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Select,
   SelectContent,
@@ -27,8 +30,19 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 interface Ticket {
   id: string
@@ -45,6 +59,18 @@ interface Ticket {
   priority: string | null
   linear_issue_url: string | null
   linear_identifier: string | null
+}
+
+interface Counts {
+  total: number
+  open: number
+  in_progress: number
+  urgent: number
+}
+
+interface OrgOption {
+  id: string
+  name: string
 }
 
 const STATUS_CONFIG: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
@@ -84,45 +110,123 @@ function formatDate(d: string) {
 export default function AdminTicketsPage() {
   const router = useRouter()
   const [tickets, setTickets] = useState<Ticket[]>([])
+  const [counts, setCounts] = useState<Counts>({ total: 0, open: 0, in_progress: 0, urgent: 0 })
+  const [orgs, setOrgs] = useState<OrgOption[]>([])
   const [loading, setLoading] = useState(true)
+
+  // Filtros
   const [filter, setFilter] = useState("all")
   const [categoryFilter, setCategoryFilter] = useState("all")
+  const [priorityFilter, setPriorityFilter] = useState("all")
+  const [orgFilter, setOrgFilter] = useState("all")
+  const [includeClosed, setIncludeClosed] = useState(false)
+  const [search, setSearch] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+
+  // Selección múltiple + borrado
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [deleteTarget, setDeleteTarget] = useState<{ ids: string[]; label: string } | null>(null)
+  const [working, setWorking] = useState(false)
+
+  // Debounce de la búsqueda para no pegarle a la API en cada tecla
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 350)
+    return () => clearTimeout(t)
+  }, [search])
 
   const fetchTickets = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/admin/support/tickets?status=${filter}&category=${categoryFilter}`)
+      const params = new URLSearchParams({
+        status: filter,
+        category: categoryFilter,
+        priority: priorityFilter,
+        org: orgFilter,
+        includeClosed: String(includeClosed),
+      })
+      if (debouncedSearch.trim()) params.set("q", debouncedSearch.trim())
+
+      const res = await fetch(`/api/admin/support/tickets?${params.toString()}`)
       const data = await res.json()
       setTickets(data.tickets || [])
+      if (data.counts) setCounts(data.counts)
+      if (data.orgs) setOrgs(data.orgs)
     } catch {
       setTickets([])
     } finally {
       setLoading(false)
     }
-  }, [filter, categoryFilter])
+  }, [filter, categoryFilter, priorityFilter, orgFilter, includeClosed, debouncedSearch])
 
   useEffect(() => {
     fetchTickets()
   }, [fetchTickets])
 
-  const updateStatus = async (ticketId: string, newStatus: string) => {
+  // Al cambiar el listado, descartar selecciones de tickets que ya no están visibles
+  useEffect(() => {
+    setSelected((prev) => {
+      const visible = new Set(tickets.map((t) => t.id))
+      const next = new Set(Array.from(prev).filter((id) => visible.has(id)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [tickets])
+
+  const updateStatus = async (ticketIds: string[], newStatus: string) => {
+    setWorking(true)
     try {
       await fetch("/api/admin/support/tickets", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: ticketId, status: newStatus }),
+        body: JSON.stringify({ ids: ticketIds, status: newStatus }),
       })
-      setTickets((prev) =>
-        prev.map((t) => (t.id === ticketId ? { ...t, status: newStatus } : t))
-      )
+      await fetchTickets()
+      setSelected(new Set())
     } catch {}
+    setWorking(false)
   }
 
-  const counts = {
-    all: tickets.length,
-    open: tickets.filter((t) => t.status === "open").length,
-    in_progress: tickets.filter((t) => t.status === "in_progress").length,
+  const confirmDelete = async () => {
+    if (!deleteTarget) return
+    setWorking(true)
+    try {
+      await fetch("/api/admin/support/tickets", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: deleteTarget.ids }),
+      })
+      await fetchTickets()
+      setSelected(new Set())
+    } catch {}
+    setWorking(false)
+    setDeleteTarget(null)
   }
+
+  const toggleOne = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const allVisibleSelected = tickets.length > 0 && tickets.every((t) => selected.has(t.id))
+  const toggleAll = () => {
+    setSelected(allVisibleSelected ? new Set() : new Set(tickets.map((t) => t.id)))
+  }
+
+  const resetFilters = () => {
+    setFilter("all")
+    setCategoryFilter("all")
+    setPriorityFilter("all")
+    setOrgFilter("all")
+    setSearch("")
+    setIncludeClosed(false)
+  }
+
+  const hasActiveFilters =
+    filter !== "all" || categoryFilter !== "all" || priorityFilter !== "all" ||
+    orgFilter !== "all" || search.trim() !== "" || includeClosed
 
   return (
     <div>
@@ -143,10 +247,10 @@ export default function AdminTicketsPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <div className="border rounded-lg p-4">
           <p className="text-sm text-muted-foreground">Total</p>
-          <p className="text-2xl font-bold">{counts.all}</p>
+          <p className="text-2xl font-bold">{counts.total}</p>
         </div>
         <div className="border rounded-lg p-4">
           <p className="text-sm text-muted-foreground">Abiertos</p>
@@ -156,46 +260,152 @@ export default function AdminTicketsPage() {
           <p className="text-sm text-muted-foreground">En progreso</p>
           <p className="text-2xl font-bold text-blue-600">{counts.in_progress}</p>
         </div>
+        <div className="border rounded-lg p-4">
+          <p className="text-sm text-muted-foreground">Urgentes activos</p>
+          <p className="text-2xl font-bold text-orange-600">{counts.urgent}</p>
+        </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3 mb-4">
-        <span className="text-sm text-muted-foreground">Filtrar:</span>
-        <Select value={filter} onValueChange={setFilter}>
-          <SelectTrigger className="w-40">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos los estados</SelectItem>
-            <SelectItem value="open">Abiertos</SelectItem>
-            <SelectItem value="in_progress">En progreso</SelectItem>
-            <SelectItem value="resolved">Resueltos</SelectItem>
-            <SelectItem value="closed">Cerrados</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-          <SelectTrigger className="w-40">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos los tipos</SelectItem>
-            <SelectItem value="bug">Bugs</SelectItem>
-            <SelectItem value="improvement">Mejoras</SelectItem>
-            <SelectItem value="question">Consultas</SelectItem>
-          </SelectContent>
-        </Select>
+      {/* Búsqueda + filtros */}
+      <div className="space-y-3 mb-4">
+        <div className="relative max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar por asunto, descripción o email..."
+            className="pl-9"
+          />
+          {search && (
+            <button
+              onClick={() => setSearch("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <Select value={filter} onValueChange={setFilter}>
+            <SelectTrigger className="w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos los estados</SelectItem>
+              <SelectItem value="open">Abiertos</SelectItem>
+              <SelectItem value="in_progress">En progreso</SelectItem>
+              <SelectItem value="resolved">Resueltos</SelectItem>
+              <SelectItem value="closed">Cerrados</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+            <SelectTrigger className="w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos los tipos</SelectItem>
+              <SelectItem value="bug">Bugs</SelectItem>
+              <SelectItem value="improvement">Mejoras</SelectItem>
+              <SelectItem value="question">Consultas</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+            <SelectTrigger className="w-44">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas las prioridades</SelectItem>
+              <SelectItem value="urgent">Urgente</SelectItem>
+              <SelectItem value="high">Alta</SelectItem>
+              <SelectItem value="normal">Normal</SelectItem>
+              <SelectItem value="low">Baja</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={orgFilter} onValueChange={setOrgFilter}>
+            <SelectTrigger className="w-56">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas las agencias</SelectItem>
+              {orgs.map((o) => (
+                <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <Checkbox
+              checked={includeClosed}
+              onCheckedChange={(v) => setIncludeClosed(v === true)}
+            />
+            Mostrar cerrados
+          </label>
+
+          {hasActiveFilters && (
+            <Button variant="ghost" size="sm" onClick={resetFilters}>
+              <X className="h-3.5 w-3.5 mr-1" />
+              Limpiar
+            </Button>
+          )}
+        </div>
       </div>
+
+      {/* Barra de acciones masivas */}
+      {selected.size > 0 && (
+        <div className="flex items-center gap-3 mb-3 p-3 border rounded-lg bg-accent/40">
+          <span className="text-sm font-medium">
+            {selected.size} {selected.size === 1 ? "seleccionado" : "seleccionados"}
+          </span>
+          <div className="flex-1" />
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={working}
+            onClick={() => updateStatus(Array.from(selected), "closed")}
+          >
+            Cerrar
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={working}
+            onClick={() =>
+              setDeleteTarget({
+                ids: Array.from(selected),
+                label: `${selected.size} ticket${selected.size === 1 ? "" : "s"}`,
+              })
+            }
+          >
+            <Trash2 className="h-3.5 w-3.5 mr-1" />
+            Borrar
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
+            Cancelar
+          </Button>
+        </div>
+      )}
 
       {/* Table */}
       <div className="border rounded-lg">
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-[40px]">
+                <Checkbox
+                  checked={allVisibleSelected}
+                  onCheckedChange={toggleAll}
+                  aria-label="Seleccionar todos"
+                />
+              </TableHead>
               <TableHead>Asunto</TableHead>
               <TableHead>Tipo</TableHead>
               <TableHead>Prioridad</TableHead>
               <TableHead>Usuario</TableHead>
-              <TableHead>Organización</TableHead>
+              <TableHead>Agencia</TableHead>
               <TableHead>Estado</TableHead>
               <TableHead>Fecha</TableHead>
               <TableHead className="w-[120px]">Acciones</TableHead>
@@ -204,14 +414,16 @@ export default function AdminTicketsPage() {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                   Cargando...
                 </TableCell>
               </TableRow>
             ) : tickets.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                  No hay tickets {filter !== "all" ? `con estado "${STATUS_CONFIG[filter]?.label}"` : ""}
+                <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                  {hasActiveFilters
+                    ? "No hay tickets que coincidan con los filtros"
+                    : "No hay tickets"}
                 </TableCell>
               </TableRow>
             ) : (
@@ -220,8 +432,21 @@ export default function AdminTicketsPage() {
                 const catCfg = ticket.category ? CATEGORY_CONFIG[ticket.category] : null
                 const CatIcon = catCfg?.icon
                 const prioCfg = ticket.priority ? PRIORITY_CONFIG[ticket.priority] : null
+                const isSelected = selected.has(ticket.id)
                 return (
-                  <TableRow key={ticket.id} className="cursor-pointer hover:bg-accent/50" onClick={() => router.push(`/admin/tickets/${ticket.id}`)}>
+                  <TableRow
+                    key={ticket.id}
+                    data-state={isSelected ? "selected" : undefined}
+                    className="cursor-pointer hover:bg-accent/50"
+                    onClick={() => router.push(`/admin/tickets/${ticket.id}`)}
+                  >
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={() => toggleOne(ticket.id)}
+                        aria-label="Seleccionar ticket"
+                      />
+                    </TableCell>
                     <TableCell>
                       <div>
                         <p className="font-medium text-sm">{ticket.subject}</p>
@@ -296,16 +521,16 @@ export default function AdminTicketsPage() {
                       <Badge variant={cfg.variant} className="whitespace-nowrap">{cfg.label}</Badge>
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap">
                         <Clock className="h-3 w-3" />
                         {formatDate(ticket.created_at)}
                       </div>
                     </TableCell>
-                    <TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="sm" className="h-7 px-2 text-xs">
-                            Cambiar
+                            Acciones
                             <ChevronDown className="h-3 w-3 ml-1" />
                           </Button>
                         </DropdownMenuTrigger>
@@ -314,11 +539,21 @@ export default function AdminTicketsPage() {
                             <DropdownMenuItem
                               key={key}
                               disabled={ticket.status === key}
-                              onClick={() => updateStatus(ticket.id, key)}
+                              onClick={() => updateStatus([ticket.id], key)}
                             >
                               {val.label}
                             </DropdownMenuItem>
                           ))}
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={() =>
+                              setDeleteTarget({ ids: [ticket.id], label: `"${ticket.subject}"` })
+                            }
+                          >
+                            <Trash2 className="h-3.5 w-3.5 mr-2" />
+                            Borrar
+                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -329,6 +564,43 @@ export default function AdminTicketsPage() {
           </TableBody>
         </Table>
       </div>
+
+      {/* Confirmación de borrado */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Borrar {deleteTarget?.label}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>
+                  Se va a borrar {deleteTarget?.ids.length === 1 ? "el ticket" : "los tickets"} junto
+                  con todas sus respuestas. Esta acción no se puede deshacer.
+                </p>
+                <p className="text-xs">
+                  El issue vinculado en Linear <strong>no se toca</strong>: queda activo para el
+                  equipo de desarrollo.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={working}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault()
+                confirmDelete()
+              }}
+              disabled={working}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {working ? "Borrando..." : "Borrar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
