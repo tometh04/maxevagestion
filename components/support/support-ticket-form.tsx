@@ -1,7 +1,10 @@
 "use client"
 
-import { useState } from "react"
-import { ArrowLeft, Send, Loader2, CheckCircle2, Bug, Lightbulb, HelpCircle } from "lucide-react"
+import { useState, useRef } from "react"
+import {
+  ArrowLeft, Send, Loader2, CheckCircle2, Bug, Lightbulb, HelpCircle,
+  Paperclip, X, FileText, ImageIcon,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -20,15 +23,61 @@ const TICKET_TYPES: { value: TicketType; label: string; icon: typeof Bug; placeh
   { value: "improvement", label: "Mejora", icon: Lightbulb, placeholder: "Ej: Me gustaría exportar operaciones a Excel" },
 ]
 
+interface Attachment {
+  name: string
+  url: string
+  type: string
+  size: number
+}
+
+const MAX_ATTACHMENTS = 5
+
 export function SupportTicketForm({ conversationId, onBack }: SupportTicketFormProps) {
   const [type, setType] = useState<TicketType>("question")
   const [subject, setSubject] = useState("")
   const [description, setDescription] = useState("")
+  const [attachments, setAttachments] = useState<Attachment[]>([])
+  const [uploading, setUploading] = useState(false)
   const [sending, setSending] = useState(false)
   const [sent, setSent] = useState(false)
   const [error, setError] = useState("")
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const activeType = TICKET_TYPES.find((t) => t.value === type) ?? TICKET_TYPES[0]
+
+  const handleFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return
+    setError("")
+
+    const room = MAX_ATTACHMENTS - attachments.length
+    if (room <= 0) {
+      setError(`Máximo ${MAX_ATTACHMENTS} adjuntos.`)
+      return
+    }
+
+    setUploading(true)
+    for (const file of Array.from(files).slice(0, room)) {
+      try {
+        const fd = new FormData()
+        fd.append("file", file)
+        const res = await fetch("/api/support/attachments", { method: "POST", body: fd })
+        const data = await res.json()
+        if (!res.ok) {
+          setError(data.error || `No pudimos subir ${file.name}`)
+          continue
+        }
+        setAttachments((prev) => [...prev, data.attachment])
+      } catch {
+        setError(`No pudimos subir ${file.name}`)
+      }
+    }
+    setUploading(false)
+    if (fileInputRef.current) fileInputRef.current.value = ""
+  }
+
+  const removeAttachment = (url: string) => {
+    setAttachments((prev) => prev.filter((a) => a.url !== url))
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -46,6 +95,7 @@ export function SupportTicketForm({ conversationId, onBack }: SupportTicketFormP
           subject: subject.trim(),
           description: description.trim() || undefined,
           conversationId: conversationId || undefined,
+          attachments,
         }),
       })
 
@@ -149,6 +199,69 @@ export function SupportTicketForm({ conversationId, onBack }: SupportTicketFormP
           />
         </div>
 
+        <div>
+          <label className="text-xs font-medium text-muted-foreground mb-1 block">
+            Adjuntos <span className="font-normal">(opcional)</span>
+          </label>
+
+          {attachments.length > 0 && (
+            <ul className="space-y-1 mb-2">
+              {attachments.map((a) => (
+                <li
+                  key={a.url}
+                  className="flex items-center gap-2 rounded-md border px-2 py-1.5 text-xs"
+                >
+                  {a.type.startsWith("image/") ? (
+                    <ImageIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  ) : (
+                    <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  )}
+                  <span className="truncate flex-1">{a.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeAttachment(a.url)}
+                    className="text-muted-foreground hover:text-destructive shrink-0"
+                    aria-label="Quitar adjunto"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {attachments.length < MAX_ATTACHMENTS && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
+                className="hidden"
+                onChange={(e) => handleFiles(e.target.files)}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full"
+                disabled={uploading}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {uploading ? (
+                  <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />
+                ) : (
+                  <Paperclip className="h-3.5 w-3.5 mr-2" />
+                )}
+                {uploading ? "Subiendo..." : "Adjuntar captura o archivo"}
+              </Button>
+              <p className="text-[10px] text-muted-foreground mt-1">
+                JPG, PNG, WebP, GIF o PDF · hasta 10MB · máx {MAX_ATTACHMENTS}
+              </p>
+            </>
+          )}
+        </div>
+
         {conversationId && (
           <p className="text-[11px] text-muted-foreground">
             Se adjunta la conversación con el asistente de IA como referencia.
@@ -162,7 +275,7 @@ export function SupportTicketForm({ conversationId, onBack }: SupportTicketFormP
         <Button
           type="submit"
           className="w-full"
-          disabled={!subject.trim() || sending}
+          disabled={!subject.trim() || sending || uploading}
         >
           {sending ? (
             <Loader2 className="h-4 w-4 animate-spin mr-2" />

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
 import {
   ArrowLeft, Send, Loader2, User, ShieldCheck, Building2,
-  Mail, Clock, LifeBuoy, Bug, Lightbulb, HelpCircle, ExternalLink,
+  Mail, Clock, LifeBuoy, Bug, Lightbulb, HelpCircle, ExternalLink, Paperclip,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -36,6 +36,7 @@ interface TicketDetail {
   ai_rationale: string | null
   linear_issue_url: string | null
   linear_identifier: string | null
+  attachments: { name: string; url: string; type: string; size: number }[] | null
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -214,6 +215,47 @@ export default function AdminTicketDetailPage() {
         <div className="border rounded-lg p-4 mb-4 bg-muted/30">
           <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">Descripción original</p>
           <p className="text-sm whitespace-pre-wrap">{ticket.description}</p>
+        </div>
+      )}
+
+      {/* Adjuntos */}
+      {ticket.attachments && ticket.attachments.length > 0 && (
+        <div className="border rounded-lg p-4 mb-4">
+          <p className="text-xs font-semibold text-muted-foreground uppercase mb-2">
+            Adjuntos ({ticket.attachments.length})
+          </p>
+          <div className="flex flex-wrap gap-3">
+            {ticket.attachments.map((a) =>
+              a.type?.startsWith("image/") ? (
+                <a
+                  key={a.url}
+                  href={a.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block"
+                  title={a.name}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={a.url}
+                    alt={a.name}
+                    className="h-24 w-24 object-cover rounded-md border hover:opacity-80 transition-opacity"
+                  />
+                </a>
+              ) : (
+                <a
+                  key={a.url}
+                  href={a.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-accent"
+                >
+                  <Paperclip className="h-4 w-4 text-muted-foreground" />
+                  <span className="truncate max-w-[200px]">{a.name}</span>
+                </a>
+              ),
+            )}
+          </div>
         </div>
       )}
 

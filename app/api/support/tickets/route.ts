@@ -2,9 +2,44 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/server'
 import { classifyTicket, type TicketCategory } from '@/lib/support/triage'
-import { createLinearIssue, mapToLinearPriority } from '@/lib/integrations/linear'
+import {
+  createLinearIssue,
+  createLinearAttachment,
+  mapToLinearPriority,
+} from '@/lib/integrations/linear'
 
 const VALID_TYPES: TicketCategory[] = ['bug', 'improvement', 'question']
+
+const MAX_ATTACHMENTS = 5
+
+type Attachment = { name: string; url: string; type: string; size: number }
+
+/**
+ * Valida los adjuntos que manda el cliente. Solo se aceptan URLs del bucket
+ * público de Supabase (evita que se inyecte cualquier URL externa al issue
+ * de Linear).
+ */
+function sanitizeAttachments(raw: unknown): Attachment[] {
+  if (!Array.isArray(raw)) return []
+  const prefix = `${process.env.NEXT_PUBLIC_SUPABASE_URL || ''}/storage/v1/object/public/documents/`
+
+  return raw
+    .filter((a: any) =>
+      a &&
+      typeof a.name === 'string' &&
+      typeof a.url === 'string' &&
+      typeof a.type === 'string' &&
+      typeof a.size === 'number' &&
+      a.url.startsWith(prefix),
+    )
+    .slice(0, MAX_ATTACHMENTS)
+    .map((a: any) => ({
+      name: String(a.name).slice(0, 200),
+      url: a.url,
+      type: a.type,
+      size: a.size,
+    }))
+}
 
 export async function POST(req: NextRequest) {
   let sessionUser: any
@@ -17,7 +52,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  let body: { subject: string; description?: string; conversationId?: string; type?: string }
+  let body: {
+    subject: string
+    description?: string
+    conversationId?: string
+    type?: string
+    attachments?: unknown
+  }
   try {
     body = await req.json()
   } catch {
@@ -32,6 +73,8 @@ export async function POST(req: NextRequest) {
   const userType: TicketCategory = VALID_TYPES.includes(body.type as TicketCategory)
     ? (body.type as TicketCategory)
     : 'question'
+
+  const attachments = sanitizeAttachments(body.attachments)
 
   const supabase = await createServerClient()
 
@@ -80,8 +123,23 @@ export async function POST(req: NextRequest) {
         `**Severidad:** ${classification.severity}`,
       ].join('  ·  ')
 
+      // Adjuntos: las imágenes van embebidas para verlas inline en Linear;
+      // el resto (PDFs) como link.
+      const attachmentsMd = attachments.length
+        ? [
+            '',
+            '**Adjuntos:**',
+            ...attachments.map((a) =>
+              a.type.startsWith('image/')
+                ? `![${a.name}](${a.url})`
+                : `- [${a.name}](${a.url})`,
+            ),
+          ].join('\n')
+        : ''
+
       const description = [
         body.description?.trim() || '_(sin descripción)_',
+        attachmentsMd,
         '',
         '---',
         reporter,
@@ -103,6 +161,11 @@ export async function POST(req: NextRequest) {
           linear_issue_url: issue.url,
           linear_identifier: issue.identifier,
         }
+
+        // Además los sumamos a la sección Attachments del issue.
+        for (const a of attachments) {
+          await createLinearAttachment(issue.id, a.url, a.name)
+        }
       }
     } catch (err) {
       console.error('Error creando issue en Linear (no bloqueante):', err)
@@ -122,6 +185,7 @@ export async function POST(req: NextRequest) {
       priority: classification.priority,
       ai_rationale: classification.rationale,
       ai_classified_at: new Date().toISOString(),
+      attachments,
       ...linearFields,
     })
     .select('id, subject, status, created_at')

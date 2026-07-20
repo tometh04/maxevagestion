@@ -232,6 +232,33 @@ export async function createLinearComment(
   return true
 }
 
+const ATTACHMENT_CREATE_MUTATION = `
+  mutation AttachmentCreate($input: AttachmentCreateInput!) {
+    attachmentCreate(input: $input) { success attachment { id } }
+  }
+`
+
+/**
+ * Adjunta una URL al issue de Linear (sección Attachments). Los archivos viven
+ * en el bucket público de Supabase, así que la URL es accesible desde Linear.
+ * Best-effort: devuelve false si falla, sin lanzar.
+ */
+export async function createLinearAttachment(
+  issueId: string,
+  url: string,
+  title: string,
+): Promise<boolean> {
+  const config = getConfig()
+  if (!config) return false
+
+  const data = await linearRequest<{ attachmentCreate: { success: boolean } }>(
+    config.apiKey,
+    ATTACHMENT_CREATE_MUTATION,
+    { input: { issueId, url, title } },
+  )
+  return !!data?.attachmentCreate?.success
+}
+
 export type LinearDiagnostics = {
   env: { LINEAR_API_KEY: boolean; LINEAR_TEAM_ID: boolean; LINEAR_WEBHOOK_SECRET: boolean }
   configuredTeamId: string | null
