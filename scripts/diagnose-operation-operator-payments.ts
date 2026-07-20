@@ -38,20 +38,31 @@ function fmt(n: unknown): string {
     process.exit(1)
   }
 
-  // Resolver operación por id exacto, prefijo de id, o file_code.
-  let { data: ops } = await admin
-    .from("operations")
-    .select("id, file_code, destination, operator_id, operator_cost, operator_cost_currency, org_id")
-    .or(`file_code.eq.${NEEDLE},id.eq.${NEEDLE}`)
-    .limit(5)
+  // Resolver operación por id exacto, file_code, o prefijo de id.
+  const SEL = "id, file_code, destination, operator_id, operator_cost, operator_cost_currency, org_id"
+  const isFullUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(NEEDLE)
+  let ops: any[] = []
 
-  if ((!ops || ops.length === 0) && /^[0-9a-f-]{4,}$/i.test(NEEDLE)) {
-    // Prefijo de id: traer un lote y filtrar por startsWith (PostgREST no hace like en uuid).
-    const { data: sample } = await admin
-      .from("operations")
-      .select("id, file_code, destination, operator_id, operator_cost, operator_cost_currency, org_id")
-      .limit(10000)
-    ops = (sample || []).filter((o: any) => String(o.id).startsWith(NEEDLE.toLowerCase()))
+  // 1) match exacto por file_code
+  {
+    const { data } = await admin.from("operations").select(SEL).eq("file_code", NEEDLE).limit(5)
+    ops = data || []
+  }
+  // 2) match exacto por id (solo si es uuid completo)
+  if (ops.length === 0 && isFullUuid) {
+    const { data } = await admin.from("operations").select(SEL).eq("id", NEEDLE).limit(1)
+    ops = data || []
+  }
+  // 3) prefijo de id: paginar operaciones y filtrar por startsWith
+  if (ops.length === 0 && /^[0-9a-f-]{4,}$/i.test(NEEDLE)) {
+    const needle = NEEDLE.toLowerCase()
+    for (let from = 0; from < 200000; from += 1000) {
+      const { data } = await admin.from("operations").select(SEL).range(from, from + 999)
+      if (!data || data.length === 0) break
+      const hit = data.filter((o: any) => String(o.id).toLowerCase().startsWith(needle))
+      if (hit.length) { ops = hit; break }
+      if (data.length < 1000) break
+    }
   }
 
   if (!ops || ops.length === 0) {
@@ -77,13 +88,13 @@ function fmt(n: unknown): string {
   // 1) Servicios cargados.
   const { data: opOpers } = await admin
     .from("operation_operators")
-    .select("id, operator_id, cost, cost_currency, product_type")
+    .select("id, operator_id, cost, cost_currency, product_type, file_code, payment_due_date")
     .eq("operation_id", op.id)
   console.log(`1) operation_operators (${(opOpers || []).length} servicios cargados):`)
   const serviceOperatorIds = new Set<string>()
   for (const oo of opOpers || []) {
     serviceOperatorIds.add((oo as any).operator_id)
-    console.log(`   ${fmt((oo as any).cost)} ${(oo as any).cost_currency}  ${(oo as any).product_type || "-"}  →  ${nm((oo as any).operator_id)}`)
+    console.log(`   ${fmt((oo as any).cost)} ${(oo as any).cost_currency}  ${(oo as any).product_type || "-"}  →  ${nm((oo as any).operator_id)}  file=${(oo as any).file_code ?? "∅"}  venc_pago=${(oo as any).payment_due_date ?? "∅"}`)
   }
 
   // 2) Deudas.
