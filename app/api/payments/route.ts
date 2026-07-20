@@ -18,6 +18,7 @@ import {
   applyOperatorPaymentSettlement,
   findMatchingOperatorPayment,
   revertOperatorPaymentSettlement,
+  AmbiguousOperatorPaymentError,
 } from "@/lib/accounting/operator-payment-settlement"
 import {
   createPaymentCounterpartMovement,
@@ -436,6 +437,7 @@ export async function POST(request: Request) {
       if (operation_id) {
         let matchedOperatorPayment = null
 
+        const hasExplicitDebt = Boolean(resolvedOperatorPaymentId || operator_payment_id)
         try {
           matchedOperatorPayment = await findMatchingOperatorPayment(supabase, {
             operationId: operation_id,
@@ -444,8 +446,28 @@ export async function POST(request: Request) {
             // Desambigua patas del mismo operador por monto cuando no hay
             // operator_payment_id explícito (ver pickExactPendingMatch).
             amount: amount != null ? parseFloat(String(amount)) : null,
+            // Sin deuda explícita y varias patas del mismo operador sin match
+            // exacto → no adivinar por FIFO; pedirle al usuario que elija.
+            rejectAmbiguous: !hasExplicitDebt,
           })
         } catch (error) {
+          if (error instanceof AmbiguousOperatorPaymentError) {
+            return NextResponse.json(
+              {
+                error: error.message,
+                code: "AMBIGUOUS_OPERATOR_PAYMENT",
+                candidates: error.candidates.map((c) => ({
+                  id: c.id,
+                  operator_id: c.operator_id,
+                  amount: Number(c.amount),
+                  paid_amount: Number(c.paid_amount ?? 0),
+                  pending: Number(c.amount) - Number(c.paid_amount ?? 0),
+                  due_date: c.due_date,
+                })),
+              },
+              { status: 409 }
+            )
+          }
           const message = error instanceof Error ? error.message : "Error al identificar la deuda del operador"
           const status = message.startsWith("Error obteniendo deuda de operador") ? 500 : 400
           return NextResponse.json({ error: message }, { status })

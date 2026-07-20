@@ -139,6 +139,15 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
     message?: string
   } | null>(null)
 
+  // Cuando el operador tiene varias deudas pendientes y el monto no matchea
+  // ninguna exacto, el backend responde 409 y acá le pedimos al usuario que
+  // elija a qué deuda imputar el pago (en vez de adivinar por FIFO).
+  const [ambiguousDebtAlert, setAmbiguousDebtAlert] = useState<{
+    candidates: Array<{ id: string; operator_id: string; amount: number; paid_amount: number; pending: number; due_date: string | null }>
+    pendingValues: PaymentFormValues
+    message?: string
+  } | null>(null)
+
   const today = new Date().toISOString().split("T")[0]
 
   const form = useForm<PaymentFormValues>({
@@ -350,7 +359,7 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
     }
   }, [form, open, watchDirection, watchOperationId])
 
-  const submitPayment = async (values: PaymentFormValues, opts: { force?: boolean } = {}) => {
+  const submitPayment = async (values: PaymentFormValues, opts: { force?: boolean; operatorPaymentId?: string } = {}) => {
     setIsLoading(true)
     try {
       // 1. Crear el pago. Si force=true, salteamos la detección de duplicados del backend.
@@ -362,6 +371,9 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
           payer_type: values.payer_type,
           direction: values.direction,
           operator_id: values.payer_type === "OPERATOR" ? values.operator_id || null : null,
+          // Deuda específica elegida por el usuario cuando el operador tiene varias
+          // patas pendientes (viene del picker de ambigüedad).
+          operator_payment_id: opts.operatorPaymentId ?? null,
           amount: values.amount,
           currency: values.currency,
           method: values.method,
@@ -382,6 +394,16 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
         if (createResponse.status === 409 && error?.code === "DUPLICATE_PAYMENT") {
           setDuplicateAlert({
             duplicates: Array.isArray(error.duplicates) ? error.duplicates : [],
+            pendingValues: values,
+            message: error.error,
+          })
+          return
+        }
+        // 409 AMBIGUOUS_OPERATOR_PAYMENT → varias patas del mismo operador; que el
+        // usuario elija a cuál imputar (evita imputar a la equivocada por FIFO).
+        if (createResponse.status === 409 && error?.code === "AMBIGUOUS_OPERATOR_PAYMENT") {
+          setAmbiguousDebtAlert({
+            candidates: Array.isArray(error.candidates) ? error.candidates : [],
             pendingValues: values,
             message: error.error,
           })
@@ -464,6 +486,14 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
     setDuplicateAlert(null)
     setIsLoading(true)
     await submitPayment(values, { force: true })
+  }
+
+  const handlePickAmbiguousDebt = async (operatorPaymentId: string) => {
+    if (!ambiguousDebtAlert) return
+    const values = ambiguousDebtAlert.pendingValues
+    setAmbiguousDebtAlert(null)
+    setIsLoading(true)
+    await submitPayment(values, { operatorPaymentId })
   }
 
   const selectedOp = operations.find((o) => o.id === watchOperationId)
@@ -955,6 +985,49 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
           <AlertDialogAction onClick={handleConfirmDuplicate} disabled={isLoading}>
             {isLoading ? "Creando..." : "Crear igual"}
           </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+
+    {/* Varias deudas del mismo operador: el usuario elige a cuál imputar el pago */}
+    <AlertDialog open={ambiguousDebtAlert !== null} onOpenChange={(open) => !open && setAmbiguousDebtAlert(null)}>
+      <AlertDialogContent className="max-w-lg">
+        <AlertDialogHeader>
+          <AlertDialogTitle>¿A qué deuda corresponde el pago?</AlertDialogTitle>
+          <AlertDialogDescription asChild>
+            <div className="space-y-3">
+              <p>
+                {ambiguousDebtAlert?.message ||
+                  "Este operador tiene varias deudas pendientes en la operación y el monto no coincide exactamente con ninguna. Elegí a cuál imputar el pago."}
+              </p>
+              <div className="space-y-2">
+                {ambiguousDebtAlert?.candidates.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => handlePickAmbiguousDebt(c.id)}
+                    disabled={isLoading}
+                    className="w-full text-left rounded-md border border-border/60 bg-muted/30 hover:bg-muted p-3 text-sm disabled:opacity-50"
+                  >
+                    <div className="font-medium text-foreground">
+                      Pendiente {c.pending.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                      <span className="text-muted-foreground">
+                        {" "}(deuda total {c.amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })})
+                      </span>
+                    </div>
+                    {c.due_date && (
+                      <div className="text-muted-foreground text-xs">
+                        Vence {parseDateOnlyLocal(c.due_date)?.toLocaleDateString("es-AR") ?? c.due_date}
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={isLoading}>Cancelar</AlertDialogCancel>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

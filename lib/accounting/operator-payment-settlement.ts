@@ -19,6 +19,25 @@ export interface OperatorPaymentRecord {
 
 const MONEY_EPSILON = 0.005
 
+/**
+ * Se lanza cuando un operador tiene varias deudas (patas) pendientes en la misma
+ * operación y el monto del pago NO coincide exactamente con ninguna, por lo que
+ * no se puede imputar automáticamente sin adivinar. En vez de caer a FIFO (que
+ * imputaba el pago a la pata equivocada), el flujo de registro corta y le pide al
+ * usuario que elija a qué deuda corresponde. `candidates` son las patas pendientes.
+ */
+export class AmbiguousOperatorPaymentError extends Error {
+  readonly code = "AMBIGUOUS_OPERATOR_PAYMENT" as const
+  readonly candidates: OperatorPaymentRecord[]
+  constructor(candidates: OperatorPaymentRecord[]) {
+    super(
+      "Este operador tiene varias deudas pendientes en la operación y el monto no coincide exactamente con ninguna. Elegí a qué deuda corresponde el pago."
+    )
+    this.name = "AmbiguousOperatorPaymentError"
+    this.candidates = candidates
+  }
+}
+
 function toMoney(value: number | string | null | undefined): number {
   const parsed = Number(value ?? 0)
   return Number.isFinite(parsed) ? parsed : 0
@@ -131,6 +150,12 @@ export async function findMatchingOperatorPayment(
      * operador, se usa para elegir la pata exacta en vez del orden FIFO ciego.
      */
     amount?: number | string | null
+    /**
+     * Si es true y hay varias patas pendientes del mismo operador sin match
+     * exacto por monto, lanza AmbiguousOperatorPaymentError en vez de caer a FIFO.
+     * Se usa en el registro de pagos para pedirle al usuario que elija la deuda.
+     */
+    rejectAmbiguous?: boolean
   }
 ): Promise<OperatorPaymentRecord | null> {
   const baseSelect = "id, operation_id, operator_id, amount, paid_amount, due_date, status, ledger_movement_id, created_at"
@@ -189,6 +214,11 @@ export async function findMatchingOperatorPayment(
     const exact = pickExactPendingMatch(candidates, params.amount)
     if (exact) {
       return exact
+    }
+    // Sin match exacto: NO adivinar por FIFO (imputaba a la pata equivocada).
+    // Si el caller lo pide, cortar para que el usuario elija la deuda.
+    if (params.rejectAmbiguous) {
+      throw new AmbiguousOperatorPaymentError(candidates)
     }
   }
 

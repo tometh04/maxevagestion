@@ -7,7 +7,12 @@
  * sistema que la agencia le debe plata al operador cuando no es así).
  */
 
-import { buildOperatorPaymentUpdate, pickExactPendingMatch } from "../operator-payment-settlement"
+import {
+  buildOperatorPaymentUpdate,
+  pickExactPendingMatch,
+  findMatchingOperatorPayment,
+  AmbiguousOperatorPaymentError,
+} from "../operator-payment-settlement"
 
 describe("buildOperatorPaymentUpdate — overpayment cap", () => {
   const baseRow = {
@@ -125,5 +130,62 @@ describe("pickExactPendingMatch — desambiguación de patas por monto", () => {
   it("acepta amount como string (viene del body/DB)", () => {
     const match = pickExactPendingMatch([hotel, flight], "399.44")
     expect(match?.id).toBe("flight")
+  })
+})
+
+describe("findMatchingOperatorPayment — no adivinar por FIFO cuando es ambiguo", () => {
+  // Mock mínimo del client: la query encadenada resuelve a { data: rows }.
+  const mockSupabase = (rows: any[]) => {
+    const chain: any = {
+      from: () => chain,
+      select: () => chain,
+      eq: () => chain,
+      order: () => chain,
+      maybeSingle: async () => ({ data: rows[0] ?? null, error: null }),
+      then: (resolve: any) => resolve({ data: rows, error: null }),
+    }
+    return chain
+  }
+
+  // Caso real op #3bafdfff: FTA con 2 patas pendientes (1451.44 y 8).
+  const twoPending = [
+    { id: "grande", operation_id: "op1", operator_id: "fta", amount: 1451.44, paid_amount: 0, due_date: "2026-12-11", status: "PENDING" },
+    { id: "chica", operation_id: "op1", operator_id: "fta", amount: 8, paid_amount: 0, due_date: "2026-12-11", status: "PENDING" },
+  ]
+
+  it("con match exacto por monto imputa a esa pata (no es ambiguo)", async () => {
+    const sb = mockSupabase(twoPending)
+    const r = await findMatchingOperatorPayment(sb, { operationId: "op1", operatorId: "fta", amount: 8, rejectAmbiguous: true })
+    expect(r?.id).toBe("chica")
+  })
+
+  it("sin match exacto y rejectAmbiguous=true → lanza AmbiguousOperatorPaymentError (no FIFO)", async () => {
+    const sb = mockSupabase(twoPending)
+    await expect(
+      findMatchingOperatorPayment(sb, { operationId: "op1", operatorId: "fta", amount: 500, rejectAmbiguous: true })
+    ).rejects.toBeInstanceOf(AmbiguousOperatorPaymentError)
+  })
+
+  it("el error expone las patas candidatas para que el usuario elija", async () => {
+    const sb = mockSupabase(twoPending)
+    try {
+      await findMatchingOperatorPayment(sb, { operationId: "op1", operatorId: "fta", amount: 500, rejectAmbiguous: true })
+      throw new Error("no lanzó")
+    } catch (e) {
+      expect(e).toBeInstanceOf(AmbiguousOperatorPaymentError)
+      expect((e as AmbiguousOperatorPaymentError).candidates.map((c) => c.id).sort()).toEqual(["chica", "grande"])
+    }
+  })
+
+  it("sin match exacto y rejectAmbiguous=false → mantiene FIFO (comportamiento previo)", async () => {
+    const sb = mockSupabase(twoPending)
+    const r = await findMatchingOperatorPayment(sb, { operationId: "op1", operatorId: "fta", amount: 500 })
+    expect(r?.id).toBe("grande")
+  })
+
+  it("una sola pata pendiente → la devuelve aunque rejectAmbiguous=true", async () => {
+    const sb = mockSupabase([twoPending[1]])
+    const r = await findMatchingOperatorPayment(sb, { operationId: "op1", operatorId: "fta", amount: 500, rejectAmbiguous: true })
+    expect(r?.id).toBe("chica")
   })
 })
