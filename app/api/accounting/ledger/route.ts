@@ -29,6 +29,7 @@ export async function GET(request: Request) {
     const currency = searchParams.get("currency") || undefined
     const accountId = searchParams.get("accountId") || undefined
     const operationId = searchParams.get("operationId") || undefined
+    const agencyId = searchParams.get("agencyId") || undefined
 
     // SaaS Pilar 2: RLS tenant_isolation en ledger_movements acota por org_id
     // del JWT. No necesitamos admin client — el server client respeta la
@@ -36,8 +37,11 @@ export async function GET(request: Request) {
     let query = (supabase
       .from("ledger_movements") as any)
       .select(
-        `id, type, concept, currency, amount_original, amount_ars_equivalent, exchange_rate, movement_date, created_at, seller_id, operation_id, affects_balance,
+        `id, type, concept, currency, amount_original, amount_ars_equivalent, exchange_rate, movement_date, created_at, method, receipt_number, notes, seller_id, operation_id, affects_balance,
          reversed_at, reverses_movement_id, reversed_by_movement_id, reversal_reason,
+         financial_accounts:account_id (name, type, currency),
+         sellers:seller_id (name),
+         operators:operator_id (name),
          operations:operation_id (id, file_code, agency_id, destination, operation_customers(customers:customer_id(first_name, last_name))),
          users:created_by (name)`,
         { count: "exact" }
@@ -103,6 +107,14 @@ export async function GET(request: Request) {
         if (!opAgencyId) return true
         return userAgencyIds.includes(opAgencyId)
       })
+    }
+
+    // Filtro de agencia explícito: solo aplica a movimientos con operación
+    // (los asientos manuales y movimientos de caja puros no tienen agencia).
+    if (agencyId && agencyId !== "ALL") {
+      filteredMovements = filteredMovements.filter(
+        (m: any) => m.operations?.agency_id === agencyId
+      )
     }
 
     const total = count ?? 0

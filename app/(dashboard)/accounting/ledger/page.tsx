@@ -88,7 +88,12 @@ const ChartOfAccountsTree = dynamic(
   }
 )
 
-export default async function ContabilidadPage() {
+export default async function ContabilidadPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ tab?: string; accountId?: string; currency?: string }>
+}) {
+  const sp = (await searchParams) || {}
   const __perfReqId = (await headers()).get("x-perf-req-id") || undefined
   const t = makeTimer("page(accounting/ledger)", __perfReqId)
 
@@ -128,14 +133,31 @@ export default async function ContabilidadPage() {
   // PERF: paralelizamos las 3 fuentes (agencies scope, sellers, operators).
   // getScopedAgenciesForUser hace queries propias dentro pero no dependen
   // de sellers/operators, así que se pueden lanzar en paralelo.
-  const [agencies, sellersRes, operatorsRes] = await Promise.all([
+  // Cuentas financieras para el filtro/export del Libro Mayor.
+  // Cross-tenant: filtro explícito por org_id, no confiar en RLS.
+  const accountsQuery = supabase
+    .from("financial_accounts")
+    .select("id, name, currency, agency_id")
+    .eq("is_active", true)
+    .eq("org_id", (user as any).org_id)
+    .order("currency")
+    .order("name")
+
+  const [agencies, sellersRes, operatorsRes, accountsRes] = await Promise.all([
     getScopedAgenciesForUser(supabase, user),
     sellersQuery,
     supabase.from("operators").select("id, name").order("name"),
+    accountsQuery,
   ])
-  t.mark("parallel agencies+sellers+operators")
+  t.mark("parallel agencies+sellers+operators+accounts")
   const sellers = sellersRes.data
   const operators = operatorsRes.data
+
+  // Cuentas visibles: las de las agencias del user + las compartidas (agency_id null).
+  const scopedAgencyIds = new Set(agencies.map((a: any) => a.id))
+  const accounts = (accountsRes.data || [])
+    .filter((a: any) => !a.agency_id || scopedAgencyIds.has(a.agency_id))
+    .map((a: any) => ({ id: a.id, name: a.name, currency: a.currency }))
 
   const showPartnerAccounts = ["SUPER_ADMIN", "ADMIN", "CONTABLE"].includes(user.role)
 
@@ -143,6 +165,7 @@ export default async function ContabilidadPage() {
 
   return (
     <ContabilidadTabs
+      initialTab={sp.tab}
       journalEntriesContent={
         <JournalEntriesPageClient />
       }
@@ -153,7 +176,13 @@ export default async function ContabilidadPage() {
         <MonthlyPositionPageClient agencies={agencies} userRole={user.role || "SELLER"} />
       }
       ledgerContent={
-        <LedgerPageClient agencies={agencies} userRole={user.role} />
+        <LedgerPageClient
+          agencies={agencies}
+          accounts={accounts}
+          initialAccountId={sp.accountId}
+          initialCurrency={sp.currency}
+          userRole={user.role}
+        />
       }
       debtsSalesContent={
         <DebtsSalesPageClient sellers={(sellers || []).map((s: any) => ({ id: s.id, name: s.name }))} />

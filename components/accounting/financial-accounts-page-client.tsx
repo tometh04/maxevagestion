@@ -34,7 +34,8 @@ import { Input } from "@/components/ui/input"
 import { DecimalInput } from "@/components/ui/decimal-input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Plus, Trash2, AlertTriangle, Building2, ArrowRightLeft, Pencil } from "lucide-react"
+import { Plus, Trash2, AlertTriangle, Building2, ArrowRightLeft, Pencil, ListFilter } from "lucide-react"
+import Link from "next/link"
 import { TransferAccountDialog } from "./transfer-account-dialog"
 import { toast } from "sonner"
 import { useRouter, useSearchParams } from "next/navigation"
@@ -1023,7 +1024,7 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
                         <SortableTableHead sortKey="currency" sortConfig={accountsSortConfig} onSort={requestAccountsSort} className="sticky top-0 bg-background z-10">Moneda</SortableTableHead>
                         <SortableTableHead sortKey="initial_balance" sortConfig={accountsSortConfig} onSort={requestAccountsSort} className="sticky top-0 bg-background z-10 text-right">Saldo Inicial</SortableTableHead>
                         <SortableTableHead sortKey="current_balance" sortConfig={accountsSortConfig} onSort={requestAccountsSort} className="sticky top-0 bg-background z-10 text-right">Balance Actual</SortableTableHead>
-                        <TableHead className="sticky top-0 bg-background z-10 w-[80px]">Acciones</TableHead>
+                        <TableHead className="sticky top-0 bg-background z-10 w-[120px]">Acciones</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1052,6 +1053,19 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                asChild
+                                title="Ver movimientos en el Libro Mayor"
+                              >
+                                <Link
+                                  href={`/accounting/ledger?tab=ledger&accountId=${account.id}&currency=${account.currency}`}
+                                >
+                                  <ListFilter className="h-4 w-4" />
+                                </Link>
+                              </Button>
                               <Button
                                 variant="ghost"
                                 size="icon"

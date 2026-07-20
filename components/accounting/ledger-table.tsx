@@ -56,6 +56,8 @@ interface LedgerTableProps {
     dateType?: string
     type?: string
     currency?: string
+    agencyId?: string
+    accountId?: string
   }
   userRole?: string
 }
@@ -98,6 +100,8 @@ export function LedgerTable({ filters, userRole }: LedgerTableProps) {
         if (filters?.dateType) params.append("dateType", filters.dateType)
         if (filters?.type && filters.type !== "ALL") params.append("type", filters.type)
         if (filters?.currency && filters.currency !== "ALL") params.append("currency", filters.currency)
+        if (filters?.agencyId && filters.agencyId !== "ALL") params.append("agencyId", filters.agencyId)
+        if (filters?.accountId && filters.accountId !== "ALL") params.append("accountId", filters.accountId)
 
         const response = await fetch(`/api/accounting/ledger?${params.toString()}`)
         if (!response.ok) throw new Error("Error al obtener movimientos")
