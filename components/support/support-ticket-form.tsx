@@ -143,7 +143,9 @@ export function SupportTicketForm({ conversationId, onBack }: SupportTicketFormP
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="flex-1 p-4 space-y-3">
+      <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0">
+        {/* Contenido scrolleable: el botón de enviar queda fijo abajo */}
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
         <div>
           <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
             Tipo *
@@ -267,23 +269,25 @@ export function SupportTicketForm({ conversationId, onBack }: SupportTicketFormP
             Se adjunta la conversación con el asistente de IA como referencia.
           </p>
         )}
+        </div>
 
-        {error && (
-          <p className="text-xs text-destructive">{error}</p>
-        )}
+        {/* Footer fijo: siempre visible aunque el form scrollee */}
+        <div className="shrink-0 border-t p-3 space-y-2 bg-background">
+          {error && <p className="text-xs text-destructive">{error}</p>}
 
-        <Button
-          type="submit"
-          className="w-full"
-          disabled={!subject.trim() || sending || uploading}
-        >
-          {sending ? (
-            <Loader2 className="h-4 w-4 animate-spin mr-2" />
-          ) : (
-            <Send className="h-4 w-4 mr-2" />
-          )}
-          Enviar ticket
-        </Button>
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={!subject.trim() || sending || uploading}
+          >
+            {sending ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            ) : (
+              <Send className="h-4 w-4 mr-2" />
+            )}
+            Enviar ticket
+          </Button>
+        </div>
       </form>
     </div>
   )
