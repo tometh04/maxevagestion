@@ -117,7 +117,7 @@ export function SupportTicketForm({ conversationId, onBack }: SupportTicketFormP
         <div>
           <h3 className="font-semibold text-sm mb-1">Ticket creado</h3>
           <p className="text-xs text-muted-foreground">
-            Nuestro equipo va a revisarlo y te contactamos a la brevedad.
+            Nuestro equipo va a revisarlo y te responde en el mismo ticket.
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={onBack}>
@@ -139,7 +139,7 @@ export function SupportTicketForm({ conversationId, onBack }: SupportTicketFormP
         </button>
         <h3 className="text-sm font-semibold">Crear ticket de soporte</h3>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Nuestro equipo te va a contactar por email.
+          Te respondemos en el mismo ticket.
         </p>
       </div>
 
