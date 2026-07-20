@@ -135,6 +135,66 @@ export async function createLinearIssue(input: {
   return data.issueCreate.issue
 }
 
+export type LinearDiagnostics = {
+  env: { LINEAR_API_KEY: boolean; LINEAR_TEAM_ID: boolean; LINEAR_WEBHOOK_SECRET: boolean }
+  configuredTeamId: string | null
+  auth: { id: string; name: string; email: string } | null
+  teams: { id: string; key: string; name: string }[] | null
+  teamIdMatches: boolean | null
+  error: string | null
+}
+
+/**
+ * Diagnóstico de la integración con Linear (para /api/admin/integrations/linear/
+ * diagnostics). Reporta qué env vars están presentes (sin exponer valores),
+ * valida la API key llamando a `viewer`, y lista los teams con su UUID real para
+ * verificar que LINEAR_TEAM_ID es correcto (gotcha típico: usar la key en vez del id).
+ */
+export async function getLinearDiagnostics(): Promise<LinearDiagnostics> {
+  const apiKey = process.env.LINEAR_API_KEY
+  const teamId = process.env.LINEAR_TEAM_ID
+  const result: LinearDiagnostics = {
+    env: {
+      LINEAR_API_KEY: !!apiKey,
+      LINEAR_TEAM_ID: !!teamId,
+      LINEAR_WEBHOOK_SECRET: !!process.env.LINEAR_WEBHOOK_SECRET,
+    },
+    configuredTeamId: teamId ?? null,
+    auth: null,
+    teams: null,
+    teamIdMatches: null,
+    error: null,
+  }
+
+  if (!apiKey) {
+    result.error = "LINEAR_API_KEY ausente en el entorno."
+    return result
+  }
+
+  try {
+    const res = await fetch(LINEAR_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: apiKey },
+      body: JSON.stringify({
+        query: `query { viewer { id name email } teams { nodes { id key name } } }`,
+      }),
+    })
+    const json = await res.json()
+    if (json.errors) {
+      result.error = `Linear rechazó la consulta: ${JSON.stringify(json.errors)}`
+      return result
+    }
+    result.auth = json.data?.viewer ?? null
+    result.teams = json.data?.teams?.nodes ?? null
+    result.teamIdMatches = teamId
+      ? (result.teams ?? []).some((t) => t.id === teamId)
+      : false
+  } catch (err) {
+    result.error = `Fallo de red llamando a Linear: ${String(err)}`
+  }
+  return result
+}
+
 /**
  * Mapea el tipo de estado de un issue de Linear al status del support_ticket.
  * Linear state.type ∈ backlog|unstarted|started|completed|canceled|triage.
