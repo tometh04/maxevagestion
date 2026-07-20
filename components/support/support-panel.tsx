@@ -64,9 +64,15 @@ export function SupportPanel({ open, onClose }: SupportPanelProps) {
   return (
     <div
       className={cn(
-        "fixed bottom-24 right-6 z-50 w-[400px] h-[600px] max-h-[85vh]",
+        "fixed z-50 flex flex-col overflow-hidden",
         "bg-background border rounded-2xl shadow-2xl",
-        "flex flex-col overflow-hidden",
+        // Mobile: casi fullscreen con márgenes seguros (tapa el FAB, que tiene su propia X).
+        // Base en vh + override en dvh: si el browser no soporta dvh, no cae a height:auto.
+        "inset-x-3 bottom-3 h-[calc(100vh-1.5rem)] [height:calc(100dvh-1.5rem)]",
+        // Desktop: anclado sobre el FAB; el alto se topea al viewport para no
+        // recortar el header (bottom-24 = 6rem + 1.5rem de aire arriba => 7.5rem)
+        "sm:inset-x-auto sm:right-6 sm:bottom-24 sm:w-[400px] sm:h-[600px]",
+        "sm:max-h-[calc(100vh-7.5rem)] sm:[max-height:calc(100dvh-7.5rem)]",
         "animate-in slide-in-from-bottom-4 fade-in duration-200"
       )}
     >
@@ -77,7 +83,7 @@ export function SupportPanel({ open, onClose }: SupportPanelProps) {
             <Sparkles className="h-4 w-4" />
           </div>
           <div>
-            <h3 className="font-semibold text-sm">Centro de Ayuda</h3>
+            <h3 className="font-semibold text-sm">Soporte y ayuda</h3>
             <p className="text-[11px] opacity-80">
               {SCREEN_TITLES[view.screen] || "Vibook"}
             </p>
