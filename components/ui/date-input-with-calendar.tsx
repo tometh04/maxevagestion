@@ -16,6 +16,13 @@ interface DateInputWithCalendarProps {
   value?: Date
   onChange: (date: Date | undefined) => void
   placeholder?: string
+  /**
+   * Prefijo fijo dentro del pill (ej: "Viaje desde"). A diferencia del
+   * placeholder, NO desaparece al cargar una fecha: en pantallas de filtros
+   * con varios rangos de fecha, el placeholder solo decía qué era el campo
+   * mientras estaba vacío y después quedaban dos fechas sueltas sin contexto.
+   */
+  label?: string
   disabled?: boolean
   minDate?: Date
   maxDate?: Date
@@ -26,6 +33,7 @@ export function DateInputWithCalendar({
   value,
   onChange,
   placeholder = "dd/mm/aaaa",
+  label,
   disabled = false,
   minDate,
   maxDate,
@@ -99,16 +107,22 @@ export function DateInputWithCalendar({
           className
         )}
       >
+        {label && (
+          <span className="pl-3 text-xs text-muted-foreground whitespace-nowrap select-none">
+            {label}
+          </span>
+        )}
         <input
           type="text"
           inputMode="numeric"
           value={inputValue}
           onChange={handleInputChange}
-          placeholder={placeholder}
+          placeholder={label ? "dd/mm/aaaa" : placeholder}
           disabled={disabled}
           maxLength={10}
           className={cn(
-            "flex-1 bg-transparent border-0 outline-none text-xs px-3 h-full",
+            "flex-1 bg-transparent border-0 outline-none text-xs h-full",
+            label ? "pl-1.5 pr-3" : "px-3",
             "placeholder:text-muted-foreground min-w-[80px] w-[100px]"
           )}
         />

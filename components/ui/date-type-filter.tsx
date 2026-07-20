@@ -103,13 +103,13 @@ export function DateTypeFilter({
           <DateInputWithCalendar
             value={value.from}
             onChange={handleFromChange}
-            placeholder={`${activeOption.shortLabel} Desde`}
+            label={`${activeOption.shortLabel} desde`}
             className="h-8 text-xs rounded-full"
           />
           <DateInputWithCalendar
             value={value.to}
             onChange={handleToChange}
-            placeholder={`${activeOption.shortLabel} Hasta`}
+            label={`${activeOption.shortLabel} hasta`}
             minDate={value.from}
             className="h-8 text-xs rounded-full"
           />

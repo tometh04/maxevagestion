@@ -1107,15 +1107,17 @@ export async function GET(request: Request) {
     const paymentDateTo = searchParams.get("paymentDateTo")
     const paymentDateType = searchParams.get("paymentDateType") // "OPERACION" | "COBRO" | "PAGO" | "VENCIMIENTO"
 
-    // Filtro por fecha de carga de operación (created_at) — sin JOIN a payments
+    // Filtro por fecha de operación / venta (operation_date) — sin JOIN a payments.
+    // NO usar created_at: es la fecha de carga en el sistema y difiere de la fecha de
+    // venta real en importaciones históricas y en ops cargadas con retraso (migration 046).
     if (paymentDateType === "OPERACION") {
       if (paymentDateFrom) {
-        query = query.gte("created_at", `${paymentDateFrom}T00:00:00`)
-        countQuery = countQuery.gte("created_at", `${paymentDateFrom}T00:00:00`)
+        query = query.gte("operation_date", paymentDateFrom)
+        countQuery = countQuery.gte("operation_date", paymentDateFrom)
       }
       if (paymentDateTo) {
-        query = query.lte("created_at", `${paymentDateTo}T23:59:59`)
-        countQuery = countQuery.lte("created_at", `${paymentDateTo}T23:59:59`)
+        query = query.lte("operation_date", paymentDateTo)
+        countQuery = countQuery.lte("operation_date", paymentDateTo)
       }
     }
 
