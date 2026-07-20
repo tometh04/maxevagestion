@@ -41,33 +41,58 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 })
   }
 
-  // Solo nos interesan updates de issues.
-  if (payload?.type !== "Issue" || (payload?.action !== "update" && payload?.action !== "create")) {
-    return NextResponse.json({ ok: true, ignored: true })
-  }
-
-  const issueId: string | undefined = payload?.data?.id
-  const stateType: string | undefined = payload?.data?.state?.type
-  if (!issueId || !stateType) {
-    return NextResponse.json({ ok: true, ignored: true })
-  }
-
-  const newStatus = mapLinearStateToTicketStatus(stateType)
-
   try {
-    const admin = createAdminClient()
-    const { error } = await (admin as any)
-      .from("support_tickets")
-      .update({ status: newStatus })
-      .eq("linear_issue_id", issueId)
+    // ── Comentario en el issue → respuesta en el ticket ──────────────────
+    if (payload?.type === "Comment" && payload?.action === "create") {
+      const commentIssueId: string | undefined =
+        payload?.data?.issueId ?? payload?.data?.issue?.id
+      const body: string | undefined = payload?.data?.body
+      const authorName: string =
+        payload?.data?.user?.name || payload?.data?.user?.displayName || "Linear"
 
-    if (error) {
-      console.error("[linear-webhook] error actualizando ticket:", error)
+      if (commentIssueId && body?.trim()) {
+        const admin = createAdminClient()
+        const { data: ticket } = await (admin as any)
+          .from("support_tickets")
+          .select("id")
+          .eq("linear_issue_id", commentIssueId)
+          .maybeSingle()
+
+        if (ticket) {
+          const { error } = await (admin as any)
+            .from("support_ticket_replies")
+            .insert({
+              ticket_id: ticket.id,
+              author_id: null,
+              author_role: "admin",
+              author_name: authorName,
+              source: "linear",
+              content: body.trim(),
+            })
+          if (error) console.error("[linear-webhook] error insertando reply:", error)
+        }
+      }
+      return NextResponse.json({ ok: true })
+    }
+
+    // ── Cambio de estado del issue → status del ticket ───────────────────
+    if (payload?.type === "Issue" && (payload?.action === "update" || payload?.action === "create")) {
+      const issueId: string | undefined = payload?.data?.id
+      const stateType: string | undefined = payload?.data?.state?.type
+      if (issueId && stateType) {
+        const admin = createAdminClient()
+        const { error } = await (admin as any)
+          .from("support_tickets")
+          .update({ status: mapLinearStateToTicketStatus(stateType) })
+          .eq("linear_issue_id", issueId)
+        if (error) console.error("[linear-webhook] error actualizando ticket:", error)
+      }
+      return NextResponse.json({ ok: true })
     }
   } catch (err) {
-    console.error("[linear-webhook] excepción actualizando ticket:", err)
+    console.error("[linear-webhook] excepción procesando evento:", err)
   }
 
   // Siempre 200 para que Linear no reintente en loop.
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({ ok: true, ignored: true })
 }

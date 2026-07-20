@@ -47,7 +47,7 @@ export async function GET(
 
   const { data: replies } = await (admin as any)
     .from('support_ticket_replies')
-    .select('id, author_id, author_role, content, created_at')
+    .select('id, author_id, author_role, author_name, source, content, created_at')
     .eq('ticket_id', id)
     .order('created_at', { ascending: true })
 

@@ -14,6 +14,8 @@ import { cn } from "@/lib/utils"
 interface Reply {
   id: string
   author_role: "user" | "admin"
+  author_name: string | null
+  source: string | null
   content: string
   created_at: string
 }
@@ -245,6 +247,9 @@ export default function AdminTicketDetailPage() {
                   "text-[10px] mt-1",
                   r.author_role === "admin" ? "text-primary-foreground/60" : "text-muted-foreground"
                 )}>
+                  {r.source === "linear" && (
+                    <span>vía Linear{r.author_name ? ` · ${r.author_name}` : ""} · </span>
+                  )}
                   {formatDate(r.created_at)}
                 </p>
               </div>

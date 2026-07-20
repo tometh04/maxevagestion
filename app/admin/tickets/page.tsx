@@ -293,7 +293,7 @@ export default function AdminTicketsPage() {
                       )}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={cfg.variant}>{cfg.label}</Badge>
+                      <Badge variant={cfg.variant} className="whitespace-nowrap">{cfg.label}</Badge>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1 text-xs text-muted-foreground">
