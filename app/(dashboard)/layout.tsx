@@ -6,8 +6,6 @@ import { TaskShortcutProvider } from "@/components/tasks/task-shortcut-provider"
 import { PushNotificationManager } from "@/components/notifications/push-notification-manager"
 import { TrialBanner } from "@/components/trial-banner"
 import { PerfNavLogger } from "@/components/perf-nav-logger"
-import { TawkWidget } from "@/components/integrations/tawk-widget"
-import { isTawkUser } from "@/lib/tawk-config"
 import { OnboardingTour } from "@/components/onboarding/onboarding-tour"
 import { isOnboardingEligible } from "@/lib/onboarding/eligibility"
 import { getOrgOnboardingState } from "@/lib/onboarding/server"
@@ -127,14 +125,9 @@ export default async function DashboardLayout({
         <TaskShortcutProvider
           currentUserId={user.id}
           agencyId={agencies[0]?.id || ""}
-          hasTawk={isTawkUser(user.email)}
         />
         <PushNotificationManager userId={user.id} />
         <PerfNavLogger />
-        {/* Tawk.to chat widget — solo carga JS para users en la allowlist
-            (ver components/integrations/tawk-widget.tsx). Default: solo
-            mypupybox@gmail.com. Cero impacto en otros tenants. */}
-        <TawkWidget userEmail={user.email} />
         <OnboardingTour enabled={onboardingEligible} initialState={onboardingState} />
         <CheckinReminderModal />
       </SidebarProvider>

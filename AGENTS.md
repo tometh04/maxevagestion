@@ -16,7 +16,7 @@ comisiones, documentos y alertas, pero hoy tambien incluye:
 - Platform admin global separado de los roles de tenant.
 - Permisos dinamicos por agencia y soporte multi-rol.
 - Integraciones Manychat, Callbell, ChatSell, Eve, Emilia, WhatsApp/WHA Control,
-  AFIP, OpenAI, web push y Tawk.
+  AFIP, OpenAI y web push.
 - Imports masivos, soporte, knowledge base, feature flags por tenant y crons en
   Railway.
 
@@ -597,7 +597,6 @@ Activas/relevantes:
 - AFIP.
 - OpenAI.
 - Web push.
-- Tawk allowlist.
 
 Trello es legacy/residual. Quedan columnas como `trello_url`,
 `trello_list_id`, `trello_full_data` y tabla `settings_trello`, pero no asumir
