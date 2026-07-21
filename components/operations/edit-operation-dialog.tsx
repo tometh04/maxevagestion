@@ -625,7 +625,10 @@ export function EditOperationDialog({
 
       // Enviar legs SOLO si se cargaron los existentes. El backend hace
       // delete-all + insert: mandar [] sin haber cargado borraría los tramos.
+      // `legs_replace` le confirma al backend que esta lista sale de los tramos
+      // reales, así que puede borrar los que falten (incluido dejarlo en cero).
       if (legsLoaded) {
+        payload.legs_replace = true
         payload.legs = legList
           .filter((l) => l.destination.trim() !== "")
           .map((l, i) => ({

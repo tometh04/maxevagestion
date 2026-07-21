@@ -167,6 +167,88 @@ export async function GET(request: Request) {
       }
     }
 
+    // ────────────────────────────────────────────────────────────
+    // Tramos del viaje (operation_legs): un viaje con varios vuelos tenía un
+    // único "Salida" en el calendario. Cada tramo aporta su propio evento, con
+    // su destino y su código de reserva — que es el dato con el que post venta
+    // hace el check-in.
+    // ────────────────────────────────────────────────────────────
+    // Clave de lo ya emitido a nivel operación, para no duplicar cuando un
+    // tramo cae el mismo día que la salida/regreso principal.
+    const emittedEventKeys = new Set(
+      events.map((event: any) => `${event.operationId}|${event.type}|${event.date}`)
+    )
+
+    // operation_legs no tiene seller_id, así que no se puede aplicar el filtro
+    // por rol directo: scopeamos por las operaciones visibles para el usuario.
+    let allowedOpsForLegs = (supabase.from("operations") as any).select("id, destination, file_code")
+    allowedOpsForLegs = applyOperationFilters(allowedOpsForLegs)
+    const { data: allowedOpsRows } = await allowedOpsForLegs
+    const opById = new Map<string, any>(
+      (allowedOpsRows || []).map((op: any) => [op.id, op])
+    )
+
+    if (opById.size > 0) {
+      const { data: legRows } = await (supabase.from("operation_legs") as any)
+        .select("operation_id, order_index, destination, departure_date, reservation_code_air, hotel_name, checkin_date, checkout_date")
+        .in("operation_id", Array.from(opById.keys()))
+        .order("order_index")
+
+      // Los titulares se cargaron para checkins+departures; una operación
+      // alcanzada sólo por un tramo todavía no está. loadTitulars es idempotente
+      // y sólo busca lo que falta.
+      await loadTitulars((legRows || []).map((leg: any) => leg.operation_id))
+
+      const legIndexByOp = new Map<string, number>()
+
+      for (const leg of (legRows || []) as any[]) {
+        const op = opById.get(leg.operation_id)
+        if (!op) continue
+
+        // Número de tramo visible = posición dentro de su operación (1-based).
+        const legNumber = (legIndexByOp.get(leg.operation_id) ?? 0) + 1
+        legIndexByOp.set(leg.operation_id, legNumber)
+
+        const titular = titularSuffix(op.id)
+        const destination = leg.destination || op.destination
+        const codeFragment = leg.reservation_code_air ? ` · ${leg.reservation_code_air}` : ""
+        const description = [op.file_code, leg.reservation_code_air].filter(Boolean).join(" · ") || undefined
+
+        const pushLegEvent = (
+          type: string,
+          date: string | null,
+          label: string,
+          color: string,
+          idPrefix: string,
+          suffix = ""
+        ) => {
+          if (!date) return
+          const key = `${op.id}|${type}|${date}`
+          if (emittedEventKeys.has(key)) return
+          emittedEventKeys.add(key)
+          events.push({
+            id: `${idPrefix}-${leg.operation_id}-${leg.order_index ?? legNumber}`,
+            type,
+            title: `${label} Tramo ${legNumber}: ${destination}${titular}${suffix}`,
+            date,
+            description,
+            color,
+            operationId: op.id,
+          })
+        }
+
+        // El vuelo del tramo lleva el código aéreo; el hotel lleva su nombre.
+        // Sin esto, un vuelo y un check-in de hotel el mismo día (lo normal:
+        // llegás y entrás al hotel) se veían como dos eventos idénticos.
+        const hotelFragment = leg.hotel_name ? ` · ${leg.hotel_name}` : ""
+
+        pushLegEvent("DEPARTURE", leg.departure_date, "Salida", "#2CA77F", "leg-departure", codeFragment)
+        // checkin_date / checkout_date del tramo son del hotel de ese tramo.
+        pushLegEvent("CHECKIN", leg.checkin_date, "Check-in", "#4F5BD5", "leg-checkin", hotelFragment)
+        pushLegEvent("CHECKOUT", leg.checkout_date, "Check-out", "#8B82E8", "leg-checkout", hotelFragment)
+      }
+    }
+
     // Vencimientos de pagos — siempre filtrar por allowedOps de la org
     let opsForPayments = (supabase.from("operations") as any).select("id")
     opsForPayments = applyOperationFilters(opsForPayments)

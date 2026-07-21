@@ -11,6 +11,9 @@ import { enforceUserRateLimit } from "@/lib/rate-limit"
 import { getOperationVisibleDocuments } from "@/lib/documents/operation-documents"
 import { sumOperationOperatorCosts } from "@/lib/operations/operation-financials"
 
+/** Señal interna: conservar los tramos y no tocar operation_legs. */
+class SkipLegsSync extends Error {}
+
 type IncomingOperatorPayload = {
   operator_id: string
   cost: number
@@ -461,19 +464,39 @@ export async function PATCH(
     // SINCRONIZAR TRAMOS DEL VIAJE (operation_legs)
     // ============================================
     // El sync es delete-all + insert: un cliente que manda `legs: []` sin haber
-    // cargado los tramos existentes los borra. El front ya no manda `legs` si no
-    // los cargó (fix 2026-07-21); acá dejamos rastro del borrado para poder
-    // reconstruirlos si vuelve a pasar.
+    // cargado los tramos existentes los borra (bug 2026-07-21, dos operaciones
+    // de VICO perdidas sin backup).
+    //
+    // El front ya no manda `legs` si no los cargó, pero eso no alcanza: un
+    // navegador con el bundle viejo en memoria sigue mandando `legs: []`. Por eso
+    // la garantía vive acá: borrar TODOS los tramos existentes sólo se permite
+    // si el cliente lo afirma explícitamente con `legs_replace: true`, que sólo
+    // manda cuando pudo cargarlos. Sin esa marca, se conservan.
     if (Array.isArray(incomingLegs)) {
       try {
         const { data: existingLegs } = await (supabase.from("operation_legs") as any)
           .select("*")
           .eq("operation_id", operationId)
 
-        if (incomingLegs.length === 0 && (existingLegs?.length || 0) > 0) {
+        const wouldWipeLegs = incomingLegs.length === 0 && (existingLegs?.length || 0) > 0
+        const clientConfirmedReplace = body.legs_replace === true
+
+        if (wouldWipeLegs && !clientConfirmedReplace) {
+          auditWarnings.push(
+            `Se conservaron ${existingLegs.length} tramo(s): llegó una lista vacía sin confirmación de reemplazo`
+          )
+          console.warn("[operations] PATCH con legs vacíos sin legs_replace, se conservan los tramos", {
+            operationId,
+            existingLegs: existingLegs.length,
+          })
+          // Salteamos el sync por completo: no se borra ni se inserta nada.
+          throw new SkipLegsSync()
+        }
+
+        if (wouldWipeLegs) {
           deletedLegsSnapshot = existingLegs
           auditWarnings.push(
-            `Se eliminaron ${existingLegs.length} tramo(s) del viaje (se recibió una lista vacía)`
+            `Se eliminaron ${existingLegs.length} tramo(s) del viaje (reemplazo confirmado por el cliente)`
           )
         }
 
@@ -504,8 +527,12 @@ export async function PATCH(
           }
         }
       } catch (error) {
-        console.error("Error sincronizando operation_legs:", error)
-        auditWarnings.push("Fallo inesperado sincronizando tramos del viaje")
+        // SkipLegsSync no es un fallo: es la salida deliberada que conserva los
+        // tramos cuando el cliente no confirmó el reemplazo.
+        if (!(error instanceof SkipLegsSync)) {
+          console.error("Error sincronizando operation_legs:", error)
+          auditWarnings.push("Fallo inesperado sincronizando tramos del viaje")
+        }
       }
     }
 
