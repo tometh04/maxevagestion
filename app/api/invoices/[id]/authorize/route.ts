@@ -6,6 +6,7 @@ import { getAfipServiceForOrg } from "@/lib/afip/afip-service"
 import { normalizeReceptorDoc } from "@/lib/afip/afip-config"
 import { logSecurityEvent } from "@/lib/security/audit"
 import { isCreditNote, ledgerSign } from "@/lib/invoices/credit-note"
+import { createOrgAdminScope } from "@/lib/supabase/admin-scope"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
@@ -264,6 +265,53 @@ export async function POST(
         receptor_doc_nro: invoice.receptor_doc_nro,
       },
     })
+
+    // Recordar el punto de venta recién usado como predefinido de la agencia,
+    // así la próxima factura lo preselecciona sin que el usuario lo elija a mano.
+    // Best-effort: si falla NO debe romper una autorización ya exitosa (el CAE
+    // ya existe). Se usa admin-scope validado por org porque la RLS de
+    // `integrations` solo deja escribir a ADMIN/SUPER_ADMIN, y una factura puede
+    // emitirla cualquier usuario con acceso a caja.
+    try {
+      const usedPv = Number(invoice.pto_vta)
+      if (invoice.agency_id && Number.isFinite(usedPv) && usedPv >= 1 && usedPv <= 9999) {
+        const scope = createOrgAdminScope(orgId)
+
+        // Defensa en profundidad: confirmar que la agencia pertenece a esta org
+        // antes de escribir con el admin client (integrations no tiene org_id).
+        const { data: agencyRow } = await scope
+          .from("agencies")
+          .select("id")
+          .eq("id", invoice.agency_id)
+          .maybeSingle()
+
+        if (agencyRow) {
+          const { data: afipIntegration } = await (scope.raw
+            .from("integrations") as any)
+            .select("id, config")
+            .eq("agency_id", invoice.agency_id)
+            .eq("integration_type", "afip")
+            .maybeSingle()
+
+          if (
+            afipIntegration &&
+            Number(afipIntegration.config?.point_of_sale) !== usedPv
+          ) {
+            await (scope.raw.from("integrations") as any)
+              .update({
+                config: { ...(afipIntegration.config || {}), point_of_sale: usedPv },
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", afipIntegration.id)
+          }
+        }
+      }
+    } catch (pvErr) {
+      console.error(
+        "[AFIP authorize] No se pudo actualizar el punto de venta predefinido:",
+        pvErr
+      )
+    }
 
     return NextResponse.json({
       success: true,
