@@ -99,6 +99,10 @@ export function PassengerBalancesSection({
   const router = useRouter()
   const [allocations, setAllocations] = useState<Allocation[]>([])
   const [loading, setLoading] = useState(true)
+  // El POST de asignaciones hace delete-all + insert por pago: si nunca
+  // pudimos leer las asignaciones existentes, el diálogo se prellenaría vacío
+  // y guardar borraría las de los demás pasajeros. Con esto no dejamos abrirlo.
+  const [allocationsFailed, setAllocationsFailed] = useState(false)
   const [allocDialogOpen, setAllocDialogOpen] = useState(false)
   const [allocatingPayment, setAllocatingPayment] = useState<Payment | null>(null)
   const [allocAmounts, setAllocAmounts] = useState<Record<string, string>>({})
@@ -186,9 +190,14 @@ export function PassengerBalancesSection({
     try {
       const res = await fetch(`/api/payments/allocations?operationId=${operationId}`)
       const data = await res.json()
+      if (!res.ok || data.error) {
+        throw new Error(data.error || "Error al leer las asignaciones")
+      }
       setAllocations(data.allocations || [])
+      setAllocationsFailed(false)
     } catch (err) {
       console.error("Error fetching allocations:", err)
+      setAllocationsFailed(true)
     } finally {
       setLoading(false)
     }
@@ -328,6 +337,12 @@ export function PassengerBalancesSection({
 
   // Open allocation dialog for a specific payment
   const openAllocDialog = (payment: Payment) => {
+    // Sin las asignaciones actuales cargadas, guardar borraría las existentes.
+    if (allocationsFailed) {
+      toast.error("No pudimos cargar las asignaciones actuales. Recargá la página antes de editarlas.")
+      void fetchAllocations()
+      return
+    }
     setAllocatingPayment(payment)
     // Pre-fill with existing allocations for this payment
     const existing = allocations.filter((a) => a.payment_id === payment.id)
