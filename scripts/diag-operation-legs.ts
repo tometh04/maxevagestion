@@ -40,8 +40,10 @@ const admin = createClient(
     console.log(`--- operation_legs: ${legs?.length ?? 0} ---`)
     if (legs?.length) console.table(legs)
 
+    // Ojo: la tabla que escribe lib/audit.ts es `audit_log` (singular).
+    // `audit_logs` existe pero la usa el RPC log_audit_action.
     const { data: audits } = await admin
-      .from("audit_logs")
+      .from("audit_log")
       .select("created_at, user_email, action, details")
       .eq("entity_type", "operation")
       .eq("entity_id", (op as any).id)
@@ -54,7 +56,7 @@ const admin = createClient(
         (a as any).created_at,
         (a as any).action,
         (a as any).user_email,
-        JSON.stringify((a as any).details?.warnings ?? [])
+        JSON.stringify((a as any).details ?? {}).slice(0, 600)
       )
     }
   }
