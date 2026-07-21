@@ -57,6 +57,94 @@ export function leadDaysFromHours(hours: number): number {
   return Math.max(1, Math.ceil(hours / 24))
 }
 
+/** Un vuelo concreto que necesita check-in dentro de una operación. */
+export interface CheckinTarget {
+  date: string
+  airlineName: string | null
+  destination: string
+  /** Texto del tramo en la descripción: "Salida", "Regreso", "Tramo 2 (AB123) — Salida". */
+  segmentLabel: string
+}
+
+export interface CheckinLegInput {
+  order_index?: number | null
+  destination?: string | null
+  departure_date?: string | null
+  airline_name?: string | null
+  reservation_code_air?: string | null
+}
+
+export interface CheckinOperationInput {
+  destination?: string | null
+  departure_date?: string | null
+  return_date?: string | null
+  airline_name?: string | null
+}
+
+/**
+ * Arma la lista de vuelos a chequear de una operación: ida, regreso y cada
+ * tramo cargado en operation_legs.
+ *
+ * Los tramos usan SU propia aerolínea para resolver la anticipación, que es el
+ * punto de la feature: un tramo con LATAM (72hs) y otro con JetSmart (48hs)
+ * disparan en momentos distintos.
+ *
+ * Dedup por fecha, y la ida/regreso van primero: si un tramo sale el mismo día
+ * que la salida principal, se conserva la alerta general y no se duplica el
+ * aviso. La tabla `alerts` igual deduplica por (operation_id, type, date_due),
+ * así que dos alertas para la misma fecha nunca convivirían.
+ */
+export function buildCheckinTargets(
+  op: CheckinOperationInput,
+  legs: CheckinLegInput[] = []
+): CheckinTarget[] {
+  const targets: CheckinTarget[] = []
+  const seenDates = new Set<string>()
+
+  const push = (target: CheckinTarget | null) => {
+    if (!target?.date || seenDates.has(target.date)) return
+    seenDates.add(target.date)
+    targets.push(target)
+  }
+
+  if (op.departure_date) {
+    push({
+      date: op.departure_date,
+      airlineName: op.airline_name ?? null,
+      destination: op.destination || "",
+      segmentLabel: "Salida",
+    })
+  }
+
+  if (op.return_date) {
+    push({
+      date: op.return_date,
+      airlineName: op.airline_name ?? null,
+      destination: op.destination || "",
+      segmentLabel: "Regreso",
+    })
+  }
+
+  const sortedLegs = [...legs].sort(
+    (a, b) => (a.order_index ?? 0) - (b.order_index ?? 0)
+  )
+
+  sortedLegs.forEach((leg, index) => {
+    if (!leg.departure_date) return
+    const code = (leg.reservation_code_air || "").trim()
+    const codeFragment = code ? ` (${code})` : ""
+    push({
+      date: leg.departure_date,
+      // La aerolínea del tramo manda; si no la cargaron, la de la operación.
+      airlineName: leg.airline_name || op.airline_name || null,
+      destination: leg.destination || op.destination || "",
+      segmentLabel: `Tramo ${index + 1}${codeFragment} — Salida`,
+    })
+  })
+
+  return targets
+}
+
 const DEFAULT_CONFIG: CheckinConfig = {
   enabled: true,
   defaultHours: DEFAULT_CHECKIN_HOURS,
@@ -162,15 +250,63 @@ export async function generateCheckinAlerts(): Promise<CheckinAlertResult> {
   const departures = departureRes.data ?? []
   const returns = returnRes.data ?? []
 
-  if (departures.length === 0 && returns.length === 0) return result
+  // Tramos (operation_legs) que vuelan dentro de la ventana. Su operación puede
+  // tener la salida principal fuera del rango — un tramo intermedio de un viaje
+  // que arrancó hace un mes igual necesita su check-in.
+  const legsByOperation = new Map<string, any[]>()
+  const legOperationIds = new Set<string>()
+  try {
+    const { data: legRows, error: legsError } = await (supabase.from("operation_legs") as any)
+      .select("operation_id, order_index, destination, departure_date, airline_name, reservation_code_air")
+      .not("departure_date", "is", null)
+      .gte("departure_date", fromStr)
+      .lte("departure_date", toStr)
+
+    if (legsError) {
+      result.errors.push(`Error fetching legs: ${legsError.message}`)
+    }
+
+    for (const leg of (legRows ?? []) as any[]) {
+      if (!leg?.operation_id) continue
+      legOperationIds.add(leg.operation_id)
+      const arr = legsByOperation.get(leg.operation_id) ?? []
+      arr.push(leg)
+      legsByOperation.set(leg.operation_id, arr)
+    }
+  } catch (err: any) {
+    result.errors.push(`Error fetching legs: ${err?.message ?? err}`)
+  }
+
+  // Operaciones alcanzadas sólo por un tramo: hay que traerlas aparte.
+  const operationsById = new Map<string, any>()
+  for (const op of [...(departures as any[]), ...(returns as any[])]) {
+    operationsById.set(op.id, op)
+  }
+
+  const missingOpIds = Array.from(legOperationIds).filter((opId) => !operationsById.has(opId))
+  if (missingOpIds.length > 0) {
+    const { data: legOps, error: legOpsError } = await supabase
+      .from("operations")
+      .select("id, org_id, seller_id, destination, departure_date, return_date, airline_name")
+      .in("status", ["RESERVED", "CONFIRMED"])
+      .in("id", missingOpIds)
+
+    if (legOpsError) {
+      result.errors.push(`Error fetching leg operations: ${legOpsError.message}`)
+    }
+
+    for (const op of (legOps ?? []) as any[]) {
+      operationsById.set(op.id, op)
+    }
+  }
+
+  if (operationsById.size === 0) return result
 
   // Titular (cliente MAIN) por operación → identifica la reserva en el aviso
   // (dos reservas al mismo destino/fecha se veían idénticas). Batch por op ids
   // de la ventana (ya scopeadas). Formato "Apellido, Nombre".
   const titularByOp = new Map<string, string>()
-  const opIds = Array.from(
-    new Set([...(departures as any[]), ...(returns as any[])].map((o) => o.id))
-  )
+  const opIds = Array.from(operationsById.keys())
   if (opIds.length > 0) {
     const { data: ocRows } = await (supabase.from("operation_customers") as any)
       .select("operation_id, role, customers:customer_id(first_name, last_name)")
@@ -208,15 +344,17 @@ export async function generateCheckinAlerts(): Promise<CheckinAlertResult> {
     return postVentaCache.get(orgId) ?? op.seller_id
   }
 
-  async function createCheckinAlert(op: any, date: string, isReturn: boolean) {
+  async function createCheckinAlert(op: any, target: CheckinTarget) {
+    const { date } = target
     const config = getConfig(op.org_id)
     if (!config.enabled) {
       result.skipped++
       return
     }
 
-    // Solo disparar si la fecha entra en la ventana de anticipación de SU aerolínea.
-    const leadDays = leadDaysFromHours(resolveCheckinLeadHours(op.airline_name, config))
+    // Solo disparar si la fecha entra en la ventana de anticipación de SU
+    // aerolínea — la del tramo cuando el target es un tramo.
+    const leadDays = leadDaysFromHours(resolveCheckinLeadHours(target.airlineName, config))
     const remaining = daysUntil(date)
     if (remaining < 0 || remaining > leadDays) {
       result.skipped++
@@ -245,14 +383,14 @@ export async function generateCheckinAlerts(): Promise<CheckinAlertResult> {
       month: "2-digit",
       year: "numeric",
     })
-    const airlineFragment = op.airline_name ? ` (${op.airline_name})` : ""
+    const airlineFragment = target.airlineName ? ` (${target.airlineName})` : ""
     // "Check-in próximo" (no "pendiente") para preservar el matcher de WhatsApp
     // (generate-from-operations ilike '%Check-in próximo%') y el texto familiar.
     const titular = titularByOp.get(op.id)
     const titularFragment = titular ? ` — ${titular}` : ""
-    const description = isReturn
-      ? `Check-in próximo${airlineFragment}: ${op.destination}${titularFragment} — Regreso ${dateLabel}`
-      : `Check-in próximo${airlineFragment}: ${op.destination}${titularFragment} — Salida ${dateLabel}`
+    const description =
+      `Check-in próximo${airlineFragment}: ${target.destination}${titularFragment}` +
+      ` — ${target.segmentLabel} ${dateLabel}`
 
     await supabase.from("alerts").insert({
       org_id: op.org_id,
@@ -267,19 +405,14 @@ export async function generateCheckinAlerts(): Promise<CheckinAlertResult> {
     result.created++
   }
 
-  for (const op of departures as any[]) {
-    try {
-      await createCheckinAlert(op, op.departure_date, false)
-    } catch (err: any) {
-      result.errors.push(`Op ${op.id} (ida): ${err?.message ?? err}`)
-    }
-  }
-
-  for (const op of returns as any[]) {
-    try {
-      await createCheckinAlert(op, op.return_date, true)
-    } catch (err: any) {
-      result.errors.push(`Op ${op.id} (regreso): ${err?.message ?? err}`)
+  for (const op of Array.from(operationsById.values())) {
+    const targets = buildCheckinTargets(op, legsByOperation.get(op.id) ?? [])
+    for (const target of targets) {
+      try {
+        await createCheckinAlert(op, target)
+      } catch (err: any) {
+        result.errors.push(`Op ${op.id} (${target.segmentLabel}): ${err?.message ?? err}`)
+      }
     }
   }
 

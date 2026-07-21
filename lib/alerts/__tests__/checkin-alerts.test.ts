@@ -1,4 +1,5 @@
 import {
+  buildCheckinTargets,
   normalizeAirline,
   resolveCheckinLeadHours,
   leadDaysFromHours,
@@ -62,5 +63,80 @@ describe("resolveCheckinLeadHours", () => {
     const config = makeConfig({ latam: 72 }, 36)
     expect(resolveCheckinLeadHours(null, config)).toBe(36)
     expect(resolveCheckinLeadHours("", config)).toBe(36)
+  })
+})
+
+describe("buildCheckinTargets", () => {
+  const op = {
+    destination: "Sídney",
+    departure_date: "2026-10-11",
+    return_date: "2026-11-11",
+    airline_name: "LATAM",
+  }
+
+  it("cubre ida y regreso cuando no hay tramos", () => {
+    const targets = buildCheckinTargets(op, [])
+    expect(targets).toHaveLength(2)
+    expect(targets[0]).toMatchObject({ date: "2026-10-11", segmentLabel: "Salida" })
+    expect(targets[1]).toMatchObject({ date: "2026-11-11", segmentLabel: "Regreso" })
+  })
+
+  it("agrega un target por cada tramo con fecha", () => {
+    const targets = buildCheckinTargets(op, [
+      { order_index: 0, destination: "Santiago", departure_date: "2026-10-15", reservation_code_air: "LA123" },
+      { order_index: 1, destination: "Auckland", departure_date: "2026-10-20", reservation_code_air: null },
+    ])
+
+    expect(targets.map((t) => t.date)).toEqual([
+      "2026-10-11",
+      "2026-11-11",
+      "2026-10-15",
+      "2026-10-20",
+    ])
+    expect(targets[2].segmentLabel).toBe("Tramo 1 (LA123) — Salida")
+    expect(targets[2].destination).toBe("Santiago")
+    // Sin código de reserva no se ensucia la descripción con paréntesis vacíos.
+    expect(targets[3].segmentLabel).toBe("Tramo 2 — Salida")
+  })
+
+  it("cada tramo usa su propia aerolínea y cae a la de la operación si falta", () => {
+    const targets = buildCheckinTargets(op, [
+      { order_index: 0, departure_date: "2026-10-15", airline_name: "JETSMART" },
+      { order_index: 1, departure_date: "2026-10-20", airline_name: null },
+    ])
+
+    expect(targets[2].airlineName).toBe("JETSMART")
+    expect(targets[3].airlineName).toBe("LATAM")
+  })
+
+  it("no duplica cuando el tramo sale el mismo día que la salida principal", () => {
+    const targets = buildCheckinTargets(op, [
+      { order_index: 0, departure_date: "2026-10-11", airline_name: "JETSMART" },
+    ])
+
+    expect(targets).toHaveLength(2)
+    // Gana la alerta general: preserva el comportamiento previo al cambio.
+    expect(targets[0].segmentLabel).toBe("Salida")
+  })
+
+  it("ignora tramos sin fecha de salida", () => {
+    const targets = buildCheckinTargets(op, [
+      { order_index: 0, destination: "Hotel sin vuelo", departure_date: null },
+    ])
+    expect(targets).toHaveLength(2)
+  })
+
+  it("ordena los tramos por order_index aunque vengan desordenados", () => {
+    const targets = buildCheckinTargets({ ...op, return_date: null }, [
+      { order_index: 1, departure_date: "2026-10-20", reservation_code_air: "B" },
+      { order_index: 0, departure_date: "2026-10-15", reservation_code_air: "A" },
+    ])
+
+    expect(targets[1].segmentLabel).toBe("Tramo 1 (A) — Salida")
+    expect(targets[2].segmentLabel).toBe("Tramo 2 (B) — Salida")
+  })
+
+  it("tolera una operación sin fechas", () => {
+    expect(buildCheckinTargets({ destination: "X" }, [])).toEqual([])
   })
 })
