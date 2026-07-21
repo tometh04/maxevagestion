@@ -26,7 +26,7 @@ export type ResolvedModulePerms = {
 /** module → ResolvedModulePerms */
 export type ResolvedPermissionsMatrix = Record<string, ResolvedModulePerms>
 
-const ALL_MODULES: Module[] = [
+export const ALL_MODULES: Module[] = [
   "dashboard", "leads", "operations", "customers", "operators",
   "cash", "accounting", "alerts", "reports", "commissions",
   "settings", "documents", "tasks", "eve",
