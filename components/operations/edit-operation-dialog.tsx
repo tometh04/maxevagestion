@@ -213,6 +213,10 @@ export function EditOperationDialog({
   const [operatorList, setOperatorList] = useState<OperatorEntry[]>([])
   const [operatorsLoaded, setOperatorsLoaded] = useState(false)
   const [legList, setLegList] = useState<LegEntry[]>([])
+  // Los tramos sólo se envían al backend si primero se cargaron los existentes.
+  // El PATCH hace delete-all + insert, así que enviar [] sin haber cargado borra
+  // los tramos guardados (bug reportado 2026-07-21 al editar desde el listado).
+  const [legsLoaded, setLegsLoaded] = useState(false)
   const operationCurrency = (operation.sale_currency || operation.currency || "USD") as "ARS" | "USD"
   const operationCostCurrency = (operation.operator_cost_currency || operationCurrency) as "ARS" | "USD"
 
@@ -273,15 +277,20 @@ export function EditOperationDialog({
     setLocalOperators(operators)
   }, [operators?.length, operators?.map((o) => o.id).join(",")])
 
-  // Inicializar tramos desde la prop al abrir el dialog.
-  // Bug fix 2026-05-21: idem arriba. `operationLegs` puede venir como nuevo
-  // array por render del parent. Sólo inicializar cuando el dialog se abre
-  // (open passa false→true), no cada vez que la referencia cambia.
+  // Inicializar tramos al abrir el dialog.
+  // Bug fix 2026-05-21: `operationLegs` puede venir como nuevo array por render
+  // del parent. Sólo inicializar cuando el dialog se abre (open pasa false→true),
+  // no cada vez que la referencia cambia.
+  // Bug fix 2026-07-21: los callers que no pasan la prop (tabla de operaciones)
+  // dejaban legList vacío y el submit borraba los tramos guardados. Ahora, igual
+  // que con operadores, hay fallback por fetch y no se envían tramos hasta
+  // haberlos cargado.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (!open) return
-    setLegList(
-      (operationLegs || []).map((l, i) => ({
+    if (!open || legsLoaded) return
+
+    const mapLegs = (rows: any[]): LegEntry[] =>
+      rows.map((l: any, i: number) => ({
         id: l.id,
         order_index: i,
         destination: l.destination || "",
@@ -294,8 +303,40 @@ export function EditOperationDialog({
         checkin_date: l.checkin_date || "",
         checkout_date: l.checkout_date || "",
       }))
-    )
-  }, [open, operationLegs?.length, operationLegs?.map((l) => l.id || "").join(",")])
+
+    // 1) Preferir lo que ya trajo el server (vista de detalle).
+    if (operationLegs && operationLegs.length > 0) {
+      setLegList(mapLegs(operationLegs))
+      setLegsLoaded(true)
+      return
+    }
+
+    // 2) Fallback: fetch propio (ej. tabla de operaciones, que no pasa la prop).
+    const loadLegs = async () => {
+      try {
+        const res = await fetch(`/api/operations/${operation.id}`)
+        if (res.ok) {
+          const data = await res.json()
+          const rows = data.operation?.operation_legs || []
+          setLegList(
+            mapLegs(
+              [...rows].sort(
+                (a: any, b: any) => (a.order_index ?? 0) - (b.order_index ?? 0)
+              )
+            )
+          )
+          setLegsLoaded(true)
+        } else {
+          // No pudimos leer los tramos: dejamos legsLoaded en false para que el
+          // submit NO mande `legs` y el backend los conserve.
+          console.error("No se pudieron cargar los tramos de la operación")
+        }
+      } catch (err) {
+        console.error("Error loading operation legs:", err)
+      }
+    }
+    loadLegs()
+  }, [open, legsLoaded, operation.id, operationLegs?.length, operationLegs?.map((l) => l.id || "").join(",")])
 
   // Cargar operation_operators existentes al abrir el dialog.
   useEffect(() => {
@@ -352,6 +393,8 @@ export function EditOperationDialog({
       setOperatorsLoaded(false)
       setOperatorList([])
       setUseMultipleOperators(false)
+      setLegsLoaded(false)
+      setLegList([])
     }
   }, [open])
 
@@ -594,21 +637,24 @@ export function EditOperationDialog({
         payload.operator_cost = totalOperatorCost
       }
 
-      // Siempre enviar legs (array vacío = sin tramos)
-      payload.legs = legList
-        .filter(l => l.destination.trim() !== "")
-        .map((l, i) => ({
-          order_index: i,
-          destination: l.destination.trim(),
-          departure_date: l.departure_date || null,
-          reservation_code_air: l.reservation_code_air || null,
-          airline_name: l.airline_name || null,
-          itr_localizador: l.itr_localizador || null,
-          hotel_name: l.hotel_name || null,
-          reservation_code_hotel: l.reservation_code_hotel || null,
-          checkin_date: l.checkin_date || null,
-          checkout_date: l.checkout_date || null,
-        }))
+      // Enviar legs SOLO si se cargaron los existentes. El backend hace
+      // delete-all + insert: mandar [] sin haber cargado borraría los tramos.
+      if (legsLoaded) {
+        payload.legs = legList
+          .filter((l) => l.destination.trim() !== "")
+          .map((l, i) => ({
+            order_index: i,
+            destination: l.destination.trim(),
+            departure_date: l.departure_date || null,
+            reservation_code_air: l.reservation_code_air || null,
+            airline_name: l.airline_name || null,
+            itr_localizador: l.itr_localizador || null,
+            hotel_name: l.hotel_name || null,
+            reservation_code_hotel: l.reservation_code_hotel || null,
+            checkin_date: l.checkin_date || null,
+            checkout_date: l.checkout_date || null,
+          }))
+      }
 
       const response = await fetch(`/api/operations/${operation.id}`, {
         method: "PATCH",

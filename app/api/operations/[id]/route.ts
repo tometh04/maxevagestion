@@ -82,6 +82,19 @@ export async function GET(
           operator_payment_id,
           operators:operator_id(id, name)
         ),
+        operation_legs(
+          id,
+          order_index,
+          destination,
+          departure_date,
+          reservation_code_air,
+          airline_name,
+          itr_localizador,
+          hotel_name,
+          reservation_code_hotel,
+          checkin_date,
+          checkout_date
+        ),
         iva_purchases(
           operator_id,
           operators:operator_id(id, name)
@@ -328,6 +341,8 @@ export async function PATCH(
       ? synchronizedOperators[0]
       : null
     const auditWarnings: string[] = []
+    // Snapshot de tramos borrados por un sync con lista vacía (ver más abajo).
+    let deletedLegsSnapshot: any[] | null = null
 
     if (usesIncomingOperators) {
       const hasInvalidOperatorCost = synchronizedOperators.some((operatorData) => Number.isNaN(operatorData.cost) || operatorData.cost < 0)
@@ -445,8 +460,23 @@ export async function PATCH(
     // ============================================
     // SINCRONIZAR TRAMOS DEL VIAJE (operation_legs)
     // ============================================
+    // El sync es delete-all + insert: un cliente que manda `legs: []` sin haber
+    // cargado los tramos existentes los borra. El front ya no manda `legs` si no
+    // los cargó (fix 2026-07-21); acá dejamos rastro del borrado para poder
+    // reconstruirlos si vuelve a pasar.
     if (Array.isArray(incomingLegs)) {
       try {
+        const { data: existingLegs } = await (supabase.from("operation_legs") as any)
+          .select("*")
+          .eq("operation_id", operationId)
+
+        if (incomingLegs.length === 0 && (existingLegs?.length || 0) > 0) {
+          deletedLegsSnapshot = existingLegs
+          auditWarnings.push(
+            `Se eliminaron ${existingLegs.length} tramo(s) del viaje (se recibió una lista vacía)`
+          )
+        }
+
         await (supabase.from("operation_legs") as any)
           .delete()
           .eq("operation_id", operationId)
@@ -1073,6 +1103,7 @@ export async function PATCH(
             }))
           : null,
         warnings: auditWarnings,
+        deleted_legs: deletedLegsSnapshot,
       },
       ip_address: getClientIP(request) || undefined,
     })
