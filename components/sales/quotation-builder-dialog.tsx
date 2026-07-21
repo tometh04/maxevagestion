@@ -292,6 +292,13 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
   const [activeQuotationId, setActiveQuotationId] = useState<string | null>(existingQuotationId ?? null)
   const [savedQuotation, setSavedQuotation] = useState<any>(null)
   const [loadingExisting, setLoadingExisting] = useState(false)
+  // El PATCH reemplaza opciones e items: sólo podemos mandarlos si los tenemos
+  // completos. Para una cotización nueva son los que armó el usuario en sesión;
+  // para una existente, sólo después de que la hidratación haya funcionado.
+  // Si el fetch falla, guardar mandaría el placeholder en blanco y borraría las
+  // opciones reales.
+  const [optionsLoaded, setOptionsLoaded] = useState(!existingQuotationId)
+  const [hydrationFailed, setHydrationFailed] = useState(false)
   const [uploadingFlightScreenshotIds, setUploadingFlightScreenshotIds] = useState<Record<string, boolean>>({})
   const [agencyDefaultMode, setAgencyDefaultMode] = useState<string>('SIMPLE')
   const [agencyDefaultCommission, setAgencyDefaultCommission] = useState<number>(0)
@@ -379,6 +386,10 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
     setActiveQuotationId(null)
     setSavedQuotation(null)
     setLoadingExisting(false)
+    // Borrador nuevo: las opciones son las que arma el usuario, no hay nada
+    // guardado que podamos pisar.
+    setOptionsLoaded(true)
+    setHydrationFailed(false)
     setQuotationTitle(draft.quotationTitle)
     setDestination(draft.destination)
     setOrigin(draft.origin)
@@ -414,8 +425,18 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
     let cancelled = false
     setActiveQuotationId(existingQuotationId)
     setLoadingExisting(true)
+    setOptionsLoaded(false)
+    setHydrationFailed(false)
     fetch(`/api/quotations/${existingQuotationId}`, { cache: "no-store" })
-      .then(r => r.json())
+      .then(async r => {
+        // Sin este check, un 403/404/500 devuelve {error} y seguíamos como si
+        // nada con el borrador en blanco cargado.
+        const payload = await r.json().catch(() => null)
+        if (!r.ok || !payload?.data) {
+          throw new Error(payload?.error || `HTTP ${r.status}`)
+        }
+        return payload
+      })
       .then(({ data }) => {
         if (cancelled || !data) return
         setActiveQuotationId(data.id || existingQuotationId)
@@ -494,9 +515,22 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
               items,
             }
           })
-        if (opts.length > 0) setOptions(syncLinkedFlights(opts))
+        // Una cotización guardada siempre tiene al menos una opción (el POST lo
+        // exige), así que `opts` vacío significa que el embed no vino — no que
+        // la cotización no tenga opciones. Tratarlo como "no hidratado".
+        if (opts.length > 0) {
+          setOptions(syncLinkedFlights(opts))
+          setOptionsLoaded(true)
+        } else {
+          throw new Error("La cotización no devolvió sus opciones")
+        }
       })
-      .catch(err => console.error("Error loading quotation:", err))
+      .catch(err => {
+        console.error("Error loading quotation:", err)
+        if (cancelled) return
+        setHydrationFailed(true)
+        toast.error("No se pudieron cargar las opciones de la cotización. Cerrá y volvé a abrirla antes de editar.")
+      })
       .finally(() => { if (!cancelled) setLoadingExisting(false) })
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1041,6 +1075,17 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
       return
     }
 
+    // Sin las opciones guardadas cargadas, guardar reemplazaría la estructura
+    // real por el borrador en blanco.
+    if (!optionsLoaded) {
+      toast.error(
+        loadingExisting
+          ? "Esperá a que termine de cargar la cotización"
+          : "No se pudieron cargar las opciones de esta cotización. Cerrá y volvé a abrirla."
+      )
+      return
+    }
+
     const syncedOptions = syncLinkedFlights(options)
 
     if (!destination.trim()) {
@@ -1103,6 +1148,11 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
         notes: notes || null,
         internal_notes: internalNotes || null,
         payment_methods: paymentMethods,
+        // Le confirma al PATCH que estas opciones salen de la estructura
+        // completa (recién hidratada o armada en esta sesión), así que puede
+        // aceptar que sean menos que las guardadas. Ver el guard 409 en
+        // app/api/quotations/[id]/route.ts.
+        options_replace: true,
         options: finalOptions.map((opt) => ({
           title: opt.title,
           total_amount: opt.total_amount,
@@ -2177,13 +2227,19 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
           )}
 
           {/* Action buttons */}
+          {hydrationFailed && (
+            <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              No se pudieron cargar las opciones guardadas de esta cotización. Cerrá el diálogo y volvé a
+              abrirlo: si guardás ahora, se perderían.
+            </div>
+          )}
           <div className="flex items-center gap-2 justify-end">
             <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)} disabled={saving || hasPendingFlightScreenshotUploads}>
               Cancelar
             </Button>
-            <Button variant="outline" size="sm" onClick={() => handleSave(false)} disabled={saving || hasPendingFlightScreenshotUploads}>
+            <Button variant="outline" size="sm" onClick={() => handleSave(false)} disabled={saving || hasPendingFlightScreenshotUploads || loadingExisting || !optionsLoaded}>
               {saving && !sending ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : null}
-              {hasActiveQuotation ? "Actualizar borrador" : "Guardar borrador"}
+              {loadingExisting ? "Cargando…" : hasActiveQuotation ? "Actualizar borrador" : "Guardar borrador"}
             </Button>
             {savedQuotation?.public_token && (
               <Button variant="secondary" size="sm" onClick={handleViewQuotation}>
@@ -2191,7 +2247,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                 Ver cotizacion
               </Button>
             )}
-            <Button size="sm" onClick={() => handleSave(true)} disabled={saving || hasPendingFlightScreenshotUploads} className="bg-success hover:bg-success">
+            <Button size="sm" onClick={() => handleSave(true)} disabled={saving || hasPendingFlightScreenshotUploads || loadingExisting || !optionsLoaded} className="bg-success hover:bg-success">
               {sending ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Send className="h-4 w-4 mr-1.5" />}
               Guardar y enviar por WhatsApp
             </Button>

@@ -2,6 +2,7 @@
 import React from "react"
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import { toast } from "sonner"
 import { QuotationBuilderDialog } from "../quotation-builder-dialog"
 
 jest.mock("lucide-react", () => {
@@ -128,23 +129,61 @@ const baseLead = {
   agency_id: "agency-1",
 }
 
+/**
+ * El diálogo dispara fetches de infraestructura al abrirse (los defaults de la
+ * agencia) que no son lo que estos tests verifican. Antes se mockeaba `fetch`
+ * con `mockResolvedValueOnce` en secuencia, así que ese fetch se comía el
+ * primer turno de la cola y el resto devolvía `undefined` → toda la suite roja.
+ *
+ * `setupFetchMock` enruta por URL: resuelve la infraestructura sola y deja la
+ * cola de `mockResolvedValueOnce` para POST/PATCH y para el GET de la
+ * cotización, que es lo que los tests realmente asertan.
+ */
+const INFRA_URLS = ["/api/finances/settings", "/api/settings/lead-regions"]
+
+function businessCalls(fetchMock: jest.Mock) {
+  return fetchMock.mock.calls.filter(
+    ([url]) => !INFRA_URLS.some((infra) => String(url).startsWith(infra))
+  )
+}
+
+function setupFetchMock() {
+  const queue: any[] = []
+  const fetchMock = jest.fn(async (url: string) => {
+    if (INFRA_URLS.some((infra) => String(url).startsWith(infra))) {
+      return { ok: true, json: async () => ({}) }
+    }
+    const next = queue.shift()
+    if (!next) {
+      throw new Error(`fetch inesperado en el test: ${url}`)
+    }
+    return next
+  })
+  ;(fetchMock as any).queueResponse = (response: any) => {
+    queue.push(response)
+    return fetchMock
+  }
+  global.fetch = fetchMock as any
+  return fetchMock as jest.Mock & { queueResponse: (r: any) => jest.Mock }
+}
+
 describe("QuotationBuilderDialog", () => {
   beforeEach(() => {
     jest.clearAllMocks()
-    global.fetch = jest.fn()
+    setupFetchMock()
     window.open = jest.fn()
   })
 
   it("resets the form between leads and keeps creating new quotations with POST", async () => {
     const user = userEvent.setup()
-    const fetchMock = global.fetch as jest.Mock
+    const fetchMock = global.fetch as any
 
     fetchMock
-      .mockResolvedValueOnce({
+      .queueResponse({
         ok: true,
         json: async () => ({ data: { id: "quote-1", public_token: "token-1", status: "DRAFT" } }),
       })
-      .mockResolvedValueOnce({
+      .queueResponse({
         ok: true,
         json: async () => ({ data: { id: "quote-2", public_token: "token-2", status: "DRAFT" } }),
       })
@@ -189,13 +228,12 @@ describe("QuotationBuilderDialog", () => {
 
     await user.click(screen.getByRole("button", { name: /guardar borrador/i }))
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      1,
+    await waitFor(() => expect(businessCalls(fetchMock)).toHaveLength(1))
+    expect(businessCalls(fetchMock)[0]).toEqual([
       "/api/quotations",
       expect.objectContaining({ method: "POST" })
-    )
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual(
+    ])
+    expect(JSON.parse(businessCalls(fetchMock)[0][1].body)).toEqual(
       expect.objectContaining({ lead_id: "lead-a", destination: "Miami" })
     )
 
@@ -232,23 +270,22 @@ describe("QuotationBuilderDialog", () => {
 
     await user.click(screen.getByRole("button", { name: /guardar borrador/i }))
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
+    await waitFor(() => expect(businessCalls(fetchMock)).toHaveLength(2))
+    expect(businessCalls(fetchMock)[1]).toEqual([
       "/api/quotations",
       expect.objectContaining({ method: "POST" })
-    )
-    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual(
+    ])
+    expect(JSON.parse(businessCalls(fetchMock)[1][1].body)).toEqual(
       expect.objectContaining({ lead_id: "lead-b", destination: "Cancun" })
     )
   })
 
   it("loads an existing quotation and updates it with PATCH", async () => {
     const user = userEvent.setup()
-    const fetchMock = global.fetch as jest.Mock
+    const fetchMock = global.fetch as any
 
     fetchMock
-      .mockResolvedValueOnce({
+      .queueResponse({
         ok: true,
         json: async () => ({
           data: {
@@ -293,7 +330,7 @@ describe("QuotationBuilderDialog", () => {
           },
         }),
       })
-      .mockResolvedValueOnce({
+      .queueResponse({
         ok: true,
         json: async () => ({ data: { id: "quote-existing", public_token: "existing-token", status: "DRAFT" } }),
       })
@@ -321,25 +358,23 @@ describe("QuotationBuilderDialog", () => {
 
     await user.click(screen.getByRole("button", { name: /actualizar borrador/i }))
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      1,
+    await waitFor(() => expect(businessCalls(fetchMock)).toHaveLength(2))
+    expect(businessCalls(fetchMock)[0]).toEqual([
       "/api/quotations/quote-existing",
       expect.objectContaining({ cache: "no-store" })
-    )
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
+    ])
+    expect(businessCalls(fetchMock)[1]).toEqual([
       "/api/quotations/quote-existing",
       expect.objectContaining({ method: "PATCH" })
-    )
+    ])
   })
 
   it("uploads a replacement flight screenshot and includes it in the PATCH payload", async () => {
     const user = userEvent.setup()
-    const fetchMock = global.fetch as jest.Mock
+    const fetchMock = global.fetch as any
 
     fetchMock
-      .mockResolvedValueOnce({
+      .queueResponse({
         ok: true,
         json: async () => ({
           data: {
@@ -384,11 +419,11 @@ describe("QuotationBuilderDialog", () => {
           },
         }),
       })
-      .mockResolvedValueOnce({
+      .queueResponse({
         ok: true,
         json: async () => ({ url: "https://example.com/quotation-flight.png" }),
       })
-      .mockResolvedValueOnce({
+      .queueResponse({
         ok: true,
         json: async () => ({ data: { id: "quote-existing", public_token: "existing-token", status: "DRAFT" } }),
       })
@@ -419,26 +454,25 @@ describe("QuotationBuilderDialog", () => {
     fireEvent.change(fileInput, { target: { files: [file] } })
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenNthCalledWith(
-        2,
+      expect(businessCalls(fetchMock)[1]).toEqual([
         "/api/quotations/upload-flight-screenshot",
         expect.objectContaining({ method: "POST" })
-      )
+      ])
     })
 
     await user.click(screen.getByRole("button", { name: /actualizar borrador/i }))
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
-    const patchPayload = JSON.parse(fetchMock.mock.calls[2][1].body)
+    await waitFor(() => expect(businessCalls(fetchMock)).toHaveLength(3))
+    const patchPayload = JSON.parse(businessCalls(fetchMock)[2][1].body)
     expect(patchPayload.options[0].items[0].flight_screenshot_url).toBe("https://example.com/quotation-flight.png")
   })
 
   it("disables saving while a flight screenshot upload is still in progress", async () => {
-    const fetchMock = global.fetch as jest.Mock
+    const fetchMock = global.fetch as any
     let resolveUpload: (value: any) => void = () => {}
 
     fetchMock
-      .mockResolvedValueOnce({
+      .queueResponse({
         ok: true,
         json: async () => ({
           data: {
@@ -529,5 +563,51 @@ describe("QuotationBuilderDialog", () => {
       expect(screen.getByRole("button", { name: /actualizar borrador/i })).not.toBeDisabled()
       expect(screen.getByRole("button", { name: /guardar y enviar por whatsapp/i })).not.toBeDisabled()
     })
+  })
+
+  // Regresión 2026-07-21: el PATCH reemplaza opciones e items. Si la
+  // hidratación falla, el form se queda con el borrador en blanco (una opción
+  // vacía) y guardar borraba las opciones reales de la cotización.
+  it("no deja guardar si falló la carga de la cotización existente", async () => {
+    const user = userEvent.setup()
+    const fetchMock = global.fetch as any
+
+    fetchMock.queueResponse({
+      ok: false,
+      status: 500,
+      json: async () => ({ error: "boom" }),
+    })
+
+    render(
+      <QuotationBuilderDialog
+        open
+        onOpenChange={jest.fn()}
+        lead={{
+          ...baseLead,
+          id: "lead-existing",
+          contact_name: "Agustina",
+          destination: "Punta Cana",
+          region: "CARIBE",
+        }}
+        operators={[]}
+        existingQuotationId="quote-existing"
+      />
+    )
+
+    // Se avisa del fallo y los botones de guardado quedan bloqueados.
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("No se pudieron cargar las opciones"))
+    })
+
+    const saveButton = screen.getByRole("button", { name: /actualizar borrador|guardar borrador/i })
+    expect(saveButton).toBeDisabled()
+    expect(screen.getByRole("button", { name: /guardar y enviar por whatsapp/i })).toBeDisabled()
+
+    await user.click(saveButton)
+
+    // La única llamada sigue siendo el GET fallido: ningún PATCH que pise las
+    // opciones guardadas.
+    expect(businessCalls(fetchMock)).toHaveLength(1)
+    expect(businessCalls(fetchMock)[0][0]).toBe("/api/quotations/quote-existing")
   })
 })

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto"
 import {
   getQuotationOptionCalculatedTotal,
   getQuotationOptionCostTotal,
@@ -215,6 +216,214 @@ function buildQuotationItemsInsertPayload(
     gross_price: item.gross_price ?? null,
     commission_percentage: item.commission_percentage || 0,
   }))
+}
+
+/**
+ * Snapshot completo de la estructura actual (filas tal cual están en la base).
+ * Se usa para poder restaurarla si el reemplazo falla por el camino legacy.
+ */
+export async function snapshotQuotationStructure(supabase: any, quotationId: string) {
+  const [{ data: options, error: optionsError }, { data: items, error: itemsError }] =
+    await Promise.all([
+      supabase.from("quotation_options").select("*").eq("quotation_id", quotationId),
+      supabase.from("quotation_items").select("*").eq("quotation_id", quotationId),
+    ])
+
+  if (optionsError || itemsError) {
+    throw new QuotationStructurePersistenceError(
+      "No se pudo leer la estructura actual de la cotización.",
+      "snapshot_failed",
+      {
+        quotationId,
+        cause: optionsError?.message || itemsError?.message,
+      }
+    )
+  }
+
+  return {
+    options: (options || []) as any[],
+    items: (items || []) as any[],
+  }
+}
+
+/**
+ * Reemplaza opciones + items de una cotización.
+ *
+ * Camino preferido: RPC `replace_quotation_structure` (una sola transacción,
+ * preserva is_selected). Si el RPC falla por lo que sea — típicamente que la
+ * migración 20260721000001 todavía no se aplicó — caemos al camino legacy de
+ * delete + insert, que ahora restaura el snapshot si el insert se rompe.
+ *
+ * El fallback es seguro: cuando el RPC falla, la transacción entera hizo
+ * rollback, así que la estructura vieja sigue intacta.
+ */
+export async function replaceQuotationStructure({
+  supabase,
+  quotationId,
+  currency,
+  preparedOptions,
+  orgId,
+  snapshot,
+}: PersistQuotationOptionsArgs & {
+  snapshot: { options: any[]; items: any[] }
+}): Promise<PersistQuotationOptionsResult & { usedRpc: boolean }> {
+  const selectedOptionNumber =
+    snapshot.options.find((option) => option.is_selected)?.option_number ?? null
+
+  const now = new Date().toISOString()
+  const optionRows = preparedOptions.map((opt, index) => ({
+    id: randomUUID(),
+    quotation_id: quotationId,
+    option_number: index + 1,
+    title: opt.title || `Opción ${index + 1}`,
+    total_amount: opt.total_amount,
+    calculated_total_amount: opt.calculated_total_amount,
+    manual_total_amount: opt.manual_total_amount,
+    is_selected: false,
+    created_at: now,
+  }))
+
+  const itemRows = preparedOptions.flatMap((opt, index) =>
+    Array.isArray(opt.items) && opt.items.length > 0
+      ? buildQuotationItemsInsertPayload(
+          quotationId,
+          optionRows[index].id,
+          opt.items,
+          currency,
+          orgId
+        ).map((item) => ({
+          // El RPC hace INSERT ... SELECT * sobre jsonb_populate_recordset, así
+          // que toda columna ausente entra como NULL: hay que mandarlas todas.
+          id: randomUUID(),
+          tariff_id: null,
+          discount_percentage: 0,
+          discount_amount: 0,
+          created_at: now,
+          updated_at: now,
+          ...item,
+        }))
+      : []
+  )
+
+  const { error: rpcError } = await supabase.rpc("replace_quotation_structure", {
+    p_quotation_id: quotationId,
+    p_options: optionRows,
+    p_items: itemRows,
+  })
+
+  if (!rpcError) {
+    return { optionIds: optionRows.map((option) => option.id), usedRpc: true }
+  }
+
+  console.warn(
+    "[quotations] replace_quotation_structure no disponible, usando camino legacy:",
+    rpcError.message
+  )
+
+  // ---- Camino legacy (no atómico) ----
+  let insertedOptionIds: string[] = []
+
+  try {
+    if (snapshot.options.length > 0) {
+      const { error: deleteOptionsError } = await supabase
+        .from("quotation_options")
+        .delete()
+        .eq("quotation_id", quotationId)
+
+      if (deleteOptionsError) {
+        throw new QuotationStructurePersistenceError(
+          "No se pudo eliminar la estructura anterior de la cotización.",
+          "old_options_delete_failed",
+          { quotationId, cause: deleteOptionsError.message }
+        )
+      }
+    }
+
+    // Ítems huérfanos legacy (sin option_id): no caen por CASCADE.
+    const { error: orphanItemsError } = await supabase
+      .from("quotation_items")
+      .delete()
+      .eq("quotation_id", quotationId)
+      .is("option_id", null)
+
+    if (orphanItemsError) {
+      throw new QuotationStructurePersistenceError(
+        "No se pudieron limpiar ítems legacy de la cotización.",
+        "orphan_items_delete_failed",
+        { quotationId, cause: orphanItemsError.message }
+      )
+    }
+
+    const insertResult = await insertQuotationOptionsOrThrow({
+      supabase,
+      quotationId,
+      currency,
+      preparedOptions,
+      orgId,
+    })
+    insertedOptionIds = insertResult.optionIds
+
+    if (selectedOptionNumber != null) {
+      const { error: reselectError } = await supabase
+        .from("quotation_options")
+        .update({ is_selected: true })
+        .eq("quotation_id", quotationId)
+        .eq("option_number", selectedOptionNumber)
+
+      if (reselectError) {
+        // No tiramos abajo el guardado por esto, pero queda registrado: la
+        // cotización pierde la opción aceptada y el convert va a fallar.
+        console.error("[quotations] no se pudo re-marcar la opción aceptada:", {
+          quotationId,
+          selectedOptionNumber,
+          cause: reselectError.message,
+        })
+      }
+    }
+
+    return { optionIds: insertedOptionIds, usedRpc: false }
+  } catch (error) {
+    await restoreQuotationStructureSnapshot(supabase, quotationId, snapshot, insertedOptionIds)
+    throw error
+  }
+}
+
+/**
+ * Restaura el snapshot después de un fallo del camino legacy. Best-effort:
+ * si esto también falla, lo logueamos con el snapshot completo para poder
+ * reconstruir a mano.
+ */
+async function restoreQuotationStructureSnapshot(
+  supabase: any,
+  quotationId: string,
+  snapshot: { options: any[]; items: any[] },
+  insertedOptionIds: string[]
+) {
+  try {
+    if (insertedOptionIds.length > 0) {
+      await cleanupInsertedQuotationOptions(supabase, insertedOptionIds, quotationId)
+    }
+
+    await supabase.from("quotation_items").delete().eq("quotation_id", quotationId)
+    await supabase.from("quotation_options").delete().eq("quotation_id", quotationId)
+
+    if (snapshot.options.length > 0) {
+      const { error } = await supabase.from("quotation_options").insert(snapshot.options)
+      if (error) throw new Error(`options: ${error.message}`)
+    }
+
+    if (snapshot.items.length > 0) {
+      const { error } = await supabase.from("quotation_items").insert(snapshot.items)
+      if (error) throw new Error(`items: ${error.message}`)
+    }
+  } catch (restoreError: any) {
+    console.error("[quotations] FALLO AL RESTAURAR la estructura anterior:", {
+      quotationId,
+      cause: restoreError?.message,
+      // Se loguea completo a propósito: es lo único que queda para reconstruir.
+      snapshot: JSON.stringify(snapshot),
+    })
+  }
 }
 
 export async function cleanupInsertedQuotationOptions(
