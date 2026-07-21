@@ -325,7 +325,16 @@ export async function PATCH(
     }
 
     // Extraer operators y legs del body para no enviarlos a la tabla operations
-    const { operators: incomingOperators, legs: incomingLegs, ...bodyWithoutOperators } = body
+    // OJO: todo lo que quede en bodyWithoutOperators se spreadea a updateData y
+    // va como columna a `operations`. Cualquier flag de control que mande el
+    // cliente TIENE que sacarse acá o el update falla con "column ... does not
+    // exist" (incidente 2026-07-21: `legs_replace` rompió todas las ediciones).
+    const {
+      operators: incomingOperators,
+      legs: incomingLegs,
+      legs_replace: incomingLegsReplace,
+      ...bodyWithoutOperators
+    } = body
     const normalizedIncomingOperators = normalizeIncomingOperators(
       incomingOperators,
       currentOp.operator_cost_currency || currentOp.sale_currency || currentOp.currency || "USD"
@@ -479,7 +488,7 @@ export async function PATCH(
           .eq("operation_id", operationId)
 
         const wouldWipeLegs = incomingLegs.length === 0 && (existingLegs?.length || 0) > 0
-        const clientConfirmedReplace = body.legs_replace === true
+        const clientConfirmedReplace = incomingLegsReplace === true
 
         if (wouldWipeLegs && !clientConfirmedReplace) {
           auditWarnings.push(
