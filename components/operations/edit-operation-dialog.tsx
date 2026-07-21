@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { useForm } from "react-hook-form"
+import { useForm, type DefaultValues } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { parseDateOnlyLocal, formatDateOnlyLocal } from "@/lib/utils/date-only"
 import { serviceKind, PASSENGER_DETAIL_FIELDS, sanitizePassengerDetail } from "@/lib/operations/service-kind"
@@ -398,41 +398,50 @@ export function EditOperationDialog({
     }
   }, [open])
 
+  // Valores del form derivados de la operación.
+  // IMPORTANTE: `defaultValues` y el `form.reset()` de abajo tienen que salir
+  // SIEMPRE de acá. RHF `reset(values)` reemplaza el set completo: un campo que
+  // esté en defaultValues pero falte en el reset queda `undefined`, y si el
+  // submit lo manda como null, borra la columna en la base.
+  // (Fix 2026-07-21: commission_pct_primary/secondary se nuleaban en cada
+  // edición porque estaban sólo en defaultValues.)
+  const buildFormValues = (): DefaultValues<OperationFormValues> => ({
+    agency_id: operation.agency_id || "",
+    seller_id: operation.seller_id || "",
+    seller_secondary_id: operation.seller_secondary_id || null,
+    commission_split: operation.commission_split ?? 50,
+    commission_pct_primary: operation.commission_pct_primary ?? null,
+    commission_pct_secondary: operation.commission_pct_secondary ?? null,
+    operator_id: operation.operator_id || null,
+    type: (operation.type as any) || "PACKAGE",
+    origin: operation.origin || "",
+    destination: operation.destination || "",
+    // Bug fix 2026-05-21 (VICO/Enzo): parseDateOnlyLocal evita el shift
+    // de timezone que hacía `new Date("YYYY-MM-DD")` (interpretado como
+    // UTC midnight → en Argentina renderea como día anterior).
+    // Ver lib/utils/date-only.ts.
+    departure_date: parseDateOnlyLocal(operation.departure_date),
+    return_date: parseDateOnlyLocal(operation.return_date) ?? null,
+    operation_date: parseDateOnlyLocal(operation.operation_date),
+    adults: operation.adults || 1,
+    children: operation.children || 0,
+    infants: operation.infants || 0,
+    status: (operation.status as any) || "RESERVED",
+    sale_amount_total: operation.sale_amount_total || 0,
+    operator_cost: operation.operator_cost || 0,
+    currency: operationCurrency,
+    reservation_code_air: operation.reservation_code_air || null,
+    reservation_code_hotel: operation.reservation_code_hotel || null,
+    itr_localizador: operation.itr_localizador || null,
+    airline_name: operation.airline_name || null,
+    hotel_name: operation.hotel_name || null,
+    customer_payment_deadline: parseDateOnlyLocal(operation.customer_payment_deadline) ?? null,
+    passenger_notes: operation.passenger_notes || "",
+  })
+
   const form = useForm<OperationFormValues>({
     resolver: zodResolver(operationSchema) as any,
-    defaultValues: {
-      agency_id: operation.agency_id || "",
-      seller_id: operation.seller_id || "",
-      seller_secondary_id: operation.seller_secondary_id || null,
-      commission_split: operation.commission_split ?? 50,
-      commission_pct_primary: operation.commission_pct_primary ?? null,
-      commission_pct_secondary: operation.commission_pct_secondary ?? null,
-      operator_id: operation.operator_id || null,
-      type: (operation.type as any) || "PACKAGE",
-      origin: operation.origin || "",
-      destination: operation.destination || "",
-      // Bug fix 2026-05-21 (VICO/Enzo): parseDateOnlyLocal evita el shift
-      // de timezone que hacía `new Date("YYYY-MM-DD")` (interpretado como
-      // UTC midnight → en Argentina renderea como día anterior).
-      // Ver lib/utils/date-only.ts.
-      departure_date: parseDateOnlyLocal(operation.departure_date),
-      return_date: parseDateOnlyLocal(operation.return_date) ?? null,
-      operation_date: parseDateOnlyLocal(operation.operation_date),
-      adults: operation.adults || 1,
-      children: operation.children || 0,
-      infants: operation.infants || 0,
-      status: (operation.status as any) || "RESERVED",
-      sale_amount_total: operation.sale_amount_total || 0,
-      operator_cost: operation.operator_cost || 0,
-      currency: operationCurrency,
-      reservation_code_air: operation.reservation_code_air || null,
-      reservation_code_hotel: operation.reservation_code_hotel || null,
-      itr_localizador: operation.itr_localizador || null,
-      airline_name: operation.airline_name || null,
-      hotel_name: operation.hotel_name || null,
-      customer_payment_deadline: parseDateOnlyLocal(operation.customer_payment_deadline) ?? null,
-      passenger_notes: operation.passenger_notes || "",
-    },
+    defaultValues: buildFormValues(),
   })
 
   // Reset form when operation changes.
@@ -449,31 +458,8 @@ export function EditOperationDialog({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (operation) {
-      form.reset({
-        agency_id: operation.agency_id || "",
-        seller_id: operation.seller_id || "",
-        seller_secondary_id: operation.seller_secondary_id || null,
-        commission_split: operation.commission_split ?? 50,
-        operator_id: operation.operator_id || null,
-        type: (operation.type as any) || "PACKAGE",
-        origin: operation.origin || "",
-        destination: operation.destination || "",
-        // Bug fix 2026-05-21 (VICO): parseDateOnlyLocal evita shift UTC.
-        departure_date: parseDateOnlyLocal(operation.departure_date),
-        return_date: parseDateOnlyLocal(operation.return_date) ?? null,
-        adults: operation.adults || 1,
-        children: operation.children || 0,
-        infants: operation.infants || 0,
-        status: (operation.status as any) || "RESERVED",
-        sale_amount_total: operation.sale_amount_total || 0,
-        operator_cost: operation.operator_cost || 0,
-        currency: operationCurrency,
-        reservation_code_air: operation.reservation_code_air || null,
-        reservation_code_hotel: operation.reservation_code_hotel || null,
-        itr_localizador: operation.itr_localizador || null,
-        customer_payment_deadline: parseDateOnlyLocal(operation.customer_payment_deadline) ?? null,
-        passenger_notes: operation.passenger_notes || "",
-      })
+      // Mismo set de campos que defaultValues (ver buildFormValues arriba).
+      form.reset(buildFormValues())
     }
   }, [operation?.id, operationCurrency])
 
