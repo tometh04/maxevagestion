@@ -15,6 +15,7 @@ import {
   SidebarProvider,
 } from "@/components/ui/sidebar"
 import { BrandProvider } from "@/components/brand-provider"
+import { PermissionsProvider } from "@/components/permissions/permissions-provider"
 import { assertSubscriptionActive } from "@/lib/billing/guard"
 import { SubscriptionBanner } from "@/components/billing/subscription-banner"
 import { makeTimer } from "@/lib/perf-log"
@@ -118,7 +119,9 @@ export default async function DashboardLayout({
           )}
           <div className="flex flex-1 flex-col overflow-hidden">
             <div className="flex-1 overflow-y-auto p-4 md:p-6">
-              {children}
+              <PermissionsProvider role={user.role as any} matrix={resolvedPermissions}>
+                {children}
+              </PermissionsProvider>
             </div>
           </div>
         </SidebarInset>
