@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { resolveUserPermissions } from "@/lib/permissions-agency"
+import { isOwnDataOnlyResolved } from "@/lib/permissions-api"
 import { buildExchangeRateMap, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
 import { parseOperationDateField } from "@/lib/analytics/date-filter"
 import { getOrgFeatureFlag } from "@/lib/settings/org-features"
@@ -49,6 +51,14 @@ export async function GET(request: Request) {
 
       const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
 
+      // "Solo mis datos" en el dashboard, resuelto por agencia. Este RPC no tiene
+      // p_seller_id, así que cuando dashOwnData está activo salteamos el fast-path
+      // y usamos el fallback JS que filtra por seller_id propio.
+      const matrix = (user as any).org_id
+        ? await resolveUserPermissions(supabase as any, user.id, (user as any).org_id, user.role, agencyIds)
+        : null
+      const dashOwnData = isOwnDataOnlyResolved(user, "dashboard", matrix ?? undefined)
+
       // ============================================
       // FAST PATH: RPC analytics_sellers_summary
       // ============================================
@@ -62,7 +72,7 @@ export async function GET(request: Request) {
       const includeServicesRpc = await getOrgFeatureFlag(
         supabase, (user as any).org_id, FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL
       )
-      if (useRpcFastPath) {
+      if (useRpcFastPath && !dashOwnData) {
         try {
         const t0 = Date.now()
         const { data: rpcData, error: rpcError } = await (supabase.rpc as any)(
@@ -112,8 +122,8 @@ export async function GET(request: Request) {
       // Multi-tenant: scope por org del usuario
       if (user.org_id) query = query.eq("org_id", user.org_id)
 
-      // Apply role-based filtering
-      if (user.role === "SELLER") {
+      // Apply role-based filtering (dashboard.ownDataOnly resuelto por agencia)
+      if (dashOwnData) {
         query = query.eq("seller_id", user.id)
       } else if (agencyIds.length > 0 && user.role !== "SUPER_ADMIN") {
         query = query.in("agency_id", agencyIds)

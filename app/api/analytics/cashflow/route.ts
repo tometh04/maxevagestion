@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { resolveUserPermissions } from "@/lib/permissions-agency"
+import { isOwnDataOnlyResolved } from "@/lib/permissions-api"
 
 // Forzar ruta dinámica (usa cookies para autenticación)
 export const dynamic = 'force-dynamic'
@@ -34,11 +36,20 @@ export async function GET(request: Request) {
 
       const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
 
+      // "Solo mis datos" en el dashboard (matrix por agencia). Este RPC no tiene
+      // p_seller_id → con dashOwnData salteamos el fast-path y filtramos el
+      // cashflow por los movimientos del propio usuario en el fallback.
+      const matrix = (user as any).org_id
+        ? await resolveUserPermissions(supabase as any, user.id, (user as any).org_id, user.role, agencyIds)
+        : null
+      const dashOwnData = isOwnDataOnlyResolved(user, "dashboard", matrix ?? undefined)
+
       // ============================================
       // FAST PATH: RPC analytics_cashflow_summary
       // ============================================
       // GROUP BY date con SUM income/expense en SQL.
       // Validación: 30 filas razonables, picos coherentes con uso real.
+      if (!dashOwnData) {
       try {
         const t0 = Date.now()
         const { data: rpcData, error: rpcError } = await (supabase.rpc as any)(
@@ -71,6 +82,7 @@ export async function GET(request: Request) {
       } catch (rpcEx: any) {
         console.warn("[analytics/cashflow] RPC threw, falling back to JS:", rpcEx?.message || rpcEx)
       }
+      } // /if (!dashOwnData)
 
       // ============================================
       // FALLBACK: lógica vieja (intacta)
@@ -94,8 +106,8 @@ export async function GET(request: Request) {
       // Multi-tenant: scope por org del usuario (ledger_movements.org_id post-mig 134)
       if (user.org_id) query = query.eq("org_id", user.org_id)
 
-      // Apply role-based filtering
-      if (user.role === "SELLER") {
+      // Apply role-based filtering (dashboard.ownDataOnly resuelto por agencia)
+      if (dashOwnData) {
         query = query.eq("user_id", user.id)
       }
 
