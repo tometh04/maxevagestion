@@ -388,11 +388,18 @@ export async function canAccessDocumentResource(
   },
   options?: {
     write?: boolean
+    /**
+     * Matriz de permisos resuelta por agencia. Si se pasa, el gate del módulo
+     * `documents` y el scope de `customers` respetan los overrides por agencia
+     * en vez de los defaults estáticos del rol.
+     */
+    matrix?: ResolvedPermissionsMatrix | null
   }
 ): Promise<boolean> {
   const write = options?.write === true
+  const matrix = options?.matrix ?? undefined
 
-  if (write && !canPerformAction(user, "documents", "write")) {
+  if (write && !canPerformAction(user, "documents", "write", matrix)) {
     return false
   }
 
@@ -418,19 +425,23 @@ export async function canAccessDocumentResource(
   if (resource.customerId) {
     const scopes = await getCustomerOperationAccessScopes(supabase, user, resource.customerId)
     if (scopes.length === 0) {
-      return user.role !== "SELLER" && (
-        write
-          ? canPerformAction(user, "documents", "write")
-          : canPerformAction(user, "documents", "read")
-      )
+      // Cliente sin operaciones vinculadas al usuario. Antes esto bloqueaba a
+      // SELLER de forma fija; ahora se permite salvo que esté restringido a sus
+      // propios clientes (customers.ownDataOnly) según el matrix por agencia.
+      if (isOwnDataOnlyResolved(user, "customers", matrix)) {
+        return false
+      }
+      return write
+        ? canPerformAction(user, "documents", "write", matrix)
+        : canPerformAction(user, "documents", "read", matrix)
     }
 
     return !write || scopes.some((scope) => scope !== "agency-support")
   }
 
   return write
-    ? canPerformAction(user, "documents", "write")
-    : canPerformAction(user, "documents", "read")
+    ? canPerformAction(user, "documents", "write", matrix)
+    : canPerformAction(user, "documents", "read", matrix)
 }
 
 /**

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
-import { getCurrentUser } from "@/lib/auth"
+import { getRequestPermissions } from "@/lib/permissions/request"
+import { canPerformAction, isOwnDataOnlyResolved } from "@/lib/permissions-api"
 
 export const dynamic = 'force-dynamic'
 
@@ -39,14 +39,13 @@ async function getCommissionCollectionThreshold(supabase: any, orgId: string): P
 // GET - Obtener comisiones
 export async function GET(request: Request) {
   try {
-    const { user } = await getCurrentUser()
+    const { user, supabase, matrix } = await getRequestPermissions()
 
     // Cross-tenant fix (2026-05-18): no confiar en RLS; scopear explícito.
     if (!(user as any).org_id) {
       return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
     }
 
-    const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
     // Parámetros de filtro
@@ -56,8 +55,14 @@ export async function GET(request: Request) {
     const periodEnd = searchParams.get("periodEnd")
     const month = searchParams.get("month") // Para filtrar por mes (YYYY-MM)
 
-    // Determinar si puede ver todas las comisiones o solo las propias
-    const canViewAll = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN'
+    // Determinar si puede ver todas las comisiones o solo las propias.
+    // Antes era `role === ADMIN|SUPER_ADMIN` fijo; ahora respeta el matrix por
+    // agencia: "ve todas" = tiene lectura de comisiones Y no está limitado a lo
+    // propio. Así un ADMIN configurado como "solo comisiones propias" se scopea,
+    // y un rol con lectura no restringida (p.ej. CONTABLE) ve todas.
+    const canViewAll =
+      canPerformAction(user, "commissions", "read", matrix ?? undefined) &&
+      !isOwnDataOnlyResolved(user, "commissions", matrix ?? undefined)
 
     // Always use commission_records (legacy commissions table is deprecated)
     let query = (supabase.from("commission_records") as any)

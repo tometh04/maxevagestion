@@ -1,16 +1,17 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
-import { getCurrentUser } from "@/lib/auth"
-import { getUserAgencyIds } from "@/lib/permissions-api"
+import { getRequestPermissions } from "@/lib/permissions/request"
+import { isOwnDataOnlyResolved } from "@/lib/permissions-api"
 
 export async function GET(request: Request) {
   try {
-    const { user } = await getCurrentUser()
-    const supabase = await createServerClient()
-    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
+    const { user, supabase, agencyIds, matrix } = await getRequestPermissions()
     const events: any[] = []
 
-    const isSeller = user.role === "SELLER"
+    // Scope "solo lo propio" resuelto contra el matrix dinámico por agencia.
+    // Antes esto era `role === "SELLER"` fijo, así que apagar ownDataOnly en la
+    // matriz no tenía efecto (un vendedor no podía ver todas las operaciones).
+    const opsOwnData = isOwnDataOnlyResolved(user, "operations", matrix ?? undefined)
+    const leadsOwnData = isOwnDataOnlyResolved(user, "leads", matrix ?? undefined)
 
     // ────────────────────────────────────────────────────────────
     // Bug fix 2026-05-15 (reportado por Lozada Gualeguaychú):
@@ -25,13 +26,13 @@ export async function GET(request: Request) {
     // Si agencyIds está vacío (user huérfano sin agencias) → devolver
     // events vacío. Fail-safe vs leak.
     // ────────────────────────────────────────────────────────────
-    if (!isSeller && agencyIds.length === 0) {
+    if (!opsOwnData && agencyIds.length === 0) {
       return NextResponse.json({ events: [] })
     }
 
     // --- Helper to apply role-based filters to an operations query ---
     const applyOperationFilters = (query: any) => {
-      if (isSeller) {
+      if (opsOwnData) {
         return query.eq("seller_id", user.id)
       }
       // SUPER_ADMIN, ADMIN, CONTABLE, VIEWER: filtrar por las agencias de su org
@@ -281,7 +282,7 @@ export async function GET(request: Request) {
       .select("id, contact_name, destination, follow_up_date, assigned_seller_id, agency_id")
       .not("follow_up_date", "is", null)
 
-    if (isSeller) {
+    if (leadsOwnData) {
       leadsQuery = leadsQuery.eq("assigned_seller_id", user.id)
     } else {
       leadsQuery = leadsQuery.in("agency_id", agencyIds)

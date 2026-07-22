@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server"
-import { getCurrentUser } from "@/lib/auth"
 import { createClient } from "@supabase/supabase-js"
 import { canAccessDocumentResource } from "@/lib/permissions-api"
+import { getRequestPermissions } from "@/lib/permissions/request"
 
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await getCurrentUser()
+    const { user, matrix } = await getRequestPermissions()
     const { id: documentId } = await params
     
     if (!documentId) {
@@ -49,7 +49,7 @@ export async function DELETE(
         operationId: doc.operation_id,
         customerId: doc.customer_id,
       },
-      { write: true }
+      { write: true, matrix }
     )
 
     if (!canDeleteDocument) {
@@ -96,7 +96,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await getCurrentUser()
+    const { user, matrix } = await getRequestPermissions()
     const { id: documentId } = await params
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -128,7 +128,8 @@ export async function GET(
       {
         operationId: (document as any).operation_id,
         customerId: (document as any).customer_id,
-      }
+      },
+      { matrix }
     )
 
     if (!canViewDocument) {

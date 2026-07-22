@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server"
-import { getCurrentUser } from "@/lib/auth"
 import { createClient } from "@supabase/supabase-js"
 import { canAccessDocumentResource } from "@/lib/permissions-api"
+import { getRequestPermissions } from "@/lib/permissions/request"
 import OpenAI from "openai"
 
 export async function POST(request: Request) {
   try {
-    const { user } = await getCurrentUser()
+    const { user, matrix } = await getRequestPermissions()
     
     // Usar service role key para bypass RLS
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
       supabase as any,
       user,
       { operationId, customerId },
-      { write: true }
+      { write: true, matrix }
     )
 
     if (!canWriteDocuments) {

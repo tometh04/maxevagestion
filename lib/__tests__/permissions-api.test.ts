@@ -4,7 +4,9 @@ import {
   applyLeadsFilters,
   applyOperationsFilters,
   applyReportsFilters,
+  isOwnDataOnlyResolved,
 } from "../permissions-api"
+import { buildDefaultMatrix, type ResolvedPermissionsMatrix } from "../permissions/resolved"
 
 describe("Permissions API", () => {
   // ─── canPerformAction ────────────────────────────────────────────────
@@ -162,6 +164,7 @@ describe("Permissions API", () => {
     const createMockQuery = () => ({
       in: jest.fn().mockReturnThis(),
       eq: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockReturnThis(),
     })
 
     it("should filter SELLER by seller_id", () => {
@@ -213,20 +216,24 @@ describe("Permissions API", () => {
       expect(query.in).toHaveBeenCalledWith("agency_id", ["agency-1"])
     })
 
-    it("should not filter SUPER_ADMIN when agencyIds is empty (legacy / mock dev)", () => {
+    // Fix cross-tenant (2026-05-18): con agencyIds vacío, ADMIN/SUPER_ADMIN NO
+    // deben quedar sin filtro (eso leakeaba operaciones de toda la org). Ahora
+    // se fuerza limit(0) → 0 resultados en vez de "todo".
+    it("should limit(0) SUPER_ADMIN when agencyIds is empty (fail-safe, no leak)", () => {
       const query = createMockQuery()
       const user = { role: "SUPER_ADMIN", id: "sa-1" }
       applyOperationsFilters(query, user, [])
 
+      expect(query.limit).toHaveBeenCalledWith(0)
       expect(query.in).not.toHaveBeenCalled()
-      expect(query.eq).not.toHaveBeenCalled()
     })
 
-    it("should not filter ADMIN when no agencyIds", () => {
+    it("should limit(0) ADMIN when no agencyIds (fail-safe, no leak)", () => {
       const query = createMockQuery()
       const user = { role: "ADMIN", id: "admin-1" }
       applyOperationsFilters(query, user, [])
 
+      expect(query.limit).toHaveBeenCalledWith(0)
       expect(query.in).not.toHaveBeenCalled()
     })
   })
@@ -271,6 +278,72 @@ describe("Permissions API", () => {
 
       expect(result.canAccess).toBe(true)
       expect(result.ownDataOnly).toBe(false)
+    })
+  })
+
+  // ─── Matrix dinámica por agencia (Etapa 1: wiring de overrides) ───────
+  // Cubre el mecanismo que usan calendar/events, /api/commissions,
+  // canAccessDocumentResource, etc.: cuando se pasa la matrix resuelta, los
+  // overrides por agencia ganan sobre los defaults estáticos del rol.
+  describe("matrix-aware overrides", () => {
+    it("canPerformAction: un override de agencia habilita un permiso que el default niega", () => {
+      const user = { role: "SELLER", id: "s-1" }
+      // SELLER por default NO tiene cash.write.
+      expect(canPerformAction(user, "cash", "write")).toBe(false)
+
+      const matrix: ResolvedPermissionsMatrix = {
+        ...buildDefaultMatrix("SELLER"),
+        cash: { read: true, write: true, delete: false, export: false, ownDataOnly: false },
+      }
+      expect(canPerformAction(user, "cash", "write", matrix)).toBe(true)
+    })
+
+    it("isOwnDataOnlyResolved: apagar ownDataOnly en la matrix hace que un SELLER vea todo (calendario)", () => {
+      const user = { role: "SELLER", id: "s-1" }
+      // Default SELLER operations → solo lo propio.
+      expect(isOwnDataOnlyResolved(user, "operations")).toBe(true)
+
+      const matrix: ResolvedPermissionsMatrix = {
+        ...buildDefaultMatrix("SELLER"),
+        operations: { read: true, write: true, delete: false, export: true, ownDataOnly: false },
+      }
+      expect(isOwnDataOnlyResolved(user, "operations", matrix)).toBe(false)
+    })
+
+    it("isOwnDataOnlyResolved: prender ownDataOnly restringe a un ADMIN (comisiones propias)", () => {
+      const user = { role: "ADMIN", id: "a-1" }
+      // Default ADMIN commissions → ve todas (ownDataOnly false).
+      expect(isOwnDataOnlyResolved(user, "commissions")).toBe(false)
+
+      const matrix: ResolvedPermissionsMatrix = {
+        ...buildDefaultMatrix("ADMIN"),
+        commissions: { read: true, write: false, delete: false, export: true, ownDataOnly: true },
+      }
+      expect(isOwnDataOnlyResolved(user, "commissions", matrix)).toBe(true)
+    })
+
+    it("canViewAll de comisiones = read && !ownDataOnly: ADMIN restringido deja de ver todas", () => {
+      const user = { role: "ADMIN", id: "a-1" }
+      const canViewAll = (m?: ResolvedPermissionsMatrix) =>
+        canPerformAction(user, "commissions", "read", m) &&
+        !isOwnDataOnlyResolved(user, "commissions", m)
+
+      expect(canViewAll()).toBe(true) // default: ve todas
+      const restricted: ResolvedPermissionsMatrix = {
+        ...buildDefaultMatrix("ADMIN"),
+        commissions: { read: true, write: false, delete: false, export: true, ownDataOnly: true },
+      }
+      expect(canViewAll(restricted)).toBe(false) // override: solo propias
+    })
+
+    it("SUPER_ADMIN/ORG_OWNER nunca quedan restringidos por la matrix", () => {
+      const sa = { role: "SUPER_ADMIN", id: "sa-1" }
+      const matrix: ResolvedPermissionsMatrix = {
+        ...buildDefaultMatrix("SELLER"),
+        commissions: { read: false, write: false, delete: false, export: false, ownDataOnly: true },
+      }
+      expect(canPerformAction(sa, "commissions", "read", matrix)).toBe(true)
+      expect(isOwnDataOnlyResolved(sa, "commissions", matrix)).toBe(false)
     })
   })
 })

@@ -1,13 +1,19 @@
-import { getCurrentUser } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import { AdminCommissionsView } from "@/components/commissions/admin-commissions-view"
 import { SellerCommissionsView } from "@/components/commissions/seller-commissions-view"
+import { getRequestPermissions } from "@/lib/permissions/request"
+import { canPerformAction, isOwnDataOnlyResolved } from "@/lib/permissions-api"
 
 export default async function CommissionsPage() {
-  const { user } = await getCurrentUser()
+  const { user, matrix } = await getRequestPermissions()
   if (!user) redirect("/login")
 
-  const isAdmin = user.role === "ADMIN" || user.role === "SUPER_ADMIN"
+  // Vista "admin" (todas las comisiones) vs "vendedor" (solo las propias) según
+  // el matrix por agencia, coherente con /api/commissions. Un ADMIN configurado
+  // como "solo comisiones propias" ve la vista de vendedor.
+  const isAdmin =
+    canPerformAction(user, "commissions", "read", matrix ?? undefined) &&
+    !isOwnDataOnlyResolved(user, "commissions", matrix ?? undefined)
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-6">
