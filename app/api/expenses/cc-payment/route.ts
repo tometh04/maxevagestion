@@ -10,6 +10,7 @@ import {
 } from "@/lib/accounting/ledger"
 import { getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
 import { roundMoney } from "@/lib/currency"
+import { settleOperatorDebtForStatement } from "@/lib/accounting/cc-settle-operator-debt"
 
 const CLASSIFICATION_LABELS: Record<string, string> = {
   GASTOS_AGENCIA: "Gastos Agencia",
@@ -101,27 +102,76 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Tarjeta de crédito no encontrada o inactiva" }, { status: 404 })
     }
 
-    // Validate items
+    // Validate items. Cada item es de tipo:
+    //  - EXPENSE (default): crea un gasto clasificado (como siempre).
+    //  - OPERATOR_SETTLEMENT: cancela una deuda de operador existente
+    //    (ej. valija de pasajero cargada al operador "tarjeta de crédito").
     const validClassifications = ["GASTOS_AGENCIA", "VENTAS", "RETIRO_PERSONAL"]
     let itemsTotal = 0
+    // Pre-cargamos y validamos las deudas a cancelar acá para fallar temprano
+    // (antes de escribir nada) y evitar contabilidad a medias.
+    const settlementByIndex = new Map<number, any>()
 
-    for (const item of items) {
-      if (!item.classification || !validClassifications.includes(item.classification)) {
-        return NextResponse.json(
-          { error: `Clasificación inválida: ${item.classification}` },
-          { status: 400 }
-        )
-      }
-      if (!item.description || !item.amount) {
-        return NextResponse.json(
-          { error: "Cada item debe tener descripción y monto" },
-          { status: 400 }
-        )
-      }
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]
       const itemAmount = roundMoney(Number(item.amount))
-      if (itemAmount <= 0) {
+      if (!item.amount || itemAmount <= 0) {
         return NextResponse.json({ error: "El monto de cada item debe ser mayor a 0" }, { status: 400 })
       }
+
+      if (item.type === "OPERATOR_SETTLEMENT") {
+        if (!item.operator_payment_id || !item.operation_id) {
+          return NextResponse.json(
+            { error: "Cada item de cancelación de deuda requiere la deuda y la operación" },
+            { status: 400 }
+          )
+        }
+        // Traer la deuda scopeada por org y validar moneda + saldo pendiente.
+        const { data: opPayment, error: opErr } = await (supabase.from("operator_payments") as any)
+          .select("id, operation_id, operator_id, amount, paid_amount, currency, status")
+          .eq("id", item.operator_payment_id)
+          .eq("org_id", userOrgId)
+          .single()
+
+        if (opErr || !opPayment) {
+          return NextResponse.json({ error: "La deuda seleccionada no existe" }, { status: 404 })
+        }
+        if (opPayment.currency !== currency) {
+          return NextResponse.json(
+            { error: `La deuda está en ${opPayment.currency} y el resumen en ${currency}. Se pagan por separado.` },
+            { status: 400 }
+          )
+        }
+        if (opPayment.operation_id !== item.operation_id) {
+          return NextResponse.json({ error: "La deuda no corresponde a la operación indicada" }, { status: 400 })
+        }
+        const pending = roundMoney(Number(opPayment.amount || 0) - Number(opPayment.paid_amount || 0))
+        if (pending <= 0) {
+          return NextResponse.json({ error: "La deuda seleccionada ya está saldada" }, { status: 400 })
+        }
+        if (itemAmount - pending > 0.01) {
+          return NextResponse.json(
+            { error: `El monto a cancelar (${itemAmount}) supera el saldo pendiente de la deuda (${pending})` },
+            { status: 400 }
+          )
+        }
+        settlementByIndex.set(i, opPayment)
+      } else {
+        // EXPENSE (default)
+        if (!item.classification || !validClassifications.includes(item.classification)) {
+          return NextResponse.json(
+            { error: `Clasificación inválida: ${item.classification}` },
+            { status: 400 }
+          )
+        }
+        if (!item.description) {
+          return NextResponse.json(
+            { error: "Cada gasto debe tener descripción y monto" },
+            { status: 400 }
+          )
+        }
+      }
+
       itemsTotal += itemAmount
     }
 
@@ -208,9 +258,55 @@ export async function POST(request: Request) {
     const createdMovements: string[] = []
     const movementDate = new Date(payment_date).toISOString()
 
-    for (const item of items) {
+    const settlementExchangeRate = currency === "USD"
+      ? exchangeRate
+      : userExchangeRate ? Number(userExchangeRate) : null
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]
       const itemAmount = roundMoney(Number(item.amount))
-      const classLabel = CLASSIFICATION_LABELS[item.classification] || item.classification
+
+      // Item "cancela deuda": liquida la deuda de operador existente (no crea
+      // gasto). La plata igual sale de la cuenta origen del resumen.
+      if (item.type === "OPERATOR_SETTLEMENT") {
+        const opPayment = settlementByIndex.get(i)
+        try {
+          await settleOperatorDebtForStatement({
+            supabase,
+            adminDb,
+            orgId: userOrgId,
+            userId: user.id,
+            operatorPaymentId: opPayment.id,
+            operationId: opPayment.operation_id,
+            operatorId: opPayment.operator_id,
+            amount: itemAmount,
+            currency: currency as "ARS" | "USD",
+            exchangeRate: settlementExchangeRate,
+            accountId: source_account_id,
+            paymentDate: new Date(payment_date).toISOString(),
+            ccPaymentGroupId: group.id,
+            cashBoxId,
+            notes: item.description || `Cancelación deuda operador (resumen TC)`,
+          })
+        } catch (settleErr: any) {
+          // Rollback de lo creado hasta acá (gastos + grupo). Las deudas ya
+          // liquidadas en items previos quedan reflejadas — se informa para
+          // revisión manual (caso raro; validamos todo arriba antes de escribir).
+          console.error("Error settling operator debt in cc-payment:", settleErr)
+          if (createdMovements.length > 0) {
+            await adminDb.from("cash_movements").delete().in("id", createdMovements)
+          }
+          await adminDb.from("cc_payment_groups").delete().eq("id", group.id)
+          return NextResponse.json(
+            { error: `Error al cancelar deuda: ${settleErr?.message || String(settleErr)}` },
+            { status: 500 }
+          )
+        }
+        continue
+      }
+
+      const itemClassification = item.classification
+      const classLabel = CLASSIFICATION_LABELS[itemClassification] || itemClassification
       const categoryName = item.category_id ? categoryMap.get(item.category_id) || "Gastos Variables" : "Gastos Variables"
 
       const concept = `Pago TC: ${item.description} (${classLabel})`

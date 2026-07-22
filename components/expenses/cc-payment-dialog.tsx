@@ -45,18 +45,52 @@ interface FinancialAccount {
   is_active?: boolean
 }
 
+interface PendingDebt {
+  id: string
+  operation_id: string
+  operator_id: string
+  operator_name: string
+  currency: string
+  pending_amount: number
+  due_date: string | null
+  file_code: string | null
+  destination: string | null
+  passenger_name: string | null
+}
+
 const CLASSIFICATIONS = [
   { value: "GASTOS_AGENCIA", label: "Gastos Agencia" },
   { value: "VENTAS", label: "Ventas" },
   { value: "RETIRO_PERSONAL", label: "Retiro Personal" },
 ] as const
 
-const itemSchema = z.object({
-  classification: z.enum(["GASTOS_AGENCIA", "VENTAS", "RETIRO_PERSONAL"]),
-  description: z.string().min(1, "Requerido"),
-  amount: z.coerce.number().min(0.01, "Debe ser mayor a 0"),
-  category_id: z.string().optional(),
-})
+const itemSchema = z
+  .object({
+    // "EXPENSE" = gasto clasificado (default). "OPERATOR_SETTLEMENT" = cancela
+    // una deuda de operador existente (valija/servicio de pasajero).
+    type: z.enum(["EXPENSE", "OPERATOR_SETTLEMENT"]),
+    classification: z.enum(["GASTOS_AGENCIA", "VENTAS", "RETIRO_PERSONAL"]).optional(),
+    description: z.string().optional(),
+    amount: z.coerce.number().min(0.01, "Debe ser mayor a 0"),
+    category_id: z.string().optional(),
+    // Sólo para OPERATOR_SETTLEMENT:
+    operator_payment_id: z.string().optional(),
+    operation_id: z.string().optional(),
+  })
+  .superRefine((val, ctx) => {
+    if (val.type === "OPERATOR_SETTLEMENT") {
+      if (!val.operator_payment_id || !val.operation_id) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Elegí la deuda a cancelar", path: ["operator_payment_id"] })
+      }
+    } else {
+      if (!val.classification) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Requerido", path: ["classification"] })
+      }
+      if (!val.description) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Requerido", path: ["description"] })
+      }
+    }
+  })
 
 const ccPaymentSchema = z.object({
   credit_card_account_id: z.string().min(1, "Seleccione una tarjeta"),
@@ -82,6 +116,12 @@ export function CCPaymentDialog({ open, onOpenChange, onSuccess }: CCPaymentDial
   const { currency: defaultCurrency } = useDefaultCurrency()
   const [categories, setCategories] = useState<Category[]>([])
   const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([])
+  // Deudas de operador pendientes (para items "Cancela deuda").
+  const [pendingDebts, setPendingDebts] = useState<PendingDebt[]>([])
+  const [debtOperators, setDebtOperators] = useState<Array<{ id: string; name: string }>>([])
+  const [debtOperatorId, setDebtOperatorId] = useState<string>("") // "" = operador por defecto (Tarjeta de crédito)
+  const [debtSearch, setDebtSearch] = useState("")
+  const [loadingDebts, setLoadingDebts] = useState(false)
 
   const getDefaultDate = () => {
     const now = new Date()
@@ -98,7 +138,7 @@ export function CCPaymentDialog({ open, onOpenChange, onSuccess }: CCPaymentDial
       exchange_rate: undefined,
       payment_date: getDefaultDate(),
       notes: "",
-      items: [{ classification: "GASTOS_AGENCIA", description: "", amount: 0, category_id: "" }],
+      items: [{ type: "EXPENSE", classification: "GASTOS_AGENCIA", description: "", amount: 0, category_id: "", operator_payment_id: "", operation_id: "" }],
     },
   })
 
@@ -140,6 +180,43 @@ export function CCPaymentDialog({ open, onOpenChange, onSuccess }: CCPaymentDial
     }
   }, [open, form])
 
+  // Cargar deudas pendientes según moneda del resumen + operador/búsqueda.
+  // La deuda debe estar en la misma moneda que el resumen (saldos independientes).
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    const load = async () => {
+      setLoadingDebts(true)
+      try {
+        const params = new URLSearchParams({ currency: watchCurrency })
+        if (debtOperatorId) params.set("operatorId", debtOperatorId)
+        if (debtSearch.trim()) params.set("search", debtSearch.trim())
+        const res = await fetch(`/api/expenses/cc-payment/pending-debts?${params}`)
+        if (res.ok) {
+          const data = await res.json()
+          if (!cancelled) {
+            setPendingDebts(data.debts || [])
+            setDebtOperators(data.operators || [])
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching pending debts:", err)
+      } finally {
+        if (!cancelled) setLoadingDebts(false)
+      }
+    }
+    load()
+    return () => {
+      cancelled = true
+    }
+  }, [open, watchCurrency, debtOperatorId, debtSearch])
+
+  const formatDebtLabel = (d: PendingDebt) => {
+    const who = d.passenger_name || d.file_code || d.destination || "Operación"
+    const code = d.file_code ? ` · ${d.file_code}` : ""
+    return `${who}${code} — ${new Intl.NumberFormat("es-AR", { style: "currency", currency: d.currency }).format(d.pending_amount)}`
+  }
+
   const creditCardAccounts = financialAccounts.filter((a) => a.type === "CREDIT_CARD")
   const sourceAccounts = financialAccounts.filter(
     (a) => a.type !== "CREDIT_CARD" && a.currency === watchCurrency
@@ -171,12 +248,23 @@ export function CCPaymentDialog({ open, onOpenChange, onSuccess }: CCPaymentDial
           exchange_rate: values.exchange_rate || null,
           payment_date: new Date(values.payment_date).toISOString(),
           notes: values.notes || null,
-          items: values.items.map((item) => ({
-            classification: item.classification,
-            description: item.description,
-            amount: item.amount,
-            category_id: item.category_id || null,
-          })),
+          items: values.items.map((item) =>
+            item.type === "OPERATOR_SETTLEMENT"
+              ? {
+                  type: "OPERATOR_SETTLEMENT",
+                  operator_payment_id: item.operator_payment_id,
+                  operation_id: item.operation_id,
+                  amount: item.amount,
+                  description: item.description || null,
+                }
+              : {
+                  type: "EXPENSE",
+                  classification: item.classification,
+                  description: item.description,
+                  amount: item.amount,
+                  category_id: item.category_id || null,
+                }
+          ),
         }),
       })
 
@@ -362,16 +450,74 @@ export function CCPaymentDialog({ open, onOpenChange, onSuccess }: CCPaymentDial
                 <span className="text-xs font-medium text-foreground/70">Desglose de items</span>
               </div>
 
+              {/* Controles del buscador de deudas (para items "Cancela deuda").
+                  Por defecto busca en el operador "Tarjeta de crédito"; se puede
+                  cambiar a otro operador por si algo quedó mal cargado. */}
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/30 bg-background/50 p-2">
+                <span className="text-[11px] font-medium text-muted-foreground">Buscar deudas en:</span>
+                <Select value={debtOperatorId || "DEFAULT"} onValueChange={(v) => setDebtOperatorId(v === "DEFAULT" ? "" : v)}>
+                  <SelectTrigger className="h-7 text-xs w-[220px] rounded-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="DEFAULT">Tarjeta de crédito (por defecto)</SelectItem>
+                    {debtOperators.map((op) => (
+                      <SelectItem key={op.id} value={op.id}>
+                        {op.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input
+                  className="h-7 text-xs w-[200px]"
+                  placeholder="Buscar pasajero / file / destino"
+                  value={debtSearch}
+                  onChange={(e) => setDebtSearch(e.target.value)}
+                />
+              </div>
+
               <div className="space-y-3">
-                {fields.map((field, index) => (
+                {fields.map((field, index) => {
+                  const itemType = form.watch(`items.${index}.type`) || "EXPENSE"
+                  return (
                   <div
                     key={field.id}
                     className="rounded-lg border border-border/30 p-3 space-y-3 bg-background/50"
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-muted-foreground">
-                        Item {index + 1}
-                      </span>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-medium text-muted-foreground">
+                          Item {index + 1}
+                        </span>
+                        <FormField
+                          control={form.control}
+                          name={`items.${index}.type`}
+                          render={({ field }) => (
+                            <Select
+                              value={field.value || "EXPENSE"}
+                              onValueChange={(v) => {
+                                field.onChange(v)
+                                // Al cambiar de tipo, limpiar los campos del otro modo.
+                                if (v === "OPERATOR_SETTLEMENT") {
+                                  form.setValue(`items.${index}.classification`, undefined)
+                                  form.setValue(`items.${index}.category_id`, "")
+                                } else {
+                                  form.setValue(`items.${index}.operator_payment_id`, "")
+                                  form.setValue(`items.${index}.operation_id`, "")
+                                }
+                              }}
+                            >
+                              <SelectTrigger className="h-7 text-xs w-[150px] rounded-full">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="EXPENSE">Gasto</SelectItem>
+                                <SelectItem value="OPERATOR_SETTLEMENT">Cancela deuda</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          )}
+                        />
+                      </div>
                       {fields.length > 1 && (
                         <Button
                           type="button"
@@ -385,6 +531,93 @@ export function CCPaymentDialog({ open, onOpenChange, onSuccess }: CCPaymentDial
                       )}
                     </div>
 
+                    {itemType === "OPERATOR_SETTLEMENT" ? (
+                      <div className="space-y-3">
+                        <FormField
+                          control={form.control}
+                          name={`items.${index}.operator_payment_id`}
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className="text-xs">Deuda a cancelar *</FormLabel>
+                              <Select
+                                value={field.value || ""}
+                                onValueChange={(debtId) => {
+                                  const debt = pendingDebts.find((d) => d.id === debtId)
+                                  field.onChange(debtId)
+                                  if (debt) {
+                                    form.setValue(`items.${index}.operation_id`, debt.operation_id)
+                                    form.setValue(`items.${index}.amount`, debt.pending_amount)
+                                    if (!form.getValues(`items.${index}.description`)) {
+                                      const label = debt.passenger_name || debt.file_code || debt.destination || "Servicio de pasajero"
+                                      form.setValue(`items.${index}.description`, label)
+                                    }
+                                  }
+                                }}
+                              >
+                                <FormControl>
+                                  <SelectTrigger className="h-8 text-sm">
+                                    <SelectValue placeholder={loadingDebts ? "Cargando deudas..." : "Seleccionar deuda pendiente"} />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  {pendingDebts.length === 0 ? (
+                                    <div className="px-2 py-3 text-xs text-muted-foreground text-center">
+                                      No hay deudas pendientes en {watchCurrency}
+                                    </div>
+                                  ) : (
+                                    pendingDebts.map((d) => (
+                                      <SelectItem key={d.id} value={d.id}>
+                                        {formatDebtLabel(d)}
+                                      </SelectItem>
+                                    ))
+                                  )}
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <FormField
+                            control={form.control}
+                            name={`items.${index}.amount`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel className="text-xs">Monto a cancelar *</FormLabel>
+                                <FormControl>
+                                  <DecimalInput
+                                    className="h-8 text-sm"
+                                    {...field}
+                                    onChange={(v) => field.onChange(Number(v) || 0)}
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control}
+                            name={`items.${index}.description`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel className="text-xs">Nota (opcional)</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    className="h-8 text-sm"
+                                    placeholder="Ej: Valija López"
+                                    {...field}
+                                    value={field.value || ""}
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                    <>
                     <div className="grid gap-3 md:grid-cols-2">
                       <FormField
                         control={form.control}
@@ -392,7 +625,7 @@ export function CCPaymentDialog({ open, onOpenChange, onSuccess }: CCPaymentDial
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel className="text-xs">Clasificación *</FormLabel>
-                            <Select onValueChange={field.onChange} value={field.value}>
+                            <Select onValueChange={field.onChange} value={field.value || ""}>
                               <FormControl>
                                 <SelectTrigger className="h-8 text-sm">
                                   <SelectValue placeholder="Seleccionar" />
@@ -442,6 +675,7 @@ export function CCPaymentDialog({ open, onOpenChange, onSuccess }: CCPaymentDial
                                 className="h-8 text-sm"
                                 placeholder="Ej: Publicidad Google, Valijas..."
                                 {...field}
+                                value={field.value || ""}
                               />
                             </FormControl>
                             <FormMessage />
@@ -483,8 +717,11 @@ export function CCPaymentDialog({ open, onOpenChange, onSuccess }: CCPaymentDial
                         )}
                       />
                     </div>
+                    </>
+                    )}
                   </div>
-                ))}
+                  )
+                })}
               </div>
 
               <Button
@@ -493,10 +730,13 @@ export function CCPaymentDialog({ open, onOpenChange, onSuccess }: CCPaymentDial
                 size="sm"
                 onClick={() =>
                   append({
+                    type: "EXPENSE",
                     classification: "GASTOS_AGENCIA",
                     description: "",
                     amount: 0,
                     category_id: "",
+                    operator_payment_id: "",
+                    operation_id: "",
                   })
                 }
                 className="w-full"
