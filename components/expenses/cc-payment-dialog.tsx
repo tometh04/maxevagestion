@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useForm, useFieldArray } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
@@ -24,7 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
-import { CreditCard, Landmark, Plus, Trash2, AlertCircle, CheckCircle2 } from "lucide-react"
+import { CreditCard, Landmark, Plus, Trash2, AlertCircle, CheckCircle2, Upload, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { useDefaultCurrency } from "@/hooks/use-default-currency"
 // Fix UTC shift en fechas DATE (VICO 2026-05-22)
@@ -122,6 +122,10 @@ export function CCPaymentDialog({ open, onOpenChange, onSuccess }: CCPaymentDial
   const [debtOperatorId, setDebtOperatorId] = useState<string>("") // "" = operador por defecto (Tarjeta de crédito)
   const [debtSearch, setDebtSearch] = useState("")
   const [loadingDebts, setLoadingDebts] = useState(false)
+  // Carga del PDF del resumen (desglose automático).
+  const [isParsing, setIsParsing] = useState(false)
+  const [parseWarnings, setParseWarnings] = useState<string[]>([])
+  const statementInputRef = useRef<HTMLInputElement>(null)
 
   const getDefaultDate = () => {
     const now = new Date()
@@ -142,7 +146,7 @@ export function CCPaymentDialog({ open, onOpenChange, onSuccess }: CCPaymentDial
     },
   })
 
-  const { fields, append, remove } = useFieldArray({
+  const { fields, append, remove, replace } = useFieldArray({
     control: form.control,
     name: "items",
   })
@@ -177,6 +181,7 @@ export function CCPaymentDialog({ open, onOpenChange, onSuccess }: CCPaymentDial
       form.reset()
       setCategories([])
       setFinancialAccounts([])
+      setParseWarnings([])
     }
   }, [open, form])
 
@@ -228,6 +233,90 @@ export function CCPaymentDialog({ open, onOpenChange, onSuccess }: CCPaymentDial
       currency: cur,
       minimumFractionDigits: 2,
     }).format(amount)
+
+  // Subir el PDF del resumen → el sistema lo desglosa y PRECARGA los items.
+  // No crea nada: son datos candidatos que el usuario revisa y confirma.
+  const handleStatementFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    // Permitir volver a subir el mismo archivo.
+    if (statementInputRef.current) statementInputRef.current.value = ""
+    if (!file) return
+
+    if (file.type !== "application/pdf") {
+      toast.error("El resumen debe ser un PDF")
+      return
+    }
+
+    setIsParsing(true)
+    setParseWarnings([])
+    try {
+      const fd = new FormData()
+      fd.append("file", file)
+      fd.append("extract_only", "true")
+      const res = await fetch("/api/expenses/cc-payment/parse-statement", { method: "POST", body: fd })
+      const data = await res.json()
+
+      if (!res.ok) {
+        toast.error(data?.error || "No se pudo leer el resumen")
+        return
+      }
+      if (!data.ocr_extracted) {
+        toast.error(data.ocr_error || "No se pudo leer el resumen. Cargalo a mano.")
+        return
+      }
+
+      const currencies: string[] = data.detected?.currencies || []
+      const itemsByCurrency: Record<string, Array<{ description: string; amount: number }>> =
+        data.items_by_currency || {}
+      const totals: Record<string, number> = data.detected?.totals_by_currency || {}
+
+      if (currencies.length === 0) {
+        toast.error("No se encontraron consumos en el resumen. Cargalo a mano.")
+        return
+      }
+
+      // Elegir la moneda a precargar: la seleccionada si está presente, si no la
+      // de mayor total. La otra moneda se registra en un pago aparte (aviso).
+      const chosen = currencies.includes(watchCurrency)
+        ? watchCurrency
+        : currencies.slice().sort((a, b) => (totals[b] || 0) - (totals[a] || 0))[0]
+
+      form.setValue("currency", chosen as "ARS" | "USD")
+
+      const rows = (itemsByCurrency[chosen] || []).map((it) => ({
+        type: "EXPENSE" as const,
+        classification: "GASTOS_AGENCIA" as const,
+        description: it.description,
+        amount: it.amount,
+        category_id: "",
+        operator_payment_id: "",
+        operation_id: "",
+      }))
+
+      if (rows.length === 0) {
+        toast.error("No se encontraron consumos para precargar.")
+        return
+      }
+
+      replace(rows)
+      form.setValue("total_amount", totals[chosen] ?? rows.reduce((s, r) => s + r.amount, 0))
+
+      const warns: string[] = Array.isArray(data.warnings) ? [...data.warnings] : []
+      const otherCurrencies = currencies.filter((c) => c !== chosen)
+      for (const oc of otherCurrencies) {
+        const count = (itemsByCurrency[oc] || []).length
+        warns.push(`Hay ${count} consumo(s) en ${oc}: registralos en un pago aparte (moneda ${oc}).`)
+      }
+      setParseWarnings(warns)
+
+      toast.success(`Se desglosaron ${rows.length} consumo(s) en ${chosen}. Revisalos antes de confirmar.`)
+    } catch (err) {
+      console.error("Error parsing statement:", err)
+      toast.error("Error al procesar el resumen")
+    } finally {
+      setIsParsing(false)
+    }
+  }
 
   const onSubmit = async (values: CCPaymentFormValues) => {
     if (!isBalanced) {
@@ -445,10 +534,45 @@ export function CCPaymentDialog({ open, onOpenChange, onSuccess }: CCPaymentDial
 
             {/* Items Breakdown */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
-              <div className="flex items-center gap-1.5">
-                <Landmark className="h-3.5 w-3.5 text-success" />
-                <span className="text-xs font-medium text-foreground/70">Desglose de items</span>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5">
+                  <Landmark className="h-3.5 w-3.5 text-success" />
+                  <span className="text-xs font-medium text-foreground/70">Desglose de items</span>
+                </div>
+                {/* Subir el PDF del resumen → precarga el desglose (revisás y confirmás). */}
+                <input
+                  ref={statementInputRef}
+                  type="file"
+                  accept="application/pdf"
+                  className="hidden"
+                  onChange={handleStatementFile}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 rounded-full text-xs"
+                  disabled={isParsing}
+                  onClick={() => statementInputRef.current?.click()}
+                >
+                  {isParsing ? (
+                    <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Leyendo resumen...</>
+                  ) : (
+                    <><Upload className="h-3.5 w-3.5 mr-1.5" /> Subir resumen (PDF)</>
+                  )}
+                </Button>
               </div>
+
+              {parseWarnings.length > 0 && (
+                <div className="rounded-lg border border-accent-coral/30 bg-accent-coral/5 p-2.5 space-y-1">
+                  {parseWarnings.map((w, i) => (
+                    <div key={i} className="flex items-start gap-1.5 text-xs text-foreground/80">
+                      <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-accent-coral" />
+                      <span>{w}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Controles del buscador de deudas (para items "Cancela deuda").
                   Por defecto busca en el operador "Tarjeta de crédito"; se puede
