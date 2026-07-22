@@ -11,7 +11,7 @@ import {
   mapDepositMethodToLedgerMethod,
   getAccountTypeForDeposit,
 } from "@/lib/accounting/deposit-utils"
-import { applyLeadsFilters, canPerformAction, getUserAgencyIds } from "@/lib/permissions-api"
+import { applyLeadsFilters, canPerformAction, getUserAgencyIds, isOwnDataOnlyResolved } from "@/lib/permissions-api"
 import { resolveUserPermissions } from "@/lib/permissions-agency"
 import { resolveListNameForRegion } from "@/lib/manychat/seed-lists"
 
@@ -98,7 +98,7 @@ export async function GET(request: Request) {
     // y se le "esconden" en el kanban. Para SELLER, hacemos un fetch adicional
     // de TODOS sus leads asignados (sin límite) y los mergeamos sin duplicar por id.
     // ADMIN/SUPER_ADMIN/CONTABLE/VIEWER no tocan esta lógica.
-    if (user.role === "SELLER" && agencyIds.length > 0) {
+    if (isOwnDataOnlyResolved(user, "leads", perms ?? undefined) && agencyIds.length > 0) {
       const existingIds = new Set(leads.map((l: any) => l.id))
       const { data: ownLeads } = await (supabase.from("leads") as any).select(`
         *,
@@ -307,8 +307,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Región inválida para tu organización" }, { status: 400 })
     }
 
-    // Check permissions
-    if (user.role === "SELLER") {
+    // Restringido a datos propios (leads.ownDataOnly por agencia): solo puede
+    // crear leads en su agencia y asignárselos a sí mismo.
+    const leadsOwnData = isOwnDataOnlyResolved(user, "leads", perms ?? undefined)
+    if (leadsOwnData) {
       // Sellers can only create leads for their own agency
       const { data: userAgencies } = await supabase
         .from("user_agencies")
@@ -361,7 +363,7 @@ export async function POST(request: Request) {
       contact_phone,
       contact_email: contact_email || null,
       contact_instagram: contact_instagram || null,
-      assigned_seller_id: assigned_seller_id || (user.role === "SELLER" ? user.id : null),
+      assigned_seller_id: assigned_seller_id || (leadsOwnData ? user.id : null),
       list_name: resolvedListName,
       notes: notes || null,
       quoted_price: quoted_price || null,
@@ -419,7 +421,7 @@ export async function POST(request: Request) {
             amount_ars_equivalent: amountArsEquivalent,
             method: mapDepositMethodToLedgerMethod(deposit_method),
             account_id: defaultAccountId,
-            seller_id: assigned_seller_id || (user.role === "SELLER" ? user.id : null),
+            seller_id: assigned_seller_id || (leadsOwnData ? user.id : null),
             receipt_number: null,
             notes: `Depósito recibido el ${deposit_date}. Método: ${deposit_method || "No especificado"}`,
             created_by: user.id,

@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useOwnDataOnly } from "@/components/permissions/permissions-provider"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { DashboardFilters, DashboardFiltersState, dateTypeToField } from "./dashboard-filters"
 import { SalesBySellerChart } from "./sales-by-seller-chart"
@@ -90,7 +91,11 @@ export function DashboardPageClient({
   defaultFilters,
   userRole,
 }: DashboardPageClientProps) {
-  const isSeller = userRole === "SELLER"
+  // Ocultar rankings/cashflow/by-seller cuando el usuario ve "solo sus datos"
+  // en el dashboard (dashboard.ownDataOnly por agencia), no según el rol fijo.
+  // Así un ADMIN con "inicio: info propia" ve la vista acotada, y un vendedor
+  // con override para ver todo accede a los gráficos agregados.
+  const isSeller = useOwnDataOnly("dashboard")
   const [filters, setFilters] = useState(defaultFilters)
   const [loading, setLoading] = useState(false)
   // Progress 0-100 mientras se cargan las 8 fetches del dashboard.

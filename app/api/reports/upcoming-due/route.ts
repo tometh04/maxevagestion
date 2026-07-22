@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
-import { getCurrentUser } from "@/lib/auth"
+import { getRequestPermissions } from "@/lib/permissions/request"
+import { isOwnDataOnlyResolved } from "@/lib/permissions-api"
 
 export const dynamic = "force-dynamic"
 
@@ -16,8 +16,7 @@ export const dynamic = "force-dynamic"
  * Para SELLER: solo sus propias operaciones.
  */
 export async function GET(request: Request) {
-  const { user } = await getCurrentUser()
-  const supabase = await createServerClient()
+  const { user, supabase, matrix } = await getRequestPermissions()
   const { searchParams } = new URL(request.url)
 
   // 🔴 Fix cross-tenant CRÍTICO (2026-05-18, Tomi reportó VICO viendo
@@ -90,7 +89,7 @@ export async function GET(request: Request) {
     operatorRows = operatorRows.filter((r) => r.operation?.agency_id === agencyId)
   }
 
-  if (user.role === "SELLER") {
+  if (isOwnDataOnlyResolved(user, "reports", matrix ?? undefined)) {
     customerRows = customerRows.filter((r) => r.operation?.seller_id === user.id)
     operatorRows = operatorRows.filter((r) => r.operation?.seller_id === user.id)
   }

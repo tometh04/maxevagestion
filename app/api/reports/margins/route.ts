@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
-import { getCurrentUser } from "@/lib/auth"
+import { getRequestPermissions } from "@/lib/permissions/request"
+import { isOwnDataOnlyResolved } from "@/lib/permissions-api"
 import {
   buildExchangeRateMap,
   getLatestExchangeRate,
@@ -25,7 +25,7 @@ import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services
  */
 export async function GET(request: Request) {
   try {
-    const { user } = await getCurrentUser()
+    const { user, supabase, matrix } = await getRequestPermissions()
 
     // 🔴 Fix cross-tenant CRÍTICO (2026-05-18, sweep /reports/*): defense-in-depth
     // RLS no está protegiendo confiablemente; agregamos .eq("org_id", user.org_id)
@@ -34,7 +34,6 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
     }
 
-    const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
     const dateFrom = searchParams.get("dateFrom")
@@ -78,10 +77,10 @@ export async function GET(request: Request) {
       query = query.lte("operation_date", dateTo)
     }
 
-    // Filtro de vendedor
+    // Filtro de vendedor (reports.ownDataOnly por agencia → solo lo propio)
     if (sellerId && sellerId !== "ALL" && sellerId !== "") {
       query = query.eq("seller_id", sellerId)
-    } else if (user.role === "SELLER") {
+    } else if (isOwnDataOnlyResolved(user, "reports", matrix ?? undefined)) {
       query = query.eq("seller_id", user.id)
     }
 

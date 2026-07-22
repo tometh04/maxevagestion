@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { resolveUserPermissions } from "@/lib/permissions-agency"
+import { isOwnDataOnlyResolved } from "@/lib/permissions-api"
 import { startOfMonth, endOfMonth, subMonths, format, getMonth, getYear } from "date-fns"
 import { es } from "date-fns/locale"
 import { buildExchangeRateMap, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
@@ -26,6 +28,12 @@ export async function GET(request: Request) {
 
     const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
 
+    // "Solo mis datos" en el dashboard (matrix por agencia).
+    const matrix = user.org_id
+      ? await resolveUserPermissions(supabase as any, user.id, user.org_id, user.role, agencyIds)
+      : null
+    const dashOwnData = isOwnDataOnlyResolved(user, "dashboard", matrix ?? undefined)
+
     // Fecha de inicio (N meses atrás)
     const startDate = startOfMonth(subMonths(new Date(), months - 1))
     const endDate = endOfMonth(new Date())
@@ -40,8 +48,10 @@ export async function GET(request: Request) {
     // Multi-tenant: scope por org del usuario
     if (user.org_id) query = query.eq("org_id", user.org_id)
 
-    // Filtrar por agencia
-    if (agencyId && agencyId !== "ALL") {
+    // Filtrar por agencia (o por vendedor propio si dashboard.ownDataOnly)
+    if (dashOwnData) {
+      query = query.eq("seller_id", user.id)
+    } else if (agencyId && agencyId !== "ALL") {
       query = query.eq("agency_id", agencyId)
     } else if (user.role !== "SUPER_ADMIN" && agencyIds.length > 0) {
       query = query.in("agency_id", agencyIds)

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
-import { getCurrentUser } from "@/lib/auth"
+import { getRequestPermissions } from "@/lib/permissions/request"
+import { isOwnDataOnlyResolved } from "@/lib/permissions-api"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { getOrgFeatureFlag } from "@/lib/settings/org-features"
@@ -10,7 +10,7 @@ import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 
 export async function GET(request: Request) {
   try {
-    const { user } = await getCurrentUser()
+    const { user, supabase, matrix } = await getRequestPermissions()
 
     // 🔴 Fix cross-tenant CRÍTICO (2026-05-18, sweep /reports/*): defense-in-depth
     // RLS no está protegiendo confiablemente; agregamos .eq("org_id", user.org_id)
@@ -20,7 +20,6 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
     }
 
-    const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
     const reportType = searchParams.get("type") || "operations"
@@ -212,8 +211,8 @@ export async function GET(request: Request) {
             const { data: chunkPayments } = await chunkQuery.limit(1000)
             if (chunkPayments) allPayments.push(...chunkPayments)
           }
-          // SELLER: restringir a sus propias operaciones
-          const filteredByRole = user.role === "SELLER"
+          // reports.ownDataOnly por agencia → restringir a sus propias operaciones
+          const filteredByRole = isOwnDataOnlyResolved(user, "reports", matrix ?? undefined)
             ? allPayments.filter((p: any) => p.seller_id === user.id || p.operations?.seller_id === user.id)
             : allPayments
           data = filteredByRole.slice(0, 1000).map((p: any) => ({
