@@ -139,9 +139,15 @@ export async function DELETE(
       return NextResponse.json({ error: "Error al eliminar pago de tarjeta" }, { status: 500 })
     }
 
-    // Invalidate balance cache
-    if (group.source_account_id) {
-      await invalidateBalanceCache(group.source_account_id)
+    // Invalidate balance cache de todas las cuentas afectadas (incluye las de
+    // cada pata en pagos multi-moneda, tomadas de los cash_movements del grupo).
+    const affectedAccounts = new Set<string>()
+    if (group.source_account_id) affectedAccounts.add(group.source_account_id)
+    for (const m of movements || []) {
+      if (m.financial_account_id) affectedAccounts.add(m.financial_account_id)
+    }
+    for (const accId of Array.from(affectedAccounts)) {
+      await invalidateBalanceCache(accId)
     }
 
     return NextResponse.json({ success: true })
