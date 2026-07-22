@@ -74,6 +74,7 @@ import {
 } from "@/lib/operations/payment-operators"
 import { normalizePaymentMethodForForm } from "@/lib/accounting/payment-counterparts"
 import { pickExactPendingMatch } from "@/lib/accounting/operator-payment-settlement"
+import { useCan } from "@/components/permissions/permissions-provider"
 
 interface FinancialAccount {
   id: string
@@ -181,6 +182,11 @@ export function OperationPaymentsSection({
   paymentWithholdings = [],
 }: OperationPaymentsSectionProps) {
   const router = useRouter()
+  // Permiso resuelto por agencia (matrix dinámico). El botón "Registrar Pago"
+  // (egreso / pago a operador) ya NO depende de un rol fijo: si la agencia
+  // habilita cash.write para el rol, el vendedor puede imputar pagos. El server
+  // (/api/payments POST) valida lo mismo con cash.write.
+  const canWriteCash = useCan("cash", "write")
   const [incomeDialogOpen, setIncomeDialogOpen] = useState(false)
   const [expenseDialogOpen, setExpenseDialogOpen] = useState(false)
   const [refundDialogOpen, setRefundDialogOpen] = useState(false)
@@ -1319,8 +1325,8 @@ export function OperationPaymentsSection({
               <Plus className="mr-2 h-4 w-4" />
               Registrar Cobro
             </Button>
-            {/* Botón Registrar Pago - solo para ADMIN y SUPER_ADMIN */}
-            {(userRole === "ADMIN" || userRole === "SUPER_ADMIN") && (
+            {/* Botón Registrar Pago - habilitado por cash.write (matrix por agencia) */}
+            {canWriteCash && (
               <Button onClick={() => setExpenseDialogOpen(true)} size="sm" variant="outline">
               <Plus className="mr-2 h-4 w-4" />
               Registrar Pago

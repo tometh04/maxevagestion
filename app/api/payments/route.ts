@@ -2,8 +2,8 @@ import { NextResponse } from "next/server"
 import { createAdminClient, createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
-import { getUserAgencyIds } from "@/lib/permissions-api"
-import { resolveUserPermissions, checkResolvedPermission } from "@/lib/permissions-agency"
+import { getUserAgencyIds, isOwnDataOnlyResolved } from "@/lib/permissions-api"
+import { resolveUserPermissions, checkResolvedPermission, type ResolvedPermissionsMatrix } from "@/lib/permissions-agency"
 import {
   createLedgerMovement,
   calculateARSEquivalent,
@@ -119,11 +119,12 @@ export async function POST(request: Request) {
     const supabase = await createServerClient()
 
     // Verificar acceso al módulo de caja (con permisos dinámicos por agencia)
+    let matrix: ResolvedPermissionsMatrix | null = null
     let hasCashAccess = canAccessModule(user.role as any, "cash")
     if ((user as any).org_id) {
       const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
-      const perms = await resolveUserPermissions(supabase as any, user.id, (user as any).org_id, user.role, agencyIds)
-      hasCashAccess = checkResolvedPermission(perms, "cash", "write")
+      matrix = await resolveUserPermissions(supabase as any, user.id, (user as any).org_id, user.role, agencyIds)
+      hasCashAccess = checkResolvedPermission(matrix, "cash", "write")
     }
     if (!hasCashAccess) {
       return NextResponse.json({ error: "No tiene permisos para acceder a este módulo" }, { status: 403 })
@@ -294,13 +295,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
     }
 
-    // SELLER: verificar que la operación le pertenece
-    if (user.role === "SELLER" && operation_id) {
+    // Si el usuario está restringido a sus propios datos en operaciones
+    // (operations.ownDataOnly resuelto por agencia), verificar que la operación
+    // le pertenece. Antes era `role === "SELLER"` fijo, así que apagar
+    // ownDataOnly no habilitaba imputar pagos en operaciones de la agencia.
+    if (isOwnDataOnlyResolved(user, "operations", matrix ?? undefined) && operation_id) {
       const { data: operationOwnership } = await (supabase.from("operations") as any)
         .select("id")
         .eq("id", operation_id)
         .eq("seller_id", user.id)
-        .eq("org_id", user.org_id) // defensive: scope por org también para SELLER
+        .eq("org_id", user.org_id) // defensive: scope por org también
         .maybeSingle()
 
       if (!operationOwnership) {
