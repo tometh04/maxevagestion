@@ -113,10 +113,11 @@ export function UpcomingTripsCard({ agencyId, sellerId }: UpcomingTripsCardProps
             <div className="space-y-2 pr-2">
               {events.map((ev) => {
                 const daysUntil = getDaysUntil(ev.date)
+                const isLeg = ev.kind === "leg"
                 const Icon = ev.isReturn ? RotateCcw : Plane
 
                 return (
-                  <Link key={`${ev.operationId}-${ev.isReturn ? "return" : "departure"}`} href={`/operations/${ev.operationId}`} prefetch={false}>
+                  <Link key={ev.key} href={`/operations/${ev.operationId}`} prefetch={false}>
                     <div className="p-2 rounded-md border hover:bg-muted/50 transition-colors cursor-pointer text-xs">
                       <div className="flex items-center gap-2">
                         <div className={`p-1.5 rounded-full ${getUrgencyColor(daysUntil)} text-white shrink-0`}>
@@ -136,6 +137,11 @@ export function UpcomingTripsCard({ agencyId, sellerId }: UpcomingTripsCardProps
                             {ev.isReturn && (
                               <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 text-muted-foreground">
                                 regreso
+                              </Badge>
+                            )}
+                            {isLeg && (
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 text-violet-600 border-violet-500/30">
+                                {ev.segmentLabel || "tramo"}
                               </Badge>
                             )}
                           </div>

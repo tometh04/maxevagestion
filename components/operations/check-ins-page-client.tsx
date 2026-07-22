@@ -78,8 +78,9 @@ export function CheckInsPageClient() {
     return Array.from(byDay.entries()).sort(([a], [b]) => a.localeCompare(b))
   }, [events, typeFilter, selectedDay])
 
-  const totalDepartures = events.filter((e) => !e.isReturn).length
-  const totalReturns = events.filter((e) => e.isReturn).length
+  const totalDepartures = events.filter((e) => e.kind === "departure").length
+  const totalReturns = events.filter((e) => e.kind === "return").length
+  const totalLegs = events.filter((e) => e.kind === "leg").length
 
   return (
     <div className="space-y-4">
@@ -137,6 +138,11 @@ export function CheckInsPageClient() {
           <span className="flex items-center gap-1">
             <Plane className="h-3.5 w-3.5" /> {totalDepartures} salidas
           </span>
+          {totalLegs > 0 && (
+            <span className="flex items-center gap-1 text-violet-600">
+              <Plane className="h-3.5 w-3.5" /> {totalLegs} tramos
+            </span>
+          )}
           <span className="flex items-center gap-1">
             <PlaneLanding className="h-3.5 w-3.5" /> {totalReturns} regresos
           </span>
@@ -161,8 +167,9 @@ export function CheckInsPageClient() {
         <div className="space-y-5">
           {groups.map(([dayKey, dayEvents]) => {
             const dayDate = dayEvents[0].date
-            const deps = dayEvents.filter((e) => !e.isReturn).length
-            const rets = dayEvents.filter((e) => e.isReturn).length
+            const deps = dayEvents.filter((e) => e.kind === "departure").length
+            const legs = dayEvents.filter((e) => e.kind === "leg").length
+            const rets = dayEvents.filter((e) => e.kind === "return").length
             return (
               <div key={dayKey}>
                 <div className="flex items-center gap-2 mb-2 sticky top-0 bg-background/95 backdrop-blur py-1 z-10">
@@ -174,6 +181,11 @@ export function CheckInsPageClient() {
                       {deps} {deps === 1 ? "salida" : "salidas"}
                     </Badge>
                   )}
+                  {legs > 0 && (
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 text-violet-600 border-violet-500/30">
+                      {legs} {legs === 1 ? "tramo" : "tramos"}
+                    </Badge>
+                  )}
                   {rets > 0 && (
                     <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 text-sky-600 border-sky-500/30">
                       {rets} {rets === 1 ? "regreso" : "regresos"}
@@ -183,19 +195,23 @@ export function CheckInsPageClient() {
                 <div className="grid gap-2 sm:grid-cols-2">
                   {dayEvents.map((ev) => {
                     const daysUntil = differenceInDays(ev.date, new Date())
+                    const isLeg = ev.kind === "leg"
                     const Icon = ev.isReturn ? PlaneLanding : Plane
+                    const dotClass = ev.isReturn
+                      ? "bg-sky-500"
+                      : isLeg
+                        ? "bg-violet-500"
+                        : "bg-success"
                     return (
                       <Link
-                        key={`${ev.operationId}-${ev.isReturn ? "return" : "departure"}`}
+                        key={ev.key}
                         href={`/operations/${ev.operationId}`}
                         prefetch={false}
                       >
                         <div className="p-3 rounded-md border hover:bg-muted/50 transition-colors cursor-pointer">
                           <div className="flex items-center gap-2">
                             <div
-                              className={`p-1.5 rounded-full text-white shrink-0 ${
-                                ev.isReturn ? "bg-sky-500" : "bg-success"
-                              }`}
+                              className={`p-1.5 rounded-full text-white shrink-0 ${dotClass}`}
                             >
                               <Icon className="h-3 w-3" />
                             </div>
@@ -203,12 +219,16 @@ export function CheckInsPageClient() {
                               <div className="flex items-center gap-1.5 mb-0.5">
                                 <span className="font-mono text-[10px] text-muted-foreground">{ev.fileCode}</span>
                                 <Badge
-                                  variant={ev.isReturn ? "outline" : "secondary"}
+                                  variant={ev.kind === "departure" ? "secondary" : "outline"}
                                   className={`text-[10px] px-1.5 py-0 h-4 ${
-                                    ev.isReturn ? "text-sky-600 border-sky-500/30" : ""
+                                    ev.isReturn
+                                      ? "text-sky-600 border-sky-500/30"
+                                      : isLeg
+                                        ? "text-violet-600 border-violet-500/30"
+                                        : ""
                                   }`}
                                 >
-                                  {ev.isReturn ? "Regreso" : "Salida"}
+                                  {ev.isReturn ? "Regreso" : isLeg ? ev.segmentLabel || "Tramo" : "Salida"}
                                 </Badge>
                                 <span className="text-[10px] text-muted-foreground">
                                   {daysUntil === 0 ? "HOY" : daysUntil === 1 ? "mañana" : `en ${daysUntil} días`}
@@ -223,7 +243,11 @@ export function CheckInsPageClient() {
                                   <Users className="h-3 w-3" />
                                   {ev.totalPax}
                                 </span>
-                                {ev.sellerName && <span className="truncate">• {ev.sellerName}</span>}
+                                {isLeg && ev.airline && <span className="truncate">• {ev.airline}</span>}
+                                {isLeg && ev.reservationCode && (
+                                  <span className="font-mono truncate">• {ev.reservationCode}</span>
+                                )}
+                                {!isLeg && ev.sellerName && <span className="truncate">• {ev.sellerName}</span>}
                               </div>
                             </div>
                             <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />

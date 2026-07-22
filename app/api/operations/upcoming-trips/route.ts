@@ -42,14 +42,17 @@ export async function GET(request: Request) {
 
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
 
-    // Projection mínima — solo lo que UpcomingTripsCard renderiza.
+    // Projection mínima — solo lo que la card/agenda renderizan. Se incluyen los
+    // tramos (operation_legs) para mostrar los vuelos internos del viaje en la
+    // agenda de check-ins, no solo la ida/regreso principal.
     let query = supabase
       .from("operations")
       .select(
         `
         id, file_code, destination, departure_date, return_date,
         adults, children, infants, status, agency_id, seller_id,
-        sellers:seller_id(name)
+        sellers:seller_id(name),
+        legs:operation_legs(order_index, destination, departure_date, airline_name, reservation_code_air)
       `
       )
       .order("departure_date", { ascending: true })
