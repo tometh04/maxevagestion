@@ -51,7 +51,20 @@ describe("customersPipeline", () => {
     expect(result.successRows).toBe(2)
     expect(supabase.insert).toHaveBeenCalledTimes(2)
     expect(supabase.insert).toHaveBeenCalledWith(
-      expect.objectContaining({ agency_id: AGENCY_ID })
+      expect.objectContaining({
+        agency_id: AGENCY_ID,
+        first_name: "Juan",
+        nationality: "Argentina",
+        date_of_birth: "1990-01-15",
+      })
+    )
+    // Fila sin fecha de nacimiento: se guarda null, no string vacío
+    expect(supabase.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        first_name: "María",
+        nationality: "Argentina",
+        date_of_birth: null,
+      })
     )
   })
 
