@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
-import { createServerClient, createAdminClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canPerformAction } from "@/lib/permissions-api"
+import { getRequestPermissions } from "@/lib/permissions/request"
 import { invalidateBalanceCache } from "@/lib/accounting/ledger"
 
 /**
@@ -13,9 +14,9 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await getCurrentUser()
+    const { user, supabase, matrix } = await getRequestPermissions()
 
-    if (!canPerformAction(user, "accounting", "write") && !canPerformAction(user, "cash", "write")) {
+    if (!canPerformAction(user, "accounting", "write", matrix ?? undefined) && !canPerformAction(user, "cash", "write", matrix ?? undefined)) {
       return NextResponse.json({ error: "No tiene permiso para modificar gastos" }, { status: 403 })
     }
 
@@ -27,7 +28,6 @@ export async function PATCH(
     const userOrgId = (user as any).org_id as string
 
     const { id } = await params
-    const supabase = await createServerClient()
     // adminDb justificado: triggers en cash_movements/ledger_movements
     // requieren bypass de RLS para mantener la cadena contable.
     const adminDb = createAdminClient() as any
@@ -109,14 +109,13 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await getCurrentUser()
+    const { user, supabase, matrix } = await getRequestPermissions()
 
-    if (!canPerformAction(user, "accounting", "write") && !canPerformAction(user, "cash", "write")) {
+    if (!canPerformAction(user, "accounting", "write", matrix ?? undefined) && !canPerformAction(user, "cash", "write", matrix ?? undefined)) {
       return NextResponse.json({ error: "No tiene permiso para eliminar gastos" }, { status: 403 })
     }
 
     const { id } = await params
-    const supabase = await createServerClient()
     const adminDb = createAdminClient() as any
 
     // SaaS Pilar 2: fetch via server client — si apunta a otra org, 404.

@@ -1,16 +1,14 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
-import { getCurrentUser } from "@/lib/auth"
 import { canPerformAction, getScopedAgenciesForUser } from "@/lib/permissions-api"
+import { getRequestPermissions } from "@/lib/permissions/request"
 
 export async function GET(request: Request) {
   try {
-    const { user } = await getCurrentUser()
-    const supabase = await createServerClient()
+    const { user, supabase, matrix } = await getRequestPermissions()
     const { searchParams } = new URL(request.url)
 
     // Verificar permisos
-    if (!canPerformAction(user, "accounting", "read")) {
+    if (!canPerformAction(user, "accounting", "read", matrix ?? undefined)) {
       return NextResponse.json({ error: "No tiene permiso para ver pagos recurrentes" }, { status: 403 })
     }
 
@@ -78,11 +76,10 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { user } = await getCurrentUser()
-    const supabase = await createServerClient()
+    const { user, supabase, matrix } = await getRequestPermissions()
 
     // Verificar permisos
-    if (!canPerformAction(user, "accounting", "write")) {
+    if (!canPerformAction(user, "accounting", "write", matrix ?? undefined)) {
       return NextResponse.json({ error: "No tiene permiso para crear pagos recurrentes" }, { status: 403 })
     }
 

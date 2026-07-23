@@ -346,4 +346,77 @@ describe("Permissions API", () => {
       expect(isOwnDataOnlyResolved(sa, "commissions", matrix)).toBe(false)
     })
   })
+
+  // ─── Etapa 3: gates de WRITE de plata migrados de rol-fijo a matrix ───
+  // Estos tests BLOQUEAN la semántica de seguridad de los gates de dinero:
+  //  1) el fallback sin matrix (org null / dev) preserva EXACTAMENTE el set de
+  //     roles hardcodeado que reemplazamos → deploy seguro;
+  //  2) el ORG_OWNER (owner del tenant) queda habilitado, arreglando el lockout
+  //     latente de los gates viejos.
+  describe("money write-gates: fallback sin matrix == set previo", () => {
+    // cash.write reemplaza los sets [ADMIN,SUPER_ADMIN,CONTABLE]:
+    //   cash-boxes, card-transactions, payment-coupons, cash-movements reverse,
+    //   payments PATCH (editar pago).
+    it("cash.write sin matrix: habilita ADMIN/SUPER_ADMIN/CONTABLE, niega SELLER/VIEWER/POST_VENTA", () => {
+      const can = (role: string) => canPerformAction({ role, id: "u" }, "cash", "write")
+      expect(can("ADMIN")).toBe(true)
+      expect(can("SUPER_ADMIN")).toBe(true)
+      expect(can("CONTABLE")).toBe(true)
+      expect(can("SELLER")).toBe(false)
+      expect(can("VIEWER")).toBe(false)
+      expect(can("POST_VENTA")).toBe(false)
+    })
+
+    // accounting.write reemplaza [ADMIN,SUPER_ADMIN,CONTABLE]:
+    //   ledger-movements reverse, operator-payments PATCH, withholdings POST,
+    //   recurring-payments, expenses variable.
+    it("accounting.write sin matrix: habilita ADMIN/SUPER_ADMIN/CONTABLE, niega SELLER/VIEWER/POST_VENTA", () => {
+      const can = (role: string) => canPerformAction({ role, id: "u" }, "accounting", "write")
+      expect(can("ADMIN")).toBe(true)
+      expect(can("SUPER_ADMIN")).toBe(true)
+      expect(can("CONTABLE")).toBe(true)
+      expect(can("SELLER")).toBe(false)
+      expect(can("VIEWER")).toBe(false)
+      expect(can("POST_VENTA")).toBe(false)
+    })
+
+    // commissions.write reemplaza [ADMIN,SUPER_ADMIN] (schemes, recalculate).
+    // Clave: CONTABLE NO debe ganar acceso a comisiones (default write=false).
+    it("commissions.write sin matrix: habilita ADMIN/SUPER_ADMIN, niega CONTABLE/SELLER/VIEWER/POST_VENTA", () => {
+      const can = (role: string) => canPerformAction({ role, id: "u" }, "commissions", "write")
+      expect(can("ADMIN")).toBe(true)
+      expect(can("SUPER_ADMIN")).toBe(true)
+      expect(can("CONTABLE")).toBe(false) // <- no debe filtrarse acceso
+      expect(can("SELLER")).toBe(false)
+      expect(can("VIEWER")).toBe(false)
+      expect(can("POST_VENTA")).toBe(false)
+    })
+
+    it("ORG_OWNER queda habilitado en todos los write de plata (arregla lockout de gates viejos)", () => {
+      const owner = { role: "ORG_OWNER", id: "o-1" }
+      expect(canPerformAction(owner, "cash", "write")).toBe(true)
+      expect(canPerformAction(owner, "accounting", "write")).toBe(true)
+      expect(canPerformAction(owner, "commissions", "write")).toBe(true)
+    })
+
+    it("un override de agencia habilita cash.write a un SELLER (imputar pagos / cajas)", () => {
+      const seller = { role: "SELLER", id: "s-1" }
+      expect(canPerformAction(seller, "cash", "write")).toBe(false)
+      const matrix: ResolvedPermissionsMatrix = {
+        ...buildDefaultMatrix("SELLER"),
+        cash: { read: true, write: true, delete: false, export: false, ownDataOnly: false },
+      }
+      expect(canPerformAction(seller, "cash", "write", matrix)).toBe(true)
+    })
+
+    it("un override que NIEGA cash.write a un CONTABLE lo bloquea (matrix gana al default)", () => {
+      const contable = { role: "CONTABLE", id: "c-1" }
+      expect(canPerformAction(contable, "cash", "write")).toBe(true)
+      const matrix: ResolvedPermissionsMatrix = {
+        ...buildDefaultMatrix("CONTABLE"),
+        cash: { read: true, write: false, delete: false, export: false, ownDataOnly: false },
+      }
+      expect(canPerformAction(contable, "cash", "write", matrix)).toBe(false)
+    })
+  })
 })

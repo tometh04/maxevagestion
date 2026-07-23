@@ -1,14 +1,16 @@
 import { NextResponse } from "next/server"
-import { getCurrentUser } from "@/lib/auth"
-import { createServerClient } from "@/lib/supabase/server"
 import { processCommissionsForOperations } from "@/lib/commissions/calculate"
+import { canPerformAction } from "@/lib/permissions-api"
+import { getRequestPermissions } from "@/lib/permissions/request"
 
 export async function POST() {
   try {
-    const { user } = await getCurrentUser()
+    const { user, supabase, matrix } = await getRequestPermissions()
 
-    // Only admins can trigger recalculation
-    if (user.role !== "SUPER_ADMIN" && user.role !== "ADMIN") {
+    // Gate por commissions.write (matrix por agencia). El set previo
+    // [ADMIN,SUPER_ADMIN] coincide con el default de commissions.write;
+    // además ahora ORG_OWNER queda habilitado.
+    if (!canPerformAction(user, "commissions", "write", matrix ?? undefined)) {
       return NextResponse.json({ error: "No autorizado" }, { status: 403 })
     }
 
@@ -24,7 +26,6 @@ export async function POST() {
       return NextResponse.json({ error: "User sin org_id — operación no permitida" }, { status: 403 })
     }
 
-    const supabase = await createServerClient()
     const { data: orgOps } = await (supabase.from("operations") as any)
       .select("id")
       .eq("org_id", userOrgId)

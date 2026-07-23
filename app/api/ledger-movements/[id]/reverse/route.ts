@@ -1,19 +1,21 @@
 // app/api/ledger-movements/[id]/reverse/route.ts
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
-import { getCurrentUser } from "@/lib/auth"
 import { canReverse, buildLedgerReversalPayload } from "@/lib/accounting/reversal"
 import { logSecurityEvent } from "@/lib/security/audit"
+import { canPerformAction } from "@/lib/permissions-api"
+import { getRequestPermissions } from "@/lib/permissions/request"
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params
-  const { user } = await getCurrentUser()
-  const supabase = await createServerClient()
+  const { user, supabase, matrix } = await getRequestPermissions()
 
-  if (!["ADMIN", "SUPER_ADMIN", "CONTABLE"].includes(user.role)) {
+  // Gate por accounting.write (matrix por agencia). El set previo
+  // [ADMIN,SUPER_ADMIN,CONTABLE] coincide con el default de accounting.write;
+  // además ahora ORG_OWNER queda habilitado, como en el resto del sistema.
+  if (!canPerformAction(user, "accounting", "write", matrix ?? undefined)) {
     return NextResponse.json({ error: "Sin permiso para reversar" }, { status: 403 })
   }
 

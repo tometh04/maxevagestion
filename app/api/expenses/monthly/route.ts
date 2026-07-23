@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
-import { getCurrentUser } from "@/lib/auth"
-import { canPerformAction } from "@/lib/permissions-api"
+import { canPerformAction, isOwnDataOnlyResolved } from "@/lib/permissions-api"
+import { getRequestPermissions } from "@/lib/permissions/request"
 import { roundMoney } from "@/lib/currency"
 import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
 
@@ -16,9 +15,9 @@ import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
  */
 export async function GET(request: Request) {
   try {
-    const { user } = await getCurrentUser()
+    const { user, supabase, matrix } = await getRequestPermissions()
 
-    if (!canPerformAction(user, "accounting", "read") && !canPerformAction(user, "cash", "read")) {
+    if (!canPerformAction(user, "accounting", "read", matrix ?? undefined) && !canPerformAction(user, "cash", "read", matrix ?? undefined)) {
       return NextResponse.json({ error: "No tiene permiso para ver egresos" }, { status: 403 })
     }
 
@@ -28,7 +27,6 @@ export async function GET(request: Request) {
     }
     const userOrgId = (user as any).org_id as string
 
-    const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
     const dateFrom = searchParams.get("dateFrom")
@@ -182,7 +180,8 @@ export async function GET(request: Request) {
       // (agency_id), así que filtramos directo en la query. Modo "account": la
       // oficina la da la cuenta pagadora, se resuelve en memoria más abajo.
       if (filterByAgency && agencyMode === "office") varQuery = varQuery.eq("agency_id", agencyId)
-      if (user.role === "SELLER") varQuery = varQuery.eq("user_id", user.id)
+      // Restringido a gastos propios (cash.ownDataOnly por agencia)
+      if (isOwnDataOnlyResolved(user, "cash", matrix ?? undefined)) varQuery = varQuery.eq("user_id", user.id)
 
       const { data: variables, error: varError } = await varQuery
 

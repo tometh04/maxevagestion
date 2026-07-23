@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { getUserAgencyIds } from "@/lib/permissions-api"
+import { getUserAgencyIds, canPerformAction } from "@/lib/permissions-api"
+import { getRequestPermissions } from "@/lib/permissions/request"
 import { z } from "zod"
 
 export const dynamic = 'force-dynamic'
@@ -69,10 +70,12 @@ export async function GET() {
 // POST - Crear esquema de comisión
 export async function POST(request: Request) {
   try {
-    const { user } = await getCurrentUser()
+    const { user, supabase, matrix } = await getRequestPermissions()
 
-    // Verificar permisos
-    if (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
+    // Gate por commissions.write (matrix por agencia). El set previo
+    // [ADMIN,SUPER_ADMIN] coincide con el default de commissions.write
+    // (CONTABLE no escribe comisiones); además ahora ORG_OWNER queda habilitado.
+    if (!canPerformAction(user, "commissions", "write", matrix ?? undefined)) {
       return NextResponse.json(
         { error: "No tiene permiso para crear esquemas" },
         { status: 403 }
@@ -83,8 +86,6 @@ export async function POST(request: Request) {
     if (!(user as any).org_id) {
       return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
     }
-
-    const supabase = await createServerClient()
 
     // Obtener agencias del usuario
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)

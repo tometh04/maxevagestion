@@ -2,7 +2,8 @@ import { NextResponse } from "next/server"
 import { createAdminClient, createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
-import { getUserAgencyIds, isOwnDataOnlyResolved } from "@/lib/permissions-api"
+import { getUserAgencyIds, isOwnDataOnlyResolved, canPerformAction } from "@/lib/permissions-api"
+import { getRequestPermissions } from "@/lib/permissions/request"
 import { resolveUserPermissions, checkResolvedPermission, type ResolvedPermissionsMatrix } from "@/lib/permissions-agency"
 import {
   createLedgerMovement,
@@ -1872,12 +1873,12 @@ export async function DELETE(request: Request) {
  */
 export async function PATCH(request: Request) {
   try {
-    const { user } = await getCurrentUser()
-    const supabase = await createServerClient()
+    const { user, supabase, matrix } = await getRequestPermissions()
 
-    // Validar rol
-    const allowedRoles = ["ADMIN", "SUPER_ADMIN", "CONTABLE"]
-    if (!allowedRoles.includes(user.role)) {
+    // Gate por cash.write (matrix por agencia). El set previo
+    // [ADMIN,SUPER_ADMIN,CONTABLE] coincide con el default de cash.write;
+    // además ahora ORG_OWNER queda habilitado, como en el resto del sistema.
+    if (!canPerformAction(user, "cash", "write", matrix ?? undefined)) {
       return NextResponse.json({ error: "No tienes permisos para editar pagos" }, { status: 403 })
     }
 
