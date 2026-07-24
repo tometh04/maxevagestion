@@ -713,10 +713,28 @@ export default function NewInvoicePage() {
           // (handleInvoiceCurrencyChange / handleExchangeRateChange) ya asumen que
           // items está en la moneda mostrada, así que acá lo dejamos consistente.
           const builtItems = buildOperationInvoiceItems(summary, formData.cbte_tipo)
+          // Si la operación ya tiene facturas autorizadas, el restante (remainingToInvoice)
+          // es menor que la venta total. Los ítems se arman con la venta completa, así que
+          // escalamos su imp_total al restante para no arrancar por encima del tope (que
+          // dispara "Excede el total vendido restante"). Escalamos por imp_total (no por
+          // suma de precios) para ser correctos también en modo NET, donde el IVA se suma
+          // aparte. Se conserva la proporción gravado/no gravado y todo queda editable.
+          // remainingToInvoice y los ítems están en la moneda nativa de la operación,
+          // así que el escalado se hace ANTES de convertir a ARS.
+          const builtTotal = calculateInvoice(builtItems, amountEntryMode).totals.imp_total
+          const cappedItems =
+            builtTotal > remainingToInvoice + 0.01 && builtTotal > 0
+              ? builtItems.map(it => ({
+                  ...it,
+                  precio_unitario: roundMoney(
+                    (Number(it.precio_unitario) * remainingToInvoice) / builtTotal
+                  ),
+                }))
+              : builtItems
           const itemsInInvoiceCurrency =
             fullOperation.sale_currency === 'USD' && nextInvoiceCurrency === 'PES' && fetchedRate > 1
-              ? builtItems.map(it => ({ ...it, precio_unitario: roundMoney(it.precio_unitario * fetchedRate) }))
-              : builtItems
+              ? cappedItems.map(it => ({ ...it, precio_unitario: roundMoney(it.precio_unitario * fetchedRate) }))
+              : cappedItems
           setItems(itemsInInvoiceCurrency)
         }
       } catch (error) {
