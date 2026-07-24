@@ -59,6 +59,7 @@ import {
 } from "@/lib/operations/payment-operators"
 import { buildOperationPurchaseSummary } from "@/lib/operations/purchase-summary"
 import { toast } from "sonner"
+import { useCan } from "@/components/permissions/permissions-provider"
 
 type OperationAccessScope = "full" | "own" | "agency-support"
 
@@ -181,6 +182,7 @@ export function OperationDetailClient({
   const [isDeletingAlerts, setIsDeletingAlerts] = useState(false)
   const [isGeneratingAlerts, setIsGeneratingAlerts] = useState(false)
   const isSupportMode = operationAccessScope === "agency-support"
+  const canWriteCashForServices = useCan("cash", "write")
   const canEditOperation = !isSupportMode && !["VIEWER", "CONTABLE"].includes(userRole)
   const canManagePassengers = !isSupportMode && !["VIEWER", "CONTABLE"].includes(userRole)
   const canManageDocuments = !isSupportMode && !["VIEWER", "CONTABLE"].includes(userRole)
@@ -188,7 +190,9 @@ export function OperationDetailClient({
     ? canAddServicesOnAgencyOperations
     : !["VIEWER", "CONTABLE"].includes(userRole)
   const canManageExistingServices = !isSupportMode && !["VIEWER", "CONTABLE"].includes(userRole)
-  const canManageServicePayments = !isSupportMode && !["SELLER", "VIEWER"].includes(userRole)
+  // Gestionar pagos de servicios = cash.write (matrix por agencia). El servidor
+  // (/api/payments) valida el mismo permiso.
+  const canManageServicePayments = !isSupportMode && canWriteCashForServices
   const canViewFinancialTabs = !isSupportMode && userRole !== "SELLER"
   const canManageAlerts = !isSupportMode && userRole !== "VIEWER"
   const operatorNameMap = useMemo(

@@ -17,6 +17,7 @@ import { es } from "date-fns/locale"
 import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
 import { CashMovementReverseButton } from "@/components/cash/cash-movement-reverse-button"
 import { Undo2 } from "lucide-react"
+import { useCan } from "@/components/permissions/permissions-provider"
 
 function formatCurrency(amount: number, currency: string): string {
   return new Intl.NumberFormat("es-AR", {
@@ -83,7 +84,9 @@ const typeColors: Record<string, string> = {
 export function LedgerTable({ filters, userRole }: LedgerTableProps) {
   const [movements, setMovements] = useState<LedgerMovement[]>([])
   const [loading, setLoading] = useState(true)
-  const canReverse = ["ADMIN", "SUPER_ADMIN", "CONTABLE"].includes(userRole || "")
+  // Reversar asiento = accounting.write (matrix por agencia). El servidor
+  // (/api/ledger-movements/[id]/reverse) valida el mismo permiso.
+  const canReverse = useCan("accounting", "write")
 
   const { sortedData, sortConfig, requestSort } = useSortableData(movements, {
     key: "created_at",

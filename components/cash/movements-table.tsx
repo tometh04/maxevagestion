@@ -17,6 +17,7 @@ import { ServerPagination } from "@/components/ui/server-pagination"
 import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
 import Link from "next/link"
 import { CashMovementReverseButton } from "@/components/cash/cash-movement-reverse-button"
+import { useCan } from "@/components/permissions/permissions-provider"
 import { Undo2, BookOpen } from "lucide-react"
 
 interface MovementOperation {
@@ -77,7 +78,9 @@ export function MovementsTable({
   type,
   customerQuery,
 }: MovementsTableProps) {
-  const canReverse = ["ADMIN", "SUPER_ADMIN", "CONTABLE"].includes(userRole || "")
+  // Reversar movimiento = cash.write (matrix por agencia). El servidor
+  // (/api/cash-movements/[id]/reverse) valida el mismo permiso.
+  const canReverse = useCan("cash", "write")
   const [movements, setMovements] = useState<CashMovement[]>(initialMovements || [])
   const [loading, setLoading] = useState(!initialMovements)
 

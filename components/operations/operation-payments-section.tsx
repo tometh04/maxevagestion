@@ -640,7 +640,9 @@ export function OperationPaymentsSection({
     },
   })
 
-  const canEditPayments = ["ADMIN", "SUPER_ADMIN", "CONTABLE"].includes(userRole)
+  // Editar pago = cash.write (matrix por agencia). El servidor
+  // (/api/payments PATCH) valida el mismo permiso.
+  const canEditPayments = canWriteCash
   const incomePaymentCurrency = incomeForm.watch("currency")
   const incomeNeedsExchangeRate = requiresCustomerIncomeExchangeRate({
     payerType: "CUSTOMER",
@@ -1231,7 +1233,7 @@ export function OperationPaymentsSection({
                     <span className={`text-xs ${isOverdue && !isPaid ? "text-destructive font-medium" : "text-muted-foreground"}`}>
                       {dueDate ? format(dueDate, "dd/MM/yyyy", { locale: es }) : "Sin fecha"}
                     </span>
-                    {(userRole === "ADMIN" || userRole === "SUPER_ADMIN") && (
+                    {canWriteCash && (
                       <Popover
                         open={editingDueDateId === opId}
                         onOpenChange={(open) => setEditingDueDateId(open ? opId : null)}
@@ -1333,8 +1335,8 @@ export function OperationPaymentsSection({
             </Button>
             )}
             {/* Botón Registrar Devolución - egreso hacia el cliente (reintegro de seña).
-                Mueve plata fuera de caja → solo ADMIN y SUPER_ADMIN. */}
-            {(userRole === "ADMIN" || userRole === "SUPER_ADMIN") && (
+                Mueve plata fuera de caja → cash.write (matrix por agencia). */}
+            {canWriteCash && (
               <Button
                 onClick={() => setRefundDialogOpen(true)}
                 size="sm"
