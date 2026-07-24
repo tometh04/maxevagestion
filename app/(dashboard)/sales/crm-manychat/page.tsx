@@ -80,55 +80,11 @@ export default async function CRMManychatPage() {
     .eq("org_id", (user as any).org_id)
     .order("name")
 
-  // Cargar TODOS los leads del tenant (cualquier source). El kanban "CRM Ventas"
-  // refleja la realidad del pipeline comercial completo. Cleanup 2026-05-08:
-  // removida lógica histórica de filtros por source 'Trello'.
-  let leads: any[] = []
-  let leadsError: any = null
-  const INITIAL_LIMIT = 5000
-
-  if (user.role === "SELLER") {
-    // Vendedor: leads asignados a él + leads sin asignar de sus agencias.
-    // Sin filtro de source — cualquier canal de origen es válido.
-    const { data: myLeads, error: myError } = await supabase
-      .from("leads")
-      .select("*, agencies(name), users:assigned_seller_id(name, email)")
-      .eq("assigned_seller_id", user.id)
-      .order("updated_at", { ascending: false })
-      .limit(INITIAL_LIMIT)
-
-    const { data: unassignedLeads, error: unassignedError } = await supabase
-      .from("leads")
-      .select("*, agencies(name), users:assigned_seller_id(name, email)")
-      .is("assigned_seller_id", null)
-      .in("agency_id", agencyIds.length > 0 ? agencyIds : [])
-      .order("updated_at", { ascending: false })
-      .limit(INITIAL_LIMIT)
-
-    leads = [...(myLeads || []), ...(unassignedLeads || [])]
-    leadsError = myError || unassignedError
-  } else {
-    // Admin/otros: TODOS los leads de las agencias del user (RLS
-    // adicionalmente acota por org).
-    let leadsQuery = supabase
-      .from("leads")
-      .select("*, agencies(name), users:assigned_seller_id(name, email)")
-
-    if (agencyIds.length > 0 && user.role !== "SUPER_ADMIN") {
-      leadsQuery = leadsQuery.in("agency_id", agencyIds)
-    }
-
-    const { data, error } = await leadsQuery
-      .order("updated_at", { ascending: false })
-      .limit(INITIAL_LIMIT)
-
-    leads = data || []
-    leadsError = error
-  }
-
-  if (leadsError) {
-    console.error("Error fetching CRM Ventas leads:", leadsError)
-  }
+  // VIB-61: el kanban ya NO carga todo el pipeline. Es lazy por columna: pide
+  // conteos exactos por lista y la primera página de cada una vía
+  // /api/leads/kanban (ver components/sales/crm-manychat-page-client.tsx). Con
+  // orgs grandes (Lozada: ~9.600 leads activos) cargar todo no escalaba y hacía
+  // que los conteos no cerraran. Por eso acá no hacemos ningún fetch de leads.
 
   // Feature flags per-tenant (organization_settings key/value).
   // Defaults: false → comportamiento legacy preservado para todos los
@@ -142,7 +98,6 @@ export default async function CRMManychatPage() {
 
   return (
     <CRMManychatPageClient
-      initialLeads={leads || []}
       agencies={(agencies || []) as Array<{ id: string; name: string }>}
       sellers={(sellers || []) as Array<{ id: string; name: string }>}
       operators={(operators || []) as Array<{ id: string; name: string }>}

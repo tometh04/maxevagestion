@@ -92,8 +92,10 @@ export async function POST(
     })
   }
 
-  // crm_mode = 'legacy' → existing handler
-  const result = await syncManychatLeadToLead(payload, admin)
+  // crm_mode = 'legacy' → existing handler.
+  // org autoritativa desde el token (integ.org_id): no confiar en el body ni en
+  // el match de nombre de agencia para resolver el tenant (VIB-61).
+  const result = await syncManychatLeadToLead(payload, admin, integ.org_id)
   return NextResponse.json(
     {
       success: true,

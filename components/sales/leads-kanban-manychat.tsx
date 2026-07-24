@@ -47,6 +47,9 @@ function formatLeadDate(iso: string): string {
   return new Date(iso).toLocaleDateString("es-AR", { day: "2-digit", month: "short" }).replace(".", "")
 }
 
+// Fold case-insensitive para matchear column_key del server con nombres de columna.
+const normColKey = (s: string) => s.trim().toLowerCase()
+
 // Configuración de estilos por estado conocido; futuros estados heredan el fallback
 const STATUS_CONFIG: Record<string, { label: string; activeClass: string }> = {
   NEW:         { label: "Nuevo",       activeClass: "bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-300 dark:border-blue-700" },
@@ -140,6 +143,20 @@ interface LeadsKanbanManychatProps {
    * Default false (preserva UI legacy para otros tenants).
    */
   enableCreatedAtFilter?: boolean
+  /**
+   * VIB-61 (lazy por columna): conteos EXACTOS por columna calculados en el
+   * server (headers). Keyeados por column_key crudo (list_name→region→"Sin
+   * lista"). Se foldean case-insensitive contra los nombres de columna.
+   */
+  columnCounts?: Record<string, number>
+  /** Si true, la carga ya incluye leads viejos (fuera de la ventana de 90d). */
+  includeOld?: boolean
+  /** Pide al padre la siguiente página de una columna (por nombre visible). */
+  onLoadMoreColumn?: (displayName: string) => void | Promise<void>
+  /** Pide al padre traer también los leads viejos (saca la ventana de 90d). */
+  onLoadOlder?: () => void
+  /** Delega los filtros al padre para refetch server-side. */
+  onFiltersChange?: (filters: { status?: string; region?: string; createdFrom?: string; createdTo?: string }) => void
 }
 
 // Wrapper sortable para cada columna del Kanban
@@ -190,6 +207,11 @@ export function LeadsKanbanManychat({
   enableRegionFilter = false,
   enableListStatusSync = false,
   enableCreatedAtFilter = false,
+  columnCounts = {},
+  includeOld = false,
+  onLoadMoreColumn,
+  onLoadOlder,
+  onFiltersChange,
 }: LeadsKanbanManychatProps) {
   const [listOrder, setListOrder] = useState<ListInfo[]>([])
   const [loading, setLoading] = useState(true)
@@ -227,42 +249,45 @@ export function LeadsKanbanManychat({
   // momento en que lo creó el webhook de Manychat (leads.created_at).
   const [createdAtFrom, setCreatedAtFrom] = useState<string>("")
   const [createdAtTo, setCreatedAtTo] = useState<string>("")
+  // VIB-61 (lazy): columna que está cargando su próxima página.
+  const [loadingMoreKey, setLoadingMoreKey] = useState<string | null>(null)
 
-  // Estados presentes en los leads actuales (dinámico)
-  const availableStatuses = useMemo(() => {
-    const seen = new Set<string>()
-    leads.forEach(l => { if (l.status) seen.add(l.status) })
-    return Array.from(seen).sort()
-  }, [leads])
+  const handleLoadMoreColumn = useCallback(
+    async (name: string) => {
+      if (!onLoadMoreColumn) return
+      setLoadingMoreKey(name)
+      try {
+        await onLoadMoreColumn(name)
+      } finally {
+        setLoadingMoreKey(null)
+      }
+    },
+    [onLoadMoreColumn]
+  )
 
-  // Regiones presentes en los leads actuales (dinámico, sólo si flag prendido)
-  const availableRegions = useMemo(() => {
-    const seen = new Set<string>()
-    leads.forEach((l) => { if (l.region) seen.add(l.region) })
-    return Array.from(seen).sort()
-  }, [leads])
+  // VIB-61 (lazy): los filtros ahora se aplican SERVER-SIDE (el padre refetchea
+  // según estos states). Las opciones de los dropdowns ya no se derivan de
+  // `leads` (que es un set acotado) sino de listas fijas → quedan completas.
+  const availableStatuses = useMemo(() => Object.keys(STATUS_CONFIG), [])
+  const availableRegions = useMemo(
+    () => ["ARGENTINA", "CARIBE", "BRASIL", "EUROPA", "EEUU", "OTROS", "CRUCEROS"],
+    []
+  )
 
-  // Leads visibles según filtros (status + opcional region + opcional fecha)
-  const visibleLeads = useMemo(() => {
-    let out = leads
-    if (selectedStatus !== "ALL") out = out.filter((l) => l.status === selectedStatus)
-    if (enableRegionFilter && selectedRegion !== "ALL") {
-      out = out.filter((l) => l.region === selectedRegion)
-    }
-    if (enableCreatedAtFilter && (createdAtFrom || createdAtTo)) {
-      // created_at viene como ISO 8601 ("2026-05-22T13:45:00Z"). Comparamos
-      // contra "yyyy-MM-dd" tomando solo los primeros 10 chars: zona horaria
-      // del usuario es la del input. `to` es inclusivo (≤ ese día completo).
-      out = out.filter((l) => {
-        const d = (l.created_at || "").slice(0, 10)
-        if (!d) return false
-        if (createdAtFrom && d < createdAtFrom) return false
-        if (createdAtTo && d > createdAtTo) return false
-        return true
-      })
-    }
-    return out
-  }, [leads, selectedStatus, enableRegionFilter, selectedRegion, enableCreatedAtFilter, createdAtFrom, createdAtTo])
+  // El server ya filtró; no re-filtramos client-side (evita divergencias). El
+  // kanban solo agrupa por columna.
+  const visibleLeads = leads
+
+  // Delegar los filtros al padre para que refetchee server-side.
+  useEffect(() => {
+    onFiltersChange?.({
+      status: selectedStatus,
+      region: enableRegionFilter ? selectedRegion : "ALL",
+      createdFrom: enableCreatedAtFilter ? createdAtFrom : "",
+      createdTo: enableCreatedAtFilter ? createdAtTo : "",
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedStatus, selectedRegion, createdAtFrom, createdAtTo])
 
   const isAdmin = currentUserRole === "ADMIN" || currentUserRole === "SUPER_ADMIN"
   const isSeller = currentUserRole === "SELLER"
@@ -521,6 +546,9 @@ export function LeadsKanbanManychat({
             onUpdateLead?.(lead.id, { list_name: newListNameValue.trim() })
           }
         })
+        // VIB-61: reconciliar conteos por columna del server (el rename cambió
+        // el list_name de TODOS los leads de esa lista, no solo los cargados).
+        onRefresh?.()
       } else {
         toast.error(data.error || "Error al renombrar lista")
       }
@@ -683,6 +711,30 @@ export function LeadsKanbanManychat({
     return grouped
   }, [visibleLeads, listOrder])
 
+  // VIB-61 (lazy): count del HEADER = total exacto del server (columnCounts),
+  // foldeado case-insensitive al nombre de columna. Fallback al set cargado si
+  // aún no llegaron los counts.
+  const hasServerCounts = Object.keys(columnCounts).length > 0
+  const columnCountFor = useCallback(
+    (name: string): number => {
+      if (!hasServerCounts) return leadsByListName[name]?.length || 0
+      const target = normColKey(name)
+      let sum = 0
+      for (const [k, v] of Object.entries(columnCounts)) {
+        if (normColKey(k) === target) sum += v
+      }
+      return sum
+    },
+    [columnCounts, hasServerCounts, leadsByListName]
+  )
+  const totalActiveCount = useMemo(
+    () =>
+      hasServerCounts
+        ? Object.values(columnCounts).reduce((a, b) => a + b, 0)
+        : visibleLeads.length,
+    [columnCounts, hasServerCounts, visibleLeads.length]
+  )
+
   // Leads archivados agrupados por list_name (para la tab Archivados)
   const archivedLeadsByListName = useMemo(() => {
     const grouped: Record<string, Lead[]> = {}
@@ -709,13 +761,20 @@ export function LeadsKanbanManychat({
     // Los sellers SOLO ven sus propias listas + compartidas, tal como devuelve el servidor.
     // Esto evita que un seller vea columnas de otras vendedoras.
     if (isAdmin) {
-      const actualListNames = new Set(Object.keys(leadsByListName).filter(name => leadsByListName[name].length > 0))
-      const additionalLists = Array.from(actualListNames).filter(name => !savedListNames.has(name))
+      // Columnas adicionales = keys con leads (cargados o contados por el server)
+      // que no están en el orden guardado. Foldeamos case-insensitive para no
+      // duplicar (ej: "Caribe" del listOrder vs "CARIBE" de una región).
+      const knownNorm = new Set(Array.from(savedListNames).map((n) => normColKey(n)))
+      const fromLoaded = Object.keys(leadsByListName).filter((name) => leadsByListName[name].length > 0)
+      const fromCounts = Object.keys(columnCounts).filter((k) => (columnCounts[k] || 0) > 0)
+      const additionalLists = Array.from(new Set([...fromLoaded, ...fromCounts])).filter(
+        (name) => !knownNorm.has(normColKey(name))
+      )
       ordered.push(...additionalLists.sort())
     }
 
     return ordered
-  }, [listOrder, leadsByListName, isAdmin])
+  }, [listOrder, leadsByListName, columnCounts, isAdmin])
 
   useEffect(() => { setColumnOrder(orderedListNames) }, [orderedListNames])
 
@@ -747,7 +806,7 @@ export function LeadsKanbanManychat({
           <Inbox className="h-4 w-4" />
           Activos
           <span className={`ml-1 px-1.5 py-0.5 rounded text-xs ${viewMode === "activos" ? "bg-primary-foreground/20 text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
-            {leads.length}
+            {totalActiveCount}
           </span>
         </button>
         <button
@@ -782,7 +841,7 @@ export function LeadsKanbanManychat({
               <SelectItem value="ALL">Todas las listas</SelectItem>
               {orderedListNames.map((listName) => (
                 <SelectItem key={listName} value={listName}>
-                  {listName} ({leadsByListName[listName]?.length || 0})
+                  {listName} ({columnCountFor(listName)})
                 </SelectItem>
               ))}
             </SelectContent>
@@ -865,6 +924,24 @@ export function LeadsKanbanManychat({
                 </button>
               )}
             </div>
+          )}
+          {/* VIB-61 (lazy): por defecto el kanban muestra los últimos 90 días.
+              Este toggle trae también los leads más viejos. */}
+          {onLoadOlder && !includeOld && (
+            <button
+              type="button"
+              onClick={() => onLoadOlder()}
+              className="flex items-center gap-1.5 text-xs font-medium text-primary bg-primary/5 hover:bg-primary/10 rounded-md px-2.5 py-1.5 transition-colors"
+              title="Por defecto se muestran los últimos 90 días"
+            >
+              <Clock className="h-3.5 w-3.5" />
+              Ver más antiguos
+            </button>
+          )}
+          {includeOld && (
+            <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+              <Clock className="h-3 w-3" /> Mostrando todo el histórico
+            </span>
           )}
         </div>
         {canCreateLists && (
@@ -1078,8 +1155,11 @@ export function LeadsKanbanManychat({
                                   </div>
                                 )
                               })()}
-                              <span className="inline-flex items-center justify-center min-w-[1.5rem] h-6 px-1.5 rounded-full text-xs font-semibold bg-primary/10 text-primary">
-                                {listLeads.length}
+                              <span
+                                className="inline-flex items-center justify-center min-w-[1.5rem] h-6 px-1.5 rounded-full text-xs font-semibold bg-primary/10 text-primary"
+                                title="Total en esta columna"
+                              >
+                                {columnCountFor(listName)}
                               </span>
                             </div>
                           </div>
@@ -1213,6 +1293,22 @@ export function LeadsKanbanManychat({
                                 </div>
                               </div>
                             ))
+                          )}
+                          {/* VIB-61 (lazy): cargar más de esta columna cuando el
+                              total del server supera lo ya cargado. */}
+                          {columnCountFor(listName) > listLeads.length && (
+                            <button
+                              type="button"
+                              onClick={() => handleLoadMoreColumn(listName)}
+                              disabled={loadingMoreKey === listName}
+                              className="w-full mt-1 py-2 rounded-lg text-xs font-medium text-primary bg-primary/5 hover:bg-primary/10 transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5"
+                            >
+                              {loadingMoreKey === listName ? (
+                                <><Loader2 className="h-3 w-3 animate-spin" /> Cargando…</>
+                              ) : (
+                                <>Cargar más ({columnCountFor(listName) - listLeads.length} restantes)</>
+                              )}
+                            </button>
                           )}
                         </div>
                       </ScrollArea>

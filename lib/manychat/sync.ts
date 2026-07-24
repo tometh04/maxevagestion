@@ -120,55 +120,62 @@ export function normalizeInstagram(ig: string | undefined): string | null {
 }
 
 /**
- * Determinar agency_id por tag de Manychat
- * Busca agencia por nombre (case insensitive)
- * Fallback: Rosario si no se encuentra
+ * Determinar agency_id + org_id para un lead entrante de ManyChat.
+ *
+ * VIB-61 / regla de integraciones: la org es AUTORITATIVA desde el token del
+ * webhook (`org_integrations.org_id`), nunca desde el body ni desde un match de
+ * nombre global. Hay múltiples tenants con agencias homónimas (ej: 3 orgs
+ * "Lozada", cada una con "Rosario"/"Madero"): resolver por nombre sin scope de
+ * org puede meter el lead en el tenant equivocado o dejar `org_id` inconsistente.
+ *
+ * Por eso, cuando conocemos `orgId`:
+ *  - Buscamos la agencia SOLO dentro de esa org.
+ *  - El fallback es la agencia más antigua de esa org (determinístico), no un
+ *    hardcode "Rosario" global.
+ *  - El `org_id` devuelto es siempre el del token.
+ *
+ * Sin `orgId` (solo el webhook legacy X-API-Key global, deprecado) mantenemos el
+ * match por nombre acotado, prefiriendo fallar antes que asignar cross-tenant.
  */
 export async function determineAgencyId(
   agencyTag: string | undefined,
-  supabase: Awaited<ReturnType<typeof createServerClient>>
+  supabase: Awaited<ReturnType<typeof createServerClient>>,
+  orgId?: string | null
 ): Promise<{ agency_id: string; org_id: string }> {
   const empty = { agency_id: "", org_id: "" }
 
-  if (!agencyTag) {
-    const { data: rosario } = await supabase
-      .from("agencies")
+  // Busca la primera agencia cuyo nombre matchee `term`, scopeada a la org si la
+  // conocemos. `.limit(1)` en vez de `.maybeSingle()`: con varios matches
+  // (homónimos) maybeSingle tira error; acá tomamos uno determinístico.
+  const findByName = async (term: string) => {
+    let q = (supabase.from("agencies") as any).select("id, org_id").ilike("name", `%${term}%`)
+    if (orgId) q = q.eq("org_id", orgId)
+    const { data } = await q.order("name", { ascending: true }).limit(1)
+    const row = (data || [])[0]
+    return row ? { agency_id: row.id as string, org_id: (orgId ?? row.org_id) as string } : null
+  }
+
+  const normalizedTag = (agencyTag || "").toLowerCase().trim()
+  if (normalizedTag) {
+    const tagMap: Record<string, string> = { rosario: "rosario", madero: "madero" }
+    const hit = await findByName(tagMap[normalizedTag] || normalizedTag)
+    if (hit) return hit
+  }
+
+  if (orgId) {
+    // Fallback determinístico: agencia más antigua de la org del token.
+    const { data } = await (supabase.from("agencies") as any)
       .select("id, org_id")
-      .ilike("name", "%rosario%")
-      .maybeSingle()
-
-    if (!rosario) return empty
-    return { agency_id: (rosario as any).id, org_id: (rosario as any).org_id }
+      .eq("org_id", orgId)
+      .order("created_at", { ascending: true })
+      .limit(1)
+    const row = (data || [])[0]
+    return row ? { agency_id: row.id as string, org_id: orgId } : empty
   }
 
-  const normalizedTag = agencyTag.toLowerCase().trim()
-
-  const tagMap: Record<string, string> = {
-    "rosario": "rosario",
-    "madero": "madero",
-  }
-
-  const searchTerm = tagMap[normalizedTag] || normalizedTag
-
-  const { data: agency } = await supabase
-    .from("agencies")
-    .select("id, org_id")
-    .ilike("name", `%${searchTerm}%`)
-    .maybeSingle()
-
-  if (agency) {
-    return { agency_id: (agency as any).id, org_id: (agency as any).org_id }
-  }
-
-  // Fallback: Rosario
-  const { data: rosario } = await supabase
-    .from("agencies")
-    .select("id, org_id")
-    .ilike("name", "%rosario%")
-    .maybeSingle()
-
-  if (!rosario) return empty
-  return { agency_id: (rosario as any).id, org_id: (rosario as any).org_id }
+  // Sin org conocida (legacy): último recurso acotado a "rosario".
+  const rosario = await findByName("rosario")
+  return rosario ?? empty
 }
 
 /**
@@ -522,11 +529,19 @@ async function registerListOrder(
  */
 export async function syncManychatLeadToLead(
   manychatData: ManychatLeadData,
-  supabase: Awaited<ReturnType<typeof createServerClient>>
+  supabase: Awaited<ReturnType<typeof createServerClient>>,
+  orgId?: string | null
 ): Promise<{ created: boolean; leadId: string }> {
 
-  // 1. Determinar agency_id + org_id
-  const { agency_id, org_id } = await determineAgencyId(manychatData.agency, supabase)
+  // 1. Determinar agency_id + org_id. `orgId` viene del token del webhook y es
+  //    autoritativo: scopea el match de agencia y se fuerza como org del lead.
+  const { agency_id, org_id: resolvedOrgId } = await determineAgencyId(
+    manychatData.agency,
+    supabase,
+    orgId
+  )
+  // La org del token siempre gana sobre lo que devuelva el match de agencia.
+  const org_id = orgId ?? resolvedOrgId
 
   if (!agency_id) {
     throw new Error("No se pudo determinar la agencia. Verifica que existan agencias en la base de datos.")

@@ -2,6 +2,7 @@ import {
   normalizeSource,
   shouldAdvanceStatus,
   buildLeadPatch,
+  determineAgencyId,
   type ExistingLeadRow,
   type ManychatLeadData,
 } from "../sync"
@@ -149,5 +150,91 @@ describe("buildLeadPatch (merge parcial)", () => {
     const incoming: ManychatLeadData = { ig: "laurisariii", whatsapp: "+5491100000000" }
     const patch = buildLeadPatch(noPhone, incoming)
     expect(patch.contact_phone).toBe("+5491100000000")
+  })
+})
+
+describe("determineAgencyId (scope por org — VIB-61)", () => {
+  type Ag = { id: string; name: string; org_id: string; created_at: string }
+
+  // Dos tenants con agencias HOMÓNIMAS: el bug era matchear "rosario"/"madero"
+  // por nombre global y meter el lead en el tenant equivocado.
+  const AGENCIES: Ag[] = [
+    { id: "ag-a-rosario", name: "Rosario", org_id: "org-A", created_at: "2020-01-01" },
+    { id: "ag-a-madero", name: "Madero", org_id: "org-A", created_at: "2020-02-01" },
+    { id: "ag-b-rosario", name: "Rosario", org_id: "org-B", created_at: "2021-01-01" },
+    { id: "ag-b-central", name: "Central", org_id: "org-B", created_at: "2019-06-01" },
+  ]
+
+  // Fake mínimo de Supabase: honra .ilike("name"), .eq("org_id") y .order() antes
+  // de resolver en .limit(n).
+  function makeSupabase(rows: Ag[]) {
+    return {
+      from() {
+        const state: { name?: string; org?: string; orderCol?: string; asc?: boolean } = {}
+        const builder: any = {
+          select: () => builder,
+          ilike: (col: string, pattern: string) => {
+            if (col === "name") state.name = pattern.replace(/%/g, "").toLowerCase()
+            return builder
+          },
+          eq: (col: string, val: string) => {
+            if (col === "org_id") state.org = val
+            return builder
+          },
+          order: (col: string, opts?: { ascending?: boolean }) => {
+            state.orderCol = col
+            state.asc = opts?.ascending !== false
+            return builder
+          },
+          limit: (n: number) => {
+            let out = rows.slice()
+            if (state.org) out = out.filter((a) => a.org_id === state.org)
+            if (state.name) out = out.filter((a) => a.name.toLowerCase().includes(state.name!))
+            if (state.orderCol) {
+              const c = state.orderCol as keyof Ag
+              out.sort((a, b) => String(a[c]).localeCompare(String(b[c])) * (state.asc ? 1 : -1))
+            }
+            return Promise.resolve({ data: out.slice(0, n), error: null })
+          },
+        }
+        return builder
+      },
+    } as any
+  }
+
+  it("con orgId, matchea la agencia de ESA org (no la homónima de otro tenant)", async () => {
+    const supabase = makeSupabase(AGENCIES)
+    const res = await determineAgencyId("rosario", supabase, "org-B")
+    expect(res.agency_id).toBe("ag-b-rosario")
+    expect(res.org_id).toBe("org-B")
+  })
+
+  it("el org_id devuelto es SIEMPRE el del token", async () => {
+    const supabase = makeSupabase(AGENCIES)
+    const res = await determineAgencyId("madero", supabase, "org-A")
+    expect(res.agency_id).toBe("ag-a-madero")
+    expect(res.org_id).toBe("org-A")
+  })
+
+  it("sin match de nombre, fallback = agencia más antigua de la org del token", async () => {
+    const supabase = makeSupabase(AGENCIES)
+    const res = await determineAgencyId("no-existe", supabase, "org-B")
+    // La más antigua de org-B es "Central" (2019), no la homónima "Rosario".
+    expect(res.agency_id).toBe("ag-b-central")
+    expect(res.org_id).toBe("org-B")
+  })
+
+  it("sin tag, cae al fallback de la org del token (no a un 'rosario' global)", async () => {
+    const supabase = makeSupabase(AGENCIES)
+    const res = await determineAgencyId(undefined, supabase, "org-A")
+    expect(res.org_id).toBe("org-A")
+    expect(res.agency_id).toBe("ag-a-rosario") // más antigua de org-A (2020-01)
+  })
+
+  it("orgId sin agencias devuelve vacío (no cruza a otro tenant)", async () => {
+    const supabase = makeSupabase(AGENCIES)
+    const res = await determineAgencyId("rosario", supabase, "org-SIN-AGENCIAS")
+    expect(res.agency_id).toBe("")
+    expect(res.org_id).toBe("")
   })
 })
