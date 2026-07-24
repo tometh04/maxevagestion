@@ -3,6 +3,7 @@ import {
   coercePositiveNumber,
   getCustomerIncomeReferenceCurrency,
   getOperationSaleCurrency,
+  isExchangeRatePlausibleVsMarket,
   normalizeSupportedCurrency,
   requiresCustomerIncomeExchangeRate,
 } from "../payments/customer-income-fx"
@@ -149,6 +150,40 @@ describe("customer-income-fx helpers", () => {
           exchangeRate: null,
         })
       ).toBeNull()
+    })
+  })
+
+  describe("isExchangeRatePlausibleVsMarket", () => {
+    const market = 1500
+
+    it("bloquea el TC=1 (error real op #17955bf1: 1 peso = 1 dólar)", () => {
+      expect(isExchangeRatePlausibleVsMarket(1, market)).toBe(false)
+    })
+
+    it("bloquea errores de orden de magnitud (10, 100)", () => {
+      expect(isExchangeRatePlausibleVsMarket(10, market)).toBe(false)
+      expect(isExchangeRatePlausibleVsMarket(100, market)).toBe(false)
+    })
+
+    it("acepta un TC razonable cercano al mercado", () => {
+      expect(isExchangeRatePlausibleVsMarket(1500, market)).toBe(true)
+      expect(isExchangeRatePlausibleVsMarket(1350, market)).toBe(true)
+      expect(isExchangeRatePlausibleVsMarket(1800, market)).toBe(true)
+    })
+
+    it("acepta variaciones grandes pero dentro del orden de magnitud (factor 10)", () => {
+      expect(isExchangeRatePlausibleVsMarket(300, market)).toBe(true) // 0.2x
+      expect(isExchangeRatePlausibleVsMarket(5000, market)).toBe(true) // 3.3x
+    })
+
+    it("no bloquea si no hay TC de referencia (mercado null/0)", () => {
+      expect(isExchangeRatePlausibleVsMarket(1, null)).toBe(true)
+      expect(isExchangeRatePlausibleVsMarket(1, 0)).toBe(true)
+    })
+
+    it("rechaza TC vacío o no positivo", () => {
+      expect(isExchangeRatePlausibleVsMarket(null, market)).toBe(false)
+      expect(isExchangeRatePlausibleVsMarket(0, market)).toBe(false)
     })
   })
 })

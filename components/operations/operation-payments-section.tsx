@@ -63,6 +63,7 @@ import { cn } from "@/lib/utils"
 import { downloadReceiptPdf } from "@/lib/pdf/receipt-pdf"
 import {
   calculateAmountInSaleCurrency,
+  isExchangeRatePlausibleVsMarket,
   normalizeSupportedCurrency,
   requiresCustomerIncomeExchangeRate,
 } from "@/lib/payments/customer-income-fx"
@@ -196,6 +197,9 @@ export function OperationPaymentsSection({
   const [downloadingReceiptId, setDownloadingReceiptId] = useState<string | null>(null)
   const [sendingReceiptId, setSendingReceiptId] = useState<string | null>(null)
   const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([])
+  // TC de referencia del mercado (ARS por 1 USD) para pre-cargar y validar el TC
+  // de cobros/devoluciones ARS↔USD (evita que se cargue un TC absurdo tipo 1).
+  const [marketArsPerUsd, setMarketArsPerUsd] = useState<number | null>(null)
   // Bank tax (Ley 25413) — for income and expense dialogs
   const [applyBankTaxIncome, setApplyBankTaxIncome] = useState(false)
   const [bankTaxRateIncome, setBankTaxRateIncome] = useState<string>("0.6")
@@ -331,6 +335,15 @@ export function OperationPaymentsSection({
         }
       }
       fetchFinancialAccounts()
+
+      // TC de referencia del mercado — para pre-cargar y validar cobros ARS↔USD.
+      fetch("/api/exchange-rates/latest?fromCurrency=USD&toCurrency=ARS")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          const rate = Number(d?.rate)
+          if (rate > 0) setMarketArsPerUsd(rate)
+        })
+        .catch(() => {})
     }
   }, [incomeDialogOpen, expenseDialogOpen, editDialogOpen, refundDialogOpen])
 
@@ -669,6 +682,22 @@ export function OperationPaymentsSection({
     paymentCurrency: incomePaymentCurrency,
     saleCurrency: customerSaleCurrency,
   })
+
+  // Pre-cargar el TC de referencia en el diálogo de cobro cuando hace falta y el
+  // campo está vacío. Así el usuario no tiene que inventarlo (evita el "1" que
+  // hacía amount_usd = monto en ARS y destruía la deuda del cliente).
+  useEffect(() => {
+    if (
+      incomeDialogOpen &&
+      incomeNeedsExchangeRate &&
+      marketArsPerUsd &&
+      !incomeForm.getValues("exchange_rate")
+    ) {
+      incomeForm.setValue("exchange_rate", marketArsPerUsd)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [incomeDialogOpen, incomeNeedsExchangeRate, marketArsPerUsd])
+
   const editPaymentCurrency = editForm.watch("currency")
   const isEditingCustomerIncome =
     editingPayment?.payer_type === "CUSTOMER" && editingPayment?.direction === "INCOME"
@@ -956,6 +985,21 @@ export function OperationPaymentsSection({
 
     if (incomeNeedsExchangeRate && !values.exchange_rate) {
       toast.error("Debe ingresar el tipo de cambio cuando la moneda del cobro difiere de la moneda de la operación")
+      return
+    }
+
+    // Sanidad del TC: un valor absurdo (ej. 1) hacía amount_usd = monto en ARS y
+    // destruía la deuda del cliente. Bloqueamos valores off por orden de magnitud
+    // vs el TC de referencia. (El backend valida lo mismo como red de seguridad.)
+    if (
+      incomeNeedsExchangeRate &&
+      values.exchange_rate &&
+      marketArsPerUsd &&
+      !isExchangeRatePlausibleVsMarket(Number(values.exchange_rate), marketArsPerUsd)
+    ) {
+      toast.error(
+        `El tipo de cambio (${values.exchange_rate}) parece incorrecto. El de referencia es ~${Math.round(marketArsPerUsd)} ARS por USD.`
+      )
       return
     }
 

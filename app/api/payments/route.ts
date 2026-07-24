@@ -32,6 +32,7 @@ import { logAudit, getClientIP } from "@/lib/audit"
 import {
   coercePositiveNumber,
   getCustomerIncomeReferenceCurrency,
+  isExchangeRatePlausibleVsMarket,
   requiresCustomerIncomeExchangeRate,
 } from "@/lib/payments/customer-income-fx"
 import { resolveServicePaymentLink } from "@/lib/payments/service-payment-link"
@@ -379,6 +380,24 @@ export async function POST(request: Request) {
         { error: CUSTOMER_INCOME_EXCHANGE_RATE_ERROR },
         { status: 400 }
       )
+    }
+
+    // Sanidad del TC: un cobro ARS↔USD con un TC absurdo (ej. 1) hacía
+    // amount_usd = monto en ARS y destruía la deuda del cliente (op #17955bf1:
+    // USD 1.270 → USD -1.948.180). Bloqueamos valores off por orden de magnitud
+    // vs el TC de referencia del mercado. Banda amplia (factor 10): no molesta
+    // cotizaciones razonables.
+    if (requiresCustomerIncomeManualExchangeRate && providedExchangeRateNumber) {
+      const marketRate = await getCurrentArsPerUsd(supabase)
+      if (!isExchangeRatePlausibleVsMarket(providedExchangeRateNumber, marketRate)) {
+        return NextResponse.json(
+          {
+            error: `El tipo de cambio ingresado (${providedExchangeRateNumber}) parece incorrecto. El de referencia es ~${Math.round(marketRate)} ARS por USD. Revisalo.`,
+            code: "IMPLAUSIBLE_EXCHANGE_RATE",
+          },
+          { status: 400 }
+        )
+      }
     }
 
     // Validaciones de fechas
@@ -2017,6 +2036,21 @@ export async function PATCH(request: Request) {
         { error: CUSTOMER_INCOME_EXCHANGE_RATE_ERROR },
         { status: 400 }
       )
+    }
+
+    // Sanidad del TC (mismo criterio que el POST): bloquea TC absurdo (ej. 1) en
+    // cobros ARS↔USD que destruía la deuda del cliente.
+    if (requiresCustomerIncomeManualExchangeRate && finalExchangeRate) {
+      const marketRate = await getCurrentArsPerUsd(supabase)
+      if (!isExchangeRatePlausibleVsMarket(finalExchangeRate, marketRate)) {
+        return NextResponse.json(
+          {
+            error: `El tipo de cambio ingresado (${finalExchangeRate}) parece incorrecto. El de referencia es ~${Math.round(marketRate)} ARS por USD. Revisalo.`,
+            code: "IMPLAUSIBLE_EXCHANGE_RATE",
+          },
+          { status: 400 }
+        )
+      }
     }
 
     if (finalDatePaid) {
