@@ -488,7 +488,7 @@ export async function PATCH(
           .eq("operation_id", operationId)
 
         const wouldWipeLegs = incomingLegs.length === 0 && (existingLegs?.length || 0) > 0
-        const clientConfirmedReplace = incomingLegsReplace === true
+        const clientConfirmedReplace = body.legs_replace === true
 
         if (wouldWipeLegs && !clientConfirmedReplace) {
           auditWarnings.push(
@@ -1075,6 +1075,28 @@ export async function PATCH(
       }
     } catch (error) {
       console.error("Error calculating commission:", error)
+    }
+
+    // Comisión al referidor (VIB-62): recalcular sobre el margen si el cliente MAIN
+    // viene referido. Idempotente: el servicio limpia/actualiza la comisión previa.
+    try {
+      const { data: mainCustomer } = await (supabase.from("operation_customers") as any)
+        .select("customer_id")
+        .eq("operation_id", operationId)
+        .eq("role", "MAIN")
+        .maybeSingle()
+      const { createOrUpdateReferralCommission } = await import("@/lib/referrals/calculate")
+      await createOrUpdateReferralCommission({
+        supabase,
+        operationId,
+        customerId: mainCustomer?.customer_id ?? null,
+        marginAmount: Number(op.margin_amount) || 0,
+        orgId: op.org_id,
+        agencyId: op.agency_id,
+        currency: op.sale_currency || op.currency,
+      })
+    } catch (error) {
+      console.error("Error recalculando comisión de referido:", error)
     }
 
     // ============================================

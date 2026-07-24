@@ -127,6 +127,15 @@ interface OperationDetailClientProps {
   operationAccessScope: OperationAccessScope
   canAddServicesOnAgencyOperations?: boolean
   commissionRecords?: Array<{ percentage: number | null; seller_id: string; amount: number }>
+  /** Comisión al referidor por esta venta (VIB-62), si el cliente vino referido. */
+  referralCommission?: {
+    amount: number
+    percentage: number
+    base_amount: number
+    currency: string
+    status: string
+    referral_partners?: { name: string } | null
+  } | null
   operationServices?: OperationService[]
   operatorPayments?: OperationOperatorPaymentLike[]
   /** Operadores asignados a la operación (operation_operators). Usado para
@@ -171,6 +180,7 @@ export function OperationDetailClient({
   operationAccessScope,
   canAddServicesOnAgencyOperations = false,
   commissionRecords = [],
+  referralCommission = null,
   operationServices = [],
   operatorPayments = [],
   operationOperators = [],
@@ -718,6 +728,47 @@ export function OperationDetailClient({
                     </div>
                   </div>
                 </div>
+
+                {/* Comisión al referidor (VIB-62) */}
+                {referralCommission && referralCommission.amount > 0 && (
+                  <div className="rounded-xl border border-accent-coral/30 bg-accent-coral/5 p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold">🤝 Comisión referido</span>
+                        {referralCommission.referral_partners?.name && (
+                          <span className="text-xs text-muted-foreground">
+                            {referralCommission.referral_partners.name}
+                          </span>
+                        )}
+                        {referralCommission.status === "PAID" ? (
+                          <Badge className="bg-success/10 text-success border-0">Pagada</Badge>
+                        ) : referralCommission.status === "CANCELLED" ? (
+                          <Badge variant="outline">Anulada</Badge>
+                        ) : (
+                          <Badge className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-0">Pendiente</Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-6 text-sm">
+                        <div className="text-right">
+                          <span className="text-xs text-muted-foreground">Base (margen)</span>
+                          <p className="font-medium">
+                            {referralCommission.currency} {referralCommission.base_amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-xs text-muted-foreground">%</span>
+                          <p className="font-medium">{referralCommission.percentage}%</p>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-xs text-muted-foreground">Comisión</span>
+                          <p className="font-semibold text-accent-coral">
+                            {referralCommission.currency} {referralCommission.amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Desglose: Servicios */}
                 {hasServices && (

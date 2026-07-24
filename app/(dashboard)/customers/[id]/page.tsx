@@ -26,6 +26,17 @@ export default async function CustomerDetailPage({
     notFound()
   }
 
+  // Nombre del referidor (VIB-62) para el badge "Referido de X".
+  let referralPartnerName: string | null = null
+  if ((customer as any).referral_partner_id) {
+    const { data: partner } = await (supabase.from("referral_partners") as any)
+      .select("name")
+      .eq("id", (customer as any).referral_partner_id)
+      .eq("org_id", userOrgId)
+      .maybeSingle()
+    referralPartnerName = partner?.name ?? null
+  }
+
   // operation_customers + operations — scope adicional por org_id del operation
   const { data: operationCustomers, error: operationCustomersError } = await supabase
     .from("operation_customers")
@@ -153,6 +164,7 @@ export default async function CustomerDetailPage({
       operations={operations}
       payments={payments}
       documents={documents || []}
+      referralPartnerName={referralPartnerName}
     />
   )
 }

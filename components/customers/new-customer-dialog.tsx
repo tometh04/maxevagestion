@@ -33,6 +33,7 @@ import { toast } from "sonner"
 import { Loader2, Upload, FileText, X, CheckCircle, User } from "lucide-react"
 import { useCustomerSettings } from "@/hooks/use-customer-settings"
 import { CustomFieldsForm } from "./custom-fields-form"
+import { ReferralPartnerSelect, type ReferralValue } from "./referral-partner-select"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -149,6 +150,10 @@ export function NewCustomerDialog({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { settings, loading: settingsLoading } = useCustomerSettings()
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
+  const [referral, setReferral] = useState<ReferralValue>({
+    referralPartnerId: null,
+    referralCommissionPercentage: "",
+  })
 
   // Estado para generador de CUIL
   const [cuilDni, setCuilDni] = useState("")
@@ -474,6 +479,11 @@ export function NewCustomerDialog({
           procedure_number: values.procedure_number || null,
           date_of_birth: values.date_of_birth || null,
           nationality: values.nationality || null,
+          referral_partner_id: referral.referralPartnerId,
+          referral_commission_percentage:
+            referral.referralPartnerId && referral.referralCommissionPercentage.trim() !== ""
+              ? referral.referralCommissionPercentage
+              : null,
         }),
       })
 
@@ -521,6 +531,7 @@ export function NewCustomerDialog({
       form.reset()
       setUploadedFile(null)
       setOcrSuccess(false)
+      setReferral({ referralPartnerId: null, referralCommissionPercentage: "" })
       onSuccess(newCustomer)
       onOpenChange(false)
     } catch (error) {
@@ -865,6 +876,9 @@ export function NewCustomerDialog({
                 </div>
               )}
             </div>
+
+            {/* Referido (VIB-62) */}
+            <ReferralPartnerSelect value={referral} onChange={setReferral} />
 
             {/* Campos personalizados */}
             {settings?.custom_fields && settings.custom_fields.length > 0 && (

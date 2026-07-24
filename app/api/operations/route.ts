@@ -889,6 +889,23 @@ export async function POST(request: Request) {
         }
       }
       
+    // Comisión al referidor (VIB-62): si el cliente MAIN viene referido, generar
+    // la comisión de la venta sobre el margen. Best-effort: no romper la creación.
+    try {
+      const { createOrUpdateReferralCommission } = await import("@/lib/referrals/calculate")
+      await createOrUpdateReferralCommission({
+        supabase,
+        operationId: operation.id,
+        customerId,
+        marginAmount: Number(op.margin_amount) || marginAmount || 0,
+        orgId: (user as any).org_id,
+        agencyId: agency_id,
+        currency: finalSaleCurrency,
+      })
+    } catch (error) {
+      console.error("Error calculando comisión de referido para nueva operación:", error)
+    }
+
     // Update lead status to WON if lead_id exists
     if (lead_id) {
       // Actualizar lead a WON

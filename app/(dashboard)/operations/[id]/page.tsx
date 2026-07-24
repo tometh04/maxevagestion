@@ -153,6 +153,15 @@ export default async function OperationDetailPage({
     .eq("operation_id", id)
     .eq("org_id", userOrgId)
 
+  // Comisión al referidor (VIB-62): si el cliente MAIN vino referido, mostrar
+  // cuánto y a quién le corresponde por esta venta.
+  const { data: referralCommission } = await (supabase
+    .from("referral_commissions") as any)
+    .select("amount, percentage, base_amount, currency, status, referral_partners:referral_partner_id(name)")
+    .eq("operation_id", id)
+    .eq("org_id", userOrgId)
+    .maybeSingle()
+
   // Get agencies for edit dialog
   let agencies: Array<{ id: string; name: string }> = []
   if (userRole === "SUPER_ADMIN") {
@@ -203,6 +212,7 @@ export default async function OperationDetailPage({
       operationAccessScope={operationAccessScope}
       canAddServicesOnAgencyOperations={Boolean(user.can_add_services_on_agency_operations)}
       commissionRecords={commissionRecords || []}
+      referralCommission={referralCommission || null}
       operationServices={operationServices || []}
       operatorPayments={operatorPayments || []}
       operationOperators={operationOperators || []}

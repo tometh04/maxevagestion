@@ -2137,6 +2137,8 @@ export type Database = {
           org_id: string
           phone: string
           procedure_number: string | null
+          referral_commission_percentage: number | null
+          referral_partner_id: string | null
           updated_at: string | null
         }
         Insert: {
@@ -2155,6 +2157,8 @@ export type Database = {
           org_id: string
           phone: string
           procedure_number?: string | null
+          referral_commission_percentage?: number | null
+          referral_partner_id?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -2173,6 +2177,8 @@ export type Database = {
           org_id?: string
           phone?: string
           procedure_number?: string | null
+          referral_commission_percentage?: number | null
+          referral_partner_id?: string | null
           updated_at?: string | null
         }
         Relationships: [
@@ -2198,6 +2204,114 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      referral_partners: {
+        Row: {
+          active: boolean
+          agency_id: string | null
+          contact_name: string | null
+          created_at: string
+          created_by: string | null
+          default_commission_percentage: number
+          email: string | null
+          id: string
+          name: string
+          notes: string | null
+          org_id: string
+          phone: string | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          agency_id?: string | null
+          contact_name?: string | null
+          created_at?: string
+          created_by?: string | null
+          default_commission_percentage?: number
+          email?: string | null
+          id?: string
+          name: string
+          notes?: string | null
+          org_id: string
+          phone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          agency_id?: string | null
+          contact_name?: string | null
+          created_at?: string
+          created_by?: string | null
+          default_commission_percentage?: number
+          email?: string | null
+          id?: string
+          name?: string
+          notes?: string | null
+          org_id?: string
+          phone?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      referral_commissions: {
+        Row: {
+          agency_id: string | null
+          amount: number
+          amount_paid: number
+          base_amount: number
+          basis: string
+          created_at: string
+          currency: string
+          customer_id: string | null
+          date_calculated: string
+          date_paid: string | null
+          id: string
+          operation_id: string
+          org_id: string
+          percentage: number
+          referral_partner_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          agency_id?: string | null
+          amount?: number
+          amount_paid?: number
+          base_amount?: number
+          basis?: string
+          created_at?: string
+          currency?: string
+          customer_id?: string | null
+          date_calculated?: string
+          date_paid?: string | null
+          id?: string
+          operation_id: string
+          org_id: string
+          percentage?: number
+          referral_partner_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          agency_id?: string | null
+          amount?: number
+          amount_paid?: number
+          base_amount?: number
+          basis?: string
+          created_at?: string
+          currency?: string
+          customer_id?: string | null
+          date_calculated?: string
+          date_paid?: string | null
+          id?: string
+          operation_id?: string
+          org_id?: string
+          percentage?: number
+          referral_partner_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       customers_backup_2026_04_28: {
         Row: {

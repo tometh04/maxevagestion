@@ -146,12 +146,31 @@ export async function PATCH(
       'nationality', 'passport_number', 'passport_expiry', 'notes', 'instagram',
       'emergency_contact_name', 'emergency_contact_phone', 'tags', 'gender',
       'preferred_language', 'preferred_currency', 'procedure_number',
+      'referral_partner_id',
     ]
     const updateData: any = { updated_at: new Date().toISOString() }
     for (const field of allowedFields) {
       if (body[field] !== undefined) {
         updateData[field] = body[field]
       }
+    }
+
+    // Cliente referido (VIB-62): % de override, validado 0–100. "" / null limpian.
+    if (body.referral_commission_percentage !== undefined) {
+      const raw = body.referral_commission_percentage
+      if (raw === null || raw === "") {
+        updateData.referral_commission_percentage = null
+      } else {
+        const pct = Number(raw)
+        if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+          return NextResponse.json({ error: "El porcentaje de referido debe estar entre 0 y 100" }, { status: 400 })
+        }
+        updateData.referral_commission_percentage = pct
+      }
+    }
+    // Desmarcar referido con "" además de null.
+    if (updateData.referral_partner_id === "") {
+      updateData.referral_partner_id = null
     }
 
     const { data: customer, error: updateError } = await (supabase.from("customers") as any)

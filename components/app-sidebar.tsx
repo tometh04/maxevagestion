@@ -135,6 +135,7 @@ const allNavigation: NavItem[] = [
       { title: "Contabilidad", url: "/accounting/ledger" },
       { title: "Impuestos", url: "/accounting/iva" },
       { title: "Comisiones", url: "/commissions", module: "commissions" as const },
+      { title: "Referidos", url: "/referrals", module: "commissions" as const },
       { title: "Reportes", url: "/reports", module: "reports" as const },
       { title: "Configuración", url: "/finances/settings" },
     ],
