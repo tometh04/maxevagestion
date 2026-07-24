@@ -605,6 +605,21 @@ export function OperationPaymentsSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expenseDialogOpen, openOperatorDebts, watchedExpenseAmount, watchedExpenseCurrency])
 
+  // El TC en un pago a operador SOLO tiene sentido cuando la moneda del pago
+  // difiere de la moneda de la deuda del operador (misma lógica que el cobro al
+  // cliente vs. la moneda de la venta). Si la deuda es ARS y se paga en ARS, no
+  // hay conversión: pedir un TC obligaba al usuario a inventar un "1", lo que
+  // guardaba un amount_usd basura (= monto en ARS) en la columna Equiv. USD.
+  const watchedExpenseOperatorPaymentId = expenseForm.watch("operator_payment_id")
+  const selectedExpenseDebt = useMemo(
+    () => openOperatorDebts.find((d) => d.id === watchedExpenseOperatorPaymentId) || null,
+    [openOperatorDebts, watchedExpenseOperatorPaymentId]
+  )
+  const expenseNeedsExchangeRate =
+    !!selectedExpenseDebt &&
+    normalizeSupportedCurrency(watchedExpenseCurrency) !==
+      normalizeSupportedCurrency(selectedExpenseDebt.currency)
+
   const selectedExpenseAccount = useMemo(
     () => financialAccounts.find((a) => a.id === watchedExpenseAccountId) || null,
     [financialAccounts, watchedExpenseAccountId]
@@ -653,6 +668,15 @@ export function OperationPaymentsSection({
   const editPaymentCurrency = editForm.watch("currency")
   const isEditingCustomerIncome =
     editingPayment?.payer_type === "CUSTOMER" && editingPayment?.direction === "INCOME"
+  // Para pagos a operador el TC solo aplica si la moneda del pago difiere de la
+  // moneda de la deuda del operador (mismo criterio que crear). Si no se puede
+  // resolver la deuda (pago legacy sin link), cae al criterio viejo (ARS).
+  const editOperatorDebt =
+    editingPayment?.payer_type === "OPERATOR"
+      ? (operatorPayments || []).find(
+          (op: any) => op.id === editingPayment?.operator_payment_id
+        )
+      : null
   const editNeedsExchangeRate = isEditingCustomerIncome
     ? requiresCustomerIncomeExchangeRate({
         payerType: editingPayment?.payer_type,
@@ -660,7 +684,10 @@ export function OperationPaymentsSection({
         paymentCurrency: editPaymentCurrency,
         saleCurrency: customerSaleCurrency,
       })
-    : editPaymentCurrency === "ARS"
+    : editingPayment?.payer_type === "OPERATOR" && editOperatorDebt
+      ? normalizeSupportedCurrency(editPaymentCurrency) !==
+        normalizeSupportedCurrency((editOperatorDebt as any).currency)
+      : editPaymentCurrency === "ARS"
 
   // Bank tax (Ley 25413): computed values for EDIT dialog — mismo patrón que
   // los diálogos de crear (income/expense). El impuesto solo se ofrece cuando
@@ -1004,9 +1031,16 @@ export function OperationPaymentsSection({
       return
     }
 
-    // Validar tipo de cambio si es ARS
-    if (values.currency === "ARS" && !values.exchange_rate) {
-      toast.error("Debe ingresar el tipo de cambio para pagos en ARS")
+    // Validar tipo de cambio solo cuando la moneda del pago difiere de la moneda
+    // de la deuda del operador (p. ej. deuda en USD y se paga en ARS). Si coinciden
+    // (deuda ARS pagada en ARS) no hay conversión y no se pide TC.
+    const expenseDebt = openOperatorDebts.find((d) => d.id === values.operator_payment_id)
+    const submitNeedsExchangeRate =
+      !!expenseDebt &&
+      normalizeSupportedCurrency(values.currency) !==
+        normalizeSupportedCurrency(expenseDebt.currency)
+    if (submitNeedsExchangeRate && !values.exchange_rate) {
+      toast.error("Debe ingresar el tipo de cambio: la moneda del pago difiere de la deuda del operador")
       return
     }
 
@@ -1023,7 +1057,7 @@ export function OperationPaymentsSection({
         operator_payment_id: operator_payment_id || null,
         ...restValues,
         financial_account_id: values.financial_account_id,
-        exchange_rate: values.currency === "ARS" ? values.exchange_rate : null,
+        exchange_rate: submitNeedsExchangeRate ? values.exchange_rate : null,
         date_paid: formatDateOnlyLocal(values.date_paid),
         date_due: formatDateOnlyLocal(values.date_paid),
         status: "PAID",
@@ -2719,8 +2753,9 @@ export function OperationPaymentsSection({
                   </div>
                 </div>
 
-                {/* Tipo de cambio - solo visible cuando moneda es ARS */}
-                {expenseForm.watch("currency") === "ARS" && (
+                {/* Tipo de cambio - solo visible cuando el pago está en otra
+                    moneda que la deuda del operador (hay conversión real) */}
+                {expenseNeedsExchangeRate && (
                   <FormField
                     control={expenseForm.control}
                     name="exchange_rate"
