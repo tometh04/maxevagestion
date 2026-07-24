@@ -315,9 +315,12 @@ export function OperationServicesSection({
         saleCurrency: customerIncomeReferenceCurrency,
       })
     : false
+  // Pago al operador del servicio: el TC solo aplica si la moneda del pago difiere
+  // de la moneda del COSTO del servicio. Pagar ARS un costo en ARS no tiene
+  // conversión, así que no se pide TC (evita el amount_usd basura por TC=1).
   const showExchangeRateField = selectedPayerType === "CUSTOMER"
     ? needsCustomerIncomeManualExchangeRate
-    : selectedPaymentCurrency === "ARS"
+    : !!selectedService && selectedPaymentCurrency !== selectedService.cost_currency
   const paymentAmountValue = Number(selectedPaymentAmount) || 0
   const selectedExchangeRateNumber = coercePositiveNumber(selectedExchangeRate)
   const exchangeRatePreview = selectedService && selectedExchangeRateNumber && paymentAmountValue > 0
@@ -632,13 +635,13 @@ export function OperationServicesSection({
           paymentCurrency: values.currency,
           saleCurrency: getCustomerIncomeReferenceCurrency({ service }),
         })
-      : values.currency === "ARS"
+      : values.currency !== service.cost_currency
 
     if (requiresManualExchangeRate && !values.exchange_rate) {
       paymentForm.setError("exchange_rate", {
         message: values.payer_type === "CUSTOMER"
           ? "Ingresá el tipo de cambio para convertir el cobro a la moneda del servicio"
-          : "Ingresá el tipo de cambio para ARS",
+          : "Ingresá el tipo de cambio: la moneda del pago difiere de la moneda del costo del servicio",
       })
       return
     }

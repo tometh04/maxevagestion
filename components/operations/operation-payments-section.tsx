@@ -535,7 +535,11 @@ export function OperationPaymentsSection({
     },
   })
   const refundCurrency = refundForm.watch("currency")
-  const refundNeedsExchangeRate = refundCurrency === "ARS"
+  // Igual que el cobro: el TC solo aplica si la moneda de la devolución difiere de
+  // la moneda de la venta. Devolver ARS en una operación ARS no tiene conversión,
+  // así que no se pide TC (evita el amount_usd basura por TC=1).
+  const refundNeedsExchangeRate =
+    normalizeSupportedCurrency(refundCurrency) !== customerSaleCurrency
 
   useEffect(() => {
     const currentOperatorPaymentId = expenseForm.getValues("operator_payment_id")
@@ -1092,7 +1096,7 @@ export function OperationPaymentsSection({
       return
     }
     if (refundNeedsExchangeRate && !values.exchange_rate) {
-      toast.error("Debe ingresar el tipo de cambio para devoluciones en ARS")
+      toast.error("Debe ingresar el tipo de cambio: la moneda de la devolución difiere de la moneda de la operación")
       return
     }
 
