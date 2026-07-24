@@ -2580,7 +2580,7 @@ export function OperationPaymentsSection({
         </Dialog>
       )}
 
-      {(userRole === "ADMIN" || userRole === "SUPER_ADMIN") && (
+      {canWriteCash && (
         <Dialog open={expenseDialogOpen} onOpenChange={setExpenseDialogOpen}>
           <DialogContent className="max-w-lg max-h-[95vh] flex flex-col">
             <DialogHeader>
