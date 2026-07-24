@@ -171,19 +171,35 @@ export async function findMatchingOperatorPayment(
     }
 
     const operatorPayment = data as OperatorPaymentRecord | null
-    if (!operatorPayment) {
+
+    if (operatorPayment) {
+      if (operatorPayment.operation_id !== params.operationId) {
+        throw new Error("La deuda seleccionada no pertenece a la operación")
+      }
+
+      if (params.operatorId && operatorPayment.operator_id !== params.operatorId) {
+        throw new Error("La deuda seleccionada no corresponde al operador elegido")
+      }
+
+      if (hasPendingBalance(operatorPayment)) {
+        return operatorPayment
+      }
+      // La deuda explícita ya está saldada → NO cortar acá: caemos a la búsqueda
+      // por operador (abajo) para imputar contra otra deuda pendiente real.
+    }
+
+    // Bug fix 2026-07-24 (Lozada VG / AMICHI, op 68f9b7aa): si el cliente manda un
+    // operator_payment_id que ya no resuelve a una deuda pendiente —porque quedó
+    // viejo (un delete+insert al editar la operación lo reemplazó) o ya se saldó—
+    // NO devolvemos null. Devolver null hacía que el route creara una deuda
+    // DUPLICADA con el costo completo (doblaba el "Pendiente a Operador"). En vez
+    // de eso, caemos a la búsqueda por operación/operador para imputar contra la
+    // deuda pendiente real. Si el caller NO pasó operatorId, no hay a qué caer con
+    // seguridad y mantenemos el null previo.
+    if (!params.operatorId) {
       return null
     }
-
-    if (operatorPayment.operation_id !== params.operationId) {
-      throw new Error("La deuda seleccionada no pertenece a la operación")
-    }
-
-    if (params.operatorId && operatorPayment.operator_id !== params.operatorId) {
-      throw new Error("La deuda seleccionada no corresponde al operador elegido")
-    }
-
-    return hasPendingBalance(operatorPayment) ? operatorPayment : null
+    // fall through a la búsqueda general por operationId + operatorId
   }
 
   let query = (supabase.from("operator_payments") as any)

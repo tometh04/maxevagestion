@@ -189,3 +189,79 @@ describe("findMatchingOperatorPayment — no adivinar por FIFO cuando es ambiguo
     expect(r?.id).toBe("chica")
   })
 })
+
+describe("findMatchingOperatorPayment — operator_payment_id viejo NO crea duplicado", () => {
+  // Bug real op #68f9b7aa (Lozada VG / AMICHI): el diálogo mandó un
+  // operator_payment_id que ya no resolvía a una deuda pendiente. La función
+  // devolvía null y el route creaba una deuda DUPLICADA con el costo completo,
+  // doblando el "Pendiente a Operador". Ahora cae a la deuda pendiente real.
+  const mockByIdThenList = (byIdRow: any | null, listRows: any[]) => {
+    let byIdQuery = false
+    const chain: any = {
+      from: () => chain,
+      select: () => chain,
+      eq: (col: string) => {
+        if (col === "id") byIdQuery = true
+        return chain
+      },
+      order: () => chain,
+      maybeSingle: async () => ({ data: byIdQuery ? byIdRow : (listRows[0] ?? null), error: null }),
+      then: (resolve: any) => resolve({ data: listRows, error: null }),
+    }
+    return chain
+  }
+
+  const realDebt = {
+    id: "real-pending",
+    operation_id: "op1",
+    operator_id: "amichi",
+    amount: 3336173.31,
+    paid_amount: 0,
+    due_date: "2026-10-07",
+    status: "PENDING",
+  }
+
+  it("id explícito borrado (no existe) → cae a la deuda pendiente real (no null)", async () => {
+    const sb = mockByIdThenList(null, [realDebt])
+    const r = await findMatchingOperatorPayment(sb, {
+      operationId: "op1",
+      operatorId: "amichi",
+      operatorPaymentId: "stale-deleted-id",
+      amount: 2120000,
+    })
+    expect(r?.id).toBe("real-pending")
+  })
+
+  it("id explícito ya saldado → cae a otra deuda pendiente del operador", async () => {
+    const paidOff = { ...realDebt, id: "old-paid", amount: 1000, paid_amount: 1000, status: "PAID" }
+    const sb = mockByIdThenList(paidOff, [realDebt])
+    const r = await findMatchingOperatorPayment(sb, {
+      operationId: "op1",
+      operatorId: "amichi",
+      operatorPaymentId: "old-paid",
+      amount: 2120000,
+    })
+    expect(r?.id).toBe("real-pending")
+  })
+
+  it("id explícito viejo SIN operatorId → mantiene null (comportamiento previo, sin a qué caer)", async () => {
+    const sb = mockByIdThenList(null, [realDebt])
+    const r = await findMatchingOperatorPayment(sb, {
+      operationId: "op1",
+      operatorPaymentId: "stale-deleted-id",
+      amount: 2120000,
+    })
+    expect(r).toBeNull()
+  })
+
+  it("id explícito válido y pendiente → lo devuelve directo (sin caer a la búsqueda)", async () => {
+    const sb = mockByIdThenList(realDebt, [])
+    const r = await findMatchingOperatorPayment(sb, {
+      operationId: "op1",
+      operatorId: "amichi",
+      operatorPaymentId: "real-pending",
+      amount: 2120000,
+    })
+    expect(r?.id).toBe("real-pending")
+  })
+})
