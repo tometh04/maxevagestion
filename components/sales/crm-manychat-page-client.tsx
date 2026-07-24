@@ -205,7 +205,9 @@ export function CRMManychatPageClient({
         keys.map(async (k) => {
           const next = (pageByKeyRef.current[k] || 1) + 1
           const { leads: more } = await fetchColumnPage(k, next)
-          pageByKeyRef.current[k] = next
+          // Solo avanzamos la página si vino algo: si una respuesta viene vacía
+          // no queremos saltear páginas en el próximo click.
+          if (more.length > 0) pageByKeyRef.current[k] = next
           return more
         })
       )

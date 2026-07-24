@@ -73,12 +73,28 @@ export async function GET(request: Request) {
     const search = searchRaw.length > 0 ? searchRaw : null
 
     // Filtro EXPLÍCITO de fecha de creación (feature flag "created_at" de Lozada).
-    // Distinto de la ventana de recencia por defecto: este filtro sí afecta los
-    // conteos, la ventana no.
     const createdFromRaw = (searchParams.get("createdFrom") || "").trim()
     const createdToRaw = (searchParams.get("createdTo") || "").trim()
     const explicitCreatedFrom = createdFromRaw ? new Date(createdFromRaw).toISOString() : null
     const explicitCreatedTo = createdToRaw ? new Date(createdToRaw).toISOString() : null
+
+    const includeOld = searchParams.get("includeOld") === "1"
+
+    // Ventana de recencia COMPARTIDA entre counts y column: el conteo del header
+    // tiene que reflejar exactamente lo que se puede cargar. Si el header
+    // contara el total histórico pero las cards solo trajeran los últimos 90d,
+    // "Cargar más" quedaría muerto para los leads viejos (VIB-61).
+    //   - Filtro explícito de fecha → manda ese (afecta header y cards).
+    //   - Si no, y sin includeOld → ventana de 90d por defecto.
+    //   - includeOld=1 → sin cota (trae y cuenta todo el histórico).
+    let createdFrom: string | null = explicitCreatedFrom
+    if (!explicitCreatedFrom && !includeOld) {
+      const windowDays = Math.max(1, parseInt(searchParams.get("windowDays") || String(DEFAULT_WINDOW_DAYS)))
+      const d = new Date()
+      d.setDate(d.getDate() - windowDays)
+      createdFrom = d.toISOString()
+    }
+    const createdTo: string | null = explicitCreatedTo
 
     const mode = searchParams.get("mode") || "counts"
 
@@ -89,8 +105,8 @@ export async function GET(request: Request) {
         p_status: status,
         p_region: region,
         p_search: search,
-        p_created_from: explicitCreatedFrom,
-        p_created_to: explicitCreatedTo,
+        p_created_from: createdFrom,
+        p_created_to: createdTo,
       })
       if (error) {
         console.error("Error crm_kanban_column_counts:", error)
@@ -111,20 +127,6 @@ export async function GET(request: Request) {
     const page = Math.max(1, parseInt(searchParams.get("page") || "1"))
     const limit = Math.min(Math.max(1, parseInt(searchParams.get("limit") || String(DEFAULT_PAGE_SIZE))), MAX_PAGE_SIZE)
     const offset = (page - 1) * limit
-    const includeOld = searchParams.get("includeOld") === "1"
-
-    // Fecha efectiva para las cards:
-    //  - Si hay filtro explícito de fecha, manda ese.
-    //  - Si no, y no se pidió includeOld, aplica la ventana de recencia (90d).
-    //  - includeOld=1 sin filtro explícito → sin cota de fecha (trae viejos).
-    let createdFrom: string | null = explicitCreatedFrom
-    if (!explicitCreatedFrom && !includeOld) {
-      const windowDays = Math.max(1, parseInt(searchParams.get("windowDays") || String(DEFAULT_WINDOW_DAYS)))
-      const d = new Date()
-      d.setDate(d.getDate() - windowDays)
-      createdFrom = d.toISOString()
-    }
-    const createdTo: string | null = explicitCreatedTo
 
     // Pedimos limit+1 para saber si hay más sin un count extra.
     const { data, error } = await (supabase as any).rpc("crm_kanban_column_leads", {
