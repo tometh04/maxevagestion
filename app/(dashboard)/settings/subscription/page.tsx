@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { PLANS, formatArs, type PlanId } from "@/lib/billing/plans"
+import { resolvePlanPrice } from "@/lib/billing/plan-pricing"
 import { PaymentMethodCard } from "@/components/billing/payment-method-card"
 import { BillingHistoryTable } from "@/components/billing/billing-history-table"
 import { CancelDialog } from "@/components/billing/cancel-dialog"
@@ -149,6 +150,8 @@ export default async function SubscriptionPage({
     .limit(20)
 
   const plan = PLANS[org.plan as PlanId]
+  // Precio efectivo (tabla plan_prices editable desde admin, fallback a constante).
+  const resolvedPlanPrice = await resolvePlanPrice(admin, org.plan)
   const status = org.subscription_status as string
   const isCancelledWithAccess =
     status === "CANCELLED" &&
@@ -269,9 +272,9 @@ export default async function SubscriptionPage({
           <CardHeader>
             <CardTitle>{plan.name}</CardTitle>
             <div className="text-2xl font-bold">
-              {plan.priceArsMonthly !== null ? (
+              {resolvedPlanPrice !== null ? (
                 <>
-                  {formatArs(plan.priceArsMonthly)}
+                  {formatArs(resolvedPlanPrice)}
                   <span className="text-sm font-normal text-muted-foreground"> /mes</span>
                 </>
               ) : (

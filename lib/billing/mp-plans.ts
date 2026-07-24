@@ -45,7 +45,16 @@ export function buildPlanKey(input: BuildPlanKeyInput): string {
     }
     return `CUSTOM_${input.orgSlug}_${input.amount}`
   }
-  return `${input.plan}_STANDARD`
+  // El monto va en la key también para planes estándar: los precios ahora son
+  // editables desde admin (tabla plan_prices), y el template de MP cachea el
+  // monto. Sin el monto en la key, cambiar el precio de PRO reusaría el template
+  // viejo y MP seguiría cobrando el precio anterior. Con el monto, un cambio de
+  // precio crea un template fresco; los templates viejos siguen sirviendo a las
+  // suscripciones existentes (que no se re-cobran solas).
+  if (!input.amount) {
+    throw new Error("buildPlanKey estándar requiere amount")
+  }
+  return `${input.plan}_STANDARD_${input.amount}`
 }
 
 export interface EnsureMpPlanInput {

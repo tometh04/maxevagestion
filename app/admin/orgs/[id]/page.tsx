@@ -7,6 +7,7 @@ import { TenantMetrics } from "@/components/admin/tenant-metrics"
 import { CustomPlanForm } from "@/components/admin/custom-plan-form"
 import { CustomPlanDisplay } from "@/components/admin/custom-plan-display"
 import { ExtendTrialCard } from "@/components/admin/extend-trial-card"
+import { ChangePlanCard } from "@/components/admin/change-plan-card"
 import { CriticalActions } from "@/components/admin/critical-actions"
 import { ManualPaymentsSection } from "@/components/admin/manual-payments-section"
 import { MpSnapshot } from "@/components/admin/mp-snapshot"
@@ -144,6 +145,13 @@ export default async function AdminOrgDetailPage({ params }: { params: Promise<{
         </CardContent>
       </Card>
 
+      <ChangePlanCard
+        orgId={org.id}
+        currentPlan={org.plan ?? null}
+        hasCustomPlan={!!org.custom_plan_id}
+        hasPreapproval={!!org.mp_preapproval_id}
+      />
+
       <MrrOverrideCard
         orgId={org.id}
         currentOverride={
@@ -164,6 +172,9 @@ export default async function AdminOrgDetailPage({ params }: { params: Promise<{
 
       <OrgActivityTimeline orgId={org.id} />
 
+      {/* Precio custom por cuenta: define el monto que MercadoPago cobra
+          automáticamente en el próximo vencimiento (billing_method=MP). Implica
+          plan Enterprise. Para bajar a PRO usá "Cambiar plan" arriba. */}
       {customPlan ? (
         <CustomPlanDisplay orgId={id} plan={customPlan} />
       ) : (

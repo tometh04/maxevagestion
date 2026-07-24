@@ -17,12 +17,14 @@ import {
   computeMrrArsDetailed, computeTrialPipelineMrrArs, computePotentialMrrArs,
   type MrrOrg, type MrrCustomPlan,
 } from "@/lib/admin/metrics"
+import { getPlanPricing } from "@/lib/billing/plan-pricing"
 
 export const dynamic = "force-dynamic"
 
 export default async function AdminMetricsPage() {
   const admin = createAdminClient() as any
   const since30d = new Date(Date.now() - 30 * 86400 * 1000).toISOString()
+  const planPrices = await getPlanPricing(admin)
 
   // === Counts por status ===
   const [
@@ -96,7 +98,7 @@ export default async function AdminMetricsPage() {
     }
     const cp = o.custom_plan_id ? cpMap.get(o.id) ?? null : null
 
-    const { amount: mrr, estimated } = computeMrrArsDetailed(org, cp)
+    const { amount: mrr, estimated } = computeMrrArsDetailed(org, cp, planPrices)
     mrrTotal += mrr
     if (mrr > 0) activePayingOrgs += 1
     if (estimated) {
@@ -104,7 +106,7 @@ export default async function AdminMetricsPage() {
       mrrEstimatedOrgs += 1
     }
 
-    const pipeline = computeTrialPipelineMrrArs(org, cp)
+    const pipeline = computeTrialPipelineMrrArs(org, cp, planPrices)
     trialPipelineMrr += pipeline
 
     if (mrr > 0 && new Date(o.created_at).getTime() >= Date.parse(since30d)) {
@@ -129,7 +131,7 @@ export default async function AdminMetricsPage() {
       manual_mrr_override_ars: o.manual_mrr_override_ars != null ? Number(o.manual_mrr_override_ars) : null,
     }
     const cp = o.custom_plan_id ? cpMap.get(o.id) ?? null : null
-    churnMrr30d += computePotentialMrrArs(org, cp)
+    churnMrr30d += computePotentialMrrArs(org, cp, planPrices)
   }
 
   const arr = mrrTotal * 12

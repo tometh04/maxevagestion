@@ -8,11 +8,14 @@ jest.mock("./mercadopago", () => ({
 }))
 
 describe("buildPlanKey", () => {
-  it("PRO estándar", () => {
-    expect(buildPlanKey({ plan: "PRO" })).toBe("PRO_STANDARD")
+  it("PRO estándar incluye el monto (precios editables)", () => {
+    expect(buildPlanKey({ plan: "PRO", amount: 119000 })).toBe("PRO_STANDARD_119000")
   })
-  it("STARTER estándar", () => {
-    expect(buildPlanKey({ plan: "STARTER" })).toBe("STARTER_STANDARD")
+  it("STARTER estándar incluye el monto", () => {
+    expect(buildPlanKey({ plan: "STARTER", amount: 29900 })).toBe("STARTER_STANDARD_29900")
+  })
+  it("estándar sin amount tira error", () => {
+    expect(() => buildPlanKey({ plan: "PRO" } as any)).toThrow(/amount/i)
   })
   it("CUSTOM usa org slug + amount", () => {
     const k = buildPlanKey({ plan: "CUSTOM", orgSlug: "agen-tst-v3", amount: 299000 })
@@ -43,17 +46,17 @@ describe("ensureMpPlan — cache key distingue trial", () => {
     backUrl: "https://app.vibook.ai/back",
   }
 
-  it("includeFreeTrial=true → key histórica PRO_STANDARD", async () => {
+  it("includeFreeTrial=true → key con monto PRO_STANDARD_119000", async () => {
     const insertSpy = jest.fn(async () => ({ error: null }))
     const res = await ensureMpPlan(fakeAdmin(insertSpy), { ...base, includeFreeTrial: true })
-    expect(res.plan_key).toBe("PRO_STANDARD")
-    expect(insertSpy).toHaveBeenCalledWith(expect.objectContaining({ plan_key: "PRO_STANDARD" }))
+    expect(res.plan_key).toBe("PRO_STANDARD_119000")
+    expect(insertSpy).toHaveBeenCalledWith(expect.objectContaining({ plan_key: "PRO_STANDARD_119000" }))
   })
 
-  it("includeFreeTrial=false → key separada PRO_STANDARD_NOTRIAL (cobro inmediato)", async () => {
+  it("includeFreeTrial=false → key separada PRO_STANDARD_119000_NOTRIAL (cobro inmediato)", async () => {
     const insertSpy = jest.fn(async () => ({ error: null }))
     const res = await ensureMpPlan(fakeAdmin(insertSpy), { ...base, includeFreeTrial: false })
-    expect(res.plan_key).toBe("PRO_STANDARD_NOTRIAL")
+    expect(res.plan_key).toBe("PRO_STANDARD_119000_NOTRIAL")
   })
 
   it("freeTrialDays custom tiene prioridad sobre includeFreeTrial", async () => {
@@ -63,6 +66,16 @@ describe("ensureMpPlan — cache key distingue trial", () => {
       includeFreeTrial: false,
       freeTrialDays: 14,
     })
-    expect(res.plan_key).toBe("PRO_STANDARD_T14D")
+    expect(res.plan_key).toBe("PRO_STANDARD_119000_T14D")
+  })
+
+  it("distinto monto → distinta key (precio editable no reusa template viejo)", async () => {
+    const insertSpy = jest.fn(async () => ({ error: null }))
+    const res = await ensureMpPlan(fakeAdmin(insertSpy), {
+      ...base,
+      amount: 149000,
+      includeFreeTrial: true,
+    })
+    expect(res.plan_key).toBe("PRO_STANDARD_149000")
   })
 })

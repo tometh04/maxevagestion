@@ -8,6 +8,8 @@ import { PageHeader } from "@/components/admin/page-header"
 import { MpSandboxBanner } from "@/components/admin/mp-sandbox-banner"
 import { EmptyState } from "@/components/admin/empty-state"
 import { EnterpriseWithoutPriceAlert } from "@/components/admin/enterprise-without-price-alert"
+import { PlanPricesCard } from "@/components/admin/plan-prices-card"
+import { getPlanPricing } from "@/lib/billing/plan-pricing"
 import {
   DataTableShell,
   DataTableHead,
@@ -33,6 +35,7 @@ const EVENT_COLORS: Record<string, string> = {
 
 export default async function AdminBillingPage() {
   const admin = createAdminClient() as any
+  const planPrices = await getPlanPricing(admin)
   const now = new Date()
   const nowIso = now.toISOString()
   const in7d = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
@@ -130,6 +133,8 @@ export default async function AdminBillingPage() {
       />
 
       <MpSandboxBanner />
+
+      <PlanPricesCard prices={planPrices} />
 
       {/* Alerta: orgs ENTERPRISE sin custom_plan ni MRR override.
           Se invisibilizan al MRR/ARR y no aparecen en cobranzas/vencimientos

@@ -7,6 +7,7 @@ import { mpErrorToUserMessage } from "@/lib/billing/mp-error-mapper"
 import { notifyBillingSlack } from "@/lib/billing/slack-notify"
 import type { PlanId } from "@/lib/billing/plans"
 import { PLANS } from "@/lib/billing/plans"
+import { resolvePlanPrice } from "@/lib/billing/plan-pricing"
 
 /**
  * POST /api/billing/checkout
@@ -150,13 +151,24 @@ export async function POST(request: Request) {
     orgId, plan, backUrl, isReactivation, isRegularize, includeFreeTrial, startDate,
   })
 
+  // Precio efectivo: overlay de la tabla plan_prices sobre la constante PLANS.
+  // El precio estándar es editable desde platform-admin; el checkout debe cobrar
+  // el precio vigente, no el hardcodeado. Fallback a la constante si no hay fila.
+  const resolvedPrice = await resolvePlanPrice(admin, plan)
+  if (resolvedPrice === null || resolvedPrice <= 0) {
+    return NextResponse.json(
+      { error: "Plan no disponible para checkout self-serve. Contactanos a hola@vibook.ai" },
+      { status: 400 }
+    )
+  }
+
   let mpPlan
   try {
     const reason = `Vibook ${planDef.name}` // ASCII only
     mpPlan = await ensureMpPlan(admin, {
       plan,
       reason,
-      amount: planDef.priceArsMonthly,
+      amount: resolvedPrice,
       backUrl,
       includeFreeTrial,
     })
@@ -184,7 +196,7 @@ export async function POST(request: Request) {
     org_id: orgId,
     event_type: "CHECKOUT_INITIATED",
     external_id: null,
-    amount_cents: (planDef.priceArsMonthly ?? 0) * 100,
+    amount_cents: Math.round(resolvedPrice * 100),
     currency: "ARS",
     status: "pending",
     payload: {

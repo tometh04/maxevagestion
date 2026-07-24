@@ -3,9 +3,11 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { StatCard } from "@/components/admin/stat-card"
 import { formatArs } from "@/lib/billing/plans"
 import { computeMrrArs, type MrrOrg, type MrrCustomPlan } from "@/lib/admin/metrics"
+import { getPlanPricing } from "@/lib/billing/plan-pricing"
 
 export async function TenantMetrics({ orgId }: { orgId: string }) {
   const admin = createAdminClient() as any
+  const planPrices = await getPlanPricing(admin)
 
   const [membersQ, agenciesQ, opsTotalQ, opsMonthQ, lastActivityQ, orgQ, customPlanQ] = await Promise.all([
     admin
@@ -45,7 +47,7 @@ export async function TenantMetrics({ orgId }: { orgId: string }) {
     manual_mrr_override_ars: null,
   }
   const mrrCp: MrrCustomPlan | null = customPlanQ.data ?? null
-  const effectiveMrr = computeMrrArs(mrrOrg, mrrCp)
+  const effectiveMrr = computeMrrArs(mrrOrg, mrrCp, planPrices)
 
   const lastAccessValue = lastActivityQ.data?.updated_at
     ? `último: ${new Date(lastActivityQ.data.updated_at).toLocaleDateString("es-AR", {
