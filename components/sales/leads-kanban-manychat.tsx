@@ -149,12 +149,14 @@ interface LeadsKanbanManychatProps {
    * lista"). Se foldean case-insensitive contra los nombres de columna.
    */
   columnCounts?: Record<string, number>
-  /** Si true, la carga ya incluye leads viejos (fuera de la ventana de 90d). */
+  /** Si true, la carga ya incluye leads viejos (fuera de la ventana de recencia). */
   includeOld?: boolean
+  /** Días de la ventana de recencia por defecto (para mostrarlo en la UI). */
+  windowDays?: number
   /** Pide al padre la siguiente página de una columna (por nombre visible). */
   onLoadMoreColumn?: (displayName: string) => void | Promise<void>
-  /** Pide al padre traer también los leads viejos (saca la ventana de 90d). */
-  onLoadOlder?: () => void
+  /** Alterna entre la ventana de recencia y todo el historial. */
+  onIncludeOldChange?: (next: boolean) => void
   /** Delega los filtros al padre para refetch server-side. */
   onFiltersChange?: (filters: { status?: string; region?: string; createdFrom?: string; createdTo?: string }) => void
 }
@@ -209,8 +211,9 @@ export function LeadsKanbanManychat({
   enableCreatedAtFilter = false,
   columnCounts = {},
   includeOld = false,
+  windowDays = 90,
   onLoadMoreColumn,
-  onLoadOlder,
+  onIncludeOldChange,
   onFiltersChange,
 }: LeadsKanbanManychatProps) {
   const [listOrder, setListOrder] = useState<ListInfo[]>([])
@@ -925,23 +928,28 @@ export function LeadsKanbanManychat({
               )}
             </div>
           )}
-          {/* VIB-61 (lazy): por defecto el kanban muestra los últimos 90 días.
-              Este toggle trae también los leads más viejos. */}
-          {onLoadOlder && !includeOld && (
-            <button
-              type="button"
-              onClick={() => onLoadOlder()}
-              className="flex items-center gap-1.5 text-xs font-medium text-primary bg-primary/5 hover:bg-primary/10 rounded-md px-2.5 py-1.5 transition-colors"
-              title="Por defecto se muestran los últimos 90 días"
-            >
-              <Clock className="h-3.5 w-3.5" />
-              Ver más antiguos
-            </button>
-          )}
-          {includeOld && (
-            <span className="text-[11px] text-muted-foreground flex items-center gap-1">
-              <Clock className="h-3 w-3" /> Mostrando todo el histórico
-            </span>
+          {/* VIB-61 (lazy): período visible. Por defecto el kanban trae los
+              últimos N días (los conteos y las cards). El chip lo deja explícito
+              y el toggle alterna con todo el historial. */}
+          {onIncludeOldChange && (
+            <div className="flex items-center gap-2 pl-1">
+              <span
+                className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground"
+                title={includeOld
+                  ? "Se muestran todos los leads, sin importar la fecha"
+                  : `Se muestran los leads creados en los últimos ${windowDays} días`}
+              >
+                <Clock className="h-3.5 w-3.5" />
+                {includeOld ? "Todo el historial" : `Últimos ${windowDays} días`}
+              </span>
+              <button
+                type="button"
+                onClick={() => onIncludeOldChange(!includeOld)}
+                className="text-xs font-medium text-primary hover:underline"
+              >
+                {includeOld ? `Ver últimos ${windowDays} días` : "Ver todo el historial"}
+              </button>
+            </div>
           )}
         </div>
         {canCreateLists && (

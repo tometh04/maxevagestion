@@ -221,9 +221,9 @@ export function CRMManychatPageClient({
     [columnCounts, fetchColumnPage]
   )
 
-  const handleLoadOlder = useCallback(() => {
-    if (!includeOld) setIncludeOld(true)
-  }, [includeOld])
+  const handleIncludeOldChange = useCallback((next: boolean) => {
+    setIncludeOld(next)
+  }, [])
 
   const handleFiltersChange = useCallback((f: KanbanServerFilters) => {
     setFilterStatus(f.status ?? "ALL")
@@ -477,8 +477,9 @@ export function CRMManychatPageClient({
               operators={operators}
               columnCounts={columnCounts}
               includeOld={includeOld}
+              windowDays={90}
               onLoadMoreColumn={handleLoadMoreColumn}
-              onLoadOlder={handleLoadOlder}
+              onIncludeOldChange={handleIncludeOldChange}
               onFiltersChange={handleFiltersChange}
               onRefresh={handleRefresh}
               onUpdateLead={handleUpdateLead}
