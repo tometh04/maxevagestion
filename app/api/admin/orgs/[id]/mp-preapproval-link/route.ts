@@ -9,11 +9,15 @@ import { PLANS, type PlanId } from "@/lib/billing/plans"
 
 /**
  * POST /api/admin/orgs/[id]/mp-preapproval-link
- * Body: { payer_email: string, include_free_trial?: boolean }
+ * Body: { payer_email: string, include_free_trial?: boolean, free_trial_days?: number }
  *
  * Genera un preapproval PER-ORG (no el preapproval_plan compartido) atado al
  * email real de la cuenta de Mercado Pago del cliente. Devuelve el init_point
  * para mandárselo.
+ *
+ * free_trial_days difiere el primer cobro N días (para clientes ya cubiertos
+ * hasta cierta fecha): tiene prioridad sobre include_free_trial. Ej: cliente
+ * cubierto hasta el 1/08 → free_trial_days = días hasta esa fecha.
  *
  * Por qué existe: el flujo self-serve usa un preapproval_plan COMPARTIDO y
  * anónimo (sin payer_email). El antifraude de MP desconfía más de un débito
@@ -43,11 +47,22 @@ export async function POST(
   const body = await request.json().catch(() => ({}))
   const payerEmail = (body?.payer_email as string | undefined)?.trim() || ""
   const includeFreeTrial = body?.include_free_trial === true
+  // Días hasta el primer cobro (difiere el débito para clientes ya cubiertos).
+  const freeTrialDays =
+    typeof body?.free_trial_days === "number" && body.free_trial_days > 0
+      ? Math.floor(body.free_trial_days)
+      : undefined
 
   // Validación de email (el payer_email restringe QUIÉN puede pagar; formato correcto).
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payerEmail)) {
     return NextResponse.json(
       { error: "payer_email inválido. Pasá el email de la cuenta de Mercado Pago del cliente." },
+      { status: 400 }
+    )
+  }
+  if (freeTrialDays !== undefined && (freeTrialDays < 1 || freeTrialDays > 365)) {
+    return NextResponse.json(
+      { error: "free_trial_days debe estar entre 1 y 365." },
       { status: 400 }
     )
   }
@@ -92,6 +107,7 @@ export async function POST(
       payerEmail,
       backUrl,
       includeFreeTrial, // default false: cobro al aceptar
+      freeTrialDays, // si viene, difiere el primer cobro N días (prioridad sobre includeFreeTrial)
     })
   } catch (err: any) {
     const raw = err?.message || String(err)
@@ -114,6 +130,7 @@ export async function POST(
       payer_email: payerEmail,
       preapproval_id: preapproval.id,
       included_free_trial: includeFreeTrial,
+      free_trial_days: freeTrialDays ?? null,
       generated_by_user_id: user.id,
     },
   })
