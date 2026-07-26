@@ -31,9 +31,20 @@ export async function GET(request: Request) {
     const operationId = searchParams.get("operationId") || undefined
     const agencyId = searchParams.get("agencyId") || undefined
 
-    // SaaS Pilar 2: RLS tenant_isolation en ledger_movements acota por org_id
-    // del JWT. No necesitamos admin client — el server client respeta la
-    // policy y el agency-filter post-query queda como defensa adicional.
+    // VIB-61 (audit): el filtro EXPLÍCITO de agencia y el de SELLER se aplicaban
+    // en memoria DESPUÉS del range(0,199), mientras el count era el total
+    // pre-filtro → al filtrar por una agencia "desaparecían" movimientos y la
+    // paginación mentía. Ahora van en la query:
+    //  - SELLER: .eq("seller_id") (columna directa).
+    //  - Agencia explícita: inner join en operations + .eq("operations.agency_id").
+    //    Esto excluye los movimientos sin operación (asientos manuales / caja
+    //    pura), igual que hacía el filtro en memoria previo.
+    const filterAgency = !!(agencyId && agencyId !== "ALL")
+    // El join a operations es !inner solo cuando filtramos por su agencia, para
+    // que el filtro realmente acote sin excluir movimientos sin operación en el
+    // resto de los casos.
+    const opEmbed = filterAgency ? "operations:operation_id!inner" : "operations:operation_id"
+
     let query = (supabase
       .from("ledger_movements") as any)
       .select(
@@ -42,12 +53,17 @@ export async function GET(request: Request) {
          financial_accounts:account_id (name, type, currency),
          sellers:seller_id (name),
          operators:operator_id (name),
-         operations:operation_id (id, file_code, agency_id, destination, operation_customers(customers:customer_id(first_name, last_name))),
+         ${opEmbed} (id, file_code, agency_id, destination, operation_customers(customers:customer_id(first_name, last_name))),
          users:created_by (name)`,
         { count: "exact" }
       )
       // Cross-tenant fix: scopear ledger_movements por org del user.
       .eq("org_id", (user as any).org_id)
+
+    // SELLER: solo sus movimientos (server-side, para paginación consistente).
+    if (user.role === "SELLER") {
+      query = query.eq("seller_id", user.id)
+    }
 
     // IMPORTANTE: filtros ANTES de order/range para que funcione la paginación
     // dateType:
@@ -81,6 +97,9 @@ export async function GET(request: Request) {
     if (typeParam === "INCOME") query = query.in("type", ["INCOME", "FX_GAIN"])
     else if (typeParam !== "ALL") query = query.not("type", "in", '("INCOME","FX_GAIN")')
 
+    // Filtro explícito de agencia server-side (inner join en operations).
+    if (filterAgency) query = query.eq("operations.agency_id", agencyId)
+
     // Ordenar y paginar DESPUÉS de filtrar
     query = query.order("movement_date", { ascending: false }).range(offset, offset + limit - 1)
 
@@ -91,30 +110,19 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Error al obtener movimientos del ledger" }, { status: 500 })
     }
 
-    // Filtro de acceso por rol (post-filter)
+    // El filtro de SELLER y el de agencia explícita ahora van en la query
+    // (arriba). Acá queda solo la DEFENSA multi-tenant por agencias accesibles:
+    // los movimientos con operation_id deben ser de una agencia del user; los que
+    // no tienen operación (asientos manuales / caja pura) se dejan pasar. Es
+    // defense-in-depth sobre el scope de org; se mantiene en memoria porque el
+    // "pasar los sin-operación" no se expresa limpio en un solo filtro server-side.
     let filteredMovements = movements || []
-    if (user.role === "SELLER") {
-      filteredMovements = filteredMovements.filter((m: any) => m.seller_id === user.id)
-    }
-
-    // Multi-tenant: movements con operation_id deben ser de agencias accesibles por el user.
-    // Movements sin operation_id (journal entries manuales, cash movements puros) se dejan
-    // pasar — su aislamiento efectivo requiere org_id en financial_accounts (pending P0).
-    const userAgencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
-    if (userAgencyIds.length > 0) {
+    if (agencyIds.length > 0) {
       filteredMovements = filteredMovements.filter((m: any) => {
         const opAgencyId = m.operations?.agency_id
         if (!opAgencyId) return true
-        return userAgencyIds.includes(opAgencyId)
+        return agencyIds.includes(opAgencyId)
       })
-    }
-
-    // Filtro de agencia explícito: solo aplica a movimientos con operación
-    // (los asientos manuales y movimientos de caja puros no tienen agencia).
-    if (agencyId && agencyId !== "ALL") {
-      filteredMovements = filteredMovements.filter(
-        (m: any) => m.operations?.agency_id === agencyId
-      )
     }
 
     const total = count ?? 0

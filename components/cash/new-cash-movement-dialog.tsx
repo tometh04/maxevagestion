@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
@@ -139,29 +139,41 @@ export function NewCashMovementDialog({
     form.setValue("currency", defaultCurrency)
   }, [defaultCurrency, form])
 
-  // 2026-05-19: fetch lazy de operations si el caller no las pasa enriquecidas.
-  // Patrón espejo de new-payment-dialog.tsx — limit 500, ordenadas por
-  // created_at desc para que las más recientes aparezcan primero.
+  // Fetch lazy de operations si el caller no las pasa. VIB-61 (audit): cuando el
+  // dialog las trae él mismo, antes usaba limit=500 + filtro client-side, así que
+  // una operación más vieja no se podía encontrar ni buscándola. Ahora la
+  // búsqueda pega al server (/api/operations?search=). Si el caller SÍ pasa las
+  // operaciones, se respeta ese set (filtro client-side abajo).
+  const fetchOps = useCallback(async (search?: string) => {
+    try {
+      const params = new URLSearchParams({ sortBy: "created_at", sortDirection: "desc" })
+      const term = (search || "").trim()
+      if (term.length >= 2) {
+        params.set("search", term)
+        params.set("limit", "50")
+      } else {
+        params.set("limit", "500")
+      }
+      const res = await fetch(`/api/operations?${params.toString()}`)
+      if (res.ok) {
+        const data = await res.json()
+        setFetchedOperations(data.operations || [])
+      }
+    } catch (err) {
+      console.error("Error fetching operations for cash movement dialog:", err)
+    }
+  }, [])
+
   useEffect(() => {
     if (!open) return
     if (operations.length > 0) {
-      // Si el caller las pasó, usar esas (pueden venir con datos enriquecidos)
+      // El caller las pasó: usar esas (pueden venir con datos enriquecidos).
       setFetchedOperations(operations)
       return
     }
-    async function fetchOps() {
-      try {
-        const res = await fetch("/api/operations?limit=500&sortBy=created_at&sortDirection=desc")
-        if (res.ok) {
-          const data = await res.json()
-          setFetchedOperations(data.operations || [])
-        }
-      } catch (err) {
-        console.error("Error fetching operations for cash movement dialog:", err)
-      }
-    }
-    fetchOps()
-  }, [open, operations])
+    const t = setTimeout(() => fetchOps(searchOp), 250)
+    return () => clearTimeout(t)
+  }, [open, operations, searchOp, fetchOps])
 
   // Helpers compartidos con new-payment-dialog (extraer a util si los repetimos en 3+ lugares).
   function getMainCustomerName(op: any): string {
@@ -187,6 +199,10 @@ export function NewCashMovementDialog({
 
   const filteredOps = useMemo(() => {
     const all = fetchedOperations || []
+    // Si las operaciones las trajimos nosotros (caller no las pasó), la búsqueda
+    // ya se resolvió server-side → mostramos lo que vino. Si las pasó el caller,
+    // filtramos client-side sobre ese set.
+    if (operations.length === 0) return all.slice(0, 50)
     if (!searchOp.trim()) return all.slice(0, 50)
     const s = searchOp.toLowerCase()
     return all
@@ -203,7 +219,7 @@ export function NewCashMovementDialog({
         )
       })
       .slice(0, 50)
-  }, [fetchedOperations, searchOp])
+  }, [fetchedOperations, searchOp, operations])
 
   // Cargar cuentas financieras y categorías de gasto cuando se abre el dialog
   useEffect(() => {

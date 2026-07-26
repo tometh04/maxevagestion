@@ -285,6 +285,12 @@ export async function GET(request: Request) {
     // 1. Todos los movimientos (con Y sin operación asociada)
     // 2. Filtro por movement_date nativo (columna que siempre existió en cash_movements),
     //    evitando el bug de ledger_movements.movement_date que en prod puede ser NULL
+    // VIB-61 (audit): el filtro de agencia se aplicaba en memoria DESPUÉS del
+    // range → paginación inconsistente (una página podía venir casi vacía con
+    // total diciendo cientos). Ahora va en la query vía inner join en operations.
+    const filterAgency = !!(agencyId && agencyId !== "ALL")
+    const opEmbed = filterAgency ? "operations:operation_id!inner" : "operations:operation_id"
+
     let query = (supabase.from("cash_movements") as any)
       .select(
         `
@@ -292,7 +298,7 @@ export async function GET(request: Request) {
         reversed_at, reverses_movement_id, reversed_by_movement_id, reversal_reason,
         ledger_movements:ledger_movement_id (affects_balance),
         users:user_id (id, name),
-        operations:operation_id (
+        ${opEmbed} (
           id,
           destination,
           file_code,
@@ -378,6 +384,11 @@ export async function GET(request: Request) {
     if (user.role === "SELLER") {
       query = query.eq("user_id", user.id)
     }
+    // Filtro de agencia server-side (inner join en operations). Excluye los
+    // movimientos sin operación, igual que hacía el filtro en memoria previo.
+    if (filterAgency) {
+      query = query.eq("operations.agency_id", agencyId)
+    }
 
     const { data: rawMovements, error: movError, count } = await query
 
@@ -415,10 +426,7 @@ export async function GET(request: Request) {
       }
     })
 
-    // Filtro de agencia (solo si viene el parámetro)
-    if (agencyId && agencyId !== "ALL") {
-      movements = movements.filter((m: any) => m.operations?.agency_id === agencyId)
-    }
+    // (El filtro de agencia ahora va en la query — ver inner join arriba.)
 
     const total = count ?? movements.length
     const totalPages = total > 0 ? Math.ceil(total / limit) : 0

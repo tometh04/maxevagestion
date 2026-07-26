@@ -1447,6 +1447,13 @@ export async function GET(request: Request) {
       }
     }
 
+    // VIB-61 (audit): el filtro de agencia y la búsqueda por contactName se
+    // aplicaban en memoria DESPUÉS del range → paginación inconsistente y la
+    // búsqueda solo miraba la página cargada (un pago viejo no aparecía ni
+    // buscándolo). Ahora ambos van server-side.
+    const filterAgency = !!(agencyId && agencyId !== "ALL")
+    const opEmbed = filterAgency ? "operations:operation_id!inner" : "operations:operation_id"
+
     // Query base con relación a operations y clientes
     let query = (supabase.from("payments") as any).select(`
       *,
@@ -1455,7 +1462,7 @@ export async function GET(request: Request) {
         name,
         contact_email
       ),
-      operations:operation_id(
+      ${opEmbed}(
         id,
         destination,
         file_code,
@@ -1563,6 +1570,49 @@ export async function GET(request: Request) {
       query = query.eq("currency", currency)
     }
 
+    // Filtro de agencia server-side (inner join en operations). Excluye los
+    // pagos sin operación, igual que hacía el filtro en memoria previo.
+    if (filterAgency) {
+      query = query.eq("operations.agency_id", agencyId)
+    }
+
+    // Búsqueda por contactName server-side: pre-resolvemos las operaciones cuyo
+    // destino o cliente matchean, y matcheamos también contra la referencia del
+    // pago. Corre solo cuando hay término de búsqueda (on-demand, sin peso en el
+    // listado normal).
+    if (contactName && contactName.trim()) {
+      const term = contactName.trim()
+      // Sanitizado para el DSL de .or() (coma/paréntesis/asterisco rompen el parser).
+      const safeTerm = term.replace(/[,()*]/g, " ").trim()
+
+      const { data: opsByDest } = await (supabase.from("operations") as any)
+        .select("id").eq("org_id", user.org_id).ilike("destination", `%${term}%`).limit(5000)
+
+      let opsByCustomer: string[] = []
+      if (safeTerm) {
+        const { data: custs } = await (supabase.from("customers") as any)
+          .select("id").eq("org_id", user.org_id)
+          .or(`first_name.ilike.*${safeTerm}*,last_name.ilike.*${safeTerm}*`).limit(5000)
+        if (custs && custs.length > 0) {
+          const { data: ocs } = await (supabase.from("operation_customers") as any)
+            .select("operation_id").in("customer_id", custs.map((c: any) => c.id))
+          opsByCustomer = (ocs || []).map((o: any) => o.operation_id).filter(Boolean)
+        }
+      }
+
+      const opIds = Array.from(new Set([...(opsByDest || []).map((o: any) => o.id), ...opsByCustomer]))
+      const orParts: string[] = []
+      if (opIds.length > 0) orParts.push(`operation_id.in.(${opIds.join(",")})`)
+      if (safeTerm) orParts.push(`reference.ilike.*${safeTerm}*`)
+      if (orParts.length === 0) {
+        return NextResponse.json({
+          payments: [],
+          pagination: { total: 0, page, limit, totalPages: 0, hasMore: false },
+        })
+      }
+      query = query.or(orParts.join(","))
+    }
+
     // Paginación y ordenamiento
     const { data: payments, error, count } = await query
       .order("date_due", { ascending: false, nullsFirst: false })
@@ -1574,37 +1624,11 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Error al obtener pagos" }, { status: 500 })
     }
 
-    // Filtrar en memoria por agencia y nombre de cliente (nested join fields)
-    let filteredPayments = payments || []
-    if (agencyId && agencyId !== "ALL") {
-      filteredPayments = filteredPayments.filter((p: any) =>
-        p.operations?.agency_id === agencyId
-      )
-    }
-    if (contactName && contactName.trim()) {
-      const search = contactName.trim().toLowerCase()
-      filteredPayments = filteredPayments.filter((p: any) => {
-        // Buscar en destino de la operación
-        if (p.operations?.destination?.toLowerCase().includes(search)) return true
-        // Buscar en nombre de clientes vinculados a la operación
-        const customers = p.operations?.operation_customers || []
-        for (const oc of customers) {
-          const c = oc.customers
-          if (c) {
-            const fullName = `${c.first_name || ""} ${c.last_name || ""}`.toLowerCase()
-            if (fullName.includes(search)) return true
-          }
-        }
-        // Buscar en referencia del pago
-        if (p.reference?.toLowerCase().includes(search)) return true
-        return false
-      })
-    }
-
+    // (Los filtros de agencia y contactName ahora van en la query — arriba.)
     const totalPages = count ? Math.ceil(count / limit) : 0
 
     return NextResponse.json({
-      payments: filteredPayments,
+      payments: payments || [],
       pagination: {
         total: count || 0,
         page,

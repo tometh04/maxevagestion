@@ -28,6 +28,12 @@ export async function GET(request: Request) {
     const dateTo = searchParams.get("dateTo")
     const agencyId = searchParams.get("agencyId")
 
+    // VIB-61 (audit): antes el export capaba a 1000 filas y se presentaba como el
+    // reporte completo. Subimos el tope (mismo criterio que ledger/export) y
+    // marcamos el archivo como PARCIAL si se alcanza, en vez de mentir que está
+    // completo. 10k es un export on-demand acotado, no afecta el uso normal.
+    const EXPORT_CAP = 10000
+
     // Obtener agencias del usuario
     const { data: userAgencies } = await supabase
       .from("user_agencies")
@@ -60,7 +66,7 @@ export async function GET(request: Request) {
           query = query.in("agency_id", agencyIds)
         }
 
-        const { data: ops } = await query.limit(1000)
+        const { data: ops } = await query.limit(EXPORT_CAP)
 
         // Servicios adicionales (operation_services): si la flag está ON, sumamos
         // su venta a sale_amount_total para que la venta_total exportada refleje
@@ -122,7 +128,7 @@ export async function GET(request: Request) {
           query = query.in("agency_id", agencyIds)
         }
 
-        const { data: customers } = await query.limit(1000)
+        const { data: customers } = await query.limit(EXPORT_CAP)
         data = (customers || []).map((c: any) => ({
           nombre: c.first_name || "",
           apellido: c.last_name || "",
@@ -208,14 +214,14 @@ export async function GET(request: Request) {
               .order("date_due", { ascending: false })
             if (dateFrom) chunkQuery = chunkQuery.gte("date_due", dateFrom)
             if (dateTo) chunkQuery = chunkQuery.lte("date_due", dateTo)
-            const { data: chunkPayments } = await chunkQuery.limit(1000)
+            const { data: chunkPayments } = await chunkQuery.limit(EXPORT_CAP)
             if (chunkPayments) allPayments.push(...chunkPayments)
           }
           // reports.ownDataOnly por agencia → restringir a sus propias operaciones
           const filteredByRole = isOwnDataOnlyResolved(user, "reports", matrix ?? undefined)
             ? allPayments.filter((p: any) => p.seller_id === user.id || p.operations?.seller_id === user.id)
             : allPayments
-          data = filteredByRole.slice(0, 1000).map((p: any) => ({
+          data = filteredByRole.slice(0, EXPORT_CAP).map((p: any) => ({
             fecha_vencimiento: p.date_due ? format(parseDateOnlyLocal(p.date_due) ?? new Date(p.date_due), "dd/MM/yyyy") : "",
             fecha_pago: p.date_paid ? format(parseDateOnlyLocal(p.date_paid) ?? new Date(p.date_paid), "dd/MM/yyyy") : "",
             monto: p.amount || 0,
@@ -242,7 +248,7 @@ export async function GET(request: Request) {
           break
         }
 
-        const { data: payments } = await query.limit(1000)
+        const { data: payments } = await query.limit(EXPORT_CAP)
         data = (payments || []).map((p: any) => ({
           fecha_vencimiento: p.date_due ? format(parseDateOnlyLocal(p.date_due) ?? new Date(p.date_due), "dd/MM/yyyy") : "",
           fecha_pago: p.date_paid ? format(parseDateOnlyLocal(p.date_paid) ?? new Date(p.date_paid), "dd/MM/yyyy") : "",
@@ -275,6 +281,11 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: "Tipo de reporte no soportado" }, { status: 400 })
     }
 
+    // Si se alcanzó el tope, el export es PARCIAL: lo marcamos en el nombre del
+    // archivo para no dar la falsa impresión de que trae todo.
+    const truncated = data.length >= EXPORT_CAP
+    const partialTag = truncated ? "-PARCIAL" : ""
+
     // Generar según formato
     switch (exportFormat) {
       case "csv": {
@@ -282,13 +293,13 @@ export async function GET(request: Request) {
         return new NextResponse(csvContent, {
           headers: {
             "Content-Type": "text/csv; charset=utf-8",
-            "Content-Disposition": `attachment; filename="${reportType}-${format(new Date(), "yyyy-MM-dd")}.csv"`,
+            "Content-Disposition": `attachment; filename="${reportType}${partialTag}-${format(new Date(), "yyyy-MM-dd")}.csv"`,
           },
         })
       }
 
       case "json": {
-        return NextResponse.json({ data, columns })
+        return NextResponse.json({ data, columns, truncated })
       }
 
       default:

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 // Fix UTC shift en fechas DATE (VICO 2026-05-22)
 import { parseDateOnlyLocal, formatDateOnlyLocal } from "@/lib/utils/date-only"
 import { useForm } from "react-hook-form"
@@ -185,7 +185,35 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
     }
   }, [watchDirection, form])
 
-  // Cargar operaciones
+  // Cargar operaciones. VIB-61 (audit): antes se traían 500 y se filtraba
+  // client-side, así que una operación más vieja que las 500 recientes no se
+  // podía encontrar ni buscándola. Ahora la búsqueda pega al server
+  // (/api/operations?search=), que ya busca por código/destino/cliente/aerolínea.
+  const fetchOperations = useCallback(async (search?: string) => {
+    setLoadingOps(true)
+    try {
+      const params = new URLSearchParams({ sortBy: "created_at", sortDirection: "desc" })
+      const term = (search || "").trim()
+      if (term.length >= 2) {
+        params.set("search", term)
+        params.set("limit", "50")
+      } else {
+        params.set("limit", "500") // sin búsqueda: lista reciente amplia
+      }
+      const response = await fetch(`/api/operations?${params.toString()}`)
+      if (response.ok) {
+        const data = await response.json()
+        setOperations(data.operations || [])
+      }
+    } catch (error) {
+      console.error("Error fetching operations:", error)
+      toast.error("Error al cargar operaciones")
+    } finally {
+      setLoadingOps(false)
+    }
+  }, [])
+
+  // Reset al cerrar
   useEffect(() => {
     if (!open) {
       form.reset()
@@ -195,25 +223,15 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
       setSearchOp("")
       setApplyRg5617(false)
       setApplyRg3819(false)
-      return
     }
-    async function fetchOperations() {
-      setLoadingOps(true)
-      try {
-        const response = await fetch("/api/operations?limit=500&sortBy=created_at&sortDirection=desc")
-        if (response.ok) {
-          const data = await response.json()
-          setOperations(data.operations || [])
-        }
-      } catch (error) {
-        console.error("Error fetching operations:", error)
-        toast.error("Error al cargar operaciones")
-      } finally {
-        setLoadingOps(false)
-      }
-    }
-    fetchOperations()
   }, [open, form])
+
+  // Fetch (debounced) al abrir y cuando cambia la búsqueda.
+  useEffect(() => {
+    if (!open) return
+    const t = setTimeout(() => fetchOperations(searchOp), 250)
+    return () => clearTimeout(t)
+  }, [open, searchOp, fetchOperations])
 
   // Cargar cuentas financieras (filtradas por moneda)
   useEffect(() => {
@@ -256,40 +274,10 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
     return op.leads?.contact_name || ""
   }
 
-  function getAllCustomerNames(op: any): string {
-    const ocs = (op.operation_customers ?? []) as any[]
-    return ocs
-      .map((oc) => {
-        const c = oc.customers
-        if (!c) return ""
-        return `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim()
-      })
-      .filter(Boolean)
-      .join(" ")
-  }
-
-  // Filtrar operaciones por búsqueda.
-  // 2026-05-19: ahora busca también por nombre/apellido de TODOS los pasajeros
-  // de la operación y por contact_name del lead. Andres reportó que era
-  // "complicado" filtrar solo por código/destino.
-  const filteredOperations = useMemo(() => {
-    if (!searchOp.trim()) return operations.slice(0, 50)
-    const s = searchOp.toLowerCase()
-    return operations
-      .filter((op) => {
-        const code = (op.file_code || "").toLowerCase()
-        const dest = (op.destination || "").toLowerCase()
-        const customers = getAllCustomerNames(op).toLowerCase()
-        const leadName = (op.leads?.contact_name || "").toLowerCase()
-        return (
-          code.includes(s) ||
-          dest.includes(s) ||
-          customers.includes(s) ||
-          leadName.includes(s)
-        )
-      })
-      .slice(0, 50)
-  }, [operations, searchOp])
+  // La búsqueda ya se resuelve server-side (/api/operations?search=), que matchea
+  // por código, destino, cliente, aerolínea y hotel. Acá solo mostramos lo que
+  // devolvió el server (evita refiltrar y descartar matches por aerolínea/hotel).
+  const filteredOperations = useMemo(() => operations.slice(0, 50), [operations])
 
   // Cuando se selecciona operación, auto-setear la moneda
   useEffect(() => {
