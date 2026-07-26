@@ -1,8 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
+import { Loader2 } from "lucide-react"
 import {
   Select,
   SelectContent,
@@ -30,7 +31,6 @@ type CategoryForFilter = {
 type Props = {
   categories: CategoryForFilter[]
   funnels: Funnel[]
-  leads: LeadAdvancedFull[]
   orgId: string
   agencies: Array<{ id: string; name: string }>
   sellers: Array<{ id: string; name: string }>
@@ -47,11 +47,11 @@ type Props = {
 
 const ALL_SELLERS = "__all__"
 const UNASSIGNED = "__unassigned__"
+const PAGE_SIZE = 40
 
 export function AdvancedKanbanClient({
   categories,
   funnels,
-  leads: initialLeads,
   orgId,
   agencies,
   sellers,
@@ -59,36 +59,94 @@ export function AdvancedKanbanClient({
   canFilterBySeller = false,
 }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  // Filtro de vendedor (solo para admin). Por default "todos".
   const [sellerFilter, setSellerFilter] = useState<string>(ALL_SELLERS)
-  // Estado local para drag-and-drop optimista — cuando el user dropea, mutamos
-  // local PRIMERO y después confirmamos con PATCH. Si falla, rollback.
-  const [leads, setLeads] = useState(initialLeads)
+
+  // VIB-61 (audit): lazy por columna. Antes se traían .limit(500) leads y el
+  // header/badges contaban sobre eso → con 2.400+ leads en 7 funnels los números
+  // mentían y los leads viejos desaparecían. Ahora los conteos son exactos
+  // (server) y las cards se cargan por funnel con "cargar más".
+  const [funnelCounts, setFunnelCounts] = useState<Record<string, number>>({})
+  const [total, setTotal] = useState(0)
+  const [columnLeads, setColumnLeads] = useState<Record<string, LeadAdvancedFull[]>>({})
+  const [loading, setLoading] = useState(true)
+  const [loadingFunnel, setLoadingFunnel] = useState<string | null>(null)
+  const pageByFunnelRef = useRef<Record<string, number>>({})
+
   const [draggedLeadId, setDraggedLeadId] = useState<string | null>(null)
   const [dragOverFunnel, setDragOverFunnel] = useState<string | null>(null)
 
-  // Filtro combinado: tags + vendedor.
-  const filteredLeads = leads.filter((lead) => {
-    // Tag filter (AND entre tags seleccionados)
-    if (selected.size > 0) {
-      const leadTagIds = lead.tag_assignments
-        .map((ta) => ta.tag?.id)
-        .filter((id): id is string => id !== undefined)
-      const tagOk = Array.from(selected).every((tagId) =>
-        leadTagIds.includes(tagId)
-      )
-      if (!tagOk) return false
+  const buildParams = useCallback(
+    (extra: Record<string, string>) => {
+      const p = new URLSearchParams()
+      if (canFilterBySeller && sellerFilter !== ALL_SELLERS) p.set("sellerId", sellerFilter)
+      if (selected.size > 0) p.set("tags", Array.from(selected).join(","))
+      for (const [k, v] of Object.entries(extra)) p.set(k, v)
+      return p.toString()
+    },
+    [canFilterBySeller, sellerFilter, selected]
+  )
+
+  const fetchColumn = useCallback(
+    async (funnelId: string, page: number): Promise<{ leads: LeadAdvancedFull[]; hasMore: boolean }> => {
+      const qs = buildParams({ mode: "column", funnelId, page: String(page), limit: String(PAGE_SIZE) })
+      const res = await fetch(`/api/leads/advanced-kanban?${qs}`, { cache: "no-store" })
+      if (!res.ok) return { leads: [], hasMore: false }
+      const data = await res.json()
+      return { leads: (data.leads || []) as LeadAdvancedFull[], hasMore: !!data.hasMore }
+    },
+    [buildParams]
+  )
+
+  const reload = useCallback(async () => {
+    setLoading(true)
+    try {
+      const countsRes = await fetch(`/api/leads/advanced-kanban?${buildParams({ mode: "counts" })}`, { cache: "no-store" })
+      const countsData = countsRes.ok ? await countsRes.json() : { funnelCounts: {}, total: 0 }
+      setFunnelCounts(countsData.funnelCounts || {})
+      setTotal(countsData.total || 0)
+
+      pageByFunnelRef.current = {}
+      const withLeads = funnels.filter((f) => (countsData.funnelCounts?.[f.id] || 0) > 0)
+      const pages = await Promise.all(withLeads.map((f) => fetchColumn(f.id, 1)))
+      const store: Record<string, LeadAdvancedFull[]> = {}
+      withLeads.forEach((f, i) => {
+        pageByFunnelRef.current[f.id] = 1
+        store[f.id] = pages[i].leads
+      })
+      setColumnLeads(store)
+    } catch (err) {
+      console.error("[advanced-kanban] error cargando:", err)
+    } finally {
+      setLoading(false)
     }
-    // Seller filter (solo si el admin lo activó)
-    if (canFilterBySeller && sellerFilter !== ALL_SELLERS) {
-      if (sellerFilter === UNASSIGNED) {
-        if (lead.assigned_seller_id) return false
-      } else {
-        if (lead.assigned_seller_id !== sellerFilter) return false
+  }, [buildParams, fetchColumn, funnels])
+
+  // Recargar al montar y cuando cambian los filtros (tags / vendedor).
+  useEffect(() => {
+    reload()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sellerFilter, selected])
+
+  const loadMore = useCallback(
+    async (funnelId: string) => {
+      setLoadingFunnel(funnelId)
+      try {
+        const next = (pageByFunnelRef.current[funnelId] || 1) + 1
+        const { leads: more } = await fetchColumn(funnelId, next)
+        if (more.length > 0) {
+          pageByFunnelRef.current[funnelId] = next
+          setColumnLeads((prev) => {
+            const existing = prev[funnelId] || []
+            const seen = new Set(existing.map((l) => l.id))
+            return { ...prev, [funnelId]: [...existing, ...more.filter((l) => !seen.has(l.id))] }
+          })
+        }
+      } finally {
+        setLoadingFunnel(null)
       }
-    }
-    return true
-  })
+    },
+    [fetchColumn]
+  )
 
   async function handleDrop(funnelId: string) {
     const leadId = draggedLeadId
@@ -96,14 +154,26 @@ export function AdvancedKanbanClient({
     setDraggedLeadId(null)
     if (!leadId) return
 
-    const lead = leads.find((l) => l.id === leadId)
-    if (!lead || lead.funnel_id === funnelId) return
+    // Encontrar el lead y su funnel de origen dentro del store.
+    let fromFunnel: string | null = null
+    let moved: LeadAdvancedFull | null = null
+    for (const [fid, list] of Object.entries(columnLeads)) {
+      const found = list.find((l) => l.id === leadId)
+      if (found) { fromFunnel = fid; moved = found; break }
+    }
+    if (!moved || !fromFunnel || fromFunnel === funnelId) return
 
-    const prevFunnelId = lead.funnel_id
-    // Optimistic update
-    setLeads((prev) =>
-      prev.map((l) => (l.id === leadId ? { ...l, funnel_id: funnelId } : l))
-    )
+    // Optimistic: mover la card entre columnas y ajustar conteos.
+    setColumnLeads((prev) => {
+      const src = (prev[fromFunnel!] || []).filter((l) => l.id !== leadId)
+      const dst = [{ ...moved!, funnel_id: funnelId }, ...(prev[funnelId] || [])]
+      return { ...prev, [fromFunnel!]: src, [funnelId]: dst }
+    })
+    setFunnelCounts((c) => ({
+      ...c,
+      [fromFunnel!]: Math.max(0, (c[fromFunnel!] || 0) - 1),
+      [funnelId]: (c[funnelId] || 0) + 1,
+    }))
 
     try {
       const res = await fetch(`/api/leads/${leadId}`, {
@@ -114,12 +184,17 @@ export function AdvancedKanbanClient({
       if (!res.ok) throw new Error(`PATCH failed: ${res.status}`)
     } catch (err) {
       console.error("[advanced-kanban] error moving lead:", err)
-      // Rollback
-      setLeads((prev) =>
-        prev.map((l) =>
-          l.id === leadId ? { ...l, funnel_id: prevFunnelId } : l
-        )
-      )
+      // Rollback (card + conteos).
+      setColumnLeads((prev) => {
+        const dst = (prev[funnelId] || []).filter((l) => l.id !== leadId)
+        const src = [{ ...moved!, funnel_id: fromFunnel! }, ...(prev[fromFunnel!] || [])]
+        return { ...prev, [funnelId]: dst, [fromFunnel!]: src }
+      })
+      setFunnelCounts((c) => ({
+        ...c,
+        [funnelId]: Math.max(0, (c[funnelId] || 0) - 1),
+        [fromFunnel!]: (c[fromFunnel!] || 0) + 1,
+      }))
     }
   }
 
@@ -129,7 +204,7 @@ export function AdvancedKanbanClient({
       <div className="mb-4">
         <h1 className="text-2xl font-semibold tracking-tight">CRM Vibook</h1>
         <p className="text-muted-foreground text-sm mt-1">
-          {leads.length} leads activos · {funnels.length} etapas
+          {total} leads activos · {funnels.length} etapas
         </p>
       </div>
 
@@ -157,7 +232,7 @@ export function AdvancedKanbanClient({
             </Select>
             {sellerFilter !== ALL_SELLERS && (
               <Badge variant="secondary" className="text-xs">
-                {filteredLeads.length} leads
+                {total} leads
               </Badge>
             )}
           </div>
@@ -167,7 +242,8 @@ export function AdvancedKanbanClient({
       {/* Kanban columns */}
       <div className="flex gap-4 overflow-x-auto pb-4 flex-1 items-start">
         {funnels.map((funnel) => {
-          const funnelLeads = filteredLeads.filter((l) => l.funnel_id === funnel.id)
+          const funnelLeads = columnLeads[funnel.id] || []
+          const count = funnelCounts[funnel.id] || 0
           const isDragOver = dragOverFunnel === funnel.id
 
           return (
@@ -181,7 +257,6 @@ export function AdvancedKanbanClient({
                 setDragOverFunnel(funnel.id)
               }}
               onDragLeave={(e) => {
-                // Solo limpiar si realmente salimos de la columna (no de un child)
                 if (!e.currentTarget.contains(e.relatedTarget as Node)) {
                   setDragOverFunnel((prev) => (prev === funnel.id ? null : prev))
                 }
@@ -197,33 +272,53 @@ export function AdvancedKanbanClient({
                   {funnel.name}
                 </span>
                 <Badge variant="secondary" className="text-xs ml-2 flex-shrink-0">
-                  {funnelLeads.length}
+                  {count}
                 </Badge>
               </div>
 
               {/* Lead cards */}
               <div className="flex flex-col min-h-[80px] px-1">
-                {funnelLeads.length === 0 ? (
+                {loading && funnelLeads.length === 0 ? (
+                  <Card className="p-3 border-dashed opacity-50 flex items-center justify-center">
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  </Card>
+                ) : funnelLeads.length === 0 ? (
                   <Card className="p-3 border-dashed opacity-50">
                     <p className="text-xs text-muted-foreground text-center">Sin leads</p>
                   </Card>
                 ) : (
-                  funnelLeads.map((lead) => (
-                    <LeadCardAdvanced
-                      key={lead.id}
-                      lead={lead}
-                      orgId={orgId}
-                      agencies={agencies}
-                      sellers={sellers}
-                      operators={operators}
-                      onDragStart={() => setDraggedLeadId(lead.id)}
-                      onDragEnd={() => {
-                        setDraggedLeadId(null)
-                        setDragOverFunnel(null)
-                      }}
-                      isDragging={draggedLeadId === lead.id}
-                    />
-                  ))
+                  <>
+                    {funnelLeads.map((lead) => (
+                      <LeadCardAdvanced
+                        key={lead.id}
+                        lead={lead}
+                        orgId={orgId}
+                        agencies={agencies}
+                        sellers={sellers}
+                        operators={operators}
+                        onDragStart={() => setDraggedLeadId(lead.id)}
+                        onDragEnd={() => {
+                          setDraggedLeadId(null)
+                          setDragOverFunnel(null)
+                        }}
+                        isDragging={draggedLeadId === lead.id}
+                      />
+                    ))}
+                    {count > funnelLeads.length && (
+                      <button
+                        type="button"
+                        onClick={() => loadMore(funnel.id)}
+                        disabled={loadingFunnel === funnel.id}
+                        className="mt-1 w-full py-2 rounded-lg text-xs font-medium text-primary bg-primary/5 hover:bg-primary/10 transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5"
+                      >
+                        {loadingFunnel === funnel.id ? (
+                          <><Loader2 className="h-3 w-3 animate-spin" /> Cargando…</>
+                        ) : (
+                          <>Cargar más ({count - funnelLeads.length})</>
+                        )}
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             </div>
