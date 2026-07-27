@@ -34,6 +34,7 @@ export const getCurrentUser = cache(async (): Promise<{ user: User; session: { u
       name: 'Usuario Desarrollo',
       email: 'mypupybox@gmail.com',
       role: 'SUPER_ADMIN',
+      additional_roles: [],
       is_active: true,
       can_view_agency_operations_support: false,
       can_add_services_on_agency_operations: false,

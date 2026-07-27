@@ -13,6 +13,7 @@
     "test:coverage": "jest --coverage",
     "test:isolation": "jest __tests__/isolation --runInBand",
     "db:generate": "supabase gen types typescript --local > lib/supabase/types.ts",
+    "db:generate:remote": "supabase gen types typescript --project-id pmqvplyyxiobkllapgjp > lib/supabase/types.ts",
     "db:seed": "tsx scripts/seed.ts",
     "db:seed:mock": "tsx scripts/seed-mock-data.ts",
     "db:check": "tsx scripts/verify-tables.ts",
