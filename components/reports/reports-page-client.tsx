@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { BarChart3, TrendingUp, Wallet, Download, Percent, HelpCircle, Calendar, FileSearch, CalendarRange, Receipt, Coins, PackageSearch } from "lucide-react"
+import { BarChart3, TrendingUp, Wallet, Download, Percent, HelpCircle, Calendar, FileSearch, CalendarRange, Receipt, Coins, PackageSearch, CalendarClock } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -19,6 +19,7 @@ import { ClosingReport } from "./closing-report"
 import { ExpensesReport } from "./expenses-report"
 import { CommissionsReport } from "./commissions-report"
 import { SalesBreakdownReport } from "./sales-breakdown-report"
+import { CashflowProjectionReport } from "./cashflow-projection-report"
 import {
   Breadcrumb,
   BreadcrumbList,
@@ -103,6 +104,12 @@ export function ReportsPageClient({ userRole, userId, sellers, agencies }: Repor
             </TabsTrigger>
           )}
           {canSeeExpenses && (
+            <TabsTrigger value="cashflow-projection" className="flex items-center gap-2">
+              <CalendarClock className="h-4 w-4" />
+              Caja proyectada
+            </TabsTrigger>
+          )}
+          {canSeeExpenses && (
             <TabsTrigger value="expenses" className="flex items-center gap-2">
               <Receipt className="h-4 w-4" />
               Gastos
@@ -156,6 +163,12 @@ export function ReportsPageClient({ userRole, userId, sellers, agencies }: Repor
         {canSeeCashFlow && (
           <TabsContent value="cashflow" className="mt-6">
             <CashFlowReport agencies={agencies} />
+          </TabsContent>
+        )}
+
+        {canSeeExpenses && (
+          <TabsContent value="cashflow-projection" className="mt-6">
+            <CashflowProjectionReport agencies={agencies} />
           </TabsContent>
         )}
 
