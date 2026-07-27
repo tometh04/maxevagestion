@@ -1,6 +1,8 @@
 /**
  * Cliente mínimo de Linear (GraphQL) para rutear tickets de soporte al backlog
- * de desarrollo. Solo se usa para bugs/mejoras — las consultas no llegan acá.
+ * de desarrollo. TODOS los tickets llegan acá, incluidas las consultas
+ * (category === 'question'): estas se etiquetan con el label "Consulta" para
+ * poder revisarlas/filtrarlas desde Linear.
  *
  * TODO el módulo es best-effort: si faltan LINEAR_API_KEY / LINEAR_TEAM_ID, o si
  * la API falla, devuelve null sin lanzar. El ticket igual se guarda en la DB; el
@@ -170,8 +172,17 @@ export async function createLinearIssue(input: {
   const clientLabelName = process.env.LINEAR_CLIENT_LABEL || "Cliente"
   const clientLabelId = await getOrCreateLabelIdByName(config.apiKey, config.teamId, clientLabelName)
 
+  // Las consultas se etiquetan con un label propio (auto-creado por nombre, sin
+  // depender de env) para que el equipo pueda filtrarlas/revisarlas en Linear.
+  let questionLabelId: string | null = null
+  if (input.category === "question") {
+    const questionLabelName = process.env.LINEAR_QUESTION_LABEL || "Consulta"
+    questionLabelId = await getOrCreateLabelIdByName(config.apiKey, config.teamId, questionLabelName)
+  }
+
   const labelIds = [
     ...(clientLabelId ? [clientLabelId] : []),
+    ...(questionLabelId ? [questionLabelId] : []),
     ...resolveLabelIds({ category: input.category, severity: input.severity }),
   ]
 

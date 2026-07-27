@@ -95,9 +95,11 @@ export async function POST(req: NextRequest) {
     userType,
   })
 
-  // Bugs y mejoras → issue en Linear ANTES del insert, para poder guardar el
+  // TODOS los tickets → issue en Linear ANTES del insert, para poder guardar el
   // linear_issue_id en el mismo INSERT (el UPDATE posterior pasaba por la policy
   // RLS org_id IN user_org_ids() y matcheaba 0 filas → el id nunca se persistía).
+  // Incluye las consultas (category === 'question'): createLinearIssue las
+  // etiqueta como "Consulta" para poder revisarlas/filtrarlas desde Linear.
   // Best-effort: nunca rompe la creación del ticket (patrón notifyApprovers).
   let linearFields: {
     linear_issue_id?: string
@@ -105,7 +107,7 @@ export async function POST(req: NextRequest) {
     linear_identifier?: string
   } = {}
 
-  if (classification.category === 'bug' || classification.category === 'improvement') {
+  {
     try {
       let orgName: string | null = null
       if (appUser.org_id) {
