@@ -203,7 +203,16 @@ export function OperationDetailClient({
   // Gestionar pagos de servicios = cash.write (matrix por agencia). El servidor
   // (/api/payments) valida el mismo permiso.
   const canManageServicePayments = !isSupportMode && canWriteCashForServices
+  const canReadCash = useCan("cash", "read")
   const canViewFinancialTabs = !isSupportMode && userRole !== "SELLER"
+  // El tab "Pagos Operación" (cobros al pasajero / pagos a operador) NO es
+  // finanzas-admin: se muestra a quien pueda operar caja según el matrix por
+  // agencia — incluidos vendedores con `cash` habilitado, que son los que
+  // registran los cobros. Contabilidad y Métricas siguen atadas a
+  // canViewFinancialTabs. El botón "Registrar Pago" y el server (/api/payments)
+  // igual validan cash.write, así que esto solo destapa el acceso legítimo.
+  const canViewOperationPayments =
+    canViewFinancialTabs || (!isSupportMode && (canReadCash || canWriteCashForServices))
   const canManageAlerts = !isSupportMode && userRole !== "VIEWER"
   const operatorNameMap = useMemo(
     () => new Map(operators.map((operator) => [operator.id, operator.name])),
@@ -373,7 +382,7 @@ export function OperationDetailClient({
             <FileText className="h-3.5 w-3.5" />
             Documentos ({documents?.length || 0})
           </TabsTrigger>
-          {canViewFinancialTabs && (
+          {canViewOperationPayments && (
             <TabsTrigger value="payments" className="gap-1.5">
               <CreditCard className="h-3.5 w-3.5" />
               Pagos Operación ({operationBasePayments.length})
