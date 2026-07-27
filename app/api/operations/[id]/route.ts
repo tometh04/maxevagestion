@@ -215,6 +215,24 @@ export async function PATCH(
       return NextResponse.json({ error: "No autorizado" }, { status: 403 })
     }
 
+    // v1 (2026-07-27): un SELLER no puede REASIGNAR el vendedor de una operación
+    // existente. El permiso can_create_operations_for_other_sellers habilita
+    // sólo el ALTA a nombre de otro (ver POST /api/operations); reasignar por
+    // edición queda fuera de alcance y se bloquea para no saltear ese límite.
+    if (userRole === "SELLER") {
+      const changesPrimary =
+        body.seller_id !== undefined && body.seller_id !== currentOp.seller_id
+      const changesSecondary =
+        body.seller_secondary_id !== undefined &&
+        (body.seller_secondary_id ?? null) !== (currentOp.seller_secondary_id ?? null)
+      if (changesPrimary || changesSecondary) {
+        return NextResponse.json(
+          { error: "No puedes reasignar el vendedor de una operación existente" },
+          { status: 403 }
+        )
+      }
+    }
+
     // Validaciones de fechas
     const today = new Date()
     today.setHours(0, 0, 0, 0)

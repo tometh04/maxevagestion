@@ -37,11 +37,15 @@ interface CustomStatus {
 
 interface OperationsPageClientProps {
   sellers: Array<{ id: string; name: string }>
+  /** Vendedores asignables al crear (acotados por permiso/agencia). Cae a `sellers` si no se pasa. */
+  creatableSellers?: Array<{ id: string; name: string }>
   agencies: Array<{ id: string; name: string }>
   operators: Array<{ id: string; name: string }>
   userRole: string
   userId: string
   canViewAgencyOperationsSupport: boolean
+  /** Si el usuario puede elegir a otro vendedor en el alta (default true para roles no-SELLER). */
+  canPickOtherSeller?: boolean
   userAgencyIds: string[]
   defaultAgencyId?: string
   defaultSellerId?: string
@@ -49,11 +53,13 @@ interface OperationsPageClientProps {
 
 export function OperationsPageClient({
   sellers,
+  creatableSellers,
   agencies,
   operators,
   userRole,
   userId,
   canViewAgencyOperationsSupport,
+  canPickOtherSeller = true,
   userAgencyIds,
   defaultAgencyId,
   defaultSellerId,
@@ -224,10 +230,11 @@ export function OperationsPageClient({
         onOpenChange={setNewOperationDialogOpen}
         onSuccess={handleRefresh}
         agencies={agencies}
-        sellers={sellers}
+        sellers={creatableSellers ?? sellers}
         operators={operators}
         defaultAgencyId={defaultAgencyId}
         defaultSellerId={defaultSellerId}
+        canPickOtherSeller={canPickOtherSeller}
         userRole={userRole}
       />
     </div>

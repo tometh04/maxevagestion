@@ -59,21 +59,54 @@ export default async function OperationsPage() {
     id: ua.agency_id,
     name: ua.agencies?.name || "Sin nombre",
   }))
+  const agencyIds = agencies.map((a) => a.id)
 
-  t.end(`agencies=${agencies.length} sellers=${sellers?.length ?? 0} operators=${operators?.length ?? 0}`)
+  // Un SELLER sólo puede cargar a nombre de otro vendedor si tiene el permiso
+  // `can_create_operations_for_other_sellers`, y sólo hacia vendedores de sus
+  // mismas agencias. El backend es la fuente de verdad (POST /api/operations);
+  // acá acotamos la lista y el estado del selector por UX.
+  const isSeller = user.role === "SELLER"
+  const canPickOtherSeller = isSeller
+    ? Boolean(user.can_create_operations_for_other_sellers)
+    : true
+
+  // `sellers` se mantiene completo: también alimenta el dropdown de filtros y la
+  // tabla. `creatableSellers` es exclusivo del diálogo de alta y sí se acota.
+  const sellerOptions = (sellers || []).map((s: any) => ({ id: s.id, name: s.name }))
+  let creatableSellers = sellerOptions
+  if (isSeller) {
+    if (canPickOtherSeller && agencyIds.length > 0) {
+      // Acotar a los vendedores que comparten agencia con el usuario.
+      const { data: agencyMembers } = await supabase
+        .from("user_agencies")
+        .select("user_id")
+        .in("agency_id", agencyIds)
+      const memberIds = new Set((agencyMembers || []).map((m: any) => m.user_id as string))
+      creatableSellers = sellerOptions.filter((s) => memberIds.has(s.id) || s.id === user.id)
+    } else {
+      // Sin permiso: sólo puede asignarse a sí mismo.
+      creatableSellers = sellerOptions.filter((s) => s.id === user.id)
+    }
+  }
+
+  t.end(`agencies=${agencies.length} sellers=${sellerOptions.length} operators=${operators?.length ?? 0}`)
 
   return (
     <OperationsPageClient
-      sellers={(sellers || []).map((s: any) => ({ id: s.id, name: s.name }))}
+      sellers={sellerOptions}
+      creatableSellers={creatableSellers}
       agencies={agencies}
       operators={(operators || []).map((o: any) => ({ id: o.id, name: o.name }))}
       userRole={user.role}
       userId={user.id}
       canViewAgencyOperationsSupport={Boolean(user.can_view_agency_operations_support)}
-      userAgencyIds={agencies.map((a) => a.id)}
+      canPickOtherSeller={canPickOtherSeller}
+      userAgencyIds={agencyIds}
       defaultAgencyId={agencies[0]?.id}
       defaultSellerId={
-        user.role === "SELLER" && !user.can_view_agency_operations_support
+        // Preseleccionar (y bloquear) al propio vendedor cuando no puede elegir
+        // otro, o cuando es un SELLER común sin vista de postventa.
+        isSeller && (!canPickOtherSeller || !user.can_view_agency_operations_support)
           ? user.id
           : undefined
       }

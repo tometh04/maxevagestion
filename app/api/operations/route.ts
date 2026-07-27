@@ -5,7 +5,7 @@ import { generateFileCode } from "@/lib/accounting/file-code"
 import { transferLeadToOperation, getOrCreateDefaultAccount, createLedgerMovement, calculateARSEquivalent } from "@/lib/accounting/ledger"
 import { createSaleIVA, createPurchaseIVA } from "@/lib/accounting/iva"
 import { createOperatorPayment, calculateDueDate, sanitizeDueDate } from "@/lib/accounting/operator-payments"
-import { canPerformAction, getUserAgencyIds } from "@/lib/permissions-api"
+import { canPerformAction, getUserAgencyIds, canCreateOperationsForOtherSellers, isSellerWithinUserAgencies } from "@/lib/permissions-api"
 import { resolveUserPermissions } from "@/lib/permissions-agency"
 import { revalidateTag, CACHE_TAGS } from "@/lib/cache"
 import { generateMessagesFromAlerts } from "@/lib/whatsapp/alert-messages"
@@ -266,8 +266,28 @@ export async function POST(request: Request) {
     }
 
     // Check permissions
-    if (user.role === "SELLER" && seller_id !== user.id) {
-      return NextResponse.json({ error: "No puedes crear operaciones para otros vendedores" }, { status: 403 })
+    // Un SELLER sólo puede cargar a nombre de OTRO vendedor si el admin le
+    // habilitó el permiso `can_create_operations_for_other_sellers`, y sólo
+    // hacia vendedores de sus mismas agencias. Los demás roles ya podían
+    // asignar cualquier vendedor. Se valida el principal y el secundario.
+    if (user.role === "SELLER") {
+      const targetSellerIds = [seller_id, normalizedSecondaryId].filter(
+        (id): id is string => Boolean(id) && id !== user.id
+      )
+      if (targetSellerIds.length > 0) {
+        if (!canCreateOperationsForOtherSellers(user as any)) {
+          return NextResponse.json({ error: "No puedes crear operaciones para otros vendedores" }, { status: 403 })
+        }
+        for (const targetId of targetSellerIds) {
+          const withinAgency = await isSellerWithinUserAgencies(supabase, targetId, agencyIds)
+          if (!withinAgency) {
+            return NextResponse.json(
+              { error: "Solo puedes asignar operaciones a vendedores de tus agencias" },
+              { status: 403 }
+            )
+          }
+        }
+      }
     }
 
     // Calculate margin usando el costo total de todos los operadores

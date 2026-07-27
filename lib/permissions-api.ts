@@ -14,6 +14,7 @@ type SupportOperationsUser = {
   id: string
   can_view_agency_operations_support?: boolean | null
   can_add_services_on_agency_operations?: boolean | null
+  can_create_operations_for_other_sellers?: boolean | null
 }
 
 type ScopedOperationResource = {
@@ -105,6 +106,37 @@ export function hasAgencyOperationsSupportView(user: SupportOperationsUser): boo
 
 export function canAddAgencyOperationServices(user: SupportOperationsUser): boolean {
   return hasAgencyOperationsSupportView(user) && user.can_add_services_on_agency_operations === true
+}
+
+/**
+ * ¿El vendedor puede cargar operaciones a nombre de OTRO vendedor?
+ * Sólo aplica a SELLER: los demás roles (ADMIN, SUPER_ADMIN, etc.) ya pueden
+ * asignar cualquier vendedor sin necesidad de este flag. Opt-in por usuario,
+ * lo habilita el admin desde "Permisos especiales".
+ */
+export function canCreateOperationsForOtherSellers(user: SupportOperationsUser): boolean {
+  return user.role === "SELLER" && user.can_create_operations_for_other_sellers === true
+}
+
+/**
+ * Valida que un vendedor destino pertenezca a alguna de las agencias del usuario
+ * actual (acotado a su org: agencyIds ya viene filtrado por org, ver getUserAgencyIds).
+ * Se usa para restringir "cargar a nombre de otro" a vendedores de las mismas
+ * agencias, no de toda la organización.
+ */
+export async function isSellerWithinUserAgencies(
+  supabase: SupabaseClient<Database>,
+  targetSellerId: string,
+  agencyIds: string[]
+): Promise<boolean> {
+  if (!targetSellerId || agencyIds.length === 0) return false
+  const { data } = await supabase
+    .from("user_agencies")
+    .select("agency_id")
+    .eq("user_id", targetSellerId)
+    .in("agency_id", agencyIds)
+    .limit(1)
+  return (data?.length ?? 0) > 0
 }
 
 export function resolveOperationAccessScope(

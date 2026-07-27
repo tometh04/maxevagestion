@@ -5,6 +5,8 @@ import {
   applyOperationsFilters,
   applyReportsFilters,
   isOwnDataOnlyResolved,
+  canCreateOperationsForOtherSellers,
+  isSellerWithinUserAgencies,
 } from "../permissions-api"
 import { buildDefaultMatrix, type ResolvedPermissionsMatrix } from "../permissions/resolved"
 
@@ -417,6 +419,62 @@ describe("Permissions API", () => {
         cash: { read: true, write: false, delete: false, export: false, ownDataOnly: false },
       }
       expect(canPerformAction(contable, "cash", "write", matrix)).toBe(false)
+    })
+  })
+
+  // ─── Cargar operaciones a nombre de otro vendedor (flag por usuario) ──
+  describe("canCreateOperationsForOtherSellers", () => {
+    it("SELLER con el flag en true → true", () => {
+      const user = { role: "SELLER", id: "s-1", can_create_operations_for_other_sellers: true }
+      expect(canCreateOperationsForOtherSellers(user)).toBe(true)
+    })
+
+    it("SELLER sin el flag (false/undefined) → false", () => {
+      expect(
+        canCreateOperationsForOtherSellers({ role: "SELLER", id: "s-1", can_create_operations_for_other_sellers: false })
+      ).toBe(false)
+      expect(canCreateOperationsForOtherSellers({ role: "SELLER", id: "s-1" })).toBe(false)
+    })
+
+    it("un rol no-SELLER no aplica a este flag (los demás roles se habilitan por otra vía)", () => {
+      const admin = { role: "ADMIN", id: "a-1", can_create_operations_for_other_sellers: true }
+      expect(canCreateOperationsForOtherSellers(admin)).toBe(false)
+    })
+  })
+
+  describe("isSellerWithinUserAgencies", () => {
+    // Mock del builder de Supabase: from().select().eq().in().limit() → { data }
+    const makeSupabase = (rows: any[]) =>
+      ({
+        from: () => ({
+          select: () => ({
+            eq: () => ({
+              in: () => ({
+                limit: () => Promise.resolve({ data: rows }),
+              }),
+            }),
+          }),
+        }),
+      }) as any
+
+    it("true cuando el vendedor destino comparte alguna agencia", async () => {
+      const supabase = makeSupabase([{ agency_id: "agency-1" }])
+      await expect(isSellerWithinUserAgencies(supabase, "seller-2", ["agency-1", "agency-2"])).resolves.toBe(true)
+    })
+
+    it("false cuando el vendedor destino no está en ninguna de las agencias", async () => {
+      const supabase = makeSupabase([])
+      await expect(isSellerWithinUserAgencies(supabase, "seller-2", ["agency-1"])).resolves.toBe(false)
+    })
+
+    it("false (sin consultar) cuando no hay agencias del usuario", async () => {
+      const supabase = makeSupabase([{ agency_id: "agency-1" }])
+      await expect(isSellerWithinUserAgencies(supabase, "seller-2", [])).resolves.toBe(false)
+    })
+
+    it("false cuando falta el id del vendedor destino", async () => {
+      const supabase = makeSupabase([{ agency_id: "agency-1" }])
+      await expect(isSellerWithinUserAgencies(supabase, "", ["agency-1"])).resolves.toBe(false)
     })
   })
 })

@@ -9541,6 +9541,7 @@ export type Database = {
         Row: {
           auth_id: string
           can_add_services_on_agency_operations: boolean
+          can_create_operations_for_other_sellers: boolean
           can_view_agency_operations_support: boolean
           created_at: string | null
           default_commission_percentage: number | null
@@ -9558,6 +9559,7 @@ export type Database = {
         Insert: {
           auth_id: string
           can_add_services_on_agency_operations?: boolean
+          can_create_operations_for_other_sellers?: boolean
           can_view_agency_operations_support?: boolean
           created_at?: string | null
           default_commission_percentage?: number | null
@@ -9575,6 +9577,7 @@ export type Database = {
         Update: {
           auth_id?: string
           can_add_services_on_agency_operations?: boolean
+          can_create_operations_for_other_sellers?: boolean
           can_view_agency_operations_support?: boolean
           created_at?: string | null
           default_commission_percentage?: number | null

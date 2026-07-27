@@ -78,6 +78,7 @@ interface User {
   is_active: boolean
   can_view_agency_operations_support?: boolean
   can_add_services_on_agency_operations?: boolean
+  can_create_operations_for_other_sellers?: boolean
   created_at: string
   email_confirmed_at?: string | null
   user_agencies?: Array<{ agency_id: string; agencies: { name: string } }>
@@ -134,6 +135,7 @@ export function UsersSettings() {
   const [specialPermissions, setSpecialPermissions] = useState({
     can_view_agency_operations_support: false,
     can_add_services_on_agency_operations: false,
+    can_create_operations_for_other_sellers: false,
   })
 
   // Form state
@@ -293,6 +295,7 @@ export function UsersSettings() {
     setSpecialPermissions({
       can_view_agency_operations_support: Boolean(user.can_view_agency_operations_support),
       can_add_services_on_agency_operations: Boolean(user.can_add_services_on_agency_operations),
+      can_create_operations_for_other_sellers: Boolean(user.can_create_operations_for_other_sellers),
     })
     setPermissionsDialogOpen(true)
   }
@@ -668,7 +671,7 @@ export function UsersSettings() {
                           ))}
                         </div>
                       )}
-                      {user.role === "SELLER" && (user.can_view_agency_operations_support || user.can_add_services_on_agency_operations) && (
+                      {user.role === "SELLER" && (user.can_view_agency_operations_support || user.can_add_services_on_agency_operations || user.can_create_operations_for_other_sellers) && (
                         <div className="flex flex-wrap gap-1">
                           {user.can_view_agency_operations_support && (
                             <Badge variant="outline" className="text-[10px]">
@@ -678,6 +681,11 @@ export function UsersSettings() {
                           {user.can_add_services_on_agency_operations && (
                             <Badge variant="outline" className="text-[10px]">
                               Alta servicios
+                            </Badge>
+                          )}
+                          {user.can_create_operations_for_other_sellers && (
+                            <Badge variant="outline" className="text-[10px]">
+                              Carga por otros
                             </Badge>
                           )}
                         </div>
@@ -937,6 +945,24 @@ export function UsersSettings() {
                     setSpecialPermissions((prev) => ({
                       ...prev,
                       can_add_services_on_agency_operations: checked,
+                    }))
+                  }
+                />
+              </div>
+
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium">Cargar operaciones a nombre de otro vendedor</p>
+                  <p className="text-xs text-muted-foreground">
+                    Habilita elegir a otro vendedor de sus mismas agencias al crear una operación. La venta y la comisión quedan a nombre del vendedor elegido.
+                  </p>
+                </div>
+                <Switch
+                  checked={specialPermissions.can_create_operations_for_other_sellers}
+                  onCheckedChange={(checked) =>
+                    setSpecialPermissions((prev) => ({
+                      ...prev,
+                      can_create_operations_for_other_sellers: checked,
                     }))
                   }
                 />

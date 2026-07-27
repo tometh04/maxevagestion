@@ -199,6 +199,9 @@ interface NewOperationDialogProps {
   defaultSellerId?: string
   lead?: LeadData // Prop opcional para convertir lead a operación
   userRole?: string
+  /** Si el usuario puede elegir a otro vendedor. Cuando es false, los selectores
+   *  de vendedor quedan bloqueados a sí mismo (default true). */
+  canPickOtherSeller?: boolean
 }
 
 export function NewOperationDialog({
@@ -212,6 +215,7 @@ export function NewOperationDialog({
   defaultSellerId,
   lead,
   userRole,
+  canPickOtherSeller = true,
 }: NewOperationDialogProps) {
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
@@ -799,7 +803,7 @@ export function NewOperationDialog({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Vendedor Principal *</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
+                      <Select onValueChange={field.onChange} value={field.value} disabled={!canPickOtherSeller}>
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder="Seleccionar vendedor" />
@@ -880,6 +884,7 @@ export function NewOperationDialog({
                       <Select
                         onValueChange={(value) => field.onChange(value === "none" ? null : value)}
                         value={field.value || "none"}
+                        disabled={!canPickOtherSeller}
                       >
                         <FormControl>
                           <SelectTrigger>
