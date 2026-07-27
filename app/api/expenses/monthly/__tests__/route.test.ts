@@ -14,7 +14,16 @@ import { canPerformAction } from "@/lib/permissions-api"
 
 jest.mock("@/lib/auth", () => ({ getCurrentUser: jest.fn() }))
 jest.mock("@/lib/supabase/server", () => ({ createServerClient: jest.fn() }))
-jest.mock("@/lib/permissions-api", () => ({ canPerformAction: jest.fn() }))
+// La route resuelve permisos vía getRequestPermissions, que además de
+// canPerformAction usa getUserAgencyIds + resolveUserPermissions.
+jest.mock("@/lib/permissions-api", () => ({
+  canPerformAction: jest.fn(),
+  getUserAgencyIds: jest.fn(async () => []),
+  isOwnDataOnlyResolved: jest.fn(() => false),
+}))
+jest.mock("@/lib/permissions-agency", () => ({
+  resolveUserPermissions: jest.fn(async () => null),
+}))
 
 // Query builder awaitable: cada método encadenable devuelve el mismo builder,
 // y el builder es "thenable" resolviendo el dataset configurado por tabla.

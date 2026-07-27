@@ -19,9 +19,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { Button } from "@/components/ui/button"
 import { Pie, PieChart, Cell } from "recharts"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
-import { Loader2, PieChart as PieChartIcon } from "lucide-react"
+import { Download, Loader2, PieChart as PieChartIcon } from "lucide-react"
+import { toast } from "sonner"
 // Fix UTC shift en fechas DATE (VICO 2026-05-22)
 import { formatDateOnlyLocal } from "@/lib/utils/date-only"
 
@@ -64,6 +66,7 @@ interface ExpensesSummaryTabProps {
 export function ExpensesSummaryTab({ agencies }: ExpensesSummaryTabProps) {
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [loading, setLoading] = useState(true)
+  const [downloading, setDownloading] = useState(false)
 
   const [dateFrom, setDateFrom] = useState(() => {
     const d = new Date()
@@ -110,6 +113,40 @@ export function ExpensesSummaryTab({ agencies }: ExpensesSummaryTabProps) {
     fetchExpenses()
   }, [fetchExpenses])
 
+  // Descarga el reporte completo (PDF) con los mismos filtros de esta pantalla.
+  // El documento lo arma el server: la versión larga vive en Reportes > Gastos.
+  const handleDownloadPdf = async () => {
+    setDownloading(true)
+    try {
+      const params = new URLSearchParams({ dateFrom, dateTo, currency })
+      if (agencyFilter !== "ALL") {
+        params.set("agencyId", agencyFilter)
+        params.set("agencyMode", agencyMode)
+      }
+
+      const res = await fetch(`/api/reports/expenses/pdf?${params}`)
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        throw new Error(body?.error || "No se pudo generar el PDF")
+      }
+
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `reporte-gastos-${currency}-${dateFrom}_${dateTo}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+      toast.success("Reporte descargado")
+    } catch (err: any) {
+      toast.error(err.message || "No se pudo generar el PDF")
+    } finally {
+      setDownloading(false)
+    }
+  }
+
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat("es-AR", {
       style: "currency",
@@ -153,7 +190,7 @@ export function ExpensesSummaryTab({ agencies }: ExpensesSummaryTabProps) {
   return (
     <div className="space-y-4">
       {/* Filters */}
-      <div className="flex items-center gap-2 flex-wrap">
+      <div className="flex items-end gap-2 flex-wrap">
         <div className="space-y-1">
           <Label className="text-xs font-medium text-muted-foreground">Desde</Label>
           <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-[150px]" />
@@ -206,6 +243,22 @@ export function ExpensesSummaryTab({ agencies }: ExpensesSummaryTabProps) {
             </Select>
           </div>
         )}
+
+        <div className="ml-auto">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleDownloadPdf}
+            disabled={downloading || loading}
+          >
+            {downloading ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4 mr-2" />
+            )}
+            Descargar PDF
+          </Button>
+        </div>
       </div>
 
       {loading ? (

@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { BarChart3, TrendingUp, Wallet, Download, Percent, HelpCircle, Calendar, FileSearch, CalendarRange } from "lucide-react"
+import { BarChart3, TrendingUp, Wallet, Download, Percent, HelpCircle, Calendar, FileSearch, CalendarRange, Receipt } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -16,6 +16,7 @@ import { MarginsReport } from "./margins-report"
 import { VencimientosReport } from "./vencimientos-report"
 import { ConciliacionReport } from "./conciliacion-report"
 import { ClosingReport } from "./closing-report"
+import { ExpensesReport } from "./expenses-report"
 import {
   Breadcrumb,
   BreadcrumbList,
@@ -37,6 +38,9 @@ export function ReportsPageClient({ userRole, userId, sellers, agencies }: Repor
   const [activeTab, setActiveTab] = useState("sales")
 
   const canSeeCashFlow = ["SUPER_ADMIN", "ADMIN", "CONTABLE"].includes(userRole)
+  // El reporte de gastos expone egresos del tenant: mismo círculo que caja /
+  // contabilidad, incluyendo al owner. La API valida el permiso real.
+  const canSeeExpenses = ["SUPER_ADMIN", "ORG_OWNER", "ADMIN", "CONTABLE"].includes(userRole)
 
   return (
     <div className="space-y-6">
@@ -92,6 +96,12 @@ export function ReportsPageClient({ userRole, userId, sellers, agencies }: Repor
               Flujo de Caja
             </TabsTrigger>
           )}
+          {canSeeExpenses && (
+            <TabsTrigger value="expenses" className="flex items-center gap-2">
+              <Receipt className="h-4 w-4" />
+              Gastos
+            </TabsTrigger>
+          )}
           <TabsTrigger value="vencimientos" className="flex items-center gap-2">
             <Calendar className="h-4 w-4" />
             Vencimientos
@@ -131,6 +141,12 @@ export function ReportsPageClient({ userRole, userId, sellers, agencies }: Repor
         {canSeeCashFlow && (
           <TabsContent value="cashflow" className="mt-6">
             <CashFlowReport agencies={agencies} />
+          </TabsContent>
+        )}
+
+        {canSeeExpenses && (
+          <TabsContent value="expenses" className="mt-6">
+            <ExpensesReport agencies={agencies} />
           </TabsContent>
         )}
 
