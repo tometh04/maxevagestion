@@ -14,6 +14,7 @@
 import { getAfipServiceForOrg } from "@/lib/afip/afip-service"
 import { getEmisorCuit } from "@/lib/afip/afip-config"
 import { renderInvoicePdf } from "@/lib/pdf/invoice-pdf"
+import { resolveTenantLogo } from "@/lib/pdf/logo"
 
 export interface InvoicePdfResult {
   pdfBytes: Uint8Array
@@ -126,18 +127,11 @@ export async function buildInvoicePdf(params: {
     settingsMap.get("terms_pdf") ||
     settingsMap.get("terms")
 
-  let logoBytes: Uint8Array | undefined
-  if (brandLogoUrl) {
-    try {
-      const logoRes = await fetch(brandLogoUrl)
-      if (logoRes.ok) {
-        const buf = await logoRes.arrayBuffer()
-        logoBytes = new Uint8Array(buf)
-      }
-    } catch (err) {
-      console.warn("[buildInvoicePdf] Logo del tenant no se pudo cargar:", err)
-    }
-  }
+  // Antes esto bajaba la URL a mano, sin timeout, sin validar el content-type
+  // ni el tamaño: un Storage lento colgaba la generación de la factura, y un
+  // SVG llegaba como bytes que pdf-lib no sabe embeber. Ahora usa el mismo
+  // helper que el resto de los PDF.
+  const tenantLogo = await resolveTenantLogo(brandLogoUrl)
 
   const pdfBytes = await renderInvoicePdf({
     invoice,
@@ -145,7 +139,8 @@ export async function buildInvoicePdf(params: {
     agency: { name: agency?.name ?? "Agencia" },
     footerCompanyName,
     branding: {
-      logoPngBytes: logoBytes,
+      logoPngBytes: tenantLogo?.bytes,
+      logoFormat: tenantLogo?.format,
       primaryColorHex: brandColorHex,
       termsText,
     },

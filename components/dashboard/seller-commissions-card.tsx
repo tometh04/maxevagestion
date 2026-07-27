@@ -7,6 +7,13 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { DollarSign, TrendingUp, Clock, CheckCircle } from "lucide-react"
 import Link from "next/link"
+import {
+  emptyTotalsByCurrency,
+  isEmptyBucket,
+  totalsByCurrency,
+  type CommissionCurrency,
+  type CommissionTotalsByCurrency,
+} from "@/lib/commissions/currency"
 
 interface Commission {
   id: string
@@ -14,11 +21,23 @@ interface Commission {
   currency: string
   status: string
   operation_id: string
+  operation?: {
+    currency?: string | null
+    sale_currency?: string | null
+  } | null
   operations?: {
     destination: string
     sale_amount_total: number
   }
 }
+
+/** Formato con el símbolo que corresponde a cada moneda. */
+const fmt = (value: number, currency: CommissionCurrency) =>
+  new Intl.NumberFormat("es-AR", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 2,
+  }).format(value || 0)
 
 interface SellerCommissionsCardProps {
   sellerId: string
@@ -28,7 +47,7 @@ interface SellerCommissionsCardProps {
 export function SellerCommissionsCard({ sellerId, className }: SellerCommissionsCardProps) {
   const [commissions, setCommissions] = useState<Commission[]>([])
   const [loading, setLoading] = useState(true)
-  const [totals, setTotals] = useState({ pending: 0, paid: 0, total: 0 })
+  const [totals, setTotals] = useState<CommissionTotalsByCurrency>(emptyTotalsByCurrency())
 
   const fetchCommissions = useCallback(async () => {
     try {
@@ -37,16 +56,9 @@ export function SellerCommissionsCard({ sellerId, className }: SellerCommissions
         const data = await response.json()
         const comms = data.commissions || []
         setCommissions(comms)
-        
-        // Calcular totales
-        const pending = comms
-          .filter((c: Commission) => c.status === "PENDING")
-          .reduce((sum: number, c: Commission) => sum + c.amount, 0)
-        const paid = comms
-          .filter((c: Commission) => c.status === "PAID")
-          .reduce((sum: number, c: Commission) => sum + c.amount, 0)
-        
-        setTotals({ pending, paid, total: pending + paid })
+        // Separado por moneda: sumar ARS con USD daba un número sin sentido,
+        // encima mostrado con "$".
+        setTotals(totalsByCurrency(comms))
       }
     } catch (error) {
       console.error("Error fetching commissions:", error)
@@ -54,6 +66,12 @@ export function SellerCommissionsCard({ sellerId, className }: SellerCommissions
       setLoading(false)
     }
   }, [sellerId])
+
+  /** Monedas con algo para mostrar; si no hay nada, se muestra ARS en cero. */
+  const activeCurrencies = (["ARS", "USD"] as CommissionCurrency[]).filter(
+    (c) => !isEmptyBucket(totals[c])
+  )
+  const shownCurrencies = activeCurrencies.length > 0 ? activeCurrencies : (["ARS"] as const)
 
   useEffect(() => {
     fetchCommissions()
@@ -90,25 +108,33 @@ export function SellerCommissionsCard({ sellerId, className }: SellerCommissions
         </div>
       </CardHeader>
       <CardContent>
-        {/* Resumen de totales */}
+        {/* Resumen de totales, una línea por moneda (nunca sumadas entre sí) */}
         <div className="grid grid-cols-2 gap-3 mb-4">
           <div className="rounded-lg bg-accent-coral/5 dark:bg-accent-coral/30 p-3">
             <div className="flex items-center gap-2 text-accent-coral dark:text-accent-coral">
               <Clock className="h-4 w-4" />
               <span className="text-xs font-medium">Pendientes</span>
             </div>
-            <p className="text-lg font-bold mt-1">
-              ${totals.pending.toLocaleString("es-AR")}
-            </p>
+            <div className="mt-1 space-y-0.5">
+              {shownCurrencies.map((currency) => (
+                <p key={currency} className="text-lg font-bold tabular-nums leading-tight">
+                  {fmt(totals[currency].pending, currency)}
+                </p>
+              ))}
+            </div>
           </div>
           <div className="rounded-lg bg-success/5 dark:bg-success/30 p-3">
             <div className="flex items-center gap-2 text-success dark:text-success">
               <CheckCircle className="h-4 w-4" />
               <span className="text-xs font-medium">Cobradas</span>
             </div>
-            <p className="text-lg font-bold mt-1">
-              ${totals.paid.toLocaleString("es-AR")}
-            </p>
+            <div className="mt-1 space-y-0.5">
+              {shownCurrencies.map((currency) => (
+                <p key={currency} className="text-lg font-bold tabular-nums leading-tight">
+                  {fmt(totals[currency].paid, currency)}
+                </p>
+              ))}
+            </div>
           </div>
         </div>
 

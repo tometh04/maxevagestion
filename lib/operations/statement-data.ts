@@ -35,6 +35,7 @@ import {
 } from "@/lib/feature-flags"
 import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
 import { serviceKind, type ServiceKind } from "@/lib/operations/service-kind"
+import { toEmbeddableLogo } from "@/lib/pdf/logo"
 
 export interface StatementCompany {
   name: string
@@ -198,7 +199,9 @@ export async function buildOperationStatementData(params: {
     website: getSetting("website"),
     taxId: getSetting("tax_id"),
     email: getSetting("email"),
-    logo: getSetting("brand_logo"),
+    // `brand_logo` guarda la URL pública de Storage: hay que bajarla, jsPDF no
+    // descarga nada. Si no se puede, queda "" y el PDF cae al nombre.
+    logo: await toEmbeddableLogo(getSetting("brand_logo")),
   }
 
   // --- Cliente MAIN + destinatario sugerido ---

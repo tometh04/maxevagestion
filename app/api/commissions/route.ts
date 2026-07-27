@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server"
 import { getRequestPermissions } from "@/lib/permissions/request"
 import { canPerformAction, isOwnDataOnlyResolved } from "@/lib/permissions-api"
+import {
+  emptyTotalsByCurrency,
+  getCommissionCurrency,
+  totalsByCurrency,
+  type CommissionTotalsByCurrency,
+} from "@/lib/commissions/currency"
 
 export const dynamic = 'force-dynamic'
 
@@ -197,6 +203,10 @@ export async function GET(request: Request) {
         id: cr.id,
         operation_id: cr.operation_id,
         seller_id: cr.seller_id,
+        // Moneda al tope del objeto: `commission_records` no la tiene, sale de
+        // la venta. Antes había que bajar a `operation.currency` para saberla,
+        // y los consumidores que no lo hacían terminaban sumando ARS con USD.
+        currency: cr.operations?.sale_currency || "USD",
         seller_name: seller?.name || "Sin vendedor",
         seller_email: seller?.email || "",
         sellers: seller ? { id: cr.seller_id, name: seller.name } : null,
@@ -224,40 +234,39 @@ export async function GET(request: Request) {
       }
     })
 
-    // Calcular resumen mensual
-    const monthlySummary = new Map<string, { total: number; pending: number; paid: number; count: number }>()
+    // Resumen mensual y totales, SEPARADOS POR MONEDA.
+    //
+    // Antes se sumaba `amount` de todas las comisiones en un solo número, sin
+    // importar si estaban en pesos o en dólares, y la UI lo mostraba con "$".
+    // Un vendedor con comisiones en las dos monedas veía pesos más dólares
+    // sumados. Ver `lib/commissions/currency.ts`.
+    const monthlyAcc = new Map<string, CommissionTotalsByCurrency & { count: number }>()
 
     commissions.forEach((comm: any) => {
       const monthKey = comm.date_calculated ? comm.date_calculated.substring(0, 7) : "unknown"
-      if (!monthlySummary.has(monthKey)) {
-        monthlySummary.set(monthKey, { total: 0, pending: 0, paid: 0, count: 0 })
+      if (!monthlyAcc.has(monthKey)) {
+        monthlyAcc.set(monthKey, { ...emptyTotalsByCurrency(), count: 0 })
       }
-      const summary = monthlySummary.get(monthKey)!
-      summary.total += comm.amount
+      const summary = monthlyAcc.get(monthKey)!
+      const bucket = summary[getCommissionCurrency(comm)]
+      bucket.total += comm.amount
+      bucket.count += 1
       summary.count += 1
-      if (comm.status === "PENDING") {
-        summary.pending += comm.amount
-      } else if (comm.status === "PAID") {
-        summary.paid += comm.amount
-      }
+      if (comm.status === "PAID") bucket.paid += comm.amount
+      else bucket.pending += comm.amount
     })
 
-    const monthlySummaryArray = Array.from(monthlySummary.entries()).map(([month, data]) => ({
+    const monthlySummary = Array.from(monthlyAcc.entries()).map(([month, data]) => ({
       month,
       ...data,
     }))
 
-    // Calcular totales
-    const totals = {
-      pending: commissions.filter((c: any) => c.status === "PENDING").reduce((sum: number, c: any) => sum + c.amount, 0),
-      paid: commissions.filter((c: any) => c.status === "PAID").reduce((sum: number, c: any) => sum + c.amount, 0),
-      total: commissions.reduce((sum: number, c: any) => sum + c.amount, 0),
-    }
+    const totals = totalsByCurrency(commissions as any)
 
     return NextResponse.json({
       commissions,
       totals,
-      monthlySummary: monthlySummaryArray,
+      monthlySummary,
     })
 
   } catch (error: any) {

@@ -12,6 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
+import { getCommissionCurrency } from "@/lib/commissions/currency"
 import {
   Select,
   SelectContent,
@@ -123,8 +124,12 @@ const fmtCurrency = (value: number, currency = "USD") =>
     minimumFractionDigits: 2,
   }).format(value)
 
-const getCommCurrency = (c: Commission): string =>
-  c.operation?.currency || c.operation?.sale_currency || "USD"
+/**
+ * Delega en `lib/commissions/currency.ts`: la regla de qué moneda es una
+ * comisión vive en un solo lugar, compartida con el endpoint, la tarjeta del
+ * dashboard y el reporte de comisiones.
+ */
+const getCommCurrency = (c: Commission): string => getCommissionCurrency(c as any)
 
 function generateMonthOptions() {
   const options: { value: string; label: string }[] = []

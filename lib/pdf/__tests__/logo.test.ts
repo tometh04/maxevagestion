@@ -1,14 +1,14 @@
 /**
  * @jest-environment node
  *
- * Tests de la resolución del logo del tenant para los PDF de reportes.
+ * Tests de la resolución del logo del tenant para los PDF.
  *
  * `organization_settings.brand_logo` guarda una URL pública de Supabase
  * Storage, no un data URI, y jsPDF no descarga nada. Sin esta conversión el
  * logo nunca aparecía en el PDF.
  */
 
-import { toEmbeddableLogo } from "@/lib/reports/report-company"
+import { resolveTenantLogo, toEmbeddableLogo } from "@/lib/pdf/logo"
 
 const PNG_BYTES = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
@@ -95,5 +95,43 @@ describe("toEmbeddableLogo", () => {
     expect(await toEmbeddableLogo("")).toBe("")
     expect(await toEmbeddableLogo("   ")).toBe("")
     expect(await toEmbeddableLogo("logo.png")).toBe("")
+  })
+})
+
+describe("resolveTenantLogo", () => {
+  const originalFetch = global.fetch
+
+  afterEach(() => {
+    ;(global as any).fetch = originalFetch
+    jest.restoreAllMocks()
+  })
+
+  it("devuelve bytes y formato, para los PDF que usan pdf-lib", async () => {
+    mockFetch({ contentType: "image/png" })
+    const logo = await resolveTenantLogo("https://cdn.supabase.co/logo.png")
+
+    expect(logo).not.toBeNull()
+    expect(logo!.format).toBe("PNG")
+    expect(logo!.bytes).toBeInstanceOf(Uint8Array)
+    // Cabecera PNG: los bytes son la imagen real, no el data URI.
+    expect(Array.from(logo!.bytes.slice(0, 4))).toEqual([0x89, 0x50, 0x4e, 0x47])
+  })
+
+  it("distingue JPEG de PNG, para elegir embedJpg o embedPng", async () => {
+    mockFetch({ contentType: "image/jpeg" })
+    const logo = await resolveTenantLogo("https://cdn.supabase.co/logo.jpg")
+    expect(logo!.format).toBe("JPEG")
+  })
+
+  it("también devuelve bytes cuando ya venía como data URI", async () => {
+    const dataUri = `data:image/png;base64,${PNG_BYTES.toString("base64")}`
+    const logo = await resolveTenantLogo(dataUri)
+    expect(logo!.bytes.byteLength).toBe(PNG_BYTES.byteLength)
+    expect(logo!.format).toBe("PNG")
+  })
+
+  it("null cuando no hay logo usable", async () => {
+    expect(await resolveTenantLogo("")).toBeNull()
+    expect(await resolveTenantLogo("data:image/svg+xml;base64,PHN2Zz4=")).toBeNull()
   })
 })
