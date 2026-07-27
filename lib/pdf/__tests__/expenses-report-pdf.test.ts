@@ -8,6 +8,7 @@
  * (torta de 360°), muchísimas filas de detalle y textos largos.
  */
 
+import { createHash } from "crypto"
 import { generateExpensesReportPdf } from "@/lib/pdf/expenses-report-pdf"
 import { buildExpensesReport } from "@/lib/reports/expenses-report"
 import type { ExpenseRow } from "@/lib/expenses/fetch-expenses"
@@ -36,9 +37,12 @@ const filters: ExpensesReportFilters = {
   type: null,
 }
 
+let seq = 0
+
 function expense(partial: Partial<ExpenseRow> & { amount: number }): ExpenseRow {
   return {
-    id: `exp-${Math.random().toString(36).slice(2)}`,
+    // Determinista a propósito: el snapshot de caracterización compara bytes.
+    id: `exp-${++seq}`,
     expense_type: "variable",
     description: "Gasto",
     provider_name: null,
@@ -73,6 +77,21 @@ function render(expenses: ExpenseRow[]): Uint8Array {
 /** Los PDF válidos arrancan con "%PDF-". */
 function isPdf(bytes: Uint8Array): boolean {
   return String.fromCharCode(...Array.from(bytes.slice(0, 5))) === "%PDF-"
+}
+
+/**
+ * Huella estable del documento.
+ *
+ * jsPDF escribe dos cosas que cambian en cada corrida y no son parte del diseño:
+ * el `/ID` del trailer y el `/CreationDate`. Se neutralizan antes de hashear;
+ * todo lo demás (texto, coordenadas, colores, paginado) sí entra en la huella.
+ */
+function pdfFingerprint(bytes: Uint8Array): string {
+  const raw = Buffer.from(bytes).toString("latin1")
+  const normalized = raw
+    .replace(/\/ID\s*\[[^\]]*\]/g, "/ID []")
+    .replace(/\/CreationDate\s*\(([^)]*)\)/g, "/CreationDate ()")
+  return createHash("sha256").update(normalized, "latin1").digest("hex")
 }
 
 describe("generateExpensesReportPdf", () => {
@@ -110,6 +129,36 @@ describe("generateExpensesReportPdf", () => {
     const bytes = render(many)
     expect(isPdf(bytes)).toBe(true)
     expect(bytes.length).toBeGreaterThan(10000)
+  })
+
+  /**
+   * Test de caracterización: congela el output byte-a-byte.
+   *
+   * No valida diseño, valida que el diseño NO CAMBIE. Existe para poder extraer
+   * `lib/pdf/report-kit.ts` (compartido con los reportes de comisiones, ventas y
+   * caja) sin alterar un PDF que ya está en producción.
+   *
+   * Si este hash cambia, el refactor cambió el documento: hay que revertir, no
+   * re-baselinear. Solo se actualiza cuando se rediseña el PDF a propósito.
+   */
+  it("mantiene el output byte-a-byte (guarda del refactor del kit)", () => {
+    {
+      const bytes = render([
+        expense({ amount: 700000, category: "Sueldos", expense_type: "recurring" }),
+        expense({
+          amount: 250000,
+          category: "Alquiler",
+          expense_type: "recurring",
+          category_color: "#123456",
+        }),
+        expense({ amount: 90000, category: "Servicios", movement_date: "2026-07-14T15:00:00Z" }),
+        expense({ amount: 12000, category: "Librería", movement_date: "2026-07-22T15:00:00Z" }),
+        expense({ amount: 400, currency: "USD", category: "Software" }),
+      ])
+
+      expect(bytes.length).toMatchSnapshot("longitud")
+      expect(pdfFingerprint(bytes)).toMatchSnapshot("huella")
+    }
   })
 
   it("no rompe con nombres y montos extremos", () => {

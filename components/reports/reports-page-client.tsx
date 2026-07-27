@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { BarChart3, TrendingUp, Wallet, Download, Percent, HelpCircle, Calendar, FileSearch, CalendarRange, Receipt } from "lucide-react"
+import { BarChart3, TrendingUp, Wallet, Download, Percent, HelpCircle, Calendar, FileSearch, CalendarRange, Receipt, Coins } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -17,6 +17,7 @@ import { VencimientosReport } from "./vencimientos-report"
 import { ConciliacionReport } from "./conciliacion-report"
 import { ClosingReport } from "./closing-report"
 import { ExpensesReport } from "./expenses-report"
+import { CommissionsReport } from "./commissions-report"
 import {
   Breadcrumb,
   BreadcrumbList,
@@ -102,6 +103,11 @@ export function ReportsPageClient({ userRole, userId, sellers, agencies }: Repor
               Gastos
             </TabsTrigger>
           )}
+          {/* Visible para todos: un vendedor ve solo sus comisiones (la API lo scopea). */}
+          <TabsTrigger value="commissions" className="flex items-center gap-2">
+            <Coins className="h-4 w-4" />
+            Comisiones
+          </TabsTrigger>
           <TabsTrigger value="vencimientos" className="flex items-center gap-2">
             <Calendar className="h-4 w-4" />
             Vencimientos
@@ -149,6 +155,10 @@ export function ReportsPageClient({ userRole, userId, sellers, agencies }: Repor
             <ExpensesReport agencies={agencies} />
           </TabsContent>
         )}
+
+        <TabsContent value="commissions" className="mt-6">
+          <CommissionsReport sellers={sellers} agencies={agencies} />
+        </TabsContent>
 
         <TabsContent value="vencimientos" className="mt-6">
           <VencimientosReport agencies={agencies} />
