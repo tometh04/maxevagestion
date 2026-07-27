@@ -283,47 +283,76 @@ export class ReportPdfBuilder {
   }
 
   /**
+   * Decide si el logo del tenant se puede embeber, SIN dibujar nada.
+   *
+   * jsPDF solo embebe imágenes que ya tiene en memoria: un `brand_logo` que sea
+   * una URL (`https://...`), un SVG o un formato que no sepa decodificar hace
+   * throw. Validar antes de pintar es lo que evita dejar la tarjeta blanca
+   * huérfana en la portada cuando la imagen no entra.
+   */
+  private resolveLogo(): { format: "PNG" | "JPEG" } | null {
+    const logo = this.company.logo
+    if (!logo || !logo.startsWith("data:image/")) return null
+
+    const isJpeg = logo.startsWith("data:image/jpeg") || logo.startsWith("data:image/jpg")
+    const isPng = logo.startsWith("data:image/png")
+    if (!isJpeg && !isPng) return null
+
+    try {
+      // No dibuja: solo intenta decodificar la cabecera.
+      this.doc.getImageProperties(logo)
+      return { format: isJpeg ? "JPEG" : "PNG" }
+    } catch {
+      return null
+    }
+  }
+
+  /** Nombre del tenant y datos de contacto, en blanco sobre la banda. */
+  private drawCompanyNameBlock() {
+    const doc = this.doc
+    const company = this.company
+    doc.setFontSize(16)
+    doc.setFont("helvetica", "bold")
+    this.setText(WHITE)
+    doc.text(this.truncate(company.name.toUpperCase(), 95), MARGIN, 16)
+    doc.setFontSize(8)
+    doc.setFont("helvetica", "normal")
+    const companyLine = [
+      company.taxId ? `CUIT ${company.taxId}` : "",
+      company.phone,
+      company.email,
+    ]
+      .filter(Boolean)
+      .join("  ·  ")
+    if (companyLine) doc.text(this.truncate(companyLine, 95), MARGIN, 21.5)
+  }
+
+  /**
    * Banda de marca de la portada. El logo va sobre una tarjeta blanca: así
    * cualquier logo (claro u oscuro, con o sin transparencia) se lee sobre el
-   * color. Sin logo, el nombre y los datos de contacto van en blanco.
+   * color. Sin logo utilizable, van el nombre y los datos de contacto.
    */
   coverBand() {
     const doc = this.doc
-    const company = this.company
 
     this.setFill(PRIMARY)
     doc.rect(0, 0, PAGE_W, 34, "F")
 
-    if (company.logo) {
+    const logo = this.resolveLogo()
+    if (logo) {
       try {
-        const format =
-          company.logo.includes("image/jpeg") || company.logo.includes("image/jpg")
-            ? "JPEG"
-            : "PNG"
         this.setFill(WHITE)
         doc.roundedRect(MARGIN, 8, 46, 18, 2, 2, "F")
-        doc.addImage(company.logo, format, MARGIN + 3, 10, 40, 14)
+        doc.addImage(this.company.logo, logo.format, MARGIN + 3, 10, 40, 14)
       } catch {
-        doc.setFontSize(16)
-        doc.setFont("helvetica", "bold")
-        this.setText(WHITE)
-        doc.text(this.truncate(company.name.toUpperCase(), 95), MARGIN, 16)
+        // La tarjeta ya quedó pintada: se repinta la banda entera para taparla
+        // y recién ahí se cae al nombre. Sin esto queda una mancha blanca.
+        this.setFill(PRIMARY)
+        doc.rect(0, 0, PAGE_W, 34, "F")
+        this.drawCompanyNameBlock()
       }
     } else {
-      doc.setFontSize(16)
-      doc.setFont("helvetica", "bold")
-      this.setText(WHITE)
-      doc.text(this.truncate(company.name.toUpperCase(), 95), MARGIN, 16)
-      doc.setFontSize(8)
-      doc.setFont("helvetica", "normal")
-      const companyLine = [
-        company.taxId ? `CUIT ${company.taxId}` : "",
-        company.phone,
-        company.email,
-      ]
-        .filter(Boolean)
-        .join("  ·  ")
-      if (companyLine) doc.text(this.truncate(companyLine, 95), MARGIN, 21.5)
+      this.drawCompanyNameBlock()
     }
 
     doc.setFontSize(15)
