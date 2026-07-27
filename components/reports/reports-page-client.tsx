@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { BarChart3, TrendingUp, Wallet, Download, Percent, HelpCircle, Calendar, FileSearch, CalendarRange, Receipt, Coins } from "lucide-react"
+import { BarChart3, TrendingUp, Wallet, Download, Percent, HelpCircle, Calendar, FileSearch, CalendarRange, Receipt, Coins, PackageSearch } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -18,6 +18,7 @@ import { ConciliacionReport } from "./conciliacion-report"
 import { ClosingReport } from "./closing-report"
 import { ExpensesReport } from "./expenses-report"
 import { CommissionsReport } from "./commissions-report"
+import { SalesBreakdownReport } from "./sales-breakdown-report"
 import {
   Breadcrumb,
   BreadcrumbList,
@@ -87,6 +88,10 @@ export function ReportsPageClient({ userRole, userId, sellers, agencies }: Repor
             <TrendingUp className="h-4 w-4" />
             Ventas
           </TabsTrigger>
+          <TabsTrigger value="sales-breakdown" className="flex items-center gap-2">
+            <PackageSearch className="h-4 w-4" />
+            Por producto
+          </TabsTrigger>
           <TabsTrigger value="margins" className="flex items-center gap-2">
             <Percent className="h-4 w-4" />
             Márgenes
@@ -133,6 +138,10 @@ export function ReportsPageClient({ userRole, userId, sellers, agencies }: Repor
             sellers={sellers}
             agencies={agencies}
           />
+        </TabsContent>
+
+        <TabsContent value="sales-breakdown" className="mt-6">
+          <SalesBreakdownReport sellers={sellers} agencies={agencies} />
         </TabsContent>
 
         <TabsContent value="margins" className="mt-6">

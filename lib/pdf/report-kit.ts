@@ -388,7 +388,12 @@ export class ReportPdfBuilder {
     this.y += h + 4
   }
 
-  /** Aclaración en cursiva. Se usa para criterios, capados y notas de moneda. */
+  /**
+   * Aclaración en cursiva. Se usa para criterios, capados y notas de moneda.
+   *
+   * Si el texto no entra en el ancho disponible se parte en varias líneas: una
+   * nota cortada por el borde de la hoja es peor que no ponerla.
+   */
   note(
     text: string,
     opts: { x?: number; fontSize?: number; dy?: number; advance?: number } = {}
@@ -398,9 +403,21 @@ export class ReportPdfBuilder {
     doc.setFontSize(fontSize)
     doc.setFont("helvetica", "italic")
     this.setText(GRAY)
-    doc.text(text, x, this.y + dy)
+
+    const maxWidth = RIGHT - x
+    if (doc.getTextWidth(text) <= maxWidth) {
+      doc.text(text, x, this.y + dy)
+      this.y += advance
+    } else {
+      const lines = doc.splitTextToSize(text, maxWidth) as string[]
+      const lineHeight = fontSize * 0.48
+      lines.forEach((line, i) => {
+        doc.text(line, x, this.y + dy + i * lineHeight)
+      })
+      this.y += advance + (lines.length - 1) * lineHeight
+    }
+
     doc.setFont("helvetica", "normal")
-    this.y += advance
   }
 
   /** Caja para el caso "no hay nada que mostrar en este período". */
