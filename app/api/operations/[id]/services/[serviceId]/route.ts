@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { canPerformAction, getUserAgencyIds, resolveOperationAccessScope } from "@/lib/permissions-api"
+import { canPerformAction, getUserAgencyIds, resolveOperationAccessScope, isAgencyReadonlyScope } from "@/lib/permissions-api"
 import { calculateCommission, createOrUpdateCommissionRecords } from "@/lib/commissions/calculate"
 import { getOpenOperatorPaymentStatus } from "@/lib/accounting/operator-payment-settlement"
 import { getOrgFeatureFlag } from "@/lib/settings/org-features"
@@ -185,7 +185,7 @@ export async function PATCH(
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
     const accessScope = resolveOperationAccessScope(user, operation, agencyIds)
 
-    if (!accessScope || accessScope === "agency-support") {
+    if (!accessScope || isAgencyReadonlyScope(accessScope)) {
       return NextResponse.json({ error: "No tiene acceso a esta operación" }, { status: 403 })
     }
 
@@ -395,7 +395,7 @@ export async function DELETE(
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
     const accessScope = resolveOperationAccessScope(user, operation, agencyIds)
 
-    if (!accessScope || accessScope === "agency-support") {
+    if (!accessScope || isAgencyReadonlyScope(accessScope)) {
       return NextResponse.json({ error: "No tiene acceso a esta operación" }, { status: 403 })
     }
 

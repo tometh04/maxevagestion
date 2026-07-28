@@ -61,7 +61,7 @@ import { buildOperationPurchaseSummary } from "@/lib/operations/purchase-summary
 import { toast } from "sonner"
 import { useCan } from "@/components/permissions/permissions-provider"
 
-type OperationAccessScope = "full" | "own" | "agency-support"
+type OperationAccessScope = "full" | "own" | "agency-support" | "agency-payments"
 
 const statusLabels: Record<string, string> = {
   RESERVED: "Reservado",
@@ -126,6 +126,9 @@ interface OperationDetailClientProps {
   userRole: string
   operationAccessScope: OperationAccessScope
   canAddServicesOnAgencyOperations?: boolean
+  /** SELLER con can_register_payments_on_agency_operations: habilita imputar
+   * cobros/pagos en esta operación aunque no sea el vendedor asignado. */
+  canRegisterAgencyPayments?: boolean
   commissionRecords?: Array<{ percentage: number | null; seller_id: string; amount: number }>
   /** Comisión al referidor por esta venta (VIB-62), si el cliente vino referido. */
   referralCommission?: {
@@ -179,6 +182,7 @@ export function OperationDetailClient({
   userRole,
   operationAccessScope,
   canAddServicesOnAgencyOperations = false,
+  canRegisterAgencyPayments = false,
   commissionRecords = [],
   referralCommission = null,
   operationServices = [],
@@ -192,19 +196,29 @@ export function OperationDetailClient({
   const [isDeletingAlerts, setIsDeletingAlerts] = useState(false)
   const [isGeneratingAlerts, setIsGeneratingAlerts] = useState(false)
   const isSupportMode = operationAccessScope === "agency-support"
+  // Modo "cobros": SELLER con can_register_payments_on_agency_operations sobre una
+  // operación ajena de su agencia. Solo plata: ve/imputa pagos, no edita la op.
+  const isPaymentsMode = operationAccessScope === "agency-payments"
+  // Scopes de agencia (no propietario) → datos de la operación en solo lectura.
+  const isAgencyScopedReadonly = isSupportMode || isPaymentsMode
   const canWriteCashForServices = useCan("cash", "write")
-  const canEditOperation = !isSupportMode && !["VIEWER", "CONTABLE"].includes(userRole)
-  const canManagePassengers = !isSupportMode && !["VIEWER", "CONTABLE"].includes(userRole)
-  const canManageDocuments = !isSupportMode && !["VIEWER", "CONTABLE"].includes(userRole)
-  const canAddServices = isSupportMode
-    ? canAddServicesOnAgencyOperations
+  const canEditOperation = !isAgencyScopedReadonly && !["VIEWER", "CONTABLE"].includes(userRole)
+  const canManagePassengers = !isAgencyScopedReadonly && !["VIEWER", "CONTABLE"].includes(userRole)
+  const canManageDocuments = !isAgencyScopedReadonly && !["VIEWER", "CONTABLE"].includes(userRole)
+  // Alta de servicios: solo postventa con su flag. El modo cobros nunca agrega servicios.
+  const canAddServices = isAgencyScopedReadonly
+    ? isSupportMode && canAddServicesOnAgencyOperations
     : !["VIEWER", "CONTABLE"].includes(userRole)
-  const canManageExistingServices = !isSupportMode && !["VIEWER", "CONTABLE"].includes(userRole)
+  const canManageExistingServices = !isAgencyScopedReadonly && !["VIEWER", "CONTABLE"].includes(userRole)
+  // ¿Puede operar pagos en ESTA operación? Propietario/roles con caja, o el modo
+  // cobros, o un vendedor con el flag de cobros aunque el scope primario sea
+  // postventa (usuario con ambos permisos).
+  const paymentsAllowedHere = !isAgencyScopedReadonly || isPaymentsMode || canRegisterAgencyPayments
   // Gestionar pagos de servicios = cash.write (matrix por agencia). El servidor
   // (/api/payments) valida el mismo permiso.
-  const canManageServicePayments = !isSupportMode && canWriteCashForServices
+  const canManageServicePayments = paymentsAllowedHere && canWriteCashForServices
   const canReadCash = useCan("cash", "read")
-  const canViewFinancialTabs = !isSupportMode && userRole !== "SELLER"
+  const canViewFinancialTabs = !isAgencyScopedReadonly && userRole !== "SELLER"
   // El tab "Pagos Operación" (cobros al pasajero / pagos a operador) NO es
   // finanzas-admin: se muestra a quien pueda operar caja según el matrix por
   // agencia — incluidos vendedores con `cash` habilitado, que son los que
@@ -212,8 +226,8 @@ export function OperationDetailClient({
   // canViewFinancialTabs. El botón "Registrar Pago" y el server (/api/payments)
   // igual validan cash.write, así que esto solo destapa el acceso legítimo.
   const canViewOperationPayments =
-    canViewFinancialTabs || (!isSupportMode && (canReadCash || canWriteCashForServices))
-  const canManageAlerts = !isSupportMode && userRole !== "VIEWER"
+    canViewFinancialTabs || (paymentsAllowedHere && (canReadCash || canWriteCashForServices))
+  const canManageAlerts = !isAgencyScopedReadonly && userRole !== "VIEWER"
   const operatorNameMap = useMemo(
     () => new Map(operators.map((operator) => [operator.id, operator.name])),
     [operators]
@@ -344,8 +358,13 @@ export function OperationDetailClient({
               Postventa
             </Badge>
           )}
+          {isPaymentsMode && (
+            <Badge variant="outline" className="border-primary/15 bg-primary/5 text-primary">
+              Cobros
+            </Badge>
+          )}
           <Badge variant="secondary" className="bg-secondary/60 text-secondary-foreground">{statusLabels[operation.status] || operation.status}</Badge>
-          {!isSupportMode && (
+          {!isAgencyScopedReadonly && (
             <SendStatementButton
               operationId={operation.id}
               defaultEmail={mainCustomerEmail}
@@ -392,7 +411,7 @@ export function OperationDetailClient({
             <Wrench className="h-3.5 w-3.5" />
             Servicios
           </TabsTrigger>
-          {!isSupportMode && (
+          {!isAgencyScopedReadonly && (
             <TabsTrigger value="itinerary" className="gap-1.5">
               <ShoppingBag className="h-3.5 w-3.5" />
               Detalle de Compra
@@ -580,7 +599,7 @@ export function OperationDetailClient({
             </Card>
           </div>
 
-          {!isSupportMode && (
+          {!isAgencyScopedReadonly && (
             <Card className="rounded-xl border border-border/40">
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-base">
@@ -997,7 +1016,7 @@ export function OperationDetailClient({
             canEditServices={canManageExistingServices}
             canDeleteServices={canManageExistingServices}
             canManagePayments={canManageServicePayments}
-            showFinancialColumns={!isSupportMode && userRole !== "SELLER"}
+            showFinancialColumns={!isAgencyScopedReadonly && userRole !== "SELLER"}
             servicePayments={servicePayments}
             operationCurrency={operationCurrency}
             operationData={{
@@ -1012,7 +1031,7 @@ export function OperationDetailClient({
           />
         </TabsContent>
 
-        {!isSupportMode && (
+        {!isAgencyScopedReadonly && (
           <TabsContent value="itinerary" className="space-y-4">
             <ItinerarySection operationId={operation.id} operation={{ ...operation, operation_customers: customers }} />
           </TabsContent>

@@ -6,6 +6,7 @@ import {
   canPerformAction,
   getUserAgencyIds,
   resolveOperationAccessScope,
+  isAgencyReadonlyScope,
 } from "@/lib/permissions-api"
 import { createLedgerMovement, calculateARSEquivalent } from "@/lib/accounting/ledger"
 import { createOperatorPayment } from "@/lib/accounting/operator-payments"
@@ -128,7 +129,10 @@ export async function POST(
       return NextResponse.json({ error: "No se pueden agregar servicios a una operación cancelada" }, { status: 400 })
     }
 
-    if (accessScope === "agency-support" && !canAddAgencyOperationServices(user)) {
+    // Scopes de agencia (no propietario): postventa puede agregar servicios sólo
+    // con el flag de alta; cobros (agency-payments) NUNCA agrega servicios (su
+    // permiso es sólo plata).
+    if (isAgencyReadonlyScope(accessScope) && (accessScope !== "agency-support" || !canAddAgencyOperationServices(user))) {
       return NextResponse.json({ error: "No tiene permiso para agregar servicios en esta operación" }, { status: 403 })
     }
 

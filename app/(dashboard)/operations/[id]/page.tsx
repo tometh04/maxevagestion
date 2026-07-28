@@ -1,6 +1,6 @@
 import { getCurrentUser, getUserAgencies } from "@/lib/auth"
 import { createServerClient, createAdminClient } from "@/lib/supabase/server"
-import { getUserAgencyIds, resolveOperationAccessScope } from "@/lib/permissions-api"
+import { getUserAgencyIds, resolveOperationAccessScope, canRegisterPaymentsOnAgencyOperations } from "@/lib/permissions-api"
 import { notFound } from "next/navigation"
 import { OperationDetailClient } from "@/components/operations/operation-detail-client"
 import { getOperationVisibleDocuments } from "@/lib/documents/operation-documents"
@@ -211,6 +211,7 @@ export default async function OperationDetailPage({
       userRole={userRole}
       operationAccessScope={operationAccessScope}
       canAddServicesOnAgencyOperations={Boolean(user.can_add_services_on_agency_operations)}
+      canRegisterAgencyPayments={canRegisterPaymentsOnAgencyOperations(user)}
       commissionRecords={commissionRecords || []}
       referralCommission={referralCommission || null}
       operationServices={operationServices || []}

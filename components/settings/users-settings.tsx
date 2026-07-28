@@ -79,6 +79,7 @@ interface User {
   can_view_agency_operations_support?: boolean
   can_add_services_on_agency_operations?: boolean
   can_create_operations_for_other_sellers?: boolean
+  can_register_payments_on_agency_operations?: boolean
   created_at: string
   email_confirmed_at?: string | null
   user_agencies?: Array<{ agency_id: string; agencies: { name: string } }>
@@ -136,6 +137,7 @@ export function UsersSettings() {
     can_view_agency_operations_support: false,
     can_add_services_on_agency_operations: false,
     can_create_operations_for_other_sellers: false,
+    can_register_payments_on_agency_operations: false,
   })
 
   // Form state
@@ -296,6 +298,7 @@ export function UsersSettings() {
       can_view_agency_operations_support: Boolean(user.can_view_agency_operations_support),
       can_add_services_on_agency_operations: Boolean(user.can_add_services_on_agency_operations),
       can_create_operations_for_other_sellers: Boolean(user.can_create_operations_for_other_sellers),
+      can_register_payments_on_agency_operations: Boolean(user.can_register_payments_on_agency_operations),
     })
     setPermissionsDialogOpen(true)
   }
@@ -671,7 +674,7 @@ export function UsersSettings() {
                           ))}
                         </div>
                       )}
-                      {user.role === "SELLER" && (user.can_view_agency_operations_support || user.can_add_services_on_agency_operations || user.can_create_operations_for_other_sellers) && (
+                      {user.role === "SELLER" && (user.can_view_agency_operations_support || user.can_add_services_on_agency_operations || user.can_create_operations_for_other_sellers || user.can_register_payments_on_agency_operations) && (
                         <div className="flex flex-wrap gap-1">
                           {user.can_view_agency_operations_support && (
                             <Badge variant="outline" className="text-[10px]">
@@ -686,6 +689,11 @@ export function UsersSettings() {
                           {user.can_create_operations_for_other_sellers && (
                             <Badge variant="outline" className="text-[10px]">
                               Carga por otros
+                            </Badge>
+                          )}
+                          {user.can_register_payments_on_agency_operations && (
+                            <Badge variant="outline" className="text-[10px]">
+                              Cobros agencia
                             </Badge>
                           )}
                         </div>
@@ -963,6 +971,24 @@ export function UsersSettings() {
                     setSpecialPermissions((prev) => ({
                       ...prev,
                       can_create_operations_for_other_sellers: checked,
+                    }))
+                  }
+                />
+              </div>
+
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium">Registrar cobros en operaciones de la agencia</p>
+                  <p className="text-xs text-muted-foreground">
+                    Permite imputar cobros al pasajero y pagos al operador en operaciones de otros vendedores de sus mismas agencias. Sólo pagos: no habilita editar la operación ni sus datos. Requiere tener Caja habilitada.
+                  </p>
+                </div>
+                <Switch
+                  checked={specialPermissions.can_register_payments_on_agency_operations}
+                  onCheckedChange={(checked) =>
+                    setSpecialPermissions((prev) => ({
+                      ...prev,
+                      can_register_payments_on_agency_operations: checked,
                     }))
                   }
                 />

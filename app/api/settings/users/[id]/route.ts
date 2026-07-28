@@ -35,6 +35,7 @@ export async function PATCH(
       "can_view_agency_operations_support",
       "can_add_services_on_agency_operations",
       "can_create_operations_for_other_sellers",
+      "can_register_payments_on_agency_operations",
       "additional_roles",
     ]
     const updateData: Record<string, any> = {}

@@ -7,6 +7,9 @@ import {
   isOwnDataOnlyResolved,
   canCreateOperationsForOtherSellers,
   isSellerWithinUserAgencies,
+  canRegisterPaymentsOnAgencyOperations,
+  resolveOperationAccessScope,
+  isAgencyReadonlyScope,
 } from "../permissions-api"
 import { buildDefaultMatrix, type ResolvedPermissionsMatrix } from "../permissions/resolved"
 
@@ -188,6 +191,28 @@ describe("Permissions API", () => {
 
       expect(query.in).toHaveBeenCalledWith("agency_id", ["agency-1", "agency-2"])
       expect(query.eq).not.toHaveBeenCalledWith("seller_id", "seller-1")
+    })
+
+    it("should widen SELLER with agency-payments permission to agency_id (para poder abrir y cobrar)", () => {
+      const query = createMockQuery()
+      const user = {
+        role: "SELLER",
+        id: "seller-1",
+        can_register_payments_on_agency_operations: true,
+      }
+      applyOperationsFilters(query, user, ["agency-1", "agency-2"])
+
+      expect(query.in).toHaveBeenCalledWith("agency_id", ["agency-1", "agency-2"])
+      expect(query.eq).not.toHaveBeenCalledWith("seller_id", "seller-1")
+    })
+
+    it("should keep own-only for SELLER without any special flag", () => {
+      const query = createMockQuery()
+      const user = { role: "SELLER", id: "seller-1" }
+      applyOperationsFilters(query, user, ["agency-1"])
+
+      expect(query.eq).toHaveBeenCalledWith("seller_id", "seller-1")
+      expect(query.in).not.toHaveBeenCalled()
     })
 
     it("should fall back to seller_id when support SELLER has no agencies", () => {
@@ -439,6 +464,75 @@ describe("Permissions API", () => {
     it("un rol no-SELLER no aplica a este flag (los demás roles se habilitan por otra vía)", () => {
       const admin = { role: "ADMIN", id: "a-1", can_create_operations_for_other_sellers: true }
       expect(canCreateOperationsForOtherSellers(admin)).toBe(false)
+    })
+  })
+
+  describe("canRegisterPaymentsOnAgencyOperations", () => {
+    it("SELLER con el flag en true → true", () => {
+      const user = { role: "SELLER", id: "s-1", can_register_payments_on_agency_operations: true }
+      expect(canRegisterPaymentsOnAgencyOperations(user)).toBe(true)
+    })
+
+    it("SELLER sin el flag (false/undefined) → false", () => {
+      expect(
+        canRegisterPaymentsOnAgencyOperations({ role: "SELLER", id: "s-1", can_register_payments_on_agency_operations: false })
+      ).toBe(false)
+      expect(canRegisterPaymentsOnAgencyOperations({ role: "SELLER", id: "s-1" })).toBe(false)
+    })
+
+    it("un rol no-SELLER no aplica a este flag (los demás roles operan caja por otra vía)", () => {
+      const admin = { role: "ADMIN", id: "a-1", can_register_payments_on_agency_operations: true }
+      expect(canRegisterPaymentsOnAgencyOperations(admin)).toBe(false)
+    })
+  })
+
+  describe("resolveOperationAccessScope — agency-payments", () => {
+    const agencyIds = ["agency-1", "agency-2"]
+
+    it("SELLER propietario → 'own' aunque tenga el flag de cobros", () => {
+      const user = { role: "SELLER", id: "s-1", can_register_payments_on_agency_operations: true }
+      const op = { agency_id: "agency-1", seller_id: "s-1" }
+      expect(resolveOperationAccessScope(user, op, agencyIds)).toBe("own")
+    })
+
+    it("SELLER con flag de cobros sobre operación ajena de su agencia → 'agency-payments'", () => {
+      const user = { role: "SELLER", id: "s-1", can_register_payments_on_agency_operations: true }
+      const op = { agency_id: "agency-1", seller_id: "s-OTRO" }
+      expect(resolveOperationAccessScope(user, op, agencyIds)).toBe("agency-payments")
+    })
+
+    it("SELLER sin ningún flag sobre operación ajena → null (no accede)", () => {
+      const user = { role: "SELLER", id: "s-1" }
+      const op = { agency_id: "agency-1", seller_id: "s-OTRO" }
+      expect(resolveOperationAccessScope(user, op, agencyIds)).toBeNull()
+    })
+
+    it("SELLER con flag de cobros sobre operación de OTRA agencia → null", () => {
+      const user = { role: "SELLER", id: "s-1", can_register_payments_on_agency_operations: true }
+      const op = { agency_id: "agency-9", seller_id: "s-OTRO" }
+      expect(resolveOperationAccessScope(user, op, agencyIds)).toBeNull()
+    })
+
+    it("postventa tiene prioridad como scope primario si el vendedor tiene ambos flags", () => {
+      const user = {
+        role: "SELLER",
+        id: "s-1",
+        can_view_agency_operations_support: true,
+        can_register_payments_on_agency_operations: true,
+      }
+      const op = { agency_id: "agency-1", seller_id: "s-OTRO" }
+      expect(resolveOperationAccessScope(user, op, agencyIds)).toBe("agency-support")
+    })
+  })
+
+  describe("isAgencyReadonlyScope", () => {
+    it("agency-support y agency-payments son solo lectura de datos de la op", () => {
+      expect(isAgencyReadonlyScope("agency-support")).toBe(true)
+      expect(isAgencyReadonlyScope("agency-payments")).toBe(true)
+    })
+    it("own y full pueden escribir datos de la op", () => {
+      expect(isAgencyReadonlyScope("own")).toBe(false)
+      expect(isAgencyReadonlyScope("full")).toBe(false)
     })
   })
 

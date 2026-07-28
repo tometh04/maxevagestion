@@ -15,6 +15,7 @@ type SupportOperationsUser = {
   can_view_agency_operations_support?: boolean | null
   can_add_services_on_agency_operations?: boolean | null
   can_create_operations_for_other_sellers?: boolean | null
+  can_register_payments_on_agency_operations?: boolean | null
 }
 
 type ScopedOperationResource = {
@@ -22,7 +23,12 @@ type ScopedOperationResource = {
   seller_id: string | null
 }
 
-export type OperationAccessScope = "full" | "own" | "agency-support"
+// "agency-payments": SELLER con can_register_payments_on_agency_operations. Ve y
+// abre operaciones de sus agencias en modo SOLO cobros/pagos: puede imputar
+// pagos (el gate real vive en /api/payments), pero NO editar la operación,
+// pasajeros, documentos ni servicios. Es más acotado que "full" y distinto de
+// "agency-support" (postventa), que en cambio oculta el tab de pagos.
+export type OperationAccessScope = "full" | "own" | "agency-support" | "agency-payments"
 
 /**
  * Aplica filtros de permisos a una query de Supabase según el rol del usuario
@@ -119,6 +125,18 @@ export function canCreateOperationsForOtherSellers(user: SupportOperationsUser):
 }
 
 /**
+ * ¿El vendedor puede registrar cobros/pagos en operaciones de OTRO vendedor de
+ * sus mismas agencias? Sólo aplica a SELLER (los demás roles con acceso a caja
+ * ya operan sobre toda su agencia). Opt-in por usuario, lo habilita el admin
+ * desde "Permisos especiales". El alcance es SOLO plata: no habilita editar la
+ * operación ni sus datos. La pertenencia a la agencia se valida en el gate de
+ * /api/payments; acá sólo resolvemos el flag.
+ */
+export function canRegisterPaymentsOnAgencyOperations(user: SupportOperationsUser): boolean {
+  return user.role === "SELLER" && user.can_register_payments_on_agency_operations === true
+}
+
+/**
  * Valida que un vendedor destino pertenezca a alguna de las agencias del usuario
  * actual (acotado a su org: agencyIds ya viene filtrado por org, ver getUserAgencyIds).
  * Se usa para restringir "cargar a nombre de otro" a vendedores de las mismas
@@ -162,14 +180,32 @@ export function resolveOperationAccessScope(
       return "own"
     }
 
+    // Postventa (ver pasajeros/documentos/servicios) tiene prioridad como scope
+    // "primario". El permiso de cobros se expone además por prop
+    // (canRegisterPaymentsOnAgencyOperations) para que un vendedor con AMBOS
+    // flags pueda operar pagos aunque el scope resuelto sea postventa.
     if (hasAgencyOperationsSupportView(user)) {
       return "agency-support"
+    }
+
+    if (canRegisterPaymentsOnAgencyOperations(user)) {
+      return "agency-payments"
     }
 
     return null
   }
 
   return "full"
+}
+
+/**
+ * Scopes de acceso "de agencia" (no propietario) que son de SOLO LECTURA para
+ * datos de la operación (documentos, servicios): postventa y cobros. Un vendedor
+ * con estos scopes puede ver/operar lo que su flag habilita, pero NO editar los
+ * datos de una operación ajena. "own"/"full" sí pueden escribir.
+ */
+export function isAgencyReadonlyScope(scope: OperationAccessScope): boolean {
+  return scope === "agency-support" || scope === "agency-payments"
 }
 
 /**
@@ -229,9 +265,12 @@ export function applyOperationsFilters(
 ): any {
   const userRole = user.role as UserRole
 
-  // SELLER con permiso especial puede ver todas las operaciones de sus agencias
+  // SELLER con permiso especial puede ver todas las operaciones de sus agencias:
+  // ya sea para postventa (can_view_agency_operations_support) o para registrar
+  // cobros/pagos (can_register_payments_on_agency_operations). Necesita verlas en
+  // el listado para poder abrirlas e imputar el pago.
   if (userRole === "SELLER") {
-    if (hasAgencyOperationsSupportView(user)) {
+    if (hasAgencyOperationsSupportView(user) || canRegisterPaymentsOnAgencyOperations(user)) {
       if (agencyIds.length > 0) {
         return query.in("agency_id", agencyIds)
       }
@@ -451,7 +490,7 @@ export async function canAccessDocumentResource(
       return false
     }
 
-    return !write || scope !== "agency-support"
+    return !write || !isAgencyReadonlyScope(scope)
   }
 
   if (resource.customerId) {
@@ -468,7 +507,7 @@ export async function canAccessDocumentResource(
         : canPerformAction(user, "documents", "read", matrix)
     }
 
-    return !write || scopes.some((scope) => scope !== "agency-support")
+    return !write || scopes.some((scope) => !isAgencyReadonlyScope(scope))
   }
 
   return write

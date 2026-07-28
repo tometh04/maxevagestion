@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { createAdminClient, createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
-import { getUserAgencyIds, isOwnDataOnlyResolved, canPerformAction } from "@/lib/permissions-api"
+import { getUserAgencyIds, isOwnDataOnlyResolved, canPerformAction, canRegisterPaymentsOnAgencyOperations } from "@/lib/permissions-api"
 import { getRequestPermissions } from "@/lib/permissions/request"
 import { resolveUserPermissions, checkResolvedPermission, type ResolvedPermissionsMatrix } from "@/lib/permissions-agency"
 import {
@@ -123,9 +123,12 @@ export async function POST(request: Request) {
     // Verificar acceso al módulo de caja (con permisos dinámicos por agencia)
     let matrix: ResolvedPermissionsMatrix | null = null
     let hasCashAccess = canAccessModule(user.role as any, "cash")
+    // agencyIds se hoistea acá porque también lo usa el gate de "operación propia
+    // vs. de la agencia" más abajo (SELLER con can_register_payments_on_agency_operations).
+    let userAgencyIds: string[] = []
     if ((user as any).org_id) {
-      const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
-      matrix = await resolveUserPermissions(supabase as any, user.id, (user as any).org_id, user.role, agencyIds)
+      userAgencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
+      matrix = await resolveUserPermissions(supabase as any, user.id, (user as any).org_id, user.role, userAgencyIds)
       hasCashAccess = checkResolvedPermission(matrix, "cash", "write")
     }
     if (!hasCashAccess) {
@@ -301,15 +304,28 @@ export async function POST(request: Request) {
     // (operations.ownDataOnly resuelto por agencia), verificar que la operación
     // le pertenece. Antes era `role === "SELLER"` fijo, así que apagar
     // ownDataOnly no habilitaba imputar pagos en operaciones de la agencia.
+    //
+    // Excepción: un SELLER con can_register_payments_on_agency_operations puede
+    // registrar pagos en operaciones de OTRO vendedor siempre que la operación
+    // esté en alguna de SUS agencias (mismo criterio de acotamiento que
+    // can_create_operations_for_other_sellers). El org scope ya está garantizado
+    // por el fetch org-scoped de más abajo.
     if (isOwnDataOnlyResolved(user, "operations", matrix ?? undefined) && operation_id) {
-      const { data: operationOwnership } = await (supabase.from("operations") as any)
-        .select("id")
+      const { data: gatedOp } = await (supabase.from("operations") as any)
+        .select("id, seller_id, agency_id")
         .eq("id", operation_id)
-        .eq("seller_id", user.id)
         .eq("org_id", user.org_id) // defensive: scope por org también
         .maybeSingle()
 
-      if (!operationOwnership) {
+      const ownsOperation = !!gatedOp && gatedOp.seller_id === user.id
+      const canRegisterOnAgencyOp =
+        !!gatedOp &&
+        !ownsOperation &&
+        canRegisterPaymentsOnAgencyOperations(user) &&
+        !!gatedOp.agency_id &&
+        userAgencyIds.includes(gatedOp.agency_id)
+
+      if (!ownsOperation && !canRegisterOnAgencyOp) {
         return NextResponse.json({ error: "No tiene permiso para registrar pagos en esta operación" }, { status: 403 })
       }
     }
