@@ -12,6 +12,7 @@ import {
   pickExactPendingMatch,
   findMatchingOperatorPayment,
   AmbiguousOperatorPaymentError,
+  resyncFullyRevertedOperatorPayment,
 } from "../operator-payment-settlement"
 
 describe("buildOperatorPaymentUpdate — overpayment cap", () => {
@@ -263,5 +264,199 @@ describe("findMatchingOperatorPayment — operator_payment_id viejo NO crea dupl
       amount: 2120000,
     })
     expect(r?.id).toBe("real-pending")
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("resyncFullyRevertedOperatorPayment — el pendiente que quedaba viejo", () => {
+  /**
+   * Cliente fake que devuelve un dataset por tabla y registra los updates.
+   * `operator_payments` responde distinto según se busque por id o por
+   * (operation_id, operator_id), que es lo que hace la función.
+   */
+  function makeClient(opts: {
+    debt: any
+    siblings?: any[]
+    costRows?: any[]
+    serviceLink?: any[]
+    serviceError?: any
+  }) {
+    const updates: any[] = []
+
+    const from = (table: string) => {
+      const filters: Record<string, any> = {}
+      let op: "select" | "update" = "select"
+      let values: any = null
+
+      const resolve = () => {
+        if (op === "update") {
+          updates.push({ table, filters: { ...filters }, values })
+          return { data: null, error: null }
+        }
+        if (table === "operation_services") {
+          if (opts.serviceError) return { data: null, error: opts.serviceError }
+          return { data: opts.serviceLink ?? [], error: null }
+        }
+        if (table === "operation_operators") {
+          return { data: opts.costRows ?? [], error: null }
+        }
+        // operator_payments
+        if (filters.id) return { data: opts.debt, error: null }
+        return { data: opts.siblings ?? [], error: null }
+      }
+
+      const builder: any = new Proxy(
+        {},
+        {
+          get(_t, prop) {
+            if (prop === "then") {
+              return (res: any) => Promise.resolve(resolve()).then(res)
+            }
+            return (...args: any[]) => {
+              const name = String(prop)
+              if (name === "update") {
+                op = "update"
+                values = args[0]
+              }
+              if (name === "eq") filters[args[0]] = args[1]
+              if (name === "maybeSingle" || name === "single") {
+                return Promise.resolve(resolve())
+              }
+              return builder
+            }
+          },
+        }
+      )
+      return builder
+    }
+
+    return { client: { from } as any, updates }
+  }
+
+  const deudaVico = {
+    id: "op-pay-1",
+    operation_id: "op-46ca",
+    operator_id: "free-way",
+    amount: 1296,
+    currency: "USD",
+    paid_amount: 0,
+  }
+
+  it("realinea el monto al costo real cuando la deuda quedó sin pagos", async () => {
+    // El caso exacto de VICO: deuda de 1296 pagada en mayo, costo corregido a
+    // 1126,32 en julio, pago borrado hoy. El pendiente quedaba en 1296.
+    const { client, updates } = makeClient({
+      debt: deudaVico,
+      siblings: [{ id: "op-pay-1" }],
+      costRows: [{ cost: 1126.32, cost_currency: "USD" }],
+    })
+
+    const r = await resyncFullyRevertedOperatorPayment(client, "op-pay-1")
+
+    expect(r).toEqual({ resynced: true, from: 1296, to: 1126.32 })
+    expect(updates).toHaveLength(1)
+    expect(updates[0].values.amount).toBe(1126.32)
+    // CAS: no pisar si entre la lectura y la escritura alguien imputó un pago.
+    expect(updates[0].filters.paid_amount).toBe(0)
+  })
+
+  it("no toca una deuda que todavía tiene algo pagado", async () => {
+    const { client, updates } = makeClient({
+      debt: { ...deudaVico, paid_amount: 500 },
+      siblings: [{ id: "op-pay-1" }],
+      costRows: [{ cost: 1126.32, cost_currency: "USD" }],
+    })
+
+    const r = await resyncFullyRevertedOperatorPayment(client, "op-pay-1")
+
+    expect(r.resynced).toBe(false)
+    expect(updates).toEqual([])
+  })
+
+  it("no adivina cuando el operador tiene varias patas en la operación", async () => {
+    // FREE WAY con dos tramos: no se puede saber qué costo corresponde a qué
+    // deuda sin adivinar, y adivinar mueve plata.
+    const { client, updates } = makeClient({
+      debt: deudaVico,
+      siblings: [{ id: "op-pay-1" }, { id: "op-pay-2" }],
+      costRows: [{ cost: 600 }, { cost: 526.32 }],
+    })
+
+    const r = await resyncFullyRevertedOperatorPayment(client, "op-pay-1")
+
+    expect(r.resynced).toBe(false)
+    expect(r.reason).toContain("más de una pata")
+    expect(updates).toEqual([])
+  })
+
+  it("no toca una deuda que nació de un servicio", async () => {
+    const { client, updates } = makeClient({
+      debt: deudaVico,
+      siblings: [{ id: "op-pay-1" }],
+      costRows: [{ cost: 1126.32, cost_currency: "USD" }],
+      serviceLink: [{ id: "svc-1" }],
+    })
+
+    const r = await resyncFullyRevertedOperatorPayment(client, "op-pay-1")
+
+    expect(r.resynced).toBe(false)
+    expect(updates).toEqual([])
+  })
+
+  it("ante un error leyendo servicios no escribe nada", async () => {
+    const { client, updates } = makeClient({
+      debt: deudaVico,
+      siblings: [{ id: "op-pay-1" }],
+      costRows: [{ cost: 1126.32, cost_currency: "USD" }],
+      serviceError: { message: "boom" },
+    })
+
+    const r = await resyncFullyRevertedOperatorPayment(client, "op-pay-1")
+
+    expect(r.resynced).toBe(false)
+    expect(updates).toEqual([])
+  })
+
+  it("si ya estaba alineada no escribe", async () => {
+    const { client, updates } = makeClient({
+      debt: { ...deudaVico, amount: 1126.32 },
+      siblings: [{ id: "op-pay-1" }],
+      costRows: [{ cost: 1126.32, cost_currency: "USD" }],
+    })
+
+    const r = await resyncFullyRevertedOperatorPayment(client, "op-pay-1")
+
+    expect(r.resynced).toBe(false)
+    expect(updates).toEqual([])
+  })
+
+  it("no realinea una deuda en otra moneda que el costo", async () => {
+    // Caso real en Lozada: deuda de 220.000 ARS contra un costo cargado de
+    // 145 USD. Copiar el número habría dejado la deuda en 145 pesos.
+    const { client, updates } = makeClient({
+      debt: { ...deudaVico, amount: 220000, currency: "ARS" },
+      siblings: [{ id: "op-pay-1" }],
+      costRows: [{ cost: 145, cost_currency: "USD" }],
+    })
+
+    const r = await resyncFullyRevertedOperatorPayment(client, "op-pay-1")
+
+    expect(r.resynced).toBe(false)
+    expect(r.reason).toContain("ARS")
+    expect(updates).toEqual([])
+  })
+
+  it("no pone la deuda en cero si el costo cargado es cero", async () => {
+    const { client, updates } = makeClient({
+      debt: deudaVico,
+      siblings: [{ id: "op-pay-1" }],
+      costRows: [{ cost: 0 }],
+    })
+
+    const r = await resyncFullyRevertedOperatorPayment(client, "op-pay-1")
+
+    expect(r.resynced).toBe(false)
+    expect(updates).toEqual([])
   })
 })

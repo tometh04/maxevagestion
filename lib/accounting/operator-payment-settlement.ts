@@ -332,5 +332,126 @@ export async function revertOperatorPaymentSettlement(
     throw new Error(`Error revirtiendo deuda de operador: ${updateError.message}`)
   }
 
+  // Si la deuda quedó sin nada pagado, volver a alinear el monto con el costo
+  // real del operador. Ver resyncFullyRevertedOperatorPayment: es el hueco por
+  // el que VICO terminó con pendientes que no coincidían con la liquidación.
+  if (toMoney(finalUpdate.paid_amount) === 0) {
+    await resyncFullyRevertedOperatorPayment(supabase, params.operatorPaymentId)
+  }
+
   return finalUpdate
+}
+
+/**
+ * Realinea el monto de una deuda al operador con el costo cargado, cuando la
+ * deuda quedó completamente revertida (sin un peso pagado).
+ *
+ * ── Por qué hace falta ─────────────────────────────────────────────────────
+ *
+ * Al editar una operación, si la deuda ya estaba liquidada el sistema NO
+ * reescribe su monto: es una regla deliberada, no se toca la historia de algo
+ * que se pagó. Pero cuando después se revierte ese pago, la justificación
+ * desaparece y no había nada que volviera a sincronizar. El monto quedaba
+ * congelado en el valor viejo.
+ *
+ * Caso real (VICO, 29/07): deuda de 1296 pagada en mayo, costo corregido a
+ * 1126,32 en julio —el monto se conserva, correcto—, y al borrar el pago para
+ * rehacerlo quedó un pendiente de 1296 contra un costo de 1126,32. Editar la
+ * operación tampoco lo arreglaba, porque los operadores no habían cambiado.
+ *
+ * ── Por qué es conservador ─────────────────────────────────────────────────
+ *
+ * Solo actúa cuando la correspondencia entre deuda y costo es inequívoca: una
+ * sola deuda y una sola línea de costo para ese operador en esa operación, y la
+ * deuda sin vínculo a un servicio. Un operador con varias patas (dos tramos,
+ * dos hoteles) o una deuda nacida de un servicio no se toca: ahí no se puede
+ * saber a qué línea corresponde sin adivinar, y adivinar mueve plata.
+ */
+export async function resyncFullyRevertedOperatorPayment(
+  supabase: AppSupabaseClient,
+  operatorPaymentId: string
+): Promise<{ resynced: boolean; from?: number; to?: number; reason?: string }> {
+  const { data: debt } = await (supabase.from("operator_payments") as any)
+    .select("id, operation_id, operator_id, amount, paid_amount, currency")
+    .eq("id", operatorPaymentId)
+    .maybeSingle()
+
+  if (!debt || !debt.operation_id || !debt.operator_id) {
+    return { resynced: false, reason: "sin operación u operador asociado" }
+  }
+  if (toMoney(debt.paid_amount) !== 0) {
+    return { resynced: false, reason: "todavía tiene pagos aplicados" }
+  }
+
+  // Una deuda creada por un servicio no se corresponde con operation_operators.
+  const { data: serviceLink, error: serviceError } = await (supabase.from("operation_services") as any)
+    .select("id")
+    .eq("operator_payment_id", operatorPaymentId)
+    .limit(1)
+
+  if (serviceError) {
+    return { resynced: false, reason: "no se pudo verificar el vínculo con servicios" }
+  }
+  if ((serviceLink || []).length > 0) {
+    return { resynced: false, reason: "la deuda proviene de un servicio" }
+  }
+
+  const [{ data: siblings }, { data: costRows }] = await Promise.all([
+    (supabase.from("operator_payments") as any)
+      .select("id")
+      .eq("operation_id", debt.operation_id)
+      .eq("operator_id", debt.operator_id),
+    (supabase.from("operation_operators") as any)
+      .select("cost, cost_currency")
+      .eq("operation_id", debt.operation_id)
+      .eq("operator_id", debt.operator_id),
+  ])
+
+  if ((siblings || []).length !== 1 || (costRows || []).length !== 1) {
+    return {
+      resynced: false,
+      reason: "el operador tiene más de una pata en la operación; requiere revisión manual",
+    }
+  }
+
+  const costRow = (costRows as any[])[0]
+
+  // Monedas distintas: no hay realineación posible sin un tipo de cambio, y
+  // pisar el monto sería catastrófico. Caso real en Lozada: una deuda de
+  // 220.000 ARS contra un costo cargado de 145 USD — copiar el número habría
+  // dejado la deuda en 145 pesos.
+  const debtCurrency = (debt.currency || "").toUpperCase()
+  const costCurrency = (costRow.cost_currency || "").toUpperCase()
+  if (debtCurrency && costCurrency && debtCurrency !== costCurrency) {
+    return {
+      resynced: false,
+      reason: `la deuda está en ${debtCurrency} y el costo en ${costCurrency}; requiere revisión manual`,
+    }
+  }
+
+  const target = roundMoney(toMoney(costRow.cost))
+  const current = roundMoney(toMoney(debt.amount))
+
+  if (target <= 0) {
+    return { resynced: false, reason: "el costo cargado es cero" }
+  }
+  if (Math.abs(current - target) < MONEY_EPSILON) {
+    return { resynced: false, reason: "ya estaba alineada" }
+  }
+
+  const { error: updateError } = await (supabase.from("operator_payments") as any)
+    .update({ amount: target, updated_at: new Date().toISOString() })
+    .eq("id", operatorPaymentId)
+    // CAS: si entre la lectura y la escritura alguien imputó un pago, no pisar.
+    .eq("paid_amount", 0)
+
+  if (updateError) {
+    console.error(
+      "[OperatorPayments] No se pudo realinear la deuda tras revertir el pago:",
+      updateError.message
+    )
+    return { resynced: false, reason: updateError.message }
+  }
+
+  return { resynced: true, from: current, to: target }
 }
