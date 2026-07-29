@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/table"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Loader2, Users2, Check, RotateCcw, Pencil } from "lucide-react"
+import { Loader2, Users2, Check, RotateCcw, Pencil, Plus } from "lucide-react"
 import { toast } from "sonner"
 
 interface CommissionRow {
@@ -367,6 +367,87 @@ function PartnersManager({ partners, onChanged }: { partners: Partner[]; onChang
   const [editName, setEditName] = useState("")
   const [editPct, setEditPct] = useState("")
   const [saving, setSaving] = useState(false)
+  // VIB-86: el alta vive acá. Antes no existía —el estado vacío decía que los
+  // referidores "se crean al marcar un cliente como referido"—, o sea que la
+  // única forma de darlos de alta era desde el alta de un cliente, justamente
+  // donde el vendedor no tiene que estar creándolos.
+  const [creating, setCreating] = useState(false)
+  const [newName, setNewName] = useState("")
+  const [newPct, setNewPct] = useState("")
+  const [savingNew, setSavingNew] = useState(false)
+
+  const create = async () => {
+    const name = newName.trim()
+    if (!name) {
+      toast.error("Ingresá el nombre del referidor")
+      return
+    }
+    setSavingNew(true)
+    try {
+      const res = await fetch("/api/referral-partners", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, default_commission_percentage: newPct.trim() || 0 }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || "No se pudo crear el referidor")
+      }
+      toast.success("Referidor creado")
+      setNewName("")
+      setNewPct("")
+      setCreating(false)
+      onChanged()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Error al crear el referidor")
+    } finally {
+      setSavingNew(false)
+    }
+  }
+
+  const formularioAlta = creating ? (
+    <Card className="mb-4">
+      <CardContent className="pt-5 space-y-3">
+        <div className="grid gap-3 md:grid-cols-2">
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">Nombre *</label>
+            <Input
+              placeholder="Agencia XYZ"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">% por defecto</label>
+            <Input
+              type="number"
+              min={0}
+              max={100}
+              step="0.1"
+              placeholder="Ej: 10"
+              value={newPct}
+              onChange={(e) => setNewPct(e.target.value)}
+            />
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Button size="sm" onClick={create} disabled={savingNew}>
+            {savingNew ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Crear referidor"}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setCreating(false)} disabled={savingNew}>
+            Cancelar
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  ) : (
+    <div className="mb-4">
+      <Button size="sm" onClick={() => setCreating(true)}>
+        <Plus className="mr-1.5 h-3.5 w-3.5" />
+        Nuevo referidor
+      </Button>
+    </div>
+  )
 
   const startEdit = (p: Partner) => {
     setEditingId(p.id)
@@ -412,10 +493,17 @@ function PartnersManager({ partners, onChanged }: { partners: Partner[]; onChang
   }
 
   if (partners.length === 0) {
-    return <EmptyState text="Todavía no cargaste referidores. Se crean al marcar un cliente como referido." />
+    return (
+      <>
+        {formularioAlta}
+        <EmptyState text="Todavía no cargaste referidores. Creá el primero para poder asignarlo a un cliente." />
+      </>
+    )
   }
 
   return (
+    <>
+    {formularioAlta}
     <Card>
       <CardContent className="pt-5 overflow-x-auto">
         <Table>
@@ -486,5 +574,6 @@ function PartnersManager({ partners, onChanged }: { partners: Partner[]; onChang
         </Table>
       </CardContent>
     </Card>
+    </>
   )
 }

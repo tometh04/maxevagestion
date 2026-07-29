@@ -27,7 +27,8 @@ async function authorize(request: Request) {
     (user as any).roles ?? [user.role],
     agencyIds,
   )
-  if (!canPerformAction(user, "customers", "write", perms)) {
+  // VIB-86: editar o desactivar un referidor es tarea del administrador.
+  if (!canPerformAction(user, "referrals", "write", perms)) {
     return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) }
   }
   return { user, supabase }

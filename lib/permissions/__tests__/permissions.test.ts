@@ -5,6 +5,7 @@ import {
   getAccessibleModules,
   shouldShowInSidebar,
   usePermissions,
+  PERMISSIONS,
 } from '../../permissions'
 import type { UserRole, Module, Permission } from '../../permissions'
 
@@ -226,9 +227,15 @@ describe('Permissions System', () => {
 
   // ─── getAccessibleModules ───────────────────────────────────────────
   describe('getAccessibleModules', () => {
-    it('should return all 13 modules for SUPER_ADMIN', () => {
+    it('should return every module in the matrix for SUPER_ADMIN', () => {
+      // Antes esto era `toBe(13)` y quedó en rojo al agregarse `eve` (VIB-81):
+      // un número hardcodeado convierte cada módulo nuevo en un test roto, y una
+      // suite en rojo deja de avisar sobre lo que sí importa. Ahora se compara
+      // contra la propia matriz, que es lo que se quería verificar.
       const modules = getAccessibleModules('SUPER_ADMIN')
-      expect(modules.length).toBe(13)
+      const todosLosModulos = Object.keys(PERMISSIONS.SUPER_ADMIN)
+
+      expect(modules.sort()).toEqual(todosLosModulos.sort())
       expect(modules).toContain('dashboard')
       expect(modules).toContain('settings')
     })

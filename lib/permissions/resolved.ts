@@ -26,11 +26,13 @@ export type ResolvedModulePerms = {
 /** module → ResolvedModulePerms */
 export type ResolvedPermissionsMatrix = Record<string, ResolvedModulePerms>
 
-export const ALL_MODULES: Module[] = [
-  "dashboard", "leads", "operations", "customers", "operators",
-  "cash", "accounting", "alerts", "reports", "commissions",
-  "settings", "documents", "tasks", "eve",
-]
+/**
+ * Se deriva de la matriz en vez de mantenerse a mano. Como lista paralela ya
+ * había quedado desactualizada: un módulo nuevo no aparecía acá y entonces
+ * `resolveUserPermissions` devolvía `undefined` para él, o sea que el permiso
+ * quedaba en un limbo silencioso.
+ */
+export const ALL_MODULES: Module[] = Object.keys(PERMISSIONS.SUPER_ADMIN) as Module[]
 
 /** Roles que siempre tienen full access — no consultan DB */
 export const FULL_ACCESS_ROLES: UserRole[] = ["SUPER_ADMIN", "ORG_OWNER"]

@@ -224,8 +224,19 @@ export async function POST(request: Request) {
     }
 
     // Cliente referido (VIB-62): % opcional de override, 0–100.
+    //
+    // VIB-86: quien no administra referidores no puede fijar el porcentaje. Se
+    // ignora en silencio en vez de devolver 400 porque el vendedor no está
+    // haciendo nada indebido —simplemente no es un campo suyo— y el referidor
+    // sí se le deja asignar. Sin porcentaje propio, la comisión sale del que
+    // tiene configurado el referidor.
     let referralPct: number | null = null
-    if (referral_commission_percentage != null && referral_commission_percentage !== "") {
+    const puedeFijarComisionReferido = canPerformAction(user, "referrals", "write", perms)
+    if (
+      puedeFijarComisionReferido &&
+      referral_commission_percentage != null &&
+      referral_commission_percentage !== ""
+    ) {
       referralPct = Number(referral_commission_percentage)
       if (!Number.isFinite(referralPct) || referralPct < 0 || referralPct > 100) {
         return NextResponse.json({ error: "El porcentaje de referido debe estar entre 0 y 100" }, { status: 400 })

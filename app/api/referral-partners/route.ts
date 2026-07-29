@@ -9,8 +9,15 @@ export const dynamic = "force-dynamic"
 /**
  * Socios referidores (VIB-62): agencias/empresas que derivan clientes.
  * Se gestionan a nivel org y se seleccionan al cargar un cliente referido.
- * Permisos: se gatean por el módulo `customers` (quien carga clientes carga
- * referidores).
+ *
+ * Permisos (VIB-86): el módulo propio es `referrals`. Antes se gateaba con
+ * `customers` —"quien carga clientes carga referidores"— y ese es justamente el
+ * supuesto que el ticket vino a romper: SELLER tiene `customers.write`, así que
+ * podía dar de alta referidores y ver cuánto se lleva cada uno.
+ *
+ * Quien no tiene `referrals.read` recibe SOLO id y nombre. El porcentaje no
+ * sale del servidor: esconderlo en la pantalla y dejar la API abierta no es un
+ * permiso.
  */
 
 export async function GET(request: Request) {
@@ -30,15 +37,23 @@ export async function GET(request: Request) {
       agencyIds,
     )
 
-    if (!canPerformAction(user, "customers", "read", perms)) {
+    // El vendedor necesita la lista para poder seleccionar un referidor al
+    // cargar un cliente, aunque no pueda ver ni administrar sus comisiones.
+    const puedeVerComisiones = canPerformAction(user, "referrals", "read", perms)
+    const puedeSeleccionar =
+      puedeVerComisiones || canPerformAction(user, "customers", "write", perms)
+
+    if (!puedeSeleccionar) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
     const { searchParams } = new URL(request.url)
     const includeInactive = searchParams.get("include_inactive") === "true"
 
+    // La proyección es la que protege el dato: sin `referrals.read` el
+    // porcentaje ni se lee de la base.
     let query = (supabase.from("referral_partners") as any)
-      .select("*")
+      .select(puedeVerComisiones ? "*" : "id, name")
       .eq("org_id", user.org_id)
       .order("name", { ascending: true })
 
@@ -52,7 +67,13 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Error interno" }, { status: 500 })
     }
 
-    return NextResponse.json({ partners: data ?? [] })
+    // `canManage` viaja explícito en vez de deducirse de si vino el porcentaje:
+    // un CONTABLE ve las comisiones pero no da de alta referidores, y sin esta
+    // distinción la pantalla le ofrecería un botón que termina en 403.
+    return NextResponse.json({
+      partners: data ?? [],
+      canManage: canPerformAction(user, "referrals", "write", perms),
+    })
   } catch (error) {
     console.error("Error in GET /api/referral-partners:", error)
     return NextResponse.json({ error: "Error interno" }, { status: 500 })
@@ -76,7 +97,9 @@ export async function POST(request: Request) {
       agencyIds,
     )
 
-    if (!canPerformAction(user, "customers", "write", perms)) {
+    // VIB-86: los referidores los da de alta el administrador. Antes alcanzaba
+    // con `customers.write`, que el vendedor tiene.
+    if (!canPerformAction(user, "referrals", "write", perms)) {
       return NextResponse.json({ error: "No tiene permiso para crear referidores" }, { status: 403 })
     }
 

@@ -25,6 +25,7 @@ export type Module =
   | "documents"
   | "tasks"
   | "eve"
+  | "referrals"
 
 export type Permission = "read" | "write" | "delete" | "export"
 
@@ -57,6 +58,7 @@ export const SUPER_ADMIN_PERMS: RolePermissions = {
   documents: { read: true, write: true, delete: true, export: true },
   tasks: { read: true, write: true, delete: true, export: true },
   eve: { read: true, write: true, delete: true, export: false },
+  referrals: { read: true, write: true, delete: true, export: true },
 }
 
 export const PERMISSIONS: Record<UserRole, RolePermissions> = {
@@ -77,6 +79,9 @@ export const PERMISSIONS: Record<UserRole, RolePermissions> = {
     documents: { read: true, write: true, delete: false, export: true },
     tasks: { read: true, write: true, delete: false, export: false },
     eve: { read: true, write: true, delete: true, export: false },
+    // VIB-86: los referidores los da de alta el administrador, y el porcentaje
+    // que se lleva cada uno solo lo ve quien tiene este permiso.
+    referrals: { read: true, write: true, delete: true, export: true },
   },
   CONTABLE: {
     dashboard: { read: false, write: false, delete: false, export: false }, // No ve dashboard general
@@ -93,6 +98,10 @@ export const PERMISSIONS: Record<UserRole, RolePermissions> = {
     documents: { read: false, write: false, delete: false, export: false }, // No ve documentos
     tasks: { read: true, write: true, delete: false, export: false },
     eve: { read: false, write: false, delete: false, export: false },
+    // Liquida las comisiones al referidor, así que las ve; no da de alta
+    // referidores. Antes no podía crearlos igual (customers.read = false), pero
+    // sí veía la pantalla: con el permiso propio esa inconsistencia se resuelve.
+    referrals: { read: true, write: false, delete: false, export: true },
   },
   SELLER: {
     dashboard: { read: true, write: false, delete: false, export: false, ownDataOnly: true }, // Solo sus datos
@@ -109,6 +118,9 @@ export const PERMISSIONS: Record<UserRole, RolePermissions> = {
     documents: { read: true, write: true, delete: false, export: false, ownDataOnly: true }, // Solo documentos de sus operaciones
     tasks: { read: true, write: true, delete: false, export: false, ownDataOnly: true },
     eve: { read: false, write: false, delete: false, export: false },
+    // VIB-86: el vendedor selecciona un referidor al cargar la venta, pero no
+    // ve cuánto se lleva ni puede darlo de alta. La API le manda solo el nombre.
+    referrals: { read: false, write: false, delete: false, export: false },
   },
   VIEWER: {
     dashboard: { read: true, write: false, delete: false, export: false },
@@ -125,6 +137,8 @@ export const PERMISSIONS: Record<UserRole, RolePermissions> = {
     documents: { read: true, write: false, delete: false, export: false },
     tasks: { read: true, write: false, delete: false, export: false },
     eve: { read: false, write: false, delete: false, export: false },
+    // Rol de solo lectura: ve lo mismo que en comisiones, sin poder editar.
+    referrals: { read: true, write: false, delete: false, export: false },
   },
   // POST_VENTA: ve y gestiona el seguimiento post-cierre de operaciones.
   // Puede cargar vouchers enviados, check-in realizado, y consultar requisitos
@@ -145,6 +159,8 @@ export const PERMISSIONS: Record<UserRole, RolePermissions> = {
     documents:  { read: true,  write: true,  delete: false, export: false }, // Cargar vouchers
     tasks:      { read: true,  write: true,  delete: false, export: false },
     eve:        { read: false, write: false, delete: false, export: false },
+    // Post venta no toca plata (commissions ya está en false).
+    referrals:  { read: false, write: false, delete: false, export: false },
   },
 }
 

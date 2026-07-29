@@ -1,6 +1,7 @@
 import { getCurrentUser, getUserAgencies } from "@/lib/auth"
 import { createServerClient, createAdminClient } from "@/lib/supabase/server"
-import { getUserAgencyIds, resolveOperationAccessScope, canRegisterPaymentsOnAgencyOperations } from "@/lib/permissions-api"
+import { getUserAgencyIds, resolveOperationAccessScope, canRegisterPaymentsOnAgencyOperations, canPerformAction } from "@/lib/permissions-api"
+import { resolveUserPermissions } from "@/lib/permissions-agency"
 import { notFound } from "next/navigation"
 import { OperationDetailClient } from "@/components/operations/operation-detail-client"
 import { getOperationVisibleDocuments } from "@/lib/documents/operation-documents"
@@ -161,12 +162,26 @@ export default async function OperationDetailPage({
 
   // Comisión al referidor (VIB-62): si el cliente MAIN vino referido, mostrar
   // cuánto y a quién le corresponde por esta venta.
-  const { data: referralCommission } = await (supabase
-    .from("referral_commissions") as any)
-    .select("amount, percentage, base_amount, currency, status, referral_partners:referral_partner_id(name)")
-    .eq("operation_id", id)
-    .eq("org_id", userOrgId)
-    .maybeSingle()
+  //
+  // VIB-86: el vendedor que carga la venta no tiene que ver cuánto se lleva el
+  // referidor. La interfaz ya no lo dibujaba, pero el dato viajaba igual en el
+  // payload de la página; ahora directamente no se consulta.
+  const permsMatrix = await resolveUserPermissions(
+    supabase as any,
+    user.id,
+    userOrgId,
+    (user as any).roles ?? [user.role],
+    agencyIds,
+  )
+  const puedeVerComisionReferido = canPerformAction(user, "referrals", "read", permsMatrix)
+
+  const { data: referralCommission } = puedeVerComisionReferido
+    ? await (supabase.from("referral_commissions") as any)
+        .select("amount, percentage, base_amount, currency, status, referral_partners:referral_partner_id(name)")
+        .eq("operation_id", id)
+        .eq("org_id", userOrgId)
+        .maybeSingle()
+    : { data: null }
 
   // Get agencies for edit dialog
   let agencies: Array<{ id: string; name: string }> = []

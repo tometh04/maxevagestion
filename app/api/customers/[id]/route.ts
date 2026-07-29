@@ -2,7 +2,8 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
-import { getUserAgencyIds } from "@/lib/permissions-api"
+import { getUserAgencyIds, canPerformAction } from "@/lib/permissions-api"
+import { resolveUserPermissions } from "@/lib/permissions-agency"
 import { sendCustomerNotifications } from "@/lib/customers/customer-service"
 import { logAudit, getClientIP } from "@/lib/audit"
 
@@ -107,6 +108,15 @@ export async function PATCH(
       return NextResponse.json({ error: "No tiene agencias asignadas" }, { status: 403 })
     }
 
+    // Matriz resuelta por agencia: la necesita el gate de referidos (VIB-86).
+    const perms = await resolveUserPermissions(
+      supabase as any,
+      user.id,
+      (user as any).org_id,
+      (user as any).roles ?? [user.role],
+      agencyIds,
+    )
+
     const { data: settings } = await supabase
       .from("customer_settings")
       .select("*")
@@ -156,7 +166,12 @@ export async function PATCH(
     }
 
     // Cliente referido (VIB-62): % de override, validado 0–100. "" / null limpian.
-    if (body.referral_commission_percentage !== undefined) {
+    //
+    // VIB-86: solo lo puede tocar quien administra referidores. Para el resto el
+    // campo se ignora, así el porcentaje pactado no se puede editar desde el
+    // alta de una operación.
+    const puedeFijarComisionReferido = canPerformAction(user, "referrals", "write", perms)
+    if (puedeFijarComisionReferido && body.referral_commission_percentage !== undefined) {
       const raw = body.referral_commission_percentage
       if (raw === null || raw === "") {
         updateData.referral_commission_percentage = null
