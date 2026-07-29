@@ -1,4 +1,5 @@
 import { createServerClient } from "@/lib/supabase/server"
+import { resolveListNameForAgency } from "./list-resolver"
 
 export interface ManychatLeadData {
   ig?: string
@@ -556,7 +557,16 @@ export async function syncManychatLeadToLead(
   const scopeByList = sourceValue === "Manychat"
 
   // 3. Nombre de lista (solo se usa al CREAR; en update no tocamos list_name).
-  const listName = determineListName(manychatData)
+  //    `determineListName` devuelve los nombres heredados de Zapier
+  //    ("Leads - Caribe", "Campaña - {BUCKET}"). El resolver los traduce al
+  //    nombre real que la agencia tiene configurado, para no recrear columnas
+  //    viejas en tenants que unificaron sus listas. Si no hay equivalencia,
+  //    devuelve el candidato intacto.
+  const listName = await resolveListNameForAgency(
+    agency_id,
+    determineListName(manychatData),
+    supabase as any
+  )
 
   // 4. Deduplicación por clave estable: manychat_user_id → teléfono → Instagram.
   //    Scope: mismo source + misma agencia (+ lista solo para ManyChat legacy).

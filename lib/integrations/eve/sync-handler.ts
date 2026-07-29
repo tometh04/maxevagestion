@@ -19,6 +19,7 @@ import {
   determineListName,
   type ManychatLeadData,
 } from "@/lib/manychat/sync"
+import { resolveListNameForAgency } from "@/lib/manychat/list-resolver"
 
 export interface EveSyncResult {
   action: "created" | "updated"
@@ -114,7 +115,13 @@ export async function processEveLead(
       ? normalized.contacto.telefono?.trim() || undefined
       : undefined,
   }
-  const listName = determineListName(manychatData)
+  // Traducir el candidato heredado de Zapier al nombre real de la agencia:
+  // si el tenant unificó sus listas, el lead entra en la columna vigente.
+  const listName = await resolveListNameForAgency(
+    agencyId,
+    determineListName(manychatData),
+    admin
+  )
 
   let leadId: string
   let action: "created" | "updated"

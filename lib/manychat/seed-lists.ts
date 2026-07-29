@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
+import { REGION_SYNONYMS, normalizeListKey } from "./list-resolver"
 
 /**
  * Lista default que se crea para una agencia nueva. Son regiones de viaje
@@ -21,19 +22,10 @@ const DEFAULT_MANYCHAT_LISTS: Array<{ list_name: string; position: number }> = [
 ]
 
 /**
- * Sinónimos por región para que el matching reconozca renombres comunes.
- * Ej: si una agencia mexicana renombró "Leads - EEUU" a "Estados Unidos",
- * el lookup todavía la encuentra cuando llega un lead con region=EEUU.
+ * Los sinónimos por región viven en `./list-resolver` para que la ingesta
+ * (ManyChat, Eve) y la creación manual de leads usen exactamente el mismo
+ * criterio de matching.
  */
-const REGION_SYNONYMS: Record<string, string[]> = {
-  ARGENTINA: ["argentina", "nacional"],
-  CARIBE: ["caribe", "caribbean"],
-  BRASIL: ["brasil", "brazil"],
-  EUROPA: ["europa", "europe"],
-  EEUU: ["eeuu", "ee.uu", "estados unidos", "usa", "united states"],
-  CRUCEROS: ["crucero", "cruceros", "exotic", "exótico"],
-  OTROS: ["otros", "otro", "other"],
-}
 
 /**
  * Resuelve a qué lista Manychat va un lead nuevo, en base a las listas que la
@@ -43,9 +35,10 @@ const REGION_SYNONYMS: Record<string, string[]> = {
  *
  * Algoritmo:
  *   1. Cargar las listas de la agencia (manychat_list_order)
- *   2. Para cada sinónimo de la región, buscar una lista cuyo nombre lo contenga
- *      (case-insensitive). "CARIBE" matchea "Leads - Caribe", "Caribe Premium",
- *      "🌴 Caribe", etc.
+ *   2. Buscar una lista cuyo nombre sea EXACTAMENTE un sinónimo de la región
+ *      (normalizado: sin acentos ni mayúsculas). "CARIBE" matchea "Caribe".
+ *   2b. Si no hubo match exacto, buscar una lista que CONTENGA el sinónimo.
+ *      "CARIBE" matchea "Leads - Caribe", "Caribe Premium", "🌴 Caribe", etc.
  *   3. Si nada matchea, usar la primera lista de la agencia (suele ser
  *      "Argentina" o la default principal)
  *   4. Si la agencia no tiene listas, devolver null y dejar que el caller
@@ -70,12 +63,23 @@ export async function resolveListNameForRegion(
   }
 
   const upperRegion = region.toString().toUpperCase().trim()
-  const synonyms = REGION_SYNONYMS[upperRegion] ?? [region.toString().toLowerCase().trim()]
+  const synonyms = REGION_SYNONYMS[upperRegion] ?? [region.toString().trim()]
+  const normalizedSynonyms = [upperRegion, ...synonyms]
+    .map(normalizeListKey)
+    .filter(Boolean)
 
-  for (const syn of synonyms) {
-    const match = allLists.find((l) =>
-      l.list_name.toLowerCase().includes(syn),
-    )
+  // 1. Match EXACTO primero (normalizado: sin acentos ni mayúsculas).
+  //    Evita que una lista "Otros - Histórico" se quede con los leads de
+  //    región OTROS solo por contener esa palabra.
+  for (const syn of normalizedSynonyms) {
+    const match = allLists.find((l) => normalizeListKey(l.list_name) === syn)
+    if (match) return match.list_name
+  }
+
+  // 2. Recién después, match por contenido: cubre a los tenants que conservan
+  //    los nombres con prefijo ("Leads - Caribe" para region=CARIBE).
+  for (const syn of normalizedSynonyms) {
+    const match = allLists.find((l) => normalizeListKey(l.list_name).includes(syn))
     if (match) return match.list_name
   }
 
