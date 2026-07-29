@@ -26,6 +26,8 @@ interface CommissionRow {
   base_amount: number
   currency: string
   status: "PENDING" | "PAID" | "CANCELLED"
+  /** MANUAL = un admin ajustó el % de esta venta y el recálculo no lo pisa. */
+  percentage_mode?: "AUTO" | "MANUAL"
   date_calculated: string
   date_paid: string | null
   referral_partners?: { id: string; name: string } | null
@@ -124,6 +126,34 @@ export function ReferralsView() {
       const { commission } = await res.json()
       setCommissions((prev) => prev.map((c) => (c.id === row.id ? { ...c, ...commission } : c)))
       toast.success(status === "PAID" ? "Comisión marcada como pagada" : "Comisión vuelta a pendiente")
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Error al actualizar")
+    } finally {
+      setSavingId(null)
+    }
+  }
+
+  /**
+   * Ajuste puntual del % de una venta (VIB-86). El referidor se marca en el
+   * cliente y todas sus ventas generan comisión sola; esto permite pactar algo
+   * distinto en una venta concreta. Queda MANUAL, así que el próximo recálculo
+   * de la operación no lo pisa.
+   */
+  const changePercentage = async (row: CommissionRow, percentage: string) => {
+    setSavingId(row.id)
+    try {
+      const res = await fetch(`/api/referral-commissions/${row.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ percentage }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || "No se pudo actualizar el porcentaje")
+      }
+      const { commission } = await res.json()
+      setCommissions((prev) => prev.map((c) => (c.id === row.id ? { ...c, ...commission } : c)))
+      toast.success("Comisión del referidor ajustada para esta venta")
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Error al actualizar")
     } finally {
@@ -234,6 +264,7 @@ export function ReferralsView() {
                     rows={group.rows}
                     savingId={savingId}
                     onPay={(r) => changeStatus(r, "PAID")}
+                    onChangePct={changePercentage}
                   />
                 </CardContent>
               </Card>
@@ -283,13 +314,26 @@ function CommissionsTable({
   showPartner,
   onPay,
   onRevert,
+  onChangePct,
 }: {
   rows: CommissionRow[]
   savingId: string | null
   showPartner?: boolean
   onPay?: (r: CommissionRow) => void
   onRevert?: (r: CommissionRow) => void
+  /** Ajuste puntual del % de una venta. Solo para quien administra referidos. */
+  onChangePct?: (r: CommissionRow, pct: string) => void
 }) {
+  const [editingPctId, setEditingPctId] = useState<string | null>(null)
+  const [pctDraft, setPctDraft] = useState("")
+
+  const commitPct = (r: CommissionRow) => {
+    const value = pctDraft.trim()
+    setEditingPctId(null)
+    if (value === "" || Number(value) === Number(r.percentage)) return
+    onChangePct?.(r, value)
+  }
+
   return (
     <div className="overflow-x-auto">
       <Table>
@@ -319,7 +363,44 @@ function CommissionsTable({
                 {r.customers ? `${r.customers.first_name} ${r.customers.last_name}` : "—"}
               </TableCell>
               <TableCell className="text-right tabular-nums">{fmt(r.base_amount, r.currency)}</TableCell>
-              <TableCell className="text-right tabular-nums">{r.percentage}%</TableCell>
+              <TableCell className="text-right tabular-nums">
+                {onChangePct && r.status === "PENDING" ? (
+                  editingPctId === r.id ? (
+                    <Input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step="0.1"
+                      autoFocus
+                      className="h-8 w-20 ml-auto text-right"
+                      value={pctDraft}
+                      onChange={(e) => setPctDraft(e.target.value)}
+                      onBlur={() => commitPct(r)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") commitPct(r)
+                        if (e.key === "Escape") setEditingPctId(null)
+                      }}
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      className="hover:underline underline-offset-2"
+                      title="Ajustar el porcentaje de esta venta"
+                      onClick={() => {
+                        setEditingPctId(r.id)
+                        setPctDraft(String(r.percentage ?? 0))
+                      }}
+                    >
+                      {r.percentage}%
+                      {r.percentage_mode === "MANUAL" && (
+                        <span className="ml-1 text-[10px] text-accent-coral align-top">ajustado</span>
+                      )}
+                    </button>
+                  )
+                ) : (
+                  `${r.percentage}%`
+                )}
+              </TableCell>
               <TableCell className="text-right tabular-nums font-medium">{fmt(r.amount, r.currency)}</TableCell>
               <TableCell>
                 <StatusBadge status={r.status} />

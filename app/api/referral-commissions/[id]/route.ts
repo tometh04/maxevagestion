@@ -38,14 +38,15 @@ export async function PATCH(
     const { id } = await params
     const body = await request.json()
     const nextStatus = body.status
+    const ajustaPorcentaje = body.percentage !== undefined
 
-    if (!VALID_STATUSES.includes(nextStatus)) {
+    if (!ajustaPorcentaje && !VALID_STATUSES.includes(nextStatus)) {
       return NextResponse.json({ error: "Estado inválido" }, { status: 400 })
     }
 
     // Verificar estado actual y tenant antes de transicionar (no confiar en RLS).
     const { data: current, error: fetchError } = await (supabase.from("referral_commissions") as any)
-      .select("id, amount, status, amount_paid")
+      .select("id, amount, status, amount_paid, base_amount, percentage")
       .eq("id", id)
       .eq("org_id", (user as any).org_id)
       .maybeSingle()
@@ -56,6 +57,61 @@ export async function PATCH(
     }
     if (!current) {
       return NextResponse.json({ error: "Comisión no encontrada" }, { status: 404 })
+    }
+
+    // Ajuste puntual del porcentaje de ESTA venta (VIB-86). El referidor sigue
+    // marcándose en el cliente y generando comisión en todas sus ventas; esto
+    // permite pactar algo distinto en una venta concreta sin que el próximo
+    // recálculo de la operación lo pise.
+    if (ajustaPorcentaje) {
+      // Gate propio: administrar referidos, no comisiones de vendedores.
+      if (!canPerformAction(user, "referrals", "write", matrix ?? undefined)) {
+        return NextResponse.json(
+          { error: "No tiene permiso para modificar la comisión del referidor" },
+          { status: 403 }
+        )
+      }
+
+      // Una comisión ya liquidada no se reescribe: cambiaría el monto de algo
+      // que ya se pagó. Primero hay que revertirla a pendiente.
+      if (current.status !== "PENDING") {
+        return NextResponse.json(
+          { error: "La comisión ya fue liquidada. Revertila a pendiente antes de modificarla." },
+          { status: 409 }
+        )
+      }
+
+      const pct = Number(body.percentage)
+      if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+        return NextResponse.json(
+          { error: "El porcentaje debe estar entre 0 y 100" },
+          { status: 400 }
+        )
+      }
+
+      const base = Number(current.base_amount) || 0
+      const nowIso = new Date().toISOString()
+
+      const { data: updated, error: pctError } = await (supabase.from("referral_commissions") as any)
+        .update({
+          percentage: pct,
+          amount: Math.round(((base * pct) / 100) * 100) / 100,
+          percentage_mode: "MANUAL",
+          updated_at: nowIso,
+        })
+        .eq("id", id)
+        .eq("org_id", (user as any).org_id)
+        // CAS: no pisar si alguien la liquidó entre la lectura y la escritura.
+        .eq("status", "PENDING")
+        .select()
+        .single()
+
+      if (pctError || !updated) {
+        console.error("Error ajustando el porcentaje de referral_commission:", pctError)
+        return NextResponse.json({ error: "Error al actualizar la comisión" }, { status: 400 })
+      }
+
+      return NextResponse.json({ success: true, commission: updated })
     }
 
     // Idempotencia: si ya está en el estado pedido, no hacemos nada.

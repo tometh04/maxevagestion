@@ -203,3 +203,93 @@ describe("createOrUpdateReferralCommission", () => {
     expect(calls.deleted).toBe(1)
   })
 })
+
+describe("ajuste manual del % en una venta puntual (VIB-86)", () => {
+  it("el ajuste manual sobrevive al recálculo y no lo pisa el % del cliente", async () => {
+    // Lo que pidió el cliente: el referidor se marca una vez y todas sus ventas
+    // generan comisión sola, pero un admin puede pactar otro % en una venta.
+    // Sin esto, editar la operación —una fecha, un servicio— lo revertía.
+    const { supabase, calls } = makeSupabase({
+      referral_commissions: {
+        id: "rc-1",
+        status: "PENDING",
+        percentage: 7,
+        percentage_mode: "MANUAL",
+      },
+      customers: { referral_partner_id: "p-1", referral_commission_percentage: 20 },
+      referral_partners: { default_commission_percentage: 35, active: true },
+    })
+
+    const res = await createOrUpdateReferralCommission({
+      supabase,
+      customerId: "cust-1",
+      marginAmount: 10000,
+      ...base,
+    })
+
+    expect(res.percentage).toBe(7)
+    expect(res.amount).toBe(700)
+    expect(calls.updated).toHaveLength(1)
+    expect(calls.updated[0].payload.percentage).toBe(7)
+    expect(calls.updated[0].payload.percentage_mode).toBe("MANUAL")
+  })
+
+  it("el monto sí se recalcula si cambia el margen", async () => {
+    // El % pactado se respeta; lo que la venta genera sigue al margen vigente.
+    const { supabase, calls } = makeSupabase({
+      referral_commissions: {
+        id: "rc-1",
+        status: "PENDING",
+        percentage: 7,
+        percentage_mode: "MANUAL",
+      },
+      customers: { referral_partner_id: "p-1", referral_commission_percentage: null },
+      referral_partners: { default_commission_percentage: 35, active: true },
+    })
+
+    const res = await createOrUpdateReferralCommission({
+      supabase,
+      customerId: "cust-1",
+      marginAmount: 4000,
+      ...base,
+    })
+
+    expect(res.amount).toBe(280)
+    expect(calls.updated[0].payload.base_amount).toBe(4000)
+  })
+
+  it("sin ajuste manual sigue mandando el % del cliente", async () => {
+    const { supabase, calls } = makeSupabase({
+      referral_commissions: { id: "rc-1", status: "PENDING", percentage: 7, percentage_mode: "AUTO" },
+      customers: { referral_partner_id: "p-1", referral_commission_percentage: 20 },
+      referral_partners: { default_commission_percentage: 35, active: true },
+    })
+
+    const res = await createOrUpdateReferralCommission({
+      supabase,
+      customerId: "cust-1",
+      marginAmount: 10000,
+      ...base,
+    })
+
+    expect(res.percentage).toBe(20)
+    expect(calls.updated[0].payload.percentage_mode).toBe("AUTO")
+  })
+
+  it("una comisión nueva nace en AUTO", async () => {
+    const { supabase, calls } = makeSupabase({
+      referral_commissions: null,
+      customers: { referral_partner_id: "p-1", referral_commission_percentage: null },
+      referral_partners: { default_commission_percentage: 10, active: true },
+    })
+
+    await createOrUpdateReferralCommission({
+      supabase,
+      customerId: "cust-1",
+      marginAmount: 10000,
+      ...base,
+    })
+
+    expect(calls.inserted[0].payload.percentage_mode).toBe("AUTO")
+  })
+})

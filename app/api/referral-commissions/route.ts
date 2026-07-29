@@ -1,14 +1,13 @@
 import { NextResponse } from "next/server"
 import { getRequestPermissions } from "@/lib/permissions/request"
-import { canPerformAction, isOwnDataOnlyResolved } from "@/lib/permissions-api"
+import { canPerformAction } from "@/lib/permissions-api"
 
 export const dynamic = "force-dynamic"
 
 /**
- * Comisiones a referidores (VIB-62). Superficie de finanzas: se gatea por el
- * módulo `commissions` y SOLO la ven quienes ven todas las comisiones (no un
- * vendedor limitado a "lo propio", porque las comisiones de referido no son de
- * un vendedor). No toca caja ni contabilidad: es un registro/seguimiento propio.
+ * Comisiones a referidores (VIB-62). Se gatea por el módulo propio `referrals`
+ * (VIB-86): el vendedor que carga la venta no tiene que ver cuánto se lleva el
+ * referidor. No toca caja ni contabilidad: es un registro/seguimiento propio.
  */
 
 export async function GET(request: Request) {
@@ -19,11 +18,9 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
     }
 
-    const canViewAll =
-      canPerformAction(user, "commissions", "read", matrix ?? undefined) &&
-      !isOwnDataOnlyResolved(user, "commissions", matrix ?? undefined)
-
-    if (!canViewAll) {
+    // VIB-86: módulo propio. Antes se colgaba de `commissions` + ownDataOnly;
+    // ahora el gate es el mismo que usa la pantalla de Referidos.
+    if (!canPerformAction(user, "referrals", "read", matrix ?? undefined)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 

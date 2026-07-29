@@ -61,7 +61,7 @@ export async function createOrUpdateReferralCommission(
   try {
     // Buscar comisión existente para poder actualizar/eliminar de forma idempotente.
     const { data: existing } = await (supabase.from("referral_commissions") as any)
-      .select("id, status")
+      .select("id, status, percentage, percentage_mode")
       .eq("operation_id", operationId)
       .maybeSingle()
 
@@ -97,14 +97,28 @@ export async function createOrUpdateReferralCommission(
       return { status: "skipped", amount: 0, percentage: 0, partnerId: null, reason: !partnerId ? "not_referred" : "non_positive_margin" }
     }
 
-    // % vigente: override del cliente > default del partner.
-    let percentage = overridePct
-    if (percentage == null) {
-      const { data: partner } = await (supabase.from("referral_partners") as any)
-        .select("default_commission_percentage, active")
-        .eq("id", partnerId)
-        .maybeSingle()
-      percentage = partner?.default_commission_percentage != null ? Number(partner.default_commission_percentage) : 0
+    // % vigente. Precedencia: ajuste manual de ESTA venta > override del
+    // cliente > default del partner.
+    //
+    // El ajuste manual es lo que pidió el cliente (VIB-86): el referidor se
+    // marca una vez y todas las ventas futuras generan comisión sola, pero un
+    // administrador tiene que poder cambiar el porcentaje de una venta puntual.
+    // Sin este chequeo, cualquier edición posterior de la operación —una fecha,
+    // un servicio— dispara el recálculo y pisa el ajuste.
+    const esManual = existing?.percentage_mode === "MANUAL"
+    let percentage: number | null
+
+    if (esManual) {
+      percentage = Number(existing.percentage) || 0
+    } else {
+      percentage = overridePct
+      if (percentage == null) {
+        const { data: partner } = await (supabase.from("referral_partners") as any)
+          .select("default_commission_percentage, active")
+          .eq("id", partnerId)
+          .maybeSingle()
+        percentage = partner?.default_commission_percentage != null ? Number(partner.default_commission_percentage) : 0
+      }
     }
     percentage = Number(percentage) || 0
 
@@ -134,6 +148,10 @@ export async function createOrUpdateReferralCommission(
       status: "PENDING",
       date_calculated: nowIso,
       updated_at: nowIso,
+      // Conservar el modo: un ajuste manual sobrevive a los recálculos. El
+      // monto sí se actualiza arriba contra el margen vigente, que es lo
+      // esperable si la venta cambia de valor.
+      percentage_mode: esManual ? "MANUAL" : "AUTO",
     }
 
     if (existing) {
