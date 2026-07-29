@@ -8,6 +8,7 @@
  */
 
 import { fetchExpenses } from "@/lib/expenses/fetch-expenses"
+import { buildExchangeRateMap } from "@/lib/accounting/exchange-rates"
 import { buildExpensesReport, type ExpensesReport } from "@/lib/reports/expenses-report"
 import { loadReportCompany, type ReportCompany } from "@/lib/reports/report-company"
 
@@ -61,8 +62,8 @@ export async function buildExpensesReportData(
   const type =
     params.type === "recurring" || params.type === "variable" ? params.type : null
 
-  // Se leen TODAS las monedas de una sola vez: el reporte usa la moneda elegida
-  // y el total de la otra se muestra como referencia (sin convertir ni sumar).
+  // Se leen TODAS las monedas: el reporte las junta convirtiéndolas a la moneda
+  // elegida. Antes se filtraba, y los gastos de la otra moneda desaparecían.
   const { expenses } = await fetchExpenses({
     supabase,
     orgId,
@@ -85,7 +86,17 @@ export async function buildExpensesReportData(
     agencyName = (agency as any)?.name ?? null
   }
 
-  const report = buildExpensesReport({ expenses, currency, dateFrom, dateTo })
+  // Mapa de TC en memoria: una sola query para todo el rango, en vez de una por
+  // gasto. Solo hace falta si hay gastos en una moneda distinta a la de salida.
+  const necesitaConversion = expenses.some((e) => e.currency !== currency)
+  const getRate = necesitaConversion
+    ? await buildExchangeRateMap(
+        supabase as any,
+        expenses.map((e) => e.movement_date)
+      )
+    : undefined
+
+  const report = buildExpensesReport({ expenses, currency, dateFrom, dateTo, getRate })
 
   return {
     filters: {

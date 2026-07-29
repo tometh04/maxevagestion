@@ -6,8 +6,17 @@
  * categoría, evolución temporal, desglose por tipo/cuenta y detalle).
  *
  * Reglas:
- *  - ARS y USD NUNCA se mezclan. El reporte se arma para UNA moneda; el total
- *    de la otra se expone aparte, solo como dato informativo.
+ *  - El reporte trae TODOS los gastos del período juntos, convertidos a la
+ *    moneda elegida. Antes filtraba por moneda: elegías USD y los gastos en
+ *    pesos desaparecían, y al revés. El cliente lo vivía como "los pagos no
+ *    impactaron", cuando en realidad estaban en la otra vista.
+ *  - La conversión usa el tipo de cambio de la fecha DE CADA GASTO, no uno
+ *    único del período. Es lo que da el costo real acumulado, y es lo que
+ *    corresponde cuando el TC se mueve dentro del mes.
+ *  - Un gasto que no se puede convertir por falta de tipo de cambio NO se
+ *    descarta en silencio: sale contado aparte en `summary.missingRate`. Todo
+ *    este arreglo nació de gastos que desaparecían sin avisar; cambiar una
+ *    omisión silenciosa por otra sería el mismo error.
  *  - Los porcentajes y promedios se calculan sobre el dataset completo del
  *    período, no sobre una página o un top-N truncado.
  *  - Las fechas se bucketean en hora Argentina (-03:00), igual que el filtro de
@@ -80,7 +89,21 @@ export interface ExpensesReportDetailRow {
   type: ExpenseType
   account: string
   user: string
+  /** Importe en la moneda del reporte, ya convertido. */
   amount: number
+  /** Importe tal como se cargó. Igual a `amount` si no hubo conversión. */
+  originalAmount: number
+  originalCurrency: string
+  /** TC aplicado (USD→ARS). null si no hizo falta convertir. */
+  exchangeRate: number | null
+}
+
+/** Gastos que quedaron fuera del total por no tener tipo de cambio. */
+export interface ExpensesReportMissingRate {
+  currency: string
+  count: number
+  /** Total en su moneda original: no se puede expresar en la del reporte. */
+  total: number
 }
 
 export interface ExpensesReport {
@@ -96,8 +119,10 @@ export interface ExpensesReport {
     dailyAverage: number
     days: number
     topCategory: { category: string; total: number; share: number } | null
-    /** Total en la otra moneda del mismo período. Informativo: no se suma. */
-    otherCurrency: { currency: string; total: number; count: number } | null
+    /** Cuántos gastos hubo que convertir y cuánto del total viene de ahí. */
+    converted: { count: number; total: number } | null
+    /** Gastos excluidos por falta de TC. Vacío = el total está completo. */
+    missingRate: ExpensesReportMissingRate[]
   }
   byCategory: ExpensesReportCategory[]
   byType: ExpensesReportTypeRow[]
@@ -178,12 +203,106 @@ function nextMonth(monthKey: string): string {
  */
 const MAX_DAY_BUCKETS = 45
 
+/** Gasto con su importe ya llevado a la moneda del reporte. */
+export interface ConvertedExpense extends ExpenseRow {
+  /** Importe convertido a la moneda de salida. */
+  convertedAmount: number
+  originalAmount: number
+  originalCurrency: string
+  exchangeRate: number | null
+}
+
+/**
+ * Lleva un gasto a la moneda de salida. Devuelve null si no se puede: sin tipo
+ * de cambio no se inventa un número, el gasto se reporta aparte.
+ */
+function convertExpense(
+  expense: ExpenseRow,
+  target: string,
+  getRate: (date: string | Date) => number | null
+): ConvertedExpense | null {
+  const original = Number(expense.amount || 0)
+  const from = (expense.currency || "").toUpperCase()
+  const to = (target || "").toUpperCase()
+
+  const base: Omit<ConvertedExpense, "convertedAmount" | "exchangeRate"> = {
+    ...expense,
+    originalAmount: original,
+    originalCurrency: from,
+  }
+
+  if (from === to) {
+    return { ...base, convertedAmount: original, exchangeRate: null }
+  }
+
+  const rate = getRate(expense.movement_date)
+  if (!rate || !Number.isFinite(rate) || rate <= 0) return null
+
+  // El TC de la tabla es siempre USD→ARS.
+  if (from === "USD" && to === "ARS") {
+    return { ...base, convertedAmount: roundMoney(original * rate), exchangeRate: rate }
+  }
+  if (from === "ARS" && to === "USD") {
+    return { ...base, convertedAmount: roundMoney(original / rate), exchangeRate: rate }
+  }
+
+  // Cualquier otra combinación de monedas no está modelada.
+  return null
+}
+
+/**
+ * Lleva un conjunto de gastos a una sola moneda.
+ *
+ * Vive acá y se exporta porque lo usan DOS superficies: el reporte/PDF y la
+ * pantalla de Gastos (`/api/expenses/monthly`). Cada una tenía su propio camino
+ * de datos, y si la conversión se implementara dos veces volverían a mostrar
+ * números distintos — que es el problema que este cambio viene a cerrar.
+ */
+export function convertExpensesTo(
+  expenses: ExpenseRow[],
+  currency: string,
+  getRate?: (date: string | Date) => number | null
+): { converted: ConvertedExpense[]; missingRate: ExpensesReportMissingRate[] } {
+  const rateFor = getRate ?? (() => null)
+  const converted: ConvertedExpense[] = []
+  const missingAgg = new Map<string, { count: number; total: number }>()
+
+  for (const e of expenses) {
+    const row = convertExpense(e, currency, rateFor)
+    if (!row) {
+      const code = (e.currency || "?").toUpperCase()
+      const prev = missingAgg.get(code)
+      missingAgg.set(code, {
+        count: (prev?.count || 0) + 1,
+        // Su importe ORIGINAL: no hay forma de expresarlo en la moneda de
+        // salida, que es justamente por lo que quedó afuera.
+        total: (prev?.total || 0) + Number(e.amount || 0),
+      })
+      continue
+    }
+    converted.push(row)
+  }
+
+  const missingRate = Array.from(missingAgg.entries())
+    .map(([code, g]) => ({ currency: code, count: g.count, total: roundMoney(g.total) }))
+    .sort((a, b) => b.total - a.total)
+
+  return { converted, missingRate }
+}
+
 export interface BuildExpensesReportParams {
-  /** Gastos del período en TODAS las monedas (se filtran acá por `currency`). */
+  /** Gastos del período en TODAS las monedas. */
   expenses: ExpenseRow[]
+  /** Moneda de SALIDA: todo se convierte a esta. */
   currency: string
   dateFrom: string
   dateTo: string
+  /**
+   * TC USD→ARS vigente para una fecha. Si no se pasa, no se convierte nada y
+   * los gastos en otra moneda salen listados en `missingRate` — nunca
+   * descartados en silencio.
+   */
+  getRate?: (date: string | Date) => number | null
 }
 
 export function buildExpensesReport({
@@ -191,12 +310,12 @@ export function buildExpensesReport({
   currency,
   dateFrom,
   dateTo,
+  getRate,
 }: BuildExpensesReportParams): ExpensesReport {
-  const inCurrency = expenses.filter((e) => e.currency === currency)
-  const otherCurrencyCode = currency === "ARS" ? "USD" : "ARS"
-  const otherRows = expenses.filter((e) => e.currency === otherCurrencyCode)
+  const { converted: inCurrency, missingRate } = convertExpensesTo(expenses, currency, getRate)
+  const convertedRows = inCurrency.filter((e) => e.exchangeRate != null)
 
-  const total = inCurrency.reduce((acc, e) => acc + Number(e.amount || 0), 0)
+  const total = inCurrency.reduce((acc, e) => acc + e.convertedAmount, 0)
 
   // ---- Por categoría ----
   const categoryMap = new Map<string, { total: number; count: number; color: string | null }>()
@@ -204,7 +323,7 @@ export function buildExpensesReport({
     const name = e.category?.trim() || UNCATEGORIZED_LABEL
     const prev = categoryMap.get(name)
     categoryMap.set(name, {
-      total: (prev?.total || 0) + Number(e.amount || 0),
+      total: (prev?.total || 0) + e.convertedAmount,
       count: (prev?.count || 0) + 1,
       color: prev?.color || sanitizeHexColor(e.category_color),
     })
@@ -233,7 +352,7 @@ export function buildExpensesReport({
   }
   for (const e of inCurrency) {
     const bucket = typeAgg[e.expense_type] ?? typeAgg.variable
-    bucket.total += Number(e.amount || 0)
+    bucket.total += e.convertedAmount
     bucket.count += 1
   }
   const byType: ExpensesReportTypeRow[] = (
@@ -264,7 +383,7 @@ export function buildExpensesReport({
     const key = bucketMode === "day" ? dayKey : dayKey.slice(0, 7)
     const prev = bucketAgg.get(key)
     bucketAgg.set(key, {
-      total: (prev?.total || 0) + Number(e.amount || 0),
+      total: (prev?.total || 0) + e.convertedAmount,
       count: (prev?.count || 0) + 1,
     })
   }
@@ -296,7 +415,7 @@ export function buildExpensesReport({
     const name = e.financial_accounts?.name?.trim() || "Sin cuenta"
     const prev = accountAgg.get(name)
     accountAgg.set(name, {
-      total: (prev?.total || 0) + Number(e.amount || 0),
+      total: (prev?.total || 0) + e.convertedAmount,
       count: (prev?.count || 0) + 1,
     })
   }
@@ -316,11 +435,12 @@ export function buildExpensesReport({
       type: e.expense_type,
       account: e.financial_accounts?.name?.trim() || "-",
       user: e.users?.name?.trim() || "-",
-      amount: roundMoney(Number(e.amount || 0)),
+      amount: roundMoney(e.convertedAmount),
+      originalAmount: roundMoney(e.originalAmount),
+      originalCurrency: e.originalCurrency,
+      exchangeRate: e.exchangeRate,
     }
   })
-
-  const otherTotal = otherRows.reduce((acc, e) => acc + Number(e.amount || 0), 0)
 
   return {
     currency,
@@ -339,13 +459,15 @@ export function buildExpensesReport({
             share: byCategory[0].share,
           }
         : null,
-      otherCurrency: otherRows.length
+      converted: convertedRows.length
         ? {
-            currency: otherCurrencyCode,
-            total: roundMoney(otherTotal),
-            count: otherRows.length,
+            count: convertedRows.length,
+            total: roundMoney(
+              convertedRows.reduce((acc, e) => acc + e.convertedAmount, 0)
+            ),
           }
         : null,
+      missingRate,
     },
     byCategory,
     byType,

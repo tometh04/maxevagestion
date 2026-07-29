@@ -2,7 +2,8 @@
  * Tests del agregador del Reporte de Gastos (VIB-64).
  *
  * Foco en los invariantes que hacen presentable el PDF:
- *  - ARS y USD nunca se mezclan.
+ *  - Todos los gastos entran al total, convertidos a la moneda del reporte.
+ *  - Un gasto sin tipo de cambio se reporta, no se descarta en silencio.
  *  - Los porcentajes se calculan sobre el total completo del período.
  *  - Las fechas se bucketean en hora Argentina, no en UTC.
  *  - Los períodos sin gasto aparecen en la evolución (no se saltean).
@@ -34,7 +35,10 @@ function expense(partial: Partial<ExpenseRow> & { amount: number }): ExpenseRow 
 }
 
 describe("buildExpensesReport", () => {
-  it("solo agrega la moneda pedida y reporta la otra por separado", () => {
+  it("junta las dos monedas en el total, convirtiendo a la moneda pedida", () => {
+    // El bug que motivó el cambio: elegías una moneda y los gastos de la otra
+    // desaparecían del reporte. El cliente lo vivía como "los pagos de la
+    // tarjeta no impactaron", cuando estaban en la otra vista.
     const report = buildExpensesReport({
       expenses: [
         expense({ amount: 100000, currency: "ARS" }),
@@ -44,12 +48,125 @@ describe("buildExpensesReport", () => {
       currency: "ARS",
       dateFrom: "2026-07-01",
       dateTo: "2026-07-31",
+      getRate: () => 1500,
     })
 
-    expect(report.summary.total).toBe(150000)
+    expect(report.summary.total).toBe(600000) // 150.000 + 300 × 1500
+    expect(report.summary.count).toBe(3)
+    expect(report.summary.converted).toEqual({ count: 1, total: 450000 })
+    expect(report.summary.missingRate).toEqual([])
+    expect(report.detail).toHaveLength(3)
+  })
+
+  it("convierte en el otro sentido cuando el reporte se pide en dólares", () => {
+    const report = buildExpensesReport({
+      expenses: [
+        expense({ amount: 150000, currency: "ARS" }),
+        expense({ amount: 200, currency: "USD" }),
+      ],
+      currency: "USD",
+      dateFrom: "2026-07-01",
+      dateTo: "2026-07-31",
+      getRate: () => 1500,
+    })
+
+    expect(report.summary.total).toBe(300) // 100 + 200
     expect(report.summary.count).toBe(2)
-    expect(report.summary.otherCurrency).toEqual({ currency: "USD", total: 300, count: 1 })
-    expect(report.detail).toHaveLength(2)
+  })
+
+  it("usa el tipo de cambio de la fecha de CADA gasto, no uno solo del período", () => {
+    // El cliente lo dijo explícitamente: "el TC va cambiando". Convertir todo
+    // con una sola tasa daría un total que no es el costo real.
+    const rates: Record<string, number> = {
+      "2026-07-05": 1000,
+      "2026-07-25": 2000,
+    }
+    const report = buildExpensesReport({
+      expenses: [
+        expense({ amount: 100, currency: "USD", movement_date: "2026-07-05T15:00:00Z" }),
+        expense({ amount: 100, currency: "USD", movement_date: "2026-07-25T15:00:00Z" }),
+      ],
+      currency: "ARS",
+      dateFrom: "2026-07-01",
+      dateTo: "2026-07-31",
+      getRate: (d) => rates[String(d).slice(0, 10)] ?? null,
+    })
+
+    expect(report.summary.total).toBe(300000) // 100.000 + 200.000
+  })
+
+  it("un gasto sin tipo de cambio queda fuera del total pero se reporta", () => {
+    // Este es el invariante que importa: el arreglo nació de gastos que
+    // desaparecían sin avisar. Excluirlos en silencio sería el mismo error.
+    const report = buildExpensesReport({
+      expenses: [
+        expense({ amount: 100000, currency: "ARS" }),
+        expense({ amount: 300, currency: "USD" }),
+      ],
+      currency: "ARS",
+      dateFrom: "2026-07-01",
+      dateTo: "2026-07-31",
+      getRate: () => null,
+    })
+
+    expect(report.summary.total).toBe(100000)
+    expect(report.summary.count).toBe(1)
+    expect(report.summary.missingRate).toEqual([{ currency: "USD", count: 1, total: 300 }])
+  })
+
+  it("sin función de tipo de cambio no inventa números", () => {
+    const report = buildExpensesReport({
+      expenses: [expense({ amount: 300, currency: "USD" })],
+      currency: "ARS",
+      dateFrom: "2026-07-01",
+      dateTo: "2026-07-31",
+    })
+
+    expect(report.summary.total).toBe(0)
+    expect(report.summary.missingRate).toEqual([{ currency: "USD", count: 1, total: 300 }])
+  })
+
+  it("el detalle conserva el importe original para poder rastrear el comprobante", () => {
+    const report = buildExpensesReport({
+      expenses: [expense({ amount: 300, currency: "USD" })],
+      currency: "ARS",
+      dateFrom: "2026-07-01",
+      dateTo: "2026-07-31",
+      getRate: () => 1500,
+    })
+
+    expect(report.detail[0]).toMatchObject({
+      amount: 450000,
+      originalAmount: 300,
+      originalCurrency: "USD",
+      exchangeRate: 1500,
+    })
+  })
+
+  it("un gasto en la misma moneda no lleva tipo de cambio", () => {
+    const report = buildExpensesReport({
+      expenses: [expense({ amount: 5000, currency: "ARS" })],
+      currency: "ARS",
+      dateFrom: "2026-07-01",
+      dateTo: "2026-07-31",
+      getRate: () => 1500,
+    })
+
+    expect(report.detail[0].exchangeRate).toBeNull()
+    expect(report.summary.converted).toBeNull()
+  })
+
+  it("una tasa inválida se trata como faltante, no como cero", () => {
+    const report = buildExpensesReport({
+      expenses: [expense({ amount: 300, currency: "USD" })],
+      currency: "ARS",
+      dateFrom: "2026-07-01",
+      dateTo: "2026-07-31",
+      getRate: () => 0,
+    })
+
+    expect(report.summary.total).toBe(0)
+    expect(report.summary.missingRate[0].count).toBe(1)
   })
 
   it("calcula % por categoría sobre el total del período y ordena de mayor a menor", () => {

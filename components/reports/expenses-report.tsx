@@ -60,7 +60,8 @@ interface ReportPayload {
       dailyAverage: number
       days: number
       topCategory: { category: string; total: number; share: number } | null
-      otherCurrency: { currency: string; total: number; count: number } | null
+      converted: { count: number; total: number } | null
+      missingRate: Array<{ currency: string; count: number; total: number }>
     }
     byCategory: ReportCategory[]
     byType: Array<{ type: string; label: string; total: number; count: number; share: number }>
@@ -241,7 +242,7 @@ export function ExpensesReport({ agencies }: ExpensesReportProps) {
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="expenses-report-currency">Moneda</Label>
+              <Label htmlFor="expenses-report-currency">Ver en</Label>
               <Select value={currency} onValueChange={setCurrency}>
                 <SelectTrigger id="expenses-report-currency">
                   <SelectValue />
@@ -338,11 +339,8 @@ export function ExpensesReport({ agencies }: ExpensesReportProps) {
             <div>
               <p className="font-medium">Sin gastos en el período</p>
               <p className="text-sm text-muted-foreground mt-1">
-                No hay gastos en {currency} entre {formatShortDate(dateFrom)} y{" "}
+                No hay gastos entre {formatShortDate(dateFrom)} y{" "}
                 {formatShortDate(dateTo)} con los filtros aplicados.
-                {summary?.otherCurrency
-                  ? ` Sí hay ${summary.otherCurrency.count} gasto(s) en ${summary.otherCurrency.currency}: cambiá la moneda para verlos.`
-                  : ""}
               </p>
             </div>
           </CardContent>
@@ -374,14 +372,22 @@ export function ExpensesReport({ agencies }: ExpensesReportProps) {
             />
           </div>
 
-          {summary!.otherCurrency && (
+          {summary!.converted && (
             <p className="text-xs text-muted-foreground">
-              En el mismo período también hay {summary!.otherCurrency.count} gasto(s) en{" "}
-              {summary!.otherCurrency.currency} por{" "}
-              {money(summary!.otherCurrency.total, summary!.otherCurrency.currency)}. No se suman
-              acá: las monedas no se mezclan sin tipo de cambio real.
+              {summary!.converted.count} gasto(s) se cargaron en otra moneda y están convertidos a{" "}
+              {currency} con el tipo de cambio de su fecha: {money(summary!.converted.total)} del
+              total.
             </p>
           )}
+
+          {/* Un gasto sin TC queda fuera del total. Se avisa siempre: este
+              reporte no puede volver a esconder gastos. */}
+          {summary!.missingRate.map((m) => (
+            <p key={m.currency} className="text-xs text-destructive">
+              {m.count} gasto(s) en {m.currency} por {money(m.total, m.currency)} no están incluidos:
+              falta cargar el tipo de cambio de esas fechas.
+            </p>
+          ))}
 
           {/* Distribución por categoría */}
           <div className="grid gap-4 lg:grid-cols-2">

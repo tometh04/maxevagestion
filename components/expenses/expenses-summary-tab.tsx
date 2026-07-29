@@ -200,7 +200,7 @@ export function ExpensesSummaryTab({ agencies }: ExpensesSummaryTabProps) {
           <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-[150px]" />
         </div>
         <div className="space-y-1">
-          <Label className="text-xs font-medium text-muted-foreground">Moneda</Label>
+          <Label className="text-xs font-medium text-muted-foreground">Ver en</Label>
           <Select value={currency} onValueChange={setCurrency}>
             <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[120px]">
               <SelectValue />
@@ -267,7 +267,7 @@ export function ExpensesSummaryTab({ agencies }: ExpensesSummaryTabProps) {
         </div>
       ) : slices.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
-          No hay gastos en {currency} en el período seleccionado
+          No hay gastos en el período seleccionado
         </div>
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">

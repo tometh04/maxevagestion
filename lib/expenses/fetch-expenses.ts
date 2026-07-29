@@ -246,7 +246,12 @@ export async function fetchExpenses(
         allExpenses.push({
           id: v.id,
           expense_type: "variable",
-          description: v.category || v.notes || "Gasto variable",
+          // El detalle cargado por el usuario primero: la categoría ya viaja en
+          // su propio campo y, en el PDF, además agrupa. Al revés (como estaba)
+          // el detalle mostraba "Marketing y sistemas" cinco veces seguidas en
+          // lugar de Facebook, Apple, Manychat — que es justo lo que se busca
+          // cuando hay que rastrear un gasto puntual.
+          description: v.notes || v.category || "Gasto variable",
           provider_name: null,
           category: v.category || varCat?.name || null,
           category_color: varCat?.color || null,

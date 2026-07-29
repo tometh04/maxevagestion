@@ -110,15 +110,27 @@ export function generateExpensesReportPdf({
     },
   ])
 
-  // Nota de la otra moneda: se informa, NO se suma (sin TC real no se mezcla).
-  if (report.summary.otherCurrency) {
-    b.note(
-      `En el mismo período también se registraron ${report.summary.otherCurrency.count} gasto(s) en ` +
-        `${report.summary.otherCurrency.currency} por ${fmtMoney(
-          report.summary.otherCurrency.total,
-          report.summary.otherCurrency.currency
-        )}. No se suman a este reporte: se informan por separado para no mezclar monedas.`
+  // Trazabilidad de la conversión: cuánto del total no se cargó en esta moneda.
+  const notas: string[] = []
+  if (report.summary.converted) {
+    notas.push(
+      `${report.summary.converted.count} gasto(s) se cargaron en otra moneda y están convertidos ` +
+        `a ${currency} con el tipo de cambio de su fecha: ${fmtMoney(
+          report.summary.converted.total,
+          currency
+        )} del total.`
     )
+  }
+  // Un gasto sin TC queda FUERA del total. Decirlo es obligatorio: el reporte
+  // no puede volver a esconder gastos, que es el problema que vino a resolver.
+  for (const m of report.summary.missingRate) {
+    notas.push(
+      `⚠ ${m.count} gasto(s) en ${m.currency} por ${fmtMoney(m.total, m.currency)} NO están ` +
+        `incluidos: falta el tipo de cambio de esas fechas.`
+    )
+  }
+  if (notas.length > 0) {
+    b.note(notas.join(" "))
   } else {
     b.y += 2
   }
@@ -300,29 +312,48 @@ export function generateExpensesReportPdf({
   }
 
   // ============================================== DETALLE DE GASTOS ======
+  //
+  // Agrupado por categoría, con la fecha de cada gasto al lado. Antes era una
+  // lista plana ordenada por fecha con la categoría como columna: para revisar
+  // cuánto se fue en una categoría había que ir salteando filas por todo el
+  // documento. Pedido textual del cliente: "que agrupe cada gasto por
+  // categoría, con la fecha al lado, así si tenemos que ver algo puntual
+  // tenemos la fecha donde verlo".
   const detailRows = report.detail.slice(0, MAX_DETAIL_ROWS)
   const truncated = report.detail.length > detailRows.length
 
-  // El detalle arranca en la página actual si quedan al menos ~9 filas útiles;
-  // si no, en una nueva, para no cortar la sección apenas empezada.
+  // Se respeta el orden de `byCategory` (de mayor a menor gasto) para que el
+  // detalle siga la misma jerarquía que la torta y la tabla de arriba.
+  const rowsByCategory = new Map<string, typeof detailRows>()
+  for (const row of detailRows) {
+    const list = rowsByCategory.get(row.category) || []
+    list.push(row)
+    rowsByCategory.set(row.category, list)
+  }
+  const orderedCategories = [
+    ...report.byCategory.map((c) => c.category).filter((c) => rowsByCategory.has(c)),
+    ...Array.from(rowsByCategory.keys()).filter(
+      (c) => !report.byCategory.some((bc) => bc.category === c)
+    ),
+  ]
+
   b.ensure(72)
   b.sectionTitle(
-    "Detalle de gastos",
+    "Detalle de gastos por categoría",
     truncated
-      ? `Se listan los primeros ${detailRows.length} de ${report.detail.length} gastos del período (ordenados por fecha).`
-      : `${report.detail.length} gasto${report.detail.length === 1 ? "" : "s"} ordenados por fecha (más reciente primero).`
+      ? `Se listan los primeros ${detailRows.length} de ${report.detail.length} gastos del período.`
+      : `${report.detail.length} gasto${report.detail.length === 1 ? "" : "s"} del período, agrupados por categoría y ordenados por fecha.`
   )
 
-  // Fecha 20 | Descripción 60 | Categoría 32 | Tipo 16 | Cuenta 26 | Importe 26
+  // Fecha 22 | Descripción 74 | Tipo 16 | Cuenta 28 | Importe 26
   const dc = {
-    date: MARGIN + 1,
-    desc: MARGIN + 21,
-    cat: MARGIN + 81,
-    type: MARGIN + 113,
-    account: MARGIN + 129,
+    date: MARGIN + 4,
+    desc: MARGIN + 26,
+    type: MARGIN + 100,
+    account: MARGIN + 118,
     amount: RIGHT - 1,
   }
-  const widths = { desc: 58, cat: 30, type: 14, account: 24 }
+  const widths = { desc: 72, account: 26 }
 
   const drawDetailHeader = () => {
     b.setFill(LIGHT)
@@ -332,7 +363,6 @@ export function generateExpensesReportPdf({
     b.setText(GRAY)
     doc.text("FECHA", dc.date, b.y + 4.7)
     doc.text("DESCRIPCIÓN", dc.desc, b.y + 4.7)
-    doc.text("CATEGORÍA", dc.cat, b.y + 4.7)
     doc.text("TIPO", dc.type, b.y + 4.7)
     doc.text("CUENTA", dc.account, b.y + 4.7)
     doc.text("IMPORTE", dc.amount, b.y + 4.7, { align: "right" })
@@ -340,35 +370,81 @@ export function generateExpensesReportPdf({
   }
   drawDetailHeader()
 
-  detailRows.forEach((row, i) => {
-    if (b.y + 6.2 > FOOTER_TOP) {
+  for (const categoryName of orderedCategories) {
+    const rows = rowsByCategory.get(categoryName) || []
+    if (rows.length === 0) continue
+
+    const slice = report.byCategory.find((c) => c.category === categoryName)
+    const color = slice?.color || rows[0].categoryColor
+    const subtotal = rows.reduce((acc, r) => acc + r.amount, 0)
+
+    // Encabezado de la categoría. Se lleva consigo al menos una fila: un título
+    // solo al pie de una página se lee como si la categoría estuviera vacía.
+    if (b.y + 8 + 6.2 > FOOTER_TOP) {
       b.addPage()
       drawDetailHeader()
     }
-    if (i % 2 === 1) {
-      b.setFill(ZEBRA)
-      doc.rect(MARGIN, b.y, CONTENT_W, 6.2, "F")
-    }
-    doc.setFontSize(7.5)
-    doc.setFont("helvetica", "normal")
-    b.setText(GRAY)
-    doc.text(fmtDate(row.date), dc.date, b.y + 4.2)
-
-    b.setText(DARK)
-    doc.text(b.truncate(row.description, widths.desc), dc.desc, b.y + 4.2)
-
-    b.setFill(hexToRgb(row.categoryColor))
-    doc.roundedRect(dc.cat, b.y + 1.9, 2.2, 2.2, 0.4, 0.4, "F")
-    b.setText(GRAY)
-    doc.text(b.truncate(row.category, widths.cat - 4), dc.cat + 3.6, b.y + 4.2)
-    doc.text(row.type === "recurring" ? "Fijo" : "Variable", dc.type, b.y + 4.2)
-    doc.text(b.truncate(row.account, widths.account), dc.account, b.y + 4.2)
-
+    b.setFill(LIGHT)
+    doc.rect(MARGIN, b.y, CONTENT_W, 8, "F")
+    b.setFill(hexToRgb(color))
+    doc.roundedRect(MARGIN + 2, b.y + 2.7, 2.6, 2.6, 0.5, 0.5, "F")
+    doc.setFontSize(8)
     doc.setFont("helvetica", "bold")
     b.setText(DARK)
-    doc.text(fmtMoney(row.amount, currency), dc.amount, b.y + 4.2, { align: "right" })
-    b.y += 6.2
-  })
+    doc.text(b.truncate(categoryName, 60), MARGIN + 7, b.y + 5.4)
+    b.setText(GRAY)
+    doc.setFont("helvetica", "normal")
+    doc.setFontSize(7)
+    doc.text(`${rows.length} gasto${rows.length === 1 ? "" : "s"}`, dc.type, b.y + 5.4)
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(8)
+    b.setText(DARK)
+    doc.text(fmtMoney(subtotal, currency), dc.amount, b.y + 5.4, { align: "right" })
+    b.y += 8
+
+    rows.forEach((row, i) => {
+      if (b.y + 6.2 > FOOTER_TOP) {
+        b.addPage()
+        drawDetailHeader()
+      }
+      if (i % 2 === 1) {
+        b.setFill(ZEBRA)
+        doc.rect(MARGIN, b.y, CONTENT_W, 6.2, "F")
+      }
+      doc.setFontSize(7.5)
+      doc.setFont("helvetica", "normal")
+      b.setText(GRAY)
+      doc.text(fmtDate(row.date), dc.date, b.y + 4.2)
+
+      b.setText(DARK)
+      doc.text(b.truncate(row.description, widths.desc), dc.desc, b.y + 4.2)
+
+      b.setText(GRAY)
+      doc.text(row.type === "recurring" ? "Fijo" : "Variable", dc.type, b.y + 4.2)
+      doc.text(b.truncate(row.account, widths.account), dc.account, b.y + 4.2)
+
+      doc.setFont("helvetica", "bold")
+      b.setText(DARK)
+      doc.text(fmtMoney(row.amount, currency), dc.amount, b.y + 4.2, { align: "right" })
+
+      // Importe original cuando el gasto se cargó en otra moneda: sin esto, un
+      // gasto en dólares aparece como un número en pesos que no coincide con
+      // ningún comprobante.
+      if (row.originalCurrency !== currency) {
+        doc.setFont("helvetica", "normal")
+        doc.setFontSize(6.5)
+        b.setText(GRAY)
+        doc.text(
+          `(${fmtMoney(row.originalAmount, row.originalCurrency)})`,
+          dc.amount,
+          b.y + 6.6,
+          { align: "right" }
+        )
+        b.y += 3
+      }
+      b.y += 6.2
+    })
+  }
 
   if (b.y + 9 > FOOTER_TOP) b.addPage()
   b.setFill(PRIMARY)
@@ -378,7 +454,7 @@ export function generateExpensesReportPdf({
   b.setText(WHITE)
   doc.text(
     truncated ? `TOTAL DEL PERÍODO (${report.detail.length} gastos)` : "TOTAL DEL PERÍODO",
-    dc.date + 1,
+    dc.date,
     b.y + 5.4
   )
   doc.text(fmtMoney(report.summary.total, currency), dc.amount - 1, b.y + 5.4, { align: "right" })
