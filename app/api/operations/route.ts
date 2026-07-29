@@ -14,7 +14,8 @@ import { sendCustomerNotifications } from "@/lib/customers/customer-service"
 import { logAudit, getClientIP } from "@/lib/audit"
 import { enforceUserRateLimit } from "@/lib/rate-limit"
 import { checkLimit } from "@/lib/billing/limits"
-import { getSellerPercentage } from "@/lib/commissions/calculate"
+import { resolveSellerCommissionProfiles } from "@/lib/commissions/seller-commission-profile"
+import { validateManualSplit } from "@/lib/commissions/validate-shared-split"
 import { calculateOperationBalances, roundMoney } from "@/lib/operations/operation-financials"
 import { getOrgFeatureFlag } from "@/lib/settings/org-features"
 import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
@@ -147,34 +148,40 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "El operador es requerido" }, { status: 400 })
     }
 
-    // Validación overrides de comisión (29/04 — Tomi opción B):
-    // Si vienen los dos campos absolutos, la suma no puede exceder el %
-    // que comisiona el vendedor principal. Sólo aplica con secundario.
+    // Reparto manual de la comisión entre los dos vendedores (VIB-63).
+    // Las reglas son simétricas: cada uno hasta su propio porcentaje, y el total
+    // hasta el mayor de los dos. Antes el tope era el porcentaje del principal,
+    // lo que hacía imposible cargar una venta cuando el secundario comisionaba
+    // más — y por eso se invertían los vendedores para poder guardarla.
     if (
       normalizedSecondaryId &&
       commission_pct_primary != null &&
       commission_pct_secondary != null
     ) {
-      const primaryPctNum = Number(commission_pct_primary)
-      const secondaryPctNum = Number(commission_pct_secondary)
+      const profiles = await resolveSellerCommissionProfiles(supabase, (user as any).org_id, [
+        seller_id,
+        normalizedSecondaryId,
+      ])
+      const primaryProfile = profiles.get(seller_id)
+      const secondaryProfile = profiles.get(normalizedSecondaryId)
 
-      if (Number.isNaN(primaryPctNum) || Number.isNaN(secondaryPctNum) || primaryPctNum < 0 || secondaryPctNum < 0) {
-        return NextResponse.json(
-          { error: "Las comisiones deben ser números no negativos" },
-          { status: 400 }
-        )
-      }
+      const validation = validateManualSplit(
+        {
+          sellerId: seller_id,
+          name: primaryProfile?.name ?? null,
+          maxPercentage: primaryProfile?.percentage ?? null,
+          assignedPercentage: Number(commission_pct_primary),
+        },
+        {
+          sellerId: normalizedSecondaryId,
+          name: secondaryProfile?.name ?? null,
+          maxPercentage: secondaryProfile?.percentage ?? null,
+          assignedPercentage: Number(commission_pct_secondary),
+        }
+      )
 
-      const principalPct = await getSellerPercentage(seller_id)
-      const sumOverrides = primaryPctNum + secondaryPctNum
-
-      if (sumOverrides > principalPct + 0.01) {
-        return NextResponse.json(
-          {
-            error: `La suma de comisiones (${sumOverrides.toFixed(2)}%) no puede superar la comisión del vendedor principal (${principalPct.toFixed(2)}%)`,
-          },
-          { status: 400 }
-        )
+      if (!validation.ok) {
+        return NextResponse.json({ error: validation.error }, { status: 400 })
       }
     }
 
@@ -312,6 +319,13 @@ export async function POST(request: Request) {
       commission_split: normalizedSecondaryId ? (commission_split ?? 50) : null,
       commission_pct_primary: normalizedSecondaryId && commission_pct_primary != null ? Number(commission_pct_primary) : null,
       commission_pct_secondary: normalizedSecondaryId && commission_pct_secondary != null ? Number(commission_pct_secondary) : null,
+      // Solo un reparto explícito y completo congela los porcentajes (VIB-63).
+      // En AUTO los commission_pct_* son un snapshot que recalcula el servidor,
+      // así que una UI que mande 0 ya no puede dejar la venta sin comisionar.
+      commission_split_mode:
+        normalizedSecondaryId && commission_pct_primary != null && commission_pct_secondary != null
+          ? "MANUAL"
+          : "AUTO",
       operator_id: primaryOperatorId, // Operador principal (compatibilidad hacia atrás)
       type,
       product_type: inferredProductType,
@@ -437,20 +451,14 @@ export async function POST(request: Request) {
 
     // Calcular comisiones automáticamente al crear la operación
     try {
-      const { calculateCommission, createOrUpdateCommissionRecords } = await import("@/lib/commissions/calculate")
-      const commissionOp = {
+      const { recalculateOperationCommissions } = await import("@/lib/commissions/calculate")
+      await recalculateOperationCommissions(supabase, {
         ...op,
-        seller_id: op.seller_primary_id || op.seller_id || seller_id,
+        org_id: op.org_id || (user as any).org_id,
+        seller_id: op.seller_id || seller_id,
         seller_secondary_id: op.seller_secondary_id || normalizedSecondaryId || null,
-        sale_amount_total: Number(op.sale_amount_total) || 0,
-        operator_cost: Number(op.operator_cost) || totalOperatorCost || 0,
         margin_amount: Number(op.margin_amount) || marginAmount || 0,
-        margin_percentage: Number(op.margin_percentage) || marginPercentage || 0,
-      }
-      const commissionData = await calculateCommission(commissionOp)
-      if (commissionData.totalCommission > 0) {
-        await createOrUpdateCommissionRecords(commissionOp, commissionData)
-      }
+      })
     } catch (error) {
       console.error("Error calculating commission for new operation:", error)
     }
@@ -981,24 +989,12 @@ export async function POST(request: Request) {
       // No lanzamos error para no romper la creación de la operación
     }
 
-    // Crear registro de comisión del vendedor si se especificó porcentaje
-    if (commission_percentage && commission_percentage > 0 && marginAmount > 0) {
-      try {
-        const commissionAmount = (marginAmount * commission_percentage) / 100
-        await (supabase.from("commission_records") as any).insert({
-          operation_id: operation.id,
-          seller_id: seller_id,
-          agency_id: agency_id,
-          amount: Math.round(commissionAmount * 100) / 100,
-          percentage: commission_percentage,
-          status: "PENDING",
-          date_calculated: new Date().toISOString(),
-        })
-      } catch (error) {
-        console.error("Error creating commission record:", error)
-        // No lanzamos error para no romper la creación de la operación
-      }
-    }
+    // (VIB-63) Acá había un tercer camino de escritura de comisiones, que
+    // insertaba un commission_records a partir de `body.commission_percentage`
+    // después de que el recálculo ya hubiera creado el suyo. Chocaba contra el
+    // índice único (operation_id, seller_id) y el error se tragaba en el catch,
+    // así que el porcentaje del body no hacía nada salvo ensuciar los logs.
+    // La comisión la calcula ahora recalculateOperationCommissions, más arriba.
 
     // Invalidar caché del dashboard (los KPIs cambian al crear una operación)
     revalidateTag(CACHE_TAGS.DASHBOARD)

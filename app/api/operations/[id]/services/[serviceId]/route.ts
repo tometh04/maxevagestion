@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canPerformAction, getUserAgencyIds, resolveOperationAccessScope, isAgencyReadonlyScope } from "@/lib/permissions-api"
-import { calculateCommission, createOrUpdateCommissionRecords } from "@/lib/commissions/calculate"
+import { recalculateOperationCommissions } from "@/lib/commissions/calculate"
 import { getOpenOperatorPaymentStatus } from "@/lib/accounting/operator-payment-settlement"
 import { getOrgFeatureFlag } from "@/lib/settings/org-features"
 import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
@@ -113,23 +113,19 @@ async function recalculateOperationTotals(supabase: any, operationId: string) {
     .eq("id", operationId)
 
   // Obtener la operación actualizada para recalcular comisiones
+  // El select tiene que traer org_id y los commission_pct_*: sin ellos el
+  // recálculo no sabía en qué modo estaba la operación y la degradaba.
   const { data: updatedOp } = await (supabase.from("operations") as any)
-    .select("id, agency_id, seller_id, seller_secondary_id, commission_split, destination, status, sale_amount_total, operator_cost, margin_amount, margin_percentage, currency, sale_currency, departure_date")
+    .select("id, org_id, agency_id, seller_id, seller_secondary_id, commission_pct_primary, commission_pct_secondary, commission_split_mode, margin_amount")
     .eq("id", operationId)
     .single()
 
   if (updatedOp && updatedOp.seller_id) {
     try {
-      const commissionData = await calculateCommission({
+      await recalculateOperationCommissions(supabase, {
         ...updatedOp,
-        sale_amount_total: Number(updatedOp.sale_amount_total) || 0,
-        operator_cost: Number(updatedOp.operator_cost) || 0,
         margin_amount: Number(updatedOp.margin_amount) || 0,
-        margin_percentage: Number(updatedOp.margin_percentage) || 0,
       })
-      if (commissionData.totalCommission > 0) {
-        await createOrUpdateCommissionRecords(updatedOp, commissionData)
-      }
     } catch (err) {
       console.warn("[Services] Error recalculando comisiones:", err)
     }

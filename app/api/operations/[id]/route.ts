@@ -290,28 +290,38 @@ export async function PATCH(
       body.commission_pct_primary != null &&
       body.commission_pct_secondary != null
     ) {
-      const primaryPctNum = Number(body.commission_pct_primary)
-      const secondaryPctNum = Number(body.commission_pct_secondary)
-
-      if (Number.isNaN(primaryPctNum) || Number.isNaN(secondaryPctNum) || primaryPctNum < 0 || secondaryPctNum < 0) {
-        return NextResponse.json(
-          { error: "Las comisiones deben ser números no negativos" },
-          { status: 400 }
-        )
-      }
-
+      // Reglas simétricas (VIB-63): cada vendedor hasta su propio porcentaje y
+      // el total hasta el mayor de los dos, sin importar quién es el principal.
       const effectivePrimaryId = body.seller_id ?? currentOp.seller_id
-      const { getSellerPercentage } = await import("@/lib/commissions/calculate")
-      const principalPct = await getSellerPercentage(effectivePrimaryId)
-      const sumOverrides = primaryPctNum + secondaryPctNum
+      const { resolveSellerCommissionProfiles } = await import(
+        "@/lib/commissions/seller-commission-profile"
+      )
+      const { validateManualSplit } = await import("@/lib/commissions/validate-shared-split")
 
-      if (sumOverrides > principalPct + 0.01) {
-        return NextResponse.json(
-          {
-            error: `La suma de comisiones (${sumOverrides.toFixed(2)}%) no puede superar la comisión del vendedor principal (${principalPct.toFixed(2)}%)`,
-          },
-          { status: 400 }
-        )
+      const profiles = await resolveSellerCommissionProfiles(supabase, (user as any).org_id, [
+        effectivePrimaryId,
+        effectiveSecondaryId,
+      ])
+      const primaryProfile = profiles.get(effectivePrimaryId)
+      const secondaryProfile = profiles.get(effectiveSecondaryId)
+
+      const validation = validateManualSplit(
+        {
+          sellerId: effectivePrimaryId,
+          name: primaryProfile?.name ?? null,
+          maxPercentage: primaryProfile?.percentage ?? null,
+          assignedPercentage: Number(body.commission_pct_primary),
+        },
+        {
+          sellerId: effectiveSecondaryId,
+          name: secondaryProfile?.name ?? null,
+          maxPercentage: secondaryProfile?.percentage ?? null,
+          assignedPercentage: Number(body.commission_pct_secondary),
+        }
+      )
+
+      if (!validation.ok) {
+        return NextResponse.json({ error: validation.error }, { status: 400 })
       }
     }
 
@@ -429,6 +439,14 @@ export async function PATCH(
         // commission_split = % de la comisión total que va al principal
         updateData.commission_split = Math.round((p / total) * 100 * 100) / 100
       }
+      // Un reparto explícito congela los porcentajes: el recálculo no los pisa.
+      updateData.commission_split_mode = "MANUAL"
+    }
+
+    // Sacar el secundario vuelve la operación a automático: los porcentajes que
+    // quedaron congelados eran de un reparto que ya no existe.
+    if (updateData.seller_secondary_id === null) {
+      updateData.commission_split_mode = "AUTO"
     }
 
     const oldSaleAmount = currentOp.sale_amount_total
@@ -1083,13 +1101,21 @@ export async function PATCH(
     }
 
     // Calcular comisiones automáticamente en cada update (si tiene vendedor y margen)
-    let commissionData: { totalCommission: number; percentage: number; primaryCommission: number; secondaryCommission: number | null } | null = null
+    let commissionData: { totalCommission: number; primaryCommission: number; secondaryCommission: number | null } | null = null
     try {
-      const { calculateCommission, createOrUpdateCommissionRecords } = await import("@/lib/commissions/calculate")
-      commissionData = await calculateCommission(op)
+      const { recalculateOperationCommissions } = await import("@/lib/commissions/calculate")
+      const { plan } = await recalculateOperationCommissions(supabase, {
+        ...op,
+        org_id: op.org_id || (user as any).org_id,
+        seller_id: op.seller_id,
+        margin_amount: Number(op.margin_amount) || 0,
+      })
 
-      if (commissionData.totalCommission > 0) {
-        await createOrUpdateCommissionRecords(op, commissionData)
+      // Forma que espera el asiento contable de comisiones.
+      commissionData = {
+        totalCommission: plan.totalCommission,
+        primaryCommission: plan.entries.find((e) => e.role === "PRIMARY")?.amount ?? 0,
+        secondaryCommission: plan.entries.find((e) => e.role === "SECONDARY")?.amount ?? null,
       }
     } catch (error) {
       console.error("Error calculating commission:", error)
