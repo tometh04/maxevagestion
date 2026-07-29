@@ -24,6 +24,11 @@ interface LeadData {
   assigned_seller_id?: string | null
     notes?: string | null
   status?: string | null
+  // Prefill enriquecido (VIB-68 seguimiento)
+  quoted_price?: number | string | null
+  estimated_departure_date?: string | null
+  region?: string | null
+  deposit_currency?: string | null
   }
 
 interface ConvertLeadDialogProps {
@@ -79,6 +84,10 @@ export function ConvertLeadDialog({
         agency_id: lead.agency_id,
         assigned_seller_id: lead.assigned_seller_id,
         notes: lead.notes,
+        quoted_price: lead.quoted_price,
+        estimated_departure_date: lead.estimated_departure_date,
+        region: lead.region,
+        deposit_currency: lead.deposit_currency,
       }}
     />
   )

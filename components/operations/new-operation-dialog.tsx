@@ -35,7 +35,7 @@ import { Label } from "@/components/ui/label"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { cn } from "@/lib/utils"
-import { formatDateOnlyLocal } from "@/lib/utils/date-only"
+import { formatDateOnlyLocal, parseDateOnlyLocal, todayInArgentina } from "@/lib/utils/date-only"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { useToast } from "@/hooks/use-toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -188,6 +188,13 @@ interface LeadData {
   agency_id?: string | null
   assigned_seller_id?: string | null
   notes?: string | null
+  // Prefill enriquecido (VIB-68 seguimiento): datos del lead que hoy se
+  // aprovechan para precargar la operación. La seña (deposit_*) NO va acá:
+  // se transfiere server-side vía transferLeadToOperation.
+  quoted_price?: number | string | null
+  estimated_departure_date?: string | null
+  region?: string | null
+  deposit_currency?: string | null
 }
 
 interface NewOperationDialogProps {
@@ -405,6 +412,28 @@ export function NewOperationDialog({
     return ""
   }, [lead?.destination])
 
+  // Prefill enriquecido desde el lead (VIB-68 seguimiento). Best-effort: el
+  // usuario confirma/completa en el form antes de guardar.
+  const leadSaleAmount = React.useMemo(() => {
+    const n = Number(lead?.quoted_price)
+    return Number.isFinite(n) && n > 0 ? n : 0
+  }, [lead?.quoted_price])
+
+  const leadCurrency = React.useMemo<"ARS" | "USD">(() => {
+    return lead?.deposit_currency === "ARS" ? "ARS" : "USD"
+  }, [lead?.deposit_currency])
+
+  // Solo precargamos la fecha de salida si la estimada existe y NO es pasada
+  // (una fecha pasada dispararía el 400 de validación de fechas en el submit).
+  const leadDepartureDate = React.useMemo<Date | undefined>(() => {
+    const d = parseDateOnlyLocal(lead?.estimated_departure_date)
+    if (!d) return undefined
+    const asStr = formatDateOnlyLocal(d)
+    return asStr && asStr >= todayInArgentina() ? d : undefined
+  }, [lead?.estimated_departure_date])
+
+  const leadNotes = lead?.notes ?? ""
+
   const form = useForm<OperationFormValues>({
     resolver: zodResolver(operationSchema),
     defaultValues: {
@@ -419,17 +448,17 @@ export function NewOperationDialog({
       customer_id: null,
       origin: "Buenos Aires",
       destination: cleanedDestination,
-      departure_date: undefined,
+      departure_date: leadDepartureDate,
       return_date: undefined,
       adults: 2,
       children: 0,
       infants: 0,
       status: settings?.default_status || "RESERVED",
-      sale_amount_total: 0,
+      sale_amount_total: leadSaleAmount,
       operator_cost: 0,
-      currency: "USD",
-      sale_currency: "USD",
-      operator_cost_currency: "USD",
+      currency: leadCurrency,
+      sale_currency: leadCurrency,
+      operator_cost_currency: leadCurrency,
       reservation_code_air: null,
       reservation_code_hotel: null,
       airline_name: null,
@@ -437,7 +466,7 @@ export function NewOperationDialog({
       operation_date: null,
       itr_localizador: null,
       customer_payment_deadline: null,
-      passenger_notes: "",
+      passenger_notes: leadNotes,
       operators: [],
     },
   })
@@ -455,28 +484,28 @@ export function NewOperationDialog({
         customer_id: null,
         origin: "Buenos Aires",
         destination: cleanedDestination,
-        departure_date: undefined,
+        departure_date: leadDepartureDate,
         return_date: undefined,
         adults: 2,
         children: 0,
         infants: 0,
         status: settings?.default_status || "RESERVED",
-        sale_amount_total: 0,
+        sale_amount_total: leadSaleAmount,
         operator_cost: 0,
-        currency: "USD",
-        sale_currency: "USD",
-        operator_cost_currency: "USD",
+        currency: leadCurrency,
+        sale_currency: leadCurrency,
+        operator_cost_currency: leadCurrency,
         reservation_code_air: null,
         reservation_code_hotel: null,
         operation_date: null,
         itr_localizador: null,
         customer_payment_deadline: null,
-        passenger_notes: "",
+        passenger_notes: leadNotes,
         operators: [],
       })
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, lead?.id, cleanedDestination, defaultAgencyId, defaultSellerId, settings?.default_status])
+  }, [open, lead?.id, cleanedDestination, leadDepartureDate, leadSaleAmount, leadCurrency, leadNotes, defaultAgencyId, defaultSellerId, settings?.default_status])
 
   // Actualizar estado por defecto cuando se carga la configuración
   useEffect(() => {

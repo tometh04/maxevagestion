@@ -7,7 +7,14 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
-import { ExternalLink, MapPin, Users, Phone, Mail, Instagram, Calendar, FileText, Edit, Trash2, ArrowRight, AlertTriangle, UserPlus, Loader2, CheckCircle2, User, Briefcase, Save, X, MessageSquare, Send, Archive, ArchiveRestore, ClipboardList, Clock, DollarSign, Eye, Download } from "lucide-react"
+import { ExternalLink, MapPin, Users, Phone, Mail, Instagram, Calendar, FileText, Edit, Trash2, ArrowRight, AlertTriangle, UserPlus, Loader2, CheckCircle2, User, Briefcase, Save, X, MessageSquare, Send, Archive, ArchiveRestore, ClipboardList, Clock, DollarSign, Eye, Download, MoreHorizontal } from "lucide-react"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import Link from "next/link"
 import { format } from "date-fns"
 import dynamic from "next/dynamic"
@@ -167,6 +174,8 @@ interface Lead {
   updated_at?: string
   notes: string | null
   quoted_price?: number | null
+  estimated_departure_date?: string | null
+  estimated_checkin_date?: string | null
   has_deposit?: boolean
   deposit_amount?: number | null
   deposit_currency?: string | null
@@ -247,7 +256,6 @@ export function LeadDetailDialog({
   const [openingQuotation, setOpeningQuotation] = useState(false)
   // VIB-68: marcar resultado (venta / descarte) del lead.
   const [markingOutcome, setMarkingOutcome] = useState(false)
-  const [saleDialogOpen, setSaleDialogOpen] = useState(false)
   const [discardDialogOpen, setDiscardDialogOpen] = useState(false)
   const [editingNotes, setEditingNotes] = useState(false)
   const [notesValue, setNotesValue] = useState(lead?.notes || "")
@@ -467,7 +475,6 @@ export function LeadDetailDialog({
             ? "Lead descartado"
             : "Lead reabierto"
       )
-      setSaleDialogOpen(false)
       setDiscardDialogOpen(false)
       // Reutilizar onDelete como callback de refresh (mismo propósito que el resto del dialog)
       onDelete?.()
@@ -1082,161 +1089,115 @@ export function LeadDetailDialog({
 
         {/* Acciones - Footer fijo */}
         <div className="flex-shrink-0 border-t bg-muted/30 px-6 py-3">
-          <div className="flex items-center gap-1.5 overflow-x-auto">
-            {/* Botón Agarrar Lead - solo si no tiene vendedor asignado Y no es WON */}
-            {!lead.assigned_seller_id && canClaimLeads && lead.status !== "WON" && (
-              <Button
-                size="sm"
-                onClick={handleClaimLead}
-                disabled={claiming}
-                className="shrink-0"
-              >
-                {claiming ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <UserPlus className="h-3.5 w-3.5" />
-                )}
-                <span className="ml-1.5">{claiming ? "Asignando..." : "Agarrar"}</span>
-              </Button>
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleEdit}
-              className="shrink-0"
-            >
-              <Edit className="h-3.5 w-3.5" />
-              <span className="ml-1.5">Editar</span>
-            </Button>
-            {/* Ver Operación - si ya tiene operación creada */}
-            {lead.operations && lead.operations.length > 0 ? (
-              <Button
-                size="sm"
-                asChild
-                className="shrink-0 bg-success hover:bg-success/90"
-              >
-                <Link href={`/operations/${lead.operations[0].id}`}>
-                  <Briefcase className="h-3.5 w-3.5" />
-                  <span className="ml-1.5">Ver Operación</span>
-                </Link>
-              </Button>
-            ) : (
-              /* Cotizar o Convertir a Operación - solo si NO tiene operación y no está LOST */
-              lead.status !== "LOST" && (
-                <>
+          {(() => {
+            const hasOp = !!(lead.operations && lead.operations.length > 0)
+            const resolved = hasOp || lead.outcome === "SALE" || lead.outcome === "DISCARDED" || lead.status === "LOST"
+            const canReopen = !hasOp && (lead.outcome === "SALE" || lead.outcome === "DISCARDED")
+            const canConvert = !hasOp && lead.status !== "LOST" && !!onConvert && agencies.length > 0 && sellers.length > 0
+            const canQuote = !hasOp && lead.status !== "LOST"
+            const canClaim = !lead.assigned_seller_id && canClaimLeads && lead.status !== "WON"
+            return (
+              <div className="flex items-center gap-1.5">
+                {/* Acción primaria contextual */}
+                {hasOp ? (
+                  <Button size="sm" asChild className="shrink-0 bg-success hover:bg-success/90">
+                    <Link href={`/operations/${lead.operations![0].id}`}>
+                      <Briefcase className="h-3.5 w-3.5" />
+                      <span className="ml-1.5">Ver Operación</span>
+                    </Link>
+                  </Button>
+                ) : canConvert ? (
                   <Button
-                    variant="outline"
                     size="sm"
-                    onClick={handleStartQuotation}
-                    disabled={openingQuotation}
+                    onClick={() => setConvertDialogOpen(true)}
                     className="shrink-0"
                   >
-                    {openingQuotation ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <FileText className="h-3.5 w-3.5" />
-                    )}
-                    <span className="ml-1.5">{openingQuotation ? "Abriendo..." : "Cotizar"}</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
+                    <span className="ml-1.5">Crear operación</span>
                   </Button>
-                  {onConvert && agencies.length > 0 && sellers.length > 0 && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setConvertDialogOpen(true)}
-                      className="shrink-0"
-                    >
-                      <ArrowRight className="h-3.5 w-3.5" />
-                      <span className="ml-1.5">Convertir</span>
-                    </Button>
-                  )}
-                </>
-              )
-            )}
+                ) : null}
 
-            {/* VIB-68: marcar resultado (venta / descarte) del lead */}
-            {(() => {
-              const hasOp = !!(lead.operations && lead.operations.length > 0)
-              const resolved = hasOp || lead.outcome === "SALE" || lead.outcome === "DISCARDED" || lead.status === "LOST"
-              const canReopen = !hasOp && (lead.outcome === "SALE" || lead.outcome === "DISCARDED")
-              return (
-                <>
-                  {!resolved && (
-                    <>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setSaleDialogOpen(true)}
-                        disabled={markingOutcome}
-                        className="shrink-0 border-success/40 text-success hover:bg-success/10 hover:text-success"
-                      >
-                        <CheckCircle2 className="h-3.5 w-3.5" />
-                        <span className="ml-1.5">Marcar venta</span>
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setDiscardDialogOpen(true)}
-                        disabled={markingOutcome}
-                        className="shrink-0"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                        <span className="ml-1.5">Marcar descarte</span>
-                      </Button>
-                    </>
-                  )}
-                  {canReopen && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleSetOutcome(null)}
-                      disabled={markingOutcome}
-                      className="shrink-0"
-                    >
-                      {markingOutcome ? (
+                <div className="flex-1" />
+
+                {/* Menú "Más" con el resto de las acciones */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" className="shrink-0">
+                      {(markingOutcome || archiving || claiming) ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       ) : (
-                        <ArchiveRestore className="h-3.5 w-3.5" />
+                        <MoreHorizontal className="h-3.5 w-3.5" />
                       )}
-                      <span className="ml-1.5">Reabrir</span>
+                      <span className="ml-1.5">Más</span>
                     </Button>
-                  )}
-                </>
-              )
-            })()}
-
-            {/* Separador visual */}
-            <div className="flex-1" />
-
-            {onArchive && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="shrink-0 text-accent-coral hover:text-accent-coral hover:bg-accent-coral/10"
-                onClick={handleArchive}
-                disabled={archiving}
-              >
-                {archiving ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : lead?.archived_at ? (
-                  <ArchiveRestore className="h-3.5 w-3.5" />
-                ) : (
-                  <Archive className="h-3.5 w-3.5" />
-                )}
-                <span className="ml-1.5">{archiving ? "..." : lead?.archived_at ? "Restaurar" : "Archivar"}</span>
-              </Button>
-            )}
-            {onDelete && !isFromTrello && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                onClick={() => setDeleteDialogOpen(true)}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                <span className="ml-1.5">Eliminar</span>
-              </Button>
-            )}
-          </div>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    {canQuote && (
+                      <DropdownMenuItem onClick={handleStartQuotation} disabled={openingQuotation}>
+                        <FileText className="h-4 w-4" />
+                        {openingQuotation ? "Abriendo..." : "Cotizar"}
+                      </DropdownMenuItem>
+                    )}
+                    {!resolved && (
+                      <DropdownMenuItem
+                        onClick={() => handleSetOutcome("SALE")}
+                        disabled={markingOutcome}
+                        className="text-success focus:text-success"
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                        Marcar vendido (sin operación)
+                      </DropdownMenuItem>
+                    )}
+                    {!resolved && (
+                      <DropdownMenuItem onClick={() => setDiscardDialogOpen(true)} disabled={markingOutcome}>
+                        <X className="h-4 w-4" />
+                        Marcar descarte
+                      </DropdownMenuItem>
+                    )}
+                    {canReopen && (
+                      <DropdownMenuItem onClick={() => handleSetOutcome(null)} disabled={markingOutcome}>
+                        <ArchiveRestore className="h-4 w-4" />
+                        Reabrir
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={handleEdit}>
+                      <Edit className="h-4 w-4" />
+                      Editar
+                    </DropdownMenuItem>
+                    {canClaim && (
+                      <DropdownMenuItem onClick={handleClaimLead} disabled={claiming}>
+                        <UserPlus className="h-4 w-4" />
+                        {claiming ? "Asignando..." : "Agarrar lead"}
+                      </DropdownMenuItem>
+                    )}
+                    {onArchive && (
+                      <DropdownMenuItem onClick={handleArchive} disabled={archiving}>
+                        {lead?.archived_at ? (
+                          <ArchiveRestore className="h-4 w-4" />
+                        ) : (
+                          <Archive className="h-4 w-4" />
+                        )}
+                        {lead?.archived_at ? "Restaurar" : "Archivar"}
+                      </DropdownMenuItem>
+                    )}
+                    {onDelete && !isFromTrello && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onClick={() => setDeleteDialogOpen(true)}
+                          className="text-destructive focus:text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Eliminar
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            )
+          })()}
           {isFromTrello && (
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-2">
               <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
@@ -1270,48 +1231,6 @@ export function LeadDetailDialog({
           }}
         />
       )}
-
-      {/* VIB-68: Marcar venta (híbrido). Si no tiene operación, ofrece cargarla
-          o marcar la venta a mano sin operación. */}
-      <AlertDialog open={saleDialogOpen} onOpenChange={setSaleDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Marcar como venta</AlertDialogTitle>
-            <AlertDialogDescription>
-              Lo recomendado es cargar la operación para que quede como venta real
-              y se registre la plata. Si todavía no la vas a cargar, podés marcarla
-              como venta igual para no perder el registro.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="flex-col gap-2 sm:flex-row">
-            <AlertDialogCancel disabled={markingOutcome}>Cancelar</AlertDialogCancel>
-            <Button
-              variant="outline"
-              disabled={markingOutcome}
-              onClick={() => handleSetOutcome("SALE")}
-            >
-              {markingOutcome ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <CheckCircle2 className="h-3.5 w-3.5" />
-              )}
-              <span className="ml-1.5">Marcar sin operación</span>
-            </Button>
-            {onConvert && agencies.length > 0 && sellers.length > 0 && (
-              <AlertDialogAction
-                disabled={markingOutcome}
-                onClick={() => {
-                  setSaleDialogOpen(false)
-                  setConvertDialogOpen(true)
-                }}
-              >
-                <ArrowRight className="h-3.5 w-3.5" />
-                <span className="ml-1.5">Cargar operación</span>
-              </AlertDialogAction>
-            )}
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       {/* VIB-68: Confirmar descarte */}
       <AlertDialog open={discardDialogOpen} onOpenChange={setDiscardDialogOpen}>
