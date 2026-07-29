@@ -4,6 +4,12 @@ import { createServerClient } from "@/lib/supabase/server"
 import { OperationsPageClient } from "@/components/operations/operations-page-client"
 import { canAccessModule } from "@/lib/permissions"
 import { makeTimer } from "@/lib/perf-log"
+import {
+  SELLER_OPTION_ROLES,
+  SELLER_OPTION_SELECT,
+  toSellerOptions,
+  type SellerOption,
+} from "@/lib/sellers/seller-option"
 
 export default async function OperationsPage() {
   const __perfReqId = (await headers()).get("x-perf-req-id") || undefined
@@ -39,8 +45,8 @@ export default async function OperationsPage() {
       .eq("user_id", user.id),
     supabase
       .from("users")
-      .select("id, name")
-      .in("role", ["SELLER", "ADMIN", "SUPER_ADMIN", "POST_VENTA"])
+      .select(SELLER_OPTION_SELECT)
+      .in("role", SELLER_OPTION_ROLES)
       .eq("is_active", true)
       .eq("org_id", (user as any).org_id),
     supabase
@@ -72,7 +78,9 @@ export default async function OperationsPage() {
 
   // `sellers` se mantiene completo: también alimenta el dropdown de filtros y la
   // tabla. `creatableSellers` es exclusivo del diálogo de alta y sí se acota.
-  const sellerOptions = (sellers || []).map((s: any) => ({ id: s.id, name: s.name }))
+  // El porcentaje viaja hasta el diálogo: sin él, el reparto de una venta
+  // compartida se calculaba sobre 0 (VIB-63).
+  const sellerOptions: SellerOption[] = toSellerOptions(sellers)
   let creatableSellers = sellerOptions
   if (isSeller) {
     if (canPickOtherSeller && agencyIds.length > 0) {

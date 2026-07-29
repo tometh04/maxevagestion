@@ -1,5 +1,7 @@
 "use client"
 
+import { previewSharedSplit } from "@/lib/commissions/split-preview"
+import type { SellerOption } from "@/lib/sellers/seller-option"
 import { useState, useEffect, useMemo } from "react"
 import { useForm, type DefaultValues } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -153,7 +155,7 @@ interface EditOperationDialogProps {
   onOpenChange: (open: boolean) => void
   onSuccess: () => void
   agencies: Array<{ id: string; name: string }>
-  sellers: Array<{ id: string; name: string; default_commission_percentage?: number | null }>
+  sellers: SellerOption[]
   operators: Array<{ id: string; name: string }>
   userRole?: string
   operationLegs?: Array<{
@@ -812,27 +814,29 @@ export function EditOperationDialog({
                   commission_split clásico para no migrarlas automáticamente. */}
               {form.watch("seller_secondary_id") && form.watch("seller_secondary_id") !== "none" && (() => {
                 const canEdit = ["SUPER_ADMIN", "ADMIN", "CONTABLE"].includes(userRole || "")
-                const principalSeller = sellers.find((seller) => seller.id === form.watch("seller_id"))
-                const principalPct = Number(principalSeller?.default_commission_percentage ?? 0)
-                const halfDefault = Math.round((principalPct / 2) * 100) / 100
-                const isLegacy =
-                  operation.commission_pct_primary == null &&
-                  operation.commission_pct_secondary == null
+                // Mismo cálculo que el servidor (VIB-63): antes el sugerido del
+                // secundario era la mitad del porcentaje del principal.
+                const sugerido = previewSharedSplit(
+                  sellers,
+                  form.watch("seller_id"),
+                  form.watch("seller_secondary_id")
+                )
                 const primaryVal = form.watch("commission_pct_primary")
                 const secondaryVal = form.watch("commission_pct_secondary")
-                const primaryNum = primaryVal != null ? Number(primaryVal) : halfDefault
-                const secondaryNum = secondaryVal != null ? Number(secondaryVal) : halfDefault
-                const sum = primaryNum + secondaryNum
-                const exceedsPrincipal = principalPct > 0 && sum > principalPct + 0.01
+                const reparto = previewSharedSplit(
+                  sellers,
+                  form.watch("seller_id"),
+                  form.watch("seller_secondary_id"),
+                  { primary: primaryVal, secondary: secondaryVal }
+                )
+                const sum = reparto.total
+                const exceedsCeiling = reparto.exceedsCeiling
 
                 return (
                   <div className="space-y-3 mt-4">
-                    {isLegacy && canEdit && primaryVal == null && secondaryVal == null && (
-                      <p className="text-xs text-accent-coral">
-                        Esta operación usa el sistema legacy de split. Editá los valores absolutos
-                        a continuación para migrarla al nuevo modelo (suma ≤ {principalPct}% del principal).
-                      </p>
-                    )}
+                    {/* Se quitó el aviso de "sistema legacy de split": ese camino
+                        de cálculo ya no existe (VIB-63). El reparto lo calcula el
+                        servidor salvo que se editen estos valores a mano. */}
                     <div className="grid gap-x-6 gap-y-3 md:grid-cols-2">
                       <FormField
                         control={form.control}
@@ -842,7 +846,7 @@ export function EditOperationDialog({
                             <FormLabel>Comisión vendedor principal (%)</FormLabel>
                             <FormControl>
                               <DecimalInput
-                                value={field.value ?? halfDefault}
+                                value={field.value ?? sugerido.primary}
                                 onChange={(v) => field.onChange(Number(v))}
                                 onBlur={field.onBlur}
                                 name={field.name}
@@ -863,7 +867,7 @@ export function EditOperationDialog({
                             <FormLabel>Comisión vendedor secundario (%)</FormLabel>
                             <FormControl>
                               <DecimalInput
-                                value={field.value ?? halfDefault}
+                                value={field.value ?? sugerido.secondary}
                                 onChange={(v) => field.onChange(Number(v))}
                                 onBlur={field.onBlur}
                                 name={field.name}
@@ -877,15 +881,13 @@ export function EditOperationDialog({
                         )}
                       />
                     </div>
-                    {/* Bug #12: idem new-operation-dialog — renombrado a "Cap del
-                        vendedor principal" y ocultado cuando = 0 para que no se vea
-                        un confuso "0.00%" cuando el seller no tiene default. */}
-                    <div className={`text-xs ${exceedsPrincipal ? "text-destructive font-medium" : "text-muted-foreground"}`}>
+                    {/* Tope simétrico (VIB-63): idem new-operation-dialog. */}
+                    <div className={`text-xs ${exceedsCeiling ? "text-destructive font-medium" : "text-muted-foreground"}`}>
                       Suma: {sum.toFixed(2)}%
-                      {principalPct > 0 && (
-                        <> · Cap del vendedor principal: {principalPct.toFixed(2)}%</>
-                      )}
-                      {exceedsPrincipal && " — la suma no puede superar el cap del principal"}
+                      {reparto.ceiling > 0 && <> · Tope: {reparto.ceiling.toFixed(2)}%</>}
+                      {exceedsCeiling && " — el reparto no puede superar la comisión más alta de los dos"}
+                      {reparto.primaryMax == null && " — falta cargar la comisión del vendedor principal"}
+                      {reparto.secondaryMax == null && " — falta cargar la comisión del vendedor secundario"}
                     </div>
                   </div>
                 )

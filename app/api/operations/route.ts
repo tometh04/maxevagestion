@@ -15,6 +15,7 @@ import { logAudit, getClientIP } from "@/lib/audit"
 import { enforceUserRateLimit } from "@/lib/rate-limit"
 import { checkLimit } from "@/lib/billing/limits"
 import { resolveSellerCommissionProfiles } from "@/lib/commissions/seller-commission-profile"
+import { splitModeForCreate } from "@/lib/commissions/split-mode"
 import { validateManualSplit } from "@/lib/commissions/validate-shared-split"
 import { calculateOperationBalances, roundMoney } from "@/lib/operations/operation-financials"
 import { getOrgFeatureFlag } from "@/lib/settings/org-features"
@@ -319,13 +320,13 @@ export async function POST(request: Request) {
       commission_split: normalizedSecondaryId ? (commission_split ?? 50) : null,
       commission_pct_primary: normalizedSecondaryId && commission_pct_primary != null ? Number(commission_pct_primary) : null,
       commission_pct_secondary: normalizedSecondaryId && commission_pct_secondary != null ? Number(commission_pct_secondary) : null,
-      // Solo un reparto explícito y completo congela los porcentajes (VIB-63).
       // En AUTO los commission_pct_* son un snapshot que recalcula el servidor,
       // así que una UI que mande 0 ya no puede dejar la venta sin comisionar.
-      commission_split_mode:
-        normalizedSecondaryId && commission_pct_primary != null && commission_pct_secondary != null
-          ? "MANUAL"
-          : "AUTO",
+      commission_split_mode: splitModeForCreate({
+        secondarySellerId: normalizedSecondaryId,
+        pctPrimary: commission_pct_primary,
+        pctSecondary: commission_pct_secondary,
+      }),
       operator_id: primaryOperatorId, // Operador principal (compatibilidad hacia atrás)
       type,
       product_type: inferredProductType,

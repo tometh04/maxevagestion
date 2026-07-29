@@ -1,5 +1,6 @@
 "use client"
 
+import type { SellerOption } from "@/lib/sellers/seller-option"
 import { useRef, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -88,7 +89,7 @@ interface LeadCardAdvancedProps {
   lead: LeadAdvancedFull
   orgId: string
   agencies: Array<{ id: string; name: string }>
-  sellers: Array<{ id: string; name: string }>
+  sellers: SellerOption[]
   operators: Array<{
     id: string
     name: string

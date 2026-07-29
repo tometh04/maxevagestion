@@ -1,5 +1,7 @@
 "use client"
 
+import { previewSharedSplit } from "@/lib/commissions/split-preview"
+import type { SellerOption } from "@/lib/sellers/seller-option"
 import { useState, useEffect } from "react"
 import * as React from "react"
 import { useForm } from "react-hook-form"
@@ -193,7 +195,7 @@ interface NewOperationDialogProps {
   onOpenChange: (open: boolean) => void
   onSuccess: (operationId?: string) => void // Ahora puede recibir el ID de la operación creada
   agencies: Array<{ id: string; name: string }>
-  sellers: Array<{ id: string; name: string; default_commission_percentage?: number | null }>
+  sellers: SellerOption[]
   operators: Array<{ id: string; name: string }>
   defaultAgencyId?: string
   defaultSellerId?: string
@@ -616,17 +618,25 @@ export function NewOperationDialog({
         operators: useMultipleOperators && operatorList.length > 0 ? operatorList.map(op => ({ ...op, cost: Number(op.cost) || 0, passenger_detail: sanitizePassengerDetail(op.passenger_detail), file_code: (op.file_code || "").trim() || null, payment_due_date: op.payment_due_date || null })) : undefined,
         seller_secondary_id: values.seller_secondary_id || null,
         commission_split: values.seller_secondary_id ? (values.commission_split ?? 50) : null,
-        // Overrides absolutos (29/04 — Tomi opción B): si hay secondary, persistir
-        // los valores absolutos. Si el usuario no tocó los inputs, fallback al
-        // halfDefault calculado del pct del principal (= split 50/50). Esto asegura
-        // que TODAS las operaciones nuevas usen el path nuevo, no el legacy.
+        // Reparto de la comisión (VIB-63). Solo se mandan los porcentajes si el
+        // usuario los editó a mano: en ese caso la operación queda MANUAL y el
+        // servidor los respeta. Si no los tocó, no se mandan y el servidor
+        // calcula el reparto — que es lo que hay que hacer, porque antes esta
+        // misma línea mandaba ceros cuando el porcentaje no llegaba a la
+        // pantalla y dejaba la venta sin comisionar para los dos.
         ...(values.seller_secondary_id ? (() => {
-          const principalSellerForSubmit = sellers.find((s) => s.id === values.seller_id)
-          const principalPctForSubmit = Number(principalSellerForSubmit?.default_commission_percentage ?? 0)
-          const halfDefaultForSubmit = Math.round((principalPctForSubmit / 2) * 100) / 100
+          const repartoEditado =
+            values.commission_pct_primary != null || values.commission_pct_secondary != null
+          if (!repartoEditado) return {}
+
+          const auto = previewSharedSplit(sellers, values.seller_id, values.seller_secondary_id)
           return {
-            commission_pct_primary: Number(values.commission_pct_primary ?? halfDefaultForSubmit),
-            commission_pct_secondary: Number(values.commission_pct_secondary ?? halfDefaultForSubmit),
+            commission_pct_primary: Number(
+              values.commission_pct_primary ?? auto.primary
+            ),
+            commission_pct_secondary: Number(
+              values.commission_pct_secondary ?? auto.secondary
+            ),
           }
         })() : { commission_pct_primary: null, commission_pct_secondary: null }),
         origin: values.origin || null,
@@ -916,15 +926,24 @@ export function NewOperationDialog({
                   Validación reactiva: suma ≤ pct del vendedor principal. */}
               {form.watch("seller_secondary_id") && form.watch("seller_secondary_id") !== "none" && (() => {
                 const canEdit = ["SUPER_ADMIN", "ADMIN", "CONTABLE"].includes(userRole || "")
-                const principalSeller = sellers.find((seller) => seller.id === form.watch("seller_id"))
-                const principalPct = Number(principalSeller?.default_commission_percentage ?? 0)
-                const halfDefault = Math.round((principalPct / 2) * 100) / 100
+                // El sugerido sale de la misma función que usa el servidor. Antes
+                // acá se calculaba la mitad del porcentaje DEL PRINCIPAL y se le
+                // mostraba también al secundario, que cobra sobre el suyo.
+                const sugerido = previewSharedSplit(
+                  sellers,
+                  form.watch("seller_id"),
+                  form.watch("seller_secondary_id")
+                )
                 const primaryVal = form.watch("commission_pct_primary")
                 const secondaryVal = form.watch("commission_pct_secondary")
-                const primaryNum = primaryVal != null ? Number(primaryVal) : halfDefault
-                const secondaryNum = secondaryVal != null ? Number(secondaryVal) : halfDefault
-                const sum = primaryNum + secondaryNum
-                const exceedsPrincipal = principalPct > 0 && sum > principalPct + 0.01
+                const reparto = previewSharedSplit(
+                  sellers,
+                  form.watch("seller_id"),
+                  form.watch("seller_secondary_id"),
+                  { primary: primaryVal, secondary: secondaryVal }
+                )
+                const sum = reparto.total
+                const exceedsCeiling = reparto.exceedsCeiling
 
                 return (
                   <div className="space-y-3 mt-4">
@@ -937,7 +956,7 @@ export function NewOperationDialog({
                             <FormLabel>Comisión vendedor principal (%)</FormLabel>
                             <FormControl>
                               <DecimalInput
-                                value={field.value ?? halfDefault}
+                                value={field.value ?? sugerido.primary}
                                 onChange={(v) => field.onChange(Number(v))}
                                 onBlur={field.onBlur}
                                 name={field.name}
@@ -958,7 +977,7 @@ export function NewOperationDialog({
                             <FormLabel>Comisión vendedor secundario (%)</FormLabel>
                             <FormControl>
                               <DecimalInput
-                                value={field.value ?? halfDefault}
+                                value={field.value ?? sugerido.secondary}
                                 onChange={(v) => field.onChange(Number(v))}
                                 onBlur={field.onBlur}
                                 name={field.name}
@@ -972,17 +991,19 @@ export function NewOperationDialog({
                         )}
                       />
                     </div>
-                    {/* Bug #12: el label decía "Comisión vendedor principal: X%" pero
-                        X era el default_commission_percentage del seller (el CAP del
-                        split), no el input live del primario. Cuando el seller no tenía
-                        default cargado, mostraba "0.00%" y confundía. Renombrado a
-                        "Cap del vendedor principal" y ocultado cuando = 0. */}
-                    <div className={`text-xs ${exceedsPrincipal ? "text-destructive font-medium" : "text-muted-foreground"}`}>
+                    {/* El tope pasó a ser simétrico (VIB-63): cada vendedor hasta
+                        su propio porcentaje y el total hasta el mayor de los dos.
+                        Antes el techo era el porcentaje del principal, así que
+                        cargar una venta con un secundario que comisiona más
+                        devolvía 400 y había que invertir los vendedores. */}
+                    <div className={`text-xs ${exceedsCeiling ? "text-destructive font-medium" : "text-muted-foreground"}`}>
                       Suma: {sum.toFixed(2)}%
-                      {principalPct > 0 && (
-                        <> · Cap del vendedor principal: {principalPct.toFixed(2)}%</>
+                      {reparto.ceiling > 0 && (
+                        <> · Tope: {reparto.ceiling.toFixed(2)}%</>
                       )}
-                      {exceedsPrincipal && " — la suma no puede superar el cap del principal"}
+                      {exceedsCeiling && " — el reparto no puede superar la comisión más alta de los dos"}
+                      {reparto.primaryMax == null && " — falta cargar la comisión del vendedor principal"}
+                      {reparto.secondaryMax == null && " — falta cargar la comisión del vendedor secundario"}
                     </div>
                   </div>
                 )

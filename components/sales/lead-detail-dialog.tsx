@@ -1,5 +1,6 @@
 "use client"
 
+import type { SellerOption } from "@/lib/sellers/seller-option"
 import React, { useState, useEffect } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
@@ -192,7 +193,7 @@ interface LeadDetailDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   agencies?: Array<{ id: string; name: string }>
-  sellers?: Array<{ id: string; name: string }>
+  sellers?: SellerOption[]
   operators?: Array<{ id: string; name: string; admin_fee_percentage?: number | null }>
   onEdit?: (lead: Lead) => void
   onDelete?: () => void

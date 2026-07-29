@@ -5,6 +5,11 @@ import { CRMManychatPageClient } from "@/components/sales/crm-manychat-page-clie
 import { AdvancedCRMKanban } from "./_components/advanced-crm-kanban"
 import { getOrgFeatureFlags } from "@/lib/settings/org-features"
 import { resolveUserPermissions, assertPermission } from "@/lib/permissions-agency"
+import {
+  SELLER_OPTION_ROLES,
+  SELLER_OPTION_SELECT,
+  toSellerOptions,
+} from "@/lib/sellers/seller-option"
 
 export const dynamic = "force-dynamic"
 
@@ -59,8 +64,8 @@ export default async function CRMManychatPage() {
   // Defense-in-depth: filtro explícito por org_id del user logueado.
   let sellersQuery = supabase
     .from("users")
-    .select("id, name")
-    .in("role", ["SELLER", "ADMIN", "SUPER_ADMIN", "POST_VENTA"])
+    .select(SELLER_OPTION_SELECT)
+    .in("role", SELLER_OPTION_ROLES)
     .eq("is_active", true)
     .eq("org_id", (user as any).org_id)
 
@@ -99,7 +104,7 @@ export default async function CRMManychatPage() {
   return (
     <CRMManychatPageClient
       agencies={(agencies || []) as Array<{ id: string; name: string }>}
-      sellers={(sellers || []) as Array<{ id: string; name: string }>}
+      sellers={toSellerOptions(sellers)}
       operators={(operators || []) as Array<{ id: string; name: string }>}
       defaultAgencyId={agencyIds[0] || undefined}
       defaultSellerId={user.role === "SELLER" ? user.id : undefined}

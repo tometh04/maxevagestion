@@ -1,3 +1,4 @@
+import { splitModeForUpdate } from "@/lib/commissions/split-mode"
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
@@ -439,14 +440,20 @@ export async function PATCH(
         // commission_split = % de la comisión total que va al principal
         updateData.commission_split = Math.round((p / total) * 100 * 100) / 100
       }
-      // Un reparto explícito congela los porcentajes: el recálculo no los pisa.
-      updateData.commission_split_mode = "MANUAL"
     }
 
-    // Sacar el secundario vuelve la operación a automático: los porcentajes que
-    // quedaron congelados eran de un reparto que ya no existe.
-    if (updateData.seller_secondary_id === null) {
-      updateData.commission_split_mode = "AUTO"
+    // Modo del reparto (VIB-63). La regla vive en lib porque también la aplica
+    // el alta y porque el caso sutil —el formulario reenviando el snapshot que
+    // escribió el propio servidor— merece estar probado.
+    const nuevoModo = splitModeForUpdate({
+      secondaryRemoved: updateData.seller_secondary_id === null,
+      incomingPctPrimary: updateData.commission_pct_primary,
+      incomingPctSecondary: updateData.commission_pct_secondary,
+      storedPctPrimary: currentOp.commission_pct_primary,
+      storedPctSecondary: currentOp.commission_pct_secondary,
+    })
+    if (nuevoModo) {
+      updateData.commission_split_mode = nuevoModo
     }
 
     const oldSaleAmount = currentOp.sale_amount_total

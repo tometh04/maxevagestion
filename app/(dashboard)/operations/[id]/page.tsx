@@ -4,6 +4,12 @@ import { getUserAgencyIds, resolveOperationAccessScope, canRegisterPaymentsOnAge
 import { notFound } from "next/navigation"
 import { OperationDetailClient } from "@/components/operations/operation-detail-client"
 import { getOperationVisibleDocuments } from "@/lib/documents/operation-documents"
+import {
+  SELLER_OPTION_ROLES,
+  SELLER_OPTION_SELECT,
+  toSellerOptions,
+  type SellerOption,
+} from "@/lib/sellers/seller-option"
 
 export default async function OperationDetailPage({
   params,
@@ -182,12 +188,12 @@ export default async function OperationDetailPage({
   // ver CLAUDE.md regla de oro multi-tenant.
   const { data: sellersData } = await supabase
     .from("users")
-    .select("id, name")
-    .in("role", ["SELLER", "ADMIN", "SUPER_ADMIN", "POST_VENTA"])
+    .select(SELLER_OPTION_SELECT)
+    .in("role", SELLER_OPTION_ROLES)
     .eq("is_active", true)
     .eq("org_id", (user as any).org_id)
     .order("name")
-  const sellers = (sellersData || []) as Array<{ id: string; name: string }>
+  const sellers: SellerOption[] = toSellerOptions(sellersData)
 
   // Get operators for edit dialog.
   // 🔴 CROSS-TENANT FIX (2026-05-21): filtro explícito por org_id.

@@ -1,3 +1,8 @@
+import {
+  SELLER_OPTION_ROLES,
+  SELLER_OPTION_SELECT,
+  toSellerOptions,
+} from "@/lib/sellers/seller-option"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { AdvancedKanbanClient } from "./advanced-kanban-client"
@@ -45,9 +50,9 @@ export async function AdvancedCRMKanban({ orgId }: AdvancedCRMKanbanProps) {
     // Sellers de la org (todos los users con rol vendedor/admin)
     supabase
       .from("users")
-      .select("id, name")
+      .select(SELLER_OPTION_SELECT)
       .eq("org_id", orgId)
-      .in("role", ["SELLER", "ADMIN", "SUPER_ADMIN", "POST_VENTA"])
+      .in("role", SELLER_OPTION_ROLES)
       .eq("is_active", true),
 
     // Operators (catálogo de la org para conversión a operación)
@@ -76,7 +81,7 @@ export async function AdvancedCRMKanban({ orgId }: AdvancedCRMKanbanProps) {
       funnels={allFunnels}
       orgId={orgId}
       agencies={agencies as Array<{ id: string; name: string }>}
-      sellers={sellers as Array<{ id: string; name: string }>}
+      sellers={toSellerOptions(sellers)}
       operators={
         operators as Array<{
           id: string

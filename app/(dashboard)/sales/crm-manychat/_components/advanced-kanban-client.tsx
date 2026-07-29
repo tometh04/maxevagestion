@@ -1,5 +1,6 @@
 "use client"
 
+import type { SellerOption } from "@/lib/sellers/seller-option"
 import { useState, useEffect, useCallback, useRef } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
@@ -33,7 +34,7 @@ type Props = {
   funnels: Funnel[]
   orgId: string
   agencies: Array<{ id: string; name: string }>
-  sellers: Array<{ id: string; name: string }>
+  sellers: SellerOption[]
   operators: Array<{
     id: string
     name: string

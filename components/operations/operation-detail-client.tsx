@@ -1,5 +1,6 @@
 "use client"
 
+import type { SellerOption } from "@/lib/sellers/seller-option"
 import { useMemo, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -121,7 +122,7 @@ interface OperationDetailClientProps {
   payments: any[]
   alerts: any[]
   agencies: Array<{ id: string; name: string }>
-  sellers: Array<{ id: string; name: string }>
+  sellers: SellerOption[]
   operators: Array<{ id: string; name: string }>
   userRole: string
   operationAccessScope: OperationAccessScope

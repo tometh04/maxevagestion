@@ -1,5 +1,6 @@
 "use client"
 
+import type { SellerOption } from "@/lib/sellers/seller-option"
 import React, { useState, useEffect, useCallback, useRef } from "react"
 import { LeadsKanbanManychat } from "@/components/sales/leads-kanban-manychat"
 import { LeadsTable } from "@/components/sales/leads-table"
@@ -59,7 +60,7 @@ export interface KanbanServerFilters {
 
 interface CRMManychatPageClientProps {
   agencies: Array<{ id: string; name: string }>
-  sellers: Array<{ id: string; name: string }>
+  sellers: SellerOption[]
   operators: Array<{ id: string; name: string }>
   defaultAgencyId?: string
   defaultSellerId?: string

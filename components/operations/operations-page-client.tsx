@@ -1,5 +1,6 @@
 "use client"
 
+import type { SellerOption } from "@/lib/sellers/seller-option"
 import { useState, useEffect } from "react"
 import dynamic from "next/dynamic"
 import { OperationsFilters } from "./operations-filters"
@@ -36,9 +37,9 @@ interface CustomStatus {
 }
 
 interface OperationsPageClientProps {
-  sellers: Array<{ id: string; name: string }>
+  sellers: SellerOption[]
   /** Vendedores asignables al crear (acotados por permiso/agencia). Cae a `sellers` si no se pasa. */
-  creatableSellers?: Array<{ id: string; name: string }>
+  creatableSellers?: SellerOption[]
   agencies: Array<{ id: string; name: string }>
   operators: Array<{ id: string; name: string }>
   userRole: string

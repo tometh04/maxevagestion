@@ -1,5 +1,6 @@
 "use client"
 
+import type { SellerOption } from "@/lib/sellers/seller-option"
 import { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { Badge } from "@/components/ui/badge"
 import { LeadOutcomeBadge } from "@/components/sales/lead-outcome-badge"
@@ -121,7 +122,7 @@ interface LeadsKanbanManychatProps {
   leads: Lead[]
   agencyId: string
   agencies?: Array<{ id: string; name: string }>
-  sellers?: Array<{ id: string; name: string }>
+  sellers?: SellerOption[]
   operators?: Array<{ id: string; name: string }>
   onRefresh?: () => void
   onUpdateLead?: (leadId: string, updates: Partial<Lead>) => void

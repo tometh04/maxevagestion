@@ -1,5 +1,6 @@
 "use client"
 
+import { toSellerOptions, type SellerOption } from "@/lib/sellers/seller-option"
 import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { ColumnDef, OnChangeFn, SortingState } from "@tanstack/react-table"
 import { Badge } from "@/components/ui/badge"
@@ -138,7 +139,7 @@ export function OperationsTable({
   
   // Datos para el diálogo de edición (se cargarán cuando sea necesario)
   const [agencies, setAgencies] = useState<Array<{ id: string; name: string }>>([])
-  const [sellers, setSellers] = useState<Array<{ id: string; name: string }>>([])
+  const [sellers, setSellers] = useState<SellerOption[]>([])
   const [allOperators, setAllOperators] = useState<Array<{ id: string; name: string }>>([])
   const hideFinancialColumns = userRole === "SELLER" && canViewAgencyOperationsSupport
   
@@ -158,7 +159,9 @@ export function OperationsTable({
       ])
       
       setAgencies(agenciesData.agencies || [])
-      setSellers((sellersData.users || []).map((u: any) => ({ id: u.id, name: u.name })))
+      // El .map() de acá también descartaba el porcentaje, y este alimenta el
+      // diálogo de edición: editar una venta compartida la dejaba en 0/0.
+      setSellers(toSellerOptions(sellersData.users))
       setAllOperators((operatorsData.operators || []).map((o: any) => ({ id: o.id, name: o.name })))
     } catch (error) {
       console.error("Error loading dialog data:", error)
