@@ -275,6 +275,16 @@ export async function applyCommissionPlan(
       continue
     }
 
+    // Sin registro previo y sin monto no hay nada que registrar. Importa la
+    // asimetría con el caso de arriba: si el registro YA existe se actualiza
+    // aunque quede en 0 —esa es la corrección a la baja que antes no se podía
+    // hacer—, pero no se crea uno nuevo en cero. Sin esta distinción, una
+    // organización cuyos vendedores todavía no tienen porcentaje configurado se
+    // llenaría de comisiones en $0, una por cada operación que toque.
+    if (entry.amount === 0) {
+      continue
+    }
+
     const { data, error } = await supabase
       .from("commission_records")
       .insert({

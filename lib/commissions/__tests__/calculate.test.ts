@@ -243,6 +243,17 @@ describe("applyCommissionPlan", () => {
     expect(inserts.map((i) => i.amount)).toEqual([100, 250])
   })
 
+  it("no crea comisiones en 0 para un vendedor sin porcentaje configurado", async () => {
+    // Una organización que todavía no cargó los porcentajes de sus vendedores no
+    // tiene que llenarse de comisiones en $0, una por cada operación que toque.
+    const { client, inserts } = createSupabase([])
+
+    const result = await applyCommissionPlan(client, baseOp(), planOf([["jose", "PRIMARY", 0, 0]]))
+
+    expect(inserts).toEqual([])
+    expect(result.written).toEqual([])
+  })
+
   it("corrige a la baja: un registro mal creado puede cerrarse en 0", async () => {
     // El código viejo hacía early-return cuando el total era 0, así que jamás
     // podía arreglar una comisión inflada ni cerrar una que no correspondía.
