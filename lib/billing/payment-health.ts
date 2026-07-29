@@ -4,21 +4,25 @@
  * Gap detectado (2026-07-13): la state machine deriva ACTIVE de un preapproval
  * `authorized`, pero MP NO baja el status a paused/cancelled inmediatamente
  * cuando un cobro de renovación falla — reintenta varios días antes de pausar.
- * En esa ventana, una org queda ACTIVE sin haber pagado el período vigente y el
- * reconcile no lo detecta (transitionFromMP solo mira status + trial).
  *
- * Señal confiable: MP expone `summarized.last_charged_date` (último cobro
- * exitoso) y `next_payment_date` (próximo cobro programado). Si el próximo cobro
- * ya venció (más allá del grace) y no hay un cobro exitoso que cubra ese ciclo,
- * el cobro no se ejecutó.
+ * Fix (2026-07-24): el CORTE proactivo lo hace ahora `transitionFromMP` vía
+ * `isCurrentCycleUnpaid` (state-machine.ts), con math de ciclo calendario. Esta
+ * función queda como ALERTA residual (Slack): marca casos que el corte no toca
+ * (sin `last_charged_date` conocido, o gap grande) sin cambiar estado.
  *
- * Uso conservador: el reconcile ALERTA (no auto-transiciona) para que un humano
- * verifique — evitamos bloquear a un cliente que sí paga por un dato momentáneo
- * de MP stale o desfasado por timezone.
+ * Señal: MP expone `summarized.last_charged_date` (último cobro exitoso) y
+ * `next_payment_date` (próximo cobro/reintento).
  */
+import { PAST_DUE_GRACE_DAYS } from "./access"
 
 const DAY_MS = 24 * 60 * 60 * 1000
-const GRACE_DAYS = 3
+
+/**
+ * Gap (en días) entre el último cobro exitoso y el próximo cobro que consideramos
+ * "un cobro no entró". Un ciclo mensual normal es 28–31 días; usamos 40 (mes +
+ * margen) para NO marcar como fallo un ciclo sano y sí un ciclo salteado (~60d).
+ */
+const MISSED_GAP_DAYS = 40
 
 export interface PaymentHealthInput {
   /** status del preapproval en MP (authorized/paused/…). */
@@ -35,7 +39,9 @@ export interface PaymentHealthInput {
 
 /**
  * True si la org figura ACTIVE con preapproval authorized, pero el cobro del
- * ciclo vigente venció (superó el grace) y no hay un cobro exitoso que lo cubra.
+ * ciclo vigente no se ejecutó. Cubre TAMBIÉN el caso del reintento reprogramado
+ * al futuro (que la versión vieja no agarraba porque exigía next_payment_date
+ * vencido).
  */
 export function isSilentChargeFailure(input: PaymentHealthInput): boolean {
   if (input.effectiveStatus !== "ACTIVE") return false
@@ -46,18 +52,16 @@ export function isSilentChargeFailure(input: PaymentHealthInput): boolean {
   const nextPay = new Date(input.nextPaymentDate).getTime()
   if (Number.isNaN(nextPay)) return false
 
-  // El próximo cobro tiene que estar vencido más allá del grace.
-  const overdue = nextPay < now - GRACE_DAYS * DAY_MS
-  if (!overdue) return false
-
-  // Sin ningún cobro exitoso → claramente no pagó.
-  if (!input.lastChargedDate) return true
+  // Sin último cobro conocido: alertar solo si el próximo cobro ya venció más allá
+  // de la gracia (este es el caso que el corte proactivo deliberadamente NO toca).
+  if (!input.lastChargedDate) {
+    return nextPay < now - PAST_DUE_GRACE_DAYS * DAY_MS
+  }
 
   const lastCharged = new Date(input.lastChargedDate).getTime()
   if (Number.isNaN(lastCharged)) return true
 
-  // El último cobro exitoso es anterior al inicio del ciclo vencido
-  // (~28 días antes del next_payment_date) → el cobro de este ciclo no entró.
-  const cycleStart = nextPay - 28 * DAY_MS
-  return lastCharged < cycleStart
+  // Con último cobro conocido: el gap último-cobro → próximo-cobro supera 1 ciclo
+  // + margen → un cobro no entró (robusto también con next_payment_date futuro).
+  return lastCharged < nextPay - MISSED_GAP_DAYS * DAY_MS
 }

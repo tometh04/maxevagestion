@@ -24,6 +24,15 @@ export interface MPPreapproval {
   last_modified: string
   auto_recurring: MPAutoRecurring
   next_payment_date?: string | null
+  /**
+   * Resumen de cobros que MP expone en el preapproval. `last_charged_date` es el
+   * último cobro EXITOSO — la señal confiable para saber hasta cuándo pagó de
+   * verdad (vs. next_payment_date, que es el próximo intento/reintento).
+   */
+  summarized?: {
+    last_charged_date?: string | null
+    last_charged_amount?: number | null
+  } | null
 }
 
 export interface MPPaymentEvent {
@@ -50,6 +59,71 @@ export interface TransitionResult {
   current_period_ends_at: string | null
   /** Evento para billing_events (además del raw webhook que se loggea siempre). */
   event_type: string | null
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000
+
+/**
+ * Margen de tolerancia (timezone/skew de MP) antes de declarar impago un ciclo.
+ * Solo cortamos cuando el último cobro es claramente anterior al inicio del ciclo.
+ */
+export const CYCLE_SKEW_DAYS = 2
+
+/**
+ * Avanza (o retrocede, con direction=-1) una fecha ISO por un ciclo de
+ * `auto_recurring`. `months` = meses calendario reales (28–31), `days` = +N días.
+ * Devuelve null si los datos no alcanzan.
+ */
+export function addCycle(
+  fromISO: string | null | undefined,
+  autoRecurring: MPAutoRecurring | undefined,
+  direction: 1 | -1 = 1,
+): Date | null {
+  if (!fromISO || !autoRecurring) return null
+  const base = new Date(fromISO)
+  if (Number.isNaN(base.getTime())) return null
+  const n = (autoRecurring.frequency ?? 1) * direction
+  const d = new Date(base)
+  if (autoRecurring.frequency_type === "months") {
+    d.setMonth(d.getMonth() + n)
+  } else if (autoRecurring.frequency_type === "days") {
+    d.setTime(d.getTime() + n * DAY_MS)
+  } else {
+    return null
+  }
+  return d
+}
+
+/** Hasta cuándo pagó de verdad = último cobro exitoso + 1 ciclo. Null si no hay dato. */
+export function computePaidThrough(pa: MPPreapproval): Date | null {
+  return addCycle(pa.summarized?.last_charged_date, pa.auto_recurring, 1)
+}
+
+/**
+ * ¿El ciclo vigente NO se cobró? CONSERVADOR: devuelve true solo con señal clara,
+ * para nunca cortarle el acceso a alguien que sí pagó.
+ *   1. status authorized.
+ *   2. hay last_charged_date válido (sin él → false: no cortar sub nueva en su 1er cobro).
+ *   3. el último cobro exitoso es anterior al inicio del ciclo vigente con margen skew:
+ *      - con next_payment_date: cycleStart = next_payment_date − 1 ciclo (robusto también
+ *        cuando MP reprogramó el reintento al futuro).
+ *      - sin next_payment_date: paidThrough + skew < now.
+ */
+export function isCurrentCycleUnpaid(pa: MPPreapproval, now: number, skewMs: number): boolean {
+  if (pa.status !== "authorized") return false
+  const lastISO = pa.summarized?.last_charged_date
+  if (!lastISO) return false
+  const last = new Date(lastISO).getTime()
+  if (Number.isNaN(last)) return false
+
+  if (pa.next_payment_date) {
+    const cycleStart = addCycle(pa.next_payment_date, pa.auto_recurring, -1)
+    if (!cycleStart) return false
+    return last < cycleStart.getTime() - skewMs
+  }
+  const paidThrough = computePaidThrough(pa)
+  if (!paidThrough) return false
+  return paidThrough.getTime() + skewMs < now
 }
 
 /**
@@ -138,6 +212,21 @@ export function transitionFromMP(
         subscription_status: "PAST_DUE",
         current_period_ends_at: ctx?.preserved_current_period_ends_at ?? preapproval.next_payment_date ?? null,
         event_type: "TRIAL_EXPIRED",
+      }
+    }
+    // Fix "mes gratis": MP sigue "authorized" pero el ciclo vigente no se cobró
+    // (rechazo con reintento reprogramado al futuro). NO revivir ACTIVE ni estirar
+    // la fecha al reintento; bajar a PAST_DUE con lo REALMENTE pagado (último cobro
+    // + 1 ciclo). Conservador: solo si isCurrentCycleUnpaid da señal clara.
+    if (isCurrentCycleUnpaid(preapproval, Date.now(), CYCLE_SKEW_DAYS * DAY_MS)) {
+      return {
+        subscription_status: "PAST_DUE",
+        current_period_ends_at:
+          computePaidThrough(preapproval)?.toISOString() ??
+          ctx?.preserved_current_period_ends_at ??
+          preapproval.next_payment_date ??
+          null,
+        event_type: "PAYMENT_MISSED",
       }
     }
     return {

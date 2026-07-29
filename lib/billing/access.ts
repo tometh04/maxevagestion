@@ -22,8 +22,12 @@ export interface BillingOrg {
   trial_ends_at: string | null
 }
 
-/** Grace period para PAST_DUE: 3 días desde current_period_ends_at. */
-export const PAST_DUE_GRACE_DAYS = 3
+/**
+ * Grace period para PAST_DUE: 5 días desde current_period_ends_at.
+ * FUENTE ÚNICA de la gracia: la importan payment-health, middleware y el banner.
+ * Si cambia acá, cambia en todos lados (no volver a hardcodear el número).
+ */
+export const PAST_DUE_GRACE_DAYS = 5
 
 /**
  * ¿Este org tiene acceso al ERP ahora mismo? Fuente única de verdad, sin I/O.

@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { createClient as createAdminSupabaseClient } from '@supabase/supabase-js'
 import { NextResponse, type NextRequest } from 'next/server'
+import { PAST_DUE_GRACE_DAYS } from '@/lib/billing/access'
 
 // ============================================
 // RATE LIMITING (en memoria, por usuario autenticado o IP como fallback)
@@ -317,10 +318,8 @@ export async function middleware(req: NextRequest) {
       const customPlanId = (orgRow as any)?.custom_plan_id as string | null | undefined
       const now = Date.now()
 
-      // Grace period PAST_DUE: 3 días después de current_period_ends_at.
-      // DEBE mantenerse alineado con lib/billing/guard.ts PAST_DUE_GRACE_DAYS.
-      const PAST_DUE_GRACE_DAYS = 3
-
+      // Grace period PAST_DUE: fuente única en lib/billing/access.ts
+      // (PAST_DUE_GRACE_DAYS). Importado arriba — no re-hardcodear el número.
       let blocked = false
       if (status === "SUSPENDED" || status === "PENDING_PAYMENT") {
         blocked = true

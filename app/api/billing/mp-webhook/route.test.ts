@@ -127,7 +127,7 @@ describe("POST /api/billing/mp-webhook", () => {
 
   it("un preapproval PENDING no revoca el acceso vigente (PAST_DUE en gracia)", async () => {
     mockVerify.mockReturnValue(true)
-    // Org PAST_DUE con gracia vigente (period vence en +2 días → dentro de los 3 de gracia).
+    // Org PAST_DUE con gracia vigente (period vence en +2 días → dentro de los 5 de gracia).
     const graceFuture = new Date(Date.now() + 2 * 24 * 3600 * 1000).toISOString()
     mockCreateAdmin.mockReturnValue(
       makeAdmin({

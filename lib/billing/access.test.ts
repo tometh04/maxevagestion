@@ -16,13 +16,18 @@ describe("isAccessAllowed", () => {
     expect(isAccessAllowed({ subscription_status: "ACTIVE", current_period_ends_at: null, trial_ends_at: null })).toBe(true)
   })
 
-  it("PAST_DUE con gracia vigente (period + 3d en el futuro) → acceso", () => {
-    // period venció ayer → gracia hasta +2d → acceso
+  it("PAST_DUE con gracia vigente (period + 5d en el futuro) → acceso", () => {
+    // period venció ayer → gracia hasta +4d → acceso
     expect(isAccessAllowed({ subscription_status: "PAST_DUE", current_period_ends_at: inDays(-1), trial_ends_at: null })).toBe(true)
   })
 
-  it("PAST_DUE con gracia vencida (period + 3d ya pasó) → sin acceso", () => {
-    expect(isAccessAllowed({ subscription_status: "PAST_DUE", current_period_ends_at: inDays(-5), trial_ends_at: null })).toBe(false)
+  it("PAST_DUE gracia de 5 días: period hace 4 días → todavía acceso", () => {
+    // Antes (gracia 3) esto era false; con gracia 5 sigue con acceso.
+    expect(isAccessAllowed({ subscription_status: "PAST_DUE", current_period_ends_at: inDays(-4), trial_ends_at: null })).toBe(true)
+  })
+
+  it("PAST_DUE con gracia vencida (period + 5d ya pasó) → sin acceso", () => {
+    expect(isAccessAllowed({ subscription_status: "PAST_DUE", current_period_ends_at: inDays(-7), trial_ends_at: null })).toBe(false)
   })
 
   it("PAST_DUE sin current_period_ends_at → sin acceso (defensivo)", () => {
