@@ -23,7 +23,7 @@ const MAX_PAGE_SIZE = 100
 const UNASSIGNED = "__unassigned__"
 
 const LEAD_SELECT = `id, contact_name, contact_phone, contact_email, contact_instagram,
-  destination, region, status, source,
+  destination, region, status, outcome, source,
   trello_url, trello_list_id, trello_full_data,
   assigned_seller_id, agency_id,
   created_at, updated_at, notes,

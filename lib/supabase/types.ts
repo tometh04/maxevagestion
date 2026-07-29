@@ -4805,6 +4805,9 @@ export type Database = {
           manychat_full_data: Json | null
           notes: string | null
           org_id: string | null
+          outcome: string | null
+          outcome_at: string | null
+          outcome_by: string | null
           quoted_price: number | null
           region: string
           source: string | null
@@ -4843,6 +4846,9 @@ export type Database = {
           manychat_full_data?: Json | null
           notes?: string | null
           org_id?: string | null
+          outcome?: string | null
+          outcome_at?: string | null
+          outcome_by?: string | null
           quoted_price?: number | null
           region: string
           source?: string | null
@@ -4881,6 +4887,9 @@ export type Database = {
           manychat_full_data?: Json | null
           notes?: string | null
           org_id?: string | null
+          outcome?: string | null
+          outcome_at?: string | null
+          outcome_by?: string | null
           quoted_price?: number | null
           region?: string
           source?: string | null
@@ -4931,6 +4940,13 @@ export type Database = {
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "organizations_with_profile_completion"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_outcome_by_fkey"
+            columns: ["outcome_by"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]

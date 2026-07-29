@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { Badge } from "@/components/ui/badge"
+import { LeadOutcomeBadge } from "@/components/sales/lead-outcome-badge"
+import { LeadConversionMini } from "@/components/sales/lead-conversion-mini"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -90,6 +92,7 @@ interface Lead {
   destination: string
   region: string
   status: string
+  outcome?: string | null
   source: string
   list_name: string | null
   assigned_seller_id: string | null
@@ -952,7 +955,10 @@ export function LeadsKanbanManychat({
             </div>
           )}
         </div>
-        {canCreateLists && (
+        <div className="flex items-center gap-3">
+          {/* VIB-68: mini contador de conversión */}
+          <LeadConversionMini />
+          {canCreateLists && (
           <div className="flex items-center gap-2">
             {/* Bug fix 2026-05-06: el dialog EditListOrder estaba renderizado
                 en el árbol pero no había NINGÚN trigger que llamara
@@ -985,7 +991,8 @@ export function LeadsKanbanManychat({
               Nueva Lista
             </Button>
           </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* ── Board Archivados ── */}
@@ -1043,6 +1050,9 @@ export function LeadsKanbanManychat({
                                 {lead.contact_phone}
                               </p>
                             )}
+                            <div className="mt-1.5">
+                              <LeadOutcomeBadge outcome={lead.outcome} status={lead.status} />
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -1273,6 +1283,7 @@ export function LeadsKanbanManychat({
                                         {lead.deposit_amount} {lead.deposit_currency}
                                       </span>
                                     )}
+                                    <LeadOutcomeBadge outcome={lead.outcome} status={lead.status} />
                                   </div>
 
                                   {lead.assigned_seller_id && lead.users && (

@@ -65,6 +65,17 @@ export async function GET(request: Request) {
       query = query.eq("source", source)
     }
 
+    // VIB-68: filtro por resultado del lead (venta / descarte / abierto)
+    const outcome = searchParams.get("outcome")
+    if (outcome && outcome !== "ALL") {
+      if (outcome === "OPEN") {
+        query = query.is("outcome", null)
+      } else {
+        // SALE | DISCARDED
+        query = query.eq("outcome", outcome)
+      }
+    }
+
     // Filtro de archivados: por defecto excluir archivados; con ?archived=true traer solo archivados
     const archivedParam = searchParams.get("archived")
     if (archivedParam === "true") {

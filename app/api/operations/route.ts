@@ -928,8 +928,16 @@ export async function POST(request: Request) {
 
     // Update lead status to WON if lead_id exists
     if (lead_id) {
-      // Actualizar lead a WON
-      await (supabase.from("leads") as any).update({ status: "WON" }).eq("id", lead_id)
+      // Actualizar lead a WON y marcar el resultado como venta real (VIB-68).
+      // outcome='SALE' + operación asociada => venta real confirmada en reportes.
+      await (supabase.from("leads") as any)
+        .update({
+          status: "WON",
+          outcome: "SALE",
+          outcome_at: new Date().toISOString(),
+          outcome_by: user.id,
+        })
+        .eq("id", lead_id)
       
       // Transfer all ledger_movements from lead to operation
       try {

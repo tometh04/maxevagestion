@@ -38,6 +38,7 @@ import { getPublicQuotationPath } from "@/lib/quotations/public-links"
 import { downloadQuotationPdfFromPriceDialog } from "@/lib/pdf/quotation-pdf-html"
 import { QuotationPdfPriceDialog } from "@/components/sales/quotation-pdf-price-dialog"
 import { LeadEmiliaChat } from "@/components/sales/lead-emilia-chat"
+import { LeadOutcomeBadge } from "@/components/sales/lead-outcome-badge"
 
 const regionColors: Record<string, string> = {
   ARGENTINA: "bg-accent-coral/80",
@@ -154,6 +155,7 @@ interface Lead {
   destination: string
   region: string
   status: string
+  outcome?: string | null
   source: string
   trello_url: string | null
   trello_list_id: string | null
@@ -242,6 +244,10 @@ export function LeadDetailDialog({
   const [archiving, setArchiving] = useState(false)
   const [claiming, setClaiming] = useState(false)
   const [openingQuotation, setOpeningQuotation] = useState(false)
+  // VIB-68: marcar resultado (venta / descarte) del lead.
+  const [markingOutcome, setMarkingOutcome] = useState(false)
+  const [saleDialogOpen, setSaleDialogOpen] = useState(false)
+  const [discardDialogOpen, setDiscardDialogOpen] = useState(false)
   const [editingNotes, setEditingNotes] = useState(false)
   const [notesValue, setNotesValue] = useState(lead?.notes || "")
   const [savingNotes, setSavingNotes] = useState(false)
@@ -439,6 +445,40 @@ export function LeadDetailDialog({
     }
   }
 
+  // VIB-68: marca el resultado del lead (SALE / DISCARDED) o lo reabre (null).
+  const handleSetOutcome = async (outcome: "SALE" | "DISCARDED" | null) => {
+    if (!lead) return
+    setMarkingOutcome(true)
+    try {
+      const response = await fetch(`/api/leads/${lead.id}/outcome`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ outcome }),
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data.error || "Error al actualizar el resultado")
+      }
+      toast.success(
+        outcome === "SALE"
+          ? "Lead marcado como venta"
+          : outcome === "DISCARDED"
+            ? "Lead descartado"
+            : "Lead reabierto"
+      )
+      setSaleDialogOpen(false)
+      setDiscardDialogOpen(false)
+      // Reutilizar onDelete como callback de refresh (mismo propósito que el resto del dialog)
+      onDelete?.()
+      onOpenChange(false)
+    } catch (error) {
+      console.error("Error setting lead outcome:", error)
+      toast.error(error instanceof Error ? error.message : "Error al actualizar el resultado")
+    } finally {
+      setMarkingOutcome(false)
+    }
+  }
+
   const handleArchive = async () => {
     if (!lead) return
     setArchiving(true)
@@ -585,6 +625,11 @@ export function LeadDetailDialog({
               {lead.region}
             </Badge>
             <Badge variant="outline">{statusLabels[lead.status] || lead.status}</Badge>
+            <LeadOutcomeBadge
+              outcome={lead.outcome}
+              status={lead.status}
+              hasOperation={!!(lead.operations && lead.operations.length > 0)}
+            />
             <Badge variant="secondary">{lead.source}</Badge>
             {lead.trello_url && (
               <a
@@ -1107,6 +1152,57 @@ export function LeadDetailDialog({
               )
             )}
 
+            {/* VIB-68: marcar resultado (venta / descarte) del lead */}
+            {(() => {
+              const hasOp = !!(lead.operations && lead.operations.length > 0)
+              const resolved = hasOp || lead.outcome === "SALE" || lead.outcome === "DISCARDED" || lead.status === "LOST"
+              const canReopen = !hasOp && (lead.outcome === "SALE" || lead.outcome === "DISCARDED")
+              return (
+                <>
+                  {!resolved && (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSaleDialogOpen(true)}
+                        disabled={markingOutcome}
+                        className="shrink-0 border-success/40 text-success hover:bg-success/10 hover:text-success"
+                      >
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        <span className="ml-1.5">Marcar venta</span>
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setDiscardDialogOpen(true)}
+                        disabled={markingOutcome}
+                        className="shrink-0"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                        <span className="ml-1.5">Marcar descarte</span>
+                      </Button>
+                    </>
+                  )}
+                  {canReopen && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleSetOutcome(null)}
+                      disabled={markingOutcome}
+                      className="shrink-0"
+                    >
+                      {markingOutcome ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <ArchiveRestore className="h-3.5 w-3.5" />
+                      )}
+                      <span className="ml-1.5">Reabrir</span>
+                    </Button>
+                  )}
+                </>
+              )
+            })()}
+
             {/* Separador visual */}
             <div className="flex-1" />
 
@@ -1173,6 +1269,78 @@ export function LeadDetailDialog({
           }}
         />
       )}
+
+      {/* VIB-68: Marcar venta (híbrido). Si no tiene operación, ofrece cargarla
+          o marcar la venta a mano sin operación. */}
+      <AlertDialog open={saleDialogOpen} onOpenChange={setSaleDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Marcar como venta</AlertDialogTitle>
+            <AlertDialogDescription>
+              Lo recomendado es cargar la operación para que quede como venta real
+              y se registre la plata. Si todavía no la vas a cargar, podés marcarla
+              como venta igual para no perder el registro.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col gap-2 sm:flex-row">
+            <AlertDialogCancel disabled={markingOutcome}>Cancelar</AlertDialogCancel>
+            <Button
+              variant="outline"
+              disabled={markingOutcome}
+              onClick={() => handleSetOutcome("SALE")}
+            >
+              {markingOutcome ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <CheckCircle2 className="h-3.5 w-3.5" />
+              )}
+              <span className="ml-1.5">Marcar sin operación</span>
+            </Button>
+            {onConvert && agencies.length > 0 && sellers.length > 0 && (
+              <AlertDialogAction
+                disabled={markingOutcome}
+                onClick={() => {
+                  setSaleDialogOpen(false)
+                  setConvertDialogOpen(true)
+                }}
+              >
+                <ArrowRight className="h-3.5 w-3.5" />
+                <span className="ml-1.5">Cargar operación</span>
+              </AlertDialogAction>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* VIB-68: Confirmar descarte */}
+      <AlertDialog open={discardDialogOpen} onOpenChange={setDiscardDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Descartar lead</AlertDialogTitle>
+            <AlertDialogDescription>
+              El lead va a quedar marcado como descartado en las estadísticas de
+              conversión. Podés reabrirlo después si hace falta.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={markingOutcome}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={markingOutcome}
+              onClick={(e) => {
+                e.preventDefault()
+                handleSetOutcome("DISCARDED")
+              }}
+            >
+              {markingOutcome ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <X className="h-3.5 w-3.5" />
+              )}
+              <span className="ml-1.5">Descartar</span>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Dialog de convertir */}
       {agencies.length > 0 && sellers.length > 0 && (
