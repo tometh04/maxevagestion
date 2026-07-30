@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import {
   fetchPayment,
+  fetchAuthorizedPayment,
   fetchPreapproval,
   searchPreapprovalsByPayerEmail,
   verifyWebhookSignature,
@@ -141,17 +142,35 @@ export async function POST(request: Request) {
   let consumedCheckoutEventId: string | null = null
   try {
     if (type === "subscription_authorized_payment") {
-      const preapprovalId = body?.preapproval_id || body?.data?.preapproval_id
+      let preapprovalId = body?.preapproval_id || body?.data?.preapproval_id
+      let authPaymentStatus: string | undefined = body?.status
       if (!preapprovalId) {
-        // Terminal: sin preapproval_id no hay forma de resolver. No reintentar.
-        console.warn("mp-webhook: subscription_authorized_payment sin preapproval_id")
-        await markProcessed()
-        return NextResponse.json({ ok: true, warning: "missing preapproval_id" })
+        // MP NO siempre manda preapproval_id en el body — a veces solo el id del
+        // authorized_payment (data.id). Sin esto, los cobros de preapprovals
+        // PER-ORG (link admin, sin plan compartido) quedaban sin linkear. Buscamos
+        // el authorized_payment para obtener preapproval_id + el estado real del pago.
+        const authPaymentId = body?.data?.id ?? resolvedId
+        if (!authPaymentId) {
+          // Terminal: sin ningún id no hay forma de resolver. No reintentar.
+          console.warn("mp-webhook: subscription_authorized_payment sin preapproval_id ni authorized_payment id")
+          await markProcessed()
+          return NextResponse.json({ ok: true, warning: "missing preapproval_id" })
+        }
+        const authPayment = await fetchAuthorizedPayment(String(authPaymentId))
+        preapprovalId = authPayment?.preapproval_id
+        // El estado que importa es el del PAGO (approved/rejected), no el del
+        // authorized_payment (processed/scheduled).
+        authPaymentStatus = authPayment?.payment?.status ?? authPaymentStatus
+        if (!preapprovalId) {
+          console.warn("mp-webhook: authorized_payment sin preapproval_id", { authPaymentId })
+          await markProcessed()
+          return NextResponse.json({ ok: true, warning: "authorized_payment sin preapproval_id" })
+        }
       }
       preapproval = await fetchPreapproval(String(preapprovalId))
       paymentEvent = {
         type: "subscription_authorized_payment",
-        status: body?.status || "pending",
+        status: authPaymentStatus || "pending",
       }
     } else if (type === "payment") {
       // payment no siempre trae preapproval_id en el payload del webhook.

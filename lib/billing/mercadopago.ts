@@ -412,6 +412,24 @@ export async function fetchPayment(paymentId: string): Promise<any> {
 }
 
 /**
+ * Trae un authorized_payment (cobro de una suscripción). El webhook
+ * `subscription_authorized_payment` a veces manda SOLO el id del authorized_payment
+ * (no el preapproval_id). Este endpoint devuelve `preapproval_id` y `payment`
+ * (con `status` approved/rejected), necesarios para linkear el cobro a la org.
+ * Doc: GET /authorized_payments/{id}
+ */
+export async function fetchAuthorizedPayment(authorizedPaymentId: string): Promise<any> {
+  const res = await fetch(`${MP_API}/authorized_payments/${authorizedPaymentId}`, {
+    headers: { Authorization: `Bearer ${mpAccessToken()}` },
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`MP fetch authorized_payment failed (${res.status}): ${text}`)
+  }
+  return await res.json()
+}
+
+/**
  * Busca preapprovals asociados a un payer_email. Los preapprovals hijos
  * creados vía preapproval_plan NO traen external_reference, así que el
  * matching se hace por payer_email cuando llega un webhook tipo "payment".
