@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { ArrowDown, ArrowLeft, Loader2, MessageSquare, Search, User, Users } from "lucide-react"
+import { ArrowDown, ArrowLeft, History, Loader2, MessageSquare, Search, Send, User, Users } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import { es } from "date-fns/locale"
 
@@ -53,6 +53,17 @@ interface InboxViewProps {
   agencies: Agency[]
 }
 
+// Une la ventana nueva del polling con lo ya cargado (incluidas páginas viejas),
+// deduplicando por id y ordenando cronológicamente (sent_at ISO → localeCompare).
+function mergeById(a: Message[], b: Message[]): Message[] {
+  if (b.length === 0) return a
+  if (a.length === 0) return b
+  const map = new Map<string, Message>()
+  for (const m of a) map.set(m.id, m)
+  for (const m of b) map.set(m.id, m)
+  return Array.from(map.values()).sort((x, y) => x.sent_at.localeCompare(y.sent_at))
+}
+
 export function InboxView({ agencies }: InboxViewProps) {
   const [devices, setDevices] = useState<Device[]>([])
   const [selectedAgencyId, setSelectedAgencyId] = useState<string>("all")
@@ -64,8 +75,23 @@ export function InboxView({ agencies }: InboxViewProps) {
   const [loadingChats, setLoadingChats] = useState(false)
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [showThread, setShowThread] = useState(false)
+  const [hasMore, setHasMore] = useState(false)
+  const [loadingOlder, setLoadingOlder] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [messageInput, setMessageInput] = useState("")
+  const [sending, setSending] = useState(false)
+  const [sendError, setSendError] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const scrollAreaRef = useRef<HTMLDivElement>(null)
   const isFirstMessageLoad = useRef(true)
+
+  const getViewport = useCallback(
+    () =>
+      scrollAreaRef.current?.querySelector<HTMLElement>(
+        "[data-radix-scroll-area-viewport]"
+      ) ?? null,
+    []
+  )
 
   const scrollToBottom = useCallback(() => {
     setTimeout(() => {
@@ -128,10 +154,13 @@ export function InboxView({ agencies }: InboxViewProps) {
     return () => clearInterval(interval)
   }, [fetchChats])
 
-  // Load messages when chat selected
+  // Load messages when chat selected. First load replaces with the newest window
+  // and scrolls to bottom; polling merges the fresh tail without clobbering older
+  // pages the user may have loaded.
   const fetchMessages = useCallback(async () => {
     if (!selectedChat) return
-    if (isFirstMessageLoad.current) {
+    const first = isFirstMessageLoad.current
+    if (first) {
       setLoadingMessages(true)
     }
     try {
@@ -143,14 +172,20 @@ export function InboxView({ agencies }: InboxViewProps) {
       const res = await fetch(`/api/wha-control/chats/${selectedChat.id}/messages?${params}`)
       if (res.ok) {
         const data = await res.json()
-        setMessages(data.messages || [])
-        // Auto-scroll to bottom after messages load
-        scrollToBottom()
+        const fresh: Message[] = data.messages || []
+        if (first) {
+          setMessages(fresh)
+          setHasMore(!!data.hasMore)
+          scrollToBottom()
+        } else {
+          // Polling: merge fresh tail with what's already loaded (dedupe by id).
+          setMessages((prev) => mergeById(prev, fresh))
+        }
       }
     } catch (err) {
       console.error("Error fetching messages:", err)
     } finally {
-      if (isFirstMessageLoad.current) {
+      if (first) {
         setLoadingMessages(false)
         isFirstMessageLoad.current = false
       }
@@ -159,11 +194,102 @@ export function InboxView({ agencies }: InboxViewProps) {
 
   useEffect(() => {
     isFirstMessageLoad.current = true
+    setHasMore(false)
+    setMessageInput("")
+    setSendError(null)
     fetchMessages()
     if (!selectedChat) return
     const interval = setInterval(fetchMessages, 30000)
     return () => clearInterval(interval)
   }, [fetchMessages, selectedChat])
+
+  // Load older messages (paginate backwards with the `before` cursor), prepending
+  // them while preserving scroll position so the view doesn't jump.
+  const loadOlder = useCallback(async () => {
+    if (!selectedChat || loadingOlder || messages.length === 0) return
+    setLoadingOlder(true)
+    const viewport = getViewport()
+    const prevHeight = viewport?.scrollHeight ?? 0
+    try {
+      const chatIds = selectedChat._chatIds || [selectedChat.id]
+      const params = new URLSearchParams({ limit: "100", before: messages[0].sent_at })
+      if (chatIds.length > 1) {
+        params.set("chatIds", chatIds.join(","))
+      }
+      const res = await fetch(`/api/wha-control/chats/${selectedChat.id}/messages?${params}`)
+      if (res.ok) {
+        const data = await res.json()
+        const older: Message[] = data.messages || []
+        if (older.length > 0) {
+          setMessages((prev) => mergeById(older, prev))
+          setHasMore(!!data.hasMore)
+          requestAnimationFrame(() => {
+            const vp = getViewport()
+            if (vp) vp.scrollTop = vp.scrollHeight - prevHeight
+          })
+        } else {
+          setHasMore(false)
+        }
+      }
+    } catch (err) {
+      console.error("Error loading older messages:", err)
+    } finally {
+      setLoadingOlder(false)
+    }
+  }, [selectedChat, loadingOlder, messages, getViewport])
+
+  // Send a reply. The connector persists the outbound row (Baileys echo), so we
+  // just re-fetch shortly after to pull it in.
+  const handleSend = useCallback(async () => {
+    if (!selectedChat || sending) return
+    const text = messageInput.trim()
+    if (!text) return
+    setSending(true)
+    setSendError(null)
+    try {
+      const res = await fetch(`/api/wha-control/chats/${selectedChat.id}/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      })
+      if (res.ok) {
+        setMessageInput("")
+        setTimeout(() => {
+          fetchMessages().then(scrollToBottom)
+        }, 1200)
+      } else {
+        const data = await res.json().catch(() => ({}))
+        setSendError(data.error || "No se pudo enviar el mensaje")
+      }
+    } catch {
+      setSendError("Error de conexión al enviar")
+    } finally {
+      setSending(false)
+    }
+  }, [selectedChat, sending, messageInput, fetchMessages, scrollToBottom])
+
+  // Ask the connector to backfill older WhatsApp history for this chat, then pull
+  // the newly-stored messages in. The sync is async/best-effort in Baileys.
+  const handleBackfill = useCallback(async () => {
+    if (!selectedChat || syncing) return
+    setSyncing(true)
+    try {
+      const res = await fetch(`/api/wha-control/chats/${selectedChat.id}/sync-history`, {
+        method: "POST",
+      })
+      if (!res.ok) {
+        setSyncing(false)
+        return
+      }
+      // El sync es asíncrono: esperamos a que el connector escriba y recargamos.
+      setTimeout(async () => {
+        await loadOlder()
+        setSyncing(false)
+      }, 4000)
+    } catch {
+      setSyncing(false)
+    }
+  }, [selectedChat, syncing, loadOlder])
 
   const getChatName = (chat: Chat) => {
     if (chat.is_group) {
@@ -324,7 +450,7 @@ export function InboxView({ agencies }: InboxViewProps) {
                 <span className="hidden sm:inline text-xs">Ir al final</span>
               </Button>
             </div>
-            <ScrollArea className="flex-1 p-4">
+            <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
               {loadingMessages ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -335,6 +461,44 @@ export function InboxView({ agencies }: InboxViewProps) {
                 </div>
               ) : (
                 <div className="space-y-2">
+                  {/* Cargar historial: paginado hacia atrás o backfill de WhatsApp */}
+                  <div className="flex justify-center pb-1">
+                    {hasMore ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 gap-1.5 text-xs text-muted-foreground"
+                        onClick={loadOlder}
+                        disabled={loadingOlder}
+                      >
+                        {loadingOlder ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          "Cargar mensajes anteriores"
+                        )}
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 gap-1.5 text-xs text-muted-foreground"
+                        onClick={handleBackfill}
+                        disabled={syncing}
+                      >
+                        {syncing ? (
+                          <>
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            Sincronizando…
+                          </>
+                        ) : (
+                          <>
+                            <History className="h-3.5 w-3.5" />
+                            Traer historial anterior de WhatsApp
+                          </>
+                        )}
+                      </Button>
+                    )}
+                  </div>
                   {messages.map((msg) => {
                     const isOutbound = msg.direction === "outbound"
                     const typeIcon = getTypeIcon(msg.message_type)
@@ -381,6 +545,43 @@ export function InboxView({ agencies }: InboxViewProps) {
                 </div>
               )}
             </ScrollArea>
+            {/* Composer */}
+            <div className="border-t">
+              {sendError && (
+                <p className="px-4 pt-2 text-xs text-destructive">{sendError}</p>
+              )}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  handleSend()
+                }}
+                className="flex items-center gap-2 p-3"
+              >
+                <Input
+                  value={messageInput}
+                  onChange={(e) => {
+                    setMessageInput(e.target.value)
+                    if (sendError) setSendError(null)
+                  }}
+                  placeholder="Escribí un mensaje…"
+                  disabled={sending}
+                  className="h-9 rounded-full border-border/60"
+                  autoComplete="off"
+                />
+                <Button
+                  type="submit"
+                  size="icon"
+                  className="h-9 w-9 rounded-full flex-shrink-0"
+                  disabled={sending || !messageInput.trim()}
+                >
+                  {sending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
+                </Button>
+              </form>
+            </div>
           </>
         ) : (
           <CardContent className="flex flex-1 items-center justify-center">

@@ -113,6 +113,8 @@ app/api/public/quotations/[token]/route.ts                               # WEBHO
 # Tablas wha_control no existen en prod; cuando se materialicen, agregar org_id + RLS.
 app/api/wha-control/chats/route.ts                                       # WHA_CONTROL — tablas no existen en prod.
 app/api/wha-control/chats/[chatId]/messages/route.ts                     # WHA_CONTROL — tablas no existen en prod.
+app/api/wha-control/chats/[chatId]/send/route.ts                         # WHA_CONTROL — pre-valida chatId por org antes de llamar al connector.
+app/api/wha-control/chats/[chatId]/sync-history/route.ts                 # WHA_CONTROL — pre-valida chatId por org antes de llamar al connector.
 app/api/wha-control/devices/route.ts                                     # WHA_CONTROL — tablas no existen en prod.
 app/api/wha-control/devices/[id]/route.ts                                # WHA_CONTROL — tablas no existen en prod.
 app/api/wha-control/devices/[id]/qr/route.ts                             # WHA_CONTROL — tablas no existen en prod.
