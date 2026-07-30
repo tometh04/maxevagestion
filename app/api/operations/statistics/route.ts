@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { getUserAgencyIds } from "@/lib/permissions-api"
+import { isIndependentAdvisor } from "@/lib/permissions"
 import { format, parseISO, startOfMonth, endOfMonth, subMonths, differenceInDays, eachDayOfInterval, startOfDay, endOfDay } from "date-fns"
 import { es } from "date-fns/locale"
 import { getExchangeRate, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
@@ -63,6 +64,14 @@ export async function GET(request: Request) {
       operationsQuery = operationsQuery.eq("agency_id", agencyId)
     } else if (agencyIds.length > 0) {
       operationsQuery = operationsQuery.in("agency_id", agencyIds)
+    }
+
+    // VIB-69: este endpoint nunca acotó por vendedor, así que devolvía las
+    // ventas y los márgenes de toda la agencia — incluido el ranking "Top
+    // Vendedores" con el nombre y el volumen de cada uno. Para un asesor
+    // independiente eso es información interna de la agencia: solo ve lo suyo.
+    if (isIndependentAdvisor(user)) {
+      operationsQuery = operationsQuery.eq("seller_id", user.id)
     }
 
     const { data: operations, error: operationsError } = await operationsQuery

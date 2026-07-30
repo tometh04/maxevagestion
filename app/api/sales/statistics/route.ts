@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { getUserAgencyIds } from "@/lib/permissions-api"
+import { isIndependentAdvisor } from "@/lib/permissions"
 import { subMonths, startOfMonth, endOfMonth, format, parseISO, differenceInDays, eachDayOfInterval, startOfDay, endOfDay } from "date-fns"
 import { es } from "date-fns/locale"
 import { getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
@@ -12,6 +13,13 @@ export const dynamic = 'force-dynamic'
 export async function GET(request: Request) {
   try {
     const { user } = await getCurrentUser()
+
+    // VIB-69: son las estadísticas del CRM (leads por vendedor, conversión de la
+    // agencia). El asesor independiente no accede a leads.
+    if (isIndependentAdvisor(user)) {
+      return NextResponse.json({ error: "No tiene permiso para ver leads" }, { status: 403 })
+    }
+
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 

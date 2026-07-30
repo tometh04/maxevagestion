@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { getUserAgencyIds } from "@/lib/permissions-api"
+import { isIndependentAdvisor } from "@/lib/permissions"
 import { subMonths, startOfMonth, endOfMonth, format, parseISO, differenceInDays, eachDayOfInterval, startOfDay, endOfDay } from "date-fns"
 import { es } from "date-fns/locale"
 import { getExchangeRate, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
@@ -56,6 +57,7 @@ export async function GET(request: Request) {
         email,
         phone,
         created_at,
+        created_by,
         operation_customers (
           operation_id,
           operations (
@@ -67,7 +69,8 @@ export async function GET(request: Request) {
             departure_date,
             created_at,
             agency_id,
-            org_id
+            org_id,
+            seller_id
           )
         )
       `)
@@ -82,7 +85,19 @@ export async function GET(request: Request) {
 
     // Filtrar por agencia si es necesario
     // Y solo incluir clientes que tengan al menos 1 operación en el rango de fechas
+    // VIB-69: el asesor independiente solo mide su propia cartera. Mismo criterio
+    // que /api/customers: clientes de sus operaciones + los que él dio de alta.
+    // Sin esto veía cuánto gastó cada cliente de la agencia.
+    const advisorOnly = isIndependentAdvisor(user)
+
     const filteredCustomers = (customers || []).filter((customer: any) => {
+      if (advisorOnly) {
+        const isOwn =
+          customer.created_by === user.id ||
+          customer.operation_customers?.some((oc: any) => oc.operations?.seller_id === user.id)
+        if (!isOwn) return false
+      }
+
       // Filtro de agencia
       const passesAgencyFilter = (() => {
         if (!agencyId || agencyId === "ALL") {
