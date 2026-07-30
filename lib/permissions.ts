@@ -165,6 +165,52 @@ export const PERMISSIONS: Record<UserRole, RolePermissions> = {
 }
 
 /**
+ * VIB-69 — Asesor de viajes independiente (AVI).
+ *
+ * Un freelancer que vende para la agencia: carga sus ventas y ve solo lo suyo.
+ * NO es un `UserRole` nuevo: en DB es un SELLER con `is_independent_advisor`.
+ * La restricción "solo mis datos" ya está implementada y auditada para SELLER en
+ * toda la app (filtros de operaciones, RPCs con `p_role = 'SELLER'`, selectores
+ * de vendedor, reglas de comisión `type = 'SELLER'`); un string de rol nuevo
+ * caería en la rama "else" de esos checks y vería TODA la agencia.
+ *
+ * Lo que agrega el flag es un TECHO: los permisos efectivos del asesor son la
+ * intersección de lo que resuelva el sistema (defaults, overrides por agencia,
+ * roles adicionales) con esta matriz. Nunca puede terminar con más de esto.
+ *
+ * Delta contra SELLER: no ve leads ni el CRM (trae su propia cartera). El resto
+ * del endurecimiento es de comportamiento y vive en lib/permissions-api.ts:
+ * sin selector global de clientes y sin los permisos especiales de agencia.
+ */
+export const INDEPENDENT_ADVISOR_PERMS: RolePermissions = {
+  ...PERMISSIONS.SELLER,
+  leads: { read: false, write: false, delete: false, export: false },
+}
+
+/**
+ * Valor sintético que usa la UI para ofrecer "Asesor independiente" como una
+ * opción más en el selector de rol. Nunca se persiste: el endpoint lo traduce a
+ * `role = SELLER` + `is_independent_advisor = true`.
+ */
+export const INDEPENDENT_ADVISOR_ROLE_VALUE = "SELLER_INDEPENDENT"
+
+export type MaybeIndependentAdvisor = {
+  role?: string | null
+  is_independent_advisor?: boolean | null
+}
+
+/**
+ * ¿El usuario es un asesor de viajes independiente?
+ *
+ * Exige `role === "SELLER"` a propósito: si un admin le cambia el rol a otra
+ * cosa sin bajar el flag, el helper queda inerte en vez de aplicar un techo de
+ * vendedor sobre, por ejemplo, un contable.
+ */
+export function isIndependentAdvisor(user: MaybeIndependentAdvisor | null | undefined): boolean {
+  return user?.is_independent_advisor === true && user?.role === "SELLER"
+}
+
+/**
  * Verifica si un rol tiene un permiso específico en un módulo
  */
 export function hasPermission(

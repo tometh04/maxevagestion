@@ -36,6 +36,7 @@ export async function PATCH(
       "can_add_services_on_agency_operations",
       "can_create_operations_for_other_sellers",
       "can_register_payments_on_agency_operations",
+      "is_independent_advisor",
       "additional_roles",
     ]
     const updateData: Record<string, any> = {}
@@ -64,7 +65,7 @@ export async function PATCH(
     // Verificar que el usuario existe
     const { data: existingUser, error: fetchError } = await supabase
       .from("users")
-      .select("id, role, org_id")
+      .select("id, role, org_id, is_independent_advisor")
       .eq("id", userId)
       .single()
 
@@ -87,6 +88,31 @@ export async function PATCH(
     if (updateData.additional_roles !== undefined) {
       const primaryRole = updateData.role ?? (existingUser as any).role
       updateData.additional_roles = updateData.additional_roles.filter((r: string) => r !== primaryRole)
+    }
+
+    // VIB-69: coherencia del asesor de viajes independiente.
+    // El flag solo tiene sentido sobre un SELLER; si el rol efectivo pasa a ser
+    // otro, se apaga solo en vez de quedar latente en la fila. Y si está
+    // prendido, el usuario no puede además acumular roles adicionales ni los
+    // permisos especiales de agencia: son ampliaciones para gente de la agencia,
+    // no para un freelancer externo.
+    const touchesRoleOrAdvisorFlag =
+      updateData.role !== undefined || updateData.is_independent_advisor !== undefined
+    const effectiveRole = updateData.role ?? (existingUser as any).role
+    const willBeIndependent =
+      updateData.is_independent_advisor ?? (existingUser as any).is_independent_advisor === true
+
+    if (!touchesRoleOrAdvisorFlag) {
+      // Update que no toca ni rol ni flag: no hay nada que normalizar.
+    } else if (effectiveRole !== "SELLER") {
+      if (willBeIndependent) updateData.is_independent_advisor = false
+    } else if (willBeIndependent) {
+      updateData.is_independent_advisor = true
+      updateData.additional_roles = []
+      updateData.can_view_agency_operations_support = false
+      updateData.can_add_services_on_agency_operations = false
+      updateData.can_create_operations_for_other_sellers = false
+      updateData.can_register_payments_on_agency_operations = false
     }
 
     // Actualizar usuario

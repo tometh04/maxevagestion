@@ -21,6 +21,7 @@ import {
   CONFIGURABLE_ROLES,
   buildDefaultMatrix,
   buildDefaultMatrixMulti,
+  clampMatrixForIndependentAdvisor,
   type ResolvedModulePerms,
   type ResolvedPermissionsMatrix,
 } from "@/lib/permissions/resolved"
@@ -32,6 +33,7 @@ export {
   CONFIGURABLE_ROLES,
   buildDefaultMatrix,
   buildDefaultMatrixMulti,
+  clampMatrixForIndependentAdvisor,
   checkResolvedPermission,
   checkOwnDataOnly,
   assertPermission,
@@ -79,6 +81,33 @@ async function fetchAgencyPermissions(
 }
 
 /**
+ * VIB-69: ¿este usuario es un asesor de viajes independiente?
+ *
+ * Se lee acá adentro en vez de recibirlo por parámetro para que el techo del
+ * asesor aplique en los ~50 call sites de `resolveUserPermissions` sin tener que
+ * tocarlos uno por uno — olvidarse de uno significaría mostrarle a un freelancer
+ * el CRM de la agencia. Es un SELECT de una columna, deduplicado por request
+ * junto con el resto de `resolveUserPermissions` vía React.cache().
+ */
+async function fetchIsIndependentAdvisor(
+  supabase: SupabaseClient<Database>,
+  userId: string
+): Promise<boolean> {
+  const { data, error } = await (supabase as any)
+    .from("users")
+    .select("is_independent_advisor")
+    .eq("id", userId)
+    .maybeSingle()
+
+  if (error) {
+    console.error("[permissions-agency] Error fetching independent advisor flag:", error.message)
+    return false
+  }
+
+  return data?.is_independent_advisor === true
+}
+
+/**
  * Resuelve la matriz efectiva de permisos para un usuario.
  *
  * Acepta un rol único (string) o múltiples roles (string[]) para soporte multi-rol.
@@ -100,8 +129,17 @@ export const resolveUserPermissions = cache(async (
 ): Promise<ResolvedPermissionsMatrix> => {
   const roles = (Array.isArray(roleOrRoles) ? roleOrRoles : [roleOrRoles]) as UserRole[]
 
+  // VIB-69: el asesor independiente es un SELLER, así que el flag solo puede
+  // aplicar cuando ese es el rol primario. Se consulta antes del early-return de
+  // full access para que un rol adicional no pueda saltear el techo.
+  const independentAdvisor = roles[0] === "SELLER"
+    ? await fetchIsIndependentAdvisor(supabase, _userId)
+    : false
+
   if (roles.some((r) => FULL_ACCESS_ROLES.includes(r))) {
-    return FULL_ACCESS_MATRIX
+    return independentAdvisor
+      ? clampMatrixForIndependentAdvisor(FULL_ACCESS_MATRIX)
+      : FULL_ACCESS_MATRIX
   }
 
   const rows = await fetchAgencyPermissions(supabase, agencyIds, roles.map(String))
@@ -139,7 +177,7 @@ export const resolveUserPermissions = cache(async (
     result[m] = merged[m] ?? defaults[m]
   }
 
-  return result
+  return independentAdvisor ? clampMatrixForIndependentAdvisor(result) : result
 })
 
 /**

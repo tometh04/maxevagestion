@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { canAccessModule } from "@/lib/permissions"
-import { getUserAgencyIds, canPerformAction } from "@/lib/permissions-api"
+import { canAccessModule, isIndependentAdvisor } from "@/lib/permissions"
+import { getUserAgencyIds, canPerformAction, isCustomerOwnedByAdvisor } from "@/lib/permissions-api"
 import { resolveUserPermissions } from "@/lib/permissions-agency"
 import { sendCustomerNotifications } from "@/lib/customers/customer-service"
 import { logAudit, getClientIP } from "@/lib/audit"
@@ -31,6 +31,15 @@ export async function GET(
       .single()
 
     if (customerError || !customer) {
+      return NextResponse.json({ error: "Cliente no encontrado" }, { status: 404 })
+    }
+
+    // VIB-69: para el asesor independiente el scope por org no alcanza — solo
+    // puede abrir sus propios clientes, no cualquiera de la agencia por id.
+    if (
+      isIndependentAdvisor(user) &&
+      !(await isCustomerOwnedByAdvisor(supabase, user.id, customerId))
+    ) {
       return NextResponse.json({ error: "Cliente no encontrado" }, { status: 404 })
     }
 
@@ -101,6 +110,14 @@ export async function PATCH(
     const supabase = await createServerClient()
     const { id: customerId } = await params
     const body = await request.json()
+
+    // VIB-69: el asesor independiente solo edita sus propios clientes.
+    if (
+      isIndependentAdvisor(user) &&
+      !(await isCustomerOwnedByAdvisor(supabase, user.id, customerId))
+    ) {
+      return NextResponse.json({ error: "Cliente no encontrado" }, { status: 404 })
+    }
 
     // Obtener configuración de clientes
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
@@ -233,6 +250,12 @@ export async function DELETE(
 
     // Verificar permiso de escritura
     if (!canAccessModule(user.role as any, "customers")) {
+      return NextResponse.json({ error: "No tiene permiso para eliminar clientes" }, { status: 403 })
+    }
+
+    // VIB-69: el asesor independiente carga y edita sus clientes, pero no borra
+    // (su matriz tiene customers.delete = false, igual que la del vendedor).
+    if (isIndependentAdvisor(user)) {
       return NextResponse.json({ error: "No tiene permiso para eliminar clientes" }, { status: 403 })
     }
 

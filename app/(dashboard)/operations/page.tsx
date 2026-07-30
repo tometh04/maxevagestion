@@ -2,7 +2,11 @@ import { headers } from "next/headers"
 import { getCurrentUser } from "@/lib/auth"
 import { createServerClient } from "@/lib/supabase/server"
 import { OperationsPageClient } from "@/components/operations/operations-page-client"
-import { canAccessModule } from "@/lib/permissions"
+import { canAccessModule, isIndependentAdvisor } from "@/lib/permissions"
+import {
+  canCreateOperationsForOtherSellers,
+  hasAgencyOperationsSupportView,
+} from "@/lib/permissions-api"
 import { makeTimer } from "@/lib/perf-log"
 import {
   SELLER_OPTION_ROLES,
@@ -73,14 +77,21 @@ export default async function OperationsPage() {
   // acá acotamos la lista y el estado del selector por UX.
   const isSeller = user.role === "SELLER"
   const canPickOtherSeller = isSeller
-    ? Boolean(user.can_create_operations_for_other_sellers)
+    ? canCreateOperationsForOtherSellers(user as any)
     : true
 
   // `sellers` se mantiene completo: también alimenta el dropdown de filtros y la
   // tabla. `creatableSellers` es exclusivo del diálogo de alta y sí se acota.
   // El porcentaje viaja hasta el diálogo: sin él, el reparto de una venta
   // compartida se calculaba sobre 0 (VIB-63).
-  const sellerOptions: SellerOption[] = toSellerOptions(sellers)
+  //
+  // VIB-69: al asesor independiente ni siquiera le mandamos la lista de
+  // vendedores de la agencia — solo ve operaciones propias, así que el filtro no
+  // le sirve para nada y los nombres del equipo no son información suya.
+  const allSellerOptions: SellerOption[] = toSellerOptions(sellers)
+  const sellerOptions: SellerOption[] = isIndependentAdvisor(user)
+    ? allSellerOptions.filter((s) => s.id === user.id)
+    : allSellerOptions
   let creatableSellers = sellerOptions
   if (isSeller) {
     if (canPickOtherSeller && agencyIds.length > 0) {
@@ -107,7 +118,7 @@ export default async function OperationsPage() {
       operators={(operators || []).map((o: any) => ({ id: o.id, name: o.name }))}
       userRole={user.role}
       userId={user.id}
-      canViewAgencyOperationsSupport={Boolean(user.can_view_agency_operations_support)}
+      canViewAgencyOperationsSupport={hasAgencyOperationsSupportView(user as any)}
       canPickOtherSeller={canPickOtherSeller}
       userAgencyIds={agencyIds}
       defaultAgencyId={agencies[0]?.id}

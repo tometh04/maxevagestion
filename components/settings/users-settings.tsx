@@ -68,6 +68,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { toast } from "sonner"
+import { INDEPENDENT_ADVISOR_ROLE_VALUE } from "@/lib/permissions"
 
 interface User {
   id: string
@@ -80,6 +81,7 @@ interface User {
   can_add_services_on_agency_operations?: boolean
   can_create_operations_for_other_sellers?: boolean
   can_register_payments_on_agency_operations?: boolean
+  is_independent_advisor?: boolean
   created_at: string
   email_confirmed_at?: string | null
   user_agencies?: Array<{ agency_id: string; agencies: { name: string } }>
@@ -90,11 +92,16 @@ interface Agency {
   name: string
 }
 
+// VIB-69: "Asesor independiente" se elige como un rol más, pero no es un rol de
+// DB: se guarda como Vendedor + is_independent_advisor. Ver lib/permissions.ts.
+const AVI = INDEPENDENT_ADVISOR_ROLE_VALUE
+
 const roleLabels: Record<string, string> = {
   SUPER_ADMIN: "Super Admin",
   ADMIN: "Administrador",
   CONTABLE: "Contable",
   SELLER: "Vendedor",
+  [AVI]: "Asesor independiente",
   VIEWER: "Observador",
   POST_VENTA: "Post-venta",
 }
@@ -104,6 +111,7 @@ const roleColors: Record<string, string> = {
   ADMIN: "bg-accent-teal",
   CONTABLE: "bg-success",
   SELLER: "bg-accent-coral",
+  [AVI]: "bg-amber-600",
   VIEWER: "bg-muted-foreground",
   POST_VENTA: "bg-blue-500",
 }
@@ -113,8 +121,21 @@ const roleDescriptions: Record<string, string> = {
   ADMIN: "Gestión completa sin eliminar",
   CONTABLE: "Solo módulos financieros",
   SELLER: "Solo sus propios datos",
+  [AVI]: "Freelance: solo sus propias ventas",
   VIEWER: "Solo lectura",
   POST_VENTA: "Seguimiento post-cierre de operaciones",
+}
+
+/** El valor de rol que muestra la UI para un usuario (Vendedor vs Asesor). */
+function displayRoleValue(user: Pick<User, "role" | "is_independent_advisor">): string {
+  return user.is_independent_advisor && user.role === "SELLER" ? AVI : user.role
+}
+
+/** Traduce el valor elegido en la UI al payload que espera la API. */
+function roleValueToPayload(value: string): { role: string; is_independent_advisor: boolean } {
+  return value === AVI
+    ? { role: "SELLER", is_independent_advisor: true }
+    : { role: value, is_independent_advisor: false }
 }
 
 export function UsersSettings() {
@@ -195,7 +216,7 @@ export function UsersSettings() {
       const response = await fetch("/api/settings/users/invite", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newUser),
+        body: JSON.stringify({ ...newUser, ...roleValueToPayload(newUser.role) }),
       })
 
       const data = await response.json()
@@ -361,8 +382,13 @@ export function UsersSettings() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          role: selectedRole,
-          additional_roles: selectedAdditionalRoles.filter((r) => r !== selectedRole),
+          ...roleValueToPayload(selectedRole),
+          // VIB-69: el asesor independiente no acumula roles adicionales — la API
+          // también lo fuerza, acá evitamos mandar un payload contradictorio.
+          additional_roles:
+            selectedRole === AVI
+              ? []
+              : selectedAdditionalRoles.filter((r) => r !== selectedRole),
         }),
       })
 
@@ -373,7 +399,10 @@ export function UsersSettings() {
         return
       }
 
-      const allRoles = [selectedRole, ...selectedAdditionalRoles.filter((r) => r !== selectedRole)]
+      const allRoles =
+        selectedRole === AVI
+          ? [AVI]
+          : [selectedRole, ...selectedAdditionalRoles.filter((r) => r !== selectedRole)]
       const rolesLabel = allRoles.map((r) => roleLabels[r] || r).join(" + ")
       toast.success(`Rol actualizado a ${rolesLabel}`)
       setChangeRoleDialogOpen(false)
@@ -554,7 +583,7 @@ export function UsersSettings() {
                     </Select>
                   </div>
 
-                  {newUser.role === "SELLER" && (
+                  {(newUser.role === "SELLER" || newUser.role === AVI) && (
                     <div className="space-y-2">
                       <Label htmlFor="commission">% Comisión por defecto</Label>
                       <DecimalInput
@@ -662,8 +691,8 @@ export function UsersSettings() {
                   </TableCell>
                   <TableCell>
                     <div className="space-y-1">
-                      <Badge className={`${roleColors[user.role]} text-white`}>
-                        {roleLabels[user.role] || user.role}
+                      <Badge className={`${roleColors[displayRoleValue(user)]} text-white`}>
+                        {roleLabels[displayRoleValue(user)] || user.role}
                       </Badge>
                       {user.additional_roles && user.additional_roles.length > 0 && (
                         <div className="flex flex-wrap gap-1">
@@ -674,7 +703,7 @@ export function UsersSettings() {
                           ))}
                         </div>
                       )}
-                      {user.role === "SELLER" && (user.can_view_agency_operations_support || user.can_add_services_on_agency_operations || user.can_create_operations_for_other_sellers || user.can_register_payments_on_agency_operations) && (
+                      {user.role === "SELLER" && !user.is_independent_advisor && (user.can_view_agency_operations_support || user.can_add_services_on_agency_operations || user.can_create_operations_for_other_sellers || user.can_register_payments_on_agency_operations) && (
                         <div className="flex flex-wrap gap-1">
                           {user.can_view_agency_operations_support && (
                             <Badge variant="outline" className="text-[10px]">
@@ -767,7 +796,10 @@ export function UsersSettings() {
                           <Mail className="mr-2 h-4 w-4" />
                           Reenviar invitación
                         </DropdownMenuItem>
-                        {user.role === "SELLER" && (
+                        {/* VIB-69: los permisos especiales amplían el alcance a
+                            operaciones de la agencia — no aplican a un asesor
+                            independiente, que solo trabaja sobre lo suyo. */}
+                        {user.role === "SELLER" && !user.is_independent_advisor && (
                           <DropdownMenuItem onClick={() => handleOpenPermissions(user)}>
                             <Shield className="mr-2 h-4 w-4" />
                             Permisos especiales
@@ -777,7 +809,7 @@ export function UsersSettings() {
                           <DropdownMenuItem
                             onClick={() => {
                               setSelectedUser(user)
-                              setSelectedRole(user.role)
+                              setSelectedRole(displayRoleValue(user))
                               setSelectedAdditionalRoles(user.additional_roles ?? [])
                               setChangeRoleDialogOpen(true)
                             }}
@@ -885,6 +917,13 @@ export function UsersSettings() {
                     <p>✓ Solo sus leads y operaciones</p>
                     <p>✓ Ver sus comisiones</p>
                     <p>✗ Sin acceso a caja ni config</p>
+                  </>
+                )}
+                {role === AVI && (
+                  <>
+                    <p>✓ Carga y gestiona solo sus propias ventas</p>
+                    <p>✓ Sus clientes, sus cobros y sus comisiones</p>
+                    <p>✗ Sin acceso al CRM ni al resto de la agencia</p>
                   </>
                 )}
                 {role === "VIEWER" && (
@@ -1154,6 +1193,12 @@ export function UsersSettings() {
               </Select>
             </div>
 
+            {selectedRole === AVI ? (
+              <p className="text-xs text-muted-foreground">
+                El asesor independiente no puede combinarse con otros roles: su alcance
+                queda limitado a sus propias ventas.
+              </p>
+            ) : (
             <div className="space-y-2">
               <Label>Roles adicionales</Label>
               <p className="text-xs text-muted-foreground">
@@ -1161,7 +1206,7 @@ export function UsersSettings() {
               </p>
               <div className="rounded-lg border border-border/30 bg-background p-3 space-y-2">
                 {Object.entries(roleLabels)
-                  .filter(([value]) => value !== "SUPER_ADMIN" && value !== selectedRole)
+                  .filter(([value]) => value !== "SUPER_ADMIN" && value !== AVI && value !== selectedRole)
                   .map(([value, label]) => (
                     <div key={value} className="flex items-center justify-between">
                       <div>
@@ -1180,6 +1225,7 @@ export function UsersSettings() {
                   ))}
               </div>
             </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setChangeRoleDialogOpen(false)}>

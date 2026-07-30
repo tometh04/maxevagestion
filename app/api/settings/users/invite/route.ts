@@ -16,7 +16,15 @@ export async function POST(request: Request) {
 
     const supabase = await createServerClient()
     const body = await request.json()
-    const { name, email, role, agencies, default_commission_percentage, additional_roles } = body
+    const {
+      name,
+      email,
+      role,
+      agencies,
+      default_commission_percentage,
+      additional_roles,
+      is_independent_advisor,
+    } = body
 
     // Validar campos requeridos
     if (!name || !email || !role) {
@@ -27,6 +35,23 @@ export async function POST(request: Request) {
     const validRoles = ["ADMIN", "CONTABLE", "SELLER", "VIEWER", "POST_VENTA"]
     if (!validRoles.includes(role)) {
       return NextResponse.json({ error: "Rol inválido" }, { status: 400 })
+    }
+
+    // VIB-69: el asesor de viajes independiente es un SELLER endurecido, no un
+    // rol propio. Solo puede invitarse como tal y sin roles adicionales que le
+    // devuelvan alcance sobre la agencia.
+    const independentAdvisor = is_independent_advisor === true
+    if (independentAdvisor && role !== "SELLER") {
+      return NextResponse.json(
+        { error: "El asesor independiente debe invitarse con el rol Vendedor" },
+        { status: 400 }
+      )
+    }
+    if (independentAdvisor && Array.isArray(additional_roles) && additional_roles.length > 0) {
+      return NextResponse.json(
+        { error: "Un asesor independiente no puede tener roles adicionales" },
+        { status: 400 }
+      )
     }
 
     // Validar additional_roles si fue enviado
@@ -128,6 +153,10 @@ export async function POST(request: Request) {
     // Si es vendedor y se especificó comisión
     if (role === "SELLER" && default_commission_percentage !== undefined && default_commission_percentage !== null) {
       userInsertData.default_commission_percentage = default_commission_percentage
+    }
+
+    if (independentAdvisor) {
+      userInsertData.is_independent_advisor = true
     }
 
     // Roles adicionales (sin duplicar el rol primario)

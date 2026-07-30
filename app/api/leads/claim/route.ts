@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { isIndependentAdvisor } from "@/lib/permissions"
 
 /**
  * POST /api/leads/claim
@@ -16,6 +17,11 @@ export async function POST(request: Request) {
 
     // Solo vendedores y admins pueden "agarrar" leads
     if (user.role !== "SELLER" && user.role !== "ADMIN" && user.role !== "SUPER_ADMIN") {
+      return NextResponse.json({ error: "No autorizado" }, { status: 403 })
+    }
+
+    // VIB-69: el asesor independiente no participa del pool de leads de la agencia.
+    if (isIndependentAdvisor(user)) {
       return NextResponse.json({ error: "No autorizado" }, { status: 403 })
     }
 

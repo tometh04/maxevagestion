@@ -2,7 +2,19 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canPerformAction } from "@/lib/permissions-api"
+import { isIndependentAdvisor } from "@/lib/permissions"
 import { getOrgAgencyIds } from "@/lib/organizations"
+
+/**
+ * VIB-69: las listas son las columnas del CRM de la agencia. El asesor de viajes
+ * independiente no accede al CRM, así que tampoco a sus listas (ni para leerlas,
+ * que expondría cómo trabaja la agencia, ni para crear las suyas).
+ */
+function blockIndependentAdvisor(user: { role?: string | null; is_independent_advisor?: boolean | null }) {
+  return isIndependentAdvisor(user)
+    ? NextResponse.json({ error: "No tiene permiso para ver leads" }, { status: 403 })
+    : null
+}
 
 /**
  * GET /api/manychat/lists?agencyId=xxx
@@ -11,6 +23,8 @@ import { getOrgAgencyIds } from "@/lib/organizations"
 export async function GET(request: Request) {
   try {
     const { user } = await getCurrentUser()
+    const blocked = blockIndependentAdvisor(user)
+    if (blocked) return blocked
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
     const agencyId = searchParams.get("agencyId")
@@ -49,6 +63,8 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const { user } = await getCurrentUser()
+    const blocked = blockIndependentAdvisor(user)
+    if (blocked) return blocked
     const supabase = await createServerClient()
     const body = await request.json()
     const { agencyId, listName, sellerId, prompt } = body
@@ -161,6 +177,8 @@ export async function POST(request: Request) {
 export async function PUT(request: Request) {
   try {
     const { user } = await getCurrentUser()
+    const blocked = blockIndependentAdvisor(user)
+    if (blocked) return blocked
     const supabase = await createServerClient()
     const body = await request.json()
     const { agencyId, oldListName, newListName } = body
@@ -248,6 +266,8 @@ export async function PUT(request: Request) {
 export async function DELETE(request: Request) {
   try {
     const { user } = await getCurrentUser()
+    const blocked = blockIndependentAdvisor(user)
+    if (blocked) return blocked
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
     const agencyId = searchParams.get("agencyId")
@@ -322,6 +342,8 @@ export async function DELETE(request: Request) {
 export async function PATCH(request: Request) {
   try {
     const { user } = await getCurrentUser()
+    const blocked = blockIndependentAdvisor(user)
+    if (blocked) return blocked
     const supabase = await createServerClient()
     const body = await request.json()
     const { agencyId, listName, prompt } = body

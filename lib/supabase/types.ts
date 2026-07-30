@@ -10748,6 +10748,7 @@ export type Database = {
           email: string
           id: string
           is_active: boolean | null
+          is_independent_advisor: boolean
           legal_accepted_at: string | null
           legal_version: string | null
           name: string
@@ -10768,6 +10769,7 @@ export type Database = {
           email: string
           id?: string
           is_active?: boolean | null
+          is_independent_advisor?: boolean
           legal_accepted_at?: string | null
           legal_version?: string | null
           name: string
@@ -10788,6 +10790,7 @@ export type Database = {
           email?: string
           id?: string
           is_active?: boolean | null
+          is_independent_advisor?: boolean
           legal_accepted_at?: string | null
           legal_version?: string | null
           name?: string

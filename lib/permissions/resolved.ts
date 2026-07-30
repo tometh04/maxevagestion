@@ -10,6 +10,7 @@
 
 import {
   PERMISSIONS,
+  INDEPENDENT_ADVISOR_PERMS,
   mergeRolePermissions,
   type Module,
   type UserRole,
@@ -93,6 +94,52 @@ export function buildDefaultMatrixMulti(roles: UserRole[]): ResolvedPermissionsM
       ]
     })
   )
+}
+
+/** Techo de permisos de un asesor independiente (VIB-69), ya en formato resuelto. */
+export const INDEPENDENT_ADVISOR_MATRIX: ResolvedPermissionsMatrix = Object.fromEntries(
+  ALL_MODULES.map((m) => {
+    const p = INDEPENDENT_ADVISOR_PERMS[m]
+    return [
+      m,
+      {
+        read: p?.read ?? false,
+        write: p?.write ?? false,
+        delete: p?.delete ?? false,
+        export: p?.export ?? false,
+        ownDataOnly: p?.ownDataOnly ?? false,
+      },
+    ]
+  })
+)
+
+/**
+ * Interseca una matriz resuelta con el techo del asesor independiente (VIB-69).
+ *
+ * Es una intersección, no un reemplazo: si la agencia le recortó todavía más los
+ * permisos al vendedor, ese recorte se respeta. Lo que no puede pasar es lo
+ * inverso — que un override de agencia, un rol adicional o un default futuro le
+ * abran a un freelancer datos que no son suyos.
+ */
+export function clampMatrixForIndependentAdvisor(
+  matrix: ResolvedPermissionsMatrix
+): ResolvedPermissionsMatrix {
+  const result: ResolvedPermissionsMatrix = {}
+  for (const m of Object.keys(matrix)) {
+    const current = matrix[m]
+    const ceiling = INDEPENDENT_ADVISOR_MATRIX[m] ?? {
+      read: false, write: false, delete: false, export: false, ownDataOnly: true,
+    }
+    result[m] = {
+      read: current.read && ceiling.read,
+      write: current.write && ceiling.write,
+      delete: current.delete && ceiling.delete,
+      export: current.export && ceiling.export,
+      // OR: alcanza con que uno de los dos lo restrinja a datos propios.
+      ownDataOnly: current.ownDataOnly || ceiling.ownDataOnly,
+    }
+  }
+  return result
 }
 
 /**

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { isIndependentAdvisor } from "@/lib/permissions"
 
 export const dynamic = "force-dynamic"
 
@@ -42,6 +43,11 @@ export async function GET(request: Request) {
     const orgId = (user as any).org_id
     if (!orgId) {
       return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
+    // VIB-69: el asesor independiente no ve leads, ni siquiera los propios.
+    if (isIndependentAdvisor(user)) {
+      return NextResponse.json({ error: "No tiene permiso para ver leads" }, { status: 403 })
     }
 
     const role = (user as any).role as string | undefined

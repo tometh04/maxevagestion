@@ -297,6 +297,27 @@ Roles definidos en `lib/permissions.ts`:
 `ORG_OWNER` es alias SaaS de owner de tenant. `POST_VENTA` gestiona seguimiento
 post-cierre. Los usuarios pueden tener roles adicionales.
 
+**Asesor de viajes independiente (AVI, VIB-69)**: no es un rol nuevo. Es un
+`SELLER` con `users.is_independent_advisor = true`, pensado para freelancers que
+venden para la agencia y solo deben ver lo suyo. Se modela asi a proposito: la
+restriccion "solo mis datos" ya esta implementada y auditada para `SELLER` en
+toda la app (filtros, RPCs con `p_role = 'SELLER'`, selectores de vendedor,
+reglas de comision `type = 'SELLER'`), y un string de rol nuevo caeria en la rama
+"else" de esos checks, o sea que veria toda la agencia.
+
+Reglas al tocarlo:
+
+- `isIndependentAdvisor(user)` en `lib/permissions.ts` es el unico predicado.
+- `INDEPENDENT_ADVISOR_PERMS` es un **techo**: los permisos efectivos son la
+  interseccion con lo que resuelva el sistema. Ni un override de
+  `agency_role_permissions` ni un rol adicional pueden ampliarlo.
+- El techo se aplica en `resolveUserPermissions` (matriz, UI y sidebar) y en
+  `canPerformAction` / `isOwnDataOnlyResolved` (gates sin matriz).
+- No ve leads/CRM, ni la cartera de clientes de la agencia, ni recibe los
+  permisos especiales de agencia (`can_view_agency_operations_support`,
+  `can_create_operations_for_other_sellers`,
+  `can_register_payments_on_agency_operations`).
+
 ### Permisos
 
 Hay dos capas:
