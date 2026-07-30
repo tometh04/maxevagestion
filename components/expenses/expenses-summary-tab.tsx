@@ -80,6 +80,10 @@ export function ExpensesSummaryTab({ agencies }: ExpensesSummaryTabProps) {
     return formatDateOnlyLocal(d) ?? ""
   })
   const [currency, setCurrency] = useState("ARS")
+  // Cotización única para todo el período (modo cierre de mes). Vacío = se usa
+  // el tipo de cambio de la fecha de cada gasto, que es el costo real
+  // acumulado. Al cierre dolarizan todo a una sola cotización que ellos fijan.
+  const [fixedRate, setFixedRate] = useState("")
   const [agencyFilter, setAgencyFilter] = useState("ALL")
   // Criterio del filtro por agencia: "office" = oficina a la que se cargó el
   // gasto; "account" = oficina de la cuenta desde la que salió la plata.
@@ -89,6 +93,7 @@ export function ExpensesSummaryTab({ agencies }: ExpensesSummaryTabProps) {
     setLoading(true)
     try {
       const params = new URLSearchParams({ dateFrom, dateTo, currency })
+      if (fixedRate.trim() !== "" && Number(fixedRate) > 0) params.set("exchangeRate", fixedRate)
       if (agencyFilter !== "ALL") {
         params.set("agencyId", agencyFilter)
         params.set("agencyMode", agencyMode)
@@ -107,7 +112,7 @@ export function ExpensesSummaryTab({ agencies }: ExpensesSummaryTabProps) {
     } finally {
       setLoading(false)
     }
-  }, [dateFrom, dateTo, currency, agencyFilter, agencyMode])
+  }, [dateFrom, dateTo, currency, fixedRate, agencyFilter, agencyMode])
 
   useEffect(() => {
     fetchExpenses()
@@ -119,6 +124,7 @@ export function ExpensesSummaryTab({ agencies }: ExpensesSummaryTabProps) {
     setDownloading(true)
     try {
       const params = new URLSearchParams({ dateFrom, dateTo, currency })
+      if (fixedRate.trim() !== "" && Number(fixedRate) > 0) params.set("exchangeRate", fixedRate)
       if (agencyFilter !== "ALL") {
         params.set("agencyId", agencyFilter)
         params.set("agencyMode", agencyMode)
@@ -210,6 +216,20 @@ export function ExpensesSummaryTab({ agencies }: ExpensesSummaryTabProps) {
               <SelectItem value="USD">USD</SelectItem>
             </SelectContent>
           </Select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs font-medium text-muted-foreground">Tipo de cambio</Label>
+          <Input
+            type="number"
+            min={0}
+            step="0.01"
+            inputMode="decimal"
+            placeholder="Del día"
+            value={fixedRate}
+            onChange={(e) => setFixedRate(e.target.value)}
+            className="h-8 text-xs rounded-full border-border/60 bg-background w-[130px]"
+            title="Vacío: se usa la cotización del día de cada gasto. Con un valor: se convierte todo el período a esa cotización."
+          />
         </div>
         {agencies.length > 1 && (
           <div className="space-y-1">

@@ -95,6 +95,78 @@ describe("buildExpensesReport", () => {
     expect(report.summary.total).toBe(300000) // 100.000 + 200.000
   })
 
+  it("con cotización única valúa todo el período a ese tipo de cambio", () => {
+    // Modo cierre de mes: "hay gastos como sueldo que son en pesos y al cierre
+    // los dolarizamos a un tipo de cambio que elijamos".
+    const report = buildExpensesReport({
+      expenses: [
+        expense({ amount: 150000, currency: "ARS", movement_date: "2026-07-05T15:00:00Z" }),
+        expense({ amount: 150000, currency: "ARS", movement_date: "2026-07-25T15:00:00Z" }),
+      ],
+      currency: "USD",
+      dateFrom: "2026-07-01",
+      dateTo: "2026-07-31",
+      // Tasas diarias muy distintas: si se usaran, el total no daría 200.
+      getRate: (d) => (String(d).slice(0, 10) === "2026-07-05" ? 1000 : 3000),
+      fixedRate: 1500,
+    })
+
+    expect(report.summary.total).toBe(200) // 100 + 100, ambos a 1500
+    expect(report.summary.conversion).toEqual({ mode: "fixed", rate: 1500 })
+  })
+
+  it("la cotización única tiene prioridad sobre el tipo de cambio diario", () => {
+    const conDiario = buildExpensesReport({
+      expenses: [expense({ amount: 300, currency: "USD" })],
+      currency: "ARS",
+      dateFrom: "2026-07-01",
+      dateTo: "2026-07-31",
+      getRate: () => 1000,
+    })
+    const conFijo = buildExpensesReport({
+      expenses: [expense({ amount: 300, currency: "USD" })],
+      currency: "ARS",
+      dateFrom: "2026-07-01",
+      dateTo: "2026-07-31",
+      getRate: () => 1000,
+      fixedRate: 2000,
+    })
+
+    expect(conDiario.summary.total).toBe(300000)
+    expect(conFijo.summary.total).toBe(600000)
+    expect(conDiario.summary.conversion.mode).toBe("daily")
+  })
+
+  it("una cotización única inválida cae al tipo de cambio diario", () => {
+    // Un 0 o un negativo en el input no puede anular las conversiones.
+    const report = buildExpensesReport({
+      expenses: [expense({ amount: 300, currency: "USD" })],
+      currency: "ARS",
+      dateFrom: "2026-07-01",
+      dateTo: "2026-07-31",
+      getRate: () => 1000,
+      fixedRate: 0,
+    })
+
+    expect(report.summary.total).toBe(300000)
+    expect(report.summary.conversion.mode).toBe("daily")
+  })
+
+  it("con cotización única no quedan gastos sin convertir", () => {
+    // Sin TC diario cargado, el modo cierre igual convierte todo: la cotización
+    // la pone el usuario.
+    const report = buildExpensesReport({
+      expenses: [expense({ amount: 300, currency: "USD" })],
+      currency: "ARS",
+      dateFrom: "2026-07-01",
+      dateTo: "2026-07-31",
+      fixedRate: 1500,
+    })
+
+    expect(report.summary.total).toBe(450000)
+    expect(report.summary.missingRate).toEqual([])
+  })
+
   it("un gasto sin tipo de cambio queda fuera del total pero se reporta", () => {
     // Este es el invariante que importa: el arreglo nació de gastos que
     // desaparecían sin avisar. Excluirlos en silencio sería el mismo error.

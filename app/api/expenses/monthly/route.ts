@@ -58,13 +58,21 @@ export async function GET(request: Request) {
     // Misma función que usa el reporte y el PDF: si la conversión se
     // implementara dos veces, la pantalla y el documento volverían a mostrar
     // números distintos.
+    // Cotización única para todo el período (modo cierre de mes): si viene, se
+    // valúa todo a ese TC en vez del de la fecha de cada gasto.
+    const rawRate = Number(searchParams.get("exchangeRate"))
+    const fixedRate =
+      Number.isFinite(rawRate) && rawRate > 0 && rawRate <= 1_000_000 ? rawRate : null
+
     const necesitaConversion = rawExpenses.some((e) => e.currency !== requestedCurrency)
-    const getRate = necesitaConversion
-      ? await buildExchangeRateMap(
-          supabase as any,
-          rawExpenses.map((e) => e.movement_date)
-        )
-      : undefined
+    const getRate = fixedRate
+      ? () => fixedRate
+      : necesitaConversion
+        ? await buildExchangeRateMap(
+            supabase as any,
+            rawExpenses.map((e) => e.movement_date)
+          )
+        : undefined
 
     const { converted, missingRate } = convertExpensesTo(
       rawExpenses,

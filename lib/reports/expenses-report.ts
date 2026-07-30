@@ -121,6 +121,13 @@ export interface ExpensesReport {
     topCategory: { category: string; total: number; share: number } | null
     /** Cuántos gastos hubo que convertir y cuánto del total viene de ahí. */
     converted: { count: number; total: number } | null
+    /**
+     * Con qué criterio se convirtió. "daily" = el TC de la fecha de cada gasto;
+     * "fixed" = una sola cotización elegida por el usuario, con su valor. Va en
+     * el reporte porque el mismo período da números distintos según el criterio,
+     * y el PDF se presenta a terceros: tiene que decir cómo se valuó.
+     */
+    conversion: { mode: "daily" | "fixed"; rate: number | null }
     /** Gastos excluidos por falta de TC. Vacío = el total está completo. */
     missingRate: ExpensesReportMissingRate[]
   }
@@ -303,6 +310,11 @@ export interface BuildExpensesReportParams {
    * descartados en silencio.
    */
   getRate?: (date: string | Date) => number | null
+  /**
+   * Cotización única para todo el período. Tiene prioridad sobre `getRate`:
+   * es el modo "cierre de mes", donde se valúa todo a un mismo TC elegido.
+   */
+  fixedRate?: number | null
 }
 
 export function buildExpensesReport({
@@ -311,8 +323,16 @@ export function buildExpensesReport({
   dateFrom,
   dateTo,
   getRate,
+  fixedRate,
 }: BuildExpensesReportParams): ExpensesReport {
-  const { converted: inCurrency, missingRate } = convertExpensesTo(expenses, currency, getRate)
+  const usaFijo = fixedRate != null && Number.isFinite(fixedRate) && fixedRate > 0
+  const rateResolver = usaFijo ? () => fixedRate! : getRate
+
+  const { converted: inCurrency, missingRate } = convertExpensesTo(
+    expenses,
+    currency,
+    rateResolver
+  )
   const convertedRows = inCurrency.filter((e) => e.exchangeRate != null)
 
   const total = inCurrency.reduce((acc, e) => acc + e.convertedAmount, 0)
@@ -468,6 +488,10 @@ export function buildExpensesReport({
           }
         : null,
       missingRate,
+      conversion: {
+        mode: usaFijo ? "fixed" : "daily",
+        rate: usaFijo ? roundMoney(fixedRate!) : null,
+      },
     },
     byCategory,
     byType,

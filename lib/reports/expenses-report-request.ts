@@ -20,6 +20,19 @@ const expensesQuerySchema = baseReportQuerySchema.extend({
   currency: z.enum(["ARS", "USD"]).optional(),
   agencyMode: z.enum(["office", "account"]).optional(),
   type: z.enum(["recurring", "variable"]).optional(),
+  /**
+   * Tipo de cambio único (USD→ARS) para convertir TODO el período.
+   *
+   * Sin este parámetro se usa el TC de la fecha de cada gasto, que es el costo
+   * real acumulado. Con él, todo se valúa a una sola cotización: es lo que pidió
+   * el cliente para el cierre de mes, donde dolarizan gastos que se pagaron en
+   * pesos (sueldos, alquiler) a la cotización que ellos definen.
+   *
+   * Llega como string por querystring. El tope es una guarda contra un dedazo
+   * —un cero de más multiplicaría el reporte por diez— y no una cotización
+   * plausible.
+   */
+  exchangeRate: z.coerce.number().positive().max(1_000_000).optional(),
 })
 
 export interface ExpensesReportRequestParams {
@@ -29,6 +42,8 @@ export interface ExpensesReportRequestParams {
   agencyId: string | null
   agencyMode: "office" | "account"
   type: "recurring" | "variable" | null
+  /** null = TC de la fecha de cada gasto. */
+  exchangeRate: number | null
   ownDataOnlyUserId: string | null
 }
 
@@ -68,6 +83,7 @@ export async function resolveExpensesReportRequest(
       agencyId: resolved.params.agencyId,
       agencyMode: resolved.params.agencyMode ?? "office",
       type: resolved.params.type ?? null,
+      exchangeRate: resolved.params.exchangeRate ?? null,
       ownDataOnlyUserId: resolved.ownDataOnlyUserId,
     },
   }

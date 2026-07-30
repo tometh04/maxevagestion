@@ -113,12 +113,16 @@ export function generateExpensesReportPdf({
   // Trazabilidad de la conversión: cuánto del total no se cargó en esta moneda.
   const notas: string[] = []
   if (report.summary.converted) {
+    // El criterio de valuación va explícito: el mismo período da números
+    // distintos según se use el TC de cada fecha o una cotización única, y este
+    // PDF se presenta a terceros.
+    const criterio =
+      report.summary.conversion.mode === "fixed"
+        ? `a un tipo de cambio único de ${fmtMoney(report.summary.conversion.rate || 0, "ARS")} por dólar`
+        : "con el tipo de cambio de su fecha"
     notas.push(
       `${report.summary.converted.count} gasto(s) se cargaron en otra moneda y están convertidos ` +
-        `a ${currency} con el tipo de cambio de su fecha: ${fmtMoney(
-          report.summary.converted.total,
-          currency
-        )} del total.`
+        `a ${currency} ${criterio}: ${fmtMoney(report.summary.converted.total, currency)} del total.`
     )
   }
   // Un gasto sin TC queda FUERA del total. Decirlo es obligatorio: el reporte

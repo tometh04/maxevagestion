@@ -62,6 +62,7 @@ interface ReportPayload {
       topCategory: { category: string; total: number; share: number } | null
       converted: { count: number; total: number } | null
       missingRate: Array<{ currency: string; count: number; total: number }>
+      conversion: { mode: "daily" | "fixed"; rate: number | null }
     }
     byCategory: ReportCategory[]
     byType: Array<{ type: string; label: string; total: number; count: number; share: number }>
@@ -94,6 +95,9 @@ export function ExpensesReport({ agencies }: ExpensesReportProps) {
   const [dateFrom, setDateFrom] = useState(format(startOfMonth(new Date()), "yyyy-MM-dd"))
   const [dateTo, setDateTo] = useState(format(endOfMonth(new Date()), "yyyy-MM-dd"))
   const [currency, setCurrency] = useState("ARS")
+  // Cotización única para todo el período (cierre de mes). Vacío = TC del día
+  // de cada gasto.
+  const [fixedRate, setFixedRate] = useState("")
   const [agencyId, setAgencyId] = useState("ALL")
   // Criterio del filtro por agencia: "office" = oficina a la que se cargó el
   // gasto; "account" = oficina de la cuenta desde la que salió la plata.
@@ -102,13 +106,16 @@ export function ExpensesReport({ agencies }: ExpensesReportProps) {
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams({ dateFrom, dateTo, currency })
+    if (fixedRate.trim() !== "" && Number(fixedRate) > 0) {
+      params.set("exchangeRate", fixedRate)
+    }
     if (agencyId !== "ALL") {
       params.set("agencyId", agencyId)
       params.set("agencyMode", agencyMode)
     }
     if (type !== "ALL") params.set("type", type)
     return params.toString()
-  }, [dateFrom, dateTo, currency, agencyId, agencyMode, type])
+  }, [dateFrom, dateTo, currency, fixedRate, agencyId, agencyMode, type])
 
   const fetchReport = useCallback(async () => {
     setLoading(true)
@@ -254,6 +261,19 @@ export function ExpensesReport({ agencies }: ExpensesReportProps) {
               </Select>
             </div>
             <div className="space-y-1.5">
+              <Label htmlFor="expenses-report-rate">Tipo de cambio</Label>
+              <Input
+                id="expenses-report-rate"
+                type="number"
+                min={0}
+                step="0.01"
+                inputMode="decimal"
+                placeholder="Del día de cada gasto"
+                value={fixedRate}
+                onChange={(e) => setFixedRate(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
               <Label htmlFor="expenses-report-type">Tipo</Label>
               <Select value={type} onValueChange={setType}>
                 <SelectTrigger id="expenses-report-type">
@@ -375,8 +395,11 @@ export function ExpensesReport({ agencies }: ExpensesReportProps) {
           {summary!.converted && (
             <p className="text-xs text-muted-foreground">
               {summary!.converted.count} gasto(s) se cargaron en otra moneda y están convertidos a{" "}
-              {currency} con el tipo de cambio de su fecha: {money(summary!.converted.total)} del
-              total.
+              {currency}{" "}
+              {summary!.conversion.mode === "fixed"
+                ? `a un tipo de cambio único de ${money(summary!.conversion.rate || 0, "ARS")} por dólar`
+                : "con el tipo de cambio de su fecha"}
+              : {money(summary!.converted.total)} del total.
             </p>
           )}
 

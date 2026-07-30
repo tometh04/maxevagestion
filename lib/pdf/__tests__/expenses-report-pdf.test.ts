@@ -35,6 +35,7 @@ const filters: ExpensesReportFilters = {
   agencyName: null,
   agencyMode: "office",
   type: null,
+  exchangeRate: null,
 }
 
 let seq = 0

@@ -25,6 +25,8 @@ export interface ExpensesReportFilters {
   agencyMode: "office" | "account"
   /** null = fijos + variables. */
   type: "recurring" | "variable" | null
+  /** Cotización única elegida; null = TC de la fecha de cada gasto. */
+  exchangeRate: number | null
 }
 
 export interface ExpensesReportPayload {
@@ -41,6 +43,8 @@ export interface BuildExpensesReportDataParams {
   agencyId?: string | null
   agencyMode?: "office" | "account"
   type?: string | null
+  /** Cotización única para todo el período (modo cierre de mes). */
+  exchangeRate?: number | null
   /** Permiso `cash.ownDataOnly`: limita los variables al usuario. */
   ownDataOnlyUserId?: string | null
 }
@@ -55,6 +59,7 @@ export async function buildExpensesReportData(
     dateTo,
     currency,
     agencyMode = "office",
+    exchangeRate = null,
     ownDataOnlyUserId = null,
   } = params
 
@@ -87,16 +92,25 @@ export async function buildExpensesReportData(
   }
 
   // Mapa de TC en memoria: una sola query para todo el rango, en vez de una por
-  // gasto. Solo hace falta si hay gastos en una moneda distinta a la de salida.
+  // gasto. No hace falta si no hay nada que convertir, ni si el usuario fijó una
+  // cotización única (modo cierre de mes).
   const necesitaConversion = expenses.some((e) => e.currency !== currency)
-  const getRate = necesitaConversion
-    ? await buildExchangeRateMap(
-        supabase as any,
-        expenses.map((e) => e.movement_date)
-      )
-    : undefined
+  const getRate =
+    necesitaConversion && !exchangeRate
+      ? await buildExchangeRateMap(
+          supabase as any,
+          expenses.map((e) => e.movement_date)
+        )
+      : undefined
 
-  const report = buildExpensesReport({ expenses, currency, dateFrom, dateTo, getRate })
+  const report = buildExpensesReport({
+    expenses,
+    currency,
+    dateFrom,
+    dateTo,
+    getRate,
+    fixedRate: exchangeRate,
+  })
 
   return {
     filters: {
@@ -107,6 +121,7 @@ export async function buildExpensesReportData(
       agencyName,
       agencyMode,
       type,
+      exchangeRate,
     },
     report,
   }
