@@ -28,6 +28,7 @@ import {
   BreadcrumbPage,
 } from "@/components/ui/breadcrumb"
 import Link from "next/link"
+import { useRouter, useSearchParams } from "next/navigation"
 
 interface Lead {
   id: string
@@ -99,10 +100,26 @@ export function CRMManychatPageClient({
   enableCreatedAtFilter = false,
   orgId,
 }: CRMManychatPageClientProps) {
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const [newLeadDialogOpen, setNewLeadDialogOpen] = useState(false)
   const [selectedAgencyId, setSelectedAgencyId] = useState<string>(defaultAgencyId || agencies[0]?.id || "ALL")
   const [realtimeConnected, setRealtimeConnected] = useState(false)
+  // ?leadId=<id> del buscador global (Ctrl/⌘+K): el kanban lo auto-abre.
+  // Limpiamos el param de la URL para que un F5 no reabra la tarjeta.
+  const [initialLeadId, setInitialLeadId] = useState<string | null>(null)
   const supabaseRef = useRef<ReturnType<typeof createBrowserClient> | null>(null)
+
+  useEffect(() => {
+    const leadId = searchParams.get("leadId")
+    if (leadId) {
+      setInitialLeadId(leadId)
+      const next = new URLSearchParams(searchParams.toString())
+      next.delete("leadId")
+      const qs = next.toString()
+      router.replace(qs ? `${window.location.pathname}?${qs}` : window.location.pathname, { scroll: false })
+    }
+  }, [searchParams, router])
 
   // ── Estado de datos lazy (VIB-61) ──
   // `leads` es el set ACOTADO cargado (primeras páginas por columna + "cargar
@@ -486,6 +503,7 @@ export function CRMManychatPageClient({
               onUpdateLead={handleUpdateLead}
               currentUserId={currentUserId}
               currentUserRole={currentUserRole}
+              initialLeadId={initialLeadId}
               enableRegionFilter={enableRegionFilter}
               enableListStatusSync={enableListStatusSync}
               enableCreatedAtFilter={enableCreatedAtFilter}

@@ -129,6 +129,12 @@ interface LeadsKanbanManychatProps {
   currentUserId?: string
   currentUserRole?: string
   /**
+   * ID de lead a auto-abrir al montar (viene de ?leadId=<id> del buscador
+   * global). Como el kanban carga los leads lazy por columna, el lead puede no
+   * estar en el set cargado: si no está, se trae puntual con GET /api/leads/:id.
+   */
+  initialLeadId?: string | null
+  /**
    * Feature flag per-tenant: muestra dropdown de filtro por Región.
    * Default false (preserva UI legacy). Pedido por LOZADA VIAJES
    * GUALEGUAYCHÚ 2026-05-21.
@@ -210,6 +216,7 @@ export function LeadsKanbanManychat({
   onUpdateLead,
   currentUserId,
   currentUserRole,
+  initialLeadId,
   enableRegionFilter = false,
   enableListStatusSync = false,
   enableCreatedAtFilter = false,
@@ -224,6 +231,9 @@ export function LeadsKanbanManychat({
   const [loading, setLoading] = useState(true)
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
+  // Auto-open del lead que llega por ?leadId=<id> (buscador global). Ref para
+  // hacerlo una sola vez por id y no reabrir la tarjeta si el user la cerró.
+  const handledInitialLeadIdRef = useRef<string | null>(null)
   const [selectedListName, setSelectedListName] = useState<string>("ALL")
   const [claimingLeadId, setClaimingLeadId] = useState<string | null>(null)
   const [editOrderDialogOpen, setEditOrderDialogOpen] = useState(false)
@@ -258,6 +268,43 @@ export function LeadsKanbanManychat({
   const [createdAtTo, setCreatedAtTo] = useState<string>("")
   // VIB-61 (lazy): columna que está cargando su próxima página.
   const [loadingMoreKey, setLoadingMoreKey] = useState<string | null>(null)
+
+  // Auto-open del lead buscado (?leadId=<id>). Primero lo busca en el set ya
+  // cargado; si no está (carga lazy por columna), lo trae con GET /api/leads/:id
+  // y abre la tarjeta. Una sola vez por id (ref-guard).
+  useEffect(() => {
+    if (!initialLeadId) return
+    if (handledInitialLeadIdRef.current === initialLeadId) return
+    handledInitialLeadIdRef.current = initialLeadId
+
+    const existing = leads.find((l) => l.id === initialLeadId)
+    if (existing) {
+      setSelectedLead(existing)
+      setDialogOpen(true)
+      return
+    }
+
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/leads/${initialLeadId}`, { cache: "no-store" })
+        if (!res.ok) {
+          toast.error(res.status === 404 ? "No se encontró el lead" : "No se pudo abrir el lead")
+          return
+        }
+        const data = await res.json()
+        if (!cancelled && data?.lead) {
+          setSelectedLead(data.lead as Lead)
+          setDialogOpen(true)
+        }
+      } catch {
+        if (!cancelled) toast.error("No se pudo abrir el lead")
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [initialLeadId, leads])
 
   const handleLoadMoreColumn = useCallback(
     async (name: string) => {

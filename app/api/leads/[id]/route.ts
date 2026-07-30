@@ -15,6 +15,65 @@ import {
 } from "@/lib/accounting/deposit-utils"
 import { logAudit, getClientIP } from "@/lib/audit"
 
+/**
+ * GET /api/leads/:id — trae un lead individual enriquecido, scopeado por org_id.
+ *
+ * Usado por el auto-open del CRM cuando se llega vía ?leadId=<id> desde el
+ * buscador global (Ctrl/⌘+K). El kanban carga los leads lazy por columna, así
+ * que el lead buscado puede no estar en el set ya cargado; este endpoint lo
+ * hidrata puntualmente. Enriquecimiento igual al del PATCH (agencies + seller).
+ */
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { user } = await getCurrentUser()
+    const { id } = await params
+
+    if (!canPerformAction(user, "leads", "read")) {
+      return NextResponse.json({ error: "No tiene permiso para ver leads" }, { status: 403 })
+    }
+
+    // Multi-tenant: exigir org_id explícito y filtrar por él (no confiar en RLS).
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+    const userOrgId = (user as any).org_id as string
+
+    const supabase = await createServerClient()
+
+    const { data: lead, error } = await (supabase
+      .from("leads") as any)
+      .select("*, agencies(name), users:assigned_seller_id(name, email)")
+      .eq("id", id)
+      .eq("org_id", userOrgId)
+      .maybeSingle()
+
+    if (error) {
+      console.error("[GET /api/leads/:id] error en SELECT:", {
+        code: (error as any).code,
+        message: (error as any).message,
+        leadId: id,
+        orgId: userOrgId,
+      })
+      return NextResponse.json({ error: "Error al buscar lead" }, { status: 500 })
+    }
+
+    if (!lead) {
+      return NextResponse.json({ error: "Lead no encontrado" }, { status: 404 })
+    }
+
+    return NextResponse.json({ lead })
+  } catch (error: any) {
+    console.error("[GET /api/leads/:id] excepción no manejada:", error?.message)
+    return NextResponse.json(
+      { error: error?.message || "Error al buscar lead" },
+      { status: 500 }
+    )
+  }
+}
+
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
