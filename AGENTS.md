@@ -181,6 +181,11 @@ rapido".
 ### Anti-patrones a evitar
 
 - Query user-facing sin `org_id` cuando la tabla es tenant-scoped.
+- Usar `.limit(0)` como fail-safe de "que no devuelva nada". `.limit()` y
+  `.range()` escriben el mismo parametro `limit` de PostgREST, asi que la
+  paginacion del endpoint lo pisa y la query devuelve todo lo que sobreviva a
+  los demas filtros. Para cortar en cero, filtrar por un valor imposible
+  (ver `emptyResult()` en `lib/permissions-api.ts`).
 - `createAdminClient()` en endpoints de usuario sin allowlist y justificacion.
 - "Arreglar" permisos ocultando botones pero dejando la API abierta.
 - Calculos de ledger, saldo, comision, IVA, AFIP o billing dentro de componentes.

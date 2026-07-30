@@ -233,7 +233,7 @@ describe("VIB-69 — asesor de viajes independiente", () => {
       )
 
       // Sin clientes propios todavía → query vacía, no la base entera.
-      expect(query.limit).toHaveBeenCalledWith(0)
+      expect(query.eq).toHaveBeenCalledWith("id", "00000000-0000-0000-0000-000000000000")
       expect(result).toBe(query)
     })
 
@@ -241,7 +241,63 @@ describe("VIB-69 — asesor de viajes independiente", () => {
       const query = createMockQuery()
       await applyCustomersFilters(query, seller, ["agency-1"], createMockSupabase(), "selector")
 
-      expect(query.limit).not.toHaveBeenCalled()
+      expect(query.eq).not.toHaveBeenCalledWith("id", "00000000-0000-0000-0000-000000000000")
+    })
+
+    /**
+     * Regresión del bug que se vio en producción: el freelancer entraba a
+     * Clientes y veía los 43 de la agencia.
+     *
+     * El filtro "no tiene clientes propios" era `.limit(0)`, y el endpoint
+     * después pagina con `.order().range(offset, offset + limit - 1)`.
+     * `.limit()` y `.range()` escriben el MISMO parámetro `limit` de PostgREST,
+     * así que la paginación pisaba el cero y quedaba `limit=2000` con el único
+     * filtro que sobrevivía: `org_id`. O sea, la base entera de la agencia.
+     *
+     * Este test simula la cadena real (filtro + paginación) sobre un builder que
+     * modela la semántica de PostgREST, no un mock que devuelve `this`.
+     */
+    it("el filtro vacío sobrevive a la paginación del endpoint", async () => {
+      const params = new Map<string, string>()
+      const builder: any = {
+        filters: [] as string[],
+        eq(col: string, val: string) {
+          this.filters.push(`${col}=eq.${val}`)
+          return this
+        },
+        in(col: string, vals: string[]) {
+          this.filters.push(`${col}=in.(${vals.join(",")})`)
+          return this
+        },
+        limit(n: number) {
+          params.set("limit", String(n))
+          return this
+        },
+        order() {
+          return this
+        },
+        range(from: number, to: number) {
+          params.set("offset", String(from))
+          params.set("limit", String(to - from + 1))
+          return this
+        },
+      }
+
+      const { query } = await applyCustomersFilters(
+        builder,
+        advisor,
+        ["agency-1"],
+        createMockSupabase(),
+        undefined
+      )
+
+      // Lo que hace /api/customers después de filtrar.
+      query.order("created_at", { ascending: false }).range(0, 1999)
+
+      // La paginación pisó el limit — por eso el fail-safe no puede vivir ahí.
+      expect(params.get("limit")).toBe("2000")
+      // Pero el filtro imposible sigue en pie, así que no devuelve nada.
+      expect(builder.filters).toContain("id=eq.00000000-0000-0000-0000-000000000000")
     })
   })
 

@@ -41,6 +41,32 @@ type ScopedOperationResource = {
 export type OperationAccessScope = "full" | "own" | "agency-support" | "agency-payments"
 
 /**
+ * UUID que no puede existir como PK. Se usa para construir un filtro que no
+ * matchea nada.
+ */
+const NO_MATCH_UUID = "00000000-0000-0000-0000-000000000000"
+
+/**
+ * Devuelve la query acotada a CERO filas, de forma que el caller no pueda
+ * deshacerlo sin querer.
+ *
+ * 🔴 Fix (VIB-69): acá antes se usaba `.limit(0)`. Es una trampa: `.limit()` y
+ * `.range()` escriben el MISMO parámetro `limit` de PostgREST, y `.set()` pisa
+ * el valor anterior. Todo endpoint que después pagina —
+ * `query.order(...).range(offset, offset + limit - 1)`, que es el patrón normal
+ * del repo — convertía el `limit=0` en `limit=2000` y devolvía TODO lo que
+ * quedaba después de los filtros que sí sobrevivían (típicamente solo `org_id`).
+ *
+ * Se veía como un vendedor sin clientes propios mirando la base entera de la
+ * agencia: el caso "no tiene nada" era justamente el que abría todo.
+ *
+ * Un `.eq()` sobre un UUID imposible sí sobrevive a la paginación.
+ */
+function emptyResult(query: any): any {
+  return query.eq("id", NO_MATCH_UUID)
+}
+
+/**
  * Aplica filtros de permisos a una query de Supabase según el rol del usuario
  */
 export function applyRoleFilters<T>(
@@ -332,12 +358,12 @@ export function applyOperationsFilters(
 
   // ADMIN / SUPER_ADMIN / VIEWER / CONTABLE: filtrar por agencias de su org.
   // 🔴 Fix cross-tenant (2026-05-18): si no tiene agency_ids, ANTES devolvía
-  // query sin filtro → leak cross-tenant. Ahora limit(0) para que no
-  // devuelva nada (el endpoint que llame esto deberá lidiar con 0 resultados).
+  // query sin filtro → leak cross-tenant. Ahora no devuelve nada (el endpoint
+  // que llame esto deberá lidiar con 0 resultados).
   if (agencyIds.length > 0) {
     return query.in("agency_id", agencyIds)
   }
-  return query.limit(0)
+  return emptyResult(query)
 }
 
 /**
@@ -440,14 +466,14 @@ export async function applyCustomersFilters(
 
     if (customerIds.size === 0) {
       // No tiene clientes asociados ni creados, retornar query vacía
-      return { query: query.limit(0) }
+      return { query: emptyResult(query) }
     }
 
     return { query: query.in("id", Array.from(customerIds)) }
   }
 
   // Para otros roles no contemplados, retornar query vacío por seguridad
-  return { query: query.limit(0) }
+  return { query: emptyResult(query) }
 }
 
 /**

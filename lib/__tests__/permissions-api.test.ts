@@ -244,23 +244,31 @@ describe("Permissions API", () => {
     })
 
     // Fix cross-tenant (2026-05-18): con agencyIds vacío, ADMIN/SUPER_ADMIN NO
-    // deben quedar sin filtro (eso leakeaba operaciones de toda la org). Ahora
-    // se fuerza limit(0) → 0 resultados en vez de "todo".
-    it("should limit(0) SUPER_ADMIN when agencyIds is empty (fail-safe, no leak)", () => {
+    // deben quedar sin filtro (eso leakeaba operaciones de toda la org).
+    //
+    // 🔴 El fail-safe era `.limit(0)`, que NO servía: `.range()` (que todo
+    // endpoint paginado aplica después) escribe el mismo parámetro `limit` de
+    // PostgREST y lo pisa. Ahora se fuerza un `.eq("id", <uuid imposible>)`,
+    // que sobrevive a la paginación.
+    const NO_MATCH_UUID = "00000000-0000-0000-0000-000000000000"
+
+    it("should return an empty result for SUPER_ADMIN when agencyIds is empty (fail-safe, no leak)", () => {
       const query = createMockQuery()
       const user = { role: "SUPER_ADMIN", id: "sa-1" }
       applyOperationsFilters(query, user, [])
 
-      expect(query.limit).toHaveBeenCalledWith(0)
+      expect(query.eq).toHaveBeenCalledWith("id", NO_MATCH_UUID)
+      expect(query.limit).not.toHaveBeenCalled()
       expect(query.in).not.toHaveBeenCalled()
     })
 
-    it("should limit(0) ADMIN when no agencyIds (fail-safe, no leak)", () => {
+    it("should return an empty result for ADMIN when no agencyIds (fail-safe, no leak)", () => {
       const query = createMockQuery()
       const user = { role: "ADMIN", id: "admin-1" }
       applyOperationsFilters(query, user, [])
 
-      expect(query.limit).toHaveBeenCalledWith(0)
+      expect(query.eq).toHaveBeenCalledWith("id", NO_MATCH_UUID)
+      expect(query.limit).not.toHaveBeenCalled()
       expect(query.in).not.toHaveBeenCalled()
     })
   })
