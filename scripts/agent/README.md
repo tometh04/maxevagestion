@@ -55,6 +55,11 @@ El costo real es **proporcional al trabajo, no al schedule**: una corrida sin is
 `agent-ready` solo hace un query a Linear y sale (0 tokens de Anthropic). Solo gasta
 cuando efectivamente resuelve una tarea. Con `haiku` cada tarea chica cuesta centavos.
 
+**Ver el consumo de tokens de cada corrida:** al final del run, el orquestador escribe
+una tabla (input / cache read / cache write / output / costo aprox, por issue y total)
+en el **Job Summary** — se ve al abrir el run en la pestaña Actions, arriba de los logs.
+También queda en el log del step "Correr el agente".
+
 ### 3. Permitir que Actions abra PRs
 `Settings → Actions → General → Workflow permissions`: activar **Read and write
 permissions** y **Allow GitHub Actions to create and approve pull requests**.

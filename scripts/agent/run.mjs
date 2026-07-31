@@ -27,7 +27,7 @@
  *                 AGENT_MODEL (default lo que use el SDK).
  */
 
-import { readFileSync } from "node:fs"
+import { readFileSync, appendFileSync } from "node:fs"
 import { execFileSync } from "node:child_process"
 import { fileURLToPath } from "node:url"
 import { dirname, join } from "node:path"
@@ -45,6 +45,9 @@ const BLOCKED_LABEL = "agent-blocked"
 
 const blocklist = JSON.parse(readFileSync(join(__dirname, "blocklist.json"), "utf8"))
 const agentPrompt = readFileSync(join(__dirname, "prompt.md"), "utf8")
+
+// Uso de tokens acumulado por corrida (una entrada por tarea con datos de uso).
+const sessionUsage = []
 
 // ── helpers de shell ────────────────────────────────────────────────────────
 function sh(cmd, args, opts = {}) {
@@ -277,6 +280,7 @@ async function runAgentOnIssue(issue) {
       ...(process.env.AGENT_MODEL ? { model: process.env.AGENT_MODEL } : {}),
     },
   })
+  let usage = null
   for await (const msg of response) {
     if (msg.type === "assistant") {
       const text = (msg.message?.content ?? [])
@@ -284,11 +288,20 @@ async function runAgentOnIssue(issue) {
         .map((b) => b.text)
         .join("")
       if (text) finalText = text
-    } else if (msg.type === "result" && typeof msg.result === "string") {
-      finalText = msg.result
+    } else if (msg.type === "result") {
+      if (typeof msg.result === "string") finalText = msg.result
+      // El mensaje `result` trae el uso agregado de toda la sesión del agente.
+      usage = {
+        input: msg.usage?.input_tokens ?? 0,
+        output: msg.usage?.output_tokens ?? 0,
+        cacheRead: msg.usage?.cache_read_input_tokens ?? 0,
+        cacheWrite: msg.usage?.cache_creation_input_tokens ?? 0,
+        costUsd: typeof msg.total_cost_usd === "number" ? msg.total_cost_usd : null,
+        turns: msg.num_turns ?? null,
+      }
     }
   }
-  return finalText.trim()
+  return { summary: finalText.trim(), usage }
 }
 
 // ── ciclo por issue ──────────────────────────────────────────────────────────
@@ -301,13 +314,22 @@ async function processIssue(issue, baseSha, baseBranch) {
   log(`→ ${issue.identifier}: ${issue.title}`)
   await addLabel(issue.id, IN_PROGRESS_LABEL)
 
-  let summary
+  let summary, usage
   try {
-    summary = await runAgentOnIssue(issue)
+    ;({ summary, usage } = await runAgentOnIssue(issue))
   } catch (err) {
     await block(issue, `El agente falló al ejecutar: ${String(err.message || err)}`)
     await resetTree(baseSha)
     return
+  }
+
+  if (usage) {
+    sessionUsage.push({ identifier: issue.identifier, ...usage })
+    log(
+      `  tokens ${issue.identifier}: in=${usage.input} cacheR=${usage.cacheRead} ` +
+        `cacheW=${usage.cacheWrite} out=${usage.output} turns=${usage.turns}` +
+        (usage.costUsd != null ? ` ~$${usage.costUsd.toFixed(4)}` : ""),
+    )
   }
 
   const blockedByAgent = /^RESULTADO:\s*BLOQUEADO/im.test(summary)
@@ -385,6 +407,42 @@ function requireEnv(name) {
   return v
 }
 
+/**
+ * Escribe el resumen de consumo de tokens de la corrida al log y, si corre en
+ * GitHub Actions, al Job Summary (panel que se ve al abrir el run en Actions).
+ */
+function emitUsageReport() {
+  const sum = (k) => sessionUsage.reduce((a, s) => a + (s[k] || 0), 0)
+  const totIn = sum("input")
+  const totCacheR = sum("cacheRead")
+  const totCacheW = sum("cacheWrite")
+  const totOut = sum("output")
+  const totCost = sessionUsage.reduce((a, s) => a + (s.costUsd || 0), 0)
+  const hasCost = sessionUsage.some((s) => s.costUsd != null)
+
+  let md = `## 🤖 Consumo de tokens del agente\n\n`
+  md += `MODE=\`${MODE}\` · modelo=\`${process.env.AGENT_MODEL || "default"}\` · tareas con uso: ${sessionUsage.length}\n\n`
+  md += `| Issue | input | cache read | cache write | output |${hasCost ? " costo aprox |" : ""}\n`
+  md += `|---|--:|--:|--:|--:|${hasCost ? "--:|" : ""}\n`
+  for (const s of sessionUsage) {
+    md += `| ${s.identifier} | ${s.input} | ${s.cacheRead} | ${s.cacheWrite} | ${s.output} |`
+    md += hasCost ? ` ${s.costUsd != null ? "$" + s.costUsd.toFixed(4) : "—"} |\n` : "\n"
+  }
+  md += `| **Total** | ${totIn} | ${totCacheR} | ${totCacheW} | ${totOut} |`
+  md += hasCost ? ` **$${totCost.toFixed(4)}** |\n` : "\n"
+  md += `\n**Input total procesado** (fresh + cache): ${totIn + totCacheR + totCacheW} · **Output**: ${totOut}\n`
+
+  console.log("\n" + md)
+  const f = process.env.GITHUB_STEP_SUMMARY
+  if (f) {
+    try {
+      appendFileSync(f, md + "\n")
+    } catch (e) {
+      console.error("[agent] no se pudo escribir GITHUB_STEP_SUMMARY:", String(e))
+    }
+  }
+}
+
 // ── main ─────────────────────────────────────────────────────────────────────
 async function main() {
   requireEnv("LINEAR_API_KEY")
@@ -410,6 +468,7 @@ async function main() {
       await resetTree(baseSha)
     }
   }
+  emitUsageReport()
   log("listo.")
 }
 
