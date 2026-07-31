@@ -14,6 +14,7 @@ import {
   HelpCircle,
   Bot,
   Megaphone,
+  Library,
 } from "lucide-react"
 import Link from "next/link"
 import { shouldShowInSidebar, type UserRole, type Module } from "@/lib/permissions"
@@ -97,7 +98,9 @@ const allNavigation: NavItem[] = [
     items: [
       { title: "Inicio", url: "/growth-studio" },
       { title: "Campañas", url: "/growth-studio/campaigns" },
-      { title: "Biblioteca", url: "/growth-studio/library" },
+      // Renombrado de "Biblioteca" a "Imágenes" para no chocar con la sección
+      // top-level "Biblioteca" (capacitaciones, VIB-70).
+      { title: "Imágenes", url: "/growth-studio/library" },
       { title: "Mi marca", url: "/growth-studio/brand" },
     ],
   },
@@ -175,7 +178,15 @@ const allNavigation: NavItem[] = [
       { title: "Prompt", url: "/eve/prompt" },
     ],
   },
-  // 8. Cerebro
+  // 8. Biblioteca (capacitaciones, VIB-70)
+  {
+    title: "Biblioteca",
+    url: "/library",
+    icon: Library,
+    module: "library",
+    collapsible: false,
+  },
+  // 9. Cerebro
   {
     title: "🧠 Cerebro",
     url: "/tools/cerebro",

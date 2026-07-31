@@ -26,6 +26,7 @@ export type Module =
   | "tasks"
   | "eve"
   | "referrals"
+  | "library"
 
 export type Permission = "read" | "write" | "delete" | "export"
 
@@ -59,6 +60,7 @@ export const SUPER_ADMIN_PERMS: RolePermissions = {
   tasks: { read: true, write: true, delete: true, export: true },
   eve: { read: true, write: true, delete: true, export: false },
   referrals: { read: true, write: true, delete: true, export: true },
+  library: { read: true, write: true, delete: true, export: true },
 }
 
 export const PERMISSIONS: Record<UserRole, RolePermissions> = {
@@ -82,6 +84,8 @@ export const PERMISSIONS: Record<UserRole, RolePermissions> = {
     // VIB-86: los referidores los da de alta el administrador, y el porcentaje
     // que se lleva cada uno solo lo ve quien tiene este permiso.
     referrals: { read: true, write: true, delete: true, export: true },
+    // Los administradores de la agencia gestionan la Biblioteca (VIB-70).
+    library: { read: true, write: true, delete: true, export: true },
   },
   CONTABLE: {
     dashboard: { read: false, write: false, delete: false, export: false }, // No ve dashboard general
@@ -102,6 +106,8 @@ export const PERMISSIONS: Record<UserRole, RolePermissions> = {
     // referidores. Antes no podía crearlos igual (customers.read = false), pero
     // sí veía la pantalla: con el permiso propio esa inconsistencia se resuelve.
     referrals: { read: true, write: false, delete: false, export: true },
+    // Consulta el material de capacitacion; no lo gestiona.
+    library: { read: true, write: false, delete: false, export: false },
   },
   SELLER: {
     dashboard: { read: true, write: false, delete: false, export: false, ownDataOnly: true }, // Solo sus datos
@@ -121,6 +127,8 @@ export const PERMISSIONS: Record<UserRole, RolePermissions> = {
     // VIB-86: el vendedor selecciona un referidor al cargar la venta, pero no
     // ve cuánto se lleva ni puede darlo de alta. La API le manda solo el nombre.
     referrals: { read: false, write: false, delete: false, export: false },
+    // El vendedor consulta la Biblioteca (material dirigido a su rol).
+    library: { read: true, write: false, delete: false, export: false },
   },
   VIEWER: {
     dashboard: { read: true, write: false, delete: false, export: false },
@@ -139,6 +147,7 @@ export const PERMISSIONS: Record<UserRole, RolePermissions> = {
     eve: { read: false, write: false, delete: false, export: false },
     // Rol de solo lectura: ve lo mismo que en comisiones, sin poder editar.
     referrals: { read: true, write: false, delete: false, export: false },
+    library: { read: true, write: false, delete: false, export: false },
   },
   // POST_VENTA: ve y gestiona el seguimiento post-cierre de operaciones.
   // Puede cargar vouchers enviados, check-in realizado, y consultar requisitos
@@ -161,6 +170,7 @@ export const PERMISSIONS: Record<UserRole, RolePermissions> = {
     eve:        { read: false, write: false, delete: false, export: false },
     // Post venta no toca plata (commissions ya está en false).
     referrals:  { read: false, write: false, delete: false, export: false },
+    library:    { read: true,  write: false, delete: false, export: false },
   },
 }
 
@@ -253,12 +263,12 @@ export function getAccessibleModules(role: UserRole): Module[] {
 export function shouldShowInSidebar(role: UserRole, module: Module): boolean {
   // CONTABLE no ve dashboard, leads, customers
   if (role === "CONTABLE") {
-    return ["operations", "operators", "cash", "accounting", "alerts", "reports", "commissions", "tasks"].includes(module)
+    return ["operations", "operators", "cash", "accounting", "alerts", "reports", "commissions", "tasks", "library"].includes(module)
   }
 
   // SELLER no ve operators, cash, accounting, settings
   if (role === "SELLER") {
-    return ["dashboard", "leads", "operations", "customers", "alerts", "reports", "commissions", "documents", "tasks"].includes(module)
+    return ["dashboard", "leads", "operations", "customers", "alerts", "reports", "commissions", "documents", "tasks", "library"].includes(module)
   }
 
   // VIEWER ve todo excepto settings y eve (eve es solo ADMIN/SUPER_ADMIN)
@@ -268,7 +278,7 @@ export function shouldShowInSidebar(role: UserRole, module: Module): boolean {
 
   // POST_VENTA ve operaciones, clientes, alertas, documentos, tareas y settings (requisitos de destino)
   if (role === "POST_VENTA") {
-    return ["dashboard", "operations", "customers", "alerts", "documents", "tasks", "settings"].includes(module)
+    return ["dashboard", "operations", "customers", "alerts", "documents", "tasks", "settings", "library"].includes(module)
   }
 
   // SUPER_ADMIN y ADMIN ven todo
@@ -292,7 +302,7 @@ export function usePermissions(role: UserRole) {
 const ALL_MODULES_LIST: Module[] = [
   "dashboard", "leads", "operations", "customers", "operators",
   "cash", "accounting", "alerts", "reports", "commissions",
-  "settings", "documents", "tasks", "eve",
+  "settings", "documents", "tasks", "eve", "referrals", "library",
 ]
 
 /**

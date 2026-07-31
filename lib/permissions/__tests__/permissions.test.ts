@@ -366,4 +366,37 @@ describe('Permissions System', () => {
       expect(perms.ownDataOnly('settings')).toBe(false)
     })
   })
+
+  // ─── library (VIB-70) ───────────────────────────────────────────────
+  describe('library module (VIB-70)', () => {
+    it('every role has a library entry (matriz completa)', () => {
+      const roles: UserRole[] = [
+        'SUPER_ADMIN', 'ORG_OWNER', 'ADMIN', 'CONTABLE', 'SELLER', 'VIEWER', 'POST_VENTA',
+      ]
+      for (const role of roles) {
+        expect(PERMISSIONS[role].library).toBeDefined()
+      }
+    })
+
+    it('admins can manage the library, non-admins can only read', () => {
+      expect(hasPermission('ADMIN', 'library', 'write')).toBe(true)
+      expect(hasPermission('SUPER_ADMIN', 'library', 'write')).toBe(true)
+
+      for (const role of ['SELLER', 'VIEWER', 'CONTABLE', 'POST_VENTA'] as UserRole[]) {
+        expect(hasPermission(role, 'library', 'read')).toBe(true)
+        expect(hasPermission(role, 'library', 'write')).toBe(false)
+        expect(hasPermission(role, 'library', 'delete')).toBe(false)
+      }
+    })
+
+    it('la biblioteca es compartida: SELLER no tiene ownDataOnly', () => {
+      expect(isOwnDataOnly('SELLER', 'library')).toBe(false)
+    })
+
+    it('los roles con lectura ven la Biblioteca en el sidebar', () => {
+      for (const role of ['SELLER', 'CONTABLE', 'VIEWER', 'POST_VENTA', 'ADMIN'] as UserRole[]) {
+        expect(shouldShowInSidebar(role, 'library')).toBe(true)
+      }
+    })
+  })
 })

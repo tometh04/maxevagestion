@@ -53,6 +53,7 @@ const MODULE_LABELS: Record<string, string> = {
   settings: "Configuración",
   documents: "Documentos",
   tasks: "Tareas",
+  library: "Biblioteca",
 }
 
 const ALL_MODULES = Object.keys(MODULE_LABELS)
