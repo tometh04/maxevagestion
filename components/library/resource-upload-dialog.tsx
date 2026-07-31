@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { Loader2, Upload, Link2 } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
+import { Loader2, Upload, Link2, UploadCloud, FileText, X } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -82,6 +82,8 @@ export function ResourceUploadDialog({
   const [externalUrl, setExternalUrl] = useState("")
   const [file, setFile] = useState<File | null>(null)
   const [saving, setSaving] = useState(false)
+  const [dragActive, setDragActive] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Reset / precarga al abrir.
   useEffect(() => {
@@ -112,18 +114,29 @@ export function ResourceUploadDialog({
     )
   }
 
-  function onFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0] ?? null
-    if (f && !LIBRARY_MIME_EXTENSIONS[f.type]) {
+  function acceptFile(f: File | null | undefined) {
+    if (!f) return
+    if (!LIBRARY_MIME_EXTENSIONS[f.type]) {
       toast({
         title: "Tipo de archivo no permitido",
         description: "Se aceptan PDF, imágenes (PNG/JPG/WebP) y videos (MP4/WebM/MOV).",
         variant: "destructive",
       })
-      e.target.value = ""
       return
     }
     setFile(f)
+  }
+
+  function onFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    acceptFile(e.target.files?.[0])
+    // permite volver a elegir el mismo archivo tras limpiarlo
+    e.target.value = ""
+  }
+
+  function onDrop(e: React.DragEvent) {
+    e.preventDefault()
+    setDragActive(false)
+    acceptFile(e.dataTransfer.files?.[0])
   }
 
   async function handleSubmit() {
@@ -227,12 +240,76 @@ export function ResourceUploadDialog({
           {/* Archivo / Enlace */}
           {!isEdit && kind === "file" && (
             <div className="space-y-1.5">
-              <Label htmlFor="lib-file">Archivo</Label>
-              <Input id="lib-file" type="file" accept={ACCEPT} onChange={onFileSelect} />
-              {file && (
-                <p className="text-xs text-muted-foreground">
-                  {file.name} · {(file.size / (1024 * 1024)).toFixed(1)} MB
-                </p>
+              <Label>Archivo</Label>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={ACCEPT}
+                onChange={onFileSelect}
+                className="sr-only"
+              />
+              {!file ? (
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  onDragOver={(e) => {
+                    e.preventDefault()
+                    setDragActive(true)
+                  }}
+                  onDragLeave={() => setDragActive(false)}
+                  onDrop={onDrop}
+                  className={`flex w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-8 text-center transition-colors ${
+                    dragActive
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:border-primary/50 hover:bg-accent/50"
+                  }`}
+                >
+                  <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10">
+                    <UploadCloud className="h-5 w-5 text-primary" />
+                  </div>
+                  <div className="space-y-0.5">
+                    <p className="text-sm font-medium">
+                      Arrastrá un archivo o{" "}
+                      <span className="text-primary underline underline-offset-2">
+                        hacé clic para elegir
+                      </span>
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      PDF, imagen o video · hasta 500 MB
+                    </p>
+                  </div>
+                </button>
+              ) : (
+                <div className="flex items-center gap-3 rounded-lg border bg-muted/40 px-3 py-2.5">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary/10 shrink-0">
+                    <FileText className="h-4 w-4 text-primary" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium truncate">{file.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {(file.size / (1024 * 1024)).toFixed(1)} MB
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      Cambiar
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setFile(null)}
+                      aria-label="Quitar archivo"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
               )}
             </div>
           )}
