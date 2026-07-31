@@ -115,6 +115,7 @@ app/api/wha-control/chats/route.ts                                       # WHA_C
 app/api/wha-control/chats/[chatId]/messages/route.ts                     # WHA_CONTROL — tablas no existen en prod.
 app/api/wha-control/chats/[chatId]/send/route.ts                         # WHA_CONTROL — pre-valida chatId por org antes de llamar al connector.
 app/api/wha-control/chats/[chatId]/sync-history/route.ts                 # WHA_CONTROL — pre-valida chatId por org antes de llamar al connector.
+app/api/wha-control/chats/[chatId]/media/[messageId]/route.ts            # WHA_CONTROL — pre-valida el mensaje por org antes de bajar la media del connector.
 app/api/wha-control/devices/route.ts                                     # WHA_CONTROL — tablas no existen en prod.
 app/api/wha-control/devices/[id]/route.ts                                # WHA_CONTROL — tablas no existen en prod.
 app/api/wha-control/devices/[id]/qr/route.ts                             # WHA_CONTROL — tablas no existen en prod.

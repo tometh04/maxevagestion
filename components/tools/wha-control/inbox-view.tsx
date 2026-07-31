@@ -53,6 +53,57 @@ interface InboxViewProps {
   agencies: Agency[]
 }
 
+const MEDIA_TYPES = new Set(["image", "sticker", "video", "audio", "voice", "document"])
+
+// Renderiza la media de un mensaje bajándola on-demand del endpoint proxy. Si
+// falla (media expirada en WhatsApp, device apagado), muestra un fallback.
+function MediaContent({ url, type }: { url: string; type: string }) {
+  const [error, setError] = useState(false)
+  if (error) {
+    return <span className="text-xs italic opacity-70">Media no disponible</span>
+  }
+  if (type === "image" || type === "sticker") {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={url}
+        loading="lazy"
+        alt=""
+        onError={() => setError(true)}
+        onClick={() => window.open(url, "_blank")}
+        className="rounded-lg max-h-64 max-w-full object-contain cursor-pointer"
+      />
+    )
+  }
+  if (type === "video") {
+    return (
+      <video
+        src={url}
+        controls
+        preload="metadata"
+        onError={() => setError(true)}
+        className="rounded-lg max-h-64 max-w-full"
+      />
+    )
+  }
+  if (type === "audio" || type === "voice") {
+    return (
+      <audio
+        src={url}
+        controls
+        preload="none"
+        onError={() => setError(true)}
+        className="w-56 max-w-full"
+      />
+    )
+  }
+  return (
+    <a href={url} target="_blank" rel="noreferrer" className="text-xs underline">
+      📄 Descargar documento
+    </a>
+  )
+}
+
 // Une la ventana nueva del polling con lo ya cargado (incluidas páginas viejas),
 // deduplicando por id y ordenando cronológicamente (sent_at ISO → localeCompare).
 function mergeById(a: Message[], b: Message[]): Message[] {
@@ -536,6 +587,8 @@ export function InboxView({ agencies }: InboxViewProps) {
                     const isOutbound = msg.direction === "outbound"
                     const typeIcon = getTypeIcon(msg.message_type)
                     const isGroupChat = selectedChat?.is_group
+                    const isMedia = MEDIA_TYPES.has(msg.message_type)
+                    const mediaUrl = `/api/wha-control/chats/${selectedChat?.id}/media/${msg.id}`
                     const participantPhone = msg.participant_jid
                       ? msg.participant_jid.split("@")[0]
                       : null
@@ -558,7 +611,12 @@ export function InboxView({ agencies }: InboxViewProps) {
                               {participantName}
                             </p>
                           )}
-                          {typeIcon && !msg.body_text && (
+                          {isMedia && (
+                            <div className={msg.body_text ? "mb-1" : ""}>
+                              <MediaContent url={mediaUrl} type={msg.message_type} />
+                            </div>
+                          )}
+                          {!isMedia && typeIcon && !msg.body_text && (
                             <span className="text-lg">{typeIcon} <span className="text-xs opacity-70">{msg.message_type}</span></span>
                           )}
                           {msg.body_text && (
