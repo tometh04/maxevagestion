@@ -1,6 +1,6 @@
 "use client"
 
-import { MessageCircleQuestion, X } from "lucide-react"
+import { Sparkles, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface TaskFABProps {
@@ -15,6 +15,11 @@ interface TaskFABProps {
  * Centro de Ayuda). Se dejó una sola acción, que abre directo el panel de
  * soporte. Las tareas (Ctrl+Shift+T / Ctrl+Shift+J) y Cerebro siguen accesibles
  * por atajos de teclado y navegación normal (ver task-shortcut-provider.tsx).
+ *
+ * VIB-97: ícono cambiado a Sparkles (mismo ícono que ya usa el header del
+ * panel de soporte, para consistencia visual) y se agregó un halo pulsante
+ * sutil cuando está cerrado, para que el botón se note más. Se pausa
+ * automáticamente si el usuario prefiere menos movimiento (motion-safe).
  */
 export function TaskFAB({ onClick, open }: TaskFABProps) {
   return (
@@ -30,7 +35,17 @@ export function TaskFAB({ onClick, open }: TaskFABProps) {
       aria-label={open ? "Cerrar soporte y ayuda" : "Soporte y ayuda"}
       title="Soporte y ayuda"
     >
-      {open ? <X className="h-6 w-6" /> : <MessageCircleQuestion className="h-6 w-6" />}
+      {!open && (
+        <span
+          className="absolute inset-0 rounded-full bg-primary motion-safe:animate-ping opacity-30"
+          aria-hidden="true"
+        />
+      )}
+      {open ? (
+        <X className="h-6 w-6" />
+      ) : (
+        <Sparkles className="h-6 w-6 relative" />
+      )}
     </button>
   )
 }
