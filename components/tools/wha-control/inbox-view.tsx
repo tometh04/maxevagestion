@@ -84,6 +84,7 @@ export function InboxView({ agencies }: InboxViewProps) {
   const [sendError, setSendError] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
   const isFirstMessageLoad = useRef(true)
 
   const getViewport = useCallback(
@@ -269,6 +270,8 @@ export function InboxView({ agencies }: InboxViewProps) {
       setSendError("Error de conexión al enviar")
     } finally {
       setSending(false)
+      // Mantener el foco en el input para poder seguir escribiendo/enviando.
+      inputRef.current?.focus()
     }
   }, [selectedChat, sending, messageInput, fetchMessages, scrollToBottom])
 
@@ -588,15 +591,16 @@ export function InboxView({ agencies }: InboxViewProps) {
                 className="flex items-center gap-2 p-3"
               >
                 <Input
+                  ref={inputRef}
                   value={messageInput}
                   onChange={(e) => {
                     setMessageInput(e.target.value)
                     if (sendError) setSendError(null)
                   }}
                   placeholder="Escribí un mensaje…"
-                  disabled={sending}
                   className="h-9 rounded-full border-border/60"
                   autoComplete="off"
+                  autoFocus
                 />
                 <Button
                   type="submit"
