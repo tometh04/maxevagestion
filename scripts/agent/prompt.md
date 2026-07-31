@@ -35,9 +35,20 @@ seguro que un humano va a revisar y mergear. **Nunca mergeás vos.**
 3. Si es abordable: implementá el cambio mínimo. Mantené el estilo del código
    vecino (naming, densidad de comentarios, idioms).
 4. Si el área tiene tests cercanos, actualizalos/agregá uno focalizado.
-5. Verificá vos mismo lo que puedas (leer el diff, correr el test focalizado).
-6. Terminá con un resumen que empiece con `RESULTADO: OK` seguido de: qué
+5. Terminá con un resumen que empiece con `RESULTADO: OK` seguido de: qué
    cambiaste, por qué resuelve el issue, y qué debería mirar el revisor humano.
+
+## Economía de tokens (importante)
+
+- **NO corras verificaciones repo-wide.** Prohibido `tsc --noEmit`, `npm run lint`,
+  `npm run test` (suite completa) y `npm run check:admin-client`. Su salida es enorme
+  y se re-manda en cada turno, disparando el costo. **El orquestador ya verifica tu
+  diff de forma acotada** (lint solo de tus archivos + tests relacionados + blocklist)
+  después de que termines. Confiá en eso.
+- Como mucho, corré **un** archivo de test puntual si existe para lo que tocaste
+  (ej. `npx jest ruta/al/test.test.ts`). Nada más.
+- Leé solo los archivos que necesitás para el cambio. No explores de más.
+- Sé breve: no repitas el contenido de archivos en tu razonamiento.
 
 ## Formato del resumen final (obligatorio)
 

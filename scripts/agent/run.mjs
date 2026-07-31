@@ -270,6 +270,7 @@ async function runAgentOnIssue(issue) {
       cwd: REPO_ROOT,
       permissionMode: "bypassPermissions", // sandbox efímero de CI; el gate real es el post-check
       settingSources: ["project"], // carga CLAUDE.md/AGENTS.md del repo
+      maxTurns: Number(process.env.AGENT_MAX_TURNS || "40"), // backstop anti-runaway de tokens
       ...(process.env.AGENT_MODEL ? { model: process.env.AGENT_MODEL } : {}),
     },
   })
