@@ -35,7 +35,10 @@ Crear en el team: `agent-ready`, `agent-in-progress`, `agent-done`, `agent-block
 - `AGENT_LINEAR_API_KEY` — API key de Linear con permiso de leer issues y editar
   labels/comentarios. Se nombra distinto de la `LINEAR_API_KEY` del app a propósito.
 - `AGENT_LINEAR_TEAM_ID` — UUID del team (el mismo que usás en el app).
-- (opcional) variable `AGENT_MODEL` — id de modelo a usar; si se omite, usa el default del SDK.
+- (opcional) variable `AGENT_MODEL` — modelo a usar. Default: `sonnet` (intermedio:
+  barato y fuerte para tareas chicas). Se setea como **repo Variable** (pestaña
+  *Variables*, no *Secrets*). Override a `haiku` (más barato), `opus` (tareas
+  difíciles) o un id de modelo específico.
 
 > **No** cargar acá `SUPABASE_SERVICE_ROLE_KEY` ni env financieras. El agente no las
 > necesita y no debe tenerlas.

@@ -64,5 +64,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # gh CLI + push
           MODE: ${{ github.event.inputs.mode || 'dry-run' }}
           MAX_ISSUES: ${{ github.event.inputs.max_issues || '3' }}
-          AGENT_MODEL: ${{ vars.AGENT_MODEL }}
+          # Modelo intermedio por defecto (barato y fuerte para estas tareas
+          # chicas). Override con la repo Variable AGENT_MODEL (ej. 'haiku' más
+          # barato, 'opus' para tareas difíciles, o un id de modelo específico).
+          AGENT_MODEL: ${{ vars.AGENT_MODEL || 'sonnet' }}
         run: node scripts/agent/run.mjs
