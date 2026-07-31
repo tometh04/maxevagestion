@@ -1444,6 +1444,8 @@ export type Database = {
           org_id: string | null
           percentage: number | null
           seller_id: string
+          settled_at: string | null
+          settled_reason: string | null
           status: string
           updated_at: string | null
         }
@@ -1459,6 +1461,8 @@ export type Database = {
           org_id?: string | null
           percentage?: number | null
           seller_id: string
+          settled_at?: string | null
+          settled_reason?: string | null
           status?: string
           updated_at?: string | null
         }
@@ -1474,6 +1478,8 @@ export type Database = {
           org_id?: string | null
           percentage?: number | null
           seller_id?: string
+          settled_at?: string | null
+          settled_reason?: string | null
           status?: string
           updated_at?: string | null
         }
@@ -6590,6 +6596,7 @@ export type Database = {
           commission_pct_primary: number | null
           commission_pct_secondary: number | null
           commission_split: number | null
+          commission_split_mode: string
           created_at: string | null
           currency: string
           customer_payment_deadline: string | null
@@ -6636,6 +6643,7 @@ export type Database = {
           commission_pct_primary?: number | null
           commission_pct_secondary?: number | null
           commission_split?: number | null
+          commission_split_mode?: string
           created_at?: string | null
           currency?: string
           customer_payment_deadline?: string | null
@@ -6682,6 +6690,7 @@ export type Database = {
           commission_pct_primary?: number | null
           commission_pct_secondary?: number | null
           commission_split?: number | null
+          commission_split_mode?: string
           created_at?: string | null
           currency?: string
           customer_payment_deadline?: string | null
@@ -9160,6 +9169,7 @@ export type Database = {
           operation_id: string
           org_id: string
           percentage: number
+          percentage_mode: string
           referral_partner_id: string
           status: string
           updated_at: string
@@ -9179,6 +9189,7 @@ export type Database = {
           operation_id: string
           org_id: string
           percentage?: number
+          percentage_mode?: string
           referral_partner_id: string
           status?: string
           updated_at?: string
@@ -9198,6 +9209,7 @@ export type Database = {
           operation_id?: string
           org_id?: string
           percentage?: number
+          percentage_mode?: string
           referral_partner_id?: string
           status?: string
           updated_at?: string
@@ -10755,6 +10767,7 @@ export type Database = {
           onboarding_state: Json | null
           org_id: string | null
           role: string
+          shared_sale_commission_mode: string
           updated_at: string | null
         }
         Insert: {
@@ -10776,6 +10789,7 @@ export type Database = {
           onboarding_state?: Json | null
           org_id?: string | null
           role: string
+          shared_sale_commission_mode?: string
           updated_at?: string | null
         }
         Update: {
@@ -10797,6 +10811,7 @@ export type Database = {
           onboarding_state?: Json | null
           org_id?: string | null
           role?: string
+          shared_sale_commission_mode?: string
           updated_at?: string | null
         }
         Relationships: [
@@ -11803,6 +11818,9 @@ export type Database = {
           manychat_full_data: Json | null
           notes: string | null
           org_id: string | null
+          outcome: string | null
+          outcome_at: string | null
+          outcome_by: string | null
           quoted_price: number | null
           region: string
           source: string | null

@@ -42,6 +42,7 @@ export const getCurrentUser = cache(async (): Promise<{ user: User; session: { u
       can_register_payments_on_agency_operations: false,
       is_independent_advisor: false,
       default_commission_percentage: null,
+      shared_sale_commission_mode: 'HALF',
       legal_accepted_at: null,
       legal_version: null,
       onboarding_state: null,
