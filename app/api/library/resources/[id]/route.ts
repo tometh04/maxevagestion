@@ -14,12 +14,13 @@ export const dynamic = "force-dynamic"
 
 export async function GET(
   _request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const req = await resolveLibraryRequest()
     if (!req.ok) return req.response
-    const resource = await getSignedResource(req.ctx, params.id)
+    const { id } = await params
+    const resource = await getSignedResource(req.ctx, id)
     return NextResponse.json({ resource })
   } catch (error) {
     return libraryErrorResponse(error)
@@ -28,15 +29,16 @@ export async function GET(
 
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const req = await resolveLibraryRequest()
     if (!req.ok) return req.response
     if (!req.canManage) return forbidden()
 
+    const { id } = await params
     const body = await request.json().catch(() => ({}))
-    const resource = await updateResource(req.ctx, params.id, {
+    const resource = await updateResource(req.ctx, id, {
       title: body.title,
       description: body.description,
       categoryId: body.categoryId,
@@ -52,14 +54,15 @@ export async function PATCH(
 
 export async function DELETE(
   _request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const req = await resolveLibraryRequest()
     if (!req.ok) return req.response
     if (!req.canManage) return forbidden()
 
-    await archiveResource(req.ctx, params.id)
+    const { id } = await params
+    await archiveResource(req.ctx, id)
     return NextResponse.json({ ok: true })
   } catch (error) {
     return libraryErrorResponse(error)

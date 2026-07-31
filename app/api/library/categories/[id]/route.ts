@@ -10,15 +10,16 @@ export const dynamic = "force-dynamic"
 
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const req = await resolveLibraryRequest()
     if (!req.ok) return req.response
     if (!req.canManage) return forbidden()
 
+    const { id } = await params
     const body = await request.json().catch(() => ({}))
-    const category = await updateCategory(req.ctx, params.id, {
+    const category = await updateCategory(req.ctx, id, {
       name: body.name,
       icon: body.icon,
       sort_order: body.sort_order,
@@ -31,14 +32,15 @@ export async function PATCH(
 
 export async function DELETE(
   _request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const req = await resolveLibraryRequest()
     if (!req.ok) return req.response
     if (!req.canManage) return forbidden()
 
-    await deleteCategory(req.ctx, params.id)
+    const { id } = await params
+    await deleteCategory(req.ctx, id)
     return NextResponse.json({ ok: true })
   } catch (error) {
     return libraryErrorResponse(error)
