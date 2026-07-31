@@ -17,10 +17,12 @@ propio, sin service-role, sin tocar la base ni datos de tenant.
 ## Dos capas de seguridad
 
 1. **Selección humana** (`agent-ready`): un admin decide *qué se intenta*.
-2. **Guardrails de máquina** (la red real, aunque el label esté mal puesto): el diff
-   no toca `blocklist.json`, no agrega `createAdminClient`/`service_role`/`as any`,
-   no excede los topes, y pasa `check:admin-client` + `lint` + tests. Si algo falla →
-   el issue queda `agent-blocked` con un comentario del motivo. **Nunca mergea.**
+2. **Guardrails de máquina** (la red real, aunque el label esté mal puesto),
+   evaluados **sobre el diff del agente** (no repo-wide, para no bloquearlo por deuda
+   preexistente en main): el diff no toca `blocklist.json`, no agrega
+   `createAdminClient`/`service_role`/`as any`, no excede los topes, pasa `next lint`
+   sobre los archivos cambiados y los tests relacionados (`jest --findRelatedTests`).
+   Si algo falla → el issue queda `agent-blocked` con el motivo. **Nunca mergea.**
 
 ## Setup (Fase 0, una vez)
 

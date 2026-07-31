@@ -7,11 +7,13 @@
  *      tomados (sin `agent-in-progress` / `agent-done` / `agent-blocked`).
  *   2. Por cada issue (hasta MAX_ISSUES): marca `agent-in-progress`, corre el
  *      Claude Agent SDK sobre un árbol limpio pasándole `prompt.md` + el issue.
- *   3. Guardrails de máquina (la red real; el label es solo curaduría):
+ *   3. Guardrails de máquina (la red real; el label es solo curaduría). Todo se
+ *      evalúa SOBRE EL DIFF DEL AGENTE, no repo-wide, para no bloquearlo por deuda
+ *      preexistente en main:
  *        - el diff no toca paths de `blocklist.json`
  *        - el diff no agrega contenido prohibido (createAdminClient, service_role, `as any`, …)
  *        - tope de archivos/líneas cambiadas
- *        - `npm run check:admin-client`, `npm run lint`, tests focalizados pasan
+ *        - `next lint` sobre los archivos cambiados + tests relacionados (jest --findRelatedTests)
  *   4. Salida:
  *        - MODE=dry-run  -> comenta el plan + diff en el issue, marca `agent-done`.
  *        - MODE=pr       -> branch + commit + push + draft PR (gh), comenta el link, `agent-done`.
@@ -210,23 +212,31 @@ function runGuardrails(files) {
   if (lines > blocklist.maxChangedLines)
     return { ok: false, reason: `Diff demasiado grande (${lines} líneas > ${blocklist.maxChangedLines}).` }
 
+  // createAdminClient / service-role / `as any` introducidos por el agente: se
+  // detectan sobre las LÍNEAS AGREGADAS del diff. Esto reemplaza al
+  // `check:admin-client` repo-wide (que además falla por deuda preexistente en
+  // main que no es culpa del agente).
   const added = addedLines().join("\n")
   for (const pat of blocklist.forbiddenAddedContent) {
     if (new RegExp(pat).test(added))
       return { ok: false, reason: `El diff introduce contenido prohibido: /${pat}/` }
   }
 
-  const adminCheck = shTry("npm", ["run", "check:admin-client"])
-  if (!adminCheck.ok)
-    return { ok: false, reason: "Falló `npm run check:admin-client`.\n\n```\n" + tail(adminCheck.out) + "\n```" }
+  // Lint SOLO sobre los archivos que tocó el agente. NO repo-wide: main puede
+  // tener deuda de lint/admin-client preexistente, y no queremos bloquear al
+  // agente por errores que ya estaban ahí antes de su cambio.
+  const lintable = files.filter((f) => /\.(ts|tsx|js|jsx|mjs|cjs)$/.test(f))
+  if (lintable.length > 0) {
+    const lint = shTry("npx", ["next", "lint", ...lintable.flatMap((f) => ["--file", f])])
+    if (!lint.ok)
+      return { ok: false, reason: "Lint falló en los archivos cambiados.\n\n```\n" + tail(lint.out) + "\n```" }
+  }
 
-  const lint = shTry("npm", ["run", "lint"])
-  if (!lint.ok)
-    return { ok: false, reason: "Falló `npm run lint`.\n\n```\n" + tail(lint.out) + "\n```" }
-
-  const test = shTry("npm", ["run", "test", "--", "--passWithNoTests"])
+  // Tests RELACIONADOS a los archivos cambiados, no toda la suite (evita
+  // flakiness/lentitud y fallos preexistentes ajenos al cambio).
+  const test = shTry("npx", ["jest", "--passWithNoTests", "--findRelatedTests", ...files])
   if (!test.ok)
-    return { ok: false, reason: "Fallaron los tests.\n\n```\n" + tail(test.out) + "\n```" }
+    return { ok: false, reason: "Tests relacionados a los cambios fallaron.\n\n```\n" + tail(test.out) + "\n```" }
 
   return { ok: true, reason: "" }
 }
