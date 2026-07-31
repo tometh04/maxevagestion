@@ -3,6 +3,37 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { whaControlAuthGuard } from "@/lib/wha-control/auth-guard"
 import { callConnector } from "@/lib/wha-control/connector-client"
 
+// Prioridad para elegir el "mejor" device de un mismo teléfono.
+function deviceRank(d: any): number {
+  if (d.status === "CONNECTED") return 3
+  if (d.status === "PENDING_QR" || d.status === "RECONNECTING") return 2
+  return 1
+}
+
+// Dedupe por phone_number: deja un solo device por teléfono (el mejor). Los que
+// no tienen teléfono (sin parear todavía) se mantienen todos.
+function dedupeByPhone(devices: any[]): any[] {
+  const byPhone = new Map<string, any>()
+  const noPhone: any[] = []
+  for (const d of devices) {
+    if (!d.phone_number) {
+      noPhone.push(d)
+      continue
+    }
+    const cur = byPhone.get(d.phone_number)
+    if (!cur) {
+      byPhone.set(d.phone_number, d)
+      continue
+    }
+    const better =
+      deviceRank(d) !== deviceRank(cur)
+        ? deviceRank(d) > deviceRank(cur)
+        : Date.parse(d.last_connection_at || 0) > Date.parse(cur.last_connection_at || 0)
+    if (better) byPhone.set(d.phone_number, d)
+  }
+  return [...Array.from(byPhone.values()), ...noPhone]
+}
+
 export async function GET(request: Request) {
   const auth = await whaControlAuthGuard()
   if (!auth.authorized) return auth.response
@@ -32,10 +63,16 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  // Dedupe: cada re-pareo crea un device row NUEVO con el mismo teléfono, dejando
+  // duplicados vacíos que ensucian el selector. Por teléfono dejamos solo el
+  // "mejor" (conectado > más reciente). Los null-phone (sin parear) se mantienen.
+  // El management (includeInactive) ve todo para poder limpiar.
+  const deduped = includeInactive ? devices || [] : dedupeByPhone(devices || [])
+
   // Enrich with live connector status — single batch attempt
   // If connector is unreachable, skip enrichment entirely (use DB status)
   const enriched = await Promise.all(
-    (devices || []).map(async (device: any) => {
+    deduped.map(async (device: any) => {
       try {
         const result = await callConnector(`/devices/${device.id}/status`)
         if (!result.ok) return device // Connector unreachable, use DB status as-is
