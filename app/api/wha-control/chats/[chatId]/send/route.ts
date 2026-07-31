@@ -4,9 +4,16 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { whaControlAuthGuard } from "@/lib/wha-control/auth-guard"
 import { callConnector } from "@/lib/wha-control/connector-client"
 
-const sendSchema = z.object({
-  text: z.string().trim().min(1, "El mensaje no puede estar vacío").max(4096),
-})
+const sendSchema = z
+  .object({
+    text: z.string().trim().max(4096).optional(),
+    imageBase64: z.string().min(1).optional(),
+    mimeType: z.string().max(100).optional(),
+    caption: z.string().max(4096).optional(),
+  })
+  .refine((d) => (d.text && d.text.trim()) || d.imageBase64, {
+    message: "Falta texto o imagen",
+  })
 
 export async function POST(
   request: Request,
@@ -50,8 +57,14 @@ export async function POST(
   const result = await callConnector(
     `/devices/${chat.device_id}/send`,
     "POST",
-    { to: chat.remote_jid, text: parsed.text },
-    15000
+    {
+      to: chat.remote_jid,
+      text: parsed.text,
+      imageBase64: parsed.imageBase64,
+      mimeType: parsed.mimeType,
+      caption: parsed.caption,
+    },
+    parsed.imageBase64 ? 30000 : 15000
   )
 
   if (!result.ok) {

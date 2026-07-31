@@ -7,7 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { ArrowDown, ArrowLeft, History, Loader2, MessageSquare, Search, Send, User, Users } from "lucide-react"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { ArrowDown, ArrowLeft, History, Loader2, MessageSquare, Paperclip, Search, Send, Smile, User, Users, X } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import { es } from "date-fns/locale"
 
@@ -55,6 +56,16 @@ interface InboxViewProps {
 
 const MEDIA_TYPES = new Set(["image", "sticker", "video", "audio", "voice", "document"])
 
+// Set curado de emojis comunes para el picker del composer (sin dependencias).
+const EMOJIS = [
+  "😀","😁","😂","🤣","😅","😊","😇","🙂","😉","😍","😘","😋","😎","🤩","🥳","😜",
+  "🤔","🤗","🙄","😴","😮","😢","😭","😤","😡","🥺","😱","😳","🤯","😬","🙃","😌",
+  "👍","👎","👌","🙏","👏","🙌","💪","🤝","✌️","🤞","👋","🤙","👇","👆","☝️","✅",
+  "❤️","🧡","💛","💚","💙","💜","🖤","💔","💕","🔥","⭐","✨","🎉","🎊","💯","👀",
+  "😩","😔","😐","😏","🤨","😒","🥰","🤓","🫠","🫡","🫣","🤭","😆","😝","🤪","😷",
+  "🙈","💩","👑","💰","📸","📍","⚽","🍺","☕","🎂","🌹","🌟","⚡","💨","❗","❓",
+]
+
 // Renderiza la media de un mensaje bajándola on-demand del endpoint proxy. Si
 // falla (media expirada en WhatsApp, device apagado), muestra un fallback.
 function MediaContent({ url, type }: { url: string; type: string }) {
@@ -93,7 +104,7 @@ function MediaContent({ url, type }: { url: string; type: string }) {
         controls
         preload="none"
         onError={() => setError(true)}
-        className="w-56 max-w-full"
+        className="w-[300px] max-w-full"
       />
     )
   }
@@ -133,9 +144,15 @@ export function InboxView({ agencies }: InboxViewProps) {
   const [messageInput, setMessageInput] = useState("")
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
+  const [attachedImage, setAttachedImage] = useState<{
+    base64: string
+    mimeType: string
+    preview: string
+  } | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const isFirstMessageLoad = useRef(true)
 
   const getViewport = useCallback(
@@ -294,22 +311,26 @@ export function InboxView({ agencies }: InboxViewProps) {
     return 0
   }, [selectedChat, loadingOlder, messages, getViewport])
 
-  // Send a reply. The connector persists the outbound row (Baileys echo), so we
-  // just re-fetch shortly after to pull it in.
+  // Send a reply (text and/or image). The connector persists the outbound row
+  // (Baileys echo), so we just re-fetch shortly after to pull it in.
   const handleSend = useCallback(async () => {
     if (!selectedChat || sending) return
     const text = messageInput.trim()
-    if (!text) return
+    if (!text && !attachedImage) return
     setSending(true)
     setSendError(null)
     try {
+      const body = attachedImage
+        ? { imageBase64: attachedImage.base64, mimeType: attachedImage.mimeType, caption: text || undefined }
+        : { text }
       const res = await fetch(`/api/wha-control/chats/${selectedChat.id}/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify(body),
       })
       if (res.ok) {
         setMessageInput("")
+        setAttachedImage(null)
         setTimeout(() => {
           fetchMessages().then(scrollToBottom)
         }, 1200)
@@ -324,7 +345,40 @@ export function InboxView({ agencies }: InboxViewProps) {
       // Mantener el foco en el input para poder seguir escribiendo/enviando.
       inputRef.current?.focus()
     }
-  }, [selectedChat, sending, messageInput, fetchMessages, scrollToBottom])
+  }, [selectedChat, sending, messageInput, attachedImage, fetchMessages, scrollToBottom])
+
+  // Adjuntar imagen desde el disco (se lee como base64 para mandarla al connector).
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = "" // permitir re-seleccionar el mismo archivo
+    if (!file || !file.type.startsWith("image/")) return
+    if (file.size > 16 * 1024 * 1024) {
+      setSendError("La imagen supera los 16 MB")
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      const dataUrl = reader.result as string
+      const base64 = dataUrl.split(",")[1] || ""
+      setAttachedImage({ base64, mimeType: file.type, preview: dataUrl })
+    }
+    reader.readAsDataURL(file)
+  }, [])
+
+  // Insertar emoji en la posición del cursor del input.
+  const insertEmoji = useCallback((emoji: string) => {
+    const input = inputRef.current
+    const start = input?.selectionStart ?? messageInput.length
+    const end = input?.selectionEnd ?? messageInput.length
+    const next = messageInput.slice(0, start) + emoji + messageInput.slice(end)
+    setMessageInput(next)
+    requestAnimationFrame(() => {
+      if (!input) return
+      input.focus()
+      const pos = start + emoji.length
+      input.setSelectionRange(pos, pos)
+    })
+  }, [messageInput])
 
   // Ask the connector to backfill older WhatsApp history for this chat, then pull
   // the newly-stored messages in. The sync is async and best-effort in Baileys
@@ -641,13 +695,77 @@ export function InboxView({ agencies }: InboxViewProps) {
               {sendError && (
                 <p className="px-4 pt-2 text-xs text-destructive">{sendError}</p>
               )}
+              {attachedImage && (
+                <div className="flex items-center gap-2 px-3 pt-2">
+                  <div className="relative">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={attachedImage.preview}
+                      alt=""
+                      className="h-16 w-16 rounded-lg object-cover border border-border/60"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setAttachedImage(null)}
+                      className="absolute -right-1.5 -top-1.5 rounded-full border border-border bg-background p-0.5 text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                  <span className="text-xs text-muted-foreground">Imagen lista para enviar</span>
+                </div>
+              )}
               <form
                 onSubmit={(e) => {
                   e.preventDefault()
                   handleSend()
                 }}
-                className="flex items-center gap-2 p-3"
+                className="flex items-center gap-1.5 p-3"
               >
+                {/* Emoji picker */}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9 flex-shrink-0 rounded-full text-muted-foreground"
+                    >
+                      <Smile className="h-5 w-5" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="start" className="w-64 p-2">
+                    <div className="grid max-h-52 grid-cols-8 gap-0.5 overflow-y-auto">
+                      {EMOJIS.map((e) => (
+                        <button
+                          key={e}
+                          type="button"
+                          onClick={() => insertEmoji(e)}
+                          className="rounded p-0.5 text-xl leading-none hover:bg-accent"
+                        >
+                          {e}
+                        </button>
+                      ))}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+                {/* Adjuntar imagen */}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 w-9 flex-shrink-0 rounded-full text-muted-foreground"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Paperclip className="h-5 w-5" />
+                </Button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleFileSelect}
+                />
                 <Input
                   ref={inputRef}
                   value={messageInput}
@@ -664,7 +782,7 @@ export function InboxView({ agencies }: InboxViewProps) {
                   type="submit"
                   size="icon"
                   className="h-9 w-9 rounded-full flex-shrink-0"
-                  disabled={sending || !messageInput.trim()}
+                  disabled={sending || (!messageInput.trim() && !attachedImage)}
                 >
                   {sending ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
