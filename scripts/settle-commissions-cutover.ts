@@ -165,15 +165,24 @@ async function main() {
   for (const row of target) {
     // El guard repite las condiciones del filtro: entre el SELECT y este UPDATE
     // alguien pudo haber pagado la comisión desde la app.
-    const { data, error } = await admin
+    //
+    // El guard de amount_paid va como igualdad y no como `.or(is.null, eq.0)`:
+    // PostgREST acepta ese `or` en un SELECT pero lo rechaza en un UPDATE con
+    // "column commission_records.amount_paid does not exist", que además
+    // despista porque la columna existe. Se elige la forma según el valor que
+    // trajo el SELECT, así el guard sigue siendo exacto en los dos casos.
+    const base = admin
       .from("commission_records")
       .update({ settled_at: settledAt, settled_reason: reason, updated_at: settledAt } as any)
       .eq("id", row.id)
       .eq("org_id", orgId)
       .eq("status", "PENDING")
       .is("settled_at", null)
-      .or("amount_paid.is.null,amount_paid.eq.0")
-      .select("id")
+
+    const guarded =
+      row.amount_paid == null ? base.is("amount_paid", null) : base.eq("amount_paid", 0)
+
+    const { data, error } = await guarded.select("id")
 
     if (error) {
       errors.push(`${row.id}: ${error.message}`)
