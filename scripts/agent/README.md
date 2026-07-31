@@ -43,6 +43,18 @@ Crear en el team: `agent-ready`, `agent-in-progress`, `agent-done`, `agent-block
 > **No** cargar acá `SUPABASE_SERVICE_ROLE_KEY` ni env financieras. El agente no las
 > necesita y no debe tenerlas.
 
+#### Costo y autenticación
+Este pipeline usa el **Claude Agent SDK**, que **requiere `ANTHROPIC_API_KEY`** (pago
+por token vía Console). El token OAuth de una suscripción Pro/Max **NO** sirve acá:
+Anthropic restringe la auth por suscripción a Claude Code y claude.ai, no al Agent
+SDK. Para usar tu plan Max en CI habría que reescribir el pipeline sobre la
+**GitHub Action oficial** `anthropics/claude-code-action` (que sí acepta
+`CLAUDE_CODE_OAUTH_TOKEN` de `claude setup-token`) — ver notas al final.
+
+El costo real es **proporcional al trabajo, no al schedule**: una corrida sin issues
+`agent-ready` solo hace un query a Linear y sale (0 tokens de Anthropic). Solo gasta
+cuando efectivamente resuelve una tarea. Con `haiku` cada tarea chica cuesta centavos.
+
 ### 3. Permitir que Actions abra PRs
 `Settings → Actions → General → Workflow permissions`: activar **Read and write
 permissions** y **Allow GitHub Actions to create and approve pull requests**.
