@@ -78,6 +78,7 @@ export function InboxView({ agencies }: InboxViewProps) {
   const [hasMore, setHasMore] = useState(false)
   const [loadingOlder, setLoadingOlder] = useState(false)
   const [syncing, setSyncing] = useState(false)
+  const [backfillNote, setBackfillNote] = useState<string | null>(null)
   const [messageInput, setMessageInput] = useState("")
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
@@ -197,6 +198,7 @@ export function InboxView({ agencies }: InboxViewProps) {
     setHasMore(false)
     setMessageInput("")
     setSendError(null)
+    setBackfillNote(null)
     fetchMessages()
     if (!selectedChat) return
     const interval = setInterval(fetchMessages, 30000)
@@ -205,8 +207,8 @@ export function InboxView({ agencies }: InboxViewProps) {
 
   // Load older messages (paginate backwards with the `before` cursor), prepending
   // them while preserving scroll position so the view doesn't jump.
-  const loadOlder = useCallback(async () => {
-    if (!selectedChat || loadingOlder || messages.length === 0) return
+  const loadOlder = useCallback(async (): Promise<number> => {
+    if (!selectedChat || loadingOlder || messages.length === 0) return 0
     setLoadingOlder(true)
     const viewport = getViewport()
     const prevHeight = viewport?.scrollHeight ?? 0
@@ -230,12 +232,14 @@ export function InboxView({ agencies }: InboxViewProps) {
         } else {
           setHasMore(false)
         }
+        return older.length
       }
     } catch (err) {
       console.error("Error loading older messages:", err)
     } finally {
       setLoadingOlder(false)
     }
+    return 0
   }, [selectedChat, loadingOlder, messages, getViewport])
 
   // Send a reply. The connector persists the outbound row (Baileys echo), so we
@@ -269,25 +273,45 @@ export function InboxView({ agencies }: InboxViewProps) {
   }, [selectedChat, sending, messageInput, fetchMessages, scrollToBottom])
 
   // Ask the connector to backfill older WhatsApp history for this chat, then pull
-  // the newly-stored messages in. The sync is async/best-effort in Baileys.
+  // the newly-stored messages in. The sync is async and best-effort in Baileys
+  // (WhatsApp may return nothing for a chat), so we poll a few times and, if still
+  // empty, say so instead of spinning forever.
   const handleBackfill = useCallback(async () => {
     if (!selectedChat || syncing) return
     setSyncing(true)
+    setBackfillNote(null)
     try {
       const res = await fetch(`/api/wha-control/chats/${selectedChat.id}/sync-history`, {
         method: "POST",
       })
       if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setBackfillNote(data.error || "No se pudo pedir el historial")
         setSyncing(false)
         return
       }
-      // El sync es asíncrono: esperamos a que el connector escriba y recargamos.
-      setTimeout(async () => {
-        await loadOlder()
-        setSyncing(false)
-      }, 4000)
+      // El sync es asíncrono: reintentamos cada 3s hasta ~18s.
+      let attempts = 0
+      const poll = async () => {
+        attempts++
+        const got = await loadOlder()
+        if (got > 0) {
+          setSyncing(false)
+          return
+        }
+        if (attempts >= 6) {
+          setSyncing(false)
+          setBackfillNote(
+            "WhatsApp no devolvió historial anterior para este chat. El backfill es best-effort: para traer todo el historial hay que reconectar el dispositivo con sincronización completa."
+          )
+          return
+        }
+        setTimeout(poll, 3000)
+      }
+      setTimeout(poll, 3000)
     } catch {
       setSyncing(false)
+      setBackfillNote("Error al pedir el historial")
     }
   }, [selectedChat, syncing, loadOlder])
 
@@ -499,6 +523,11 @@ export function InboxView({ agencies }: InboxViewProps) {
                       </Button>
                     )}
                   </div>
+                  {backfillNote && (
+                    <p className="px-2 pb-2 text-center text-[11px] leading-snug text-muted-foreground">
+                      {backfillNote}
+                    </p>
+                  )}
                   {messages.map((msg) => {
                     const isOutbound = msg.direction === "outbound"
                     const typeIcon = getTypeIcon(msg.message_type)
