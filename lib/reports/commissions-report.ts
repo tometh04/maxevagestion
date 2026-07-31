@@ -15,16 +15,21 @@
  *    una venta compartida tenga dos filas, una por vendedor. El rol se deriva
  *    comparando contra `operations.seller_id` / `seller_secondary_id`.
  *
- * Asimetría deliberada de `baseSale`: en el total del período la venta de una
- * operación compartida se cuenta UNA vez (si no, la venta base quedaría inflada
- * y el % efectivo saldría a la mitad); en cambio, para cada vendedor se cuenta
- * ENTERA, porque cada uno comisiona sobre la venta completa de la operación.
+ * El reporte NO expone la economía del paquete (VIB-94). Antes publicaba la
+ * venta base del período y un "% efectivo" = comisiones / venta base, y ese
+ * número no era el porcentaje de nadie: las comisiones se calculan sobre el
+ * MARGEN de la operación (ver `lib/commissions/calculate.ts`), no sobre la
+ * venta, así que la fila mostraba tres números que no cerraban entre sí. Lo que
+ * se le presenta a un vendedor es lo suyo: qué operación y cuánto comisionó.
  */
 
 import { roundMoney } from "@/lib/currency"
 import { seriesColor } from "@/lib/reports/palette"
 import { monthKeysBetween, monthLabel, safeDiv } from "@/lib/reports/period"
-import type { CommissionRecordRow } from "@/lib/commissions/fetch-commission-records"
+import type {
+  CommissionRecordRow,
+  ReferralInfo,
+} from "@/lib/commissions/fetch-commission-records"
 
 export type CommissionSellerRole = "primary" | "secondary" | "unknown"
 
@@ -41,10 +46,6 @@ export interface CommissionsReportSeller {
   operationsCount: number
   primaryTotal: number
   secondaryTotal: number
-  /** Venta de las operaciones en las que participó, entera. */
-  baseSale: number
-  /** total / baseSale * 100. */
-  effectiveRate: number
   share: number
 }
 
@@ -95,7 +96,10 @@ export interface CommissionsReportDetailRow {
   sellerName: string
   role: CommissionSellerRole
   commissionSplit: number | null
-  saleAmount: number
+  /** Solo con `include.sale`. Null = no se pidió incluirlo. */
+  saleAmount: number | null
+  /** Solo con `include.margin`: la ganancia de la operación. */
+  marginAmount: number | null
   percentage: number | null
   amount: number
   amountPaid: number
@@ -103,6 +107,20 @@ export interface CommissionsReportDetailRow {
   datePaid: string | null
   /** true si la operación tiene un segundo vendedor. */
   shared: boolean
+  /** El otro vendedor de la venta compartida, visto desde esta fila. */
+  counterpartName: string | null
+  /** Socio que refirió al cliente, si la venta vino por un referido. */
+  referralPartnerName: string | null
+}
+
+/** Fila de la sección de referidos: lo que le toca al socio, no al vendedor. */
+export interface CommissionsReportReferralPartner {
+  partnerId: string
+  partnerName: string
+  operationsCount: number
+  total: number
+  pending: number
+  paid: number
 }
 
 export interface CommissionsReport {
@@ -117,13 +135,14 @@ export interface CommissionsReport {
     count: number
     operationsCount: number
     sellersCount: number
-    /** Venta de las operaciones del período, deduplicada. */
-    baseSale: number
-    effectiveRate: number
     averagePerSeller: number
     sharedOperations: number
+    /** Operaciones del período que vinieron por un socio referidor. */
+    referredOperations: number
     /** Comisiones del período cuya operación está cancelada (no se cuentan). */
     cancelledRecords: number
+    /** Comisiones del período saldadas sin pago (no se cuentan). */
+    settledRecords: number
     truncated: boolean
     otherCurrency: { currency: string; total: number; count: number } | null
   }
@@ -133,6 +152,12 @@ export interface CommissionsReport {
   byAgency: CommissionsReportAgency[]
   byStatus: CommissionsReportStatusRow[]
   detail: CommissionsReportDetailRow[]
+  /**
+   * Comisiones de los socios referidores del período. Vacío si no se pidieron.
+   * Van en su propia sección y NUNCA suman a `summary.total`: es plata del
+   * socio, no del vendedor.
+   */
+  byReferralPartner: CommissionsReportReferralPartner[]
 }
 
 export interface BuildCommissionsReportParams {
@@ -140,10 +165,15 @@ export interface BuildCommissionsReportParams {
   records: CommissionRecordRow[]
   sellerNames: Map<string, string>
   agencyNames: Map<string, string>
+  /** operationId → referido. Ausente = ninguna venta vino referida. */
+  referralPartners?: Map<string, ReferralInfo>
+  /** Qué datos de la agencia incluir. Default: ninguno. */
+  include?: { sale?: boolean; margin?: boolean; referrals?: boolean }
   currency: string
   dateFrom: string
   dateTo: string
   cancelledRecords?: number
+  settledRecords?: number
   truncated?: boolean
 }
 
@@ -164,14 +194,33 @@ function roleOf(record: CommissionRecordRow): CommissionSellerRole {
   return "unknown"
 }
 
+/**
+ * El otro vendedor de una venta compartida, visto desde esta comisión. Null si
+ * la venta no es compartida o si el vendedor ya no figura en la operación: en
+ * ese caso no hay "socio" que nombrar, sólo una comisión huérfana.
+ */
+function counterpartOf(
+  record: CommissionRecordRow,
+  role: CommissionSellerRole
+): string | null {
+  const op = record.operations
+  if (!op?.seller_secondary_id) return null
+  if (role === "primary") return op.seller_secondary_id
+  if (role === "secondary") return op.seller_id ?? null
+  return null
+}
+
 export function buildCommissionsReport({
   records,
   sellerNames,
   agencyNames,
+  referralPartners,
+  include,
   currency,
   dateFrom,
   dateTo,
   cancelledRecords = 0,
+  settledRecords = 0,
   truncated = false,
 }: BuildCommissionsReportParams): CommissionsReport {
   const inCurrency = records.filter((r) => currencyOf(r) === currency)
@@ -180,16 +229,17 @@ export function buildCommissionsReport({
 
   const total = inCurrency.reduce((acc, r) => acc + Number(r.amount || 0), 0)
 
-  // ---- Venta base del período (deduplicada por operación) ----
-  const saleByOperation = new Map<string, number>()
+  // ---- Operaciones del período (deduplicadas: una compartida es UNA venta) ----
+  const operationIds = new Set<string>()
   const sharedOperationIds = new Set<string>()
+  const referredOperationIds = new Set<string>()
   for (const r of inCurrency) {
     const op = r.operations
     if (!op) continue
-    saleByOperation.set(op.id, Number(op.sale_amount_total || 0))
+    operationIds.add(op.id)
     if (op.seller_secondary_id) sharedOperationIds.add(op.id)
+    if (referralPartners?.has(op.id)) referredOperationIds.add(op.id)
   }
-  const baseSale = Array.from(saleByOperation.values()).reduce((acc, v) => acc + v, 0)
 
   // ---- Por vendedor ----
   interface SellerAcc {
@@ -201,7 +251,6 @@ export function buildCommissionsReport({
     primaryTotal: number
     secondaryTotal: number
     operations: Set<string>
-    saleByOperation: Map<string, number>
   }
   const sellerAcc = new Map<string, SellerAcc>()
 
@@ -217,7 +266,6 @@ export function buildCommissionsReport({
         primaryTotal: 0,
         secondaryTotal: 0,
         operations: new Set<string>(),
-        saleByOperation: new Map<string, number>(),
       }
 
     const amount = Number(r.amount || 0)
@@ -232,35 +280,24 @@ export function buildCommissionsReport({
     if (role === "secondary") acc.secondaryTotal += amount
     else acc.primaryTotal += amount
 
-    if (r.operations) {
-      acc.operations.add(r.operations.id)
-      // Cada vendedor comisiona sobre la venta ENTERA de la operación.
-      acc.saleByOperation.set(r.operations.id, Number(r.operations.sale_amount_total || 0))
-    }
+    if (r.operations) acc.operations.add(r.operations.id)
 
     sellerAcc.set(r.seller_id, acc)
   }
 
   const bySeller: CommissionsReportSeller[] = Array.from(sellerAcc.entries())
-    .map(([sellerId, acc]) => {
-      const sellerBaseSale = Array.from(acc.saleByOperation.values()).reduce(
-        (sum, v) => sum + v,
-        0
-      )
-      return {
-        sellerId,
-        sellerName: sellerNames.get(sellerId) || "Sin vendedor",
-        total: acc.total,
-        pending: acc.pending,
-        paid: acc.paid,
-        amountPaid: acc.amountPaid,
-        count: acc.count,
-        operationsCount: acc.operations.size,
-        primaryTotal: acc.primaryTotal,
-        secondaryTotal: acc.secondaryTotal,
-        baseSale: sellerBaseSale,
-      }
-    })
+    .map(([sellerId, acc]) => ({
+      sellerId,
+      sellerName: sellerNames.get(sellerId) || "Sin vendedor",
+      total: acc.total,
+      pending: acc.pending,
+      paid: acc.paid,
+      amountPaid: acc.amountPaid,
+      count: acc.count,
+      operationsCount: acc.operations.size,
+      primaryTotal: acc.primaryTotal,
+      secondaryTotal: acc.secondaryTotal,
+    }))
     .sort((a, b) => b.total - a.total || a.sellerName.localeCompare(b.sellerName))
     .map((row, i) => ({
       sellerId: row.sellerId,
@@ -274,8 +311,6 @@ export function buildCommissionsReport({
       operationsCount: row.operationsCount,
       primaryTotal: roundMoney(row.primaryTotal),
       secondaryTotal: roundMoney(row.secondaryTotal),
-      baseSale: roundMoney(row.baseSale),
-      effectiveRate: roundMoney(safeDiv(row.total, row.baseSale) * 100, 2),
       share: roundMoney(safeDiv(row.total, total) * 100, 1),
     }))
 
@@ -394,6 +429,8 @@ export function buildCommissionsReport({
     .map((r) => {
       const op = r.operations
       const operationDate = op?.operation_date || ""
+      const role = roleOf(r)
+      const counterpartId = counterpartOf(r, role)
       return {
         id: r.id,
         operationId: r.operation_id,
@@ -403,15 +440,18 @@ export function buildCommissionsReport({
         operationDate,
         sellerId: r.seller_id,
         sellerName: sellerNames.get(r.seller_id) || "Sin vendedor",
-        role: roleOf(r),
+        role,
         commissionSplit: op?.commission_split ?? null,
-        saleAmount: roundMoney(Number(op?.sale_amount_total || 0)),
+        saleAmount: include?.sale ? roundMoney(Number(op?.sale_amount_total || 0)) : null,
+        marginAmount: include?.margin ? roundMoney(Number(op?.margin_amount || 0)) : null,
         percentage: r.percentage != null ? Number(r.percentage) : null,
         amount: roundMoney(Number(r.amount || 0)),
         amountPaid: roundMoney(Number(r.amount_paid || 0)),
         status: statusOf(r.status),
         datePaid: r.date_paid,
         shared: !!op?.seller_secondary_id,
+        counterpartName: counterpartId ? sellerNames.get(counterpartId) || null : null,
+        referralPartnerName: (op && referralPartners?.get(op.id)?.partnerName) || null,
       }
     })
     .sort(
@@ -420,6 +460,46 @@ export function buildCommissionsReport({
         a.fileCode.localeCompare(b.fileCode) ||
         a.sellerName.localeCompare(b.sellerName)
     )
+
+  // ---- Referidos (sección aparte, nunca suman al total del vendedor) ----
+  //
+  // Se recorren las operaciones del período una sola vez: una venta compartida
+  // tiene dos comisiones de vendedor, pero un solo referido, y contarlo dos
+  // veces duplicaría lo que la agencia le debe al socio.
+  const referralAcc = new Map<
+    string,
+    { partnerName: string; total: number; pending: number; paid: number; operations: Set<string> }
+  >()
+  if (include?.referrals && referralPartners) {
+    for (const operationId of Array.from(operationIds)) {
+      const referral = referralPartners.get(operationId)
+      if (!referral) continue
+      const acc =
+        referralAcc.get(referral.partnerId) ?? {
+          partnerName: referral.partnerName,
+          total: 0,
+          pending: 0,
+          paid: 0,
+          operations: new Set<string>(),
+        }
+      acc.total += referral.amount
+      if (statusOf(referral.status) === "PAID") acc.paid += referral.amount
+      else acc.pending += referral.amount
+      acc.operations.add(operationId)
+      referralAcc.set(referral.partnerId, acc)
+    }
+  }
+
+  const byReferralPartner: CommissionsReportReferralPartner[] = Array.from(referralAcc.entries())
+    .map(([partnerId, acc]) => ({
+      partnerId,
+      partnerName: acc.partnerName,
+      operationsCount: acc.operations.size,
+      total: roundMoney(acc.total),
+      pending: roundMoney(acc.pending),
+      paid: roundMoney(acc.paid),
+    }))
+    .sort((a, b) => b.total - a.total || a.partnerName.localeCompare(b.partnerName))
 
   const otherTotal = otherRows.reduce((acc, r) => acc + Number(r.amount || 0), 0)
 
@@ -435,13 +515,13 @@ export function buildCommissionsReport({
         inCurrency.reduce((acc, r) => acc + Number(r.amount_paid || 0), 0)
       ),
       count: inCurrency.length,
-      operationsCount: saleByOperation.size,
+      operationsCount: operationIds.size,
       sellersCount: bySeller.length,
-      baseSale: roundMoney(baseSale),
-      effectiveRate: roundMoney(safeDiv(total, baseSale) * 100, 2),
       averagePerSeller: roundMoney(safeDiv(total, bySeller.length)),
       sharedOperations: sharedOperationIds.size,
+      referredOperations: referredOperationIds.size,
       cancelledRecords,
+      settledRecords,
       truncated,
       otherCurrency: otherRows.length
         ? {
@@ -457,5 +537,6 @@ export function buildCommissionsReport({
     byAgency,
     byStatus,
     detail,
+    byReferralPartner,
   }
 }

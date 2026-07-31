@@ -55,12 +55,14 @@ interface Commission {
     departure_date: string | null
     file_code: string | null
     short_code: string | null
-    margin_amount: number | null
     currency: string | null
-    sale_amount_total: number | null
-    operator_cost: number | null
   } | null
 }
+
+// Esta vista es la del vendedor restringido a lo suyo (ver
+// `app/(dashboard)/commissions/page.tsx`). La venta, el costo del operador y el
+// margen de la operación no llegan a esta pantalla: son de la agencia y
+// `/api/commissions` ya no los manda a quien solo ve sus propias comisiones.
 
 interface SellerCommissionsViewProps {
   userId: string
@@ -423,7 +425,6 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
                     <SortableTableHead sortKey="operation.file_code" sortConfig={balanceSortConfig} onSort={requestBalanceSort}>Operacion</SortableTableHead>
                     <SortableTableHead sortKey="operation.destination" sortConfig={balanceSortConfig} onSort={requestBalanceSort}>Destino</SortableTableHead>
                     <SortableTableHead sortKey="operation.departure_date" sortConfig={balanceSortConfig} onSort={requestBalanceSort}>Fecha Salida</SortableTableHead>
-                    <SortableTableHead sortKey="operation.margin_amount" sortConfig={balanceSortConfig} onSort={requestBalanceSort} className="text-right">Margen</SortableTableHead>
                     <SortableTableHead sortKey="percentage" sortConfig={balanceSortConfig} onSort={requestBalanceSort} className="text-right">% Comision</SortableTableHead>
                     <SortableTableHead sortKey="amount" sortConfig={balanceSortConfig} onSort={requestBalanceSort} className="text-right">Monto</SortableTableHead>
                     <SortableTableHead sortKey="status" sortConfig={balanceSortConfig} onSort={requestBalanceSort}>Estado</SortableTableHead>
@@ -449,14 +450,6 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
                               parseDateOnlyLocal(c.operation.departure_date)!,
                               "dd/MM/yyyy",
                               { locale: es }
-                            )
-                          : "-"}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {c.operation?.margin_amount != null
-                          ? fmtCurrency(
-                              c.operation.margin_amount,
-                              c.operation.currency
                             )
                           : "-"}
                       </TableCell>

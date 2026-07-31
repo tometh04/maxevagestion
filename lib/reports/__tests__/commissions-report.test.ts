@@ -3,9 +3,9 @@
  *
  * Foco en los invariantes que hacen confiable el número que se presenta:
  *  - ARS y USD nunca se suman.
- *  - Una operación compartida no infla la venta base del período, pero sí cuenta
- *    entera para cada uno de los dos vendedores.
+ *  - Una operación compartida es UNA venta con dos comisiones.
  *  - El mes lo define la fecha de venta, no la de cálculo.
+ *  - El reporte no expone la economía del paquete (VIB-94).
  */
 
 import { buildCommissionsReport } from "@/lib/reports/commissions-report"
@@ -39,6 +39,7 @@ function record(
       operation_date: "2026-07-10",
       departure_date: "2026-09-01",
       sale_amount_total: 10000,
+      margin_amount: 2000,
       sale_currency: "ARS",
       currency: "ARS",
       status: "CONFIRMED",
@@ -60,6 +61,16 @@ const agencyNames = new Map([
   ["ag-1", "Rosario"],
   ["ag-2", "Madero"],
 ])
+
+/** [operationId, partnerId, partnerName, amount] → mapa de referidos. */
+function referrals(rows: Array<[string, string, string, number]>) {
+  return new Map(
+    rows.map(([operationId, partnerId, partnerName, amount]) => [
+      operationId,
+      { partnerId, partnerName, amount, status: "PENDING" },
+    ])
+  )
+}
 
 function build(records: CommissionRecordRow[], overrides: Partial<{ currency: string; dateFrom: string; dateTo: string }> = {}) {
   return buildCommissionsReport({
@@ -88,7 +99,7 @@ describe("buildCommissionsReport", () => {
     expect(report.summary.otherCurrency).toEqual({ currency: "USD", total: 80, count: 1 })
   })
 
-  it("operación compartida: la venta base cuenta una vez en el total y entera por vendedor", () => {
+  it("operación compartida: una sola venta en el conteo, dos comisiones", () => {
     const shared = {
       id: "op-shared",
       sale_amount_total: 20000,
@@ -101,20 +112,142 @@ describe("buildCommissionsReport", () => {
       record({ amount: 1000, seller_id: "seller-b", operations: shared }),
     ])
 
-    // El período vendió 20.000 una sola vez, no 40.000.
-    expect(report.summary.baseSale).toBe(20000)
+    // El período vendió una operación, no dos.
     expect(report.summary.operationsCount).toBe(1)
     expect(report.summary.sharedOperations).toBe(1)
     expect(report.summary.total).toBe(2000)
-    // 2000 sobre 20000 = 10% efectivo del período.
-    expect(report.summary.effectiveRate).toBe(10)
+    expect(report.summary.count).toBe(2)
+  })
 
-    // Cada vendedor comisionó sobre la venta entera.
-    const ana = report.bySeller.find((s) => s.sellerId === "seller-a")!
-    const bruno = report.bySeller.find((s) => s.sellerId === "seller-b")!
-    expect(ana.baseSale).toBe(20000)
-    expect(bruno.baseSale).toBe(20000)
-    expect(ana.effectiveRate).toBe(5)
+  it("no expone la economía del paquete: ni venta base ni % efectivo (VIB-94)", () => {
+    const report = build([record({ amount: 1000 })])
+
+    // El % de la comisión se calcula sobre el MARGEN, no sobre la venta: publicar
+    // un "% efectivo" sobre la venta mostraba tres números que no cerraban.
+    expect(report.summary).not.toHaveProperty("baseSale")
+    expect(report.summary).not.toHaveProperty("effectiveRate")
+    expect(report.bySeller[0]).not.toHaveProperty("baseSale")
+    expect(report.bySeller[0]).not.toHaveProperty("effectiveRate")
+  })
+
+  it("nombra al socio de una venta compartida desde las dos filas", () => {
+    const shared = {
+      id: "op-shared",
+      seller_id: "seller-a",
+      seller_secondary_id: "seller-b",
+    }
+    const report = build([
+      record({ amount: 700, seller_id: "seller-a", operations: shared }),
+      record({ amount: 300, seller_id: "seller-b", operations: shared }),
+    ])
+
+    const ana = report.detail.find((d) => d.sellerId === "seller-a")!
+    const bruno = report.detail.find((d) => d.sellerId === "seller-b")!
+    expect(ana.counterpartName).toBe("Bruno")
+    expect(bruno.counterpartName).toBe("Ana")
+  })
+
+  it("no inventa socio en una venta propia ni en una comisión huérfana", () => {
+    const report = build([
+      record({ amount: 500, seller_id: "seller-a" }),
+      record({
+        amount: 400,
+        seller_id: "seller-c",
+        operations: { id: "op-2", seller_id: "seller-a", seller_secondary_id: "seller-b" },
+      }),
+    ])
+
+    const propia = report.detail.find((d) => d.sellerId === "seller-a")!
+    expect(propia.shared).toBe(false)
+    expect(propia.counterpartName).toBeNull()
+
+    // Carla ya no figura en la operación: no es socia de nadie.
+    const huerfana = report.detail.find((d) => d.sellerId === "seller-c")!
+    expect(huerfana.role).toBe("unknown")
+    expect(huerfana.counterpartName).toBeNull()
+  })
+
+  it("marca las ventas que vinieron por un socio referidor", () => {
+    const report = buildCommissionsReport({
+      records: [
+        record({ amount: 1000, operations: { id: "op-ref" } }),
+        record({ amount: 500, operations: { id: "op-directa" } }),
+      ],
+      sellerNames,
+      agencyNames,
+      referralPartners: referrals([["op-ref", "p-1", "Estudio Contable Díaz", 300]]),
+      currency: "ARS",
+      dateFrom: "2026-07-01",
+      dateTo: "2026-07-31",
+    })
+
+    expect(report.summary.referredOperations).toBe(1)
+    expect(
+      report.detail.find((d) => d.operationId === "op-ref")!.referralPartnerName
+    ).toBe("Estudio Contable Díaz")
+    expect(
+      report.detail.find((d) => d.operationId === "op-directa")!.referralPartnerName
+    ).toBeNull()
+    // La comisión del referidor se liquida aparte: no entra en el total.
+    expect(report.summary.total).toBe(1500)
+    // Y la sección con montos es opt-in: sin pedirla, no viaja.
+    expect(report.byReferralPartner).toEqual([])
+  })
+
+  it("la sección de referidos no duplica una venta compartida", () => {
+    // La operación compartida tiene DOS comisiones de vendedor pero UN referido:
+    // contarlo dos veces inflaría al doble lo que la agencia le debe al socio.
+    const shared = {
+      id: "op-shared",
+      seller_id: "seller-a",
+      seller_secondary_id: "seller-b",
+    }
+    const report = buildCommissionsReport({
+      records: [
+        record({ amount: 700, seller_id: "seller-a", operations: shared }),
+        record({ amount: 300, seller_id: "seller-b", operations: shared }),
+      ],
+      sellerNames,
+      agencyNames,
+      referralPartners: referrals([["op-shared", "p-1", "Marcela Suárez", 250]]),
+      include: { referrals: true },
+      currency: "ARS",
+      dateFrom: "2026-07-01",
+      dateTo: "2026-07-31",
+    })
+
+    expect(report.byReferralPartner).toEqual([
+      {
+        partnerId: "p-1",
+        partnerName: "Marcela Suárez",
+        operationsCount: 1,
+        total: 250,
+        pending: 250,
+        paid: 0,
+      },
+    ])
+    // Sigue sin sumar al total del vendedor.
+    expect(report.summary.total).toBe(1000)
+  })
+
+  it("venta y ganancia del paquete solo viajan si se piden", () => {
+    const records = [record({ amount: 1000 })]
+    const base = {
+      records,
+      sellerNames,
+      agencyNames,
+      currency: "ARS",
+      dateFrom: "2026-07-01",
+      dateTo: "2026-07-31",
+    }
+
+    const sinPedir = buildCommissionsReport(base)
+    expect(sinPedir.detail[0].saleAmount).toBeNull()
+    expect(sinPedir.detail[0].marginAmount).toBeNull()
+
+    const pedido = buildCommissionsReport({ ...base, include: { sale: true, margin: true } })
+    expect(pedido.detail[0].saleAmount).toBe(10000)
+    expect(pedido.detail[0].marginAmount).toBe(2000)
   })
 
   it("distingue vendedor primario de secundario", () => {
@@ -246,7 +379,6 @@ describe("buildCommissionsReport", () => {
     ])
 
     expect(report.summary.total).toBe(0)
-    expect(report.summary.effectiveRate).toBe(0)
     expect(report.summary.averagePerSeller).toBe(0)
     expect(report.bySeller).toEqual([])
     expect(report.byStatus.every((s) => s.share === 0)).toBe(true)

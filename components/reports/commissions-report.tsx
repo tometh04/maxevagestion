@@ -1,12 +1,13 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { Fragment, useState, useEffect, useCallback, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Select,
   SelectContent,
@@ -45,8 +46,6 @@ interface ReportSeller {
   operationsCount: number
   primaryTotal: number
   secondaryTotal: number
-  baseSale: number
-  effectiveRate: number
   share: number
 }
 
@@ -58,6 +57,8 @@ interface ReportPayload {
     agencyName: string | null
     sellerName: string | null
     ownDataOnly: boolean
+    /** Lo resuelve el servidor: a un vendedor le fuerza todo en false. */
+    include: { sale: boolean; margin: boolean; referrals: boolean }
   }
   report: {
     currency: string
@@ -70,11 +71,11 @@ interface ReportPayload {
       count: number
       operationsCount: number
       sellersCount: number
-      baseSale: number
-      effectiveRate: number
       averagePerSeller: number
       sharedOperations: number
+      referredOperations: number
       cancelledRecords: number
+      settledRecords: number
       truncated: boolean
       otherCurrency: { currency: string; total: number; count: number } | null
     }
@@ -108,13 +109,25 @@ interface ReportPayload {
       fileCode: string
       destination: string
       operationDate: string
+      sellerId: string
       sellerName: string
       role: string
-      saleAmount: number
+      saleAmount: number | null
+      marginAmount: number | null
       percentage: number | null
       amount: number
       status: string
       shared: boolean
+      counterpartName: string | null
+      referralPartnerName: string | null
+    }>
+    byReferralPartner: Array<{
+      partnerId: string
+      partnerName: string
+      operationsCount: number
+      total: number
+      pending: number
+      paid: number
     }>
   }
 }
@@ -136,12 +149,22 @@ export function CommissionsReport({ sellers, agencies }: CommissionsReportProps)
   const [sellerId, setSellerId] = useState("ALL")
   const [agencyId, setAgencyId] = useState("ALL")
 
+  // Datos de la agencia, opt-in. El default es la vista que se le puede pasar a
+  // un vendedor tal cual: solo lo que ganó él. El servidor los ignora si quien
+  // pide el reporte solo puede ver lo suyo.
+  const [includeSale, setIncludeSale] = useState(false)
+  const [includeMargin, setIncludeMargin] = useState(false)
+  const [includeReferrals, setIncludeReferrals] = useState(false)
+
   const queryString = useMemo(() => {
     const params = new URLSearchParams({ dateFrom, dateTo, currency })
     if (sellerId !== "ALL") params.set("sellerId", sellerId)
     if (agencyId !== "ALL") params.set("agencyId", agencyId)
+    if (includeSale) params.set("includeSale", "true")
+    if (includeMargin) params.set("includeMargin", "true")
+    if (includeReferrals) params.set("includeReferrals", "true")
     return params.toString()
-  }, [dateFrom, dateTo, currency, sellerId, agencyId])
+  }, [dateFrom, dateTo, currency, sellerId, agencyId, includeSale, includeMargin, includeReferrals])
 
   const fetchReport = useCallback(async () => {
     setLoading(true)
@@ -230,9 +253,45 @@ export function CommissionsReport({ sellers, agencies }: CommissionsReportProps)
 
   const report = data?.report
   const summary = report?.summary
-  const detail = report?.detail ?? []
-  const visibleDetail = detail.slice(0, detailLimit)
+  const detail = useMemo(() => report?.detail ?? [], [report])
+  const visibleDetail = useMemo(() => detail.slice(0, detailLimit), [detail, detailLimit])
   const months = report?.byMonth ?? []
+
+  // El detalle se agrupa por vendedor, en el mismo orden que la tabla de arriba:
+  // el reporte se le muestra a cada vendedor y lo suyo tiene que leerse junto.
+  // El total del grupo es el del período completo (viene de `bySeller`), así que
+  // cuando la paginación corta el grupo se aclara cuántas filas se están viendo.
+  const groupedDetail = useMemo(() => {
+    const byId = new Map<string, typeof visibleDetail>()
+    for (const row of visibleDetail) {
+      const list = byId.get(row.sellerId) || []
+      list.push(row)
+      byId.set(row.sellerId, list)
+    }
+    const ordered = (report?.bySeller ?? [])
+      .filter((s) => byId.has(s.sellerId))
+      .map((s) => ({
+        sellerId: s.sellerId,
+        sellerName: s.sellerName,
+        color: s.color,
+        total: s.total,
+        count: s.count,
+        rows: byId.get(s.sellerId)!,
+      }))
+    // Vendedores con comisiones en el detalle pero fuera de `bySeller` (defensivo).
+    for (const [sellerId, rows] of Array.from(byId.entries())) {
+      if (ordered.some((g) => g.sellerId === sellerId)) continue
+      ordered.push({
+        sellerId,
+        sellerName: rows[0]?.sellerName || "Sin vendedor",
+        color: "hsl(var(--muted-foreground))",
+        total: rows.reduce((acc, r) => acc + r.amount, 0),
+        count: rows.length,
+        rows,
+      })
+    }
+    return ordered
+  }, [visibleDetail, report?.bySeller])
 
   return (
     <div className="space-y-6">
@@ -341,6 +400,38 @@ export function CommissionsReport({ sellers, agencies }: CommissionsReportProps)
             </Button>
           </div>
 
+          {/*
+            Lo que se agrega es información de la agencia. Por defecto no va
+            ninguna: así el reporte se le puede pasar al vendedor tal cual, con
+            lo que ganó él y nada más. Si el usuario solo puede ver sus propias
+            comisiones no se muestran, porque el servidor los ignora igual.
+          */}
+          {!data?.filters.ownDataOnly && (
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-lg border border-dashed p-3">
+              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Agregar al reporte
+              </span>
+              <IncludeToggle
+                id="com-inc-sale"
+                label="Monto de la venta"
+                checked={includeSale}
+                onCheckedChange={setIncludeSale}
+              />
+              <IncludeToggle
+                id="com-inc-margin"
+                label="Ganancia de la operación"
+                checked={includeMargin}
+                onCheckedChange={setIncludeMargin}
+              />
+              <IncludeToggle
+                id="com-inc-referrals"
+                label="Comisiones de referidos"
+                checked={includeReferrals}
+                onCheckedChange={setIncludeReferrals}
+              />
+            </div>
+          )}
+
           <p className="text-xs text-muted-foreground">
             Cada comisión se imputa al mes de la fecha de venta de la operación, no al de su
             cálculo.
@@ -399,9 +490,9 @@ export function CommissionsReport({ sellers, agencies }: CommissionsReportProps)
               hint={`${(report!.byStatus.find((s) => s.status === "PAID")?.share ?? 0).toFixed(1)}% del total`}
             />
             <KpiTile
-              label="Sobre venta de"
-              value={money(summary!.baseSale)}
-              hint={`${summary!.effectiveRate.toFixed(2)}% efectivo · ${summary!.sellersCount} vendedores`}
+              label="Promedio por vendedor"
+              value={money(summary!.averagePerSeller)}
+              hint={`${summary!.sellersCount} vendedor(es) con comisión en el período`}
             />
           </div>
 
@@ -419,9 +510,21 @@ export function CommissionsReport({ sellers, agencies }: CommissionsReportProps)
                 {summary!.sharedOperations} operación(es) compartidas entre dos vendedores.
               </span>
             )}
+            {summary!.referredOperations > 0 && (
+              <span>
+                {summary!.referredOperations} vinieron por un socio referidor; esa comisión se
+                liquida aparte y no está incluida acá.
+              </span>
+            )}
             {summary!.cancelledRecords > 0 && (
               <span>
                 {summary!.cancelledRecords} comisión(es) de operaciones canceladas quedaron fuera.
+              </span>
+            )}
+            {summary!.settledRecords > 0 && (
+              <span>
+                {summary!.settledRecords} comisión(es) saldadas sin pago quedaron fuera: no son
+                deuda.
               </span>
             )}
             {summary!.truncated && (
@@ -546,7 +649,6 @@ export function CommissionsReport({ sellers, agencies }: CommissionsReportProps)
                       <TableHead className="text-right">Por pagar</TableHead>
                       <TableHead className="text-right">Pagadas</TableHead>
                       <TableHead className="text-right">Total</TableHead>
-                      <TableHead className="text-right w-[110px]">% efectivo</TableHead>
                       <TableHead className="w-[160px]">% del total</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -579,9 +681,6 @@ export function CommissionsReport({ sellers, agencies }: CommissionsReportProps)
                         </TableCell>
                         <TableCell className="text-right font-medium tabular-nums">
                           {money(seller.total)}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums text-muted-foreground">
-                          {seller.effectiveRate.toFixed(2)}%
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
@@ -616,9 +715,6 @@ export function CommissionsReport({ sellers, agencies }: CommissionsReportProps)
                       </TableCell>
                       <TableCell className="text-right font-semibold tabular-nums">
                         {money(summary!.total)}
-                      </TableCell>
-                      <TableCell className="text-right font-semibold tabular-nums">
-                        {summary!.effectiveRate.toFixed(2)}%
                       </TableCell>
                       <TableCell className="text-right font-semibold tabular-nums">100%</TableCell>
                     </TableRow>
@@ -691,9 +787,10 @@ export function CommissionsReport({ sellers, agencies }: CommissionsReportProps)
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Detalle de comisiones</CardTitle>
+              <CardTitle className="text-base">Detalle por vendedor</CardTitle>
               <p className="text-sm text-muted-foreground">
-                {detail.length} comisión(es), de la venta más reciente a la más antigua.
+                Qué vendió cada uno y cuánto comisionó, de la venta más reciente a la más
+                antigua.
               </p>
             </CardHeader>
             <CardContent className="p-0">
@@ -703,44 +800,83 @@ export function CommissionsReport({ sellers, agencies }: CommissionsReportProps)
                     <TableRow>
                       <TableHead className="w-[110px]">Fecha venta</TableHead>
                       <TableHead>File</TableHead>
-                      <TableHead>Vendedor</TableHead>
-                      <TableHead>Rol</TableHead>
-                      <TableHead className="text-right">Venta</TableHead>
-                      <TableHead className="text-right w-[70px]">%</TableHead>
+                      <TableHead>Destino</TableHead>
+                      <TableHead>Tipo de venta</TableHead>
                       <TableHead>Estado</TableHead>
                       <TableHead className="text-right">Comisión</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {visibleDetail.map((row) => (
-                      <TableRow key={row.id}>
-                        <TableCell className="tabular-nums text-muted-foreground">
-                          {formatShortDate(row.operationDate)}
-                        </TableCell>
-                        <TableCell className="font-medium">{row.fileCode}</TableCell>
-                        <TableCell>{row.sellerName}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {row.role === "primary"
-                            ? "Principal"
-                            : row.role === "secondary"
-                              ? "Socio"
-                              : "-"}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {money(row.saleAmount)}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums text-muted-foreground">
-                          {row.percentage != null ? `${row.percentage}%` : "-"}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={row.status === "PAID" ? "outline" : "secondary"}>
-                            {row.status === "PAID" ? "Pagada" : "Por pagar"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right font-medium tabular-nums">
-                          {money(row.amount)}
-                        </TableCell>
-                      </TableRow>
+                    {groupedDetail.map((group) => (
+                      <Fragment key={group.sellerId}>
+                        <TableRow className="bg-muted/50 hover:bg-muted/50">
+                          <TableCell colSpan={4} className="py-2">
+                            <div className="flex items-center gap-2">
+                              <span
+                                className="inline-block h-3 w-3 rounded-sm shrink-0"
+                                style={{ backgroundColor: group.color }}
+                                aria-hidden="true"
+                              />
+                              <span className="font-semibold">{group.sellerName}</span>
+                              <span className="text-xs text-muted-foreground">
+                                {group.rows.length < group.count
+                                  ? `${group.rows.length} de ${group.count} comisiones`
+                                  : `${group.count} comisión${group.count === 1 ? "" : "es"}`}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="py-2 text-right text-xs text-muted-foreground">
+                            Total
+                          </TableCell>
+                          <TableCell className="py-2 text-right font-semibold tabular-nums">
+                            {money(group.total)}
+                          </TableCell>
+                        </TableRow>
+                        {group.rows.map((row) => (
+                          <TableRow key={row.id}>
+                            <TableCell className="tabular-nums text-muted-foreground">
+                              {formatShortDate(row.operationDate)}
+                            </TableCell>
+                            <TableCell className="font-medium">{row.fileCode}</TableCell>
+                            <TableCell>
+                              <span>{row.destination}</span>
+                              {/*
+                                Los datos opcionales van como sublínea y no como
+                                columnas nuevas: mantiene la fila legible y hace
+                                que tildar un checkbox no reacomode la tabla.
+                              */}
+                              {(row.saleAmount != null ||
+                                row.marginAmount != null ||
+                                row.referralPartnerName) && (
+                                <span className="block text-xs text-muted-foreground">
+                                  {[
+                                    row.saleAmount != null ? `Venta ${money(row.saleAmount)}` : "",
+                                    row.marginAmount != null
+                                      ? `Ganancia ${money(row.marginAmount)}`
+                                      : "",
+                                    row.referralPartnerName
+                                      ? `Cliente referido por ${row.referralPartnerName}`
+                                      : "",
+                                  ]
+                                    .filter(Boolean)
+                                    .join("   ·   ")}
+                                </span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {saleTypeLabel(row)}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={row.status === "PAID" ? "outline" : "secondary"}>
+                                {row.status === "PAID" ? "Pagada" : "Por pagar"}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right font-medium tabular-nums">
+                              {money(row.amount)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </Fragment>
                     ))}
                   </TableBody>
                 </Table>
@@ -758,8 +894,97 @@ export function CommissionsReport({ sellers, agencies }: CommissionsReportProps)
               )}
             </CardContent>
           </Card>
+
+          {/*
+            Sección aparte y fuera de todos los totales de arriba: la comisión
+            del referidor es plata del socio que trajo el cliente, no sale de lo
+            que cobra el vendedor ni se le informa a él.
+          */}
+          {report!.byReferralPartner.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Comisiones de referidos</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Lo que le corresponde a cada socio que trajo un cliente. No está incluido en
+                  los totales de arriba.
+                </p>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Socio referidor</TableHead>
+                        <TableHead className="text-right w-[70px]">Ops</TableHead>
+                        <TableHead className="text-right">Por pagar</TableHead>
+                        <TableHead className="text-right">Pagadas</TableHead>
+                        <TableHead className="text-right">Total</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {report!.byReferralPartner.map((partner) => (
+                        <TableRow key={partner.partnerId}>
+                          <TableCell className="font-medium">{partner.partnerName}</TableCell>
+                          <TableCell className="text-right tabular-nums text-muted-foreground">
+                            {partner.operationsCount}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {money(partner.pending)}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums text-success">
+                            {money(partner.paid)}
+                          </TableCell>
+                          <TableCell className="text-right font-medium tabular-nums">
+                            {money(partner.total)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                    <TableFooter>
+                      <TableRow>
+                        <TableCell className="font-semibold">Total referidos</TableCell>
+                        <TableCell />
+                        <TableCell className="text-right font-semibold tabular-nums">
+                          {money(
+                            report!.byReferralPartner.reduce((acc, p) => acc + p.pending, 0)
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right font-semibold tabular-nums">
+                          {money(report!.byReferralPartner.reduce((acc, p) => acc + p.paid, 0))}
+                        </TableCell>
+                        <TableCell className="text-right font-semibold tabular-nums">
+                          {money(report!.byReferralPartner.reduce((acc, p) => acc + p.total, 0))}
+                        </TableCell>
+                      </TableRow>
+                    </TableFooter>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </>
       )}
+    </div>
+  )
+}
+
+function IncludeToggle({
+  id,
+  label,
+  checked,
+  onCheckedChange,
+}: {
+  id: string
+  label: string
+  checked: boolean
+  onCheckedChange: (value: boolean) => void
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <Checkbox id={id} checked={checked} onCheckedChange={(v) => onCheckedChange(v === true)} />
+      <Label htmlFor={id} className="text-sm font-normal cursor-pointer">
+        {label}
+      </Label>
     </div>
   )
 }
@@ -811,6 +1036,17 @@ function ReportSkeleton() {
       <Skeleton className="h-[280px] w-full" />
     </div>
   )
+}
+
+/** Origen de la venta: propia, compartida con otro vendedor, o como socio. */
+function saleTypeLabel(row: {
+  role: string
+  shared: boolean
+  counterpartName: string | null
+}): string {
+  if (!row.shared) return "Propia"
+  if (row.role === "secondary") return `Socio de ${row.counterpartName || "otro vendedor"}`
+  return `Compartida con ${row.counterpartName || "otro vendedor"}`
 }
 
 /** "2026-07-14" -> "14/07/2026" sin pasar por Date (evita corrimiento UTC). */

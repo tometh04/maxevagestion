@@ -44,6 +44,8 @@ const fmtMoney = (value: number, currency: (typeof CURRENCIES)[number]) =>
 export function CommissionsPageClient({ sellerId }: CommissionsPageClientProps) {
   const [commissions, setCommissions] = useState<Commission[]>([])
   const [monthlySummary, setMonthlySummary] = useState<MonthlySummary[]>([])
+  // Lo decide el servidor: a un vendedor no le llega el margen de la operación.
+  const [canViewOperationEconomics, setCanViewOperationEconomics] = useState(false)
   const [loading, setLoading] = useState(false)
   const [statusFilter, setStatusFilter] = useState("ALL")
   const [monthFilter, setMonthFilter] = useState("ALL")
@@ -64,6 +66,7 @@ export function CommissionsPageClient({ sellerId }: CommissionsPageClientProps) 
       const data = await response.json()
       setCommissions(data.commissions || [])
       setMonthlySummary(data.monthlySummary || [])
+      setCanViewOperationEconomics(!!data.canViewOperationEconomics)
     } catch (error) {
       console.error("Error fetching commissions:", error)
     } finally {
@@ -224,6 +227,7 @@ export function CommissionsPageClient({ sellerId }: CommissionsPageClientProps) 
         commissions={commissions}
         isLoading={loading}
         emptyMessage="No hay comisiones con los filtros seleccionados"
+        showMargin={canViewOperationEconomics}
       />
     </div>
   )

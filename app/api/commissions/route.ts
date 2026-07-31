@@ -98,6 +98,15 @@ export async function GET(request: Request) {
     }
     // Si es admin y no hay sellerId o sellerId=ALL, no filtra → trae todos
 
+    // Comisiones saldadas en un cierre administrativo (VIB-94): quedan fuera por
+    // defecto. No son deuda ni pago, y si aparecieran acá volverían a sumar en
+    // "por pagar", que es justo lo que el cierre vino a limpiar. Con
+    // `includeSettled=true` se pueden consultar para auditar.
+    const includeSettled = searchParams.get("includeSettled") === "true"
+    if (!includeSettled) {
+      query = query.is("settled_at", null)
+    }
+
     // Filtros
     if (status && status !== "ALL") {
       query = query.eq("status", status.toUpperCase())
@@ -226,10 +235,18 @@ export async function GET(request: Request) {
           file_code: cr.operations.file_code || "",
           destination: cr.operations.destination || "",
           departure_date: cr.operations.departure_date || "",
-          sale_amount_total: parseFloat(cr.operations.sale_amount_total || 0),
-          operator_cost: parseFloat(cr.operations.operator_cost || 0),
-          margin_amount: parseFloat(cr.operations.margin_amount || 0),
           currency: cr.operations.sale_currency || "USD",
+          // La economía del paquete (venta, costo del operador y margen) es de la
+          // agencia, no del vendedor: quien solo puede ver lo suyo recibe su
+          // comisión y nada más (VIB-94). Ocultarlo únicamente en la tabla no
+          // alcanzaba: viajaba en el JSON de esta misma respuesta.
+          ...(canViewAll
+            ? {
+                sale_amount_total: parseFloat(cr.operations.sale_amount_total || 0),
+                operator_cost: parseFloat(cr.operations.operator_cost || 0),
+                margin_amount: parseFloat(cr.operations.margin_amount || 0),
+              }
+            : {}),
         } : null,
       }
     })
@@ -267,6 +284,8 @@ export async function GET(request: Request) {
       commissions,
       totals,
       monthlySummary,
+      /** false → la respuesta no trae venta/costo/margen de la operación. */
+      canViewOperationEconomics: canViewAll,
     })
 
   } catch (error: any) {

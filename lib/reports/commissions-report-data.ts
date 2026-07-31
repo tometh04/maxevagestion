@@ -8,6 +8,7 @@
  */
 
 import { fetchCommissionRecords } from "@/lib/commissions/fetch-commission-records"
+import type { CommissionsReportInclude } from "@/lib/reports/commissions-report-request"
 import {
   buildCommissionsReport,
   type CommissionsReport,
@@ -24,6 +25,8 @@ export interface CommissionsReportFilters {
   sellerName: string | null
   /** true si el usuario solo puede ver sus propias comisiones. */
   ownDataOnly: boolean
+  /** Qué datos de la agencia quedaron incluidos (los resuelve el servidor). */
+  include: CommissionsReportInclude
 }
 
 export interface CommissionsReportPayload {
@@ -42,6 +45,13 @@ export interface BuildCommissionsReportDataParams {
   sellerId?: string | null
   /** Permiso `commissions.ownDataOnly`: fuerza el reporte a ese vendedor. */
   ownDataOnlyUserId?: string | null
+  include?: CommissionsReportInclude
+}
+
+const NOTHING_INCLUDED: CommissionsReportInclude = {
+  sale: false,
+  margin: false,
+  referrals: false,
 }
 
 export async function buildCommissionsReportData(
@@ -55,6 +65,7 @@ export async function buildCommissionsReportData(
     currency,
     agencyIds = [],
     ownDataOnlyUserId = null,
+    include = NOTHING_INCLUDED,
   } = params
 
   const agencyId = params.agencyId && params.agencyId !== "ALL" ? params.agencyId : null
@@ -64,8 +75,15 @@ export async function buildCommissionsReportData(
   // reporte de otro cambiando el query param.
   const sellerId = ownDataOnlyUserId ?? requestedSellerId
 
-  const { records, sellerNames, agencyNames, cancelledRecords, truncated } =
-    await fetchCommissionRecords({
+  const {
+    records,
+    sellerNames,
+    agencyNames,
+    referralPartners,
+    cancelledRecords,
+    settledRecords,
+    truncated,
+  } = await fetchCommissionRecords({
       supabase,
       orgId,
       dateFrom,
@@ -105,10 +123,13 @@ export async function buildCommissionsReportData(
     records,
     sellerNames,
     agencyNames,
+    referralPartners,
+    include,
     currency,
     dateFrom,
     dateTo,
     cancelledRecords,
+    settledRecords,
     truncated,
   })
 
@@ -122,6 +143,7 @@ export async function buildCommissionsReportData(
       sellerId,
       sellerName,
       ownDataOnly: !!ownDataOnlyUserId,
+      include,
     },
     report,
   }

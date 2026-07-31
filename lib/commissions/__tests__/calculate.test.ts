@@ -161,6 +161,7 @@ interface FakeRecord {
   status?: string | null
   amount?: number | null
   amount_paid?: number | null
+  settled_at?: string | null
 }
 
 function createSupabase(existing: FakeRecord[]) {
@@ -225,6 +226,29 @@ const planOf = (entries: Array<[string, "PRIMARY" | "SECONDARY", number, number]
 })
 
 describe("applyCommissionPlan", () => {
+  it("no revive una comisión saldada: ni la recalcula ni la borra (VIB-94)", async () => {
+    // Deuda vieja cerrada sin pago. Si el recálculo la pisara, la agencia
+    // volvería a deberla apenas alguien edite la operación.
+    const { client, updates, deletes } = createSupabase([
+      { id: "cr-vieja", seller_id: "jose", status: "PENDING", amount: 100, settled_at: "2026-07-31T00:00:00Z" },
+    ])
+
+    const result = await applyCommissionPlan(client, baseOp(), planOf([["jose", "PRIMARY", 10, 999]]))
+
+    expect(updates).toEqual([])
+    expect(result.skipped).toEqual([{ sellerId: "jose", reason: "settled" }])
+
+    // Y tampoco se borra cuando el vendedor deja de estar en la operación.
+    const { client: client2, deletes: deletes2 } = createSupabase([
+      { id: "cr-vieja", seller_id: "ex-vendedor", status: "PENDING", amount: 100, settled_at: "2026-07-31T00:00:00Z" },
+    ])
+    const result2 = await applyCommissionPlan(client2, baseOp(), planOf([["jose", "PRIMARY", 10, 50]]))
+
+    expect(deletes).toEqual([])
+    expect(deletes2).toEqual([])
+    expect(result2.skipped).toEqual([{ sellerId: "ex-vendedor", reason: "settled" }])
+  })
+
   it("crea los registros que faltan, con org_id", async () => {
     const { client, inserts } = createSupabase([])
 

@@ -13,10 +13,35 @@ import {
   type ResolvedReportRequest,
 } from "@/lib/reports/report-request"
 
+const boolParam = z
+  .enum(["true", "false"])
+  .optional()
+  .transform((value) => value === "true")
+
 const commissionsQuerySchema = baseReportQuerySchema.extend({
   currency: z.enum(["ARS", "USD"]).optional(),
   sellerId: z.string().uuid().optional(),
+  // Qué información de la agencia se incluye. Default: nada (VIB-94).
+  includeSale: boolParam,
+  includeMargin: boolParam,
+  includeReferrals: boolParam,
 })
+
+/**
+ * Datos del paquete que el reporte puede incluir, a pedido.
+ *
+ * Pedido del cliente: la dirección necesita verlo todo, pero el mismo reporte
+ * se le entrega a cada vendedor y ahí solo corresponde lo que ganó él. Por eso
+ * es opt-in y no un permiso nuevo: el default no muestra nada de la agencia.
+ */
+export interface CommissionsReportInclude {
+  /** Monto de venta de la operación. */
+  sale: boolean
+  /** Ganancia de la operación (margen), la base sobre la que se comisiona. */
+  margin: boolean
+  /** Sección con la comisión que le toca a cada socio referidor. */
+  referrals: boolean
+}
 
 export interface CommissionsReportRequestParams {
   dateFrom: string
@@ -25,6 +50,7 @@ export interface CommissionsReportRequestParams {
   agencyId: string | null
   sellerId: string | null
   ownDataOnlyUserId: string | null
+  include: CommissionsReportInclude
 }
 
 export type ResolvedCommissionsReportRequest =
@@ -51,6 +77,16 @@ export async function resolveCommissionsReportRequest(
 
   if (!resolved.ok) return resolved
 
+  // Un vendedor limitado a lo suyo no puede destildar el checkbox desde el query
+  // string: la venta, la ganancia y los referidos son de la agencia. El guard va
+  // acá, en el servidor, no en la pantalla que dibuja los checkboxes.
+  const restricted = !!resolved.ownDataOnlyUserId
+  const include = {
+    sale: !restricted && resolved.params.includeSale,
+    margin: !restricted && resolved.params.includeMargin,
+    referrals: !restricted && resolved.params.includeReferrals,
+  }
+
   return {
     ok: true,
     supabase: resolved.supabase,
@@ -63,6 +99,7 @@ export async function resolveCommissionsReportRequest(
       agencyId: resolved.params.agencyId,
       sellerId: resolved.params.sellerId ?? null,
       ownDataOnlyUserId: resolved.ownDataOnlyUserId,
+      include,
     },
   }
 }

@@ -21,10 +21,25 @@ import {
   fmtDateTime,
   fmtMoney,
   fmtPct,
+  hexToRgb,
 } from "@/lib/pdf/report-kit"
 
-const { PRIMARY, DARK, GRAY } = REPORT_COLORS
-const { MARGIN, CONTENT_W, RIGHT } = REPORT_GEOMETRY
+const { PRIMARY, DARK, GRAY, LIGHT, WHITE, ZEBRA } = REPORT_COLORS
+const { MARGIN, CONTENT_W, RIGHT, FOOTER_TOP } = REPORT_GEOMETRY
+
+/** Color del cuadradito cuando el vendedor no está en `bySeller` (sin total). */
+const FALLBACK_SWATCH = "#94A3B8"
+
+/** Etiqueta de origen de la venta, tal como se lee en el detalle. */
+function saleTypeLabel(row: {
+  role: string
+  shared: boolean
+  counterpartName: string | null
+}): string {
+  if (!row.shared) return "Propia"
+  if (row.role === "secondary") return `Socio de ${row.counterpartName || "otro vendedor"}`
+  return `Compartida con ${row.counterpartName || "otro vendedor"}`
+}
 
 /** Máximo de filas del detalle. Si se supera, el PDF lo dice explícitamente. */
 const MAX_DETAIL_ROWS = 1000
@@ -88,11 +103,9 @@ export function generateCommissionsReportPdf({
       hint: `${fmtPct(report.byStatus.find((s) => s.status === "PAID")?.share ?? 0)} del total`,
     },
     {
-      label: "Sobre venta de",
-      value: money(report.summary.baseSale),
-      hint: `${fmtPct(report.summary.effectiveRate, 2)} efectivo · ${
-        report.summary.sellersCount
-      } vendedor(es)`,
+      label: "Promedio por vendedor",
+      value: money(report.summary.averagePerSeller),
+      hint: `${report.summary.sellersCount} vendedor(es) con comisión en el período`,
     },
   ])
 
@@ -233,12 +246,21 @@ export function generateCommissionsReportPdf({
 
   // Ventas compartidas: se explica por qué un vendedor puede tener comisión de
   // una operación que "no es suya".
+  const composition: string[] = []
   if (report.summary.sharedOperations > 0) {
-    b.note(
+    composition.push(
       `${report.summary.sharedOperations} operación(es) del período están compartidas entre dos ` +
-        `vendedores: cada uno cobra su parte y ambas comisiones se listan por separado.`,
-      { advance: 7 }
+        `vendedores: cada uno cobra su parte y ambas comisiones se listan por separado.`
     )
+  }
+  if (report.summary.referredOperations > 0) {
+    composition.push(
+      `${report.summary.referredOperations} vinieron por un socio referidor. La comisión del ` +
+        `referidor se liquida aparte y no está incluida en estos totales.`
+    )
+  }
+  if (composition.length > 0) {
+    b.note(composition.join(" "), { advance: 7 })
   }
 
   // ============================================ COMPOSICIÓN (2 columnas) ==
@@ -344,73 +366,225 @@ export function generateCommissionsReportPdf({
 
   b.ensure(72)
   b.sectionTitle(
-    "Detalle de comisiones",
+    "Detalle por vendedor",
     truncated
       ? `Se listan las primeras ${detailRows.length} de ${report.detail.length} comisiones del período.`
-      : `${report.detail.length} comisión(es), de la venta más reciente a la más antigua.`
+      : `Qué vendió cada uno y cuánto comisionó, de la venta más reciente a la más antigua.`
   )
 
-  b.table({
-    rows: detailRows,
-    rowHeight: 6.2,
-    fontSize: 7.5,
-    columns: [
-      { header: "FECHA", x: MARGIN + 1, width: 18, cell: (r) => fmtDate(r.operationDate) },
-      { header: "FILE", x: MARGIN + 21, width: 20, cell: (r) => r.fileCode },
-      {
-        header: "VENDEDOR",
-        x: MARGIN + 43,
-        width: 32,
-        cell: (r) => r.sellerName,
-        color: () => DARK,
-      },
-      {
-        header: "ROL",
-        x: MARGIN + 77,
-        width: 16,
-        cell: (r) =>
-          r.role === "primary" ? "Principal" : r.role === "secondary" ? "Socio" : "-",
-      },
-      {
-        header: "VENTA",
-        x: MARGIN + 122,
+  // Agrupado por vendedor y no como lista plana: el reporte se le entrega a cada
+  // vendedor, así que lo suyo tiene que leerse junto y con su propio subtotal.
+  // Mismo criterio (y mismo pedido del cliente) que el detalle por categoría del
+  // Reporte de Gastos. Se respeta el orden de `bySeller`, de mayor a menor.
+  const rowsBySeller = new Map<string, typeof detailRows>()
+  for (const row of detailRows) {
+    const list = rowsBySeller.get(row.sellerId) || []
+    list.push(row)
+    rowsBySeller.set(row.sellerId, list)
+  }
+  const orderedSellers = [
+    ...report.bySeller.filter((s) => rowsBySeller.has(s.sellerId)),
+    ...Array.from(rowsBySeller.keys())
+      .filter((id) => !report.bySeller.some((s) => s.sellerId === id))
+      .map((id) => ({
+        sellerId: id,
+        sellerName: rowsBySeller.get(id)?.[0]?.sellerName || "Sin vendedor",
+        color: FALLBACK_SWATCH,
+      })),
+  ]
+
+  const dc = {
+    date: MARGIN + 4,
+    file: MARGIN + 24,
+    destination: MARGIN + 52,
+    type: MARGIN + 106,
+    status: MARGIN + 155,
+    amount: RIGHT - 1,
+  }
+  const widths = { file: 26, destination: 52, type: 32 }
+
+  const drawDetailHeader = () => {
+    b.setFill(LIGHT)
+    doc.rect(MARGIN, b.y, CONTENT_W, 7, "F")
+    doc.setFontSize(7.5)
+    doc.setFont("helvetica", "bold")
+    b.setText(GRAY)
+    doc.text("FECHA", dc.date, b.y + 4.7)
+    doc.text("FILE", dc.file, b.y + 4.7)
+    doc.text("DESTINO", dc.destination, b.y + 4.7)
+    doc.text("TIPO DE VENTA", dc.type, b.y + 4.7)
+    doc.text("ESTADO", dc.status, b.y + 4.7, { align: "right" })
+    doc.text("COMISIÓN", dc.amount, b.y + 4.7, { align: "right" })
+    b.y += 7
+  }
+  drawDetailHeader()
+
+  for (const seller of orderedSellers) {
+    const rows = rowsBySeller.get(seller.sellerId) || []
+    if (rows.length === 0) continue
+
+    const subtotal = rows.reduce((acc, r) => acc + r.amount, 0)
+
+    // El encabezado del vendedor se lleva al menos una fila: solo al pie de una
+    // página se leería como si el vendedor no tuviera comisiones.
+    if (b.y + 8 + 6.2 > FOOTER_TOP) {
+      b.addPage()
+      drawDetailHeader()
+    }
+    b.setFill(LIGHT)
+    doc.rect(MARGIN, b.y, CONTENT_W, 8, "F")
+    b.setFill(hexToRgb(seller.color))
+    doc.roundedRect(MARGIN + 2, b.y + 2.7, 2.6, 2.6, 0.5, 0.5, "F")
+    doc.setFontSize(8)
+    doc.setFont("helvetica", "bold")
+    b.setText(DARK)
+    doc.text(b.truncate(seller.sellerName, 70), MARGIN + 7, b.y + 5.4)
+    b.setText(GRAY)
+    doc.setFont("helvetica", "normal")
+    doc.setFontSize(7)
+    doc.text(
+      `${rows.length} comisión${rows.length === 1 ? "" : "es"}`,
+      dc.type,
+      b.y + 5.4
+    )
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(8)
+    b.setText(DARK)
+    doc.text(money(subtotal), dc.amount, b.y + 5.4, { align: "right" })
+    b.y += 8
+
+    rows.forEach((row, i) => {
+      // La info opcional (venta, ganancia, referido) va en una sublínea gris en
+      // vez de sumar columnas: con seis columnas fijas más dos importes no queda
+      // ancho para el destino, y el reporte volvería a ser una pared de números.
+      const subline = [
+        row.saleAmount != null ? `Venta ${money(row.saleAmount)}` : "",
+        row.marginAmount != null ? `Ganancia ${money(row.marginAmount)}` : "",
+        row.referralPartnerName ? `Cliente referido por ${row.referralPartnerName}` : "",
+      ]
+        .filter(Boolean)
+        .join("   ·   ")
+      const rowHeight = subline ? 9.2 : 6.2
+      if (b.y + rowHeight > FOOTER_TOP) {
+        b.addPage()
+        drawDetailHeader()
+      }
+      if (i % 2 === 1) {
+        b.setFill(ZEBRA)
+        doc.rect(MARGIN, b.y, CONTENT_W, rowHeight, "F")
+      }
+
+      doc.setFontSize(7.5)
+      doc.setFont("helvetica", "normal")
+      b.setText(GRAY)
+      doc.text(fmtDate(row.operationDate), dc.date, b.y + 4.2)
+
+      b.setText(DARK)
+      doc.text(b.truncate(row.fileCode, widths.file), dc.file, b.y + 4.2)
+      doc.text(b.truncate(row.destination, widths.destination), dc.destination, b.y + 4.2)
+
+      b.setText(GRAY)
+      doc.text(b.truncate(saleTypeLabel(row), widths.type), dc.type, b.y + 4.2)
+
+      b.setText(row.status === "PAID" ? REPORT_COLORS.SUCCESS : GRAY)
+      doc.text(row.status === "PAID" ? "Pagada" : "Por pagar", dc.status, b.y + 4.2, {
         align: "right",
-        cell: (r) => money(r.saleAmount),
-      },
-      {
-        header: "%",
-        x: MARGIN + 136,
-        align: "right",
-        cell: (r) => (r.percentage != null ? fmtPct(r.percentage) : "-"),
-      },
-      {
-        header: "ESTADO",
-        x: MARGIN + 152,
-        align: "right",
-        cell: (r) => (r.status === "PAID" ? "Pagada" : "Por pagar"),
-        color: (r) => (r.status === "PAID" ? REPORT_COLORS.SUCCESS : GRAY),
-      },
-      {
-        header: "COMISIÓN",
-        x: RIGHT - 1,
-        align: "right",
-        cell: (r) => money(r.amount),
-        bold: true,
-      },
-    ],
-    total: {
-      accent: true,
-      cells: [
+      })
+
+      doc.setFont("helvetica", "bold")
+      b.setText(DARK)
+      doc.text(money(row.amount), dc.amount, b.y + 4.2, { align: "right" })
+
+      // Contexto de la fila. El referido va sin monto a propósito: esa comisión
+      // es del socio que trajo al cliente y se informa en su propia sección,
+      // para que nadie la lea como parte de lo que cobra el vendedor.
+      if (subline) {
+        doc.setFont("helvetica", "italic")
+        doc.setFontSize(6.5)
+        b.setText(GRAY)
+        doc.text(b.truncate(subline, 130), dc.file, b.y + 7.6)
+        doc.setFont("helvetica", "normal")
+      }
+      b.y += rowHeight
+    })
+  }
+
+  if (b.y + 9 > FOOTER_TOP) b.addPage()
+  b.setFill(PRIMARY)
+  doc.rect(MARGIN, b.y, CONTENT_W, 8, "F")
+  doc.setFontSize(8.5)
+  doc.setFont("helvetica", "bold")
+  b.setText(WHITE)
+  doc.text(
+    truncated
+      ? `TOTAL DEL PERÍODO (${report.detail.length} comisiones)`
+      : "TOTAL DEL PERÍODO",
+    dc.date,
+    b.y + 5.4
+  )
+  doc.text(money(report.summary.total), dc.amount - 1, b.y + 5.4, { align: "right" })
+  b.y += 12
+
+  // ============================================ REFERIDOS (aparte) =======
+  //
+  // Sección propia y fuera de todos los totales de arriba: lo que se le paga a
+  // un socio referidor no sale de la comisión del vendedor ni se le informa a
+  // él. Solo aparece si se pidió incluirla.
+  if (report.byReferralPartner.length > 0) {
+    const referralTotal = report.byReferralPartner.reduce((acc, r) => acc + r.total, 0)
+    const referralPending = report.byReferralPartner.reduce((acc, r) => acc + r.pending, 0)
+
+    b.ensure(24 + report.byReferralPartner.length * 6.5)
+    b.sectionTitle(
+      "Comisiones de referidos",
+      "Lo que le corresponde a cada socio que trajo un cliente. No está incluido en los totales de arriba."
+    )
+
+    b.table({
+      rows: report.byReferralPartner,
+      columns: [
         {
+          header: "SOCIO REFERIDOR",
           x: MARGIN + 2,
-          text: truncated
-            ? `TOTAL DEL PERÍODO (${report.detail.length} comisiones)`
-            : "TOTAL DEL PERÍODO",
+          width: 70,
+          cell: (r) => r.partnerName,
+          color: () => DARK,
         },
-        { x: RIGHT - 2, align: "right", text: money(report.summary.total) },
+        {
+          header: "OPS",
+          x: MARGIN + 96,
+          align: "right",
+          cell: (r) => String(r.operationsCount),
+        },
+        {
+          header: "POR PAGAR",
+          x: MARGIN + 128,
+          align: "right",
+          cell: (r) => money(r.pending),
+        },
+        {
+          header: "PAGADAS",
+          x: MARGIN + 155,
+          align: "right",
+          cell: (r) => money(r.paid),
+        },
+        {
+          header: "TOTAL",
+          x: RIGHT - 2,
+          align: "right",
+          cell: (r) => money(r.total),
+          bold: true,
+        },
       ],
-    },
-  })
+      total: {
+        cells: [
+          { x: MARGIN + 2, text: "TOTAL REFERIDOS" },
+          { x: MARGIN + 128, align: "right", text: money(referralPending) },
+          { x: RIGHT - 2, align: "right", text: money(referralTotal) },
+        ],
+      },
+    })
+  }
 
   // Criterios y exclusiones al pie: el reporte tiene que poder circular solo.
   const notes: string[] = [
@@ -419,6 +593,12 @@ export function generateCommissionsReportPdf({
   if (report.summary.cancelledRecords > 0) {
     notes.push(
       `${report.summary.cancelledRecords} comisión(es) de operaciones canceladas quedaron fuera del total.`
+    )
+  }
+  if (report.summary.settledRecords > 0) {
+    notes.push(
+      `${report.summary.settledRecords} comisión(es) del período están saldadas y quedaron fuera: ` +
+        `se cerraron sin pago y no son deuda.`
     )
   }
   if (report.summary.truncated) {

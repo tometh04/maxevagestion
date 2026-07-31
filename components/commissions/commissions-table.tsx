@@ -33,10 +33,11 @@ export interface Commission {
     id: string
     destination: string
     departure_date: string
-    sale_amount_total: number
-    operator_cost: number
-    margin_amount: number
     currency: string
+    /** Solo llegan a quien puede ver las comisiones de toda la agencia. */
+    sale_amount_total?: number
+    operator_cost?: number
+    margin_amount?: number
   } | null
   sellers?: {
     id: string
@@ -52,9 +53,21 @@ interface CommissionsTableProps {
   commissions: Commission[]
   isLoading?: boolean
   emptyMessage?: string
+  /**
+   * Muestra el margen de la operación. Es dato de la agencia: la pantalla "Mis
+   * comisiones" la abren tanto un admin como un vendedor, y al vendedor solo le
+   * corresponde ver lo que ganó él (VIB-94). Lo decide el servidor, que además
+   * ya no manda el margen cuando el caller no puede verlo.
+   */
+  showMargin?: boolean
 }
 
-export function CommissionsTable({ commissions, isLoading = false, emptyMessage }: CommissionsTableProps) {
+export function CommissionsTable({
+  commissions,
+  isLoading = false,
+  emptyMessage,
+  showMargin = false,
+}: CommissionsTableProps) {
   const { sortedData, sortConfig, requestSort } = useSortableData(commissions, {
     key: "date_calculated",
     direction: "desc",
@@ -64,7 +77,7 @@ export function CommissionsTable({ commissions, isLoading = false, emptyMessage 
     if (isLoading) {
       return Array.from({ length: 5 }).map((_, index) => (
         <TableRow key={`skeleton-${index}`}>
-          <TableCell colSpan={8}>
+          <TableCell colSpan={showMargin ? 8 : 7}>
             <Skeleton className="h-6 w-full" />
           </TableCell>
         </TableRow>
@@ -99,10 +112,12 @@ export function CommissionsTable({ commissions, isLoading = false, emptyMessage 
             ? `${comm.percentage.toFixed(2)}%`
             : "-"}
         </TableCell>
-        <TableCell>
-          {comm.operations?.currency || "ARS"}{" "}
-          {comm.operations?.margin_amount?.toLocaleString("es-AR", { minimumFractionDigits: 2 }) || "0.00"}
-        </TableCell>
+        {showMargin && (
+          <TableCell>
+            {comm.operations?.currency || "ARS"}{" "}
+            {comm.operations?.margin_amount?.toLocaleString("es-AR", { minimumFractionDigits: 2 }) || "0.00"}
+          </TableCell>
+        )}
         <TableCell>
           <Badge variant={comm.status === "PAID" ? "default" : "secondary"}>
             {comm.status === "PAID" ? "Pagado" : "Pendiente"}
@@ -122,7 +137,7 @@ export function CommissionsTable({ commissions, isLoading = false, emptyMessage 
         </TableCell>
       </TableRow>
     ))
-  }, [sortedData, isLoading, emptyMessage])
+  }, [sortedData, isLoading, emptyMessage, showMargin, commissions.length])
 
   return (
     <div className="rounded-md border">
@@ -133,7 +148,9 @@ export function CommissionsTable({ commissions, isLoading = false, emptyMessage 
             <SortableTableHead sortKey="operations.departure_date" sortConfig={sortConfig} onSort={requestSort}>Fecha Salida</SortableTableHead>
             <SortableTableHead sortKey="amount" sortConfig={sortConfig} onSort={requestSort}>Comisión</SortableTableHead>
             <SortableTableHead sortKey="percentage" sortConfig={sortConfig} onSort={requestSort}>% Comisión</SortableTableHead>
-            <SortableTableHead sortKey="operations.margin_amount" sortConfig={sortConfig} onSort={requestSort}>Margen</SortableTableHead>
+            {showMargin && (
+              <SortableTableHead sortKey="operations.margin_amount" sortConfig={sortConfig} onSort={requestSort}>Margen</SortableTableHead>
+            )}
             <SortableTableHead sortKey="status" sortConfig={sortConfig} onSort={requestSort}>Estado</SortableTableHead>
             <SortableTableHead sortKey="date_calculated" sortConfig={sortConfig} onSort={requestSort}>Fecha</SortableTableHead>
             <TableHead>Acciones</TableHead>

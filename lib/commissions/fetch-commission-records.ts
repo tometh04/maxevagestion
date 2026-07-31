@@ -33,6 +33,8 @@ export interface CommissionRecordRow {
     operation_date: string
     departure_date: string | null
     sale_amount_total: number | null
+    /** Ganancia de la operación: es la base real de la comisión. */
+    margin_amount: number | null
     sale_currency: string | null
     currency: string | null
     status: string | null
@@ -41,6 +43,18 @@ export interface CommissionRecordRow {
     commission_split: number | null
     agency_id: string | null
   } | null
+}
+
+/**
+ * Comisión del socio que refirió al cliente. Vive en `referral_commissions`,
+ * tabla aparte: el referidor es una entidad externa, no un vendedor, y su
+ * comisión NO es plata del vendedor ni entra en los totales del reporte.
+ */
+export interface ReferralInfo {
+  partnerId: string
+  partnerName: string
+  amount: number
+  status: string
 }
 
 export interface FetchCommissionRecordsParams {
@@ -60,17 +74,24 @@ export interface FetchCommissionRecordsResult {
   records: CommissionRecordRow[]
   sellerNames: Map<string, string>
   agencyNames: Map<string, string>
+  /** operationId → referido de esa operación (VIB-94). */
+  referralPartners: Map<string, ReferralInfo>
   /** Comisiones del período cuya operación está cancelada (excluidas). */
   cancelledRecords: number
+  /** Comisiones del período saldadas administrativamente (excluidas). */
+  settledRecords: number
   truncated: boolean
 }
+
+/** Tamaño de lote del `.in()` de referidos: mantiene la URL de PostgREST corta. */
+const IN_CHUNK = 200
 
 const SELECT = `
   id, operation_id, seller_id, agency_id, amount, amount_paid, percentage,
   status, date_calculated, date_paid,
   operations!inner(
     id, file_code, destination, operation_date, departure_date,
-    sale_amount_total, sale_currency, currency, status,
+    sale_amount_total, margin_amount, sale_currency, currency, status,
     seller_id, seller_secondary_id, commission_split, agency_id
   )
 `
@@ -102,6 +123,8 @@ export async function fetchCommissionRecords(
   const { rows: records, truncated } = await fetchAllRows<CommissionRecordRow>((from, to) =>
     applyFilters((supabase.from("commission_records") as any).select(SELECT))
       .neq("operations.status", "CANCELLED")
+      // Saldadas en un cierre administrativo: no son deuda ni pago (VIB-94).
+      .is("settled_at", null)
       .order("id", { ascending: true })
       .range(from, to)
   )
@@ -121,7 +144,33 @@ export async function fetchCommissionRecords(
     console.warn("[commissions-report] no se pudo contar comisiones canceladas:", error)
   }
 
-  const sellerIds = Array.from(new Set(records.map((r) => r.seller_id).filter(Boolean)))
+  // Ídem para las saldadas: el reporte dice cuántas quedaron fuera para que la
+  // diferencia contra un reporte viejo del mismo período sea explicable.
+  let settledCount = 0
+  try {
+    const { count } = await applyFilters(
+      (supabase.from("commission_records") as any).select("id, operations!inner(id)", {
+        count: "exact",
+        head: true,
+      })
+    )
+      .neq("operations.status", "CANCELLED")
+      .not("settled_at", "is", null)
+    settledCount = count || 0
+  } catch (error) {
+    console.warn("[commissions-report] no se pudo contar comisiones saldadas:", error)
+  }
+
+  // Se piden también los vendedores que figuran en la operación aunque no tengan
+  // comisión en el recorte: con el reporte filtrado por un vendedor, el nombre
+  // del socio de una venta compartida no llegaría de ninguna otra parte.
+  const sellerIds = Array.from(
+    new Set(
+      records
+        .flatMap((r) => [r.seller_id, r.operations?.seller_id, r.operations?.seller_secondary_id])
+        .filter(Boolean) as string[]
+    )
+  )
   const sellerNames = new Map<string, string>()
   if (sellerIds.length > 0) {
     const { data: sellers } = await (supabase.from("users") as any)
@@ -143,11 +192,51 @@ export async function fetchCommissionRecords(
     for (const a of agencies || []) agencyNames.set(a.id, a.name || "Sin nombre")
   }
 
+  // Operaciones que vinieron por un socio referidor. La comisión del referidor
+  // vive en su propia tabla (`referral_commissions`, una fila por operación) y no
+  // es plata del vendedor: acá solo se usa para poder marcar la fila del reporte.
+  // Es contexto, igual que el conteo de canceladas: si falla, el reporte sale.
+  const operationIds = Array.from(
+    new Set(records.map((r) => r.operations?.id).filter(Boolean) as string[])
+  )
+  const referralPartners = new Map<string, ReferralInfo>()
+  try {
+    for (let i = 0; i < operationIds.length; i += IN_CHUNK) {
+      const chunk = operationIds.slice(i, i + IN_CHUNK)
+      const { data } = await (supabase.from("referral_commissions") as any)
+        .select(
+          "operation_id, referral_partner_id, amount, status, referral_partners:referral_partner_id(name)"
+        )
+        .eq("org_id", orgId)
+        .in("operation_id", chunk)
+
+      for (const row of (data || []) as any[]) {
+        // El embed to-one llega como objeto, pero según la versión de PostgREST
+        // puede venir envuelto en un array: se contemplan las dos formas.
+        const partner = Array.isArray(row.referral_partners)
+          ? row.referral_partners[0]
+          : row.referral_partners
+        const name = partner?.name
+        if (!row.operation_id || !name) continue
+        referralPartners.set(row.operation_id, {
+          partnerId: row.referral_partner_id,
+          partnerName: name,
+          amount: Number(row.amount || 0),
+          status: String(row.status || "PENDING"),
+        })
+      }
+    }
+  } catch (error) {
+    console.warn("[commissions-report] no se pudieron leer los referidos:", error)
+  }
+
   return {
     records,
     sellerNames,
     agencyNames,
+    referralPartners,
     cancelledRecords: cancelledCount,
+    settledRecords: settledCount,
     truncated,
   }
 }

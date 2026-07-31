@@ -33,6 +33,7 @@ const filters: CommissionsReportFilters = {
   sellerId: null,
   sellerName: null,
   ownDataOnly: false,
+  include: { sale: false, margin: false, referrals: false },
 }
 
 let seq = 0
@@ -62,6 +63,7 @@ function record(
       operation_date: "2026-07-10",
       departure_date: "2026-09-01",
       sale_amount_total: 100000,
+      margin_amount: 25000,
       sale_currency: "ARS",
       currency: "ARS",
       status: "CONFIRMED",
@@ -76,10 +78,23 @@ function record(
 
 function render(
   records: CommissionRecordRow[],
-  opts: { dateFrom?: string; dateTo?: string; sellers?: Array<[string, string]> } = {}
+  opts: {
+    dateFrom?: string
+    dateTo?: string
+    sellers?: Array<[string, string]>
+    referralPartners?: Array<[string, string]>
+    include?: { sale?: boolean; margin?: boolean; referrals?: boolean }
+  } = {}
 ): Uint8Array {
   const report = buildCommissionsReport({
     records,
+    include: opts.include,
+    referralPartners: new Map(
+      (opts.referralPartners ?? []).map(([operationId, partnerName], i) => [
+        operationId,
+        { partnerId: `p-${i % 3}`, partnerName, amount: 1500, status: "PENDING" },
+      ])
+    ),
     sellerNames: new Map(
       opts.sellers ?? [
         ["seller-a", "Ana Pérez"],
@@ -181,6 +196,46 @@ describe("generateCommissionsReportPdf", () => {
     const bytes = render(many)
     expect(isPdf(bytes)).toBe(true)
     expect(bytes.length).toBeGreaterThan(10000)
+  })
+
+  it("dibuja la marca de referido sin romper la paginación del detalle", () => {
+    const records = Array.from({ length: 60 }, (_, i) =>
+      record({
+        amount: 1000 + i,
+        seller_id: `seller-${i % 3 === 0 ? "a" : "b"}`,
+        operations: {
+          id: `op-${i}`,
+          operation_date: `2026-07-${String((i % 28) + 1).padStart(2, "0")}`,
+        },
+      })
+    )
+    const bytes = render(records, {
+      // Referido en filas salteadas: obliga a alternar altos de fila al paginar.
+      referralPartners: Array.from({ length: 30 }, (_, i) => [
+        `op-${i * 2}`,
+        "Estudio Contable Díaz y Asociados",
+      ]),
+    })
+    expect(isPdf(bytes)).toBe(true)
+    expect(bytes.length).toBeGreaterThan(10000)
+  })
+
+  it("dibuja la sección de referidos y la sublínea de venta/ganancia", () => {
+    const bytes = render(
+      [
+        record({ amount: 12000, seller_id: "seller-a" }),
+        record({ amount: 8000, seller_id: "seller-b", operations: { id: "op-2" } }),
+      ],
+      {
+        referralPartners: [
+          ["op-1", "Estudio Contable Díaz"],
+          ["op-2", "Marcela Suárez"],
+        ],
+        include: { sale: true, margin: true, referrals: true },
+      }
+    )
+    expect(isPdf(bytes)).toBe(true)
+    expect(bytes.length).toBeGreaterThan(1000)
   })
 
   it("no rompe con nombres largos ni con operaciones compartidas", () => {

@@ -186,7 +186,7 @@ export function computeOperationCommission(
 export interface ApplyCommissionResult {
   written: Array<{ sellerId: string; recordId: string | null; amount: number }>
   /** Registros que NO se tocaron porque ya tienen plata movida. */
-  skipped: Array<{ sellerId: string; reason: "paid" | "partially_paid" }>
+  skipped: Array<{ sellerId: string; reason: "paid" | "partially_paid" | "settled" }>
   /** Registros de vendedores que ya no participan de la operación. */
   removed: Array<{ sellerId: string; amount: number }>
   errors: string[]
@@ -198,13 +198,20 @@ export interface ApplyCommissionResult {
  * Mirar solo `status` no alcanza: un pago parcial deja el registro en PENDING
  * con `amount_paid > 0`, y recalcularlo cambiaría el monto de algo que ya se
  * cobró en parte, sin revertir el asiento contable.
+ *
+ * Una comisión saldada (`settled_at`, VIB-94) también está cerrada, aunque no
+ * tenga plata atrás: es una deuda vieja que la agencia dio por cancelada. Sin
+ * este candado, editar la operación la recalcularía y volvería a nacer como
+ * deuda — que es exactamente lo que el cierre vino a evitar.
  */
-function isLocked(record: { status?: string | null; amount_paid?: number | null }):
-  | "paid"
-  | "partially_paid"
-  | null {
+function isLocked(record: {
+  status?: string | null
+  amount_paid?: number | null
+  settled_at?: string | null
+}): "paid" | "partially_paid" | "settled" | null {
   if ((record.status ?? "PENDING") !== "PENDING") return "paid"
   if (Number(record.amount_paid ?? 0) > 0) return "partially_paid"
+  if (record.settled_at) return "settled"
   return null
 }
 
@@ -228,7 +235,7 @@ export async function applyCommissionPlan(
   // así que la lectura no necesita org_id para ser segura.
   const { data: existingRows, error: readError } = await supabase
     .from("commission_records")
-    .select("id, seller_id, status, amount, amount_paid, percentage")
+    .select("id, seller_id, status, amount, amount_paid, percentage, settled_at")
     .eq("operation_id", operation.id)
 
   if (readError) {
