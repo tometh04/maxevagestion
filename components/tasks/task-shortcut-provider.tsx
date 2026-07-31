@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
+import { usePathname } from "next/navigation"
 import { TaskDialog } from "./task-dialog"
 import { TaskFAB } from "./task-fab"
 import { VoiceTaskRecorder } from "./voice-task-recorder"
@@ -16,6 +17,12 @@ export function TaskShortcutProvider({ currentUserId, agencyId }: TaskShortcutPr
   const [voiceOpen, setVoiceOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
   const [prefill, setPrefill] = useState<any>(null)
+
+  // WHA Control es una tool de chat a pantalla completa con su propio botón de
+  // enviar abajo a la derecha, justo donde vive el FAB. Ocultamos el FAB ahí para
+  // no taparlo (soporte sigue accesible con Ctrl+Shift+H).
+  const pathname = usePathname()
+  const hideFab = pathname?.startsWith("/tools/wha-control") ?? false
 
   const openDialog = useCallback(() => {
     setPrefill(null)
@@ -61,7 +68,7 @@ export function TaskShortcutProvider({ currentUserId, agencyId }: TaskShortcutPr
 
   return (
     <>
-      <TaskFAB onClick={toggleHelp} open={helpOpen} />
+      {!hideFab && <TaskFAB onClick={toggleHelp} open={helpOpen} />}
 
       <TaskDialog
         open={dialogOpen}
