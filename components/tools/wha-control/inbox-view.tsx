@@ -476,8 +476,9 @@ export function InboxView({ agencies }: InboxViewProps) {
             </div>
             <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
               {loadingMessages ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                <div className="flex flex-col items-center justify-center gap-2 py-10 text-muted-foreground">
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                  <span className="text-xs">Cargando mensajes…</span>
                 </div>
               ) : messages.length === 0 ? (
                 <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
