@@ -45,8 +45,10 @@ jobs:
       - name: Instalar dependencias
         run: |
           npm ci
-          # Claude Agent SDK como dep efímera (no se commitea).
-          npm i --no-save @anthropic-ai/claude-agent-sdk
+          # Claude Agent SDK como dep efímera (no se commitea). --legacy-peer-deps
+          # porque el SDK pide zod@^4 y el repo pinea zod@3; solo usamos query(),
+          # que no depende de zod, así que el zod 3 del repo sirve.
+          npm i --no-save --legacy-peer-deps @anthropic-ai/claude-agent-sdk
 
       - name: Configurar git para los commits del agente
         run: |
