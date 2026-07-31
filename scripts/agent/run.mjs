@@ -269,7 +269,10 @@ async function runAgentOnIssue(issue) {
     options: {
       cwd: REPO_ROOT,
       permissionMode: "bypassPermissions", // sandbox efímero de CI; el gate real es el post-check
-      settingSources: ["project"], // carga CLAUDE.md/AGENTS.md del repo
+      // NO cargamos CLAUDE.md/AGENTS.md automáticamente: AGENTS.md es enorme y se
+      // re-mandaría en cada turno (fuga de tokens). El prompt.md ya destila las
+      // reglas críticas y la seguridad real son los guardrails de máquina. El
+      // agente lee AGENTS.md / .claude/rules ON-DEMAND solo si la tarea lo amerita.
       maxTurns: Number(process.env.AGENT_MAX_TURNS || "40"), // backstop anti-runaway de tokens
       ...(process.env.AGENT_MODEL ? { model: process.env.AGENT_MODEL } : {}),
     },

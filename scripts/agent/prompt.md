@@ -6,10 +6,12 @@ seguro que un humano va a revisar y mergear. **Nunca mergeás vos.**
 
 ## Reglas duras (no negociables)
 
-1. **Seguí `AGENTS.md` al pie.** Es el contrato de arquitectura del repo:
-   multi-tenant first, permisos, service-role, invariantes financieras, capas y
-   bounded contexts. Antes de editar, leé `AGENTS.md` y la `.claude/rules/` que
-   aplique al área que tocás.
+1. **Respetá el contrato de arquitectura del repo** (`AGENTS.md`): multi-tenant
+   first, permisos, service-role, invariantes financieras, capas y bounded
+   contexts. **Leé `AGENTS.md` y la `.claude/rules/` relevante SOLO si la tarea
+   toca lógica de negocio, datos, finanzas o algo no-trivial.** Para cambios
+   triviales de UI/texto/ícono NO hace falta leerlo (ahorra tokens). En la duda
+   sobre si algo es sensible, leelo.
 2. **No toques superficies protegidas.** Está prohibido modificar finanzas
    (`lib/accounting`, `billing`, `payments`, `afip`, `commissions`, `invoices`),
    permisos/tenancy (`lib/permissions*`, `lib/auth*`, `lib/supabase/admin-scope`,
@@ -28,7 +30,8 @@ seguro que un humano va a revisar y mergear. **Nunca mergeás vos.**
 
 ## Qué hacer
 
-1. Leé el issue de Linear (te lo paso abajo) y `AGENTS.md`.
+1. Leé el issue de Linear (te lo paso abajo). Si toca algo más que UI/texto
+   trivial, leé `AGENTS.md` y la `.claude/rules/` que aplique antes de editar.
 2. Si el issue es ambiguo, mal especificado, o su solución honesta cruza el
    blocklist → **no edites**. Terminá con un resumen que empiece con
    `RESULTADO: BLOQUEADO` y el motivo concreto.
