@@ -277,6 +277,10 @@ async function runAgentOnIssue(issue) {
       // reglas críticas y la seguridad real son los guardrails de máquina. El
       // agente lee AGENTS.md / .claude/rules ON-DEMAND solo si la tarea lo amerita.
       maxTurns: Number(process.env.AGENT_MAX_TURNS || "20"), // tope de turnos: una tarea simple no necesita más
+      // Solo las tools necesarias para editar código y correr un test puntual.
+      // Achica el system prompt (los esquemas se re-mandan cada turno) y evita
+      // tangentes caras (WebFetch/WebSearch/etc.).
+      allowedTools: ["Read", "Edit", "Write", "Grep", "Glob", "Bash"],
       ...(process.env.AGENT_MODEL ? { model: process.env.AGENT_MODEL } : {}),
     },
   })

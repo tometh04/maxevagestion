@@ -64,9 +64,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # gh CLI + push
           MODE: ${{ github.event.inputs.mode || 'dry-run' }}
           MAX_ISSUES: ${{ github.event.inputs.max_issues || '3' }}
-          # Sonnet por defecto: buen balance calidad/costo. El input por tarea se
-          # mantiene bajo NO cargando AGENTS.md en cada turno + prohibiendo checks
-          # repo-wide (ver run.mjs y prompt.md). Override con la Variable
-          # AGENT_MODEL: 'haiku' más barato, 'opus' para algo difícil puntual.
-          AGENT_MODEL: ${{ vars.AGENT_MODEL || 'sonnet' }}
+          # Haiku por defecto: las tareas agent-ready son chicas y el input ya está
+          # acotado (sin AGENTS.md por turno, sin checks repo-wide, tope de turnos).
+          # La suscripción NO abarata la automatización (Anthropic la cobra a rate de
+          # API desde jun-2026), así que la única palanca real es modelo + tokens.
+          # Override con la Variable AGENT_MODEL: 'sonnet' si notás caída de calidad.
+          AGENT_MODEL: ${{ vars.AGENT_MODEL || 'haiku' }}
         run: node scripts/agent/run.mjs
