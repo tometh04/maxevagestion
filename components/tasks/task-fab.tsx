@@ -1,6 +1,6 @@
 "use client"
 
-import { HelpCircle, X } from "lucide-react"
+import { MessageCircleQuestion, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface TaskFABProps {
@@ -30,7 +30,7 @@ export function TaskFAB({ onClick, open }: TaskFABProps) {
       aria-label={open ? "Cerrar soporte y ayuda" : "Soporte y ayuda"}
       title="Soporte y ayuda"
     >
-      {open ? <X className="h-6 w-6" /> : <HelpCircle className="h-6 w-6" />}
+      {open ? <X className="h-6 w-6" /> : <MessageCircleQuestion className="h-6 w-6" />}
     </button>
   )
 }
