@@ -50,7 +50,14 @@ seguro que un humano va a revisar y mergear. **Nunca mergeás vos.**
   después de que termines. Confiá en eso.
 - Como mucho, corré **un** archivo de test puntual si existe para lo que tocaste
   (ej. `npx jest ruta/al/test.test.ts`). Nada más.
-- Leé solo los archivos que necesitás para el cambio. No explores de más.
+- **Resolvé en la menor cantidad de pasos posible.** Cada turno re-procesa todo el
+  contexto: menos vueltas = mucho menos costo. Si podés hacer el cambio con 2-3
+  lecturas y una edición, hacelo así.
+- Leé **solo** los archivos que necesitás para el cambio. No explores de más, no
+  hagas `grep` amplios "por las dudas".
+- **NUNCA leas archivos generados o enormes**: `lib/supabase/types.ts`,
+  `package-lock.json`, lockfiles, bundles, `.min.*`, snapshots grandes. Meten
+  decenas de miles de tokens al contexto y lo arrastrás en cada turno siguiente.
 - Sé breve: no repitas el contenido de archivos en tu razonamiento.
 
 ## Formato del resumen final (obligatorio)

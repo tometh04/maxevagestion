@@ -276,11 +276,12 @@ async function runAgentOnIssue(issue) {
       // re-mandaría en cada turno (fuga de tokens). El prompt.md ya destila las
       // reglas críticas y la seguridad real son los guardrails de máquina. El
       // agente lee AGENTS.md / .claude/rules ON-DEMAND solo si la tarea lo amerita.
-      maxTurns: Number(process.env.AGENT_MAX_TURNS || "40"), // backstop anti-runaway de tokens
+      maxTurns: Number(process.env.AGENT_MAX_TURNS || "20"), // tope de turnos: una tarea simple no necesita más
       ...(process.env.AGENT_MODEL ? { model: process.env.AGENT_MODEL } : {}),
     },
   })
   let usage = null
+  let finishedOk = false
   for await (const msg of response) {
     if (msg.type === "assistant") {
       const text = (msg.message?.content ?? [])
@@ -291,6 +292,7 @@ async function runAgentOnIssue(issue) {
     } else if (msg.type === "result") {
       if (typeof msg.result === "string") finalText = msg.result
       // El mensaje `result` trae el uso agregado de toda la sesión del agente.
+      finishedOk = msg.subtype === "success" && !msg.is_error
       usage = {
         input: msg.usage?.input_tokens ?? 0,
         output: msg.usage?.output_tokens ?? 0,
@@ -301,7 +303,7 @@ async function runAgentOnIssue(issue) {
       }
     }
   }
-  return { summary: finalText.trim(), usage }
+  return { summary: finalText.trim(), usage, finishedOk }
 }
 
 // ── ciclo por issue ──────────────────────────────────────────────────────────
@@ -314,9 +316,9 @@ async function processIssue(issue, baseSha, baseBranch) {
   log(`→ ${issue.identifier}: ${issue.title}`)
   await addLabel(issue.id, IN_PROGRESS_LABEL)
 
-  let summary, usage
+  let summary, usage, finishedOk
   try {
-    ;({ summary, usage } = await runAgentOnIssue(issue))
+    ;({ summary, usage, finishedOk } = await runAgentOnIssue(issue))
   } catch (err) {
     await block(issue, `El agente falló al ejecutar: ${String(err.message || err)}`)
     await resetTree(baseSha)
@@ -330,6 +332,17 @@ async function processIssue(issue, baseSha, baseBranch) {
         `cacheW=${usage.cacheWrite} out=${usage.output} turns=${usage.turns}` +
         (usage.costUsd != null ? ` ~$${usage.costUsd.toFixed(4)}` : ""),
     )
+  }
+
+  // Si el agente no terminó limpio (se cortó por maxTurns o error del SDK), no
+  // confiamos en un diff parcial: va a humano.
+  if (!finishedOk) {
+    await block(
+      issue,
+      "El agente no terminó limpio (se cortó por límite de turnos o error interno). Un cambio que necesita tantos pasos no es 'simple' — queda para humano.",
+    )
+    await resetTree(baseSha)
+    return
   }
 
   const blockedByAgent = /^RESULTADO:\s*BLOQUEADO/im.test(summary)
@@ -417,18 +430,19 @@ function emitUsageReport() {
   const totCacheR = sum("cacheRead")
   const totCacheW = sum("cacheWrite")
   const totOut = sum("output")
+  const totTurns = sum("turns")
   const totCost = sessionUsage.reduce((a, s) => a + (s.costUsd || 0), 0)
   const hasCost = sessionUsage.some((s) => s.costUsd != null)
 
   let md = `## 🤖 Consumo de tokens del agente\n\n`
   md += `MODE=\`${MODE}\` · modelo=\`${process.env.AGENT_MODEL || "default"}\` · tareas con uso: ${sessionUsage.length}\n\n`
-  md += `| Issue | input | cache read | cache write | output |${hasCost ? " costo aprox |" : ""}\n`
-  md += `|---|--:|--:|--:|--:|${hasCost ? "--:|" : ""}\n`
+  md += `| Issue | input | cache read | cache write | output | turnos |${hasCost ? " costo aprox |" : ""}\n`
+  md += `|---|--:|--:|--:|--:|--:|${hasCost ? "--:|" : ""}\n`
   for (const s of sessionUsage) {
-    md += `| ${s.identifier} | ${s.input} | ${s.cacheRead} | ${s.cacheWrite} | ${s.output} |`
+    md += `| ${s.identifier} | ${s.input} | ${s.cacheRead} | ${s.cacheWrite} | ${s.output} | ${s.turns ?? "—"} |`
     md += hasCost ? ` ${s.costUsd != null ? "$" + s.costUsd.toFixed(4) : "—"} |\n` : "\n"
   }
-  md += `| **Total** | ${totIn} | ${totCacheR} | ${totCacheW} | ${totOut} |`
+  md += `| **Total** | ${totIn} | ${totCacheR} | ${totCacheW} | ${totOut} | ${totTurns} |`
   md += hasCost ? ` **$${totCost.toFixed(4)}** |\n` : "\n"
   md += `\n**Input total procesado** (fresh + cache): ${totIn + totCacheR + totCacheW} · **Output**: ${totOut}\n`
 
