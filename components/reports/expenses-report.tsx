@@ -249,14 +249,17 @@ export function ExpensesReport({ agencies }: ExpensesReportProps) {
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="expenses-report-currency">Ver en</Label>
+              <Label htmlFor="expenses-report-currency">Ver montos en</Label>
+              {/* El reporte valúa TODO a una sola moneda: los gráficos y los
+                  totales necesitan una unidad común. Decirlo en la opción evita
+                  que un total en pesos se lea como "así se pagó" (VIB-99). */}
               <Select value={currency} onValueChange={setCurrency}>
                 <SelectTrigger id="expenses-report-currency">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="ARS">ARS</SelectItem>
-                  <SelectItem value="USD">USD</SelectItem>
+                  <SelectItem value="ARS">Todo valuado en ARS</SelectItem>
+                  <SelectItem value="USD">Todo valuado en USD</SelectItem>
                 </SelectContent>
               </Select>
             </div>

@@ -206,14 +206,16 @@ export function ExpensesSummaryTab({ agencies }: ExpensesSummaryTabProps) {
           <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-[150px]" />
         </div>
         <div className="space-y-1">
-          <Label className="text-xs font-medium text-muted-foreground">Ver en</Label>
+          <Label className="text-xs font-medium text-muted-foreground">Ver montos en</Label>
+          {/* La torta necesita una sola unidad, así que acá siempre se valúa.
+              El rótulo lo dice para que no se lea como moneda original. */}
           <Select value={currency} onValueChange={setCurrency}>
-            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[120px]">
+            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[170px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="ARS">ARS</SelectItem>
-              <SelectItem value="USD">USD</SelectItem>
+              <SelectItem value="ARS">Todo valuado en ARS</SelectItem>
+              <SelectItem value="USD">Todo valuado en USD</SelectItem>
             </SelectContent>
           </Select>
         </div>
