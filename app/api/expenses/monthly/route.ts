@@ -14,6 +14,11 @@ import { buildExchangeRateMap } from "@/lib/accounting/exchange-rates"
  *    (appear immediately when created, since they're paid on creation)
  * Excludes OPERATOR_PAYMENT concepts.
  *
+ * `currency`: ORIGINAL (default) devuelve cada gasto en la moneda en que se
+ * pagó; ARS o USD valúan todo a esa moneda con el TC de la fecha de cada gasto
+ * (o el de `exchangeRate` si viene) y reportan en `missingRate` lo que quedó sin
+ * cotización.
+ *
  * La lectura vive en `lib/expenses/fetch-expenses.ts`, compartida con el
  * Reporte de Gastos para que ambas superficies muestren los mismos números.
  */
@@ -37,7 +42,17 @@ export async function GET(request: Request) {
     // Antes se filtraba en la base: elegías USD y los gastos en pesos
     // desaparecían de la pantalla, y al revés. El cliente lo reportó como
     // "los pagos de la tarjeta no impactaron en gastos".
-    const requestedCurrency = (searchParams.get("currency") || "ARS").toUpperCase()
+    //
+    // "ORIGINAL" (default): cada gasto se muestra en la moneda en la que se
+    // pagó, sin valuar. El default era "ARS", así que la opción "Todas" del
+    // front —que no manda el parámetro— terminaba mostrando TODO en pesos:
+    // el cliente veía la lista entera en $ y "Total Egresos USD US$ 0,00"
+    // teniendo gastos en dólares (VIB-99). Convertir es ahora una elección
+    // explícita, no lo que pasa cuando no elegís nada.
+    const requestedCurrency = (searchParams.get("currency") || "ORIGINAL").toUpperCase()
+    // "ALL" es el valor viejo del select de moneda: significaba "todas" y hoy
+    // significa lo mismo que ORIGINAL (no convertir).
+    const keepOriginal = requestedCurrency === "ORIGINAL" || requestedCurrency === "ALL"
 
     const { expenses: rawExpenses } = await fetchExpenses({
       supabase,
@@ -54,6 +69,23 @@ export async function GET(request: Request) {
       agencyMode: searchParams.get("agencyMode") === "account" ? "account" : "office",
       ownDataOnlyUserId: isOwnDataOnlyResolved(user, "cash", matrix ?? undefined) ? user.id : null,
     })
+
+    // Moneda original: no se toca ningún importe. `computeExpenseTotals` ya
+    // separa ARS de USD, así que las tarjetas de totales siguen siendo válidas
+    // sin mezclar monedas (que es justo lo que no hay que hacer sin un TC real).
+    if (keepOriginal) {
+      const expenses = rawExpenses.map((e) => ({
+        ...e,
+        original_amount: e.amount,
+        original_currency: e.currency,
+        exchange_rate: null,
+      }))
+      return NextResponse.json({
+        expenses,
+        totals: computeExpenseTotals(expenses as any),
+        missingRate: [],
+      })
+    }
 
     // Misma función que usa el reporte y el PDF: si la conversión se
     // implementara dos veces, la pantalla y el documento volverían a mostrar
