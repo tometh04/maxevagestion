@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import Link from "next/link"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -40,6 +40,14 @@ import { AlertTriangle, X } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { DecimalInput } from "@/components/ui/decimal-input"
 import { DateTypeFilter, type DateTypeOption } from "@/components/ui/date-type-filter"
+import {
+  DEBT_TYPE_FILTER_ALL,
+  DEBT_TYPE_FILTER_OPTIONS,
+  DEBT_TYPE_UNSPECIFIED,
+  buildOperatorAgencySummary,
+  debtTypeFileSuffix,
+  debtTypeLabel,
+} from "@/lib/accounting/operator-payment-reports"
 
 const operatorPaymentsDateTypes: DateTypeOption[] = [
   { value: "VENCIMIENTO", label: "Vencimiento", shortLabel: "Venc." },
@@ -85,6 +93,10 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
   const [statusFilter, setStatusFilter] = useState<string>("UNPAID")
   const [agencyFilter, setAgencyFilter] = useState<string>("ALL")
   const [operatorFilter, setOperatorFilter] = useState<string>("ALL")
+  const [debtTypeFilter, setDebtTypeFilter] = useState<string>(DEBT_TYPE_FILTER_ALL)
+  // Tipos presentes en el scope actual (incluye los custom de la org). El
+  // endpoint los calcula antes de aplicar el filtro de tipo.
+  const [availableDebtTypes, setAvailableDebtTypes] = useState<string[]>([])
   const [dueDateFrom, setDueDateFrom] = useState<Date | undefined>(undefined)
   const [dueDateTo, setDueDateTo] = useState<Date | undefined>(undefined)
   const [dateType, setDateType] = useState<string>("VENCIMIENTO")
@@ -174,6 +186,9 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
       if (operatorFilter !== "ALL") {
         params.append("operatorId", operatorFilter)
       }
+      if (debtTypeFilter !== DEBT_TYPE_FILTER_ALL) {
+        params.append("debtType", debtTypeFilter)
+      }
       if (dueDateFrom) {
         params.append("dateFrom", format(dueDateFrom, "yyyy-MM-dd"))
       }
@@ -198,12 +213,13 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
 
       const data = await response.json()
       setPayments(data.payments || [])
+      setAvailableDebtTypes(data.availableDebtTypes || [])
     } catch (error) {
       console.error("Error fetching operator payments:", error)
     } finally {
       setLoading(false)
     }
-  }, [statusFilter, agencyFilter, operatorFilter, dueDateFrom, dueDateTo, dateType, amountMin, amountMax, operationSearch])
+  }, [statusFilter, agencyFilter, operatorFilter, debtTypeFilter, dueDateFrom, dueDateTo, dateType, amountMin, amountMax, operationSearch])
 
   // Ejecutar fetch cuando cambian los filtros
   useEffect(() => {
@@ -239,61 +255,60 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
       return sum + (amount - paid)
     }, 0)
 
+  // Opciones del selector de tipo: las que existen en el scope actual (incluye
+  // tipos custom de la org), ordenadas con los estándar primero y "Sin
+  // clasificar" al final. Antes del primer fetch caemos a la lista estándar.
+  const debtTypeOptions = useMemo(() => {
+    const present = new Set<string>(availableDebtTypes)
+    // La selección activa siempre queda disponible, aunque el resto de los
+    // filtros deje su conteo en cero (si no, el selector se vería vacío).
+    if (debtTypeFilter !== DEBT_TYPE_FILTER_ALL) present.add(debtTypeFilter)
+    if (present.size === 0) return DEBT_TYPE_FILTER_OPTIONS
+
+    const standard = DEBT_TYPE_FILTER_OPTIONS.filter((t) => present.has(t))
+    const custom = Array.from(present)
+      .filter(
+        (t) => !DEBT_TYPE_FILTER_OPTIONS.includes(t) && t !== DEBT_TYPE_UNSPECIFIED
+      )
+      .sort((a, b) => debtTypeLabel(a).localeCompare(debtTypeLabel(b), "es"))
+
+    return [
+      ...standard,
+      ...custom,
+      ...(present.has(DEBT_TYPE_UNSPECIFIED) ? [DEBT_TYPE_UNSPECIFIED] : []),
+    ]
+  }, [availableDebtTypes, debtTypeFilter])
+
+  // La deuda no guarda agencia: se resuelve por la operación asociada. Las
+  // deudas manuales (sin operación) quedan sin oficina.
+  const agencyNames = useMemo(
+    () => Object.fromEntries(agencies.map((a) => [a.id, a.name])),
+    [agencies]
+  )
+  const agencyNameFor = (payment: any): string => {
+    const agencyId = payment.operations?.agency_id
+    return agencyId ? agencyNames[agencyId] || "Sin oficina" : "Sin oficina"
+  }
+
   // Exportar a Excel
   const handleExportExcel = () => {
     const workbook = XLSX.utils.book_new()
 
-    // Agrupar pagos por operador para resumen
-    const operatorSummary: Record<string, {
-      operator: string
-      totalAmount: number
-      totalPaid: number
-      totalPending: number
-      currency: string
-      count: number
-      overdueCount: number
-    }> = {}
-
-    payments.forEach((payment) => {
-      const operatorName = payment.operators?.name || "Sin operador"
-      const operatorId = payment.operator_id || "unknown"
-      
-      if (!operatorSummary[operatorId]) {
-        operatorSummary[operatorId] = {
-          operator: operatorName,
-          totalAmount: 0,
-          totalPaid: 0,
-          totalPending: 0,
-          currency: payment.currency || "ARS",
-          count: 0,
-          overdueCount: 0,
-        }
-      }
-
-      const amount = parseFloat(payment.amount || "0") || 0
-      const paidAmount = parseFloat(payment.paid_amount || "0") || 0
-      const pendingAmount = amount - paidAmount
-
-      operatorSummary[operatorId].totalAmount += amount
-      operatorSummary[operatorId].totalPaid += paidAmount
-      operatorSummary[operatorId].totalPending += pendingAmount
-      operatorSummary[operatorId].count += 1
-
-      if (payment.status === "OVERDUE" || (payment.status === "PENDING" && (parseDateOnlyLocal(payment.due_date) ?? new Date(8640000000000000)) < new Date())) {
-        operatorSummary[operatorId].overdueCount += 1
-      }
-    })
-
-    // Hoja 1: Resumen por Operador
-    const summaryData = Object.values(operatorSummary).map((summary) => ({
-      Operador: summary.operator,
-      "Total a Pagar": summary.totalAmount,
-      Moneda: summary.currency,
-      "Pagado": summary.totalPaid,
-      "Pendiente": summary.totalPending,
-      "Cantidad Pagos": summary.count,
-      "Vencidos": summary.overdueCount,
-    }))
+    // Hoja 1: Resumen por operador × oficina × moneda. La moneda entra en el
+    // agrupamiento a propósito: antes se tomaba la del primer pago del operador
+    // y se sumaba ARS + USD en un mismo total.
+    const summaryData = buildOperatorAgencySummary(payments, { agencyNames }).map(
+      (summary) => ({
+        Operador: summary.operator,
+        Oficina: summary.agency,
+        Moneda: summary.currency,
+        "Total a Pagar": summary.totalAmount,
+        "Pagado": summary.totalPaid,
+        "Pendiente": summary.totalPending,
+        "Cantidad Pagos": summary.count,
+        "Vencidos": summary.overdueCount,
+      })
+    )
 
     const summarySheet = XLSX.utils.json_to_sheet(summaryData)
     XLSX.utils.book_append_sheet(workbook, summarySheet, "Resumen por Operador")
@@ -309,7 +324,9 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
       return {
         "Código Operación": payment.operations?.file_code || "-",
         Destino: payment.operations?.destination || "-",
+        Oficina: agencyNameFor(payment),
         Operador: payment.operators?.name || "-",
+        Tipo: debtTypeLabel(payment.debt_type),
         "File Servicio": payment.file_code || "-",
         "Monto Total": amount,
         Moneda: payment.currency || "ARS",
@@ -329,8 +346,9 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
     const detailSheet = XLSX.utils.json_to_sheet(detailData)
     XLSX.utils.book_append_sheet(workbook, detailSheet, "Detalle Pagos")
 
-    // Guardar archivo
-    const fileName = `cuentas-por-pagar-${format(new Date(), "yyyy-MM-dd", { locale: es })}.xlsx`
+    // Guardar archivo. El tipo de servicio va en el nombre para no confundir un
+    // export filtrado (ej: solo aéreos) con el total de la deuda.
+    const fileName = `cuentas-por-pagar${debtTypeFileSuffix(debtTypeFilter)}-${format(new Date(), "yyyy-MM-dd", { locale: es })}.xlsx`
     XLSX.writeFile(workbook, fileName)
   }
 
@@ -404,6 +422,20 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
             </SelectContent>
           </Select>
 
+          <Select value={debtTypeFilter} onValueChange={setDebtTypeFilter}>
+            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[120px] w-auto">
+              <SelectValue placeholder="Tipo" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={DEBT_TYPE_FILTER_ALL}>Todos los tipos</SelectItem>
+              {debtTypeOptions.map((type) => (
+                <SelectItem key={type} value={type}>
+                  {debtTypeLabel(type)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[120px] w-auto">
               <SelectValue placeholder="Estado" />
@@ -452,6 +484,7 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
 
           {(agencyFilter !== "ALL" ||
             operatorFilter !== "ALL" ||
+            debtTypeFilter !== DEBT_TYPE_FILTER_ALL ||
             statusFilter !== "UNPAID" ||
             dueDateFrom !== undefined ||
             dueDateTo !== undefined ||
@@ -465,6 +498,7 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
               onClick={() => {
                 setAgencyFilter("ALL")
                 setOperatorFilter("ALL")
+                setDebtTypeFilter(DEBT_TYPE_FILTER_ALL)
                 setStatusFilter("UNPAID")
                 setDueDateFrom(undefined)
                 setDueDateTo(undefined)
@@ -534,6 +568,7 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                 <TableRow>
                   <SortableTableHead sortKey="operations.file_code" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10">Operación</SortableTableHead>
                   <SortableTableHead sortKey="operators.name" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10">Operador</SortableTableHead>
+                  <TableHead className="sticky top-0 bg-background z-10">Oficina</TableHead>
                   <SortableTableHead sortKey="amount" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10 text-right">Monto Total</SortableTableHead>
                   <SortableTableHead sortKey="paid_amount" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10 text-right">Pagado</SortableTableHead>
                   <TableHead className="sticky top-0 bg-background z-10 text-right">Pendiente</TableHead>
@@ -581,6 +616,9 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                         )}
                         <div className="text-xs text-muted-foreground">
                           {payment.operations?.destination || "-"}
+                          {payment.debt_type && payment.debt_type !== DEBT_TYPE_UNSPECIFIED && (
+                            <> · {debtTypeLabel(payment.debt_type)}</>
+                          )}
                         </div>
                         {payment.operations?.main_passenger_name && (
                           <div className="text-xs text-muted-foreground mt-1">
@@ -595,6 +633,9 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                             File: {payment.file_code}
                           </div>
                         )}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {agencyNameFor(payment)}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
                         {formatCurrency(parseFloat(payment.amount || "0"), payment.currency)}

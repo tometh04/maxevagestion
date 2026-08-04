@@ -8,9 +8,109 @@ import {
   getEffectiveOperatorPaymentStatus,
   hasPendingBalance,
 } from "@/lib/accounting/operator-payment-settlement"
+import {
+  DEBT_TYPE_FILTER_ALL,
+  matchesDebtTypeFilter,
+  resolveDebtType,
+} from "@/lib/accounting/operator-payment-reports"
 import { loadApprovalRules, getCurrentArsPerUsd } from "@/lib/payments/load-rules"
 import { requiresApproval, convertToArs } from "@/lib/payments/approval"
 import { notifyApprovers } from "@/lib/payments/notify-approvers"
+
+/** Chunk para los `.in()` (evita URLs gigantes en PostgREST). */
+const IN_CHUNK_SIZE = 200
+
+function chunked<T>(items: T[], size = IN_CHUNK_SIZE): T[][] {
+  const chunks: T[][] = []
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size))
+  return chunks
+}
+
+/**
+ * Mapa operator_payment_id → tipos de servicio asociados. Normalmente hay uno
+ * solo por deuda, pero se devuelve lista para no asumirlo.
+ */
+async function fetchServiceTypesByPayment(
+  supabase: any,
+  orgId: string,
+  paymentIds: string[]
+): Promise<Map<string, string[]>> {
+  const byPayment = new Map<string, string[]>()
+  if (paymentIds.length === 0) return byPayment
+
+  for (const chunk of chunked(paymentIds)) {
+    const { data, error } = await (supabase.from("operation_services") as any)
+      .select("operator_payment_id, service_type")
+      .eq("org_id", orgId)
+      .in("operator_payment_id", chunk)
+
+    // No degradar en silencio: si esto falla, el filtro por tipo devolvería un
+    // reporte incompleto que igual parece correcto.
+    if (error) {
+      throw new Error(`Error al resolver tipos de servicio: ${error.message}`)
+    }
+
+    for (const row of data || []) {
+      if (!row.operator_payment_id || !row.service_type) continue
+      const current = byPayment.get(row.operator_payment_id)
+      if (current) {
+        if (!current.includes(row.service_type)) current.push(row.service_type)
+      } else {
+        byPayment.set(row.operator_payment_id, [row.service_type])
+      }
+    }
+  }
+
+  return byPayment
+}
+
+/** Clave de `operation_operators`: una operación puede tener varios operadores. */
+function operatorProductTypeKey(
+  operationId: string,
+  operatorId: string,
+  fileCode?: string | null
+): string {
+  return `${operationId}|${operatorId}|${fileCode || ""}`
+}
+
+/**
+ * Mapa (operación, operador[, file]) → `operation_operators.product_type`, que
+ * es el tipo que el usuario eligió al cargar el operador en la operación. Es la
+ * fuente del tipo para las deudas que NO nacen de un servicio (la mayoría).
+ */
+async function fetchOperatorProductTypes(
+  supabase: any,
+  orgId: string,
+  operationIds: string[]
+): Promise<Map<string, string>> {
+  const byKey = new Map<string, string>()
+  if (operationIds.length === 0) return byKey
+
+  for (const chunk of chunked(operationIds)) {
+    const { data, error } = await (supabase.from("operation_operators") as any)
+      .select("operation_id, operator_id, file_code, product_type")
+      .eq("org_id", orgId)
+      .in("operation_id", chunk)
+
+    if (error) {
+      throw new Error(`Error al resolver tipos de producto: ${error.message}`)
+    }
+
+    for (const row of data || []) {
+      if (!row.product_type) continue
+      // Con file_code (para desambiguar varias patas del mismo operador) y sin
+      // él (fallback cuando la deuda no lo tiene cargado).
+      byKey.set(
+        operatorProductTypeKey(row.operation_id, row.operator_id, row.file_code),
+        row.product_type
+      )
+      const looseKey = operatorProductTypeKey(row.operation_id, row.operator_id)
+      if (!byKey.has(looseKey)) byKey.set(looseKey, row.product_type)
+    }
+  }
+
+  return byKey
+}
 
 export async function GET(request: Request) {
   try {
@@ -33,6 +133,9 @@ export async function GET(request: Request) {
     const amountMin = searchParams.get("amountMin") || undefined
     const amountMax = searchParams.get("amountMax") || undefined
     const operationSearch = searchParams.get("operationSearch") || undefined
+    // Tipo de producto de la deuda (FLIGHT/HOTEL/...), ALL o UNSPECIFIED.
+    // Ver lib/accounting/operator-payment-reports.ts.
+    const debtType = searchParams.get("debtType") || DEBT_TYPE_FILTER_ALL
 
     // Update overdue payments first
     await updateOverduePayments(supabase)
@@ -42,7 +145,7 @@ export async function GET(request: Request) {
       .select(
         `
         *,
-        operations:operation_id (id, destination, file_code, sale_amount_total, agency_id),
+        operations:operation_id (id, destination, file_code, sale_amount_total, agency_id, product_type),
         operators:operator_id (id, name, contact_email),
         ledger_movements:ledger_movement_id (id, created_at, receipt_number, method, notes, account_id, financial_accounts:account_id(name))
       `
@@ -72,7 +175,7 @@ export async function GET(request: Request) {
       const { data: matchingOps } = await opQuery.limit(5000)
       const opIds = (matchingOps || []).map((o: any) => o.id)
       if (opIds.length === 0) {
-        return NextResponse.json({ payments: [] })
+        return NextResponse.json({ payments: [], availableDebtTypes: [] })
       }
       query = query.in("operation_id", opIds)
     } else {
@@ -148,6 +251,64 @@ export async function GET(request: Request) {
       })
     }
 
+    // Tipo de producto: `operator_payments` no lo guarda, se resuelve desde el
+    // servicio vinculado o desde el tipo cargado para ese operador en la
+    // operación. Ver resolveDebtType().
+    const [serviceTypesByPayment, operatorProductTypes] = await Promise.all([
+      fetchServiceTypesByPayment(
+        supabase,
+        (user as any).org_id,
+        filteredPayments.map((p: any) => p.id)
+      ),
+      fetchOperatorProductTypes(
+        supabase,
+        (user as any).org_id,
+        Array.from(
+          new Set(
+            filteredPayments
+              .map((p: any) => p.operation_id)
+              .filter((id: string | null): id is string => Boolean(id))
+          )
+        )
+      ),
+    ])
+
+    filteredPayments = filteredPayments.map((p: any) => {
+      const serviceTypes = serviceTypesByPayment.get(p.id) ?? []
+      const operatorProductType = p.operation_id
+        ? operatorProductTypes.get(
+            operatorProductTypeKey(p.operation_id, p.operator_id, p.file_code)
+          ) ??
+          operatorProductTypes.get(
+            operatorProductTypeKey(p.operation_id, p.operator_id)
+          ) ??
+          null
+        : null
+
+      return {
+        ...p,
+        service_types: serviceTypes,
+        debt_type: resolveDebtType({
+          serviceTypes,
+          operatorProductType,
+          operationProductType: p.operations?.product_type ?? null,
+        }),
+      }
+    })
+
+    // Tipos presentes antes de filtrar: alimenta el selector del cliente para
+    // que también ofrezca los tipos custom de la organización.
+    const availableDebtTypes = Array.from(
+      new Set(filteredPayments.map((p: any) => p.debt_type as string))
+    ).sort()
+
+    // Filtrar antes del enriquecido de pasajeros (que es una query por fila).
+    if (debtType !== DEBT_TYPE_FILTER_ALL) {
+      filteredPayments = filteredPayments.filter((p: any) =>
+        matchesDebtTypeFilter(p.debt_type, debtType)
+      )
+    }
+
     // Enriquecer pagos con nombre del pasajero principal
     const enrichedPayments = await Promise.all(
       filteredPayments.map(async (payment: any) => {
@@ -171,7 +332,10 @@ export async function GET(request: Request) {
       })
     )
 
-    return NextResponse.json({ payments: enrichedPayments })
+    return NextResponse.json({
+      payments: enrichedPayments,
+      availableDebtTypes,
+    })
   } catch (error) {
     console.error("Error in GET /api/accounting/operator-payments:", error)
     return NextResponse.json({ error: "Error al obtener pagos a operadores" }, { status: 500 })
