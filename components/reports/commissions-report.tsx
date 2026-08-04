@@ -107,6 +107,7 @@ interface ReportPayload {
       id: string
       operationId: string
       fileCode: string
+      passengerName: string
       destination: string
       operationDate: string
       sellerId: string
@@ -799,7 +800,7 @@ export function CommissionsReport({ sellers, agencies }: CommissionsReportProps)
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-[110px]">Fecha venta</TableHead>
-                      <TableHead>File</TableHead>
+                      <TableHead>Pasajero</TableHead>
                       <TableHead>Destino</TableHead>
                       <TableHead>Tipo de venta</TableHead>
                       <TableHead>Estado</TableHead>
@@ -837,7 +838,7 @@ export function CommissionsReport({ sellers, agencies }: CommissionsReportProps)
                             <TableCell className="tabular-nums text-muted-foreground">
                               {formatShortDate(row.operationDate)}
                             </TableCell>
-                            <TableCell className="font-medium">{row.fileCode}</TableCell>
+                            <TableCell className="font-medium">{row.passengerName || row.fileCode}</TableCell>
                             <TableCell>
                               <span>{row.destination}</span>
                               {/*

@@ -55,6 +55,7 @@ interface Commission {
     departure_date: string | null
     file_code: string | null
     short_code: string | null
+    main_passenger_name?: string | null
     currency: string | null
   } | null
 }
@@ -78,9 +79,14 @@ function fmtCurrency(amount: number, currency?: string | null): string {
   return formatCurrency(amount, cur)
 }
 
+/**
+ * El vendedor reconoce su comisión por el pasajero, no por el código de
+ * operación (pedido de Lozada). El código queda de respaldo para las
+ * operaciones sin pasajero principal cargado.
+ */
 function operationLabel(op: Commission["operation"]): string {
   if (!op) return "-"
-  return op.file_code || op.short_code || "-"
+  return op.main_passenger_name || op.file_code || op.short_code || "-"
 }
 
 function monthKey(date: Date): string {
@@ -422,7 +428,7 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
               <Table>
                 <TableHeader className="sticky top-0 bg-background z-10">
                   <TableRow>
-                    <SortableTableHead sortKey="operation.file_code" sortConfig={balanceSortConfig} onSort={requestBalanceSort}>Operacion</SortableTableHead>
+                    <SortableTableHead sortKey="operation.main_passenger_name" sortConfig={balanceSortConfig} onSort={requestBalanceSort}>Pasajero</SortableTableHead>
                     <SortableTableHead sortKey="operation.destination" sortConfig={balanceSortConfig} onSort={requestBalanceSort}>Destino</SortableTableHead>
                     <SortableTableHead sortKey="operation.departure_date" sortConfig={balanceSortConfig} onSort={requestBalanceSort}>Fecha Salida</SortableTableHead>
                     <SortableTableHead sortKey="percentage" sortConfig={balanceSortConfig} onSort={requestBalanceSort} className="text-right">% Comision</SortableTableHead>
@@ -580,7 +586,7 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
                         <TableHeader className="sticky top-0 bg-background z-10">
                           <TableRow>
                             <TableHead>Fecha Pago</TableHead>
-                            <TableHead>Operacion</TableHead>
+                            <TableHead>Pasajero</TableHead>
                             <TableHead>Destino</TableHead>
                             <TableHead className="text-right">Monto</TableHead>
                             <TableHead className="text-right">%</TableHead>

@@ -167,6 +167,36 @@ describe("buildCommissionsReport", () => {
     expect(huerfana.counterpartName).toBeNull()
   })
 
+  it("identifica cada fila por el pasajero principal", () => {
+    // Pedido de Lozada: el vendedor reconoce su comisión por el pasajero, no por
+    // el código de operación.
+    const report = buildCommissionsReport({
+      records: [
+        record({ amount: 1000, operations: { id: "op-con-pax", file_code: "F-010" } }),
+        record({ amount: 500, operations: { id: "op-sin-pax", file_code: "F-011" } }),
+      ],
+      sellerNames,
+      agencyNames,
+      mainPassengers: new Map([["op-con-pax", "Lucía González"]]),
+      currency: "ARS",
+      dateFrom: "2026-07-01",
+      dateTo: "2026-07-31",
+    })
+
+    expect(report.detail.find((d) => d.operationId === "op-con-pax")!.passengerName).toBe(
+      "Lucía González"
+    )
+    // Sin pasajero cargado queda vacío y la vista cae al código, que sigue viajando.
+    const sinPax = report.detail.find((d) => d.operationId === "op-sin-pax")!
+    expect(sinPax.passengerName).toBe("")
+    expect(sinPax.fileCode).toBe("F-011")
+  })
+
+  it("sin mapa de pasajeros el detalle no se rompe", () => {
+    const report = build([record({ amount: 1000 })])
+    expect(report.detail[0].passengerName).toBe("")
+  })
+
   it("marca las ventas que vinieron por un socio referidor", () => {
     const report = buildCommissionsReport({
       records: [

@@ -393,15 +393,18 @@ export function generateCommissionsReportPdf({
       })),
   ]
 
+  // La columna que identifica la fila es el pasajero, no el código de operación
+  // (pedido de Lozada). Un nombre necesita bastante más ancho que un file, así
+  // que se le da la mayor parte de lo que ocupaba destino.
   const dc = {
     date: MARGIN + 4,
-    file: MARGIN + 24,
-    destination: MARGIN + 52,
+    passenger: MARGIN + 24,
+    destination: MARGIN + 72,
     type: MARGIN + 106,
     status: MARGIN + 155,
     amount: RIGHT - 1,
   }
-  const widths = { file: 26, destination: 52, type: 32 }
+  const widths = { passenger: 46, destination: 32, type: 32 }
 
   const drawDetailHeader = () => {
     b.setFill(LIGHT)
@@ -410,7 +413,7 @@ export function generateCommissionsReportPdf({
     doc.setFont("helvetica", "bold")
     b.setText(GRAY)
     doc.text("FECHA", dc.date, b.y + 4.7)
-    doc.text("FILE", dc.file, b.y + 4.7)
+    doc.text("PASAJERO", dc.passenger, b.y + 4.7)
     doc.text("DESTINO", dc.destination, b.y + 4.7)
     doc.text("TIPO DE VENTA", dc.type, b.y + 4.7)
     doc.text("ESTADO", dc.status, b.y + 4.7, { align: "right" })
@@ -480,7 +483,7 @@ export function generateCommissionsReportPdf({
       doc.text(fmtDate(row.operationDate), dc.date, b.y + 4.2)
 
       b.setText(DARK)
-      doc.text(b.truncate(row.fileCode, widths.file), dc.file, b.y + 4.2)
+      doc.text(b.truncate(row.passengerName || row.fileCode, widths.passenger), dc.passenger, b.y + 4.2)
       doc.text(b.truncate(row.destination, widths.destination), dc.destination, b.y + 4.2)
 
       b.setText(GRAY)
@@ -502,7 +505,7 @@ export function generateCommissionsReportPdf({
         doc.setFont("helvetica", "italic")
         doc.setFontSize(6.5)
         b.setText(GRAY)
-        doc.text(b.truncate(subline, 130), dc.file, b.y + 7.6)
+        doc.text(b.truncate(subline, 130), dc.passenger, b.y + 7.6)
         doc.setFont("helvetica", "normal")
       }
       b.y += rowHeight

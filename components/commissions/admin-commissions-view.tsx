@@ -77,6 +77,7 @@ interface Commission {
     id: string
     short_code?: string
     file_code?: string
+    main_passenger_name?: string | null
     destination: string
     departure_date: string
     sale_amount_total: number
@@ -130,6 +131,20 @@ const fmtCurrency = (value: number, currency = "USD") =>
  * dashboard y el reporte de comisiones.
  */
 const getCommCurrency = (c: Commission): string => getCommissionCurrency(c as any)
+
+/**
+ * Cómo se identifica una comisión en pantalla: por el pasajero, no por el
+ * código de operación (pedido de Lozada, el vendedor reconoce al pasajero).
+ * El código queda de respaldo cuando la operación no tiene pasajero principal
+ * cargado, y el id corto como último recurso.
+ */
+function commissionLabel(c: Commission): string {
+  return (
+    c.operation?.main_passenger_name ||
+    c.operation?.file_code ||
+    c.operation_id.slice(0, 8)
+  )
+}
 
 function generateMonthOptions() {
   const options: { value: string; label: string }[] = []
@@ -769,7 +784,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
                                       className="text-primary hover:underline"
                                       prefetch={false}
                                     >
-                                      {c.operation?.file_code || c.operation_id.slice(0, 8)}
+                                      {commissionLabel(c)}
                                     </Link>
                                     {" - "}
                                     {c.operation?.destination || "Sin destino"}
@@ -932,7 +947,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
                   <TableRow>
                     <SortableTableHead sortKey="date_paid" sortConfig={paidSortConfig} onSort={requestPaidSort}>Fecha Pago</SortableTableHead>
                     <SortableTableHead sortKey="sellers.name" sortConfig={paidSortConfig} onSort={requestPaidSort}>Vendedor</SortableTableHead>
-                    <SortableTableHead sortKey="operation.file_code" sortConfig={paidSortConfig} onSort={requestPaidSort}>Operacion</SortableTableHead>
+                    <SortableTableHead sortKey="operation.main_passenger_name" sortConfig={paidSortConfig} onSort={requestPaidSort}>Pasajero</SortableTableHead>
                     <SortableTableHead sortKey="operation.destination" sortConfig={paidSortConfig} onSort={requestPaidSort}>Destino</SortableTableHead>
                     <SortableTableHead sortKey="amount" sortConfig={paidSortConfig} onSort={requestPaidSort} className="text-right">Monto</SortableTableHead>
                     <TableHead>Estado</TableHead>
@@ -970,7 +985,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
                             className="text-primary hover:underline"
                             prefetch={false}
                           >
-                            {c.operation?.file_code || c.operation_id.slice(0, 8)}
+                            {commissionLabel(c)}
                           </Link>
                         </TableCell>
                         <TableCell className="text-sm">
@@ -1060,7 +1075,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium truncate">
                               <Link href={`/operations/${c.operation_id}`} className="text-primary hover:underline" prefetch={false}>
-                                {c.operation?.file_code || c.operation_id.slice(0, 8)}
+                                {commissionLabel(c)}
                               </Link>
                               {" - "}
                               {c.operation?.destination || "Sin destino"}

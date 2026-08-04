@@ -89,6 +89,12 @@ export interface CommissionsReportDetailRow {
   id: string
   operationId: string
   fileCode: string
+  /**
+   * Pasajero principal de la operación. Es lo que se muestra para identificar
+   * la fila: el vendedor reconoce al pasajero, no el código (pedido de Lozada).
+   * Vacío cuando la operación no tiene pasajero principal cargado.
+   */
+  passengerName: string
   destination: string
   month: string
   operationDate: string
@@ -167,6 +173,8 @@ export interface BuildCommissionsReportParams {
   agencyNames: Map<string, string>
   /** operationId → referido. Ausente = ninguna venta vino referida. */
   referralPartners?: Map<string, ReferralInfo>
+  /** operationId → pasajero principal. Ausente = se muestra el código. */
+  mainPassengers?: Map<string, string>
   /** Qué datos de la agencia incluir. Default: ninguno. */
   include?: { sale?: boolean; margin?: boolean; referrals?: boolean }
   currency: string
@@ -215,6 +223,7 @@ export function buildCommissionsReport({
   sellerNames,
   agencyNames,
   referralPartners,
+  mainPassengers,
   include,
   currency,
   dateFrom,
@@ -435,6 +444,7 @@ export function buildCommissionsReport({
         id: r.id,
         operationId: r.operation_id,
         fileCode: op?.file_code || "-",
+        passengerName: (op && mainPassengers?.get(op.id)) || "",
         destination: op?.destination || "-",
         month: operationDate.slice(0, 7),
         operationDate,

@@ -76,6 +76,8 @@ export interface FetchCommissionRecordsResult {
   agencyNames: Map<string, string>
   /** operationId → referido de esa operación (VIB-94). */
   referralPartners: Map<string, ReferralInfo>
+  /** operationId → pasajero principal, para identificar la fila en pantalla. */
+  mainPassengers: Map<string, string>
   /** Comisiones del período cuya operación está cancelada (excluidas). */
   cancelledRecords: number
   /** Comisiones del período saldadas administrativamente (excluidas). */
@@ -230,11 +232,38 @@ export async function fetchCommissionRecords(
     console.warn("[commissions-report] no se pudieron leer los referidos:", error)
   }
 
+  // Pasajero principal de cada operación: es cómo el vendedor reconoce su
+  // comisión (pedido de Lozada). Contexto de presentación: si falla, el reporte
+  // sale igual y la fila cae al código de operación.
+  const mainPassengers = new Map<string, string>()
+  try {
+    for (let i = 0; i < operationIds.length; i += IN_CHUNK) {
+      const chunk = operationIds.slice(i, i + IN_CHUNK)
+      const { data } = await (supabase.from("operation_customers") as any)
+        .select("operation_id, customers:customer_id(first_name, last_name)")
+        .eq("org_id", orgId)
+        .eq("role", "MAIN")
+        .in("operation_id", chunk)
+
+      for (const row of (data || []) as any[]) {
+        // El embed to-one puede llegar como objeto o envuelto en array según la
+        // versión de PostgREST, igual que en los referidos.
+        const customer = Array.isArray(row.customers) ? row.customers[0] : row.customers
+        if (!row.operation_id || !customer || mainPassengers.has(row.operation_id)) continue
+        const name = `${customer.first_name || ""} ${customer.last_name || ""}`.trim()
+        if (name) mainPassengers.set(row.operation_id, name)
+      }
+    }
+  } catch (error) {
+    console.warn("[commissions-report] no se pudo leer el pasajero principal:", error)
+  }
+
   return {
     records,
     sellerNames,
     agencyNames,
     referralPartners,
+    mainPassengers,
     cancelledRecords: cancelledCount,
     settledRecords: settledCount,
     truncated,

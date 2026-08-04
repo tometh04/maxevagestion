@@ -12,6 +12,46 @@ export const dynamic = 'force-dynamic'
 
 const COMMISSION_THRESHOLD_KEY = "commissions.payout_collection_threshold"
 
+/** Chunk para el `.in()` de operation_id (evita URLs gigantes en PostgREST). */
+const OPERATION_IDS_CHUNK_SIZE = 200
+
+/**
+ * Nombre del pasajero principal por operación (`operation_customers` con
+ * role = MAIN). Devuelve un Map vacío si falla: es un dato de presentación y no
+ * debe tumbar el listado de comisiones, que cae al código de operación.
+ */
+async function fetchMainPassengers(
+  supabase: any,
+  orgId: string,
+  operationIds: string[]
+): Promise<Map<string, string>> {
+  const byOperation = new Map<string, string>()
+  if (operationIds.length === 0) return byOperation
+
+  for (let i = 0; i < operationIds.length; i += OPERATION_IDS_CHUNK_SIZE) {
+    const chunk = operationIds.slice(i, i + OPERATION_IDS_CHUNK_SIZE)
+    const { data, error } = await (supabase.from("operation_customers") as any)
+      .select("operation_id, customers:customer_id(first_name, last_name)")
+      .eq("org_id", orgId)
+      .eq("role", "MAIN")
+      .in("operation_id", chunk)
+
+    if (error) {
+      console.error("[commissions] Error resolviendo pasajero principal:", error)
+      continue
+    }
+
+    for (const row of data || []) {
+      const customer = row.customers
+      if (!customer || byOperation.has(row.operation_id)) continue
+      const name = `${customer.first_name || ""} ${customer.last_name || ""}`.trim()
+      if (name) byOperation.set(row.operation_id, name)
+    }
+  }
+
+  return byOperation
+}
+
 /**
  * Umbral de cobranza (config por org, key/value en organization_settings) a
  * partir del cual una comisión PENDING se considera "cobrable" (pagable al
@@ -192,6 +232,17 @@ export async function GET(request: Request) {
       return (collectedPctByOp[cr.operation_id] ?? 0) >= COLLECTIBLE_THRESHOLD * 100
     }
 
+    // Pasajero principal de cada operación. El vendedor identifica su comisión
+    // por el pasajero, no por el código de operación (pedido de Lozada), así que
+    // el nombre tiene que viajar en la respuesta.
+    const mainPassengerByOperation = await fetchMainPassengers(
+      supabase,
+      (user as any).org_id,
+      Array.from(
+        new Set(filteredRecords.map((cr: any) => cr.operation_id).filter(Boolean))
+      ) as string[]
+    )
+
     // Fetch seller names from users table (scopeado por org)
     const sellerIds = Array.from(new Set(filteredRecords.map((cr: any) => cr.seller_id).filter(Boolean))) as string[]
     let sellersMap: Record<string, { name: string; email: string }> = {}
@@ -233,6 +284,7 @@ export async function GET(request: Request) {
           id: cr.operations.id,
           short_code: cr.operations.file_code || "",
           file_code: cr.operations.file_code || "",
+          main_passenger_name: mainPassengerByOperation.get(cr.operation_id) || "",
           destination: cr.operations.destination || "",
           departure_date: cr.operations.departure_date || "",
           currency: cr.operations.sale_currency || "USD",
