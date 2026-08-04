@@ -51,6 +51,9 @@ function makeSupabaseMock(dataByTable: Record<string, { data: any; error: any }>
         gte: jest.fn(() => builder),
         lte: jest.fn(() => builder),
         in: jest.fn(() => builder),
+        // `.is("reversed_at", null)`: la lectura de gastos excluye los
+        // movimientos revertidos.
+        is: jest.fn(() => builder),
         order: jest.fn(() => builder),
         single: jest.fn(() => Promise.resolve(result)),
         maybeSingle: jest.fn(() => Promise.resolve(result)),

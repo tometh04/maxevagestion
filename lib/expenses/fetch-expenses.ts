@@ -212,13 +212,20 @@ export async function fetchExpenses(
       .select(`
         id, type, category, amount, currency,
         movement_date, created_at, notes,
-        financial_account_id, category_id,
+        financial_account_id, category_id, ledger_movement_id,
         financial_accounts:financial_account_id (id, name, currency),
+        ledger_movements:ledger_movement_id (affects_balance),
         users:user_id (id, name)
       `)
       .eq("type", "EXPENSE")
       .eq("org_id", orgId)
       .not("category", "in", '("OPERATOR_PAYMENT","Pago Operador","Pago Cliente")')
+      // Un movimiento revertido no es un gasto: la reversa lo dejó en cero en
+      // caja, pero el original seguía sumando acá. Reportado por Lozada — un
+      // retiro anulado les seguía figurando en gastos después de sacarlo de la
+      // caja. La contrapartida de la reversa es un INCOME, así que no entra en
+      // esta query.
+      .is("reversed_at", null)
       .order("movement_date", { ascending: false })
 
     if (dateFrom) varQuery = varQuery.gte("movement_date", startOfDayAR(dateFrom))
@@ -236,6 +243,14 @@ export async function fetchExpenses(
 
     if (!varError && variables) {
       for (const v of variables) {
+        // Excluido del saldo (`affects_balance = false` en el asiento) → no es
+        // un gasto de la agencia. Es la otra mitad del caso de Lozada: sacaron
+        // el movimiento de la caja y seguía contando como gasto acá.
+        // El embed to-one puede llegar como objeto o dentro de un array según
+        // la versión de PostgREST.
+        const ledger = Array.isArray(v.ledger_movements) ? v.ledger_movements[0] : v.ledger_movements
+        if (ledger && ledger.affects_balance === false) continue
+
         // Modo "account": filtrar por la oficina de la cuenta pagadora.
         if (filterByAgency && agencyMode === "account") {
           const acctAgency = accountAgencyById.get(v.financial_account_id) ?? null

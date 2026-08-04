@@ -268,11 +268,16 @@ export async function GET(request: Request) {
         id, type, category, category_id, amount, currency, movement_date, notes,
         financial_account_id, ledger_movement_id, created_at,
         expense_classification, cc_payment_group_id,
+        ledger_movements:ledger_movement_id (affects_balance),
         users:user_id (id, name)
       `)
       .eq("type", "EXPENSE")
       .eq("is_touristic", false)
       .eq("org_id", userOrgId)
+      // Mismo criterio que el reporte de gastos: un movimiento revertido ya no
+      // es un gasto, y uno excluido del saldo tampoco (se filtra abajo, porque
+      // vive en el asiento vinculado).
+      .is("reversed_at", null)
       .order("movement_date", { ascending: false })
 
     if (dateFrom) query = query.gte("movement_date", dateFrom)
@@ -283,12 +288,19 @@ export async function GET(request: Request) {
     // Restringido a gastos propios (cash.ownDataOnly por agencia)
     if (isOwnDataOnlyResolved(user, "cash", matrix ?? undefined)) query = query.eq("user_id", user.id)
 
-    const { data: expenses, error } = await query
+    const { data: rawExpenses, error } = await query
 
     if (error) {
       console.error("Error fetching variable expenses:", error)
       return NextResponse.json({ error: "Error al obtener gastos" }, { status: 500 })
     }
+
+    // Excluido del saldo → no es un gasto. El embed to-one puede llegar como
+    // objeto o dentro de un array según la versión de PostgREST.
+    const expenses = (rawExpenses || []).filter((e: any) => {
+      const ledger = Array.isArray(e.ledger_movements) ? e.ledger_movements[0] : e.ledger_movements
+      return !ledger || ledger.affects_balance !== false
+    })
 
     // Get categories for enrichment (scopeado por org)
     const { data: categories } = await (supabase.from("recurring_payment_categories") as any)
