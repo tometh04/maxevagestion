@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
-import { getCurrentUser } from "@/lib/auth"
+import { canPerformAction } from "@/lib/permissions-api"
+import { getRequestPermissions } from "@/lib/permissions/request"
 import {
   createLedgerMovement,
   calculateARSEquivalent,
@@ -15,16 +15,42 @@ import {
 // GET - Obtener retiros (opcionalmente filtrados por socio)
 export async function GET(request: Request) {
   try {
-    const { user } = await getCurrentUser()
-    
-    if (!["SUPER_ADMIN", "ADMIN", "CONTABLE"].includes(user.role)) {
+    // Gate por accounting.read (matriz dinámica por agencia). El set previo
+    // [SUPER_ADMIN, ADMIN, CONTABLE] hardcodeado ignoraba ORG_OWNER (el owner
+    // del tenant) y los roles adicionales del usuario.
+    const { user, supabase, matrix } = await getRequestPermissions()
+    if (!canPerformAction(user, "accounting", "read", matrix ?? undefined)) {
       return NextResponse.json({ error: "No autorizado" }, { status: 403 })
     }
 
-    const supabase = await createServerClient()
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+    const orgId = (user as any).org_id as string
+
     const { searchParams } = new URL(request.url)
     const partnerId = searchParams.get("partnerId")
     const agencyId = searchParams.get("agencyId")
+
+    // `partner_withdrawals` no tiene org_id: el tenant se resuelve por el socio.
+    // Sin esto la tabla quedaba sin filtro explícito de organización.
+    const { data: orgPartners, error: orgPartnersError } = await (supabase
+      .from("partner_accounts") as any)
+      .select("id")
+      .eq("org_id", orgId)
+
+    if (orgPartnersError) {
+      console.error("Error fetching org partners:", orgPartnersError)
+      return NextResponse.json({ error: "Error al obtener retiros" }, { status: 500 })
+    }
+
+    const orgPartnerIds = (orgPartners || []).map((p: any) => p.id)
+    if (orgPartnerIds.length === 0) {
+      return NextResponse.json({ withdrawals: [] })
+    }
+    if (partnerId && !orgPartnerIds.includes(partnerId)) {
+      return NextResponse.json({ withdrawals: [] })
+    }
 
     let query = (supabase
       .from("partner_withdrawals") as any)
@@ -34,11 +60,8 @@ export async function GET(request: Request) {
         account:account_id(id, name, currency, agency_id),
         created_by_user:created_by(id, name)
       `)
+      .in("partner_id", partnerId ? [partnerId] : orgPartnerIds)
       .order("withdrawal_date", { ascending: false })
-
-    if (partnerId) {
-      query = query.eq("partner_id", partnerId)
-    }
 
     const { data: withdrawals, error } = await query
 
@@ -66,14 +89,20 @@ export async function GET(request: Request) {
 // POST - Registrar un nuevo retiro
 export async function POST(request: Request) {
   try {
-    const { user } = await getCurrentUser()
-    
-    // Solo SUPER_ADMIN y CONTABLE pueden registrar retiros/aportes
-    if (!["SUPER_ADMIN", "CONTABLE"].includes(user.role)) {
+    // Gate por accounting.write. Antes exigía user.role ∈ [SUPER_ADMIN,
+    // CONTABLE]: dejaba afuera al ORG_OWNER (el dueño del tenant) y al ADMIN
+    // que sí administra la caja, y encima miraba solo el rol principal, así que
+    // un usuario con CONTABLE como rol adicional también quedaba bloqueado.
+    const { user, supabase, matrix } = await getRequestPermissions()
+    if (!canPerformAction(user, "accounting", "write", matrix ?? undefined)) {
       return NextResponse.json({ error: "No autorizado para registrar movimientos de socios" }, { status: 403 })
     }
 
-    const supabase = await createServerClient()
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+    const orgId = (user as any).org_id as string
+
     const body = await request.json()
 
     const { partner_id, amount, currency, withdrawal_date, account_id, description, exchange_rate, movement_type = "WITHDRAWAL" } = body
@@ -102,22 +131,25 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Cuenta financiera es requerida. Debe seleccionar de qué cuenta se realiza el retiro." }, { status: 400 })
     }
 
-    // Verificar que el socio existe
+    // Verificar que el socio existe y es del tenant del usuario
     const { data: partner, error: partnerError } = await (supabase
       .from("partner_accounts") as any)
       .select("id, partner_name")
       .eq("id", partner_id)
+      .eq("org_id", orgId)
       .single()
 
     if (partnerError || !partner) {
       return NextResponse.json({ error: "Socio no encontrado" }, { status: 404 })
     }
 
-    // Verificar que la cuenta financiera existe y obtener su tipo para el método de pago
+    // Verificar que la cuenta financiera existe, es del tenant, y obtener su
+    // tipo para el método de pago
     const { data: account, error: accountError } = await (supabase
       .from("financial_accounts") as any)
       .select("id, name, currency, type, agency_id")
       .eq("id", account_id)
+      .eq("org_id", orgId)
       .single()
 
     if (accountError || !account) {

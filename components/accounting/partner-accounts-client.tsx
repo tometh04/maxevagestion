@@ -69,11 +69,14 @@ interface Withdrawal {
 }
 
 interface PartnerAccountsClientProps {
-  userRole: string
+  /** accounting.write resuelto en el server: alta de socios y de movimientos. */
+  canWrite: boolean
+  /** accounting.delete resuelto en el server: borrado de movimientos. */
+  canDelete: boolean
   agencies: Array<{ id: string; name: string }>
 }
 
-export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsClientProps) {
+export function PartnerAccountsClient({ canWrite, canDelete, agencies }: PartnerAccountsClientProps) {
   const [agencyFilter, setAgencyFilter] = useState<string>("ALL")
   const [partners, setPartners] = useState<Partner[]>([])
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([])
@@ -325,7 +328,7 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
           <p className="text-muted-foreground">Gestiona los retiros personales de los socios</p>
         </div>
         <div className="flex gap-2">
-          {userRole === "SUPER_ADMIN" && (
+          {canWrite && (
             <Dialog open={newPartnerOpen} onOpenChange={setNewPartnerOpen}>
               <DialogTrigger asChild>
                 <Button variant="outline" size="sm" className="h-8 rounded-full">
@@ -382,6 +385,10 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
             </Dialog>
           )}
           
+          {/* Gate por canWrite: antes el botón se mostraba siempre y el POST
+              devolvía 403, así que el usuario completaba el formulario para
+              nada. */}
+          {canWrite && (
           <Dialog open={newWithdrawalOpen} onOpenChange={setNewWithdrawalOpen}>
             <DialogTrigger asChild>
               <Button size="sm" className="h-8 rounded-full" disabled={partners.length === 0}>
@@ -546,6 +553,7 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
               </DialogFooter>
             </DialogContent>
           </Dialog>
+          )}
         </div>
       </div>
 
@@ -609,7 +617,7 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
               <Users className="h-12 w-12 text-muted-foreground mb-4" />
               <p className="text-muted-foreground text-center">
                 No hay socios registrados.
-                {userRole === "SUPER_ADMIN" && " Crea el primer socio para comenzar."}
+                {canWrite && " Crea el primer socio para comenzar."}
               </p>
             </div>
           ) : (
@@ -686,7 +694,7 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
                       <SortableTableHead sortKey="amount" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10">Monto</SortableTableHead>
                       <TableHead className="sticky top-0 bg-background z-10">Descripción</TableHead>
                       <SortableTableHead sortKey="created_by_user.name" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10">Registrado por</SortableTableHead>
-                      {userRole === "SUPER_ADMIN" && <TableHead className="sticky top-0 bg-background z-10"></TableHead>}
+                      {canDelete && <TableHead className="sticky top-0 bg-background z-10"></TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -719,7 +727,7 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
                         <TableCell className="text-muted-foreground text-sm">
                           {w.created_by_user?.name || "-"}
                         </TableCell>
-                        {userRole === "SUPER_ADMIN" && (
+                        {canDelete && (
                           <TableCell>
                             <Button
                               variant="ghost"

@@ -3,7 +3,8 @@ import { headers } from "next/headers"
 import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
 import { createServerClient } from "@/lib/supabase/server"
-import { getScopedAgenciesForUser } from "@/lib/permissions-api"
+import { canPerformAction, getScopedAgenciesForUser } from "@/lib/permissions-api"
+import { resolveUserPermissions } from "@/lib/permissions-agency"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ContabilidadTabs } from "@/components/accounting/contabilidad-tabs"
 import { makeTimer } from "@/lib/perf-log"
@@ -159,7 +160,19 @@ export default async function ContabilidadPage({
     .filter((a: any) => !a.agency_id || scopedAgencyIds.has(a.agency_id))
     .map((a: any) => ({ id: a.id, name: a.name, currency: a.currency }))
 
-  const showPartnerAccounts = ["SUPER_ADMIN", "ADMIN", "CONTABLE"].includes(user.role)
+  // Cuentas de Socios: gate por la matriz resuelta, no por un set de roles
+  // hardcodeado que dejaba afuera al ORG_OWNER. Los flags de escritura/borrado
+  // se resuelven acá para que los botones coincidan con lo que aceptan
+  // /api/partner-accounts/*.
+  const partnerMatrix = await resolveUserPermissions(
+    supabase as any,
+    user.id,
+    (user as any).org_id,
+    ((user as any).roles ?? [user.role]) as any,
+    agencies.map((a: any) => a.id)
+  )
+  const showPartnerAccounts = canPerformAction(user, "accounting", "read", partnerMatrix ?? undefined)
+  t.mark("partner accounts permissions")
 
   t.end(`agencies=${agencies.length} sellers=${sellers?.length ?? 0} operators=${operators?.length ?? 0}`)
 
@@ -195,7 +208,11 @@ export default async function ContabilidadPage({
       }
       partnerAccountsContent={
         showPartnerAccounts
-          ? <PartnerAccountsClient userRole={user.role} agencies={agencies} />
+          ? <PartnerAccountsClient
+              canWrite={canPerformAction(user, "accounting", "write", partnerMatrix ?? undefined)}
+              canDelete={canPerformAction(user, "accounting", "delete", partnerMatrix ?? undefined)}
+              agencies={agencies}
+            />
           : <div />
       }
       facturasComprasContent={
