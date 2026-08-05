@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { Fragment, useState, useEffect, useCallback, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/table"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 import { Bar, BarChart, Cell, Pie, PieChart, XAxis, YAxis } from "recharts"
-import { AlertCircle, AlertTriangle, Download, FileText, Loader2 } from "lucide-react"
+import { AlertCircle, AlertTriangle, ChevronRight, Download, FileText, Loader2 } from "lucide-react"
 import Link from "next/link"
 import { toast } from "sonner"
 import { format, startOfMonth, endOfMonth, subMonths } from "date-fns"
@@ -37,6 +37,22 @@ interface Warning {
   code: string
   message: string
   level: "warning" | "danger"
+}
+
+interface BreakdownRow {
+  key: string
+  label: string
+  amount: number
+  hint?: string
+  children?: BreakdownRow[]
+}
+
+interface WaterfallStep {
+  key: string
+  label: string
+  amount: number
+  kind: string
+  breakdown?: BreakdownRow[]
 }
 
 interface ReportPayload {
@@ -95,7 +111,7 @@ interface ReportPayload {
       gastos: number
       gananciaNeta: number
       netMarginPct: number
-      waterfall: Array<{ key: string; label: string; amount: number; kind: string }>
+      waterfall: WaterfallStep[]
     }
     socios: {
       percentageSum: number
@@ -133,6 +149,9 @@ export function SocietarioReport({ agencies }: SocietarioReportProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [downloading, setDownloading] = useState(false)
+  // Conceptos abiertos en la cascada. Arranca cerrada: el resumen se lee de
+  // una, y el detalle está a un click cuando alguien pregunta de dónde sale.
+  const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set())
 
   const [dateFrom, setDateFrom] = useState(format(startOfMonth(new Date()), "yyyy-MM-dd"))
   const [dateTo, setDateTo] = useState(format(endOfMonth(new Date()), "yyyy-MM-dd"))
@@ -192,6 +211,15 @@ export function SocietarioReport({ agencies }: SocietarioReportProps) {
     } finally {
       setDownloading(false)
     }
+  }
+
+  const toggleStep = (key: string) => {
+    setExpandedSteps((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
   }
 
   const setQuickRange = (preset: "thisMonth" | "lastMonth" | "thisYear") => {
@@ -434,31 +462,95 @@ export function SocietarioReport({ agencies }: SocietarioReportProps) {
             <CardContent className="space-y-4">
               <Table>
                 <TableBody>
-                  {resultado!.waterfall.map((step) => (
-                    <TableRow
-                      key={step.key}
-                      className={step.kind === "result" ? "bg-primary/5 font-semibold" : undefined}
-                    >
-                      <TableCell
-                        className={
-                          step.kind === "subtotal" || step.kind === "result"
-                            ? "font-medium"
-                            : "text-muted-foreground pl-8"
-                        }
-                      >
-                        {step.label}
-                      </TableCell>
-                      <TableCell
-                        className={`text-right tabular-nums ${
-                          step.amount < 0 ? "text-destructive" : ""
-                        } ${step.kind === "result" ? "text-primary text-base" : ""}`}
-                      >
-                        {money(step.amount)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {resultado!.waterfall.map((step) => {
+                    const expandable = (step.breakdown?.length ?? 0) > 0
+                    const open = expandedSteps.has(step.key)
+                    return (
+                      <Fragment key={step.key}>
+                        <TableRow
+                          className={
+                            step.kind === "result" ? "bg-primary/5 font-semibold" : undefined
+                          }
+                        >
+                          <TableCell
+                            className={
+                              step.kind === "subtotal" || step.kind === "result"
+                                ? "font-medium"
+                                : "text-muted-foreground"
+                            }
+                          >
+                            {expandable ? (
+                              <button
+                                type="button"
+                                onClick={() => toggleStep(step.key)}
+                                aria-expanded={open}
+                                className="flex items-center gap-1.5 rounded-sm text-left hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              >
+                                <ChevronRight
+                                  className={`h-3.5 w-3.5 shrink-0 transition-transform ${
+                                    open ? "rotate-90" : ""
+                                  }`}
+                                  aria-hidden="true"
+                                />
+                                {step.label}
+                              </button>
+                            ) : (
+                              <span className={step.kind === "deduction" ? "pl-5" : undefined}>
+                                {step.label}
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell
+                            className={`text-right tabular-nums ${
+                              step.amount < 0 ? "text-destructive" : ""
+                            } ${step.kind === "result" ? "text-primary text-base" : ""}`}
+                          >
+                            {money(step.amount)}
+                          </TableCell>
+                        </TableRow>
+
+                        {expandable &&
+                          open &&
+                          step.breakdown!.map((row) => (
+                            <Fragment key={row.key}>
+                              <TableRow className="border-0 bg-muted/30 hover:bg-muted/30">
+                                <TableCell className="py-1.5 pl-10 text-sm text-muted-foreground">
+                                  {row.label}
+                                  {row.hint && (
+                                    <span className="ml-2 text-xs opacity-70">{row.hint}</span>
+                                  )}
+                                </TableCell>
+                                <TableCell className="py-1.5 text-right text-sm tabular-nums text-muted-foreground">
+                                  {money(row.amount)}
+                                </TableCell>
+                              </TableRow>
+                              {row.children?.map((child) => (
+                                <TableRow
+                                  key={child.key}
+                                  className="border-0 bg-muted/30 hover:bg-muted/30"
+                                >
+                                  <TableCell className="py-1 pl-16 text-xs text-muted-foreground">
+                                    {child.label}
+                                    {child.hint && (
+                                      <span className="ml-2 opacity-70">{child.hint}</span>
+                                    )}
+                                  </TableCell>
+                                  <TableCell className="py-1 text-right text-xs tabular-nums text-muted-foreground">
+                                    {money(child.amount)}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </Fragment>
+                          ))}
+                      </Fragment>
+                    )
+                  })}
                 </TableBody>
               </Table>
+
+              <p className="text-xs text-muted-foreground">
+                Tocá cada concepto para ver de dónde sale.
+              </p>
 
               {/* La aclaración que evita el malentendido más probable: mover la
                   alícuota de IVA NO mueve las comisiones. */}

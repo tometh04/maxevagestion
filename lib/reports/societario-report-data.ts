@@ -21,6 +21,15 @@ import { buildSocietarioReport, type SocietarioReport } from "@/lib/reports/soci
 
 export type { ReportCompany }
 
+/** Une mapas de nombres sin depender de downlevelIteration. */
+function mergeNames(...maps: Array<Map<string, string>>): Map<string, string> {
+  const out = new Map<string, string>()
+  for (const map of maps) {
+    map.forEach((value, key) => out.set(key, value))
+  }
+  return out
+}
+
 export interface SocietarioReportFilters {
   dateFrom: string
   dateTo: string
@@ -133,6 +142,12 @@ export async function buildSocietarioReportData(
     commissionsTruncated: commissions.truncated || referrals.truncated,
     partners: orgPartners.partners,
     allocations,
+    // Nombres para el desglose por concepto. Se prefiere el mapa de ventas
+    // para las oficinas porque cubre todas las del período, no solo las que
+    // tuvieron comisiones.
+    agencyNames: sales.agencyNames,
+    sellerNames: mergeNames(commissions.sellerNames, sales.sellerNames),
+    referralPartnerNames: referrals.partnerNames,
     currency,
     ivaRate,
     dateFrom,

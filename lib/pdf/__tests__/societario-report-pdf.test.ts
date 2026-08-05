@@ -202,6 +202,50 @@ describe("generateSocietarioReportPdf", () => {
     expect(isPdf(bytes)).toBe(true)
   })
 
+  it("imprime el desglose de cada concepto", () => {
+    const bytes = render({
+      operations: [venta({ agency_id: "ag-1" })],
+      commissionRecords: [
+        {
+          id: "c-1",
+          operation_id: "op-1",
+          seller_id: "u-1",
+          agency_id: "ag-1",
+          amount: 200,
+          amount_paid: 0,
+          percentage: 10,
+          status: "PENDING",
+          date_calculated: "2026-07-11",
+          date_paid: null,
+          operations: {
+            id: "op-1",
+            operation_date: "2026-07-10",
+            sale_currency: "USD",
+            currency: "USD",
+          },
+        } as any,
+      ],
+      agencyNames: new Map([["ag-1", "Rosario"]]),
+      sellerNames: new Map([["u-1", "Ana Perez"]]),
+    })
+    const text = textOf(bytes)
+    expect(isPdf(bytes)).toBe(true)
+    // La oficina y el vendedor tienen que llegar al documento, no solo los
+    // totales: es lo que hace auditable el reparto en una reunión de socios.
+    expect(text).toContain("Rosario")
+    expect(text).toContain("Ana Perez")
+    expect(text).toContain("Vendedores")
+  })
+
+  it("un desglose largo pagina sin romperse", () => {
+    // 40 oficinas fuerzan el salto de página en medio de la cascada.
+    const ops = Array.from({ length: 40 }, (_, i) =>
+      venta({ id: `op-${i}`, agency_id: `ag-${i}` })
+    )
+    const names = new Map(ops.map((_, i) => [`ag-${i}`, `Oficina ${i}`]))
+    expect(isPdf(render({ operations: ops, agencyNames: names }))).toBe(true)
+  })
+
   it("soporta muchos socios sin romper la paginación", () => {
     const muchos = Array.from({ length: 25 }, (_, i) => ({
       id: `p-${i}`,

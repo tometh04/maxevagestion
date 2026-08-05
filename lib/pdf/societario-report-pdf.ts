@@ -9,7 +9,11 @@
  */
 
 import type { ReportCompany } from "@/lib/reports/report-company"
-import type { SocietarioReport } from "@/lib/reports/societario-report"
+import type {
+  SocietarioBreakdownRow,
+  SocietarioReport,
+  SocietarioWaterfallStep,
+} from "@/lib/reports/societario-report"
 import type { SocietarioReportFilters } from "@/lib/reports/societario-report-data"
 import {
   REPORT_COLORS,
@@ -21,8 +25,96 @@ import {
   fmtPct,
 } from "@/lib/pdf/report-kit"
 
-const { DARK, GRAY, DANGER } = REPORT_COLORS
-const { MARGIN, CONTENT_W, RIGHT } = REPORT_GEOMETRY
+const { DARK, GRAY, DANGER, LIGHT, PRIMARY, WHITE, BORDER } = REPORT_COLORS
+const { MARGIN, CONTENT_W, RIGHT, FOOTER_TOP } = REPORT_GEOMETRY
+
+/** Fila de la cascada ya aplanada, con su nivel de anidado. */
+interface FlatWaterfallRow {
+  label: string
+  hint?: string
+  amount: number
+  depth: 0 | 1 | 2
+  kind: string
+}
+
+function flattenBreakdown(rows: SocietarioBreakdownRow[], depth: 1 | 2): FlatWaterfallRow[] {
+  const out: FlatWaterfallRow[] = []
+  for (const row of rows) {
+    out.push({ label: row.label, hint: row.hint, amount: row.amount, depth, kind: "detail" })
+    if (row.children?.length && depth === 1) {
+      out.push(...flattenBreakdown(row.children, 2))
+    }
+  }
+  return out
+}
+
+function flattenWaterfall(steps: SocietarioWaterfallStep[]): FlatWaterfallRow[] {
+  const out: FlatWaterfallRow[] = []
+  for (const step of steps) {
+    out.push({ label: step.label, amount: step.amount, depth: 0, kind: step.kind })
+    if (step.breakdown?.length) out.push(...flattenBreakdown(step.breakdown, 1))
+  }
+  return out
+}
+
+/**
+ * Cascada del resultado con su desglose anidado.
+ *
+ * Va a mano y no con `b.table()` porque el kit no soporta sangría por fila, y
+ * acá la jerarquía ES la información: el desglose tiene que leerse como parte
+ * del concepto que explica, no como una tabla suelta.
+ */
+function drawWaterfall(
+  b: ReportPdfBuilder,
+  rows: FlatWaterfallRow[],
+  money: (n: number) => string
+) {
+  const doc = b.doc
+  const HEIGHTS = { 0: 7.5, 1: 5.6, 2: 5 } as const
+
+  for (const row of rows) {
+    const h = HEIGHTS[row.depth]
+    if (b.y + h > FOOTER_TOP) b.addPage()
+
+    const esResultado = row.kind === "result"
+    const esSubtotal = row.kind === "subtotal"
+
+    if (esResultado) {
+      b.setFill(PRIMARY)
+      doc.rect(MARGIN, b.y, CONTENT_W, h, "F")
+    } else if (esSubtotal) {
+      b.setFill(LIGHT)
+      doc.rect(MARGIN, b.y, CONTENT_W, h, "F")
+    } else if (row.depth > 0) {
+      // Banda muy tenue: agrupa visualmente el detalle bajo su concepto sin
+      // competir con las líneas de la cascada.
+      b.setFill([250, 251, 253])
+      doc.rect(MARGIN, b.y, CONTENT_W, h, "F")
+    }
+
+    const textY = b.y + h / 2 + 1.3
+    const x = MARGIN + 2 + row.depth * 6
+    const fontSize = row.depth === 0 ? 8.5 : row.depth === 1 ? 7.5 : 7
+
+    doc.setFontSize(fontSize)
+    doc.setFont("helvetica", row.depth === 0 && (esSubtotal || esResultado) ? "bold" : "normal")
+    b.setText(esResultado ? WHITE : row.depth === 0 ? DARK : GRAY)
+
+    const label = row.hint ? `${row.label}  ·  ${row.hint}` : row.label
+    doc.text(b.truncate(label, CONTENT_W - 50 - row.depth * 6), x, textY)
+
+    doc.setFont("helvetica", row.depth === 0 ? "bold" : "normal")
+    b.setText(esResultado ? WHITE : row.amount < 0 ? DANGER : row.depth === 0 ? DARK : GRAY)
+    doc.text(money(row.amount), RIGHT - 2, textY, { align: "right" })
+
+    b.y += h
+  }
+
+  b.setDraw(BORDER)
+  doc.setLineWidth(0.2)
+  doc.line(MARGIN, b.y, RIGHT, b.y)
+  b.y += 5
+}
 
 export interface SocietarioReportPdfParams {
   report: SocietarioReport
@@ -118,34 +210,13 @@ export function generateSocietarioReportPdf({
   }
 
   // ======================================================== RESULTADO =====
-  b.ensure(20 + resultado.waterfall.length * 8)
+  b.ensure(30)
   b.sectionTitle(
     "Cómo se llega a la ganancia a repartir",
-    `${ventas.count} operaciones · ${gastos.count} gastos`
+    `${ventas.count} operaciones · ${gastos.count} gastos · cada concepto abierto en sus componentes`
   )
 
-  b.table({
-    columns: [
-      {
-        header: "Concepto",
-        x: MARGIN + 2,
-        width: 110,
-        cell: (row: (typeof resultado.waterfall)[number]) => row.label,
-        bold: true,
-      },
-      {
-        header: `Importe (${currency})`,
-        x: RIGHT - 2,
-        align: "right",
-        cell: (row: (typeof resultado.waterfall)[number]) => money(row.amount),
-        bold: true,
-        color: (row: (typeof resultado.waterfall)[number]) =>
-          row.amount < 0 ? DANGER : row.kind === "deduction" ? GRAY : DARK,
-      },
-    ],
-    rows: resultado.waterfall,
-    rowHeight: 7.5,
-  })
+  drawWaterfall(b, flattenWaterfall(resultado.waterfall), money)
 
   // La aclaración clave: si falta, quien lee asume que las comisiones salieron
   // del margen neto de IVA y el reparto no le cierra.

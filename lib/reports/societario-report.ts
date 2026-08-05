@@ -109,11 +109,30 @@ export interface SocietarioAllocationRow {
   difference: number | null
 }
 
+/**
+ * Componente de una línea de la cascada.
+ *
+ * El importe lleva el MISMO signo que la línea que lo contiene: los hijos de
+ * una deducción son negativos. Así la suma de los hijos da el importe del
+ * padre y el lector puede verificarlo a ojo, que es todo el punto del desglose.
+ */
+export interface SocietarioBreakdownRow {
+  key: string
+  label: string
+  amount: number
+  /** Dato secundario: cantidad de operaciones, % del total, etc. */
+  hint?: string
+  /** Segundo nivel: vendedores dentro de "Vendedores", categorías en gastos. */
+  children?: SocietarioBreakdownRow[]
+}
+
 export interface SocietarioWaterfallStep {
   key: string
   label: string
   amount: number
   kind: "base" | "deduction" | "subtotal" | "result"
+  /** Componentes de la línea. Los subtotales y el resultado no lo llevan. */
+  breakdown?: SocietarioBreakdownRow[]
 }
 
 export interface SocietarioReport {
@@ -217,6 +236,11 @@ export interface BuildSocietarioReportParams {
   // ── socios
   partners: OrgPartner[]
   allocations?: PartnerAllocationRow[]
+  // ── nombres para el desglose (id → nombre). Sin ellos, el desglose sale con
+  //    etiquetas genéricas en vez de romper.
+  agencyNames?: Map<string, string>
+  sellerNames?: Map<string, string>
+  referralPartnerNames?: Map<string, string>
   // ── parámetros
   /** Moneda de SALIDA. */
   currency: string
@@ -271,6 +295,36 @@ function convertAllocation(
   return fallback(row.amount, row.currency, `${row.monthKey}-01`)
 }
 
+const SIN_OFICINA = "Sin oficina"
+
+/**
+ * Convierte un acumulador id → monto en filas de desglose ordenadas de mayor a
+ * menor, aplicando el signo de la línea padre y descartando los ceros (una fila
+ * en 0 solo agrega ruido a un documento que se presenta).
+ */
+function breakdownRows(
+  agg: Map<string, number>,
+  names: Map<string, string> | undefined,
+  opts: {
+    sign?: 1 | -1
+    fallback?: string
+    hints?: Map<string, string>
+    /** La clave YA es la etiqueta (categorías de gasto), no un id a resolver. */
+    keyIsLabel?: boolean
+  } = {}
+): SocietarioBreakdownRow[] {
+  const { sign = 1, fallback = "Sin identificar", hints, keyIsLabel = false } = opts
+  return Array.from(agg.entries())
+    .map(([id, amount]) => ({
+      key: id,
+      label: keyIsLabel ? id : names?.get(id) || (id === SIN_OFICINA ? SIN_OFICINA : fallback),
+      amount: roundMoney(amount * sign),
+      hint: hints?.get(id),
+    }))
+    .filter((row) => row.amount !== 0)
+    .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount) || a.label.localeCompare(b.label))
+}
+
 export function buildSocietarioReport(params: BuildSocietarioReportParams): SocietarioReport {
   const {
     operations,
@@ -285,6 +339,9 @@ export function buildSocietarioReport(params: BuildSocietarioReportParams): Soci
     commissionsTruncated = false,
     partners,
     allocations,
+    agencyNames,
+    sellerNames,
+    referralPartnerNames,
     currency,
     ivaRate,
     dateFrom,
@@ -314,6 +371,11 @@ export function buildSocietarioReport(params: BuildSocietarioReportParams): Soci
   let ivaBase = 0
   let marginRecalculated = 0
 
+  // Desglose de ventas y costo por oficina.
+  const ventasPorAgencia = new Map<string, number>()
+  const costoPorAgencia = new Map<string, number>()
+  const opsPorAgencia = new Map<string, number>()
+
   for (const op of operations) {
     const extras = serviceExtras[op.id] ?? { saleExtra: 0, costExtra: 0 }
     const opCurrency = operationCurrency(op)
@@ -339,6 +401,11 @@ export function buildSocietarioReport(params: BuildSocietarioReportParams): Soci
     margenTotal += marginConv
     // Solo los márgenes positivos generan débito fiscal.
     if (marginConv > 0) ivaBase += marginConv
+
+    const agencyKey = op.agency_id || SIN_OFICINA
+    ventasPorAgencia.set(agencyKey, (ventasPorAgencia.get(agencyKey) || 0) + saleConv)
+    costoPorAgencia.set(agencyKey, (costoPorAgencia.get(agencyKey) || 0) + costConv)
+    opsPorAgencia.set(agencyKey, (opsPorAgencia.get(agencyKey) || 0) + 1)
 
     const bucket = monthAgg.get(monthKeyOf(opDate))
     if (bucket) {
@@ -400,19 +467,27 @@ export function buildSocietarioReport(params: BuildSocietarioReportParams): Soci
 
   // ───────────────────────────── Comisiones ─────────────────────────────
   let comisionesVendedores = 0
+  const comisionPorVendedor = new Map<string, number>()
   for (const rec of commissionRecords) {
-    comisionesVendedores += fxComisiones.take(
+    const monto = fxComisiones.take(
       Number(rec.amount) || 0,
       operationCurrency(rec.operations),
       // La comisión se valúa con la fecha de SU venta: usar otra haría que la
       // relación comisión/margen se mueva sola por el tipo de cambio.
       rec.operations?.operation_date ?? null
     )
+    comisionesVendedores += monto
+    const key = rec.seller_id || "sin-vendedor"
+    comisionPorVendedor.set(key, (comisionPorVendedor.get(key) || 0) + monto)
   }
 
   let comisionesReferidos = 0
+  const comisionPorReferidor = new Map<string, number>()
   for (const ref of referralCommissions) {
-    comisionesReferidos += fxComisiones.take(ref.amount, ref.currency, ref.operationDate)
+    const monto = fxComisiones.take(ref.amount, ref.currency, ref.operationDate)
+    comisionesReferidos += monto
+    const key = ref.partnerId || "sin-referidor"
+    comisionPorReferidor.set(key, (comisionPorReferidor.get(key) || 0) + monto)
   }
 
   const comisionesTotal = comisionesVendedores + comisionesReferidos
@@ -424,14 +499,127 @@ export function buildSocietarioReport(params: BuildSocietarioReportParams): Soci
   const margenNetoIva = roundMoney(gananciaBruta - iva)
   const gananciaNeta = roundMoney(margenNetoIva - comisionesTotal - gastosTotal)
 
+  // ─────────────────────── Desglose de cada línea ───────────────────────
+  const opsHint = new Map(
+    Array.from(opsPorAgencia.entries()).map(([id, n]) => [
+      id,
+      `${n} ${n === 1 ? "operación" : "operaciones"}`,
+    ])
+  )
+
+  const ventasBreakdown = breakdownRows(ventasPorAgencia, agencyNames, {
+    fallback: SIN_OFICINA,
+    hints: opsHint,
+  })
+  const costoBreakdown = breakdownRows(costoPorAgencia, agencyNames, {
+    sign: -1,
+    fallback: SIN_OFICINA,
+    hints: opsHint,
+  })
+
+  // Vendedores y referidores son entidades distintas y su plata también:
+  // agruparlas por separado es lo que permite responder "¿cuánto se lleva cada
+  // vendedor?" sin mezclarlo con lo que se le debe a una agencia que refirió.
+  const vendedoresRows = breakdownRows(comisionPorVendedor, sellerNames, {
+    sign: -1,
+    fallback: "Sin vendedor asignado",
+  })
+  const referidoresRows = breakdownRows(comisionPorReferidor, referralPartnerNames, {
+    sign: -1,
+    fallback: "Sin referidor identificado",
+  })
+
+  const comisionesBreakdown: SocietarioBreakdownRow[] = []
+  if (vendedoresRows.length > 0) {
+    comisionesBreakdown.push({
+      key: "vendedores",
+      label: "Vendedores",
+      amount: -roundMoney(comisionesVendedores),
+      hint: `${commissionRecords.length} ${commissionRecords.length === 1 ? "comisión" : "comisiones"}`,
+      children: vendedoresRows,
+    })
+  }
+  if (referidoresRows.length > 0) {
+    comisionesBreakdown.push({
+      key: "referidores",
+      label: "Referidores",
+      amount: -roundMoney(comisionesReferidos),
+      hint: `${referralCommissions.length} ${referralCommissions.length === 1 ? "comisión" : "comisiones"}`,
+      children: referidoresRows,
+    })
+  }
+
+  // Gastos: primero fijos vs variables, y dentro de cada uno sus categorías.
+  const gastosBreakdown: SocietarioBreakdownRow[] = []
+  for (const tipo of ["recurring", "variable"] as const) {
+    const totalTipo = tipo === "recurring" ? gastosRecurring : gastosVariable
+    if (roundMoney(totalTipo) === 0) continue
+    const catAgg = new Map<string, number>()
+    for (const e of gastosConv) {
+      if (e.expense_type !== tipo) continue
+      const name = e.category?.trim() || UNCATEGORIZED_LABEL
+      catAgg.set(name, (catAgg.get(name) || 0) + e.convertedAmount)
+    }
+    gastosBreakdown.push({
+      key: tipo,
+      label: tipo === "recurring" ? "Fijos / recurrentes" : "Variables",
+      amount: -roundMoney(totalTipo),
+      children: breakdownRows(catAgg, undefined, { sign: -1, keyIsLabel: true }),
+    })
+  }
+
+  // El IVA no se desglosa en partes: lo que hace falta explicar es de dónde
+  // sale, o sea la base imponible y la alícuota aplicada.
+  const ivaBreakdown: SocietarioBreakdownRow[] =
+    iva !== 0
+      ? [
+          {
+            key: "base",
+            label: "Base imponible (márgenes positivos)",
+            amount: roundMoney(ivaBase),
+            hint: `Alícuota ${(rate * 100).toLocaleString("es-AR")}%`,
+          },
+        ]
+      : []
+
   const waterfall: SocietarioWaterfallStep[] = [
-    { key: "ventas", label: "Ventas", amount: roundMoney(ventasTotal), kind: "base" },
-    { key: "costo", label: "Costo operador", amount: -roundMoney(costoTotal), kind: "deduction" },
+    {
+      key: "ventas",
+      label: "Ventas",
+      amount: roundMoney(ventasTotal),
+      kind: "base",
+      breakdown: ventasBreakdown,
+    },
+    {
+      key: "costo",
+      label: "Costo operador",
+      amount: -roundMoney(costoTotal),
+      kind: "deduction",
+      breakdown: costoBreakdown,
+    },
     { key: "bruta", label: "Ganancia bruta", amount: gananciaBruta, kind: "subtotal" },
-    { key: "iva", label: "IVA estimado sobre margen", amount: -iva, kind: "deduction" },
+    {
+      key: "iva",
+      label: "IVA estimado sobre margen",
+      amount: -iva,
+      kind: "deduction",
+      breakdown: ivaBreakdown,
+    },
     { key: "neto-iva", label: "Margen neto de IVA", amount: margenNetoIva, kind: "subtotal" },
-    { key: "comisiones", label: "Comisiones", amount: -roundMoney(comisionesTotal), kind: "deduction" },
-    { key: "gastos", label: "Gastos operativos", amount: -roundMoney(gastosTotal), kind: "deduction" },
+    {
+      key: "comisiones",
+      label: "Comisiones",
+      amount: -roundMoney(comisionesTotal),
+      kind: "deduction",
+      breakdown: comisionesBreakdown,
+    },
+    {
+      key: "gastos",
+      label: "Gastos operativos",
+      amount: -roundMoney(gastosTotal),
+      kind: "deduction",
+      breakdown: gastosBreakdown,
+    },
     { key: "neta", label: "Ganancia neta a repartir", amount: gananciaNeta, kind: "result" },
   ]
 

@@ -590,6 +590,167 @@ describe("distribuciones registradas", () => {
   })
 })
 
+// ────────────────────────────── Desglose ──────────────────────────────
+
+/**
+ * El desglose es lo que hace auditable la cascada: cada línea tiene que abrirse
+ * en componentes que sumen exactamente el importe del padre, con el mismo signo.
+ */
+describe("desglose de la cascada", () => {
+  const AGENCIAS = new Map([
+    ["ag-1", "Rosario"],
+    ["ag-2", "Madero"],
+  ])
+  const VENDEDORES = new Map([
+    ["u-1", "Ana Pérez"],
+    ["u-2", "Bruno Gómez"],
+  ])
+  const REFERIDORES = new Map([["rp-1", "Agencia Norte"]])
+
+  const step = (r: any, key: string) => r.resultado.waterfall.find((s: any) => s.key === key)!
+
+  it("abre las ventas por oficina", () => {
+    const r = build({
+      operations: [
+        venta({ id: "a", agency_id: "ag-1", sale_amount_total: 8000, operator_cost: 5000, margin_amount: 3000 }),
+        venta({ id: "b", agency_id: "ag-2", sale_amount_total: 2000, operator_cost: 1000, margin_amount: 1000 }),
+      ],
+      agencyNames: AGENCIAS,
+    })
+    expect(step(r, "ventas").breakdown.map((b: any) => [b.label, b.amount])).toEqual([
+      ["Rosario", 8000],
+      ["Madero", 2000],
+    ])
+  })
+
+  it("informa cuántas operaciones hay detrás de cada oficina", () => {
+    const r = build({
+      operations: [venta({ id: "a", agency_id: "ag-1" }), venta({ id: "b", agency_id: "ag-1" })],
+      agencyNames: AGENCIAS,
+    })
+    expect(step(r, "ventas").breakdown[0].hint).toBe("2 operaciones")
+  })
+
+  it("etiqueta las operaciones sin oficina en vez de descartarlas", () => {
+    const r = build({ operations: [venta({ agency_id: null })], agencyNames: AGENCIAS })
+    expect(step(r, "ventas").breakdown[0].label).toBe("Sin oficina")
+  })
+
+  it("el costo por oficina va en negativo, como su línea", () => {
+    const r = build({
+      operations: [venta({ agency_id: "ag-1", sale_amount_total: 8000, operator_cost: 5000, margin_amount: 3000 })],
+      agencyNames: AGENCIAS,
+    })
+    const costo = step(r, "costo")
+    expect(costo.amount).toBe(-5000)
+    expect(costo.breakdown).toEqual([
+      expect.objectContaining({ label: "Rosario", amount: -5000 }),
+    ])
+  })
+
+  it("separa comisiones de vendedores de las de referidores, con nombres", () => {
+    const r = build({
+      operations: [venta()],
+      commissionRecords: [
+        comision({ id: "c1", seller_id: "u-1", amount: 300 }),
+        comision({ id: "c2", seller_id: "u-2", amount: 100 }),
+      ],
+      referralCommissions: [referido({ partnerId: "rp-1", amount: 150 })],
+      sellerNames: VENDEDORES,
+      referralPartnerNames: REFERIDORES,
+    })
+    const b = step(r, "comisiones").breakdown
+    expect(b.map((x: any) => [x.label, x.amount])).toEqual([
+      ["Vendedores", -400],
+      ["Referidores", -150],
+    ])
+    expect(b[0].children.map((c: any) => [c.label, c.amount])).toEqual([
+      ["Ana Pérez", -300],
+      ["Bruno Gómez", -100],
+    ])
+    expect(b[1].children).toEqual([
+      expect.objectContaining({ label: "Agencia Norte", amount: -150 }),
+    ])
+  })
+
+  it("no arma el grupo de referidores si no hay ninguno", () => {
+    const r = build({
+      operations: [venta()],
+      commissionRecords: [comision({ amount: 100 })],
+      sellerNames: VENDEDORES,
+    })
+    expect(step(r, "comisiones").breakdown.map((x: any) => x.key)).toEqual(["vendedores"])
+  })
+
+  it("abre los gastos en fijos y variables, y cada uno en sus categorías", () => {
+    const r = build({
+      expenses: [
+        gasto({ id: "1", amount: 100, category: "Marketing" }),
+        gasto({ id: "2", amount: 50, category: "Marketing" }),
+        gasto({ id: "3", amount: 300, category: "Sueldos", expense_type: "recurring" }),
+      ],
+    })
+    const b = step(r, "gastos").breakdown
+    expect(b.map((x: any) => [x.label, x.amount])).toEqual([
+      ["Fijos / recurrentes", -300],
+      ["Variables", -150],
+    ])
+    expect(b[1].children).toEqual([
+      expect.objectContaining({ label: "Marketing", amount: -150 }),
+    ])
+  })
+
+  it("explica el IVA con su base y su alícuota", () => {
+    const r = build({ operations: [venta()], ivaRate: 0.105 })
+    const b = step(r, "iva").breakdown
+    expect(b[0].amount).toBe(2000) // la base, no el impuesto
+    expect(b[0].hint).toContain("10,5%")
+  })
+
+  it("los subtotales y el resultado no llevan desglose", () => {
+    const r = build({ operations: [venta()] })
+    for (const key of ["bruta", "neto-iva", "neta"]) {
+      expect(step(r, key).breakdown).toBeUndefined()
+    }
+  })
+
+  it("cada desglose suma exactamente el importe de su línea", () => {
+    // Es la propiedad que hace verificable el reporte a ojo.
+    const r = build({
+      operations: [
+        venta({ id: "a", agency_id: "ag-1", sale_amount_total: 7777.77, operator_cost: 3333.33, margin_amount: 4444.44 }),
+        venta({ id: "b", agency_id: "ag-2", sale_amount_total: 2222.22, operator_cost: 1111.11, margin_amount: 1111.11 }),
+      ],
+      expenses: [gasto({ amount: 123.45 }), gasto({ id: "2", amount: 67.89, expense_type: "recurring" })],
+      commissionRecords: [comision({ seller_id: "u-1", amount: 99.99 })],
+      referralCommissions: [referido({ partnerId: "rp-1", amount: 11.11 })],
+      agencyNames: AGENCIAS,
+      sellerNames: VENDEDORES,
+      referralPartnerNames: REFERIDORES,
+    })
+
+    for (const s of r.resultado.waterfall) {
+      if (!s.breakdown || s.key === "iva") continue
+      const suma = s.breakdown.reduce((acc: number, b: any) => acc + b.amount, 0)
+      expect(suma).toBeCloseTo(s.amount, 2)
+      for (const child of s.breakdown) {
+        if (!child.children) continue
+        const sumaHijos = child.children.reduce((acc: number, c: any) => acc + c.amount, 0)
+        expect(sumaHijos).toBeCloseTo(child.amount, 2)
+      }
+    }
+  })
+
+  it("sin nombres cargados no rompe: usa etiquetas genéricas", () => {
+    const r = build({
+      operations: [venta({ agency_id: "ag-desconocida" })],
+      commissionRecords: [comision({ seller_id: "u-desconocido", amount: 100 })],
+    })
+    expect(step(r, "ventas").breakdown[0].label).toBe("Sin oficina")
+    expect(step(r, "comisiones").breakdown[0].children[0].label).toBe("Sin vendedor asignado")
+  })
+})
+
 // ─────────────────────────────── Truncado ─────────────────────────────
 
 describe("truncado", () => {
