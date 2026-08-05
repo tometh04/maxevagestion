@@ -15,6 +15,7 @@
 
 import { GET, POST } from "@/app/api/partner-accounts/withdrawals/route"
 import { DELETE } from "@/app/api/partner-accounts/withdrawals/[id]/route"
+import { PATCH } from "@/app/api/partner-accounts/[id]/route"
 import { getCurrentUser } from "@/lib/auth"
 import { createServerClient } from "@/lib/supabase/server"
 
@@ -33,8 +34,15 @@ const ORG = "org-1"
 const OTHER_ORG = "org-2"
 
 const PARTNERS = [
-  { id: "partner-1", partner_name: "Maxi", org_id: ORG },
-  { id: "partner-ajeno", partner_name: "Socio de otro tenant", org_id: OTHER_ORG },
+  { id: "partner-1", partner_name: "Maxi", org_id: ORG, profit_percentage: 60, is_active: true },
+  { id: "partner-2", partner_name: "Yamil", org_id: ORG, profit_percentage: 40, is_active: true },
+  {
+    id: "partner-ajeno",
+    partner_name: "Socio de otro tenant",
+    org_id: OTHER_ORG,
+    profit_percentage: 100,
+    is_active: true,
+  },
 ]
 
 const WITHDRAWALS = [
@@ -89,6 +97,7 @@ function makeSupabase() {
         order: jest.fn(() => builder),
         limit: jest.fn(() => builder),
         insert: jest.fn(() => builder),
+        update: jest.fn(() => builder),
         delete: jest.fn(() => builder),
         single: jest.fn(async () => {
           const [row] = applyFilters(rowsFor(table))
@@ -195,6 +204,68 @@ describe("GET /api/partner-accounts/withdrawals — aislamiento por tenant", () 
     login("SELLER")
     const res = await GET(new Request("http://localhost/api/partner-accounts/withdrawals"))
     expect(res.status).toBe(403)
+  })
+})
+
+describe("PATCH /api/partner-accounts/[id] — participación", () => {
+  const params = (id: string) => ({ params: Promise.resolve({ id }) })
+
+  const patchBody = (body: Record<string, any>) =>
+    new Request("http://localhost/api/partner-accounts/partner-1", {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    })
+
+  const CON_ACCESO = ["ORG_OWNER", "SUPER_ADMIN", "ADMIN", "CONTABLE"]
+  const SIN_ACCESO = ["SELLER", "VIEWER", "POST_VENTA"]
+
+  it.each(CON_ACCESO)("%s puede editar la participación", async (role) => {
+    login(role)
+    const res = await PATCH(patchBody({ profit_percentage: 55 }), params("partner-1"))
+    expect(res.status).toBe(200)
+  })
+
+  it.each(SIN_ACCESO)("%s no puede editar la participación", async (role) => {
+    login(role)
+    const res = await PATCH(patchBody({ profit_percentage: 55 }), params("partner-1"))
+    expect(res.status).toBe(403)
+  })
+
+  it("rechaza un porcentaje fuera de 0-100", async () => {
+    login("CONTABLE")
+    expect((await PATCH(patchBody({ profit_percentage: -1 }), params("partner-1"))).status).toBe(400)
+    expect((await PATCH(patchBody({ profit_percentage: 101 }), params("partner-1"))).status).toBe(400)
+  })
+
+  it("acepta 0 (socio que no participa de la ganancia)", async () => {
+    login("CONTABLE")
+    const res = await PATCH(patchBody({ profit_percentage: 0 }), params("partner-1"))
+    expect(res.status).toBe(200)
+  })
+
+  it("un socio de otra organización devuelve 404, no 403", async () => {
+    // 403 confirmaría que la fila existe en otro tenant.
+    login("CONTABLE")
+    const res = await PATCH(patchBody({ profit_percentage: 50 }), params("partner-ajeno"))
+    expect(res.status).toBe(404)
+  })
+
+  it("devuelve la suma resultante y avisa si no da 100", async () => {
+    // Editando de a un socio la suma queda inválida en el medio: se avisa, no
+    // se bloquea. El gate duro está al distribuir ganancias.
+    login("CONTABLE")
+    const res = await PATCH(patchBody({ profit_percentage: 30 }), params("partner-1"))
+    expect(res.status).toBe(200)
+
+    const body = await res.json()
+    expect(body.percentageSum).toBe(70) // 30 (editado) + 40 (el otro socio)
+    expect(body.percentageValid).toBe(false)
+  })
+
+  it("marca como válida la suma que da 100", async () => {
+    login("CONTABLE")
+    const res = await PATCH(patchBody({ profit_percentage: 60 }), params("partner-1"))
+    expect((await res.json()).percentageValid).toBe(true)
   })
 })
 

@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { BarChart3, TrendingUp, Wallet, Download, Percent, HelpCircle, Calendar, FileSearch, CalendarRange, Receipt, Coins, PackageSearch, CalendarClock } from "lucide-react"
+import { BarChart3, TrendingUp, Wallet, Download, Percent, HelpCircle, Calendar, FileSearch, CalendarRange, Receipt, Coins, PackageSearch, CalendarClock, Landmark } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -20,6 +20,8 @@ import { ExpensesReport } from "./expenses-report"
 import { CommissionsReport } from "./commissions-report"
 import { SalesBreakdownReport } from "./sales-breakdown-report"
 import { CashflowProjectionReport } from "./cashflow-projection-report"
+import { SocietarioReport } from "./societario-report"
+import { canViewSocietarioReport } from "@/lib/reports/societario-access"
 import {
   Breadcrumb,
   BreadcrumbList,
@@ -32,18 +34,29 @@ import Link from "next/link"
 
 interface ReportsPageClientProps {
   userRole: string
+  /** `role` + `additional_roles`: un SELLER con CONTABLE adicional entra igual. */
+  userRoles?: string[]
   userId: string
   sellers: Array<{ id: string; name: string }>
   agencies: Array<{ id: string; name: string }>
 }
 
-export function ReportsPageClient({ userRole, userId, sellers, agencies }: ReportsPageClientProps) {
+export function ReportsPageClient({
+  userRole,
+  userRoles,
+  userId,
+  sellers,
+  agencies,
+}: ReportsPageClientProps) {
   const [activeTab, setActiveTab] = useState("sales")
 
   const canSeeCashFlow = ["SUPER_ADMIN", "ADMIN", "CONTABLE"].includes(userRole)
   // El reporte de gastos expone egresos del tenant: mismo círculo que caja /
   // contabilidad, incluyendo al owner. La API valida el permiso real.
   const canSeeExpenses = ["SUPER_ADMIN", "ORG_OWNER", "ADMIN", "CONTABLE"].includes(userRole)
+  // Societario: dueños, admin y contable. Cosmético — el gate real está en
+  // /api/reports/societario, que usa esta misma función.
+  const canSeeSocietario = canViewSocietarioReport({ role: userRole, roles: userRoles })
 
   return (
     <div className="space-y-6">
@@ -136,6 +149,12 @@ export function ReportsPageClient({ userRole, userId, sellers, agencies }: Repor
               Cierre de Mes
             </TabsTrigger>
           )}
+          {canSeeSocietario && (
+            <TabsTrigger value="societario" className="flex items-center gap-2">
+              <Landmark className="h-4 w-4" />
+              Societario
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="sales" className="mt-6">
@@ -195,6 +214,12 @@ export function ReportsPageClient({ userRole, userId, sellers, agencies }: Repor
         {canSeeCashFlow && (
           <TabsContent value="closing" className="mt-6">
             <ClosingReport agencies={agencies} />
+          </TabsContent>
+        )}
+
+        {canSeeSocietario && (
+          <TabsContent value="societario" className="mt-6">
+            <SocietarioReport agencies={agencies} />
           </TabsContent>
         )}
       </Tabs>

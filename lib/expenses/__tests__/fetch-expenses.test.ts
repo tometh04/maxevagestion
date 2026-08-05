@@ -29,6 +29,28 @@ function movimiento(over: Record<string, any> = {}) {
     financial_accounts: { id: "acc-1", name: "Caja USD", currency: "USD" },
     ledger_movements: { affects_balance: true },
     users: { id: "u-1", name: "Yamil" },
+    agency_id: null,
+    is_touristic: false,
+    ...over,
+  }
+}
+
+/** Asiento de gasto recurrente, tal como lo lee la rama de fijos. */
+function recurrente(over: Record<string, any> = {}) {
+  return {
+    id: "lm-9",
+    type: "EXPENSE",
+    concept: "Gasto recurrente: Alquiler",
+    currency: "ARS",
+    amount_original: 500000,
+    category_id: null,
+    movement_date: "2026-08-01T12:00:00+00:00",
+    created_at: "2026-08-01T12:00:00+00:00",
+    account_id: "acc-1",
+    notes: null,
+    receipt_number: null,
+    financial_accounts: { id: "acc-1", name: "Caja ARS", currency: "ARS" },
+    users: { id: "u-1", name: "Yamil" },
     ...over,
   }
 }
@@ -38,16 +60,30 @@ function movimiento(over: Record<string, any> = {}) {
  * (para poder afirmar que la exclusión de revertidos se pide a la base) y
  * devuelve las filas configuradas.
  */
-function makeSupabase(cashMovements: any[]) {
+function makeSupabase(cashMovements: any[], extraTables: Record<string, any[]> = {}) {
   const isCalls: Array<[string, any]> = []
+  const eqCalls: Array<[string, any]> = []
+  const likeCalls: Array<[string, any]> = []
+  const selectedColumns: string[] = []
   const client = {
     from: jest.fn((table: string) => {
-      const rows = table === "cash_movements" ? cashMovements : []
+      const rows =
+        table === "cash_movements" ? cashMovements : extraTables[table] ?? []
       const builder: any = {
-        select: jest.fn(() => builder),
-        eq: jest.fn(() => builder),
+        select: jest.fn((cols?: string) => {
+          if (table === "cash_movements" && cols) selectedColumns.push(cols)
+          return builder
+        }),
+        eq: jest.fn((col: string, val: any) => {
+          if (table === "cash_movements") eqCalls.push([col, val])
+          return builder
+        }),
         neq: jest.fn(() => builder),
         not: jest.fn(() => builder),
+        like: jest.fn((col: string, val: any) => {
+          if (table === "ledger_movements") likeCalls.push([col, val])
+          return builder
+        }),
         gte: jest.fn(() => builder),
         lte: jest.fn(() => builder),
         in: jest.fn(() => builder),
@@ -61,17 +97,22 @@ function makeSupabase(cashMovements: any[]) {
       return builder
     }),
   }
-  return { client, isCalls }
+  return { client, isCalls, eqCalls, likeCalls, selectedColumns }
 }
 
-async function gastosVariables(cashMovements: any[]) {
-  const { client, isCalls } = makeSupabase(cashMovements)
-  const { expenses, totals } = await fetchExpenses({
+async function gastosVariables(
+  cashMovements: any[],
+  extra: Partial<Parameters<typeof fetchExpenses>[0]> = {},
+  extraTables: Record<string, any[]> = {}
+) {
+  const { client, isCalls, eqCalls, selectedColumns } = makeSupabase(cashMovements, extraTables)
+  const { expenses, totals, excludedTouristic } = await fetchExpenses({
     supabase: client,
     orgId: "org-1",
     type: "variable",
+    ...extra,
   })
-  return { expenses, totals, isCalls }
+  return { expenses, totals, excludedTouristic, isCalls, eqCalls, selectedColumns }
 }
 
 describe("fetchExpenses — gastos variables", () => {
@@ -120,5 +161,134 @@ describe("fetchExpenses — gastos variables", () => {
     expect(expenses.map((e: any) => e.id).sort()).toEqual(["ok-1", "ok-2"])
     expect(totals.usd).toBe(100)
     expect(totals.ars).toBe(50)
+  })
+})
+
+/**
+ * Turístico = plata que ya redujo el margen de la operación. El reporte de
+ * Gastos la muestra (es un egreso real de la caja); cualquier reporte que reste
+ * gastos CONTRA el margen tiene que sacarla o la cuenta dos veces.
+ */
+describe("fetchExpenses — excludeTouristic", () => {
+  it("por defecto no cambia nada (el reporte de Gastos sigue igual)", async () => {
+    const { expenses, excludedTouristic } = await gastosVariables([
+      movimiento({ id: "turistico", is_touristic: true }),
+      movimiento({ id: "normal" }),
+    ])
+    expect(expenses.map((e: any) => e.id).sort()).toEqual(["normal", "turistico"])
+    expect(excludedTouristic).toBe(0)
+  })
+
+  it("descarta los turísticos y los cuenta", async () => {
+    const { expenses, totals, excludedTouristic } = await gastosVariables(
+      [
+        movimiento({ id: "turistico", amount: 1000, is_touristic: true }),
+        movimiento({ id: "normal", amount: 200 }),
+      ],
+      { excludeTouristic: true }
+    )
+    expect(expenses.map((e: any) => e.id)).toEqual(["normal"])
+    expect(totals.usd).toBe(200)
+    expect(excludedTouristic).toBe(1)
+  })
+
+  it("descarta la devolución al cliente, que la lista de categorías deja pasar", async () => {
+    // CUSTOMER_REFUND no está en la exclusión por categoría y viaja con
+    // is_touristic = true: ya bajó la venta, no puede volver a restarse.
+    const { expenses, excludedTouristic } = await gastosVariables(
+      [movimiento({ id: "refund", category: "CUSTOMER_REFUND", is_touristic: true })],
+      { excludeTouristic: true }
+    )
+    expect(expenses).toEqual([])
+    expect(excludedTouristic).toBe(1)
+  })
+
+  it("conserva las filas viejas con is_touristic en null", async () => {
+    // La columna es nullable con DEFAULT true: un .eq("is_touristic", false) en
+    // la query las borraría en silencio. Por eso el filtro es === true.
+    const { expenses } = await gastosVariables(
+      [movimiento({ id: "legacy", is_touristic: null })],
+      { excludeTouristic: true }
+    )
+    expect(expenses.map((e: any) => e.id)).toEqual(["legacy"])
+  })
+
+  it("no le pide a la base filtrar por is_touristic", async () => {
+    const { eqCalls, selectedColumns } = await gastosVariables([movimiento()], {
+      excludeTouristic: true,
+    })
+    expect(eqCalls.map(([col]) => col)).not.toContain("is_touristic")
+    expect(selectedColumns.join(" ")).toContain("is_touristic")
+  })
+})
+
+/**
+ * Techo de oficinas visibles. Sin esto, un ADMIN scopeado a una oficina
+ * comparaba el margen de SU oficina contra los gastos de toda la org.
+ */
+describe("fetchExpenses — agencyIds", () => {
+  it("deja pasar solo las oficinas visibles", async () => {
+    const { expenses } = await gastosVariables(
+      [
+        movimiento({ id: "rosario", agency_id: "ag-1" }),
+        movimiento({ id: "madero", agency_id: "ag-2" }),
+      ],
+      { agencyIds: ["ag-1"] }
+    )
+    expect(expenses.map((e: any) => e.id)).toEqual(["rosario"])
+  })
+
+  it("los gastos sin oficina entran siempre (costos compartidos)", async () => {
+    // Alquiler, sueldos y contador no pertenecen a ninguna oficina: recortarlos
+    // por alcance inflaría la ganancia de quien ve una sola.
+    const { expenses } = await gastosVariables(
+      [movimiento({ id: "contador", agency_id: null })],
+      { agencyIds: ["ag-1"] }
+    )
+    expect(expenses.map((e: any) => e.id)).toEqual(["contador"])
+  })
+
+  it("sin agencyIds no restringe nada", async () => {
+    const { expenses } = await gastosVariables([
+      movimiento({ id: "rosario", agency_id: "ag-1" }),
+      movimiento({ id: "madero", agency_id: "ag-2" }),
+    ])
+    expect(expenses).toHaveLength(2)
+  })
+
+  it("también recorta los gastos recurrentes", async () => {
+    const { client } = makeSupabase([], {
+      ledger_movements: [
+        recurrente({ id: "alq-rosario", concept: "Gasto recurrente: Alquiler Rosario" }),
+        recurrente({ id: "alq-madero", concept: "Gasto recurrente: Alquiler Madero" }),
+      ],
+      recurring_payments: [
+        { description: "Alquiler Rosario", category_id: null, agency_id: "ag-1" },
+        { description: "Alquiler Madero", category_id: null, agency_id: "ag-2" },
+      ],
+      financial_accounts: [{ id: "acc-1", agency_id: null }],
+    })
+    const { expenses } = await fetchExpenses({
+      supabase: client,
+      orgId: "org-1",
+      type: "recurring",
+      agencyIds: ["ag-1"],
+    })
+    expect(expenses.map((e: any) => e.id)).toEqual(["alq-rosario"])
+  })
+})
+
+describe("fetchExpenses — retiros de socios", () => {
+  it("le pide a la base solo los asientos de gasto recurrente", async () => {
+    // Los retiros de socios van a ledger_movements con concepto
+    // "Retiro socio: ...". Lo único que los mantiene fuera de gastos es este
+    // LIKE. Importa para el societario: resta gastos de la ganancia ANTES de
+    // repartirla, así que un retiro contado como gasto se le descontaría dos
+    // veces al socio.
+    const { client, likeCalls } = makeSupabase([], {
+      financial_accounts: [{ id: "acc-1", agency_id: null }],
+    })
+    await fetchExpenses({ supabase: client, orgId: "org-1", type: "recurring" })
+    expect(likeCalls).toContainEqual(["concept", "Gasto recurrente:%"])
   })
 })

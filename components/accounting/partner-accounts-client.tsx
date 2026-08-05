@@ -34,7 +34,7 @@ import {
 } from "@/components/ui/table"
 import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Users, Plus, Wallet, ArrowDownCircle, Trash2, Loader2, Calendar } from "lucide-react"
+import { Users, Plus, Wallet, ArrowDownCircle, Trash2, Loader2, Calendar, Pencil, Percent } from "lucide-react"
 import { toast } from "sonner"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
@@ -92,6 +92,10 @@ export function PartnerAccountsClient({ canWrite, canDelete, agencies }: Partner
   const [partnerName, setPartnerName] = useState("")
   const [partnerNotes, setPartnerNotes] = useState("")
   const [partnerProfitPercentage, setPartnerProfitPercentage] = useState("")
+  // Edición de la participación (VIB-101): antes solo se podía cargar al crear
+  // el socio, así que corregirla requería tocar la base a mano.
+  const [editingPartner, setEditingPartner] = useState<Partner | null>(null)
+  const [editingPercentage, setEditingPercentage] = useState("")
   const [selectedPartnerId, setSelectedPartnerId] = useState("")
   const [withdrawalAmount, setWithdrawalAmount] = useState("")
   const [withdrawalCurrency, setWithdrawalCurrency] = useState("USD")
@@ -166,6 +170,56 @@ export function PartnerAccountsClient({ canWrite, canDelete, agencies }: Partner
   const selectedAccount = financialAccounts.find(acc => acc.id === withdrawalAccountId)
   const accountCurrency = selectedAccount?.currency || "USD"
   const needsExchangeRate = withdrawalAccountId && withdrawalCurrency !== accountCurrency
+
+  // La lista que llega ya viene filtrada por is_active = true.
+  const percentageSum = partners.reduce(
+    (acc, p) => acc + (Number(p.profit_percentage) || 0),
+    0
+  )
+  const percentageValid = Math.abs(percentageSum - 100) <= 0.01
+
+  const openEditPartner = (partner: Partner) => {
+    setEditingPartner(partner)
+    setEditingPercentage(
+      partner.profit_percentage != null ? String(partner.profit_percentage) : "0"
+    )
+  }
+
+  const handleUpdatePercentage = async () => {
+    if (!editingPartner) return
+    const value = parseFloat(editingPercentage)
+    if (!Number.isFinite(value) || value < 0 || value > 100) {
+      toast.error("El porcentaje debe estar entre 0 y 100")
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      const res = await fetch(`/api/partner-accounts/${editingPartner.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profit_percentage: value }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "No se pudo actualizar la participación")
+
+      // La suma se avisa, no bloquea: editando de a un socio queda inválida en
+      // el medio. El gate duro está al distribuir ganancias.
+      if (data.percentageValid) {
+        toast.success("Participación actualizada")
+      } else {
+        toast.warning(
+          `Participación actualizada. Las participaciones suman ${data.percentageSum}%, no 100%.`
+        )
+      }
+      setEditingPartner(null)
+      fetchPartners()
+    } catch (error: any) {
+      toast.error(error.message || "No se pudo actualizar la participación")
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   const handleCreatePartner = async () => {
     if (!partnerName.trim()) {
@@ -384,7 +438,46 @@ export function PartnerAccountsClient({ canWrite, canDelete, agencies }: Partner
               </DialogContent>
             </Dialog>
           )}
-          
+
+          {/* Edición de la participación (VIB-101). Es el único editor: el
+              reporte societario la muestra read-only y linkea acá. */}
+          <Dialog
+            open={editingPartner !== null}
+            onOpenChange={(open) => !open && setEditingPartner(null)}
+          >
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Participación de {editingPartner?.partner_name}</DialogTitle>
+                <DialogDescription>
+                  Define qué porcentaje de la ganancia le corresponde a este socio.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label>Porcentaje de Ganancias (%)</Label>
+                  <DecimalInput
+                    value={editingPercentage}
+                    onChange={(v) => setEditingPercentage(v)}
+                    placeholder="0.00"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Entre todos los socios activos tiene que sumar 100%. Podés guardar valores
+                    intermedios mientras ajustás uno por uno.
+                  </p>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setEditingPartner(null)}>
+                  Cancelar
+                </Button>
+                <Button onClick={handleUpdatePercentage} disabled={submitting}>
+                  {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                  Guardar
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
           {/* Gate por canWrite: antes el botón se mostraba siempre y el POST
               devolvía 403, así que el usuario completaba el formulario para
               nada. */}
@@ -621,27 +714,66 @@ export function PartnerAccountsClient({ canWrite, canDelete, agencies }: Partner
               </p>
             </div>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <>
+              {/* La suma de participaciones define el reparto del reporte
+                  societario y habilita la distribución de ganancias. Si no da
+                  100, tiene que verse acá y no descubrirse al distribuir. */}
+              <div
+                className={`flex items-center gap-2 rounded-lg border p-3 text-sm ${
+                  percentageValid
+                    ? "border-border bg-muted/30 text-muted-foreground"
+                    : "border-destructive/40 bg-destructive/5 text-destructive"
+                }`}
+              >
+                <Percent className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>
+                  Suma de participaciones: <strong>{percentageSum.toFixed(2)}%</strong>
+                  {!percentageValid && " — tiene que sumar 100% para poder distribuir ganancias."}
+                </span>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {partners.map((partner) => (
                 <div key={partner.id} className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
-                  <div>
-                    <h4 className="font-semibold flex items-center gap-2">
-                      <Users className="h-5 w-5 text-muted-foreground" />
-                      {partner.partner_name}
-                    </h4>
-                    {partner.users && (
-                      <p className="text-xs text-muted-foreground mt-0.5">{partner.users.email}</p>
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <h4 className="font-semibold flex items-center gap-2">
+                        <Users className="h-5 w-5 text-muted-foreground" />
+                        {partner.partner_name}
+                      </h4>
+                      {partner.users && (
+                        <p className="text-xs text-muted-foreground mt-0.5">{partner.users.email}</p>
+                      )}
+                    </div>
+                    {canWrite && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 shrink-0"
+                        onClick={() => openEditPartner(partner)}
+                        aria-label={`Editar participación de ${partner.partner_name}`}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
                     )}
                   </div>
                   <div className="space-y-3">
-                    {partner.profit_percentage !== null && partner.profit_percentage > 0 && (
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-muted-foreground">% Ganancias:</span>
-                        <Badge variant="outline" className="font-semibold">
-                          {partner.profit_percentage.toFixed(2)}%
-                        </Badge>
-                      </div>
-                    )}
+                    {/* Se muestra siempre, incluso en 0: un socio sin
+                        participación cargada es justo el estado que hay que
+                        ver, porque el reporte societario reparte sobre esto. */}
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-muted-foreground">% Ganancias:</span>
+                      <Badge
+                        variant="outline"
+                        className={
+                          partner.profit_percentage
+                            ? "font-semibold"
+                            : "font-semibold text-muted-foreground"
+                        }
+                      >
+                        {(partner.profit_percentage ?? 0).toFixed(2)}%
+                      </Badge>
+                    </div>
                     <div className="flex justify-between items-center">
                       <span className="text-sm text-muted-foreground">Retiros ARS:</span>
                       <span className="font-semibold">
@@ -666,7 +798,8 @@ export function PartnerAccountsClient({ canWrite, canDelete, agencies }: Partner
                   </div>
                 </div>
               ))}
-            </div>
+              </div>
+            </>
           )}
         </TabsContent>
 

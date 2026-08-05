@@ -73,11 +73,35 @@ export interface FetchExpensesParams {
    * usuario (permiso `cash.ownDataOnly`).
    */
   ownDataOnlyUserId?: string | null
+  /**
+   * Oficinas visibles para el usuario. Vacío = sin restricción.
+   *
+   * Distinto de `agencyId`: aquel es el filtro que el usuario eligió, este es
+   * el techo de lo que puede ver. Sin esto, un ADMIN scopeado a una oficina
+   * veía el margen de SU oficina contra los gastos de TODA la org.
+   *
+   * Los gastos sin oficina (`agency_id = null`) entran siempre: alquiler,
+   * sueldos y contador son costos compartidos que no pertenecen a ninguna.
+   */
+  agencyIds?: string[]
+  /**
+   * Excluye los movimientos turísticos (pagos a operador, devoluciones al
+   * cliente): plata que ya está descontada del margen de la operación.
+   * Necesario para cualquier reporte que reste gastos contra el margen.
+   */
+  excludeTouristic?: boolean
+}
+
+export interface FetchExpensesResult {
+  expenses: ExpenseRow[]
+  totals: ExpenseTotals
+  /** Movimientos descartados por `excludeTouristic`. 0 si la opción está off. */
+  excludedTouristic: number
 }
 
 export async function fetchExpenses(
   params: FetchExpensesParams
-): Promise<{ expenses: ExpenseRow[]; totals: ExpenseTotals }> {
+): Promise<FetchExpensesResult> {
   const {
     supabase,
     orgId,
@@ -88,6 +112,7 @@ export async function fetchExpenses(
     categoryId: categoryIdFilter,
     agencyId,
     ownDataOnlyUserId,
+    excludeTouristic = false,
   } = params
   const agencyMode = params.agencyMode === "account" ? "account" : "office"
 
@@ -96,8 +121,11 @@ export async function fetchExpenses(
   // para el modo "account" (y como fallback del modo "office" en recurrentes,
   // cuando el asiento no matchea ningún gasto recurrente conocido).
   const filterByAgency = !!(agencyId && agencyId !== "ALL")
+  // Techo de oficinas visibles. null = sin restricción.
+  const allowedAgencies = params.agencyIds?.length ? new Set(params.agencyIds) : null
+  const needsAgencyResolution = filterByAgency || !!allowedAgencies
   const accountAgencyById = new Map<string, string | null>()
-  if (filterByAgency) {
+  if (needsAgencyResolution) {
     const { data: orgAccounts } = await (supabase.from("financial_accounts") as any)
       .select("id, agency_id")
       .eq("org_id", orgId)
@@ -135,6 +163,7 @@ export async function fetchExpenses(
   }
 
   const allExpenses: ExpenseRow[] = []
+  let excludedTouristic = 0
 
   // 1. RECURRING EXPENSES (paid): from ledger_movements
   if (!typeFilter || typeFilter === "recurring") {
@@ -169,7 +198,7 @@ export async function fetchExpenses(
         //  - office:  la oficina del gasto recurrente manda; fallback a la
         //             cuenta pagadora si el gasto no matchea o no tiene oficina.
         //  - account: la oficina de la cuenta desde la que se pagó.
-        if (filterByAgency) {
+        if (needsAgencyResolution) {
           let resolvedAgency: string | null
           if (agencyMode === "account") {
             resolvedAgency = accountAgencyById.get(e.account_id) ?? null
@@ -179,7 +208,9 @@ export async function fetchExpenses(
               : null
             resolvedAgency = ownAgency ?? (accountAgencyById.get(e.account_id) ?? null)
           }
-          if (resolvedAgency !== agencyId) continue
+          if (filterByAgency && resolvedAgency !== agencyId) continue
+          // Sin oficina = costo compartido de la org: no se recorta por alcance.
+          if (allowedAgencies && resolvedAgency && !allowedAgencies.has(resolvedAgency)) continue
         }
 
         // Preferir la categoría persistida en el asiento (pagos nuevos);
@@ -213,6 +244,7 @@ export async function fetchExpenses(
         id, type, category, amount, currency,
         movement_date, created_at, notes,
         financial_account_id, category_id, ledger_movement_id,
+        agency_id, is_touristic,
         financial_accounts:financial_account_id (id, name, currency),
         ledger_movements:ledger_movement_id (affects_balance),
         users:user_id (id, name)
@@ -243,6 +275,18 @@ export async function fetchExpenses(
 
     if (!varError && variables) {
       for (const v of variables) {
+        // Turístico = plata que ya se descontó del margen de la operación
+        // (pago a operador, devolución al cliente). Restarla otra vez contra el
+        // margen la cuenta dos veces.
+        //
+        // Se filtra acá y NO con `.eq("is_touristic", false)`: la columna es
+        // nullable con DEFAULT true (migración 019), así que las filas viejas
+        // tienen NULL y un `.eq()` las borraría del reporte sin avisar.
+        if (excludeTouristic && v.is_touristic === true) {
+          excludedTouristic++
+          continue
+        }
+
         // Excluido del saldo (`affects_balance = false` en el asiento) → no es
         // un gasto de la agencia. Es la otra mitad del caso de Lozada: sacaron
         // el movimiento de la caja y seguía contando como gasto acá.
@@ -255,6 +299,15 @@ export async function fetchExpenses(
         if (filterByAgency && agencyMode === "account") {
           const acctAgency = accountAgencyById.get(v.financial_account_id) ?? null
           if (acctAgency !== agencyId) continue
+        }
+
+        // Techo de oficinas visibles. Los gastos sin oficina entran siempre.
+        if (allowedAgencies) {
+          const scopeAgency =
+            agencyMode === "account"
+              ? accountAgencyById.get(v.financial_account_id) ?? null
+              : (v.agency_id ?? null)
+          if (scopeAgency && !allowedAgencies.has(scopeAgency)) continue
         }
 
         const varCat = v.category_id ? categoryById.get(v.category_id) : null
@@ -285,7 +338,11 @@ export async function fetchExpenses(
   // Sort all by movement_date descending
   allExpenses.sort((a, b) => new Date(b.movement_date).getTime() - new Date(a.movement_date).getTime())
 
-  return { expenses: allExpenses, totals: computeExpenseTotals(allExpenses) }
+  return {
+    expenses: allExpenses,
+    totals: computeExpenseTotals(allExpenses),
+    excludedTouristic,
+  }
 }
 
 /**

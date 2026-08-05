@@ -80,6 +80,7 @@ app/api/billing/mp-webhook/route.test.ts                                 # TEST 
 app/api/admin/orgs/[id]/mp-preapproval-link/route.test.ts                # TEST — mock de createAdminClient para tests del preapproval per-org.
 app/api/admin/billing/plan-prices/route.test.ts                          # TEST — mock de createAdminClient para tests de precios de planes.
 app/api/admin/orgs/[id]/change-plan/route.test.ts                        # TEST — mock de createAdminClient para tests de cambio de plan.
+app/api/reports/societario/__tests__/authorization.test.ts               # TEST — mock de createAdminClient para el test de permisos del reporte societario.
 app/api/cron/billing-reconcile/route.ts                                  # CRON — reconciliación de suscripciones MP.
 app/api/cron/billing-reconcile/route.test.ts                             # TEST — mock de createAdminClient para el test del reconcile.
 app/api/cron/callbell-reconcile/route.ts                                 # CRON — reconciliación Callbell.
