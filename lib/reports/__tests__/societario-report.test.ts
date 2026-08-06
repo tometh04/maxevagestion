@@ -100,6 +100,21 @@ function comision(over: Record<string, any> = {}) {
   } as any
 }
 
+/** Movimiento de resultado financiero. Por defecto, ganancia por depósito. */
+function financiero(over: Record<string, any> = {}) {
+  return {
+    id: "f-1",
+    kind: "INCOME",
+    concept: "Ganancia financiera por depósito - REC-1",
+    amount: 300,
+    currency: "USD",
+    movement_date: "2026-07-20",
+    accountId: "acc-1",
+    receiptNumber: "REC-1",
+    ...over,
+  } as any
+}
+
 function referido(over: Record<string, any> = {}) {
   return {
     id: "r-1",
@@ -277,7 +292,7 @@ describe("IVA y ganancia neta", () => {
     expect(r.resultado.gananciaNeta).toBe(2000 - 200 - 100)
   })
 
-  it("mantiene la invariante neta = bruta − iva − comisiones − gastos", () => {
+  it("mantiene la invariante neta = bruta − iva − comisiones − gastos + resultado financiero", () => {
     const r = build({
       operations: [
         venta({ sale_amount_total: 13333.33, operator_cost: 9111.11, margin_amount: 4222.22 }),
@@ -285,10 +300,17 @@ describe("IVA y ganancia neta", () => {
       expenses: [gasto({ amount: 777.77 })],
       commissionRecords: [comision({ amount: 333.33 })],
       referralCommissions: [referido({ amount: 111.11 })],
+      financialMovements: [
+        financiero({ amount: 55.55 }),
+        financiero({ id: "f-2", kind: "COST", amount: 22.22 }),
+      ],
       ivaRate: 0.105,
     })
-    const { gananciaBruta, iva, comisiones, gastos, gananciaNeta } = r.resultado
-    expect(gananciaNeta).toBeCloseTo(gananciaBruta - iva - comisiones - gastos, 2)
+    const { gananciaBruta, iva, comisiones, gastos, resultadoFinanciero, gananciaNeta } = r.resultado
+    expect(gananciaNeta).toBeCloseTo(
+      gananciaBruta - iva - comisiones - gastos + resultadoFinanciero,
+      2
+    )
   })
 
   it("no clampea la pérdida", () => {
@@ -307,6 +329,18 @@ describe("IVA y ganancia neta", () => {
     ])
     const neta = r.resultado.waterfall.find((s) => s.key === "neta")!
     expect(neta.amount).toBe(r.resultado.gananciaNeta)
+  })
+
+  it("con movimientos financieros la cascada suma su línea antes de la neta", () => {
+    const r = build({
+      operations: [venta()],
+      expenses: [gasto()],
+      commissionRecords: [comision()],
+      financialMovements: [financiero()],
+    })
+    expect(r.resultado.waterfall.map((s) => s.key)).toEqual([
+      "ventas", "costo", "bruta", "iva", "neto-iva", "comisiones", "gastos", "financiero", "neta",
+    ])
   })
 })
 
@@ -419,6 +453,133 @@ describe("gastos", () => {
       ivaRate: 0,
     })
     expect(r.warnings.map((w) => w.code)).not.toContain("TAX_LIKE_EXPENSES")
+  })
+})
+
+// ─────────────────────────── Resultado financiero ─────────────────────
+
+describe("resultado financiero", () => {
+  it("netea la ganancia financiera contra el costo financiero en una sola línea", () => {
+    const r = build({
+      operations: [venta()],
+      financialMovements: [
+        financiero({ amount: 300 }),
+        financiero({ id: "f-2", kind: "COST", amount: 100 }),
+      ],
+    })
+    expect(r.financiero.ingresos).toBe(300)
+    expect(r.financiero.costos).toBe(100)
+    expect(r.financiero.neto).toBe(200)
+    expect(r.resultado.resultadoFinanciero).toBe(200)
+  })
+
+  it("suma a la ganancia neta cuando la financiera dejó ganancia", () => {
+    const sinFinanciera = build({ operations: [venta()], ivaRate: 0 })
+    const conGanancia = build({
+      operations: [venta()],
+      ivaRate: 0,
+      financialMovements: [financiero({ amount: 300 })],
+    })
+    expect(conGanancia.resultado.gananciaNeta).toBe(
+      sinFinanciera.resultado.gananciaNeta + 300
+    )
+  })
+
+  it("resta de la ganancia neta cuando la financiera dejó pérdida", () => {
+    const sinFinanciera = build({ operations: [venta()], ivaRate: 0 })
+    const conCosto = build({
+      operations: [venta()],
+      ivaRate: 0,
+      financialMovements: [financiero({ kind: "COST", amount: 250 })],
+    })
+    expect(conCosto.resultado.resultadoFinanciero).toBe(-250)
+    expect(conCosto.resultado.gananciaNeta).toBe(
+      sinFinanciera.resultado.gananciaNeta - 250
+    )
+  })
+
+  it("no lo cuenta como gasto operativo", () => {
+    // Es todo el punto del cambio: un costo financiero cargado como gasto
+    // variable ensuciaba "Gastos operativos" y bajaba lo que se reparte entre
+    // socios por el renglón equivocado.
+    const r = build({
+      operations: [venta()],
+      financialMovements: [financiero({ kind: "COST", amount: 250 })],
+    })
+    expect(r.gastos.total).toBe(0)
+    expect(r.gastos.count).toBe(0)
+  })
+
+  it("sin movimientos financieros la cascada no muestra la línea", () => {
+    const r = build({ operations: [venta()] })
+    expect(r.resultado.waterfall.map((s) => s.key)).not.toContain("financiero")
+    expect(r.financiero.count).toBe(0)
+    expect(r.resultado.resultadoFinanciero).toBe(0)
+  })
+
+  it("el desglose muestra la ganancia y el costo por separado", () => {
+    const r = build({
+      operations: [venta()],
+      financialMovements: [
+        financiero({ amount: 300 }),
+        financiero({ id: "f-2", kind: "COST", amount: 100 }),
+      ],
+    })
+    const linea = r.resultado.waterfall.find((s) => s.key === "financiero")!
+    expect(linea.kind).toBe("adjustment")
+    expect(linea.breakdown?.map((b) => b.key)).toEqual(["ganancia", "costo"])
+    expect(linea.breakdown?.map((b) => b.amount)).toEqual([300, -100])
+    // El desglose tiene que sumar el importe de su línea, como el resto.
+    const suma = linea.breakdown!.reduce((acc, b) => acc + b.amount, 0)
+    expect(suma).toBeCloseTo(linea.amount, 2)
+  })
+
+  it("no arma la fila de costo si sólo hubo ganancia", () => {
+    const r = build({ operations: [venta()], financialMovements: [financiero({ amount: 300 })] })
+    const linea = r.resultado.waterfall.find((s) => s.key === "financiero")!
+    expect(linea.breakdown?.map((b) => b.key)).toEqual(["ganancia"])
+  })
+
+  it("convierte el costo en pesos con el TC de su fecha", () => {
+    const r = build({
+      operations: [venta()],
+      currency: "USD",
+      ivaRate: 0,
+      financialMovements: [
+        financiero({ kind: "COST", amount: 85000, currency: "ARS", movement_date: "2026-07-20" }),
+      ],
+      getRate: (d: any) => (String(d).startsWith("2026-07-20") ? 1000 : null),
+    })
+    expect(r.resultado.resultadoFinanciero).toBe(-85)
+  })
+
+  it("lo que no se puede convertir sale en missingRate y avisa", () => {
+    const r = build({
+      operations: [venta()],
+      currency: "USD",
+      financialMovements: [financiero({ kind: "COST", amount: 85000, currency: "ARS" })],
+    })
+    expect(r.financiero.missingRate).toEqual([{ currency: "ARS", count: 1, total: 85000 }])
+    expect(r.warnings.map((w) => w.code)).toContain("MISSING_RATE")
+    // Y el faltante se atribuye al resultado financiero, no a los gastos.
+    expect(r.gastos.missingRate).toEqual([])
+  })
+
+  it("avisa si hay gastos operativos con categoría financiera", () => {
+    // Doble conteo real: el mismo fee cargado a mano como gasto y además por
+    // el circuito nuevo.
+    const r = build({
+      operations: [venta()],
+      expenses: [gasto({ category: "Gastos financieros", amount: 300 })],
+      financialMovements: [financiero({ kind: "COST", amount: 300 })],
+    })
+    const warning = r.warnings.find((w) => w.code === "FINANCIAL_LIKE_EXPENSES")
+    expect(warning?.level).toBe("danger")
+  })
+
+  it("no avisa si no hay gastos con categoría financiera", () => {
+    const r = build({ operations: [venta()], expenses: [gasto({ category: "Marketing" })] })
+    expect(r.warnings.map((w) => w.code)).not.toContain("FINANCIAL_LIKE_EXPENSES")
   })
 })
 

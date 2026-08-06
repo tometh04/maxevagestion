@@ -8,7 +8,8 @@
  *
  *     Ventas − costo operador          = GANANCIA BRUTA
  *     bruta  − IVA sobre el margen     = margen neto de IVA
- *            − comisiones − gastos     = GANANCIA NETA A REPARTIR
+ *            − comisiones − gastos
+ *            ± resultado financiero    = GANANCIA NETA A REPARTIR
  *
  * Restar es conmutativo, así que el orden no cambia el resultado: cambia qué
  * subtotal se muestra. `margenNetoIva` está a propósito justo encima de la fila
@@ -30,9 +31,16 @@
  *    `missingRate`, lo truncado y lo excluido salen como warnings.
  *  - La ganancia neta puede ser negativa. No se clampea: un mes con pérdida es
  *    información, y mostrarlo en cero lo haría parecer un empate.
+ *  - El resultado financiero (bonificación por depósito menos comisión de la
+ *    financiera) va en su propia línea y NO dentro de gastos operativos. Es
+ *    plata de operar con una financiera, no de hacer funcionar la agencia:
+ *    mezclarla con alquiler y sueldos hacía que un costo de transferencia
+ *    pareciera un gasto de oficina. La línea puede sumar o restar según cómo
+ *    haya cerrado el neteo del período.
  */
 
 import { roundMoney } from "@/lib/currency"
+import type { FinancialResultRow } from "@/lib/accounting/fetch-financial-results"
 import type { ExpenseRow } from "@/lib/expenses/fetch-expenses"
 import type { CommissionRecordRow } from "@/lib/commissions/fetch-commission-records"
 import type { ReferralCommissionRow } from "@/lib/commissions/fetch-referral-commissions"
@@ -63,6 +71,7 @@ export type SocietarioWarningCode =
   | "NO_PARTNERS"
   | "COMMISSION_LIKE_EXPENSES"
   | "TAX_LIKE_EXPENSES"
+  | "FINANCIAL_LIKE_EXPENSES"
   | "MISSING_RATE"
   | "TRUNCATED"
   | "ALLOCATIONS_PARTIAL"
@@ -130,7 +139,12 @@ export interface SocietarioWaterfallStep {
   key: string
   label: string
   amount: number
-  kind: "base" | "deduction" | "subtotal" | "result"
+  /**
+   * "adjustment" es una línea de signo variable: el resultado financiero suma
+   * si la financiera dejó ganancia neta y resta si dejó pérdida. Llamarla
+   * "deduction" mentiría la mitad de las veces.
+   */
+  kind: "base" | "deduction" | "subtotal" | "result" | "adjustment"
   /** Componentes de la línea. Los subtotales y el resultado no lo llevan. */
   breakdown?: SocietarioBreakdownRow[]
 }
@@ -167,6 +181,24 @@ export interface SocietarioReport {
     missingRate: ReportMissingRate[]
   }
 
+  /**
+   * Resultado de operar con una financiera. No es parte de `gastos`: es plata
+   * que entra y sale por la forma de pagar, no por hacer funcionar la agencia.
+   */
+  financiero: {
+    /** Bonificación por depósito del período, en positivo. */
+    ingresos: number
+    /** Comisión de la financiera del período, en positivo. */
+    costos: number
+    /** ingresos − costos. Firmado: puede ser positivo o negativo. */
+    neto: number
+    count: number
+    countIngresos: number
+    countCostos: number
+    truncated: boolean
+    missingRate: ReportMissingRate[]
+  }
+
   comisiones: {
     total: number
     sellers: { total: number; count: number }
@@ -193,6 +225,8 @@ export interface SocietarioReport {
     margenNetoIva: number
     comisiones: number
     gastos: number
+    /** Firmado: suma a la ganancia neta si es positivo, resta si es negativo. */
+    resultadoFinanciero: number
     gananciaNeta: number
     /** Ganancia neta sobre facturación, 0-100. */
     netMarginPct: number
@@ -228,6 +262,9 @@ export interface BuildSocietarioReportParams {
   // ── gastos (ya vienen sin turísticos desde la capa de datos)
   expenses: ExpenseRow[]
   excludedTouristicCount?: number
+  // ── resultado financiero (ganancia por depósito y comisión de la financiera)
+  financialMovements?: FinancialResultRow[]
+  financialTruncated?: boolean
   // ── comisiones
   commissionRecords: CommissionRecordRow[]
   referralCommissions: ReferralCommissionRow[]
@@ -333,6 +370,8 @@ export function buildSocietarioReport(params: BuildSocietarioReportParams): Soci
     salesTruncated = false,
     expenses,
     excludedTouristicCount = 0,
+    financialMovements = [],
+    financialTruncated = false,
     commissionRecords,
     referralCommissions,
     commissionsExcluded = { settled: 0, cancelled: 0 },
@@ -356,6 +395,7 @@ export function buildSocietarioReport(params: BuildSocietarioReportParams): Soci
   // convertir son las ventas, los gastos o las comisiones.
   const fxVentas = createMoneyConverter(fxParams)
   const fxComisiones = createMoneyConverter(fxParams)
+  const fxFinanciero = createMoneyConverter(fxParams)
   const fxAllocations = createMoneyConverter(fxParams)
 
   const warnings: SocietarioWarning[] = []
@@ -465,6 +505,25 @@ export function buildSocietarioReport(params: BuildSocietarioReportParams): Soci
       share: roundMoney(safeDiv(row.total, gastosTotal) * 100, 1),
     }))
 
+  // ─────────────────────── Resultado financiero ─────────────────────────
+  // Converter propio: si falta un TC acá, el reporte tiene que poder decir que
+  // lo que no se pudo convertir es el resultado financiero y no los gastos.
+  let financieroIngresos = 0
+  let financieroCostos = 0
+  let financieroCountIngresos = 0
+  let financieroCountCostos = 0
+  for (const m of financialMovements) {
+    const monto = fxFinanciero.take(m.amount, m.currency, m.movement_date)
+    if (m.kind === "INCOME") {
+      financieroIngresos += monto
+      financieroCountIngresos++
+    } else {
+      financieroCostos += monto
+      financieroCountCostos++
+    }
+  }
+  const resultadoFinanciero = roundMoney(financieroIngresos - financieroCostos)
+
   // ───────────────────────────── Comisiones ─────────────────────────────
   let comisionesVendedores = 0
   const comisionPorVendedor = new Map<string, number>()
@@ -497,7 +556,9 @@ export function buildSocietarioReport(params: BuildSocietarioReportParams): Soci
   const iva = roundMoney(ivaBase * rate)
   const gananciaBruta = roundMoney(margenTotal)
   const margenNetoIva = roundMoney(gananciaBruta - iva)
-  const gananciaNeta = roundMoney(margenNetoIva - comisionesTotal - gastosTotal)
+  const gananciaNeta = roundMoney(
+    margenNetoIva - comisionesTotal - gastosTotal + resultadoFinanciero
+  )
 
   // ─────────────────────── Desglose de cada línea ───────────────────────
   const opsHint = new Map(
@@ -582,6 +643,26 @@ export function buildSocietarioReport(params: BuildSocietarioReportParams): Soci
         ]
       : []
 
+  // Resultado financiero: la ganancia por depósito y la comisión de la
+  // financiera por separado, para que se lea de dónde salió el neto.
+  const financieroBreakdown: SocietarioBreakdownRow[] = []
+  if (roundMoney(financieroIngresos) !== 0) {
+    financieroBreakdown.push({
+      key: "ganancia",
+      label: "Ganancia financiera por depósito",
+      amount: roundMoney(financieroIngresos),
+      hint: `${financieroCountIngresos} ${financieroCountIngresos === 1 ? "movimiento" : "movimientos"}`,
+    })
+  }
+  if (roundMoney(financieroCostos) !== 0) {
+    financieroBreakdown.push({
+      key: "costo",
+      label: "Costo financiero (comisión de financiera)",
+      amount: -roundMoney(financieroCostos),
+      hint: `${financieroCountCostos} ${financieroCountCostos === 1 ? "movimiento" : "movimientos"}`,
+    })
+  }
+
   const waterfall: SocietarioWaterfallStep[] = [
     {
       key: "ventas",
@@ -620,6 +701,19 @@ export function buildSocietarioReport(params: BuildSocietarioReportParams): Soci
       kind: "deduction",
       breakdown: gastosBreakdown,
     },
+    // Sólo si hubo movimientos: la mayoría de las agencias no usa financiera y
+    // una fila en cero es ruido, igual que un tipo de gasto sin importe.
+    ...(financieroBreakdown.length > 0
+      ? [
+          {
+            key: "financiero",
+            label: "Resultado financiero",
+            amount: resultadoFinanciero,
+            kind: "adjustment" as const,
+            breakdown: financieroBreakdown,
+          },
+        ]
+      : []),
     { key: "neta", label: "Ganancia neta a repartir", amount: gananciaNeta, kind: "result" },
   ]
 
@@ -718,8 +812,24 @@ export function buildSocietarioReport(params: BuildSocietarioReportParams): Soci
     })
   }
 
+  // Detector de doble conteo: antes de que existiera la línea propia, la
+  // comisión de la financiera se cargaba a mano como gasto variable. Si sigue
+  // cargada así Y además viene por el circuito nuevo, está restada dos veces.
+  const financierosEnGastos = byCategory.filter((c) => /financ/i.test(c.category))
+  if (financierosEnGastos.length > 0) {
+    const total = roundMoney(financierosEnGastos.reduce((acc, c) => acc + c.total, 0))
+    warnings.push({
+      code: "FINANCIAL_LIKE_EXPENSES",
+      level: "danger",
+      message: `Hay ${total.toLocaleString("es-AR")} ${out} en gastos operativos con categoría financiera. El costo de la financiera ahora se registra en su propia línea: si eso es una comisión cargada a mano, está restada dos veces.`,
+    })
+  }
+
   const missingTotal =
-    fxVentas.missing().length + gastosMissing.length + fxComisiones.missing().length
+    fxVentas.missing().length +
+    gastosMissing.length +
+    fxComisiones.missing().length +
+    fxFinanciero.missing().length
   if (missingTotal > 0) {
     warnings.push({
       code: "MISSING_RATE",
@@ -729,7 +839,7 @@ export function buildSocietarioReport(params: BuildSocietarioReportParams): Soci
     })
   }
 
-  if (salesTruncated || commissionsTruncated) {
+  if (salesTruncated || commissionsTruncated || financialTruncated) {
     warnings.push({
       code: "TRUNCATED",
       level: "danger",
@@ -790,6 +900,16 @@ export function buildSocietarioReport(params: BuildSocietarioReportParams): Soci
       excludedTouristic: excludedTouristicCount,
       missingRate: gastosMissing,
     },
+    financiero: {
+      ingresos: roundMoney(financieroIngresos),
+      costos: roundMoney(financieroCostos),
+      neto: resultadoFinanciero,
+      count: financieroCountIngresos + financieroCountCostos,
+      countIngresos: financieroCountIngresos,
+      countCostos: financieroCountCostos,
+      truncated: financialTruncated,
+      missingRate: fxFinanciero.missing(),
+    },
     comisiones: {
       total: roundMoney(comisionesTotal),
       sellers: { total: roundMoney(comisionesVendedores), count: commissionRecords.length },
@@ -811,6 +931,7 @@ export function buildSocietarioReport(params: BuildSocietarioReportParams): Soci
       margenNetoIva,
       comisiones: roundMoney(comisionesTotal),
       gastos: roundMoney(gastosTotal),
+      resultadoFinanciero,
       gananciaNeta,
       netMarginPct: roundMoney(safeDiv(gananciaNeta, ventasTotal) * 100, 1),
       waterfall,

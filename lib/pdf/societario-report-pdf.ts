@@ -131,7 +131,7 @@ export function generateSocietarioReportPdf({
 }: SocietarioReportPdfParams): ArrayBuffer {
   const currency = report.currency
   const money = (amount: number) => fmtMoney(amount, currency)
-  const { resultado, ventas, gastos, comisiones, socios } = report
+  const { resultado, ventas, gastos, financiero, comisiones, socios } = report
 
   const b = new ReportPdfBuilder({
     company,
@@ -199,7 +199,10 @@ export function generateSocietarioReportPdf({
     },
   ])
 
-  if (ventas.count === 0 && gastos.count === 0) {
+  // El resultado financiero entra en la condición: un período con sólo
+  // movimientos de financiera tiene resultado, y cortar acá dejaría el PDF sin
+  // la cascada que lo explica.
+  if (ventas.count === 0 && gastos.count === 0 && financiero.count === 0) {
     b.emptyState(
       "Sin movimientos en el período",
       `No se encontraron ventas ni gastos entre ${fmtDate(report.dateFrom)} y ${fmtDate(
@@ -234,6 +237,14 @@ export function generateSocietarioReportPdf({
       `Se excluyeron ${gastos.excludedTouristic} movimiento(s) turístico(s) —pagos a operador y ` +
         `devoluciones— porque ya están descontados del margen. Por eso este total de gastos es menor ` +
         `que el del reporte de Gastos.`
+    )
+  }
+  if (financiero.count > 0) {
+    b.note(
+      `El resultado financiero es la bonificación por depósito (${money(financiero.ingresos)}) menos ` +
+        `la comisión de la financiera (${money(financiero.costos)}). No forma parte de los gastos ` +
+        `operativos: es plata que entra y sale por la forma de pagar a los operadores, no por hacer ` +
+        `funcionar la agencia.`
     )
   }
 

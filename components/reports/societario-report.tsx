@@ -90,6 +90,16 @@ interface ReportPayload {
       excludedTouristic: number
       missingRate: Array<{ currency: string; count: number; total: number }>
     }
+    financiero: {
+      ingresos: number
+      costos: number
+      neto: number
+      count: number
+      countIngresos: number
+      countCostos: number
+      truncated: boolean
+      missingRate: Array<{ currency: string; count: number; total: number }>
+    }
     comisiones: {
       total: number
       sellers: { total: number; count: number }
@@ -109,6 +119,7 @@ interface ReportPayload {
       margenNetoIva: number
       comisiones: number
       gastos: number
+      resultadoFinanciero: number
       gananciaNeta: number
       netMarginPct: number
       waterfall: WaterfallStep[]
@@ -261,7 +272,13 @@ export function SocietarioReport({ agencies }: SocietarioReportProps) {
   const report = data?.report
   const resultado = report?.resultado
   const socios = report?.socios
-  const sinDatos = report && report.ventas.count === 0 && report.gastos.count === 0
+  // Un período con sólo movimientos financieros tiene resultado: decir "sin
+  // movimientos" y mostrar un número distinto de cero sería contradictorio.
+  const sinDatos =
+    report &&
+    report.ventas.count === 0 &&
+    report.gastos.count === 0 &&
+    report.financiero.count === 0
 
   return (
     <div className="space-y-6">
@@ -413,9 +430,9 @@ export function SocietarioReport({ agencies }: SocietarioReportProps) {
           {/* Avisos: van arriba de todo, antes de cualquier número */}
           {report.warnings.length > 0 && (
             <div className="space-y-2">
-              {report.warnings.map((w) => (
+              {report.warnings.map((w, i) => (
                 <div
-                  key={w.code}
+                  key={`${w.code}-${i}`}
                   className={`flex items-start gap-2 rounded-lg border p-3 text-sm ${
                     w.level === "danger"
                       ? "border-destructive/40 bg-destructive/5 text-destructive"
@@ -569,6 +586,13 @@ export function SocietarioReport({ agencies }: SocietarioReportProps) {
                   Se excluyeron {report.gastos.excludedTouristic} movimiento(s) turístico(s) —pagos a
                   operador y devoluciones— porque ya están descontados del margen. Por eso este total
                   de gastos es menor que el del reporte de Gastos.
+                </p>
+              )}
+              {report.financiero.count > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  El resultado financiero es la bonificación por depósito menos la comisión de la
+                  financiera. No forma parte de los gastos operativos: es plata que entra y sale por
+                  la forma de pagar a los operadores, no por hacer funcionar la agencia.
                 </p>
               )}
               {(report.comisiones.excluded.settled > 0 ||

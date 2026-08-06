@@ -1,8 +1,9 @@
 /**
  * Orquestación del Reporte Societario (VIB-101).
  *
- * Lee las cinco fuentes del período —ventas, gastos, comisiones de vendedores,
- * comisiones de referidores y socios— y arma el reporte agregado.
+ * Lee las seis fuentes del período —ventas, gastos, resultado financiero,
+ * comisiones de vendedores, comisiones de referidores y socios— y arma el
+ * reporte agregado.
  *
  * Lo comparten la pantalla (`/api/reports/societario`) y el PDF
  * (`/api/reports/societario/pdf`): el documento que se descarga tiene que ser
@@ -10,6 +11,7 @@
  */
 
 import { buildExchangeRateMap } from "@/lib/accounting/exchange-rates"
+import { fetchFinancialResults } from "@/lib/accounting/fetch-financial-results"
 import { fetchCommissionRecords } from "@/lib/commissions/fetch-commission-records"
 import { fetchReferralCommissions } from "@/lib/commissions/fetch-referral-commissions"
 import { fetchExpenses } from "@/lib/expenses/fetch-expenses"
@@ -77,8 +79,8 @@ export async function buildSocietarioReportData(
   const agencyId = params.agencyId && params.agencyId !== "ALL" ? params.agencyId : null
   const agencyIds = params.agencyIds ?? []
 
-  // Las cinco lecturas son independientes entre sí.
-  const [sales, expensesResult, commissions, referrals, orgPartners] = await Promise.all([
+  // Las seis lecturas son independientes entre sí.
+  const [sales, expensesResult, financial, commissions, referrals, orgPartners] = await Promise.all([
     fetchSalesOperations({ supabase, orgId, dateFrom, dateTo, agencyId, agencyIds }),
     fetchExpenses({
       supabase,
@@ -92,6 +94,10 @@ export async function buildSocietarioReportData(
       // los contaría dos veces contra la ganancia.
       excludeTouristic: true,
     }),
+    // Ganancia por depósito y comisión de la financiera. No entran por
+    // `fetchExpenses` a propósito: no son gastos de la agencia, van en su
+    // propia línea del resultado.
+    fetchFinancialResults({ supabase, orgId, dateFrom, dateTo, agencyId, agencyIds }),
     fetchCommissionRecords({ supabase, orgId, dateFrom, dateTo, agencyId, agencyIds }),
     fetchReferralCommissions({ supabase, orgId, dateFrom, dateTo, agencyId, agencyIds }),
     fetchOrgPartners(supabase, orgId),
@@ -117,6 +123,7 @@ export async function buildSocietarioReportData(
   const fechas = [
     ...sales.operations.map((op) => op.operation_date),
     ...expensesResult.expenses.map((e) => e.movement_date),
+    ...financial.rows.map((r) => r.movement_date),
     ...commissions.records.map((r) => r.operations?.operation_date).filter(Boolean),
     ...referrals.rows.map((r) => r.operationDate),
   ].filter(Boolean) as string[]
@@ -133,6 +140,7 @@ export async function buildSocietarioReportData(
     salesTruncated: sales.truncated,
     expenses: expensesResult.expenses,
     excludedTouristicCount: expensesResult.excludedTouristic,
+    financialMovements: financial.rows,
     commissionRecords: commissions.records,
     referralCommissions: referrals.rows,
     commissionsExcluded: {
@@ -140,6 +148,7 @@ export async function buildSocietarioReportData(
       cancelled: commissions.cancelledRecords,
     },
     commissionsTruncated: commissions.truncated || referrals.truncated,
+    financialTruncated: financial.truncated,
     partners: orgPartners.partners,
     allocations,
     // Nombres para el desglose por concepto. Se prefiere el mapa de ventas

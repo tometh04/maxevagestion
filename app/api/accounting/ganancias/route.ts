@@ -5,6 +5,7 @@ import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
 import { getOrgFeatureFlag } from "@/lib/settings/org-features"
 import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
 import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
+import { isFinancialCostConcept } from "@/lib/accounting/financial-result"
 
 // Subcategorías de cuentas contables consideradas como gastos deducibles
 const SUBCATEGORIAS_DEDUCIBLES = [
@@ -107,6 +108,14 @@ export async function GET(request: Request) {
     let gastosNoDeduciblesUSD = 0
 
     for (const exp of (expenses || [])) {
+      // El costo financiero (comisión de la financiera al pagar a un operador)
+      // no es un gasto de la agencia: es un resultado financiero que se netea
+      // contra la ganancia por depósito en el reporte societario. Su
+      // contrapartida de ingreso nunca entró a este cálculo —esta ruta sólo
+      // lee EXPENSE—, así que sumarlo como deducible bajaría el resultado
+      // impositivo sin la mitad que lo compensa.
+      if (isFinancialCostConcept(exp.concept)) continue
+
       const amount = Number(exp.amount_original) || 0
       const isUSD = exp.currency === "USD"
 

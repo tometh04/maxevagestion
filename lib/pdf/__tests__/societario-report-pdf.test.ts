@@ -202,6 +202,60 @@ describe("generateSocietarioReportPdf", () => {
     expect(isPdf(bytes)).toBe(true)
   })
 
+  it("dibuja la línea de resultado financiero con su aclaración", () => {
+    // La nota importa tanto como el número: sin ella, quien lee el PDF asume
+    // que la comisión de la financiera está dentro de los gastos operativos.
+    const bytes = render({
+      financialMovements: [
+        {
+          id: "f-1",
+          kind: "INCOME",
+          concept: "Ganancia financiera por depósito - REC-1",
+          amount: 300,
+          currency: "USD",
+          movement_date: "2026-07-20",
+          accountId: "acc-1",
+          receiptNumber: "REC-1",
+        },
+        {
+          id: "f-2",
+          kind: "COST",
+          concept: "Costo financiero por depósito - REC-1",
+          amount: 100,
+          currency: "USD",
+          movement_date: "2026-07-20",
+          accountId: "acc-2",
+          receiptNumber: "REC-1",
+        },
+      ] as any,
+    })
+    const text = textOf(bytes)
+    expect(isPdf(bytes)).toBe(true)
+    expect(text).toContain("financiero")
+    expect(text).toContain("financiera")
+  })
+
+  it("un período con sólo movimientos financieros no cae en el vacío", () => {
+    const bytes = render({
+      operations: [],
+      expenses: [],
+      financialMovements: [
+        {
+          id: "f-1",
+          kind: "COST",
+          concept: "Costo financiero por depósito - REC-1",
+          amount: 100,
+          currency: "USD",
+          movement_date: "2026-07-20",
+          accountId: "acc-2",
+          receiptNumber: "REC-1",
+        },
+      ] as any,
+    })
+    expect(isPdf(bytes)).toBe(true)
+    expect(textOf(bytes)).not.toContain("Sin movimientos en el per")
+  })
+
   it("imprime el desglose de cada concepto", () => {
     const bytes = render({
       operations: [venta({ agency_id: "ag-1" })],

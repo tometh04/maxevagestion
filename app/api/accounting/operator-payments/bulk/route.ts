@@ -8,7 +8,26 @@ import {
   isAccountingOnlyAccount,
 } from "@/lib/accounting/ledger"
 import { getExchangeRate, getLatestExchangeRate, getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
+import {
+  buildFinancialCostMovement,
+  buildFinancialCostConcept,
+  buildFinancialIncomeConcept,
+} from "@/lib/accounting/financial-result"
 import { roundMoney } from "@/lib/currency"
+import { startOfDayAR } from "@/lib/utils/date-range"
+
+type LedgerMethod = "CASH" | "BANK" | "MP" | "USD" | "OTHER"
+
+/** Método del ledger según el tipo de cuenta. Cada asiento usa el de SU cuenta:
+ *  el pago puede salir de un banco en USD y la comisión de la financiera de la
+ *  caja en pesos. */
+function ledgerMethodForAccountType(type: string | null | undefined): LedgerMethod {
+  if (type === "CASH_ARS" || type === "CASH_USD") return "CASH"
+  if (type === "CHECKING_ARS" || type === "CHECKING_USD") return "BANK"
+  if (type === "CREDIT_CARD") return "MP"
+  if (type === "SAVINGS_ARS" || type === "SAVINGS_USD") return "USD"
+  return "OTHER"
+}
 
 interface ToProcessItem {
   paymentItem: { operator_payment_id: string; operation_id: string; amount_to_pay: number | string }
@@ -46,6 +65,7 @@ export async function POST(request: Request) {
       payment_date,
       notes,
       deposit_bonus,
+      financial_fee,
       apply_retention_ganancias,
       apply_retention_iva,
       retention_ganancias_override,
@@ -53,6 +73,13 @@ export async function POST(request: Request) {
     } = body
 
     const hasDepositBonus = deposit_bonus?.enabled && deposit_bonus?.percentage > 0 && deposit_bonus?.bonus_account_id
+
+    // Comisión de la financiera: plata en PESOS que sale de otra caja cada vez
+    // que se paga en dólares por depósito. Es independiente de la bonificación
+    // (se puede tener una sin la otra) y no es un gasto de la agencia: se netea
+    // contra la ganancia financiera en el reporte societario.
+    const financialFeeAmount = roundMoney(Number(financial_fee?.amount_ars) || 0)
+    const hasFinancialFee = financialFeeAmount > 0 && !!financial_fee?.account_id
 
     // Load tax settings for automatic retentions
     let retentionGananciasRate = 0
@@ -108,6 +135,68 @@ export async function POST(request: Request) {
         { error: "No se puede usar una cuenta solo contable (Cuentas por Cobrar/Pagar) para pagos." },
         { status: 400 }
       )
+    }
+
+    // Cuenta destino de la ganancia financiera. Hasta acá se pasaba cruda al
+    // ledger sin validar el tenant: un id ajeno enumerado escribía en otra org.
+    if (hasDepositBonus) {
+      const { data: bonusAccount } = await (supabase.from("financial_accounts") as any)
+        .select("id")
+        .eq("id", deposit_bonus.bonus_account_id)
+        .eq("org_id", (user as any).org_id)
+        .maybeSingle()
+      if (!bonusAccount) {
+        return NextResponse.json(
+          { error: "Cuenta de ganancia financiera no encontrada" },
+          { status: 404 }
+        )
+      }
+    }
+
+    // Comisión de la financiera. Si vino el bloque pero está incompleto se
+    // corta acá: dejarlo pasar en silencio significa plata que salió de la caja
+    // y no quedó asentada en ningún lado.
+    let feeAccount: any = null
+    if (financial_fee) {
+      if (!financial_fee.account_id || !(financialFeeAmount > 0)) {
+        return NextResponse.json(
+          { error: "El costo financiero necesita un monto mayor a 0 y una cuenta en pesos." },
+          { status: 400 }
+        )
+      }
+
+      const { data: feeAccountRow } = await (supabase.from("financial_accounts") as any)
+        .select("id, type, currency")
+        .eq("id", financial_fee.account_id)
+        .eq("org_id", (user as any).org_id)
+        .maybeSingle()
+
+      if (!feeAccountRow) {
+        return NextResponse.json(
+          { error: "Cuenta del costo financiero no encontrada" },
+          { status: 404 }
+        )
+      }
+
+      // Bloqueante y no warning: validateSufficientBalance no convierte
+      // monedas, así que con una cuenta en dólares compararía pesos contra
+      // dólares y dejaría pasar cualquier monto.
+      if (feeAccountRow.currency !== "ARS") {
+        return NextResponse.json(
+          { error: "La comisión de la financiera se paga en ARS. Elegí una cuenta en pesos." },
+          { status: 400 }
+        )
+      }
+
+      const feeAccountingOnly = await isAccountingOnlyAccount(financial_fee.account_id, supabase)
+      if (feeAccountingOnly) {
+        return NextResponse.json(
+          { error: "No se puede usar una cuenta solo contable para el costo financiero." },
+          { status: 400 }
+        )
+      }
+
+      feeAccount = feeAccountRow
     }
 
     let exchangeRateValue: number | null = null
@@ -213,9 +302,20 @@ export async function POST(request: Request) {
     }
     const actualDebitFromAccount = roundMoney(totalDebit - bonusTotal)
 
+    // Si la comisión sale de la MISMA cuenta que el pago (y en la misma
+    // moneda), las dos validaciones por separado pueden pasar mientras la suma
+    // sobregira: hay que validar el total de una.
+    const feeSharesPaymentAccount =
+      hasFinancialFee &&
+      financial_fee.account_id === payment_account_id &&
+      payment_currency === "ARS"
+    const debitToValidate = feeSharesPaymentAccount
+      ? roundMoney(actualDebitFromAccount + financialFeeAmount)
+      : actualDebitFromAccount
+
     const balanceCheck = await validateSufficientBalance(
       payment_account_id,
-      actualDebitFromAccount,
+      debitToValidate,
       payment_currency as "ARS" | "USD",
       supabase
     )
@@ -227,11 +327,27 @@ export async function POST(request: Request) {
       )
     }
 
-    let ledgerMethod: "CASH" | "BANK" | "MP" | "USD" | "OTHER" = "OTHER"
-    if (paymentAccount.type === "CASH_ARS" || paymentAccount.type === "CASH_USD") ledgerMethod = "CASH"
-    else if (paymentAccount.type === "CHECKING_ARS" || paymentAccount.type === "CHECKING_USD") ledgerMethod = "BANK"
-    else if (paymentAccount.type === "CREDIT_CARD") ledgerMethod = "MP"
-    else if (paymentAccount.type === "SAVINGS_ARS" || paymentAccount.type === "SAVINGS_USD") ledgerMethod = "USD"
+    if (hasFinancialFee && !feeSharesPaymentAccount) {
+      const feeBalanceCheck = await validateSufficientBalance(
+        financial_fee.account_id,
+        financialFeeAmount,
+        "ARS",
+        supabase
+      )
+      if (!feeBalanceCheck.valid) {
+        console.error("[BulkPayment API] ❌ Saldo insuficiente para el costo financiero:", feeBalanceCheck.error)
+        return NextResponse.json(
+          {
+            error:
+              feeBalanceCheck.error ??
+              "Saldo insuficiente en la cuenta elegida para la comisión de la financiera.",
+          },
+          { status: 400 }
+        )
+      }
+    }
+
+    const ledgerMethod = ledgerMethodForAccountType(paymentAccount.type)
 
     const { data: costosChart } = await (supabase.from("chart_of_accounts") as any)
       .select("id")
@@ -542,32 +658,113 @@ export async function POST(request: Request) {
       )
     }
 
+    // ============================================
+    // RESULTADO FINANCIERO DEL LOTE
+    // ============================================
+    // La ganancia por depósito y la comisión de la financiera son las dos caras
+    // de operar con una financiera. Se asientan una sola vez por lote (no por
+    // deuda: el fee es por transferencia, no por pasajero) y con la fecha del
+    // pago, para que el neteo del reporte societario no se parta cuando el lote
+    // se carga después del cierre de mes.
+    //
+    // La fecha va con offset argentino explícito y no como "YYYY-MM-DD" pelado:
+    // `new Date("2026-07-01").toISOString()` es medianoche UTC, o sea las 21h
+    // del 30/06 en Argentina, y los reportes filtran por día argentino. Un pago
+    // del 1° caería en el mes anterior.
+    const financialMovementDate = payment_date
+      ? startOfDayAR(String(payment_date).split("T")[0])
+      : null
+
     // Crear INCOME de ganancia financiera por depósito
     if (hasDepositBonus && bonusTotal > 0 && processedPayments.length > 0) {
       try {
         const bonusARS = payment_currency === "USD"
           ? roundMoney(bonusTotal * exchangeRateValue!)
           : bonusTotal
+        const bonusConcept = buildFinancialIncomeConcept(receipt_number)
 
-        await createLedgerMovement(
-          {
-            operation_id: null,
-            lead_id: null,
-            type: "INCOME",
-            concept: `Ganancia financiera por depósito - ${receipt_number}`,
-            currency: payment_currency as "ARS" | "USD",
-            amount_original: bonusTotal,
-            exchange_rate: payment_currency === "USD" ? exchangeRateValue : null,
-            amount_ars_equivalent: bonusARS,
-            method: ledgerMethod,
-            account_id: deposit_bonus.bonus_account_id,
-            notes: `Bonificación ${deposit_bonus.percentage}% por depósito - ${processedPayments.length} pago(s)`,
-            created_by: user.id,
-          },
-          supabase
-        )
+        // Sin esta guarda, un doble submit del mismo lote duplicaba la
+        // ganancia financiera: el chequeo de duplicados del loop sólo cubre el
+        // EXPENSE de cada deuda.
+        const { data: existingBonus } = await (supabase.from("ledger_movements") as any)
+          .select("id")
+          .eq("org_id", (user as any).org_id)
+          .eq("type", "INCOME")
+          .eq("concept", bonusConcept)
+          .eq("account_id", deposit_bonus.bonus_account_id)
+          .limit(1)
+
+        if (existingBonus && existingBonus.length > 0) {
+          errors.push("La ganancia financiera de este comprobante ya estaba registrada, se omitió")
+        } else {
+          await createLedgerMovement(
+            {
+              operation_id: null,
+              lead_id: null,
+              type: "INCOME",
+              concept: bonusConcept,
+              currency: payment_currency as "ARS" | "USD",
+              amount_original: bonusTotal,
+              exchange_rate: payment_currency === "USD" ? exchangeRateValue : null,
+              amount_ars_equivalent: bonusARS,
+              method: ledgerMethod,
+              account_id: deposit_bonus.bonus_account_id,
+              receipt_number,
+              notes: `Bonificación ${deposit_bonus.percentage}% por depósito - ${processedPayments.length} pago(s)`,
+              created_by: user.id,
+              org_id: (user as any).org_id,
+              movement_date: financialMovementDate,
+            },
+            supabase
+          )
+        }
       } catch (bonusErr: any) {
+        console.error("[BulkPayment API] ❌ Error registrando ganancia financiera:", bonusErr)
         errors.push(`Error registrando ganancia financiera: ${bonusErr?.message ?? String(bonusErr)}`)
+      }
+    }
+
+    // Crear EXPENSE de costo financiero (comisión de la financiera)
+    if (hasFinancialFee && processedPayments.length > 0) {
+      try {
+        const feeConcept = buildFinancialCostConcept(receipt_number)
+
+        // El comprobante identifica la transferencia: dos lotes con el mismo
+        // comprobante y la misma cuenta registran una sola comisión, que es lo
+        // correcto —la financiera la cobró una vez.
+        const { data: existingFee } = await (supabase.from("ledger_movements") as any)
+          .select("id")
+          .eq("org_id", (user as any).org_id)
+          .eq("type", "EXPENSE")
+          .eq("concept", feeConcept)
+          .eq("account_id", financial_fee.account_id)
+          .limit(1)
+
+        if (existingFee && existingFee.length > 0) {
+          errors.push("El costo financiero de este comprobante ya estaba registrado, se omitió")
+        } else {
+          await createLedgerMovement(
+            buildFinancialCostMovement({
+              orgId: (user as any).org_id,
+              accountId: financial_fee.account_id,
+              amountArs: financialFeeAmount,
+              method: ledgerMethodForAccountType(feeAccount?.type),
+              receiptNumber: receipt_number,
+              paymentDate: financialMovementDate,
+              paymentsCount: processedPayments.length,
+              createdBy: user.id,
+            }),
+            supabase
+          )
+        }
+      } catch (feeErr: any) {
+        // Los pagos ya se aplicaron: fallar duro acá dejaría las deudas
+        // canceladas y la respuesta en error. Se avisa con un mensaje que dice
+        // exactamente qué quedó pendiente, porque la plata SÍ salió de la caja.
+        console.error("[BulkPayment API] ❌ Error registrando costo financiero:", feeErr)
+        errors.push(
+          "Los pagos se registraron pero el costo financiero NO quedó asentado: cargalo a mano como gasto en la caja en pesos."
+        )
       }
     }
 
