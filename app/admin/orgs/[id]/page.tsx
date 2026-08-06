@@ -7,6 +7,7 @@ import { TenantMetrics } from "@/components/admin/tenant-metrics"
 import { CustomPlanForm } from "@/components/admin/custom-plan-form"
 import { CustomPlanDisplay } from "@/components/admin/custom-plan-display"
 import { ExtendTrialCard } from "@/components/admin/extend-trial-card"
+import { RegisterPaymentCard } from "@/components/admin/register-payment-card"
 import { ChangePlanCard } from "@/components/admin/change-plan-card"
 import { CriticalActions } from "@/components/admin/critical-actions"
 import { ManualPaymentsSection } from "@/components/admin/manual-payments-section"
@@ -18,6 +19,9 @@ import { OrgActivityTimeline } from "@/components/admin/org-activity-timeline"
 import { OrgHealthCard } from "@/components/admin/org-health-card"
 import { PageHeader } from "@/components/admin/page-header"
 import { MrrOverrideCard } from "@/components/admin/mrr-override-card"
+import { computePotentialMrrArs } from "@/lib/admin/metrics"
+import { getPlanPricing } from "@/lib/billing/plan-pricing"
+import { daysOverdue } from "@/lib/billing/period-extension"
 
 export const dynamic = "force-dynamic"
 
@@ -74,16 +78,39 @@ export default async function AdminOrgDetailPage({ params }: { params: Promise<{
     customPlan = r.data
   }
 
-  let manualPayments: any[] = []
-  if (customPlan?.billing_method === "MANUAL") {
-    const r = await admin
-      .from("manual_payments")
-      .select("*")
-      .eq("org_id", id)
-      .order("paid_at", { ascending: false })
-      .limit(20)
-    manualPayments = r.data ?? []
-  }
+  // Historial de pagos manuales: cualquier org puede tener uno (VIB-103), no
+  // solo las de custom_plan MANUAL. Los cobros por transferencia se registran
+  // desde acá aunque la org esté en un plan estándar.
+  const { data: manualPaymentsData } = await admin
+    .from("manual_payments")
+    .select("*")
+    .eq("org_id", id)
+    .order("paid_at", { ascending: false })
+    .limit(20)
+  const manualPayments: any[] = manualPaymentsData ?? []
+
+  // Monto sugerido para el pago manual: mismo orden de precedencia que el MRR
+  // del dashboard (override → custom plan → precio del plan).
+  const planPrices = await getPlanPricing(admin)
+  const suggestedAmountArs = computePotentialMrrArs(
+    {
+      plan: org.plan ?? null,
+      subscription_status: org.subscription_status ?? "",
+      custom_plan_id: org.custom_plan_id ?? null,
+      manual_mrr_override_ars:
+        org.manual_mrr_override_ars != null ? Number(org.manual_mrr_override_ars) : null,
+    },
+    customPlan
+      ? {
+          base_price_ars: Number(customPlan.base_price_ars),
+          discount_percent: Number(customPlan.discount_percent ?? 0),
+          discount_ends_at: customPlan.discount_ends_at ?? null,
+        }
+      : null,
+    planPrices
+  )
+
+  const overdueDays = daysOverdue(org.current_period_ends_at ?? null)
 
   const status = STATUS_META[org.subscription_status ?? ""] ?? {
     label: org.subscription_status ?? "—",
@@ -132,6 +159,17 @@ export default async function AdminOrgDetailPage({ params }: { params: Promise<{
             <BillingField label="Plan base" value={org.plan ?? "—"} />
             <BillingField label="Status" value={status.label} />
             <BillingField
+              label="Vencimiento"
+              value={
+                org.current_period_ends_at ? formatDate(org.current_period_ends_at) : "—"
+              }
+              hint={
+                overdueDays > 0
+                  ? `vencido hace ${overdueDays} ${overdueDays === 1 ? "día" : "días"}`
+                  : undefined
+              }
+            />
+            <BillingField
               label="Trial ends"
               value={org.trial_ends_at ? formatDate(org.trial_ends_at) : "—"}
             />
@@ -144,6 +182,17 @@ export default async function AdminOrgDetailPage({ params }: { params: Promise<{
           </dl>
         </CardContent>
       </Card>
+
+      {/* VIB-103: cobro por fuera de MP. Va arriba de todo lo demás de billing
+          porque es la acción operativa más frecuente para las orgs que pagan
+          por transferencia (nada automático les mueve el vencimiento). */}
+      <RegisterPaymentCard
+        orgId={org.id}
+        currentPeriodEndsAt={org.current_period_ends_at ?? null}
+        suggestedAmountArs={suggestedAmountArs > 0 ? suggestedAmountArs : null}
+        hasMpPreapproval={!!org.mp_preapproval_id}
+        subscriptionStatus={org.subscription_status ?? null}
+      />
 
       <ChangePlanCard
         orgId={org.id}
@@ -185,9 +234,10 @@ export default async function AdminOrgDetailPage({ params }: { params: Promise<{
 
       <CriticalActions orgId={id} orgName={org.name} orgSlug={org.slug} currentStatus={org.subscription_status} />
 
-      {customPlan?.billing_method === "MANUAL" && (
-        <ManualPaymentsSection orgId={id} payments={manualPayments} />
-      )}
+      {/* Historial + carga libre (fechas y monto arbitrarios). La acción rápida
+          de arriba cubre el caso normal; esto queda para correcciones. */}
+      <ManualPaymentsSection orgId={id} payments={manualPayments} />
+
 
       <MpSnapshot orgId={id} />
 
@@ -204,11 +254,22 @@ export default async function AdminOrgDetailPage({ params }: { params: Promise<{
   )
 }
 
-function BillingField({ label, value }: { label: string; value: string }) {
+function BillingField({
+  label,
+  value,
+  hint,
+}: {
+  label: string
+  value: string
+  hint?: string
+}) {
   return (
     <div>
       <dt className="text-xs uppercase tracking-wider text-muted-foreground">{label}</dt>
-      <dd className="mt-0.5 text-muted-foreground">{value}</dd>
+      <dd className="mt-0.5 text-muted-foreground">
+        {value}
+        {hint && <span className="ml-1.5 text-xs font-medium text-accent-coral">({hint})</span>}
+      </dd>
     </div>
   )
 }
