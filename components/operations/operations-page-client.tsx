@@ -40,6 +40,9 @@ interface OperationsPageClientProps {
   sellers: SellerOption[]
   /** Vendedores asignables al crear (acotados por permiso/agencia). Cae a `sellers` si no se pasa. */
   creatableSellers?: SellerOption[]
+  /** Vendedores elegibles como secundario (acotados por agencia, sin el permiso
+   *  de "cargar a nombre de otro" — VIB-105). Cae a `creatableSellers`/`sellers`. */
+  secondarySellers?: SellerOption[]
   agencies: Array<{ id: string; name: string }>
   operators: Array<{ id: string; name: string }>
   userRole: string
@@ -47,6 +50,8 @@ interface OperationsPageClientProps {
   canViewAgencyOperationsSupport: boolean
   /** Si el usuario puede elegir a otro vendedor en el alta (default true para roles no-SELLER). */
   canPickOtherSeller?: boolean
+  /** Si el usuario puede elegir vendedor secundario (default true; false para AVI). */
+  canPickSecondarySeller?: boolean
   userAgencyIds: string[]
   defaultAgencyId?: string
   defaultSellerId?: string
@@ -55,12 +60,14 @@ interface OperationsPageClientProps {
 export function OperationsPageClient({
   sellers,
   creatableSellers,
+  secondarySellers,
   agencies,
   operators,
   userRole,
   userId,
   canViewAgencyOperationsSupport,
   canPickOtherSeller = true,
+  canPickSecondarySeller = true,
   userAgencyIds,
   defaultAgencyId,
   defaultSellerId,
@@ -232,10 +239,12 @@ export function OperationsPageClient({
         onSuccess={handleRefresh}
         agencies={agencies}
         sellers={creatableSellers ?? sellers}
+        secondarySellers={secondarySellers ?? creatableSellers ?? sellers}
         operators={operators}
         defaultAgencyId={defaultAgencyId}
         defaultSellerId={defaultSellerId}
         canPickOtherSeller={canPickOtherSeller}
+        canPickSecondarySeller={canPickSecondarySeller}
         userRole={userRole}
       />
     </div>

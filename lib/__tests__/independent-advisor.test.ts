@@ -17,6 +17,7 @@ import {
   resolveOperationAccessScope,
   hasAgencyOperationsSupportView,
   canCreateOperationsForOtherSellers,
+  canAssignSecondarySeller,
   canRegisterPaymentsOnAgencyOperations,
 } from "../permissions-api"
 import { isIndependentAdvisor } from "../permissions"
@@ -125,6 +126,11 @@ describe("VIB-69 — asesor de viajes independiente", () => {
       expect(
         hasAgencyOperationsSupportView({ ...seller, can_view_agency_operations_support: true })
       ).toBe(true)
+    })
+
+    it("tampoco puede poner vendedor secundario, que el vendedor común sí puede (VIB-105)", () => {
+      expect(canAssignSecondarySeller(advisorWithLegacyFlags)).toBe(false)
+      expect(canAssignSecondarySeller(seller)).toBe(true)
     })
   })
 

@@ -6,6 +6,7 @@ import {
   applyReportsFilters,
   isOwnDataOnlyResolved,
   canCreateOperationsForOtherSellers,
+  canAssignSecondarySeller,
   isSellerWithinUserAgencies,
   canRegisterPaymentsOnAgencyOperations,
   resolveOperationAccessScope,
@@ -472,6 +473,31 @@ describe("Permissions API", () => {
     it("un rol no-SELLER no aplica a este flag (los demás roles se habilitan por otra vía)", () => {
       const admin = { role: "ADMIN", id: "a-1", can_create_operations_for_other_sellers: true }
       expect(canCreateOperationsForOtherSellers(admin)).toBe(false)
+    })
+  })
+
+  // ─── Vendedor secundario (VIB-105): NO depende del flag de arriba ─────
+  describe("canAssignSecondarySeller", () => {
+    it("SELLER común sin permisos especiales → true (venta compartida es su comisión, no la propiedad de la op)", () => {
+      expect(canAssignSecondarySeller({ role: "SELLER", id: "s-1" })).toBe(true)
+      expect(
+        canAssignSecondarySeller({
+          role: "SELLER",
+          id: "s-1",
+          can_create_operations_for_other_sellers: false,
+        })
+      ).toBe(true)
+    })
+
+    it("los demás roles también pueden", () => {
+      expect(canAssignSecondarySeller({ role: "ADMIN", id: "a-1" })).toBe(true)
+      expect(canAssignSecondarySeller({ role: "SUPER_ADMIN", id: "sa-1" })).toBe(true)
+    })
+
+    it("asesor independiente → false (es externo, no comparte comisión con el equipo)", () => {
+      expect(
+        canAssignSecondarySeller({ role: "SELLER", id: "s-1", is_independent_advisor: true })
+      ).toBe(false)
     })
   })
 
