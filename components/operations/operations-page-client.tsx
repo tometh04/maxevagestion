@@ -196,6 +196,7 @@ export function OperationsPageClient({
             onClick={handleExportCsv}
             disabled={exportingCsv}
             title="Exporta las operaciones filtradas (todas las columnas) en CSV"
+            data-tour="operations.export"
           >
             {exportingCsv ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -204,7 +205,11 @@ export function OperationsPageClient({
             )}
             {exportingCsv ? "Generando..." : "Exportar CSV"}
           </Button>
-          <Button size="sm" onClick={() => setNewOperationDialogOpen(true)}>
+          <Button
+            size="sm"
+            onClick={() => setNewOperationDialogOpen(true)}
+            data-tour="operations.new-button"
+          >
             <Plus className="mr-2 h-4 w-4" />
             Nueva Operación
           </Button>

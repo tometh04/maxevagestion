@@ -469,7 +469,11 @@ export function CRMManychatPageClient({
               </>
             )}
           </Button>
-          <Button size="sm" onClick={() => setNewLeadDialogOpen(true)}>
+          <Button
+            size="sm"
+            onClick={() => setNewLeadDialogOpen(true)}
+            data-tour="crm.new-lead-button"
+          >
             <Plus className="mr-2 h-4 w-4" />
             Nuevo Lead
           </Button>
@@ -477,7 +481,7 @@ export function CRMManychatPageClient({
       </div>
 
       <Tabs defaultValue="kanban" className="w-full">
-        <TabsList>
+        <TabsList data-tour="crm.view-toggle">
           <TabsTrigger value="kanban">Kanban</TabsTrigger>
           <TabsTrigger value="table">Tabla</TabsTrigger>
         </TabsList>

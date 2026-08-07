@@ -666,7 +666,7 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
 
           <Dialog open={openDialog} onOpenChange={setOpenDialog}>
             <DialogTrigger asChild>
-              <Button size="sm" className="h-8 rounded-full">
+              <Button size="sm" className="h-8 rounded-full" data-tour="accounts.new-button">
                 <Plus className="h-4 w-4 mr-2" />
                 Nueva Cuenta
               </Button>

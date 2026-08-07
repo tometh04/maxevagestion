@@ -6,9 +6,10 @@ import { TaskShortcutProvider } from "@/components/tasks/task-shortcut-provider"
 import { PushNotificationManager } from "@/components/notifications/push-notification-manager"
 import { TrialBanner } from "@/components/trial-banner"
 import { PerfNavLogger } from "@/components/perf-nav-logger"
-import { OnboardingTour } from "@/components/onboarding/onboarding-tour"
-import { isOnboardingEligible } from "@/lib/onboarding/eligibility"
+import { canRunSetupTour } from "@/lib/onboarding/eligibility"
 import { getOrgOnboardingState } from "@/lib/onboarding/server"
+import { ToursProvider } from "@/components/tours/tours-provider"
+import { TourOverlay } from "@/components/tours/tour-overlay"
 import { CheckinReminderModal } from "@/components/alerts/checkin-reminder-modal"
 import {
   SidebarInset,
@@ -80,60 +81,70 @@ export default async function DashboardLayout({
   // Onboarding de bienvenida: visible para cuentas nuevas (<30 días) con rol
   // capaz de hacer el setup. El progreso vive a nivel ORG (organization_settings)
   // para que se comparta entre admins y no se rehagan pasos ya completados.
-  const onboardingEligible = isOnboardingEligible(user)
+  // La guía de configuración inicial la puede correr cualquier owner/admin, sin
+  // límite de antigüedad de cuenta: se cierra y se retoma desde el menú "Guías".
+  // El progreso vive a nivel ORG para que se comparta entre los admins.
+  const setupEligible = canRunSetupTour(user)
   const onboardingState =
-    onboardingEligible && user.org_id ? await getOrgOnboardingState(user.org_id) : null
+    setupEligible && user.org_id ? await getOrgOnboardingState(user.org_id) : null
 
   t.end(`role=${user.role} agencies=${agencies.length}`)
 
   return (
     <BrandProvider>
-      <SidebarProvider
-        style={
-          {
-            "--sidebar-width": "14rem",
-            "--header-height": "3.5rem",
-          } as React.CSSProperties
-        }
-      >
-        <AppSidebar
-          variant="sidebar"
-          collapsible="icon"
-          userRole={user.role as any}
-          resolvedPermissions={resolvedPermissions}
-          growthStudioEnabled={growthStudioAccess.allowed}
-          user={{
-            name: user.name,
-            email: user.email,
-            avatar: undefined,
-          }}
-        />
-        <SidebarInset className="min-w-0">
-          <SiteHeader />
-          {orgBanner && <SubscriptionBanner {...orgBanner} />}
-          <TrialBanner orgId={user.org_id ?? null} />
-          {process.env.DISABLE_AUTH === "true" && (
-            <div className="bg-accent-coral text-accent-coral-foreground text-center text-xs py-1 px-4 font-medium">
-              ⚠️ Modo desarrollo — Autenticación deshabilitada (DISABLE_AUTH=true)
-            </div>
-          )}
-          <div className="flex flex-1 flex-col overflow-hidden">
-            <div className="flex-1 overflow-y-auto p-4 md:p-6">
-              <PermissionsProvider role={user.role as any} matrix={resolvedPermissions}>
-                {children}
-              </PermissionsProvider>
-            </div>
-          </div>
-        </SidebarInset>
-        <TaskShortcutProvider
-          currentUserId={user.id}
-          agencyId={agencies[0]?.id || ""}
-        />
-        <PushNotificationManager userId={user.id} />
-        <PerfNavLogger />
-        <OnboardingTour enabled={onboardingEligible} initialState={onboardingState} />
-        <CheckinReminderModal />
-      </SidebarProvider>
+      {/* PermissionsProvider envuelve todo el shell (y no solo children) porque
+          las guías in-app filtran sus pasos con la matriz ya resuelta. */}
+      <PermissionsProvider role={user.role as any} matrix={resolvedPermissions}>
+        <SidebarProvider
+          style={
+            {
+              "--sidebar-width": "14rem",
+              "--header-height": "3.5rem",
+            } as React.CSSProperties
+          }
+        >
+          {/* Dentro de SidebarProvider: necesita useSidebar() para saber si
+              está en mobile y para expandir el sidebar antes de iluminar un
+              item de navegación. */}
+          <ToursProvider
+            initialUserState={(user as any).onboarding_state}
+            initialOrgSetupState={onboardingState}
+            roles={((user as any).roles ?? [user.role]) as string[]}
+            canRunSetup={setupEligible}
+          >
+            <AppSidebar
+              variant="sidebar"
+              collapsible="icon"
+              userRole={user.role as any}
+              resolvedPermissions={resolvedPermissions}
+              growthStudioEnabled={growthStudioAccess.allowed}
+              user={{
+                name: user.name,
+                email: user.email,
+                avatar: undefined,
+              }}
+            />
+            <SidebarInset className="min-w-0">
+              <SiteHeader />
+              {orgBanner && <SubscriptionBanner {...orgBanner} />}
+              <TrialBanner orgId={user.org_id ?? null} />
+              {process.env.DISABLE_AUTH === "true" && (
+                <div className="bg-accent-coral text-accent-coral-foreground text-center text-xs py-1 px-4 font-medium">
+                  ⚠️ Modo desarrollo — Autenticación deshabilitada (DISABLE_AUTH=true)
+                </div>
+              )}
+              <div className="flex flex-1 flex-col overflow-hidden">
+                <div className="flex-1 overflow-y-auto p-4 md:p-6">{children}</div>
+              </div>
+            </SidebarInset>
+            <TaskShortcutProvider currentUserId={user.id} agencyId={agencies[0]?.id || ""} />
+            <PushNotificationManager userId={user.id} />
+            <PerfNavLogger />
+            <CheckinReminderModal />
+            <TourOverlay />
+          </ToursProvider>
+        </SidebarProvider>
+      </PermissionsProvider>
     </BrandProvider>
   )
 }

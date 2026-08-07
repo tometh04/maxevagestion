@@ -846,7 +846,7 @@ export function LeadsKanbanManychat({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-tour="crm.kanban-board">
       {/* ── Tabs Activos / Archivados ── */}
       <div className="flex gap-2">
         <button

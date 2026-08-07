@@ -124,7 +124,7 @@ export function OperationsFilters({ sellers, agencies, customStatuses = [], onFi
     (paymentDateType !== "" && (paymentDateFrom !== undefined || paymentDateTo !== undefined))
 
   return (
-    <div className="flex items-center gap-2 flex-wrap">
+    <div className="flex items-center gap-2 flex-wrap" data-tour="operations.filters">
       <Select value={status} onValueChange={setStatus}>
         <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px] w-auto">
           <SelectValue placeholder="Seleccionar estado" />

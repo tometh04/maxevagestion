@@ -96,8 +96,8 @@ export function SettingsPageClient({ defaultTab, agencies, firstAgencyId, userRo
       router.push(`/settings?${params.toString()}`, { scroll: false })
     }}>
       <TabsList className="flex-wrap">
-        <TabsTrigger value="interface">Mi Empresa</TabsTrigger>
-        <TabsTrigger value="users">Usuarios</TabsTrigger>
+        <TabsTrigger value="interface" data-tour="settings.tab-interface">Mi Empresa</TabsTrigger>
+        <TabsTrigger value="users" data-tour="settings.tab-users">Usuarios</TabsTrigger>
         <TabsTrigger value="operadores">Operadores</TabsTrigger>
         <TabsTrigger value="agencies">Agencias</TabsTrigger>
         {/* Hidden tabs - kept for future use
@@ -108,7 +108,7 @@ export function SettingsPageClient({ defaultTab, agencies, firstAgencyId, userRo
         */}
         <TabsTrigger value="requirements">Requisitos Destino</TabsTrigger>
         <TabsTrigger value="regiones">Regiones CRM</TabsTrigger>
-        <TabsTrigger value="afip">Facturación AFIP</TabsTrigger>
+        <TabsTrigger value="afip" data-tour="settings.tab-afip">Facturación AFIP</TabsTrigger>
         <TabsTrigger value="permisos">Permisos de Roles</TabsTrigger>
         <TabsTrigger value="auditoria">Auditoría</TabsTrigger>
       </TabsList>

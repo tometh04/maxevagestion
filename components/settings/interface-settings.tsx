@@ -7,6 +7,7 @@ import { DecimalInput } from "@/components/ui/decimal-input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
+import { ToursPreferences } from "@/components/tours/tours-preferences"
 import { toast } from "sonner"
 
 // ---------------------------------------------------------------------------
@@ -382,7 +383,10 @@ export function InterfaceSettings() {
       {/* ----------------------------------------------------------------- */}
       {/* Section 1: Datos de la Empresa */}
       {/* ----------------------------------------------------------------- */}
-      <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+      <div
+        className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4"
+        data-tour="settings.company-form"
+      >
         <div className="flex items-center gap-2">
           <div className="flex h-6 w-6 items-center justify-center rounded-md bg-accent-violet/10">
             <Building2 className="h-3.5 w-3.5 text-accent-violet" />
@@ -735,7 +739,10 @@ export function InterfaceSettings() {
         </div>
 
         {/* Logo de la Empresa */}
-        <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+        <div
+          className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4"
+          data-tour="settings.company-logo"
+        >
           <div className="flex items-center gap-2">
             <div className="flex h-6 w-6 items-center justify-center rounded-md bg-success/10">
               <Image className="h-3.5 w-3.5 text-success" />
@@ -812,6 +819,8 @@ export function InterfaceSettings() {
           </p>
         </div>
       </div>
+
+      <ToursPreferences />
     </div>
   )
 }

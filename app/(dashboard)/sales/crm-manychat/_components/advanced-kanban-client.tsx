@@ -241,7 +241,10 @@ export function AdvancedKanbanClient({
       </div>
 
       {/* Kanban columns */}
-      <div className="flex gap-4 overflow-x-auto pb-4 flex-1 items-start">
+      <div
+        className="flex gap-4 overflow-x-auto pb-4 flex-1 items-start"
+        data-tour="crm.kanban-board"
+      >
         {funnels.map((funnel) => {
           const funnelLeads = columnLeads[funnel.id] || []
           const count = funnelCounts[funnel.id] || 0

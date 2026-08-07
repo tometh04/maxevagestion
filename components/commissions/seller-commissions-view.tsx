@@ -314,8 +314,12 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
 
       <Tabs defaultValue="balance" className="w-full">
         <TabsList>
-          <TabsTrigger value="balance">Mi Balance</TabsTrigger>
-          <TabsTrigger value="history">Historial de Pagos</TabsTrigger>
+          <TabsTrigger value="balance" data-tour="commissions.tab-pending">
+            Mi Balance
+          </TabsTrigger>
+          <TabsTrigger value="history" data-tour="commissions.tab-history">
+            Historial de Pagos
+          </TabsTrigger>
         </TabsList>
 
         {/* ============================================================= */}
@@ -323,7 +327,7 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
         {/* ============================================================= */}
         <TabsContent value="balance" className="space-y-6 mt-4">
           {/* KPI cards */}
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-3" data-tour="commissions.summary">
             {/* Pending */}
             <div className="rounded-xl border border-border/40 p-5 space-y-1">
               <div className="flex items-center gap-2">
@@ -365,7 +369,7 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
           </div>
 
           {/* Filters */}
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap" data-tour="commissions.period-selector">
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
                 <SelectValue placeholder="Estado" />

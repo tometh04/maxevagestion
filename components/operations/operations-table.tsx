@@ -721,7 +721,7 @@ export function OperationsTable({
     <>
       <div className="space-y-4">
         {/* Búsqueda server-side */}
-        <div className="relative max-w-sm">
+        <div className="relative max-w-sm" data-tour="operations.search">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
             placeholder="Buscar por destino, cliente, código..."
@@ -754,7 +754,10 @@ export function OperationsTable({
           }, {} as Record<string, { sale: number; paid: number; pending: number; opPaid: number; opPending: number; margin: number }>)
 
           return (
-            <div className="flex flex-wrap gap-2 text-xs py-2 px-3 bg-muted/50 rounded-md border">
+            <div
+              className="flex flex-wrap gap-2 text-xs py-2 px-3 bg-muted/50 rounded-md border"
+              data-tour="operations.totals"
+            >
               <span className="font-semibold text-muted-foreground mr-1">Totales página:</span>
               {Object.entries(totals).map(([currency, t]) => (
                 <div key={currency} className="flex flex-wrap gap-x-3 gap-y-1">
@@ -769,15 +772,17 @@ export function OperationsTable({
           )
         })()}
 
-        <DataTable
-          columns={columns}
-          data={operations}
-          showPagination={false}
-          manualSorting
-          sorting={sorting}
-          onSortingChange={handleSortingChange}
-          persistKey="operations-table"
-        />
+        <div data-tour="operations.table">
+          <DataTable
+            columns={columns}
+            data={operations}
+            showPagination={false}
+            manualSorting
+            sorting={sorting}
+            onSortingChange={handleSortingChange}
+            persistKey="operations-table"
+          />
+        </div>
         
         {/* Paginación server-side */}
         {total > 0 && (

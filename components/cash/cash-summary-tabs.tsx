@@ -22,19 +22,19 @@ export function CashSummaryTabs({
 
       <Tabs defaultValue="resumen">
         <TabsList>
-          <TabsTrigger value="resumen" className="gap-1.5">
+          <TabsTrigger value="resumen" className="gap-1.5" data-tour="cash.tab-resumen">
             <BarChart3 className="h-3.5 w-3.5" />
             Resumen
           </TabsTrigger>
-          <TabsTrigger value="cuentas" className="gap-1.5">
+          <TabsTrigger value="cuentas" className="gap-1.5" data-tour="cash.tab-cuentas">
             <Wallet className="h-3.5 w-3.5" />
             Cuentas Financieras
           </TabsTrigger>
-          <TabsTrigger value="pagos" className="gap-1.5">
+          <TabsTrigger value="pagos" className="gap-1.5" data-tour="cash.tab-pagos">
             <CreditCard className="h-3.5 w-3.5" />
             Pagos
           </TabsTrigger>
-          <TabsTrigger value="movimientos" className="gap-1.5">
+          <TabsTrigger value="movimientos" className="gap-1.5" data-tour="cash.tab-movimientos">
             <ArrowLeftRight className="h-3.5 w-3.5" />
             Movimientos
           </TabsTrigger>

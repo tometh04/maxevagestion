@@ -340,7 +340,7 @@ export function OperationDetailClient({
         </BreadcrumbList>
       </Breadcrumb>
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between" data-tour="operation.header">
         <div className="flex items-center gap-4">
           <Link href="/operations">
             <Button variant="ghost" size="sm">
@@ -390,47 +390,47 @@ export function OperationDetailClient({
 
       <Tabs defaultValue="info" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="info" className="gap-1.5">
+          <TabsTrigger value="info" className="gap-1.5" data-tour="operation.tab-info">
             <Info className="h-3.5 w-3.5" />
             Información
           </TabsTrigger>
-          <TabsTrigger value="customers" className="gap-1.5">
+          <TabsTrigger value="customers" className="gap-1.5" data-tour="operation.tab-customers">
             <Users className="h-3.5 w-3.5" />
             Clientes ({customers.length})
           </TabsTrigger>
-          <TabsTrigger value="documents" className="gap-1.5">
+          <TabsTrigger value="documents" className="gap-1.5" data-tour="operation.tab-documents">
             <FileText className="h-3.5 w-3.5" />
             Documentos ({documents?.length || 0})
           </TabsTrigger>
           {canViewOperationPayments && (
-            <TabsTrigger value="payments" className="gap-1.5">
+            <TabsTrigger value="payments" className="gap-1.5" data-tour="operation.tab-payments">
               <CreditCard className="h-3.5 w-3.5" />
               Pagos Operación ({operationBasePayments.length})
             </TabsTrigger>
           )}
-          <TabsTrigger value="services" className="gap-1.5">
+          <TabsTrigger value="services" className="gap-1.5" data-tour="operation.tab-services">
             <Wrench className="h-3.5 w-3.5" />
             Servicios
           </TabsTrigger>
           {!isAgencyScopedReadonly && (
-            <TabsTrigger value="itinerary" className="gap-1.5">
+            <TabsTrigger value="itinerary" className="gap-1.5" data-tour="operation.tab-itinerary">
               <ShoppingBag className="h-3.5 w-3.5" />
               Detalle de Compra
             </TabsTrigger>
           )}
           {canViewFinancialTabs && (
-            <TabsTrigger value="accounting" className="gap-1.5">
+            <TabsTrigger value="accounting" className="gap-1.5" data-tour="operation.tab-accounting">
               <Calculator className="h-3.5 w-3.5" />
               Contabilidad
             </TabsTrigger>
           )}
           {canViewFinancialTabs && (
-            <TabsTrigger value="metrics" className="gap-1.5">
+            <TabsTrigger value="metrics" className="gap-1.5" data-tour="operation.tab-metrics">
               <BarChart3 className="h-3.5 w-3.5" />
               Métricas
             </TabsTrigger>
           )}
-          <TabsTrigger value="alerts" className="gap-1.5">
+          <TabsTrigger value="alerts" className="gap-1.5" data-tour="operation.tab-alerts">
             <Bell className="h-3.5 w-3.5" />
             Alertas ({alerts?.length || 0})
           </TabsTrigger>
@@ -700,7 +700,7 @@ export function OperationDetailClient({
             }
 
             return (
-            <Card className="rounded-xl border border-border/40">
+            <Card className="rounded-xl border border-border/40" data-tour="operation.financial">
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-base">
                   💰 Financiero

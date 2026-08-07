@@ -591,7 +591,7 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3" data-tour="settings.afip-panel">
         <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-primary/10">
           <Settings2 className="h-4 w-4 text-primary" />
         </div>

@@ -427,6 +427,7 @@ export function InvoicesPageClient() {
                 size="sm"
                 className="h-8 rounded-full"
                 disabled={exporting}
+                data-tour="billing.export"
               >
                 {exporting ? (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -474,7 +475,7 @@ export function InvoicesPageClient() {
               </div>
             </PopoverContent>
           </Popover>
-          <Button size="sm" className="h-8 rounded-full" asChild>
+          <Button size="sm" className="h-8 rounded-full" asChild data-tour="billing.new-invoice">
             <Link href="/operations/billing/new">
               <Plus className="mr-2 h-4 w-4" />
               Nueva Factura
@@ -484,7 +485,7 @@ export function InvoicesPageClient() {
       </div>
 
       {/* Filtros */}
-      <div className="flex items-center gap-2 flex-wrap">
+      <div className="flex items-center gap-2 flex-wrap" data-tour="billing.filters">
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -511,7 +512,7 @@ export function InvoicesPageClient() {
       </div>
 
       {/* Tabla de facturas */}
-      <div className="rounded-xl border border-border/40 overflow-hidden">
+      <div className="rounded-xl border border-border/40 overflow-hidden" data-tour="billing.table">
         <div className="max-h-[60vh] overflow-y-auto">
           <Table>
             <TableHeader className="sticky top-0 bg-background z-10">

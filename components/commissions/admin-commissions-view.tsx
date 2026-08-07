@@ -583,15 +583,15 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
-          <TabsTrigger value="por-pagar" className="gap-1.5">
+          <TabsTrigger value="por-pagar" className="gap-1.5" data-tour="commissions.tab-pending">
             <Clock className="h-3.5 w-3.5" />
             Por Pagar
           </TabsTrigger>
-          <TabsTrigger value="historial" className="gap-1.5">
+          <TabsTrigger value="historial" className="gap-1.5" data-tour="commissions.tab-history">
             <History className="h-3.5 w-3.5" />
             Historial de Pagos
           </TabsTrigger>
-          <TabsTrigger value="reglas" className="gap-1.5">
+          <TabsTrigger value="reglas" className="gap-1.5" data-tour="commissions.tab-rules">
             <Settings2 className="h-3.5 w-3.5" />
             Reglas
           </TabsTrigger>
@@ -600,7 +600,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
         {/* ─── TAB: Por Pagar ─── */}
         <TabsContent value="por-pagar" className="space-y-6 mt-6">
           {/* KPI Cards */}
-          <div className="grid gap-4 md:grid-cols-4">
+          <div className="grid gap-4 md:grid-cols-4" data-tour="commissions.summary">
             {/* Total Pendiente USD */}
             <div className="rounded-xl border border-border/40 p-5">
               <div className="flex items-center gap-2 mb-2">
@@ -669,7 +669,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
           </div>
 
           {/* Filters */}
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap" data-tour="commissions.period-selector">
             <Select value={pendingMonth} onValueChange={setPendingMonth}>
               <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
                 <SelectValue placeholder="Mes" />
