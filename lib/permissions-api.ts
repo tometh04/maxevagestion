@@ -182,6 +182,26 @@ export function canCreateOperationsForOtherSellers(user: SupportOperationsUser):
 }
 
 /**
+ * ¿El usuario puede elegir un VENDEDOR SECUNDARIO al cargar una operación?
+ *
+ * Es distinto de `canCreateOperationsForOtherSellers` (VIB-105): ese permiso
+ * decide de quién ES la operación (cargarla a nombre de otro). El secundario no
+ * cambia la propiedad: es una venta compartida donde el principal parte su
+ * comisión con un compañero de sus mismas agencias. Eso lo hace cualquier
+ * vendedor sin permiso especial, así que gatear el secundario con ese flag
+ * dejaba a los SELLER comunes sin poder cargar ventas compartidas.
+ *
+ * La única excepción es el asesor independiente (VIB-69): es externo a la
+ * agencia, no ve al equipo y no comparte comisiones con él.
+ *
+ * El vendedor concreto igual se valida contra las agencias del usuario con
+ * `isSellerWithinUserAgencies`.
+ */
+export function canAssignSecondarySeller(user: SupportOperationsUser): boolean {
+  return !isIndependentAdvisor(user)
+}
+
+/**
  * ¿El vendedor puede registrar cobros/pagos en operaciones de OTRO vendedor de
  * sus mismas agencias? Sólo aplica a SELLER (los demás roles con acceso a caja
  * ya operan sobre toda su agencia). Opt-in por usuario, lo habilita el admin

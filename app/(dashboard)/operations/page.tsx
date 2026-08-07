@@ -4,6 +4,7 @@ import { createServerClient } from "@/lib/supabase/server"
 import { OperationsPageClient } from "@/components/operations/operations-page-client"
 import { canAccessModule, isIndependentAdvisor } from "@/lib/permissions"
 import {
+  canAssignSecondarySeller,
   canCreateOperationsForOtherSellers,
   hasAgencyOperationsSupportView,
 } from "@/lib/permissions-api"
@@ -92,20 +93,32 @@ export default async function OperationsPage() {
   const sellerOptions: SellerOption[] = isIndependentAdvisor(user)
     ? allSellerOptions.filter((s) => s.id === user.id)
     : allSellerOptions
+  //
+  // VIB-105: el VENDEDOR SECUNDARIO no depende de ese permiso. Compartir una
+  // venta con un compañero de la agencia es algo que hace cualquier vendedor:
+  // la operación sigue siendo suya, sólo parte la comisión. Por eso la lista de
+  // secundarios se acota por agencia pero NO por
+  // `can_create_operations_for_other_sellers`.
   let creatableSellers = sellerOptions
+  let secondarySellers = sellerOptions
   if (isSeller) {
-    if (canPickOtherSeller && agencyIds.length > 0) {
-      // Acotar a los vendedores que comparten agencia con el usuario.
+    // Vendedores que comparten agencia con el usuario (más él mismo).
+    let agencyScopedSellers = sellerOptions.filter((s) => s.id === user.id)
+    if (agencyIds.length > 0) {
       const { data: agencyMembers } = await supabase
         .from("user_agencies")
         .select("user_id")
         .in("agency_id", agencyIds)
       const memberIds = new Set((agencyMembers || []).map((m: any) => m.user_id as string))
-      creatableSellers = sellerOptions.filter((s) => memberIds.has(s.id) || s.id === user.id)
-    } else {
-      // Sin permiso: sólo puede asignarse a sí mismo.
-      creatableSellers = sellerOptions.filter((s) => s.id === user.id)
+      agencyScopedSellers = sellerOptions.filter((s) => memberIds.has(s.id) || s.id === user.id)
     }
+    // El asesor independiente ya llega con `sellerOptions` reducido a sí mismo,
+    // así que no ve compañeros ni como principal ni como secundario.
+    secondarySellers = agencyScopedSellers
+    // Principal: sólo a sí mismo si no tiene el permiso especial.
+    creatableSellers = canPickOtherSeller
+      ? agencyScopedSellers
+      : sellerOptions.filter((s) => s.id === user.id)
   }
 
   t.end(`agencies=${agencies.length} sellers=${sellerOptions.length} operators=${operators?.length ?? 0}`)
@@ -114,6 +127,8 @@ export default async function OperationsPage() {
     <OperationsPageClient
       sellers={sellerOptions}
       creatableSellers={creatableSellers}
+      secondarySellers={secondarySellers}
+      canPickSecondarySeller={canAssignSecondarySeller(user as any)}
       agencies={agencies}
       operators={(operators || []).map((o: any) => ({ id: o.id, name: o.name }))}
       userRole={user.role}

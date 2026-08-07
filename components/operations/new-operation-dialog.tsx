@@ -203,14 +203,20 @@ interface NewOperationDialogProps {
   onSuccess: (operationId?: string) => void // Ahora puede recibir el ID de la operación creada
   agencies: Array<{ id: string; name: string }>
   sellers: SellerOption[]
+  /** Candidatos a vendedor secundario. Se separan de `sellers` porque el
+   *  secundario no depende del permiso "cargar a nombre de otro" (VIB-105).
+   *  Cae a `sellers` si no se pasa. */
+  secondarySellers?: SellerOption[]
   operators: Array<{ id: string; name: string }>
   defaultAgencyId?: string
   defaultSellerId?: string
   lead?: LeadData // Prop opcional para convertir lead a operación
   userRole?: string
-  /** Si el usuario puede elegir a otro vendedor. Cuando es false, los selectores
-   *  de vendedor quedan bloqueados a sí mismo (default true). */
+  /** Si el usuario puede elegir a otro vendedor PRINCIPAL. Cuando es false, el
+   *  selector queda bloqueado a sí mismo (default true). */
   canPickOtherSeller?: boolean
+  /** Si el usuario puede elegir vendedor SECUNDARIO (default true). */
+  canPickSecondarySeller?: boolean
 }
 
 export function NewOperationDialog({
@@ -219,12 +225,14 @@ export function NewOperationDialog({
   onSuccess,
   agencies,
   sellers,
+  secondarySellers,
   operators,
   defaultAgencyId,
   defaultSellerId,
   lead,
   userRole,
   canPickOtherSeller = true,
+  canPickSecondarySeller = true,
 }: NewOperationDialogProps) {
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
@@ -371,6 +379,20 @@ export function NewOperationDialog({
       loadCustomers()
     }
   }, [open, loadSettings, loadCustomers])
+
+  // Candidatos a vendedor secundario. Por defecto los mismos que el principal,
+  // pero la página manda una lista propia: un SELLER sin el permiso de "cargar
+  // a nombre de otro" sólo se ve a sí mismo como principal y aun así puede
+  // elegir secundario entre sus compañeros de agencia (VIB-105).
+  const secondarySellerOptions = secondarySellers ?? sellers
+
+  // Para resolver el % de comisión de cada vendedor hace falta mirar en las dos
+  // listas: el principal puede estar sólo en una y el secundario en la otra.
+  const sellersForCommissionLookup = React.useMemo(() => {
+    const byId = new Map<string, SellerOption>()
+    for (const s of [...sellers, ...secondarySellerOptions]) byId.set(s.id, s)
+    return Array.from(byId.values())
+  }, [sellers, secondarySellerOptions])
 
   // Estados disponibles (estándar + personalizados)
   const availableStatuses = React.useMemo(() => {
@@ -658,7 +680,7 @@ export function NewOperationDialog({
             values.commission_pct_primary != null || values.commission_pct_secondary != null
           if (!repartoEditado) return {}
 
-          const auto = previewSharedSplit(sellers, values.seller_id, values.seller_secondary_id)
+          const auto = previewSharedSplit(sellersForCommissionLookup, values.seller_id, values.seller_secondary_id)
           return {
             commission_pct_primary: Number(
               values.commission_pct_primary ?? auto.primary
@@ -920,10 +942,14 @@ export function NewOperationDialog({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Vendedor Secundario</FormLabel>
+                      {/* VIB-105: el secundario NO se gatea con
+                          `canPickOtherSeller`. Ese permiso decide de quién es la
+                          operación; el secundario sólo comparte la comisión, y
+                          eso lo hace cualquier vendedor de la agencia. */}
                       <Select
                         onValueChange={(value) => field.onChange(value === "none" ? null : value)}
                         value={field.value || "none"}
-                        disabled={!canPickOtherSeller}
+                        disabled={!canPickSecondarySeller}
                       >
                         <FormControl>
                           <SelectTrigger>
@@ -935,7 +961,7 @@ export function NewOperationDialog({
                           {/* Excluir al vendedor principal: no puede ser su propio
                               secundario (dispararía el split 50/50 y le cobraría
                               la mitad de la comisión). */}
-                          {sellers
+                          {secondarySellerOptions
                             .filter((seller) => seller.id !== form.watch("seller_id"))
                             .map((seller) => (
                               <SelectItem key={seller.id} value={seller.id}>
@@ -959,14 +985,14 @@ export function NewOperationDialog({
                 // acá se calculaba la mitad del porcentaje DEL PRINCIPAL y se le
                 // mostraba también al secundario, que cobra sobre el suyo.
                 const sugerido = previewSharedSplit(
-                  sellers,
+                  sellersForCommissionLookup,
                   form.watch("seller_id"),
                   form.watch("seller_secondary_id")
                 )
                 const primaryVal = form.watch("commission_pct_primary")
                 const secondaryVal = form.watch("commission_pct_secondary")
                 const reparto = previewSharedSplit(
-                  sellers,
+                  sellersForCommissionLookup,
                   form.watch("seller_id"),
                   form.watch("seller_secondary_id"),
                   { primary: primaryVal, secondary: secondaryVal }
