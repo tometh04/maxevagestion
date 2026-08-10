@@ -11,13 +11,17 @@
  *
  * QUÉ HACE: recorre las operaciones de UNA agencia con operation_date >= corte y
  * re-dispara el cálculo de comisiones de vendedor y de referidor usando la config
- * vigente de la agencia (misma función que la app). El candado `isLocked()` deja
- * intactas las comisiones ya pagadas, parcialmente pagadas o saldadas (VIB-94):
- * no se toca lo ya cobrado.
+ * vigente de la agencia (misma función que la app).
  *
  * QUÉ NO HACE, a propósito:
- *   - No toca el IVA fiscal (iva_sales) ni el libro de IVA. Solo la base de comisión.
- *   - No cambia nada si la agencia no tiene la base neta activada (sale con error
+ *   - NO crea comisiones nuevas. Un corte de base solo recalcula lo que ya
+ *     existe; solo procesa operaciones que YA tienen una comisión PENDING
+ *     editable (vendedor y/o referidor). Las operaciones sin comisión cargada se
+ *     saltean y se listan aparte.
+ *   - NO toca lo pagado. `isLocked()` (VIB-94) deja intactas las comisiones
+ *     pagadas, parcialmente pagadas o saldadas.
+ *   - NO toca el IVA fiscal (iva_sales) ni el libro de IVA. Solo la base de comisión.
+ *   - NO cambia nada si la agencia no tiene la base neta activada (sale con error
  *     para no revertir comisiones a bruta por accidente).
  *
  * CORTE: `operations.operation_date` (fecha de venta), igual criterio que el
@@ -34,11 +38,9 @@
 import { createClient } from "@supabase/supabase-js"
 import { config as loadEnv } from "dotenv"
 import {
-  computeOperationCommission,
   recalculateOperationCommissions,
   type CommissionOperation,
 } from "@/lib/commissions/calculate"
-import { resolveSellerCommissionProfiles } from "@/lib/commissions/seller-commission-profile"
 import { getCommissionBaseConfig } from "@/lib/commissions/net-base"
 import { createOrUpdateReferralCommission } from "@/lib/referrals/calculate"
 
@@ -59,6 +61,11 @@ const PAGE = 1000
 
 function round2(n: number): number {
   return Math.round((Number(n) || 0) * 100) / 100
+}
+
+// Editable = misma condición que isLocked() en lib/commissions/calculate.ts.
+function isEditableSellerRecord(r: any): boolean {
+  return (r.status ?? "PENDING") === "PENDING" && Number(r.amount_paid ?? 0) <= 0 && !r.settled_at
 }
 
 async function main() {
@@ -117,70 +124,92 @@ async function main() {
     from += PAGE
   }
 
+  const opIds = operations.map((o) => o.id)
+
+  // Comisiones de vendedor existentes (para saber cuáles son editables).
+  const sellerRecs: any[] = []
+  for (let i = 0; i < opIds.length; i += 200) {
+    const { data } = await admin
+      .from("commission_records")
+      .select("operation_id, amount, status, amount_paid, settled_at")
+      .in("operation_id", opIds.slice(i, i + 200))
+    sellerRecs.push(...(data || []))
+  }
+  const sellerByOp = new Map<string, any[]>()
+  for (const r of sellerRecs) {
+    const a = sellerByOp.get(r.operation_id) || []
+    a.push(r)
+    sellerByOp.set(r.operation_id, a)
+  }
+
+  // Comisiones de referidor existentes PENDING (editables).
+  const refRecs: any[] = []
+  for (let i = 0; i < opIds.length; i += 200) {
+    const { data } = await admin
+      .from("referral_commissions")
+      .select("operation_id, status")
+      .in("operation_id", opIds.slice(i, i + 200))
+    refRecs.push(...(data || []))
+  }
+  const editableReferralOps = new Set(
+    refRecs.filter((r) => (r.status ?? "PENDING") === "PENDING").map((r) => r.operation_id)
+  )
+
+  // Clasificar operaciones.
+  const sellerEditableOps: any[] = [] // A: tienen comisión de vendedor editable
+  let lockedOnlyOps = 0 // B: tienen comisión pero toda bloqueada
+  const noSellerCommissionOps: any[] = [] // C: sin comisión de vendedor
+  let editableSellerSumByCur: Record<string, number> = {}
+
+  for (const op of operations) {
+    const rs = sellerByOp.get(op.id) || []
+    const editable = rs.filter(isEditableSellerRecord)
+    if (rs.length === 0) {
+      noSellerCommissionOps.push(op)
+    } else if (editable.length === 0) {
+      lockedOnlyOps++
+    } else {
+      sellerEditableOps.push(op)
+      const cur = op.sale_currency || op.currency || "USD"
+      const sum = editable.reduce((a, r) => a + (Number(r.amount) || 0), 0)
+      editableSellerSumByCur[cur] = round2((editableSellerSumByCur[cur] || 0) + sum)
+    }
+  }
+
   console.log(`\n${apply ? "APLICANDO" : "DRY-RUN"} — recálculo de comisiones (base neta de IVA)`)
   console.log(`Organización: ${orgId}`)
   console.log(`Agencia:      ${agencyId}`)
   console.log(`Corte:        operaciones con fecha de venta >= ${cutoff}`)
   console.log(`Alícuota:     ${(config.rate * 100).toFixed(2)}%  ·  desde: ${config.from ?? "todas"}\n`)
   console.log(`Operaciones alcanzadas: ${operations.length}`)
+  console.log(
+    `  A) con comisión de vendedor EDITABLE (se recalculan a neta): ${sellerEditableOps.length}`
+  )
+  for (const [cur, sum] of Object.entries(editableSellerSumByCur)) {
+    const nueva = round2(sum * (1 - config.rate))
+    console.log(
+      `       ${cur}: suma actual ${sum.toLocaleString("es-AR")} → aprox ${nueva.toLocaleString(
+        "es-AR"
+      )} (baja ~${round2(sum - nueva).toLocaleString("es-AR")})`
+    )
+  }
+  console.log(`  B) con comisión ya pagada/parcial/saldada (NO se tocan): ${lockedOnlyOps}`)
+  console.log(
+    `  C) SIN comisión de vendedor cargada (SE SALTEAN, no se crean): ${noSellerCommissionOps.length}`
+  )
+  console.log(`  Referidores PENDING a recalcular: ${editableReferralOps.size}`)
 
   if (!apply) {
-    // Preview de vendedor: comparar el nuevo plan (base neta) contra lo que hay
-    // guardado hoy en commission_records PENDING no bloqueadas.
-    let previewChanged = 0
-    const deltaByCurrency = new Map<string, number>()
-
-    for (const op of operations) {
-      const operation: CommissionOperation = {
-        ...op,
-        seller_id: op.seller_id,
-        seller_secondary_id: op.seller_secondary_id || null,
-        margin_amount: round2((Number(op.sale_amount_total) || 0) - (Number(op.operator_cost) || 0)),
-      }
-      const profiles = await resolveSellerCommissionProfiles(admin, orgId, [
-        operation.seller_id,
-        operation.seller_secondary_id,
-      ])
-      const plan = computeOperationCommission(operation, profiles, config)
-
-      const { data: current } = await admin
-        .from("commission_records")
-        .select("amount, status, amount_paid, settled_at")
-        .eq("operation_id", op.id)
-
-      // Solo cuentan las editables (mismas condiciones que isLocked()).
-      const currentTotal = (current || [])
-        .filter(
-          (r: any) =>
-            (r.status ?? "PENDING") === "PENDING" &&
-            Number(r.amount_paid ?? 0) <= 0 &&
-            !r.settled_at
-        )
-        .reduce((acc: number, r: any) => acc + (Number(r.amount) || 0), 0)
-
-      const delta = round2(plan.totalCommission - currentTotal)
-      if (Math.abs(delta) >= 0.01) {
-        previewChanged += 1
-        const currency = op.sale_currency || op.currency || "USD"
-        deltaByCurrency.set(currency, round2((deltaByCurrency.get(currency) || 0) + delta))
-      }
-    }
-
-    console.log(`\nVendedores — operaciones con cambio de comisión: ${previewChanged}`)
-    for (const [currency, delta] of Array.from(deltaByCurrency.entries())) {
-      console.log(`  Variación total en ${currency}: ${delta.toLocaleString("es-AR")} (negativo = baja)`)
-    }
-    console.log(`\nReferidores: las comisiones PENDING de estas operaciones también se recalculan al aplicar.`)
     console.log(`\nDry-run: no se escribió nada. Reejecutar con --apply para recalcular.`)
     return
   }
 
-  // APLICAR: reusar las funciones reales; ambas respetan los candados de lo pagado.
+  // APLICAR: solo operaciones con comisión editable existente. No se crean nuevas.
   let sellerOk = 0
   let referralOk = 0
   const errors: string[] = []
 
-  for (const op of operations) {
+  for (const op of sellerEditableOps) {
     const operation: CommissionOperation = {
       ...op,
       seller_id: op.seller_id,
@@ -188,15 +217,17 @@ async function main() {
       org_id: op.org_id || orgId,
       margin_amount: round2((Number(op.sale_amount_total) || 0) - (Number(op.operator_cost) || 0)),
     }
-
     try {
       await recalculateOperationCommissions(admin, operation, config)
       sellerOk += 1
     } catch (err: any) {
       errors.push(`op ${op.file_code || op.id} (vendedor): ${err?.message || err}`)
     }
+  }
 
-    // Cliente MAIN para la comisión de referido.
+  // Referidores: solo los que ya tienen una comisión PENDING (no se crean nuevos).
+  for (const op of operations) {
+    if (!editableReferralOps.has(op.id)) continue
     try {
       const { data: mainCustomer } = await admin
         .from("operation_customers")
@@ -209,7 +240,7 @@ async function main() {
         supabase: admin as any,
         operationId: op.id,
         customerId: (mainCustomer as any)?.customer_id ?? null,
-        marginAmount: operation.margin_amount,
+        marginAmount: round2((Number(op.sale_amount_total) || 0) - (Number(op.operator_cost) || 0)),
         orgId,
         agencyId,
         currency: op.sale_currency || op.currency,
