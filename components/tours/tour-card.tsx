@@ -27,21 +27,28 @@ interface TourCardProps {
   onChain: () => void
 }
 
+/** Sin ancla, o con un ancla que no deja lugar en ningún lado. */
+function CenteredCard(props: TourCardProps) {
+  return (
+    // El contenedor NO puede comerse los clicks: ocupa la pantalla entera y en
+    // un paso interactivo dejaría el formulario inutilizable. Solo la tarjeta
+    // recibe puntero.
+    <div
+      className="pointer-events-none fixed inset-0 z-[100] flex items-center justify-center p-4"
+    >
+      <div
+        className="pointer-events-auto max-h-[calc(100vh-32px)] w-full max-w-[400px] overflow-y-auto rounded-2xl border border-border/50 bg-card shadow-2xl animate-in fade-in zoom-in-95 duration-200"
+      >
+        <TourCardBody {...props} />
+      </div>
+    </div>
+  )
+}
+
 export function TourCard(props: TourCardProps) {
   const { step, rect } = props
 
-  if (!rect) {
-    return (
-      <div
-        className="fixed inset-0 z-[100] flex items-center justify-center p-4"
-        style={{ pointerEvents: "auto" }}
-      >
-        <div className="w-full max-w-[400px] rounded-2xl border border-border/50 bg-card shadow-2xl animate-in fade-in zoom-in-95 duration-200">
-          <TourCardBody {...props} />
-        </div>
-      </div>
-    )
-  }
+  if (!rect) return <CenteredCard {...props} />
 
   const { side, align } = resolvePlacement({
     preferred: step.placement ?? "bottom",
@@ -52,6 +59,10 @@ export function TourCard(props: TourCardProps) {
       height: document.documentElement.clientHeight,
     },
   })
+
+  // La tarjeta no entra en ninguno de los cuatro lados: se centra en vez de
+  // quedar cortada. El spotlight sigue marcando el campo.
+  if (side === "center") return <CenteredCard {...props} />
 
   return (
     <Popover open modal={false}>

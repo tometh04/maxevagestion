@@ -59,13 +59,7 @@ describe("resolvePlacement", () => {
     // diálogo. Mandarla al costado la dejaba mitad afuera de la pantalla.
     const anchoCompleto = { top: 240, left: 233, width: 812, height: 290 }
     const { side } = place(anchoCompleto, "bottom")
-    expect(["top", "bottom"]).toContain(side)
-  })
-
-  it("al volver al eje vertical elige el lado con más aire", () => {
-    const anchoCompleto = { top: 240, left: 233, width: 812, height: 290 }
-    // above = 240, below = 631 - 530 = 101 → arriba.
-    expect(place(anchoCompleto, "bottom").side).toBe("top")
+    expect(["left", "right"]).not.toContain(side)
   })
 
   // Rects medidos en el diálogo real de alta de operación, viewport 1280x631.
@@ -96,10 +90,33 @@ describe("resolvePlacement", () => {
       expect(place(medidos.montos, "bottom").side).toBe("left")
     })
 
-    it("un campo que ocupa todo el ancho se resuelve en vertical", () => {
-      // Pasajeros y códigos no dejan 390px a ningún costado.
-      expect(place(medidos.pasajeros, "bottom").side).toBe("top")
-      expect(place(medidos.codigos, "bottom").side).toBe("top")
+    it("un campo que ocupa todo el ancho y no deja aire vertical se centra", () => {
+      // Pasajeros y códigos no dejan 390px a ningún costado ni 320px arriba o
+      // abajo. Elegir el lado "menos malo" los dejaba cortados contra el borde.
+      expect(place(medidos.pasajeros, "bottom").side).toBe("center")
+      expect(place(medidos.codigos, "bottom").side).toBe("center")
+    })
+  })
+
+  describe("último recurso: centrar", () => {
+    it("centra cuando no hay lugar en ninguno de los cuatro lados", () => {
+      // Un elemento que ocupa casi toda la pantalla en un viewport bajo: es lo
+      // que pasa con una sección de formulario dentro de un diálogo.
+      const gigante = { top: 130, left: 190, width: 900, height: 320 }
+      expect(place(gigante, "bottom").side).toBe("center")
+      expect(place(gigante, "top").side).toBe("center")
+    })
+
+    it("una preferencia lateral explícita sigue mandando", () => {
+      // Centrar es el último recurso, no un atajo: si el paso pidió un costado
+      // es porque quien lo escribió ya sabía que arriba y abajo no servían.
+      const gigante = { top: 130, left: 190, width: 900, height: 320 }
+      expect(place(gigante, "left").side).toBe("left")
+    })
+
+    it("no centra si algún lado tiene lugar de verdad", () => {
+      const chico = { top: 40, left: 200, width: 300, height: 60 }
+      expect(place(chico, "bottom").side).toBe("bottom")
     })
   })
 

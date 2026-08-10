@@ -5,7 +5,15 @@
 // síntoma es una tarjeta cortada contra el borde de la pantalla, que no falla
 // ningún test de integración pero deja el texto sin leer.
 
-export type Side = "top" | "bottom" | "left" | "right"
+/**
+ * "center" no es un lado: es la renuncia a anclar.
+ *
+ * Cuando la tarjeta no entra en ninguno de los cuatro lados, elegir el "menos
+ * malo" la deja cortada contra el borde y el usuario pierde el texto y los
+ * botones. Centrarla siempre entra; el spotlight sigue marcando el campo, que
+ * es lo que de verdad hace falta que se vea.
+ */
+export type Side = "top" | "bottom" | "left" | "right" | "center"
 export type Align = "start" | "center" | "end"
 
 export interface PlacementInput {
@@ -69,9 +77,8 @@ export function resolvePlacement({
     return { side: best, align: "center" }
   }
 
-  // Tampoco entra al costado — pasa con un campo que ocupa todo el ancho del
-  // diálogo. Se vuelve al eje vertical con más aire y Radix la corre para
-  // dejarla dentro de la pantalla: tapar un poco el elemento es mejor que
-  // quedar cortada.
-  return { side: above >= below ? "top" : "bottom", align }
+  // Tampoco entra al costado: pasa con un campo que ocupa casi todo el ancho de
+  // un diálogo, en una pantalla baja. Devolver igual el lado "menos malo" no
+  // servía — Radix la ubica donde pedimos y la deja cortada contra el borde.
+  return { side: "center", align: "center" }
 }
