@@ -9,6 +9,10 @@ import {
 import { getOrgFeatureFlag } from "@/lib/settings/org-features"
 import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
 import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
+import {
+  getCommissionBaseConfigsForAgencies,
+  resolveCommissionBase,
+} from "@/lib/commissions/net-base"
 
 /**
  * GET /api/reports/margins
@@ -125,6 +129,25 @@ export async function GET(request: Request) {
     const latestExchangeRate =
       (await getLatestExchangeRate(supabase as any)) || DEFAULT_USD_ARS_FALLBACK_RATE
 
+    // Ganancia neta de IVA (VIB-95): si la agencia de la operación tiene la base
+    // neta activa, la ganancia neta = bruta × (1 − alícuota) para las operaciones
+    // dentro del corte. Config por agencia, batch en una sola query. Si ninguna
+    // agencia lo tiene activo, la neta coincide con la bruta.
+    const netConfigByAgency = await getCommissionBaseConfigsForAgencies(
+      supabase,
+      (operations || []).map((op: any) => op.agency_id)
+    )
+    let commissionNetApplies = false
+    const netMarginOf = (op: any, grossMargin: number): number => {
+      const resolved = resolveCommissionBase(
+        grossMargin,
+        op.operation_date,
+        netConfigByAgency.get(op.agency_id)
+      )
+      if (resolved.applied) commissionNetApplies = true
+      return resolved.base
+    }
+
     /**
      * Convierte un monto a USD-equivalente. ARS se divide por la tasa.
      * USD se devuelve tal cual. Si no hay tasa, usa la más reciente.
@@ -154,6 +177,10 @@ export async function GET(request: Request) {
       total_sale_other: 0,
       total_margin_other: 0,
       avg_margin_percent: 0,
+      // Ganancia neta de IVA (VIB-95): base de la comisión cuando la agencia lo activa.
+      total_margin_net_usd: 0,
+      total_margin_net_ars: 0,
+      total_margin_net: 0,
     }
 
     for (const op of operations || []) {
@@ -163,21 +190,25 @@ export async function GET(request: Request) {
       const sale = (Number(op.sale_amount_total) || 0) + saleExtra
       const cost = (Number(op.operator_cost) || 0) + costExtra
       const margin = (Number(op.margin_amount) || 0) + (saleExtra - costExtra)
+      const netMargin = netMarginOf(op, margin)
       const opDate = op.departure_date || op.operation_date || op.created_at
 
       if (saleCurrency === "ARS") {
         totals.total_sale_ars += sale
         totals.total_cost_ars += cost
         totals.total_margin_ars += margin
+        totals.total_margin_net_ars += netMargin
       } else {
         totals.total_sale_usd += sale
         totals.total_cost_usd += cost
         totals.total_margin_usd += margin
+        totals.total_margin_net_usd += netMargin
       }
 
       totals.total_sale += toUsd(sale, saleCurrency, opDate)
       totals.total_cost += toUsd(cost, saleCurrency, opDate)
       totals.total_margin += toUsd(margin, saleCurrency, opDate)
+      totals.total_margin_net += toUsd(netMargin, saleCurrency, opDate)
     }
 
     totals.total_sale_other = totals.total_sale_ars
@@ -185,7 +216,9 @@ export async function GET(request: Request) {
     totals.avg_margin_percent =
       totals.total_sale > 0 ? (totals.total_margin / totals.total_sale) * 100 : 0
 
-    const result: any = { totals, operations: operations || [] }
+    // Indica si alguna operación del reporte usó base neta; el front muestra la
+    // columna "Ganancia neta" solo cuando corresponde.
+    const result: any = { totals, commission_net_applies: commissionNetApplies, operations: operations || [] }
 
     // -----------------------------------------------------------------------
     // Helper: agrupa operaciones por una key arbitraria. Cada bucket de salida
@@ -205,6 +238,7 @@ export async function GET(request: Request) {
       total_sale_usd_equiv: number
       total_cost_usd_equiv: number
       total_margin_usd_equiv: number
+      total_margin_net_usd_equiv: number
     }
 
     const groupOperations = (
@@ -230,6 +264,7 @@ export async function GET(request: Request) {
             total_sale_usd_equiv: 0,
             total_cost_usd_equiv: 0,
             total_margin_usd_equiv: 0,
+            total_margin_net_usd_equiv: 0,
           }
           buckets.set(key, bucket)
         }
@@ -241,6 +276,7 @@ export async function GET(request: Request) {
         const sale = (Number(op.sale_amount_total) || 0) + saleExtra
         const cost = (Number(op.operator_cost) || 0) + costExtra
         const margin = (Number(op.margin_amount) || 0) + (saleExtra - costExtra)
+        const netMargin = netMarginOf(op, margin)
         const saleCur = op.sale_currency || op.currency || "USD"
         const opDate = op.departure_date || op.operation_date || op.created_at
 
@@ -257,6 +293,7 @@ export async function GET(request: Request) {
         bucket.total_sale_usd_equiv += toUsd(sale, saleCur, opDate)
         bucket.total_cost_usd_equiv += toUsd(cost, saleCur, opDate)
         bucket.total_margin_usd_equiv += toUsd(margin, saleCur, opDate)
+        bucket.total_margin_net_usd_equiv += toUsd(netMargin, saleCur, opDate)
       }
 
       return Array.from(buckets.values())
@@ -287,6 +324,7 @@ export async function GET(request: Request) {
           total_margin_usd: b.total_margin_usd,
           total_sale_usd_equiv: b.total_sale_usd_equiv,
           total_margin_usd_equiv: b.total_margin_usd_equiv,
+          total_margin_net_usd_equiv: b.total_margin_net_usd_equiv,
           avg_margin_percent:
             b.total_sale_usd_equiv > 0
               ? (b.total_margin_usd_equiv / b.total_sale_usd_equiv) * 100

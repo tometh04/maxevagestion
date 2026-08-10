@@ -47,6 +47,10 @@ interface FinancialSettings {
   // Cálculo de costo de operadores
   default_cost_calculation_mode: "SIMPLE" | "COMMISSIONABLE"
   default_commission_percentage: number
+  // Base de comisiones neta de IVA (VIB-95). La alícuota se guarda como fracción.
+  commission_base_net_of_iva: boolean
+  commission_iva_rate: number
+  commission_net_from: string | null
 }
 
 export function FinancesSettingsPageClient() {
@@ -71,6 +75,9 @@ export function FinancesSettingsPageClient() {
     withholdings_enabled: true,
     default_cost_calculation_mode: "SIMPLE",
     default_commission_percentage: 0,
+    commission_base_net_of_iva: false,
+    commission_iva_rate: 0.105,
+    commission_net_from: null,
   })
 
   useEffect(() => {
@@ -561,6 +568,96 @@ export function FinancesSettingsPageClient() {
                     setSettings({ ...settings, iibb_convenio_multilateral: checked })
                   }
                 />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-xl border-border/40">
+            <CardHeader>
+              <CardTitle>Base de comisiones neta de IVA</CardTitle>
+              <CardDescription>
+                Calcular las comisiones de vendedores y referidores sobre la ganancia
+                neta de IVA en vez de la bruta. Es independiente del IVA fiscal: solo
+                cambia la base con la que se reparten comisiones.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-start justify-between gap-4 rounded-lg border border-border/40 bg-muted/10 p-4">
+                <div className="space-y-1">
+                  <Label htmlFor="commission_base_net_of_iva" className="text-sm font-medium">
+                    Comisionar sobre la ganancia neta de IVA
+                  </Label>
+                  <p className="text-xs text-muted-foreground max-w-xl">
+                    Con esto activo, la base de comisión es{" "}
+                    <strong>ganancia bruta × (1 − alícuota)</strong>. Ejemplo: ganancia
+                    bruta 1.000 con 10,5% → base neta 895, y las comisiones se calculan
+                    sobre 895.
+                  </p>
+                </div>
+                <Switch
+                  id="commission_base_net_of_iva"
+                  checked={settings.commission_base_net_of_iva}
+                  onCheckedChange={(checked) =>
+                    setSettings({ ...settings, commission_base_net_of_iva: checked })
+                  }
+                />
+              </div>
+
+              {settings.commission_base_net_of_iva && (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <Label>Alícuota de IVA a descontar (%)</Label>
+                    <p className="text-xs text-muted-foreground mb-1">
+                      Porcentaje que se resta de la ganancia bruta (ej. 10,5).
+                    </p>
+                    <DecimalInput
+                      className="w-32"
+                      value={Math.round(settings.commission_iva_rate * 1000) / 10}
+                      onChange={(v) => {
+                        const pct = parseFloat(v)
+                        setSettings({
+                          ...settings,
+                          commission_iva_rate: Number.isFinite(pct)
+                            ? Math.min(Math.max(pct, 0), 99.9) / 100
+                            : 0,
+                        })
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <Label>Aplicar desde</Label>
+                    <p className="text-xs text-muted-foreground mb-1">
+                      Solo las operaciones con fecha de venta igual o posterior usan base
+                      neta. Vacío = todas.
+                    </p>
+                    <Input
+                      type="date"
+                      className="w-44"
+                      value={settings.commission_net_from ?? ""}
+                      onChange={(e) =>
+                        setSettings({
+                          ...settings,
+                          commission_net_from: e.target.value || null,
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3">
+                <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                <div className="text-xs text-muted-foreground space-y-1">
+                  <p>
+                    <strong>Esto baja todas las comisiones desde la fecha elegida.</strong>{" "}
+                    Las comisiones ya pagadas o saldadas no se tocan. Conviene avisarles a
+                    los vendedores antes de que lo vean en el reporte.
+                  </p>
+                  <p>
+                    Para recalcular operaciones ya cargadas desde la fecha de corte, pedile
+                    al equipo técnico que corra el script de recálculo.
+                  </p>
+                </div>
               </div>
             </CardContent>
           </Card>

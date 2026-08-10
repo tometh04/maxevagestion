@@ -116,7 +116,7 @@ async function recalculateOperationTotals(supabase: any, operationId: string) {
   // El select tiene que traer org_id y los commission_pct_*: sin ellos el
   // recálculo no sabía en qué modo estaba la operación y la degradaba.
   const { data: updatedOp } = await (supabase.from("operations") as any)
-    .select("id, org_id, agency_id, seller_id, seller_secondary_id, commission_pct_primary, commission_pct_secondary, commission_split_mode, margin_amount")
+    .select("id, org_id, agency_id, operation_date, seller_id, seller_secondary_id, commission_pct_primary, commission_pct_secondary, commission_split_mode, margin_amount")
     .eq("id", operationId)
     .single()
 

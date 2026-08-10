@@ -21,6 +21,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js"
+import { resolveCommissionBase, getCommissionBaseConfig } from "@/lib/commissions/net-base"
 
 export interface ReferralCommissionInput {
   supabase: SupabaseClient<any, any, any>
@@ -33,6 +34,8 @@ export interface ReferralCommissionInput {
   agencyId?: string | null
   /** Moneda de la venta; se guarda a título informativo en la comisión. */
   currency?: string
+  /** Fecha de venta; usada para el corte de la base neta de IVA (VIB-95). */
+  operationDate?: string | null
 }
 
 export interface ReferralCommissionResult {
@@ -122,7 +125,14 @@ export async function createOrUpdateReferralCommission(
     }
     percentage = Number(percentage) || 0
 
-    const amount = round2((marginAmount * percentage) / 100)
+    // Base de comisión: ganancia bruta por default, o neta de IVA si la agencia
+    // lo tiene activo y la operación entra en el corte (VIB-95). Mismo criterio
+    // que la comisión del vendedor.
+    const baseConfig = await getCommissionBaseConfig(supabase, agencyId)
+    const resolvedBase = resolveCommissionBase(marginAmount, input.operationDate, baseConfig)
+    const commissionBase = resolvedBase.base
+
+    const amount = round2((commissionBase * percentage) / 100)
 
     // % en 0 (o monto redondeado a 0): no generamos fila; limpiamos la previa.
     if (amount <= 0) {
@@ -141,7 +151,7 @@ export async function createOrUpdateReferralCommission(
       referral_partner_id: partnerId,
       customer_id: customerId,
       basis: "MARGIN",
-      base_amount: round2(marginAmount),
+      base_amount: round2(commissionBase),
       percentage,
       amount,
       currency: currency || "ARS",

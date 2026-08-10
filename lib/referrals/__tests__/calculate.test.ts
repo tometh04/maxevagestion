@@ -12,6 +12,7 @@ type Rows = {
   referral_commissions?: any
   customers?: any
   referral_partners?: any
+  financial_settings?: any
 }
 
 /**
@@ -184,6 +185,55 @@ describe("createOrUpdateReferralCommission", () => {
     expect(res.reason).toBe("existing_non_pending")
     expect(calls.inserted).toHaveLength(0)
     expect(calls.updated).toHaveLength(0)
+  })
+
+  it("con base neta activa comisiona sobre la neta de IVA (VIB-95)", async () => {
+    const { supabase, calls } = makeSupabase({
+      referral_commissions: null,
+      customers: { referral_partner_id: "p-1", referral_commission_percentage: null },
+      referral_partners: { default_commission_percentage: 10, active: true },
+      financial_settings: {
+        commission_base_net_of_iva: true,
+        commission_iva_rate: 0.105,
+        commission_net_from: "2026-06-01",
+      },
+    })
+
+    const res = await createOrUpdateReferralCommission({
+      supabase,
+      customerId: "cust-1",
+      marginAmount: 10000,
+      operationDate: "2026-06-15",
+      ...base,
+    })
+
+    // base neta 10000 × 0,895 = 8950 → 8950 × 10% = 895 (no 1000).
+    expect(res.amount).toBe(895)
+    expect(calls.inserted[0].payload.base_amount).toBe(8950)
+  })
+
+  it("con base neta activa pero antes del corte sigue en bruta", async () => {
+    const { supabase, calls } = makeSupabase({
+      referral_commissions: null,
+      customers: { referral_partner_id: "p-1", referral_commission_percentage: null },
+      referral_partners: { default_commission_percentage: 10, active: true },
+      financial_settings: {
+        commission_base_net_of_iva: true,
+        commission_iva_rate: 0.105,
+        commission_net_from: "2026-06-01",
+      },
+    })
+
+    const res = await createOrUpdateReferralCommission({
+      supabase,
+      customerId: "cust-1",
+      marginAmount: 10000,
+      operationDate: "2026-05-31",
+      ...base,
+    })
+
+    expect(res.amount).toBe(1000)
+    expect(calls.inserted[0].payload.base_amount).toBe(10000)
   })
 
   it("elimina la comisión PENDING previa si el cliente deja de estar referido", async () => {

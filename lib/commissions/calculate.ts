@@ -37,6 +37,11 @@ import {
   resolveSoloPercentage,
   type SharedSplitWarning,
 } from "@/lib/commissions/shared-split"
+import {
+  resolveCommissionBase,
+  getCommissionBaseConfig,
+  type CommissionBaseConfig,
+} from "@/lib/commissions/net-base"
 
 export interface CommissionOperation {
   id: string
@@ -50,6 +55,8 @@ export interface CommissionOperation {
   commission_pct_secondary?: number | null
   commission_split_mode?: string | null
   margin_amount: number
+  /** Fecha de venta; usada para el corte de la base neta de IVA (VIB-95). */
+  operation_date?: string | null
 }
 
 export type CommissionRule = "SOLO" | "HALF_HALF" | "ABSORB" | "SINGLE" | "MANUAL" | "NONE"
@@ -117,12 +124,20 @@ function participantOf(
  */
 export function computeOperationCommission(
   operation: CommissionOperation,
-  profiles: Map<string, SellerCommissionProfile>
+  profiles: Map<string, SellerCommissionProfile>,
+  baseConfig?: CommissionBaseConfig | null
 ): CommissionPlan {
   const primaryId = operation.seller_id
   if (!primaryId) return EMPTY_PLAN
 
-  const margin = Number(operation.margin_amount) || 0
+  // Base de comisión: ganancia bruta por default, o neta de IVA si la agencia
+  // lo tiene activo y la operación entra en el corte (VIB-95). El núcleo sigue
+  // puro: la config viene resuelta desde afuera.
+  const margin = resolveCommissionBase(
+    Number(operation.margin_amount) || 0,
+    operation.operation_date,
+    baseConfig
+  ).base
   const secondaryId =
     operation.seller_secondary_id && operation.seller_secondary_id !== primaryId
       ? operation.seller_secondary_id
@@ -373,7 +388,8 @@ export interface RecalculateResult extends ApplyCommissionResult {
  */
 export async function recalculateOperationCommissions(
   supabase: any,
-  operation: CommissionOperation
+  operation: CommissionOperation,
+  baseConfig?: CommissionBaseConfig | null
 ): Promise<RecalculateResult> {
   if (!operation.seller_id) {
     return { written: [], skipped: [], removed: [], errors: [], plan: EMPTY_PLAN }
@@ -385,7 +401,11 @@ export async function recalculateOperationCommissions(
     operation.seller_secondary_id,
   ])
 
-  const plan = computeOperationCommission(operation, profiles)
+  // Si el caller no pasó la config, la resolvemos por la agencia de la operación.
+  const resolvedConfig =
+    baseConfig ?? (await getCommissionBaseConfig(supabase, operation.agency_id))
+
+  const plan = computeOperationCommission(operation, profiles, resolvedConfig)
   const applied = await applyCommissionPlan(supabase, operation, plan)
 
   // En AUTO los porcentajes de la operación son un snapshot de salida: se
@@ -449,6 +469,9 @@ export async function processCommissionsForOperations(
     return
   }
 
+  // Cache de config de base neta por agencia para no consultar por cada operación.
+  const configByAgency = new Map<string, CommissionBaseConfig>()
+
   for (const rawOp of (operations || []) as any[]) {
     const operation: CommissionOperation = {
       ...rawOp,
@@ -467,7 +490,12 @@ export async function processCommissionsForOperations(
       operation.margin_amount = recalculatedMargin
     }
 
-    await recalculateOperationCommissions(supabase, operation)
+    const agencyKey = operation.agency_id || ""
+    if (!configByAgency.has(agencyKey)) {
+      configByAgency.set(agencyKey, await getCommissionBaseConfig(supabase, operation.agency_id))
+    }
+
+    await recalculateOperationCommissions(supabase, operation, configByAgency.get(agencyKey))
   }
 }
 

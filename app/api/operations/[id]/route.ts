@@ -1145,6 +1145,7 @@ export async function PATCH(
         orgId: op.org_id,
         agencyId: op.agency_id,
         currency: op.sale_currency || op.currency,
+        operationDate: op.operation_date,
       })
     } catch (error) {
       console.error("Error recalculando comisión de referido:", error)

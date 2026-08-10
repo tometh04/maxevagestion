@@ -940,6 +940,7 @@ export async function POST(request: Request) {
         orgId: (user as any).org_id,
         agencyId: agency_id,
         currency: finalSaleCurrency,
+        operationDate: op.operation_date,
       })
     } catch (error) {
       console.error("Error calculando comisión de referido para nueva operación:", error)
