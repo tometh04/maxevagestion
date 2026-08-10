@@ -40,6 +40,8 @@ export const crmKanbanTour: TourDefinition = {
       target: "crm.new-lead-button",
       title: "Cargar un lead a mano",
       body: "Los leads entran solos desde las integraciones, pero también podés cargar uno si te llegó por otro lado.",
+      nextTour: "lead-new",
+      interactive: true,
       details: [
         "Prestá atención a la agencia que figura arriba del formulario: es donde se va a crear el lead.",
         "Elegir el destino completa la región sola, y la región propone la lista del CRM.",

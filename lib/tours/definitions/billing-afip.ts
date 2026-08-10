@@ -21,6 +21,7 @@ export const billingAfipTour: TourDefinition = {
       ],
       placement: "bottom",
       align: "end",
+      nextTour: "billing-new",
     },
     {
       id: "cae",

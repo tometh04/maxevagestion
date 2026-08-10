@@ -1405,13 +1405,23 @@ export function OperationPaymentsSection({
               </Button>
             )}
             {/* Botón Registrar Cobro - visible para todos */}
-            <Button onClick={() => setIncomeDialogOpen(true)} size="sm" variant="default">
+            <Button
+              onClick={() => setIncomeDialogOpen(true)}
+              size="sm"
+              variant="default"
+              data-tour="op-cobro.boton"
+            >
               <Plus className="mr-2 h-4 w-4" />
               Registrar Cobro
             </Button>
             {/* Botón Registrar Pago - habilitado por cash.write (matrix por agencia) */}
             {canWriteCash && (
-              <Button onClick={() => setExpenseDialogOpen(true)} size="sm" variant="outline">
+              <Button
+                onClick={() => setExpenseDialogOpen(true)}
+                size="sm"
+                variant="outline"
+                data-tour="op-pago.boton"
+              >
               <Plus className="mr-2 h-4 w-4" />
               Registrar Pago
             </Button>
@@ -1711,7 +1721,7 @@ export function OperationPaymentsSection({
                   control={incomeForm.control}
                   name="method"
                   render={({ field }) => (
-                    <FormItem>
+                    <FormItem data-tour="op-cobro.metodo">
                       <FormLabel>Método de Pago</FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
@@ -1737,7 +1747,7 @@ export function OperationPaymentsSection({
                     control={incomeForm.control}
                     name="amount"
                     render={({ field }) => (
-                      <FormItem>
+                      <FormItem data-tour="op-cobro.monto">
                         <FormLabel>Monto</FormLabel>
                         <FormControl>
                           <DecimalInput {...field} />
@@ -1751,7 +1761,7 @@ export function OperationPaymentsSection({
                     control={incomeForm.control}
                     name="currency"
                     render={({ field }) => (
-                      <FormItem>
+                      <FormItem data-tour="op-cobro.moneda">
                         <FormLabel>Moneda</FormLabel>
                         <Select onValueChange={field.onChange} defaultValue={field.value}>
                           <FormControl>
@@ -1776,7 +1786,7 @@ export function OperationPaymentsSection({
                   control={incomeForm.control}
                   name="exchange_rate"
                   render={({ field }) => (
-                    <FormItem>
+                    <FormItem data-tour="op-cobro.tipo-cambio">
                       <FormLabel>Tipo de Cambio (ARS por 1 USD)</FormLabel>
                       <FormControl>
                         <DecimalInput
@@ -1811,7 +1821,7 @@ export function OperationPaymentsSection({
                     control={incomeForm.control}
                     name="date_paid"
                     render={({ field }) => (
-                      <FormItem className="flex flex-col">
+                      <FormItem className="flex flex-col" data-tour="op-cobro.fecha">
                         <FormLabel>Fecha del Cobro</FormLabel>
                         <Popover>
                           <PopoverTrigger asChild>
@@ -1850,7 +1860,7 @@ export function OperationPaymentsSection({
                     control={incomeForm.control}
                     name="financial_account_id"
                     render={({ field }) => (
-                      <FormItem>
+                      <FormItem data-tour="op-cobro.cuenta">
                         <FormLabel>Cuenta Financiera *</FormLabel>
                         <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
@@ -1885,7 +1895,10 @@ export function OperationPaymentsSection({
 
               {/* Bank tax (Ley 25413) — semi-automatic deduction for bank accounts */}
               {incomeAccountHasBankTax && (
-                <div className="rounded-[var(--vb-r-sm)] border border-[var(--vb-border)] bg-background/60 p-3 space-y-3">
+                <div
+                  className="rounded-[var(--vb-r-sm)] border border-[var(--vb-border)] bg-background/60 p-3 space-y-3"
+                  data-tour="op-cobro.impuesto-ley"
+                >
                   <div className="flex items-center gap-2">
                     <Checkbox
                       id="bank-tax-income"
@@ -1928,7 +1941,7 @@ export function OperationPaymentsSection({
                 const watchedCurrency = incomeForm.watch("currency")
                 const isCash = watchedMethod === "Efectivo"
                 return (
-                  <div className="rounded-[var(--vb-r-sm)] border border-accent-coral/30 bg-accent-coral/5 p-4 space-y-3">
+                  <div className="rounded-[var(--vb-r-sm)] border border-accent-coral/30 bg-accent-coral/5 p-4 space-y-3" data-tour="op-cobro.percepciones">
                     <div className="flex items-center gap-1.5">
                       <Receipt className="h-3.5 w-3.5 text-accent-coral" />
                       <span className="text-xs font-medium text-foreground/70">Percepciones Impositivas</span>
@@ -1982,7 +1995,7 @@ export function OperationPaymentsSection({
                 control={incomeForm.control}
                 name="notes"
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem data-tour="op-cobro.notas">
                     <FormLabel className="flex items-center gap-1.5"><StickyNote className="h-3 w-3 text-muted-foreground" /> Notas (opcional)</FormLabel>
                     <FormControl>
                       <Input placeholder="Referencia, comprobante, etc." {...field} />
@@ -2008,7 +2021,7 @@ export function OperationPaymentsSection({
                     control={incomeForm.control}
                     name="payer_name"
                     render={({ field }) => (
-                      <FormItem>
+                      <FormItem data-tour="op-cobro.quien-abona">
                         <FormLabel>¿Quién abona? (opcional)</FormLabel>
                         <Select
                           onValueChange={(v) => {
@@ -2049,7 +2062,7 @@ export function OperationPaymentsSection({
                 <Button type="button" variant="outline" onClick={() => setIncomeDialogOpen(false)}>
                   Cancelar
                 </Button>
-                <Button type="submit" disabled={isLoading}>
+                <Button type="submit" disabled={isLoading} data-tour="op-cobro.guardar">
                   {isLoading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -2692,7 +2705,7 @@ export function OperationPaymentsSection({
                   control={expenseForm.control}
                   name="operator_payment_id"
                   render={({ field }) => (
-                    <FormItem>
+                    <FormItem data-tour="op-pago.deuda">
                       <FormLabel>Deuda a saldar</FormLabel>
                       {openOperatorDebts.length === 0 ? (
                         <p className="text-sm text-muted-foreground">{NO_BASE_OPERATOR_DEBT_MESSAGE}</p>
@@ -2741,7 +2754,7 @@ export function OperationPaymentsSection({
                     control={expenseForm.control}
                     name="method"
                     render={({ field }) => (
-                      <FormItem>
+                      <FormItem data-tour="op-pago.metodo">
                         <FormLabel>Método de Pago</FormLabel>
                         <Select onValueChange={field.onChange} defaultValue={field.value}>
                           <FormControl>
@@ -2767,7 +2780,7 @@ export function OperationPaymentsSection({
                       control={expenseForm.control}
                       name="amount"
                       render={({ field }) => (
-                        <FormItem>
+                        <FormItem data-tour="op-pago.monto">
                           <FormLabel>Monto</FormLabel>
                           <FormControl>
                             <DecimalInput {...field} />
@@ -2781,7 +2794,7 @@ export function OperationPaymentsSection({
                       control={expenseForm.control}
                       name="currency"
                       render={({ field }) => (
-                        <FormItem>
+                        <FormItem data-tour="op-pago.moneda">
                           <FormLabel>Moneda</FormLabel>
                           <Select onValueChange={field.onChange} defaultValue={field.value}>
                             <FormControl>
@@ -2808,7 +2821,7 @@ export function OperationPaymentsSection({
                     control={expenseForm.control}
                     name="exchange_rate"
                     render={({ field }) => (
-                      <FormItem>
+                      <FormItem data-tour="op-pago.tipo-cambio">
                         <FormLabel>Tipo de Cambio (ARS por 1 USD)</FormLabel>
                         <FormControl>
                           <DecimalInput
@@ -2839,7 +2852,7 @@ export function OperationPaymentsSection({
                       control={expenseForm.control}
                       name="date_paid"
                       render={({ field }) => (
-                        <FormItem className="flex flex-col">
+                        <FormItem className="flex flex-col" data-tour="op-pago.fecha">
                           <FormLabel>Fecha del Pago</FormLabel>
                           <Popover>
                             <PopoverTrigger asChild>
@@ -2878,7 +2891,7 @@ export function OperationPaymentsSection({
                       control={expenseForm.control}
                       name="financial_account_id"
                       render={({ field }) => (
-                        <FormItem className="flex flex-col">
+                        <FormItem className="flex flex-col" data-tour="op-pago.cuenta">
                           <FormLabel>Cuenta Financiera *</FormLabel>
                           <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl>
@@ -2913,7 +2926,7 @@ export function OperationPaymentsSection({
 
                 {/* Bank tax (Ley 25413) — semi-automatic deduction for bank accounts */}
                 {expenseAccountHasBankTax && (
-                  <div className="rounded-[var(--vb-r-sm)] border border-[var(--vb-border)] bg-[var(--vb-bg)]/60 p-3 space-y-3">
+                  <div className="rounded-[var(--vb-r-sm)] border border-[var(--vb-border)] bg-[var(--vb-bg)]/60 p-3 space-y-3" data-tour="op-pago.impuesto-ley">
                     <div className="flex items-center gap-2">
                       <Checkbox
                         id="bank-tax-expense"
@@ -2953,7 +2966,7 @@ export function OperationPaymentsSection({
                   control={expenseForm.control}
                   name="notes"
                   render={({ field }) => (
-                    <FormItem>
+                    <FormItem data-tour="op-pago.notas">
                       <FormLabel className="flex items-center gap-1.5"><StickyNote className="h-3 w-3 text-muted-foreground" /> Notas (opcional)</FormLabel>
                       <FormControl>
                         <Input placeholder="Referencia, comprobante, etc." {...field} />
@@ -2969,7 +2982,7 @@ export function OperationPaymentsSection({
                 <Button type="button" variant="outline" onClick={() => setExpenseDialogOpen(false)}>
                   Cancelar
                 </Button>
-                <Button type="submit" disabled={isLoading || openOperatorDebts.length === 0}>
+                <Button type="submit" disabled={isLoading || openOperatorDebts.length === 0} data-tour="op-pago.guardar">
                   {isLoading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />

@@ -38,6 +38,25 @@ describe("invariantes de las guías", () => {
     }
   })
 
+  it("todo nextTour apunta a una guía que existe", () => {
+    // Un nextTour roto deja un botón "Guiarme paso a paso" que no hace nada.
+    const ids = new Set(TOURS.map((t) => t.id))
+    for (const tour of TOURS) {
+      for (const step of tour.steps) {
+        if (step.nextTour) expect(ids.has(step.nextTour)).toBe(true)
+      }
+    }
+  })
+
+  it("las guías de formulario declaran launchHint", () => {
+    // Sus anclas viven dentro de un diálogo: si no está abierto, el menú tiene
+    // que poder explicar cómo llegar en vez de ofrecer un botón que falla.
+    for (const tour of TOURS) {
+      if (tour.kind !== "form") continue
+      expect(Boolean(tour.launchHint)).toBe(true)
+    }
+  })
+
   it("cada guía se puede abrir desde el menú, o explica por qué no", () => {
     // Si no declara ruta de entrada ni pista, en el listado queda un ítem que
     // al clickearlo arranca la guía en una pantalla donde sus anclas no
@@ -78,6 +97,16 @@ describe("invariantes de las guías", () => {
       for (const step of tour.steps) {
         if (step.route) expect(step.route.startsWith("/")).toBe(true)
       }
+    }
+  })
+
+  it("una guía de pantalla que auto-dispara es alcanzable desde el menú", () => {
+    // Sin ruta de entrada ni launchHint, una guía queda listada pero muerta:
+    // el botón del menú no sabe a dónde llevar y no hay texto que lo explique.
+    for (const tour of TOURS) {
+      if ((tour.kind ?? "screen") !== "screen" || !tour.autoStart) continue
+      const alcanzable = Boolean(tour.steps[0]?.route) || Boolean(tour.launchHint)
+      expect([tour.id, alcanzable]).toEqual([tour.id, true])
     }
   })
 

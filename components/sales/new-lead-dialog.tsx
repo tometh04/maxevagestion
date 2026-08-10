@@ -319,7 +319,10 @@ export function NewLeadDialog({
             )}
 
             {/* Contacto */}
-            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+            <div
+              className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4"
+              data-tour="lead-new.contacto"
+            >
               <div className="flex items-center gap-1.5">
                 <User className="h-3.5 w-3.5 text-primary" />
                 <span className="text-xs font-medium text-foreground/70">Contacto</span>
@@ -385,7 +388,10 @@ export function NewLeadDialog({
             </div>
 
             {/* Viaje */}
-            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+            <div
+              className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4"
+              data-tour="lead-new.viaje"
+            >
               <div className="flex items-center gap-1.5">
                 <MapPin className="h-3.5 w-3.5 text-success" />
                 <span className="text-xs font-medium text-foreground/70">Viaje</span>
@@ -434,7 +440,10 @@ export function NewLeadDialog({
             </div>
 
             {/* Asignación */}
-            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+            <div
+              className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4"
+              data-tour="lead-new.asignacion"
+            >
               <div className="flex items-center gap-1.5">
                 <UserCheck className="h-3.5 w-3.5 text-accent-violet" />
                 <span className="text-xs font-medium text-foreground/70">Asignación</span>
@@ -525,7 +534,7 @@ export function NewLeadDialog({
                   control={form.control}
                   name="list_name"
                   render={({ field }) => (
-                    <FormItem>
+                    <FormItem data-tour="lead-new.lista">
                       <FormLabel>Lista del CRM</FormLabel>
                       <Select
                         onValueChange={field.onChange}
@@ -589,7 +598,7 @@ export function NewLeadDialog({
                 control={form.control}
                 name="source"
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem data-tour="lead-new.origen">
                     <FormLabel>Origen</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
@@ -614,7 +623,10 @@ export function NewLeadDialog({
               />
             </div>
 
-            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+            <div
+              className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4"
+              data-tour="lead-new.senia"
+            >
               <div className="flex items-center gap-1.5">
                 <CalendarIcon className="h-3.5 w-3.5 text-accent-coral" />
                 <span className="text-xs font-medium text-foreground/70">Información Contable</span>
@@ -762,7 +774,7 @@ export function NewLeadDialog({
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
                 Cancelar
               </Button>
-              <Button type="submit" disabled={loading}>
+              <Button type="submit" disabled={loading} data-tour="lead-new.guardar">
                 {loading ? "Creando..." : "Crear Lead"}
               </Button>
             </DialogFooter>

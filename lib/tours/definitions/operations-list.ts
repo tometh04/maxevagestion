@@ -15,6 +15,11 @@ export const operationsListTour: TourDefinition = {
       route: "/operations",
       title: "Crear una operación",
       body: "Una operación es un viaje vendido: agrupa a los pasajeros, los servicios contratados, los cobros del cliente y lo que le pagás al operador.",
+      // Encadena con la guía de carga en vez de fusionarla acá: quien solo
+      // quería ver de qué se trata la pantalla no queda arrastrado a un
+      // recorrido de dieciocho pasos por un formulario.
+      nextTour: "operation-new",
+      interactive: true,
       details: [
         "Cada operación recibe un legajo automático con formato OP-AAAAMMDD-XXXXXXXX. Es lo que vas a buscar acá y lo que citás cuando hablás con el operador.",
         "Los estados van Reservado → Confirmado → En viaje → Viajado, más Cancelado. Tu agencia también puede definir estados propios desde Operaciones → Configuración.",
