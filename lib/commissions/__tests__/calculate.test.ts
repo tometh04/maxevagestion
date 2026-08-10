@@ -17,11 +17,14 @@ import type { SharedSaleMode } from "@/lib/commissions/shared-split"
 jest.mock("@/lib/audit", () => ({ logAudit: jest.fn().mockResolvedValue(undefined) }))
 jest.mock("@/lib/supabase/server", () => ({ createServerClient: jest.fn() }))
 
+/** Administrador del vendedor (VIB-102): [managerId, porcentaje]. */
+type ManagerLink = [string, number | null]
+
 function profiles(
-  ...entries: Array<[string, number | null, SharedSaleMode?]>
+  ...entries: Array<[string, number | null, SharedSaleMode?, ManagerLink?]>
 ): Map<string, SellerCommissionProfile> {
   return new Map(
-    entries.map(([sellerId, percentage, mode]) => [
+    entries.map(([sellerId, percentage, mode, manager]) => [
       sellerId,
       {
         sellerId,
@@ -29,6 +32,8 @@ function profiles(
         percentage,
         mode: mode ?? "HALF",
         source: "USER_DEFAULT" as const,
+        advisorManagerId: manager?.[0] ?? null,
+        advisorManagerPercentage: manager?.[1] ?? null,
       },
     ])
   )
@@ -153,6 +158,168 @@ describe("computeOperationCommission", () => {
   })
 })
 
+// ── VIB-102: comisión del administrador del asesor independiente ───────────
+
+describe("computeOperationCommission — administrador del vendedor", () => {
+  it("reparte la venta de un free entre free, administrador y agencia", () => {
+    // El caso exacto que planteó el cliente: free 50%, administrador 5%,
+    // agencia el resto.
+    const plan = computeOperationCommission(
+      baseOp({ seller_id: "free" }),
+      profiles(["free", 50, "HALF", ["mica", 5]])
+    )
+
+    expect(plan.entries).toEqual([
+      { sellerId: "free", role: "PRIMARY", percentage: 50, amount: 500 },
+      {
+        sellerId: "mica",
+        role: "ADVISOR_MANAGER",
+        percentage: 5,
+        amount: 50,
+        sourceSellerId: "free",
+      },
+    ])
+    expect(plan.totalCommission).toBe(550)
+    // Lo que queda para la agencia es el residuo, no un número guardado.
+    expect(1000 - plan.totalCommission).toBe(450)
+    expect(plan.hasAdvisorManagerCommission).toBe(true)
+  })
+
+  it("el administrador cobra sobre el margen completo en una venta compartida", () => {
+    const plan = computeOperationCommission(
+      baseOp({ seller_id: "free", seller_secondary_id: "santi" }),
+      profiles(["free", 50, "HALF", ["mica", 5]], ["santi", 20])
+    )
+
+    // free y santi se reparten la mitad de lo suyo; mica cobra su 5% entero.
+    expect(plan.entries).toEqual([
+      { sellerId: "free", role: "PRIMARY", percentage: 25, amount: 250 },
+      { sellerId: "santi", role: "SECONDARY", percentage: 10, amount: 100 },
+      {
+        sellerId: "mica",
+        role: "ADVISOR_MANAGER",
+        percentage: 5,
+        amount: 50,
+        sourceSellerId: "free",
+      },
+    ])
+  })
+
+  it("no depende de si el free quedó cargado como principal o secundario", () => {
+    const comoPrincipal = computeOperationCommission(
+      baseOp({ seller_id: "free", seller_secondary_id: "santi" }),
+      profiles(["free", 50, "HALF", ["mica", 5]], ["santi", 20])
+    )
+    const comoSecundario = computeOperationCommission(
+      baseOp({ seller_id: "santi", seller_secondary_id: "free" }),
+      profiles(["free", 50, "HALF", ["mica", 5]], ["santi", 20])
+    )
+
+    const montos = (p: typeof comoPrincipal) =>
+      Object.fromEntries(p.entries.map((e) => [e.sellerId, e.amount]))
+
+    expect(montos(comoSecundario)).toEqual(montos(comoPrincipal))
+  })
+
+  it("un administrador de los dos vendedores cobra una sola vez", () => {
+    const plan = computeOperationCommission(
+      baseOp({ seller_id: "free-a", seller_secondary_id: "free-b" }),
+      profiles(["free-a", 50, "HALF", ["mica", 5]], ["free-b", 40, "HALF", ["mica", 5]])
+    )
+
+    const mica = plan.entries.filter((e) => e.sellerId === "mica")
+    expect(mica).toHaveLength(1)
+    expect(mica[0].percentage).toBe(5)
+  })
+
+  it("dos administradores distintos cobran cada uno lo suyo", () => {
+    const plan = computeOperationCommission(
+      baseOp({ seller_id: "free-a", seller_secondary_id: "free-b" }),
+      profiles(["free-a", 50, "HALF", ["mica", 5]], ["free-b", 40, "HALF", ["rama", 3]])
+    )
+
+    expect(
+      plan.entries
+        .filter((e) => e.role === "ADVISOR_MANAGER")
+        .map((e) => [e.sellerId, e.amount])
+    ).toEqual([
+      ["mica", 50],
+      ["rama", 30],
+    ])
+  })
+
+  it("un administrador asignado sin porcentaje no cobra y deja warning", () => {
+    const plan = computeOperationCommission(
+      baseOp({ seller_id: "free" }),
+      profiles(["free", 50, "HALF", ["mica", null]])
+    )
+
+    expect(plan.entries).toHaveLength(1)
+    expect(plan.hasAdvisorManagerCommission).toBe(false)
+    expect(plan.warnings).toContainEqual({
+      code: "manager_missing_percentage",
+      sellerId: "free",
+      managerId: "mica",
+    })
+  })
+
+  it("si el administrador además vendió la operación, cobra en una sola fila", () => {
+    // El unique (operation_id, seller_id) impide dos filas para la misma
+    // persona: los dos porcentajes se acumulan en la suya.
+    const plan = computeOperationCommission(
+      baseOp({ seller_id: "free", seller_secondary_id: "mica" }),
+      profiles(["free", 50, "HALF", ["mica", 5]], ["mica", 20])
+    )
+
+    const mica = plan.entries.filter((e) => e.sellerId === "mica")
+    expect(mica).toHaveLength(1)
+    // 10 por vender (mitad de su 20%) + 5 por administrar al free.
+    expect(mica[0]).toEqual({ sellerId: "mica", role: "SECONDARY", percentage: 15, amount: 150 })
+    // La bandera sigue en true: la fila tiene que persistirse con kind SELLER.
+    expect(plan.hasAdvisorManagerCommission).toBe(true)
+  })
+
+  it("el snapshot de porcentajes de la operación no incluye al administrador", () => {
+    const plan = computeOperationCommission(
+      baseOp({ seller_id: "free" }),
+      profiles(["free", 50, "HALF", ["mica", 5]])
+    )
+
+    expect(plan.pctPrimary).toBe(50)
+    expect(plan.pctSecondary).toBeNull()
+  })
+
+  it("con margen no positivo el administrador no cobra", () => {
+    const plan = computeOperationCommission(
+      baseOp({ seller_id: "free", margin_amount: -100 }),
+      profiles(["free", 50, "HALF", ["mica", 5]])
+    )
+
+    expect(plan.entries.map((e) => e.amount)).toEqual([0, 0])
+    expect(plan.totalCommission).toBe(0)
+  })
+
+  it("en MANUAL el administrador igual cobra: es otra configuración", () => {
+    const plan = computeOperationCommission(
+      baseOp({
+        seller_id: "free",
+        seller_secondary_id: "santi",
+        commission_split_mode: "MANUAL",
+        commission_pct_primary: 30,
+        commission_pct_secondary: 10,
+      }),
+      profiles(["free", 50, "HALF", ["mica", 5]], ["santi", 20])
+    )
+
+    expect(plan.rule).toBe("MANUAL")
+    expect(plan.entries.map((e) => [e.sellerId, e.amount])).toEqual([
+      ["free", 300],
+      ["santi", 100],
+      ["mica", 50],
+    ])
+  })
+})
+
 // ── applyCommissionPlan ────────────────────────────────────────────────────
 
 interface FakeRecord {
@@ -210,12 +377,15 @@ function createSupabase(existing: FakeRecord[]) {
   return { client: { from } as any, updates, inserts, deletes }
 }
 
-const planOf = (entries: Array<[string, "PRIMARY" | "SECONDARY", number, number]>) => ({
-  entries: entries.map(([sellerId, role, percentage, amount]) => ({
+type PlanRole = "PRIMARY" | "SECONDARY" | "ADVISOR_MANAGER"
+
+const planOf = (entries: Array<[string, PlanRole, number, number, string?]>) => ({
+  entries: entries.map(([sellerId, role, percentage, amount, sourceSellerId]) => ({
     sellerId,
     role,
     percentage,
     amount,
+    ...(role === "ADVISOR_MANAGER" ? { sourceSellerId: sourceSellerId ?? null } : {}),
   })),
   totalCommission: entries.reduce((acc, e) => acc + e[3], 0),
   rule: "HALF_HALF" as const,
@@ -223,6 +393,7 @@ const planOf = (entries: Array<[string, "PRIMARY" | "SECONDARY", number, number]
   warnings: [],
   pctPrimary: entries[0]?.[2] ?? null,
   pctSecondary: entries[1]?.[2] ?? null,
+  hasAdvisorManagerCommission: entries.some((e) => e[1] === "ADVISOR_MANAGER"),
 })
 
 describe("applyCommissionPlan", () => {
@@ -265,6 +436,36 @@ describe("applyCommissionPlan", () => {
     // Antes se insertaban sin org_id y quedaban fuera de toda query scopeada.
     expect(inserts.map((i) => i.org_id)).toEqual(["org-1", "org-1"])
     expect(inserts.map((i) => i.amount)).toEqual([100, 250])
+  })
+
+  it("marca el kind de las comisiones de administrador (VIB-102)", async () => {
+    const { client, inserts } = createSupabase([])
+
+    await applyCommissionPlan(
+      client,
+      baseOp({ seller_id: "free" }),
+      planOf([
+        ["free", "PRIMARY", 50, 500],
+        ["mica", "ADVISOR_MANAGER", 5, 50, "free"],
+      ])
+    )
+
+    expect(inserts.map((i) => [i.seller_id, i.kind, i.source_seller_id])).toEqual([
+      ["free", "SELLER", null],
+      ["mica", "ADVISOR_MANAGER", "free"],
+    ])
+  })
+
+  it("no manda las columnas de VIB-102 si la operación no tiene administrador", async () => {
+    // Desplegar el código antes de la migración no debe romper TODAS las
+    // comisiones: sin administradores, el payload es el de siempre.
+    const { client, inserts } = createSupabase([])
+
+    await applyCommissionPlan(client, baseOp(), planOf([["jose", "PRIMARY", 10, 100]]))
+
+    expect(inserts).toHaveLength(1)
+    expect(inserts[0]).not.toHaveProperty("kind")
+    expect(inserts[0]).not.toHaveProperty("source_seller_id")
   })
 
   it("no crea comisiones en 0 para un vendedor sin porcentaje configurado", async () => {

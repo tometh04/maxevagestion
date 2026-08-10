@@ -317,6 +317,32 @@ describe("buildCommissionsReport", () => {
     expect(report.summary.total).toBe(400)
   })
 
+  it("la comisión del administrador no se lee como huérfana (VIB-102)", () => {
+    // Sin `kind`, el administrador caería en 'unknown', que es la marca que el
+    // reporte usa para señalar comisiones de vendedores reasignados.
+    const report = build([
+      record({ amount: 700, seller_id: "seller-a" }),
+      record({
+        amount: 100,
+        seller_id: "seller-c",
+        kind: "ADVISOR_MANAGER",
+        source_seller_id: "seller-a",
+      }),
+    ])
+
+    const fila = report.detail.find((d) => d.sellerId === "seller-c")!
+    expect(fila.role).toBe("advisor_manager")
+    expect(fila.managedSellerName).toBe("Ana")
+
+    // Su plata no se mezcla con lo que cobró por vender.
+    const carla = report.bySeller.find((s) => s.sellerId === "seller-c")!
+    expect(carla.advisorManagerTotal).toBe(100)
+    expect(carla.primaryTotal).toBe(0)
+
+    // Y sigue siendo comisión de la agencia: suma al total del período.
+    expect(report.summary.total).toBe(800)
+  })
+
   it("el mes lo define la fecha de venta, no la de cálculo", () => {
     const report = build(
       [

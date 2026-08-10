@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { normalizeAdvisorManagerLink } from "@/lib/commissions/advisor-manager-link"
 import { createClient } from "@supabase/supabase-js"
 
 /**
@@ -38,6 +39,9 @@ export async function PATCH(
       "can_register_payments_on_agency_operations",
       "is_independent_advisor",
       "additional_roles",
+      // VIB-102: quién administra a este vendedor y con qué porcentaje.
+      "advisor_manager_id",
+      "advisor_manager_percentage",
     ]
     const updateData: Record<string, any> = {}
 
@@ -65,7 +69,7 @@ export async function PATCH(
     // Verificar que el usuario existe
     const { data: existingUser, error: fetchError } = await supabase
       .from("users")
-      .select("id, role, org_id, is_independent_advisor")
+      .select("id, role, org_id, is_independent_advisor, advisor_manager_id")
       .eq("id", userId)
       .single()
 
@@ -113,6 +117,30 @@ export async function PATCH(
       updateData.can_add_services_on_agency_operations = false
       updateData.can_create_operations_for_other_sellers = false
       updateData.can_register_payments_on_agency_operations = false
+    }
+
+    // VIB-102: administrador del vendedor. Se valida contra la base (tenant y
+    // tipo de usuario) y se normaliza el par id/porcentaje antes de escribir.
+    const link = await normalizeAdvisorManagerLink({
+      supabase,
+      orgId: user.org_id,
+      targetUserId: userId,
+      currentManagerId: (existingUser as any).advisor_manager_id ?? null,
+      input: {
+        advisor_manager_id: updateData.advisor_manager_id,
+        advisor_manager_percentage: updateData.advisor_manager_percentage,
+      },
+    })
+
+    if (!link.ok) {
+      return NextResponse.json({ error: link.error }, { status: 400 })
+    }
+    delete updateData.advisor_manager_id
+    delete updateData.advisor_manager_percentage
+    Object.assign(updateData, link.values)
+
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({ error: "No hay campos para actualizar" }, { status: 400 })
     }
 
     // Actualizar usuario

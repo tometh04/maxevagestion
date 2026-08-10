@@ -24,6 +24,10 @@ export interface CommissionRecordRow {
   amount_paid: number | null
   percentage: number | null
   status: string
+  /** 'ADVISOR_MANAGER' = comisión por administrar al vendedor (VIB-102). */
+  kind?: string | null
+  /** Solo en ADVISOR_MANAGER: el vendedor administrado que la generó. */
+  source_seller_id?: string | null
   date_calculated: string
   date_paid: string | null
   operations: {
@@ -90,7 +94,7 @@ const IN_CHUNK = 200
 
 const SELECT = `
   id, operation_id, seller_id, agency_id, amount, amount_paid, percentage,
-  status, date_calculated, date_paid,
+  status, kind, source_seller_id, date_calculated, date_paid,
   operations!inner(
     id, file_code, destination, operation_date, departure_date,
     sale_amount_total, margin_amount, sale_currency, currency, status,
@@ -166,10 +170,19 @@ export async function fetchCommissionRecords(
   // Se piden también los vendedores que figuran en la operación aunque no tengan
   // comisión en el recorte: con el reporte filtrado por un vendedor, el nombre
   // del socio de una venta compartida no llegaría de ninguna otra parte.
+  // `source_seller_id` entra acá porque la comisión de un administrador se
+  // explica nombrando al vendedor administrado, y ese vendedor puede no tener
+  // ninguna fila propia en el recorte (comisión saldada, 0%, o el reporte
+  // filtrado por el administrador).
   const sellerIds = Array.from(
     new Set(
       records
-        .flatMap((r) => [r.seller_id, r.operations?.seller_id, r.operations?.seller_secondary_id])
+        .flatMap((r) => [
+          r.seller_id,
+          r.source_seller_id,
+          r.operations?.seller_id,
+          r.operations?.seller_secondary_id,
+        ])
         .filter(Boolean) as string[]
     )
   )

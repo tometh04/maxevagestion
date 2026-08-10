@@ -82,6 +82,9 @@ interface User {
   can_create_operations_for_other_sellers?: boolean
   can_register_payments_on_agency_operations?: boolean
   is_independent_advisor?: boolean
+  /** VIB-102: quién administra a este vendedor y cobra un % de sus ventas. */
+  advisor_manager_id?: string | null
+  advisor_manager_percentage?: number | null
   created_at: string
   email_confirmed_at?: string | null
   user_agencies?: Array<{ agency_id: string; agencies: { name: string } }>
@@ -126,6 +129,16 @@ const roleDescriptions: Record<string, string> = {
   POST_VENTA: "Seguimiento post-cierre de operaciones",
 }
 
+/**
+ * VIB-102. Valor del `<Select>` cuando el vendedor no tiene administrador.
+ * Radix no acepta `value=""` en un item, así que el "sin nada" necesita un
+ * centinela; la API lo interpreta como null.
+ */
+const NO_MANAGER = "NONE"
+
+/** Porcentaje que se propone al asignar un administrador por primera vez. */
+const DEFAULT_MANAGER_PCT = "5"
+
 /** El valor de rol que muestra la UI para un usuario (Vendedor vs Asesor). */
 function displayRoleValue(user: Pick<User, "role" | "is_independent_advisor">): string {
   return user.is_independent_advisor && user.role === "SELLER" ? AVI : user.role
@@ -147,6 +160,9 @@ export function UsersSettings() {
   const [changePasswordDialogOpen, setChangePasswordDialogOpen] = useState(false)
   const [permissionsDialogOpen, setPermissionsDialogOpen] = useState(false)
   const [changeRoleDialogOpen, setChangeRoleDialogOpen] = useState(false)
+  const [advisorManagerDialogOpen, setAdvisorManagerDialogOpen] = useState(false)
+  const [advisorManagerId, setAdvisorManagerId] = useState(NO_MANAGER)
+  const [advisorManagerPct, setAdvisorManagerPct] = useState("")
   const [selectedRole, setSelectedRole] = useState("")
   const [selectedAdditionalRoles, setSelectedAdditionalRoles] = useState<string[]>([])
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
@@ -354,6 +370,65 @@ export function UsersSettings() {
     }
   }
 
+  // ── VIB-102: administrador del vendedor ──────────────────────────────────
+
+  const handleOpenAdvisorManager = (user: User) => {
+    setSelectedUser(user)
+    setAdvisorManagerId(user.advisor_manager_id || NO_MANAGER)
+    setAdvisorManagerPct(
+      user.advisor_manager_percentage != null ? String(user.advisor_manager_percentage) : ""
+    )
+    setAdvisorManagerDialogOpen(true)
+  }
+
+  const handleSaveAdvisorManager = async () => {
+    if (!selectedUser) return
+
+    const sinAdministrador = advisorManagerId === NO_MANAGER
+    const pct = Number(advisorManagerPct)
+
+    // Un administrador sin porcentaje no cobra nada, y descubrirlo en la
+    // liquidación es tarde. La API lo acepta (deja el vínculo a medias a
+    // propósito); acá se pide completarlo.
+    if (!sinAdministrador && (!advisorManagerPct.trim() || !Number.isFinite(pct) || pct <= 0)) {
+      toast.error("Ingresá el porcentaje que cobra el administrador")
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      const response = await fetch(`/api/settings/users/${selectedUser.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          advisor_manager_id: sinAdministrador ? null : advisorManagerId,
+          advisor_manager_percentage: sinAdministrador ? null : pct,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        toast.error(data.error || "Error al guardar el administrador")
+        return
+      }
+
+      toast.success(
+        sinAdministrador
+          ? "Se quitó el administrador"
+          : "Administrador actualizado. Aplica a las ventas que se calculen desde ahora."
+      )
+      setAdvisorManagerDialogOpen(false)
+      setSelectedUser(null)
+      loadData()
+    } catch (error) {
+      console.error("Error saving advisor manager:", error)
+      toast.error("Error al guardar el administrador")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   const handleActivateUser = async (user: User) => {
     try {
       toast.info("Activando acceso...")
@@ -505,7 +580,7 @@ export function UsersSettings() {
           </Button>
           <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>
             <DialogTrigger asChild>
-              <Button size="sm">
+              <Button size="sm" data-tour="settings.invite-user-button">
                 <UserPlus className="mr-2 h-3.5 w-3.5" />
                 Invitar Usuario
               </Button>
@@ -727,6 +802,20 @@ export function UsersSettings() {
                           )}
                         </div>
                       )}
+                      {/* VIB-102: quién le cobra un % a este vendedor. Va en la
+                          tabla y no solo dentro del diálogo porque es plata que
+                          sale de cada venta: tiene que verse de un vistazo al
+                          revisar el equipo. */}
+                      {user.advisor_manager_id && (
+                        <Badge variant="outline" className="text-[10px] font-normal">
+                          Lo administra{" "}
+                          {users.find((u) => u.id === user.advisor_manager_id)?.name ||
+                            "otro usuario"}
+                          {user.advisor_manager_percentage != null
+                            ? ` · ${user.advisor_manager_percentage}%`
+                            : " · sin %"}
+                        </Badge>
+                      )}
                     </div>
                   </TableCell>
                   <TableCell>
@@ -803,6 +892,16 @@ export function UsersSettings() {
                           <DropdownMenuItem onClick={() => handleOpenPermissions(user)}>
                             <Shield className="mr-2 h-4 w-4" />
                             Permisos especiales
+                          </DropdownMenuItem>
+                        )}
+                        {/* VIB-102: aplica a cualquier vendedor, no solo al
+                            asesor independiente. El vínculo es lo que paga la
+                            comisión; atarlo además al flag haría que apagarlo
+                            cortara la comisión sin que nadie lo pida. */}
+                        {user.role === "SELLER" && (
+                          <DropdownMenuItem onClick={() => handleOpenAdvisorManager(user)}>
+                            <UserCog className="mr-2 h-4 w-4" />
+                            Administrador de ventas
                           </DropdownMenuItem>
                         )}
                         {user.role !== "SUPER_ADMIN" && (
@@ -945,6 +1044,87 @@ export function UsersSettings() {
           ))}
         </div>
       </div>
+
+      {/* VIB-102: administrador del vendedor */}
+      <Dialog open={advisorManagerDialogOpen} onOpenChange={setAdvisorManagerDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Administrador de ventas</DialogTitle>
+            <DialogDescription>
+              Quién administra a <strong>{selectedUser?.name}</strong> y cobra una parte de cada
+              venta suya.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="advisor-manager">Administrado por</Label>
+              <Select
+                value={advisorManagerId}
+                onValueChange={(value) => {
+                  setAdvisorManagerId(value)
+                  // Al asignar administrador por primera vez se propone el 5%,
+                  // que es el trato habitual. Un valor ya cargado no se pisa.
+                  if (value !== NO_MANAGER && !advisorManagerPct.trim()) {
+                    setAdvisorManagerPct(DEFAULT_MANAGER_PCT)
+                  }
+                }}
+              >
+                <SelectTrigger id="advisor-manager">
+                  <SelectValue placeholder="Sin administrador" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_MANAGER}>Sin administrador</SelectItem>
+                  {users
+                    .filter(
+                      (u) =>
+                        u.id !== selectedUser?.id &&
+                        u.is_active &&
+                        // Un asesor independiente solo ve lo suyo: si administrara
+                        // a otro vería ventas ajenas. La API también lo rechaza.
+                        !u.is_independent_advisor
+                    )
+                    .map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        {u.name || u.email}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {advisorManagerId !== NO_MANAGER && (
+              <div className="space-y-2">
+                <Label htmlFor="advisor-manager-pct">% que cobra sobre cada venta</Label>
+                <DecimalInput
+                  id="advisor-manager-pct"
+                  value={advisorManagerPct}
+                  onChange={setAdvisorManagerPct}
+                  placeholder="5"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Se calcula sobre la ganancia de la operación, igual que la comisión del
+                  vendedor.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setAdvisorManagerDialogOpen(false)}
+              disabled={submitting}
+            >
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveAdvisorManager} disabled={submitting}>
+              {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Guardar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={permissionsDialogOpen} onOpenChange={setPermissionsDialogOpen}>
         <DialogContent className="max-w-md">

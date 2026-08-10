@@ -36,10 +36,26 @@ export interface SellerCommissionProfile {
   percentage: number | null
   mode: SharedSaleMode
   source: SellerPercentageSource
+  /**
+   * Quién administra a este vendedor y cobra un % de cada venta suya (VIB-102).
+   * null = nadie. A diferencia de `percentage`, acá NO hay cadena de fallbacks:
+   * el vínculo y su porcentaje se configuran juntos o no existen.
+   */
+  advisorManagerId: string | null
+  /** % del administrador sobre el margen. null = sin configurar → no cobra. */
+  advisorManagerPercentage: number | null
 }
 
 function emptyProfile(sellerId: string): SellerCommissionProfile {
-  return { sellerId, name: null, percentage: null, mode: "HALF", source: "NONE" }
+  return {
+    sellerId,
+    name: null,
+    percentage: null,
+    mode: "HALF",
+    source: "NONE",
+    advisorManagerId: null,
+    advisorManagerPercentage: null,
+  }
 }
 
 function normalizeMode(raw: unknown): SharedSaleMode {
@@ -52,57 +68,74 @@ function normalizePct(raw: unknown): number | null {
   return Number.isFinite(value) ? value : null
 }
 
+interface SellerRow {
+  id: string
+  name: string | null
+  pct: unknown
+  mode: unknown
+  managerId: string | null
+  managerPct: unknown
+}
+
 /**
- * Trae id/nombre/porcentaje/modo de los vendedores, scopeado por org.
+ * Columnas a pedir, de la más completa a la mínima.
  *
- * `shared_sale_commission_mode` se selecciona con degradación: si el código se
- * despliega antes de que corra la migración, PostgREST rechaza el select entero
- * por columna inexistente y nos quedaríamos sin ningún porcentaje. En ese caso
- * reintenta sin la columna y todos quedan en 'HALF', que es exactamente el
- * comportamiento vigente hoy (nadie absorbe todavía).
+ * La degradación existe porque PostgREST rechaza el select ENTERO si una
+ * columna no existe: desplegar el código antes de correr la migración nos
+ * dejaría sin ningún porcentaje —o sea, todas las comisiones en cero— en vez de
+ * sin la función nueva. Cada escalón resigna una feature y conserva las
+ * anteriores.
  */
+const SELLER_COLUMN_SETS = [
+  // Con administrador de asesores (VIB-102, migración 20260805000001).
+  "id, name, default_commission_percentage, shared_sale_commission_mode, advisor_manager_id, advisor_manager_percentage",
+  // Con modo de venta compartida (VIB-63, migración 20260729000001).
+  "id, name, default_commission_percentage, shared_sale_commission_mode",
+  // Lo que existió siempre.
+  "id, name, default_commission_percentage",
+] as const
+
+/** Trae id/nombre/porcentaje/modo/administrador de los vendedores, por org. */
 async function fetchSellerRows(
   supabase: any,
   orgId: string,
   sellerIds: string[]
-): Promise<Array<{ id: string; name: string | null; pct: unknown; mode: unknown }>> {
-  const withMode = await supabase
-    .from("users")
-    .select("id, name, default_commission_percentage, shared_sale_commission_mode")
-    .in("id", sellerIds)
-    .eq("org_id", orgId)
+): Promise<SellerRow[]> {
+  let lastError: string | undefined
 
-  if (!withMode.error) {
-    return (withMode.data || []).map((r: any) => ({
+  for (let index = 0; index < SELLER_COLUMN_SETS.length; index++) {
+    const columns = SELLER_COLUMN_SETS[index]
+    const { data, error } = await supabase
+      .from("users")
+      .select(columns)
+      .in("id", sellerIds)
+      .eq("org_id", orgId)
+
+    if (error) {
+      lastError = error.message
+      continue
+    }
+
+    if (index > 0) {
+      console.warn(
+        `[Commissions] Leyendo vendedores sin las columnas nuevas (escalón ${index}): ${lastError}. ¿Faltan migraciones por correr?`
+      )
+    }
+
+    return (data || []).map((r: any) => ({
       id: r.id,
       name: r.name ?? null,
       pct: r.default_commission_percentage,
+      // Sin la columna, todos quedan en 'HALF': el comportamiento previo.
       mode: r.shared_sale_commission_mode,
+      // Sin las columnas, nadie tiene administrador y no se genera su comisión.
+      managerId: r.advisor_manager_id ?? null,
+      managerPct: r.advisor_manager_percentage,
     }))
   }
 
-  console.warn(
-    "[Commissions] No se pudo leer users.shared_sale_commission_mode; se asume HALF para todos. ¿Falta correr la migración 20260729000001?",
-    withMode.error?.message
-  )
-
-  const { data, error } = await supabase
-    .from("users")
-    .select("id, name, default_commission_percentage")
-    .in("id", sellerIds)
-    .eq("org_id", orgId)
-
-  if (error) {
-    console.error("[Commissions] Error leyendo vendedores:", error.message)
-    return []
-  }
-
-  return (data || []).map((r: any) => ({
-    id: r.id,
-    name: r.name ?? null,
-    pct: r.default_commission_percentage,
-    mode: "HALF",
-  }))
+  console.error("[Commissions] Error leyendo vendedores:", lastError)
+  return []
 }
 
 export async function resolveSellerCommissionProfiles(
@@ -162,18 +195,24 @@ export async function resolveSellerCommissionProfiles(
     const row = byId.get(id)
     const mode = normalizeMode(row?.mode)
     const name = row?.name ?? null
+    // El administrador no participa de la precedencia de arriba: no hay reglas
+    // en `commission_rules` para él, y heredar un default de la org sería
+    // pagarle a alguien un porcentaje que nadie eligió.
+    const advisorManagerId = row?.managerId ?? null
+    const advisorManagerPercentage = advisorManagerId ? normalizePct(row?.managerPct) : null
+    const link = { advisorManagerId, advisorManagerPercentage }
 
     const rulePct = ruleBySeller.get(id)
     if (rulePct != null) {
-      return { sellerId: id, name, percentage: rulePct, mode, source: "SELLER_RULE" as const }
+      return { sellerId: id, name, percentage: rulePct, mode, source: "SELLER_RULE" as const, ...link }
     }
 
     const userPct = normalizePct(row?.pct)
     if (userPct != null) {
-      return { sellerId: id, name, percentage: userPct, mode, source: "USER_DEFAULT" as const }
+      return { sellerId: id, name, percentage: userPct, mode, source: "USER_DEFAULT" as const, ...link }
     }
 
-    return { sellerId: id, name, percentage: null, mode, source: "NONE" as const }
+    return { sellerId: id, name, percentage: null, mode, source: "NONE" as const, ...link }
   })
 
   // La regla genérica de la org solo se consulta si algún vendedor la necesita.

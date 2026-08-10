@@ -1440,12 +1440,14 @@ export type Database = {
           date_calculated: string
           date_paid: string | null
           id: string
+          kind: string
           operation_id: string
           org_id: string | null
           percentage: number | null
           seller_id: string
           settled_at: string | null
           settled_reason: string | null
+          source_seller_id: string | null
           status: string
           updated_at: string | null
         }
@@ -1457,12 +1459,14 @@ export type Database = {
           date_calculated: string
           date_paid?: string | null
           id?: string
+          kind?: string
           operation_id: string
           org_id?: string | null
           percentage?: number | null
           seller_id: string
           settled_at?: string | null
           settled_reason?: string | null
+          source_seller_id?: string | null
           status?: string
           updated_at?: string | null
         }
@@ -1474,12 +1478,14 @@ export type Database = {
           date_calculated?: string
           date_paid?: string | null
           id?: string
+          kind?: string
           operation_id?: string
           org_id?: string | null
           percentage?: number | null
           seller_id?: string
           settled_at?: string | null
           settled_reason?: string | null
+          source_seller_id?: string | null
           status?: string
           updated_at?: string | null
         }
@@ -10750,6 +10756,8 @@ export type Database = {
       users: {
         Row: {
           additional_roles: string[]
+          advisor_manager_id: string | null
+          advisor_manager_percentage: number | null
           auth_id: string
           can_add_services_on_agency_operations: boolean
           can_create_operations_for_other_sellers: boolean
@@ -10772,6 +10780,8 @@ export type Database = {
         }
         Insert: {
           additional_roles?: string[]
+          advisor_manager_id?: string | null
+          advisor_manager_percentage?: number | null
           auth_id: string
           can_add_services_on_agency_operations?: boolean
           can_create_operations_for_other_sellers?: boolean
@@ -10794,6 +10804,8 @@ export type Database = {
         }
         Update: {
           additional_roles?: string[]
+          advisor_manager_id?: string | null
+          advisor_manager_percentage?: number | null
           auth_id?: string
           can_add_services_on_agency_operations?: boolean
           can_create_operations_for_other_sellers?: boolean

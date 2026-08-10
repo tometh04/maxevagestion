@@ -23,6 +23,13 @@
  * También se eliminó el path legacy basado en `commission_split`, que
  * interpretaba ese número como fracción del porcentaje de cada vendedor y podía
  * hacer que la suma superara lo que el principal habría cobrado solo.
+ *
+ * ── VIB-102: administradores de asesores independientes ────────────────────
+ *
+ * Una operación puede generar una comisión para alguien que NO la vendió: quien
+ * administra al vendedor (típicamente un asesor independiente) cobra un % de
+ * cada venta suya. Ver `lib/commissions/advisor-manager.ts` para la regla; acá
+ * solo se suma al plan como una entrada más, con `role = 'ADVISOR_MANAGER'`.
  */
 
 import { logAudit } from "@/lib/audit"
@@ -37,6 +44,10 @@ import {
   resolveSoloPercentage,
   type SharedSplitWarning,
 } from "@/lib/commissions/shared-split"
+import {
+  resolveAdvisorManagerOverrides,
+  type AdvisorManagerWarning,
+} from "@/lib/commissions/advisor-manager"
 
 export interface CommissionOperation {
   id: string
@@ -54,12 +65,20 @@ export interface CommissionOperation {
 
 export type CommissionRule = "SOLO" | "HALF_HALF" | "ABSORB" | "SINGLE" | "MANUAL" | "NONE"
 
+export type CommissionWarning = SharedSplitWarning | AdvisorManagerWarning
+
 export interface CommissionEntry {
   sellerId: string
-  role: "PRIMARY" | "SECONDARY"
+  /**
+   * ADVISOR_MANAGER = no vendió la operación; cobra por administrar al vendedor
+   * (VIB-102). Se persiste en `commission_records.kind`.
+   */
+  role: "PRIMARY" | "SECONDARY" | "ADVISOR_MANAGER"
   /** Porcentaje EFECTIVO sobre el margen: el que realmente se cobra. */
   percentage: number
   amount: number
+  /** Solo en ADVISOR_MANAGER: el vendedor administrado que generó la comisión. */
+  sourceSellerId?: string | null
 }
 
 export interface CommissionPlan {
@@ -67,10 +86,20 @@ export interface CommissionPlan {
   totalCommission: number
   rule: CommissionRule
   absorberId: string | null
-  warnings: SharedSplitWarning[]
+  warnings: CommissionWarning[]
   /** Snapshot a persistir en `operations.commission_pct_*`. */
   pctPrimary: number | null
   pctSecondary: number | null
+  /**
+   * true si se aplicó al menos una comisión de administrador (VIB-102),
+   * incluso cuando terminó sumada a la fila de un vendedor.
+   *
+   * Es lo que habilita a `applyCommissionPlan` a escribir `kind` y
+   * `source_seller_id`. Sin esta bandera habría que mandar esas columnas
+   * siempre, y desplegar el código antes que la migración haría fallar TODAS
+   * las comisiones, no solo las de administrador.
+   */
+  hasAdvisorManagerCommission: boolean
 }
 
 const EMPTY_PLAN: CommissionPlan = {
@@ -81,6 +110,7 @@ const EMPTY_PLAN: CommissionPlan = {
   warnings: [],
   pctPrimary: null,
   pctSecondary: null,
+  hasAdvisorManagerCommission: false,
 }
 
 function nonNegative(raw: unknown): number {
@@ -131,7 +161,7 @@ export function computeOperationCommission(
 
   let rule: CommissionRule
   let absorberId: string | null = null
-  let warnings: SharedSplitWarning[] = []
+  let warnings: CommissionWarning[] = []
   const pctBySeller: Record<string, number> = {}
 
   if (secondaryId) {
@@ -169,6 +199,54 @@ export function computeOperationCommission(
     return { sellerId, role, percentage, amount: amountFor(margin, percentage) }
   })
 
+  // El snapshot de `operations.commission_pct_*` se congela ACÁ, antes de sumar
+  // administradores: esas columnas describen el reparto ENTRE VENDEDORES y son
+  // lo que el formulario reenvía en cada edición. Si el porcentaje de un
+  // administrador se filtrara adentro, `splitModeForUpdate` vería un valor
+  // distinto del que mandó la UI y congelaría la operación en MANUAL.
+  const pctPrimary = entries[0]?.percentage ?? null
+  const pctSecondary = secondaryId ? entries[1]?.percentage ?? null : null
+
+  // ── Comisión del administrador del vendedor (VIB-102) ───────────────────
+  //
+  // Se aplica también en MANUAL: el modo manual congela el reparto entre los
+  // vendedores de la operación, no el trato que la agencia tiene con quien
+  // administra al free. Son dos configuraciones distintas.
+  const { overrides, warnings: managerWarnings } = resolveAdvisorManagerOverrides(
+    [primaryId, secondaryId].filter((id): id is string => !!id).map((sellerId) => {
+      const profile = profiles.get(sellerId)
+      return {
+        sellerId,
+        advisorManagerId: profile?.advisorManagerId ?? null,
+        advisorManagerPercentage: profile?.advisorManagerPercentage ?? null,
+      }
+    })
+  )
+  warnings = [...warnings, ...managerWarnings]
+
+  for (const override of overrides) {
+    const existing = entries.find((e) => e.sellerId === override.managerId)
+
+    // El administrador también vendió esta operación. `commission_records` tiene
+    // un unique (operation_id, seller_id), así que no puede tener dos filas: se
+    // acumulan los dos porcentajes en la suya. El número sigue siendo lo que
+    // significa —el % del margen que cobra esa persona por esta venta— y la
+    // fila conserva su rol de vendedor, que es el que explica la operación.
+    if (existing) {
+      existing.percentage = roundMoney(existing.percentage + override.percentage, 2)
+      existing.amount = amountFor(margin, existing.percentage)
+      continue
+    }
+
+    entries.push({
+      sellerId: override.managerId,
+      role: "ADVISOR_MANAGER",
+      percentage: override.percentage,
+      amount: amountFor(margin, override.percentage),
+      sourceSellerId: override.sourceSellerIds[0] ?? null,
+    })
+  }
+
   return {
     entries,
     totalCommission: roundMoney(
@@ -178,8 +256,9 @@ export function computeOperationCommission(
     rule,
     absorberId,
     warnings,
-    pctPrimary: entries[0]?.percentage ?? null,
-    pctSecondary: secondaryId ? entries[1]?.percentage ?? null : null,
+    pctPrimary,
+    pctSecondary,
+    hasAdvisorManagerCommission: overrides.length > 0,
   }
 }
 
@@ -250,6 +329,24 @@ export async function applyCommissionPlan(
 
   const now = new Date().toISOString()
 
+  /**
+   * Columnas de VIB-102. Solo se mandan si la operación tiene alguna comisión
+   * de administrador: así una organización que no usa la función sigue
+   * escribiendo exactamente el mismo payload de siempre y no depende de que la
+   * migración ya esté corrida.
+   *
+   * Cuando sí se mandan, van en TODAS las filas de la operación, también en las
+   * de vendedor: es lo que devuelve a 'SELLER' la fila de quien dejó de ser
+   * administrador y pasó a vender esta misma operación.
+   */
+  const kindFieldsFor = (entry: CommissionEntry) =>
+    plan.hasAdvisorManagerCommission
+      ? {
+          kind: entry.role === "ADVISOR_MANAGER" ? "ADVISOR_MANAGER" : "SELLER",
+          source_seller_id: entry.role === "ADVISOR_MANAGER" ? entry.sourceSellerId ?? null : null,
+        }
+      : {}
+
   for (const entry of plan.entries) {
     const current = existing.get(entry.sellerId)
 
@@ -269,6 +366,7 @@ export async function applyCommissionPlan(
           status: "PENDING",
           date_calculated: now,
           updated_at: now,
+          ...kindFieldsFor(entry),
         })
         .eq("id", current.id)
         .select("id")
@@ -306,6 +404,7 @@ export async function applyCommissionPlan(
         status: "PENDING",
         date_calculated: now,
         updated_at: now,
+        ...kindFieldsFor(entry),
       })
       .select("id")
       .single()

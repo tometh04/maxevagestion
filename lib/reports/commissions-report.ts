@@ -31,7 +31,12 @@ import type {
   ReferralInfo,
 } from "@/lib/commissions/fetch-commission-records"
 
-export type CommissionSellerRole = "primary" | "secondary" | "unknown"
+export type CommissionSellerRole =
+  | "primary"
+  | "secondary"
+  /** No vendió: cobra por administrar al vendedor de la operación (VIB-102). */
+  | "advisor_manager"
+  | "unknown"
 
 export interface CommissionsReportSeller {
   sellerId: string
@@ -46,6 +51,8 @@ export interface CommissionsReportSeller {
   operationsCount: number
   primaryTotal: number
   secondaryTotal: number
+  /** Lo que cobró por administrar a otros vendedores, no por vender (VIB-102). */
+  advisorManagerTotal: number
   share: number
 }
 
@@ -115,6 +122,12 @@ export interface CommissionsReportDetailRow {
   shared: boolean
   /** El otro vendedor de la venta compartida, visto desde esta fila. */
   counterpartName: string | null
+  /**
+   * Solo con `role = 'advisor_manager'`: el vendedor administrado que generó la
+   * comisión. Es lo único que explica por qué esta persona cobra una operación
+   * que no vendió.
+   */
+  managedSellerName: string | null
   /** Socio que refirió al cliente, si la venta vino por un referido. */
   referralPartnerName: string | null
 }
@@ -198,6 +211,10 @@ function roleOf(record: CommissionRecordRow): CommissionSellerRole {
   if (!op) return "unknown"
   if (op.seller_id && op.seller_id === record.seller_id) return "primary"
   if (op.seller_secondary_id && op.seller_secondary_id === record.seller_id) return "secondary"
+  // El administrador del vendedor no figura en la operación y es correcto que
+  // no figure: sin este chequeo su comisión se leería como "huérfana", que es
+  // la marca que el reporte usa para señalar datos inconsistentes.
+  if (record.kind === "ADVISOR_MANAGER") return "advisor_manager"
   // Comisión histórica cuyo vendedor ya no figura en la operación (reasignada).
   return "unknown"
 }
@@ -259,6 +276,7 @@ export function buildCommissionsReport({
     count: number
     primaryTotal: number
     secondaryTotal: number
+    advisorManagerTotal: number
     operations: Set<string>
   }
   const sellerAcc = new Map<string, SellerAcc>()
@@ -274,6 +292,7 @@ export function buildCommissionsReport({
         count: 0,
         primaryTotal: 0,
         secondaryTotal: 0,
+        advisorManagerTotal: 0,
         operations: new Set<string>(),
       }
 
@@ -287,6 +306,7 @@ export function buildCommissionsReport({
 
     const role = roleOf(r)
     if (role === "secondary") acc.secondaryTotal += amount
+    else if (role === "advisor_manager") acc.advisorManagerTotal += amount
     else acc.primaryTotal += amount
 
     if (r.operations) acc.operations.add(r.operations.id)
@@ -306,6 +326,7 @@ export function buildCommissionsReport({
       operationsCount: acc.operations.size,
       primaryTotal: acc.primaryTotal,
       secondaryTotal: acc.secondaryTotal,
+      advisorManagerTotal: acc.advisorManagerTotal,
     }))
     .sort((a, b) => b.total - a.total || a.sellerName.localeCompare(b.sellerName))
     .map((row, i) => ({
@@ -320,6 +341,7 @@ export function buildCommissionsReport({
       operationsCount: row.operationsCount,
       primaryTotal: roundMoney(row.primaryTotal),
       secondaryTotal: roundMoney(row.secondaryTotal),
+      advisorManagerTotal: roundMoney(row.advisorManagerTotal),
       share: roundMoney(safeDiv(row.total, total) * 100, 1),
     }))
 
@@ -461,6 +483,10 @@ export function buildCommissionsReport({
         datePaid: r.date_paid,
         shared: !!op?.seller_secondary_id,
         counterpartName: counterpartId ? sellerNames.get(counterpartId) || null : null,
+        managedSellerName:
+          role === "advisor_manager" && r.source_seller_id
+            ? sellerNames.get(r.source_seller_id) || null
+            : null,
         referralPartnerName: (op && referralPartners?.get(op.id)?.partnerName) || null,
       }
     })

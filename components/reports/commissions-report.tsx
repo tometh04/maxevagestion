@@ -1039,12 +1039,17 @@ function ReportSkeleton() {
   )
 }
 
-/** Origen de la venta: propia, compartida con otro vendedor, o como socio. */
+/** Origen de la venta: propia, compartida, como socio, o por administrar. */
 function saleTypeLabel(row: {
   role: string
   shared: boolean
   counterpartName: string | null
+  managedSellerName?: string | null
 }): string {
+  // VIB-102: no la vendió, cobra por administrar al vendedor.
+  if (row.role === "advisor_manager") {
+    return `Administra a ${row.managedSellerName || "un asesor"}`
+  }
   if (!row.shared) return "Propia"
   if (row.role === "secondary") return `Socio de ${row.counterpartName || "otro vendedor"}`
   return `Compartida con ${row.counterpartName || "otro vendedor"}`

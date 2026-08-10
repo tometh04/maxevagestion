@@ -97,6 +97,8 @@ describe("resolveSellerCommissionProfiles", () => {
       percentage: 35,
       mode: "ABSORB",
       source: "USER_DEFAULT",
+      advisorManagerId: null,
+      advisorManagerPercentage: null,
     })
   })
 
@@ -247,8 +249,104 @@ describe("resolveSellerCommissionProfiles", () => {
 
     const profiles = await resolveSellerCommissionProfiles(client, ORG, ["santi"])
 
-    expect(intentos).toBe(2)
+    // Tres escalones: con administrador (VIB-102), con modo (VIB-63), y el
+    // mínimo histórico. Los dos primeros piden `shared_sale_commission_mode`.
+    expect(intentos).toBe(3)
     expect(profiles.get("santi")).toMatchObject({ percentage: 35, mode: "HALF" })
+  })
+
+  it("si falta solo la migración del administrador, conserva el modo de venta compartida", async () => {
+    // El escalón intermedio importa: degradar hasta el mínimo perdería el
+    // 'ABSORB' de Julieta y le pagaría de menos en cada venta compartida.
+    const { client } = createClient((table, calls) => {
+      if (table === "users") {
+        const pideAdmin = calls.some((c) => String(c.args[0]).includes("advisor_manager_id"))
+        if (pideAdmin) {
+          return {
+            data: null,
+            error: { message: 'column users.advisor_manager_id does not exist' },
+          }
+        }
+        return {
+          data: [
+            {
+              id: "santi",
+              name: "Santiago",
+              default_commission_percentage: 35,
+              shared_sale_commission_mode: "ABSORB",
+            },
+          ],
+          error: null,
+        }
+      }
+      return { data: [], error: null }
+    })
+
+    const profiles = await resolveSellerCommissionProfiles(client, ORG, ["santi"])
+
+    expect(profiles.get("santi")).toMatchObject({
+      percentage: 35,
+      mode: "ABSORB",
+      advisorManagerId: null,
+    })
+  })
+
+  it("lee el administrador del vendedor y su porcentaje (VIB-102)", async () => {
+    const { client } = createClient((table) => {
+      if (table === "users") {
+        return {
+          data: [
+            {
+              id: "free",
+              name: "Free",
+              default_commission_percentage: 50,
+              shared_sale_commission_mode: "HALF",
+              advisor_manager_id: "mica",
+              advisor_manager_percentage: 5,
+            },
+          ],
+          error: null,
+        }
+      }
+      return { data: [], error: null }
+    })
+
+    const profiles = await resolveSellerCommissionProfiles(client, ORG, ["free"])
+
+    expect(profiles.get("free")).toMatchObject({
+      percentage: 50,
+      advisorManagerId: "mica",
+      advisorManagerPercentage: 5,
+    })
+  })
+
+  it("sin administrador asignado, el porcentaje suelto no se usa", async () => {
+    // Un % que quedó cargado de una configuración anterior no puede pagarle a
+    // nadie: sin `advisor_manager_id` no hay a quién.
+    const { client } = createClient((table) => {
+      if (table === "users") {
+        return {
+          data: [
+            {
+              id: "free",
+              name: "Free",
+              default_commission_percentage: 50,
+              advisor_manager_id: null,
+              advisor_manager_percentage: 5,
+            },
+          ],
+          error: null,
+        }
+      }
+      return { data: [], error: null }
+    })
+
+    const profiles = await resolveSellerCommissionProfiles(client, ORG, ["free"])
+
+    expect(profiles.get("free")).toMatchObject({
+      advisorManagerId: null,
+      advisorManagerPercentage: null,
+    })
   })
 
   it("un modo desconocido en la base se trata como HALF", async () => {

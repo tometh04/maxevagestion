@@ -43,6 +43,8 @@ export const getCurrentUser = cache(async (): Promise<{ user: User; session: { u
       is_independent_advisor: false,
       default_commission_percentage: null,
       shared_sale_commission_mode: 'HALF',
+      advisor_manager_id: null,
+      advisor_manager_percentage: null,
       legal_accepted_at: null,
       legal_version: null,
       onboarding_state: null,

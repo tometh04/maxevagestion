@@ -154,11 +154,24 @@ export default async function OperationDetailPage({
     .order("order_index", { ascending: true })
 
   // Get commission records for this operation
-  const { data: commissionRecords } = await (supabase
+  const { data: commissionRecordsRaw } = await (supabase
     .from("commission_records") as any)
-    .select("percentage, seller_id, amount")
+    .select("percentage, seller_id, amount, kind")
     .eq("operation_id", id)
     .eq("org_id", userOrgId)
+
+  // La pantalla usa el PRIMER registro como "el porcentaje de comisión de la
+  // operación", así que el orden no puede quedar librado a la base: primero el
+  // vendedor principal, después el resto de los vendedores, y al final la
+  // comisión del administrador (VIB-102), que es un 5% sobre la venta ajena y
+  // no describe el trato de esta operación.
+  const commissionRank = (record: any): number => {
+    if (record?.kind === "ADVISOR_MANAGER") return 2
+    return record?.seller_id === op.seller_id ? 0 : 1
+  }
+  const commissionRecords = [...((commissionRecordsRaw as any[]) || [])].sort(
+    (a, b) => commissionRank(a) - commissionRank(b)
+  )
 
   // Comisión al referidor (VIB-62): si el cliente MAIN vino referido, mostrar
   // cuánto y a quién le corresponde por esta venta.
