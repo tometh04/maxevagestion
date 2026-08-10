@@ -44,7 +44,7 @@ export type OperationAccessScope = "full" | "own" | "agency-support" | "agency-p
  * UUID que no puede existir como PK. Se usa para construir un filtro que no
  * matchea nada.
  */
-const NO_MATCH_UUID = "00000000-0000-0000-0000-000000000000"
+export const NO_MATCH_UUID = "00000000-0000-0000-0000-000000000000"
 
 /**
  * Devuelve la query acotada a CERO filas, de forma que el caller no pueda

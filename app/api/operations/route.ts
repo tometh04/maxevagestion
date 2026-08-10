@@ -5,7 +5,7 @@ import { generateFileCode } from "@/lib/accounting/file-code"
 import { transferLeadToOperation, getOrCreateDefaultAccount, createLedgerMovement, calculateARSEquivalent } from "@/lib/accounting/ledger"
 import { createSaleIVA, createPurchaseIVA } from "@/lib/accounting/iva"
 import { createOperatorPayment, calculateDueDate, sanitizeDueDate } from "@/lib/accounting/operator-payments"
-import { canPerformAction, getUserAgencyIds, canCreateOperationsForOtherSellers, canAssignSecondarySeller, isSellerWithinUserAgencies } from "@/lib/permissions-api"
+import { canPerformAction, getUserAgencyIds, canCreateOperationsForOtherSellers, canAssignSecondarySeller, isSellerWithinUserAgencies, NO_MATCH_UUID } from "@/lib/permissions-api"
 import { resolveUserPermissions } from "@/lib/permissions-agency"
 import { revalidateTag, CACHE_TAGS } from "@/lib/cache"
 import { generateMessagesFromAlerts } from "@/lib/whatsapp/alert-messages"
@@ -22,6 +22,13 @@ import { getOrgFeatureFlag } from "@/lib/settings/org-features"
 import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
 import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
 import { ledgerSign } from "@/lib/invoices/credit-note"
+import { buildPassengerSearchOrGroups, sanitizeSearchTerm } from "@/lib/operations/passenger-search"
+
+// VIB-102: topes de la búsqueda por nombre de pasajero en GET /api/operations.
+// Existen para no armar una URL de PostgREST gigante con `id.in.(...)`; con el
+// match por AND de palabras una búsqueda real cae muy por debajo de estos topes.
+const CUSTOMER_SEARCH_CAP = 500
+const OPERATION_IDS_CAP = 500
 
 export async function POST(request: Request) {
   try {
@@ -1113,45 +1120,89 @@ export async function GET(request: Request) {
     // Filtro de búsqueda por texto (file_code, destination, o nombre de cliente)
     const search = searchParams.get("search")
     if (search && search.length >= 2) {
-      // Buscar también por nombre de cliente
-      // Busca por first_name, last_name, y también por cada palabra individual
-      // para que "Lo Bianco" matchee con first_name="Lo" last_name="Bianco"
+      // Buscar también por nombre de pasajero (titular o acompañante).
+      //
+      // VIB-102: antes se armaba UN solo .or() con todas las palabras, así que
+      // "Maria Belen Olivera" matcheaba a CUALQUIER cliente llamado "Maria"
+      // (165 en Milla Cero) y el .limit(50) recortaba el listado de forma
+      // arbitraria: el titular real quedaba afuera y su operación no aparecía,
+      // aunque sí aparecía buscando por el apellido raro de una acompañante.
+      //
+      // Ahora cada palabra genera su propio .or() (PostgREST combina los `or=`
+      // repetidos con AND), o sea: cada palabra tiene que matchear nombre o
+      // apellido del MISMO cliente. Mismo criterio que /api/customers y
+      // /api/cash/movements. "Lo Bianco" sigue matcheando first_name="Lo" +
+      // last_name="Bianco".
       let operationIdsByCustomer: string[] = []
       try {
-        const searchWords = search.trim().split(/\s+/).filter(w => w.length >= 2)
-        const orConditions = [`first_name.ilike.%${search}%`, `last_name.ilike.%${search}%`]
-        for (const word of searchWords) {
-          orConditions.push(`first_name.ilike.%${word}%`)
-          orConditions.push(`last_name.ilike.%${word}%`)
+        const orGroups = buildPassengerSearchOrGroups(search)
+        let customersQuery = (supabase.from("customers") as any).select("id")
+        // Defensa en profundidad además de la RLS tenant_isolation.
+        if ((user as any).org_id) {
+          customersQuery = customersQuery.eq("org_id", (user as any).org_id)
         }
-        const { data: matchingCustomers } = await supabase
-          .from("customers")
-          .select("id")
-          .or(orConditions.join(","))
-          .limit(50)
+        for (const group of orGroups) {
+          customersQuery = customersQuery.or(group)
+        }
+
+        const { data: matchingCustomers } = orGroups.length
+          ? await customersQuery.limit(CUSTOMER_SEARCH_CAP)
+          : { data: [] as any[] }
 
         if (matchingCustomers && matchingCustomers.length > 0) {
+          if (matchingCustomers.length === CUSTOMER_SEARCH_CAP) {
+            console.warn(
+              `[operations][search] "${search}" alcanzó el tope de ${CUSTOMER_SEARCH_CAP} clientes; resultados posiblemente incompletos`
+            )
+          }
           const customerIds = matchingCustomers.map((c: any) => c.id)
           const { data: opCustomers } = await supabase
             .from("operation_customers")
             .select("operation_id")
             .in("customer_id", customerIds)
 
-          operationIdsByCustomer = (opCustomers || []).map((oc: any) => oc.operation_id)
+          // Dedup: una op con varios pasajeros que matchean repetía el mismo id
+          // en el filtro `id.in.(...)` e inflaba la URL de PostgREST.
+          operationIdsByCustomer = Array.from(
+            new Set((opCustomers || []).map((oc: any) => oc.operation_id).filter(Boolean))
+          )
+          if (operationIdsByCustomer.length > OPERATION_IDS_CAP) {
+            console.warn(
+              `[operations][search] "${search}" resolvió ${operationIdsByCustomer.length} operaciones por pasajero; se recortan a ${OPERATION_IDS_CAP}`
+            )
+            operationIdsByCustomer = operationIdsByCustomer.slice(0, OPERATION_IDS_CAP)
+          }
         }
       } catch (err) {
         console.error("Error searching customers for operations:", err)
       }
 
+      // Search también incluye airline_name + hotel_name (item 6 backlog Santi).
+      // RLS tenant_isolation acota a la org del user — no hay leak cross-org.
+      // El término va sanitizado: una coma o un paréntesis rompen la gramática
+      // de `or=` y tiraban toda la query del listado.
+      const safeSearch = sanitizeSearchTerm(search)
+      const textConditions: string[] = []
+      // Si el término queda vacío al sanitizar (ej. ",,,"), no agregamos
+      // `ilike.%%`: matchearía TODAS las operaciones en vez de ninguna.
+      if (safeSearch.length >= 2) {
+        textConditions.push(
+          `file_code.ilike.%${safeSearch}%`,
+          `destination.ilike.%${safeSearch}%`,
+          `airline_name.ilike.%${safeSearch}%`,
+          `hotel_name.ilike.%${safeSearch}%`
+        )
+      }
       if (operationIdsByCustomer.length > 0) {
-        const idsFilter = `id.in.(${operationIdsByCustomer.join(",")})`
-        // Search también incluye airline_name + hotel_name (item 6 backlog Santi).
-        // RLS tenant_isolation acota a la org del user — no hay leak cross-org.
-        query = query.or(`file_code.ilike.%${search}%,destination.ilike.%${search}%,airline_name.ilike.%${search}%,hotel_name.ilike.%${search}%,${idsFilter}`)
-        countQuery = countQuery.or(`file_code.ilike.%${search}%,destination.ilike.%${search}%,airline_name.ilike.%${search}%,hotel_name.ilike.%${search}%,${idsFilter}`)
+        textConditions.push(`id.in.(${operationIdsByCustomer.join(",")})`)
+      }
+      if (textConditions.length > 0) {
+        query = query.or(textConditions.join(","))
+        countQuery = countQuery.or(textConditions.join(","))
       } else {
-        query = query.or(`file_code.ilike.%${search}%,destination.ilike.%${search}%,airline_name.ilike.%${search}%,hotel_name.ilike.%${search}%`)
-        countQuery = countQuery.or(`file_code.ilike.%${search}%,destination.ilike.%${search}%,airline_name.ilike.%${search}%,hotel_name.ilike.%${search}%`)
+        // Búsqueda sin nada matcheable → resultado vacío explícito.
+        query = query.eq("id", NO_MATCH_UUID)
+        countQuery = countQuery.eq("id", NO_MATCH_UUID)
       }
     }
 
