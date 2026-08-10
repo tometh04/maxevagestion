@@ -23,6 +23,10 @@ import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags
 import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
 import { ledgerSign } from "@/lib/invoices/credit-note"
 import { buildPassengerSearchOrGroups, sanitizeSearchTerm } from "@/lib/operations/passenger-search"
+import {
+  normalizeOperationPassengers,
+  findCustomersOutsideOrg,
+} from "@/lib/operations/operation-passengers"
 
 // VIB-102: topes de la búsqueda por nombre de pasajero en GET /api/operations.
 // Existen para no armar una URL de PostgREST gigante con `id.in.(...)`; con el
@@ -70,7 +74,11 @@ export async function POST(request: Request) {
       operator_id, // Compatibilidad hacia atrás: operador único
       operators, // Nuevo formato: array de operadores [{operator_id, cost, cost_currency, notes?}]
       type,
-      customer_id, // Cliente seleccionado directamente
+      customer_id, // Cliente seleccionado directamente (titular)
+      // VIB-106: acompañantes cargados junto con el alta. Se llama `companions`
+      // y no `passengers` porque `operations.passengers` ya existe como columna
+      // legacy de texto libre (ver más abajo, se guarda como JSON string).
+      companions,
       origin,
       destination,
       destination_id,
@@ -279,6 +287,34 @@ export async function POST(request: Request) {
     if (sale_amount_total < 0) {
       return NextResponse.json({ error: "El monto de venta no puede ser negativo" }, { status: 400 })
     }
+
+    // VIB-106: la forma de la lista de pasajeros se valida ACÁ, antes de crear
+    // nada. Un 400 después del insert dejaría la operación creada con ledger,
+    // IVA y deudas al operador ya escritos.
+    const passengersShape = normalizeOperationPassengers({
+      customerId: customer_id,
+      passengers: companions,
+    })
+    if (passengersShape.error) {
+      return NextResponse.json({ error: passengersShape.error }, { status: 400 })
+    }
+    if (passengersShape.rows.length > 0) {
+      const foreignCustomers = await findCustomersOutsideOrg(
+        supabase,
+        passengersShape.rows.map((p) => p.customer_id),
+        (user as any).org_id
+      )
+      if (foreignCustomers.length > 0) {
+        return NextResponse.json(
+          { error: "Uno o más pasajeros no pertenecen a tu organización" },
+          { status: 400 }
+        )
+      }
+    }
+
+    // Avisos no bloqueantes que viajan en la respuesta (la operación se creó,
+    // pero algo secundario falló y el usuario tiene que enterarse).
+    const warnings: string[] = []
 
     // Check permissions
     // Un SELLER sólo puede cargar a nombre de OTRO vendedor (principal) si el
@@ -833,30 +869,45 @@ export async function POST(request: Request) {
           return NextResponse.json({ error: "Se debe asociar al menos un cliente" }, { status: 400 })
         }
 
-        // Asociar cliente a la operación
-        if (customerId) {
-          const { data: operationCustomerData, error: operationCustomerError } = await (supabase.from("operation_customers") as any)
-            .insert({
-              operation_id: operation.id,
-              customer_id: customerId,
-              role: "MAIN"
-            })
-            .select()
-            .single()
-          
+        // Asociar pasajeros a la operación (VIB-106: titular + acompañantes).
+        //
+        // `customerId` puede haberse resuelto recién acá (alta desde lead), así
+        // que la lista se rearma con el titular ya conocido. La validación de
+        // forma y de org ya corrió arriba; esto solo puede fallar por un
+        // problema de base, y en ese caso NO se revierte la operación: para este
+        // punto ya se escribieron ledger, IVA y operator_payments, y un rollback
+        // parcial deja basura contable peor que una operación sin pasajeros.
+        // Se avisa en la respuesta en vez de tragarse el error.
+        const passengerRows = normalizeOperationPassengers({
+          customerId,
+          passengers: companions,
+        }).rows
+
+        if (passengerRows.length > 0) {
+          const { error: operationCustomerError } = await (supabase.from("operation_customers") as any)
+            .insert(passengerRows.map((p) => ({ operation_id: operation.id, ...p })))
+
           if (operationCustomerError) {
-            console.error(`❌ Error associating customer ${customerId} with operation ${operation.id}:`, operationCustomerError)
-            // No lanzar error, pero loguear para debug
-          } else {
-            
-            // Enviar notificación al cliente si está configurada
+            console.error(
+              `❌ Error associating ${passengerRows.length} passenger(s) with operation ${operation.id}:`,
+              operationCustomerError
+            )
+            warnings.push(
+              passengerRows.length === 1
+                ? "La operación se creó, pero no se pudo asociar el pasajero. Cargalo desde la pestaña Clientes."
+                : `La operación se creó, pero no se pudieron asociar los ${passengerRows.length} pasajeros. Cargalos desde la pestaña Clientes.`
+            )
+          } else if (customerId) {
+            // La notificación sale UNA sola vez y solo al titular: es quien
+            // responde por el pago, y los acompañantes suelen no tener mail.
             try {
               const { data: customer } = await supabase
                 .from("customers")
                 .select("*")
                 .eq("id", customerId)
+                .eq("org_id", (user as any).org_id)
                 .single()
-              
+
               if (customer) {
                 const customerData = customer as any
                 const { data: settings } = await supabase
@@ -887,9 +938,12 @@ export async function POST(request: Request) {
               // No lanzar error, solo loguear
             }
           }
-          
-      // Transferir documentos del lead al cliente (solo si hay lead_id)
-      if (lead_id) {
+        }
+
+        // Transferir documentos del lead al cliente (solo si hay lead_id).
+        // Exige `customerId`: sin titular resuelto, el update dejaría los
+        // documentos del lead con customer_id en NULL.
+        if (lead_id && customerId) {
           try {
             const { data: leadDocuments, error: docsError } = await supabase
               .from("documents")
@@ -933,8 +987,7 @@ export async function POST(request: Request) {
             console.error("Error transferring documents from lead to operation:", error)
           }
         }
-      }
-      
+
     // Comisión al referidor (VIB-62): si el cliente MAIN viene referido, generar
     // la comisión de la venta sobre el margen. Best-effort: no romper la creación.
     try {
@@ -1031,7 +1084,7 @@ export async function POST(request: Request) {
       console.warn('Error logging audit action:', auditError)
     }
 
-    return NextResponse.json({ operation })
+    return NextResponse.json(warnings.length > 0 ? { operation, warnings } : { operation })
   } catch (error) {
     console.error("Error in POST /api/operations:", error)
     return NextResponse.json({ error: "Error al crear operación" }, { status: 500 })
