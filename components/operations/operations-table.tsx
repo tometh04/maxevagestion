@@ -13,7 +13,7 @@ import { DataTableColumnHeader } from "@/components/ui/data-table-column-header"
 import { ServerPagination } from "@/components/ui/server-pagination"
 import { Input } from "@/components/ui/input"
 import { useDebounce } from "@/hooks/use-debounce"
-import { MoreHorizontal, Pencil, Eye, Trash2, Search } from "lucide-react"
+import { MoreHorizontal, Pencil, Eye, Trash2, Search, Copy } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,6 +28,10 @@ import dynamic from "next/dynamic"
 // editar una operación desde el listado.
 const EditOperationDialog = dynamic(
   () => import("./edit-operation-dialog").then((m) => ({ default: m.EditOperationDialog })),
+  { ssr: false }
+)
+const NewOperationDialog = dynamic(
+  () => import("./new-operation-dialog").then((m) => ({ default: m.NewOperationDialog })),
   { ssr: false }
 )
 import {
@@ -117,6 +121,10 @@ export function OperationsTable({
   const [filters, setFilters] = useState(initialFilters)
   const [editingOperation, setEditingOperation] = useState<Operation | null>(null)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
+  // VIB-109: duplicar operación (precarga del alta, no clon server-side).
+  const [duplicateSource, setDuplicateSource] = useState<any | null>(null)
+  const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false)
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null)
   const [deletingOperation, setDeletingOperation] = useState<Operation | null>(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -180,6 +188,32 @@ export function OperationsTable({
     setEditingOperation(operation)
     setEditDialogOpen(true)
   }, [agencies.length, loadDialogData])
+
+  // VIB-109: duplicar = abrir el alta precargada. La fila del listado no trae
+  // todas las columnas de las patas (product_type, passenger_detail), así que
+  // se pide la operación completa antes de precargar.
+  const handleDuplicateClick = useCallback(async (operation: Operation) => {
+    setDuplicatingId(operation.id)
+    try {
+      if (agencies.length === 0) {
+        await loadDialogData()
+      }
+      const response = await fetch(`/api/operations/${operation.id}`)
+      if (!response.ok) throw new Error("No se pudo cargar la operación")
+      const data = await response.json()
+      setDuplicateSource(data.operation)
+      setDuplicateDialogOpen(true)
+    } catch (error) {
+      console.error("Error preparing duplicate:", error)
+      toast({
+        title: "Error",
+        description: "No se pudo preparar la copia de la operación",
+        variant: "destructive",
+      })
+    } finally {
+      setDuplicatingId(null)
+    }
+  }, [agencies.length, loadDialogData, toast])
 
   const fetchOperations = useCallback(async () => {
     setLoading(true)
@@ -344,6 +378,15 @@ export function OperationsTable({
                     <DropdownMenuItem onClick={() => handleEditClick(operation)}>
                       <Pencil className="mr-2 h-4 w-4" />
                       Editar
+                    </DropdownMenuItem>
+                    {/* VIB-109: ventas repetidas del mismo grupo (mismo paquete,
+                        distintos pasajeros). Abre el alta precargada. */}
+                    <DropdownMenuItem
+                      onClick={() => handleDuplicateClick(operation)}
+                      disabled={duplicatingId === operation.id}
+                    >
+                      <Copy className="mr-2 h-4 w-4" />
+                      {duplicatingId === operation.id ? "Preparando..." : "Duplicar"}
                     </DropdownMenuItem>
                   </>
                 )}
@@ -701,7 +744,7 @@ export function OperationsTable({
     })
 
     return cols
-  }, [handleDeleteClick, handleEditClick, hideFinancialColumns, userId, userRole])
+  }, [handleDeleteClick, handleEditClick, handleDuplicateClick, duplicatingId, hideFinancialColumns, userId, userRole])
 
   if (loading) {
     return (
@@ -815,6 +858,32 @@ export function OperationsTable({
           agencies={agencies}
           sellers={sellers}
           operators={allOperators}
+        />
+      )}
+
+      {/* VIB-109: alta precargada desde otra operación. El POST es el de
+          siempre, así que la operación nueva genera su propia contabilidad. */}
+      {duplicateSource && (
+        <NewOperationDialog
+          open={duplicateDialogOpen}
+          onOpenChange={(open) => {
+            setDuplicateDialogOpen(open)
+            if (!open) setDuplicateSource(null)
+          }}
+          onSuccess={() => {
+            setDuplicateDialogOpen(false)
+            setDuplicateSource(null)
+            fetchOperations()
+          }}
+          duplicateFrom={duplicateSource}
+          agencies={agencies}
+          sellers={sellers}
+          operators={allOperators}
+          userRole={userRole}
+          // Conservador: al duplicar, un vendedor no reasigna la venta. La copia
+          // arranca con el vendedor de la operación original (que es él mismo,
+          // porque sólo ve las propias) y el servidor valida igual.
+          canPickOtherSeller={userRole !== "SELLER"}
         />
       )}
 

@@ -21,6 +21,10 @@ import { Textarea } from "@/components/ui/textarea"
 import { DecimalInput } from "@/components/ui/decimal-input"
 import { serviceKind, PASSENGER_DETAIL_FIELDS, sanitizePassengerDetail } from "@/lib/operations/service-kind"
 import {
+  buildOperationDuplicateDraft,
+  type DuplicableOperation,
+} from "@/lib/operations/duplicate-operation"
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -63,6 +67,10 @@ interface OperationSettings {
   custom_product_types?: Array<{ value: string; label: string }>
   custom_operation_types?: Array<{ value: string; label: string }>
 }
+
+/** VIB-106: tope de acompañantes en el alta (el titular va aparte). El máximo
+ *  real cargado en producción es 16 pasajeros por operación. */
+const MAX_COMPANIONS = 24
 
 const operatorSchema = z.object({
   operator_id: z.string().min(1, "El operador es requerido"),
@@ -211,6 +219,10 @@ interface NewOperationDialogProps {
   defaultAgencyId?: string
   defaultSellerId?: string
   lead?: LeadData // Prop opcional para convertir lead a operación
+  /** VIB-109: operación de la que se precarga el alta al duplicar. No se clona
+   *  nada en el servidor — el POST normal crea la operación con todos sus side
+   *  effects contables. */
+  duplicateFrom?: DuplicableOperation | null
   userRole?: string
   /** Si el usuario puede elegir a otro vendedor PRINCIPAL. Cuando es false, el
    *  selector queda bloqueado a sí mismo (default true). */
@@ -230,6 +242,7 @@ export function NewOperationDialog({
   defaultAgencyId,
   defaultSellerId,
   lead,
+  duplicateFrom,
   userRole,
   canPickOtherSeller = true,
   canPickSecondarySeller = true,
@@ -260,6 +273,12 @@ export function NewOperationDialog({
   const customersRef = React.useRef(customers)
   const [loadingCustomers, setLoadingCustomers] = useState(false)
   const [showNewCustomerDialog, setShowNewCustomerDialog] = useState(false)
+  // VIB-106: acompañantes cargados en el alta (ids de customers, "" = fila vacía).
+  const [companionList, setCompanionList] = useState<string[]>([])
+  // A qué campo escribe el cliente que se cree con el botón "+": el titular o
+  // una fila de acompañante. Sin esto, crear un cliente desde una fila de
+  // acompañante pisaría el titular.
+  const [newCustomerTarget, setNewCustomerTarget] = useState<"main" | number>("main")
 
   useEffect(() => {
     customersRef.current = customers
@@ -529,6 +548,27 @@ export function NewOperationDialog({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, lead?.id, cleanedDestination, leadDepartureDate, leadSaleAmount, leadCurrency, leadNotes, defaultAgencyId, defaultSellerId, settings?.default_status])
 
+  // VIB-109: precarga al duplicar. Mismo mecanismo que el prefill desde lead:
+  // se resetea el form y, aparte, la lista de operadores (que es estado propio).
+  // Los pasajeros quedan vacíos a propósito: es lo que cambia entre las ventas
+  // de un mismo grupo.
+  useEffect(() => {
+    if (!open || !duplicateFrom) return
+    const draft = buildOperationDuplicateDraft(duplicateFrom, {
+      status: settings?.default_status || "RESERVED",
+    })
+    form.reset({
+      ...(draft.formValues as any),
+      customer_id: null,
+      operator_id: null,
+      operators: [],
+    })
+    setCompanionList([])
+    setOperatorList(draft.operatorRows)
+    setUseMultipleOperators(draft.hasOperators)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, duplicateFrom, settings?.default_status])
+
   // Actualizar estado por defecto cuando se carga la configuración
   useEffect(() => {
     if (settings?.default_status) {
@@ -575,6 +615,14 @@ export function NewOperationDialog({
     updated[index] = { ...updated[index], [field]: value }
     setOperatorList(updated)
   }
+
+  // VIB-106: acompañantes. Mismo patrón que la lista de operadores — una fila
+  // por acompañante, con el id del cliente ("" mientras no se eligió).
+  const addCompanion = () => setCompanionList((prev) => [...prev, ""])
+  const removeCompanion = (index: number) =>
+    setCompanionList((prev) => prev.filter((_, i) => i !== index))
+  const updateCompanion = (index: number, customerId: string) =>
+    setCompanionList((prev) => prev.map((id, i) => (i === index ? customerId : id)))
 
   // Función para crear nuevo operador
   const handleCreateOperator = async () => {
@@ -692,6 +740,9 @@ export function NewOperationDialog({
         })() : { commission_pct_primary: null, commission_pct_secondary: null }),
         origin: values.origin || null,
         customer_id: values.customer_id || null,
+        // VIB-106: acompañantes cargados en el alta. El titular sigue yendo en
+        // `customer_id`; el server arma las filas de operation_customers.
+        companions: companionList.filter(Boolean),
         return_date: values.return_date ? formatDateOnlyLocal(values.return_date) : null,
         checkin_date: null,
         checkout_date: null,
@@ -737,12 +788,19 @@ export function NewOperationDialog({
         title: lead ? "Lead convertido a operación" : "Operación creada",
         description: lead ? "El lead se ha convertido a operación correctamente" : "La operación se ha creado correctamente",
       })
-      
+
+      // La operación se creó pero algo secundario falló (ej. no se pudieron
+      // asociar los pasajeros). No se silencia: el usuario tiene que saberlo.
+      for (const warning of (data.warnings as string[] | undefined) ?? []) {
+        toast({ title: "Atención", description: warning, variant: "destructive" })
+      }
+
       // Pasar el ID de la operación al callback
       onSuccess(operationId)
       onOpenChange(false)
       form.reset()
       setOperatorList([])
+      setCompanionList([])
       setUseMultipleOperators(false)
       setApiError(null)
     } catch (error) {
@@ -774,6 +832,7 @@ export function NewOperationDialog({
         setApiError(null)
     form.reset()
     setOperatorList([])
+    setCompanionList([])
     setUseMultipleOperators(false)
     onOpenChange(false)
     setPendingClose(false)
@@ -793,11 +852,19 @@ export function NewOperationDialog({
           onPointerDownOutside={(e) => e.preventDefault()}
         >
         <DialogHeader>
-          <DialogTitle>{lead ? "Convertir Lead a Operación" : "Nueva Operación"}</DialogTitle>
+          <DialogTitle>
+            {lead
+              ? "Convertir Lead a Operación"
+              : duplicateFrom
+                ? "Duplicar Operación"
+                : "Nueva Operación"}
+          </DialogTitle>
           <DialogDescription>
             {lead
               ? "Completa los datos para convertir este lead en una operación. Todos los campos están disponibles, incluyendo OCR para crear cliente."
-              : "Crear una nueva operación manualmente"}
+              : duplicateFrom
+                ? "Se copiaron destino, fechas, montos y operadores. Cargá los pasajeros de esta venta; los cobros y pagos no se copian."
+                : "Crear una nueva operación manualmente"}
           </DialogDescription>
         </DialogHeader>
 
@@ -887,13 +954,13 @@ export function NewOperationDialog({
 
             <div className="border-t border-border/40 -mx-6" />
 
-            {/* Section: Cliente */}
+            {/* Section: Pasajeros */}
             <div>
               <div className="flex items-center gap-2 mb-4">
                 <div className="flex items-center justify-center h-6 w-6 rounded-md bg-accent-teal/10">
                   <User className="h-3.5 w-3.5 text-accent-teal" />
                 </div>
-                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Cliente</h4>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Pasajeros</h4>
               </div>
               <div className="grid gap-x-6 gap-y-5 md:grid-cols-2">
                 <FormField
@@ -901,7 +968,7 @@ export function NewOperationDialog({
                   name="customer_id"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Cliente {settings?.require_customer && <span className="text-destructive">*</span>}</FormLabel>
+                      <FormLabel>Pasajero principal {settings?.require_customer && <span className="text-destructive">*</span>}</FormLabel>
                       <div className="flex gap-2">
                         <div className="flex-1">
                           <SearchableCombobox
@@ -925,7 +992,10 @@ export function NewOperationDialog({
                           type="button"
                           variant="outline"
                           size="icon"
-                          onClick={() => setShowNewCustomerDialog(true)}
+                          onClick={() => {
+                            setNewCustomerTarget("main")
+                            setShowNewCustomerDialog(true)
+                          }}
                           title="Crear nuevo cliente"
                         >
                           <Plus className="h-4 w-4" />
@@ -974,6 +1044,107 @@ export function NewOperationDialog({
                     </FormItem>
                   )}
                 />
+              </div>
+
+              {/* VIB-106: acompañantes. Antes había que crear la operación,
+                  buscarla, entrar y cargarlos de a uno desde la pestaña Clientes.
+                  Se reusa el mismo buscador que el titular (ya scopeado por org). */}
+              <div className="mt-5">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Acompañantes {companionList.length > 0 && `(${companionList.filter(Boolean).length})`}
+                  </label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8"
+                    onClick={addCompanion}
+                    disabled={!form.watch("customer_id") || companionList.length >= MAX_COMPANIONS}
+                    title={
+                      !form.watch("customer_id")
+                        ? "Elegí primero el pasajero principal"
+                        : companionList.length >= MAX_COMPANIONS
+                          ? `Máximo ${MAX_COMPANIONS} acompañantes`
+                          : undefined
+                    }
+                  >
+                    <Plus className="h-3.5 w-3.5 mr-1" />
+                    Agregar acompañante
+                  </Button>
+                </div>
+
+                {companionList.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    Opcional. Podés cargarlos ahora o después desde la pestaña Clientes de la operación.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {companionList.map((companionId, index) => {
+                      // No ofrecer clientes ya elegidos (el server los deduplica igual).
+                      const taken = new Set(
+                        [form.watch("customer_id"), ...companionList.filter((_, i) => i !== index)].filter(Boolean) as string[]
+                      )
+                      const selected = customers.find((c) => c.id === companionId)
+                      return (
+                        <div key={index} className="flex gap-2">
+                          <div className="flex-1">
+                            <SearchableCombobox
+                              value={companionId || ""}
+                              onChange={(value) => updateCompanion(index, value || "")}
+                              placeholder="Buscar acompañante..."
+                              searchPlaceholder="Escribí el nombre..."
+                              emptyMessage="No se encontró el cliente"
+                              disabled={loadingCustomers}
+                              initialLabel={selected ? `${selected.first_name} ${selected.last_name}` : ""}
+                              searchFn={async (term) => {
+                                const options = await searchCustomers(term)
+                                return options.filter((option) => !taken.has(option.value))
+                              }}
+                            />
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            onClick={() => {
+                              setNewCustomerTarget(index)
+                              setShowNewCustomerDialog(true)
+                            }}
+                            title="Crear nuevo cliente"
+                          >
+                            <Plus className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeCompanion(index)}
+                            title="Quitar acompañante"
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {/* Aviso, no validación: los conteos de adultos/menores son
+                    comerciales y no siempre coinciden con los pasajeros cargados. */}
+                {(() => {
+                  const declared =
+                    (Number(form.watch("adults")) || 0) +
+                    (Number(form.watch("children")) || 0) +
+                    (Number(form.watch("infants")) || 0)
+                  const loaded = (form.watch("customer_id") ? 1 : 0) + companionList.filter(Boolean).length
+                  if (declared <= 1 || loaded === 0 || loaded >= declared) return null
+                  return (
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Cargaste {loaded} de {declared} pasajeros declarados.
+                    </p>
+                  )
+                })()}
               </div>
 
               {/* Comisión compartida: dos inputs absolutos (29/04 — Tomi opción B).
@@ -2046,7 +2217,12 @@ export function NewOperationDialog({
               first_name: customer.first_name,
               last_name: customer.last_name,
             }])
-            form.setValue("customer_id", customer.id, { shouldValidate: true, shouldDirty: true })
+            if (newCustomerTarget === "main") {
+              form.setValue("customer_id", customer.id, { shouldValidate: true, shouldDirty: true })
+            } else {
+              updateCompanion(newCustomerTarget, customer.id)
+            }
+            setNewCustomerTarget("main")
             setShowNewCustomerDialog(false)
           }
         }}

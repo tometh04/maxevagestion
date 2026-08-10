@@ -1,4 +1,5 @@
 import { type OperatorIdentity } from "@/lib/operations/payment-operators"
+import { serviceKind, formatPassengerDetail } from "@/lib/operations/service-kind"
 
 export interface PurchaseSummaryOperationOperatorLike {
   id?: string | null
@@ -8,6 +9,12 @@ export interface PurchaseSummaryOperationOperatorLike {
   cost_currency?: string | null
   product_type?: string | null
   notes?: string | null
+  /** Detalle para el pasajero cargado al dar de alta la pata (VIB-111). */
+  passenger_detail?: unknown
+  /** N° de file interno del operador para esa pata. */
+  file_code?: string | null
+  /** Fecha máxima de pago al operador de esa pata. */
+  payment_due_date?: string | null
 }
 
 export interface PurchaseSummaryServiceLike {
@@ -40,6 +47,16 @@ export interface PurchaseSummaryLine {
   amount: number
   currency: string
   secondaryText: string | null
+  /**
+   * VIB-111: detalle que la agencia escribió al cargar el servicio (hotel,
+   * régimen, vuelo, fechas). Es el MISMO texto que sale en el PDF "Detalle de
+   * la Operación"; antes solo existía ahí y no se veía en ninguna pantalla.
+   */
+  detailText: string | null
+  /** N° de file del operador para esa pata, si se cargó. */
+  fileCode: string | null
+  /** Fecha máxima de pago al operador de esa pata, si se cargó. */
+  dueDate: string | null
 }
 
 export interface PurchaseSummaryTotal {
@@ -151,6 +168,9 @@ function buildLegacyBaseLine(operation: PurchaseSummaryOperationLike): PurchaseS
     amount,
     currency: normalizeCurrency(operation.operator_cost_currency),
     secondaryText: null,
+    detailText: null,
+    fileCode: null,
+    dueDate: null,
   }
 }
 
@@ -178,6 +198,11 @@ export function buildOperationPurchaseSummary({
         amount: toMoney(relation?.cost),
         currency: normalizeCurrency(relation?.cost_currency, normalizeCurrency(operation.operator_cost_currency)),
         secondaryText: trimOrNull(relation?.notes),
+        detailText: trimOrNull(
+          formatPassengerDetail(relation?.passenger_detail, serviceKind(relation?.product_type))
+        ),
+        fileCode: trimOrNull(relation?.file_code),
+        dueDate: trimOrNull(relation?.payment_due_date),
       })
     }
   } else {
@@ -200,6 +225,9 @@ export function buildOperationPurchaseSummary({
       amount: toMoney(service.cost_amount),
       currency: normalizeCurrency(service.cost_currency),
       secondaryText: trimOrNull(service.description),
+      detailText: null,
+      fileCode: null,
+      dueDate: null,
     })
   }
 

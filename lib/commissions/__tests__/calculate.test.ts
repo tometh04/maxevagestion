@@ -156,6 +156,36 @@ describe("computeOperationCommission", () => {
     expect(plan.entries).toEqual([])
     expect(plan.rule).toBe("NONE")
   })
+
+  // ── Base neta de IVA (VIB-95) ────────────────────────────────────────────
+  describe("base neta de IVA", () => {
+    it("con la config activa comisiona sobre la neta (bruta 1000 → 895)", () => {
+      const plan = computeOperationCommission(
+        baseOp({ operation_date: "2026-06-15" }),
+        profiles(["jose", 10]),
+        { enabled: true, rate: 0.105, from: "2026-06-01" }
+      )
+      // 895 × 10% = 89,50, no 100.
+      expect(plan.entries[0].amount).toBe(89.5)
+    })
+
+    it("con config activa pero antes del corte sigue en bruta", () => {
+      const plan = computeOperationCommission(
+        baseOp({ operation_date: "2026-05-31" }),
+        profiles(["jose", 10]),
+        { enabled: true, rate: 0.105, from: "2026-06-01" }
+      )
+      expect(plan.entries[0].amount).toBe(100)
+    })
+
+    it("sin config (default) sigue comisionando sobre la bruta", () => {
+      const plan = computeOperationCommission(
+        baseOp({ operation_date: "2026-06-15" }),
+        profiles(["jose", 10])
+      )
+      expect(plan.entries[0].amount).toBe(100)
+    })
+  })
 })
 
 // ── VIB-102: comisión del administrador del asesor independiente ───────────

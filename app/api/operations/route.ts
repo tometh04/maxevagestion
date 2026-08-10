@@ -5,7 +5,7 @@ import { generateFileCode } from "@/lib/accounting/file-code"
 import { transferLeadToOperation, getOrCreateDefaultAccount, createLedgerMovement, calculateARSEquivalent } from "@/lib/accounting/ledger"
 import { createSaleIVA, createPurchaseIVA } from "@/lib/accounting/iva"
 import { createOperatorPayment, calculateDueDate, sanitizeDueDate } from "@/lib/accounting/operator-payments"
-import { canPerformAction, getUserAgencyIds, canCreateOperationsForOtherSellers, canAssignSecondarySeller, isSellerWithinUserAgencies } from "@/lib/permissions-api"
+import { canPerformAction, getUserAgencyIds, canCreateOperationsForOtherSellers, canAssignSecondarySeller, isSellerWithinUserAgencies, NO_MATCH_UUID } from "@/lib/permissions-api"
 import { resolveUserPermissions } from "@/lib/permissions-agency"
 import { revalidateTag, CACHE_TAGS } from "@/lib/cache"
 import { generateMessagesFromAlerts } from "@/lib/whatsapp/alert-messages"
@@ -22,6 +22,17 @@ import { getOrgFeatureFlag } from "@/lib/settings/org-features"
 import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
 import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
 import { ledgerSign } from "@/lib/invoices/credit-note"
+import { buildPassengerSearchOrGroups, sanitizeSearchTerm } from "@/lib/operations/passenger-search"
+import {
+  normalizeOperationPassengers,
+  findCustomersOutsideOrg,
+} from "@/lib/operations/operation-passengers"
+
+// VIB-102: topes de la búsqueda por nombre de pasajero en GET /api/operations.
+// Existen para no armar una URL de PostgREST gigante con `id.in.(...)`; con el
+// match por AND de palabras una búsqueda real cae muy por debajo de estos topes.
+const CUSTOMER_SEARCH_CAP = 500
+const OPERATION_IDS_CAP = 500
 
 export async function POST(request: Request) {
   try {
@@ -63,7 +74,11 @@ export async function POST(request: Request) {
       operator_id, // Compatibilidad hacia atrás: operador único
       operators, // Nuevo formato: array de operadores [{operator_id, cost, cost_currency, notes?}]
       type,
-      customer_id, // Cliente seleccionado directamente
+      customer_id, // Cliente seleccionado directamente (titular)
+      // VIB-106: acompañantes cargados junto con el alta. Se llama `companions`
+      // y no `passengers` porque `operations.passengers` ya existe como columna
+      // legacy de texto libre (ver más abajo, se guarda como JSON string).
+      companions,
       origin,
       destination,
       destination_id,
@@ -272,6 +287,34 @@ export async function POST(request: Request) {
     if (sale_amount_total < 0) {
       return NextResponse.json({ error: "El monto de venta no puede ser negativo" }, { status: 400 })
     }
+
+    // VIB-106: la forma de la lista de pasajeros se valida ACÁ, antes de crear
+    // nada. Un 400 después del insert dejaría la operación creada con ledger,
+    // IVA y deudas al operador ya escritos.
+    const passengersShape = normalizeOperationPassengers({
+      customerId: customer_id,
+      passengers: companions,
+    })
+    if (passengersShape.error) {
+      return NextResponse.json({ error: passengersShape.error }, { status: 400 })
+    }
+    if (passengersShape.rows.length > 0) {
+      const foreignCustomers = await findCustomersOutsideOrg(
+        supabase,
+        passengersShape.rows.map((p) => p.customer_id),
+        (user as any).org_id
+      )
+      if (foreignCustomers.length > 0) {
+        return NextResponse.json(
+          { error: "Uno o más pasajeros no pertenecen a tu organización" },
+          { status: 400 }
+        )
+      }
+    }
+
+    // Avisos no bloqueantes que viajan en la respuesta (la operación se creó,
+    // pero algo secundario falló y el usuario tiene que enterarse).
+    const warnings: string[] = []
 
     // Check permissions
     // Un SELLER sólo puede cargar a nombre de OTRO vendedor (principal) si el
@@ -826,30 +869,45 @@ export async function POST(request: Request) {
           return NextResponse.json({ error: "Se debe asociar al menos un cliente" }, { status: 400 })
         }
 
-        // Asociar cliente a la operación
-        if (customerId) {
-          const { data: operationCustomerData, error: operationCustomerError } = await (supabase.from("operation_customers") as any)
-            .insert({
-              operation_id: operation.id,
-              customer_id: customerId,
-              role: "MAIN"
-            })
-            .select()
-            .single()
-          
+        // Asociar pasajeros a la operación (VIB-106: titular + acompañantes).
+        //
+        // `customerId` puede haberse resuelto recién acá (alta desde lead), así
+        // que la lista se rearma con el titular ya conocido. La validación de
+        // forma y de org ya corrió arriba; esto solo puede fallar por un
+        // problema de base, y en ese caso NO se revierte la operación: para este
+        // punto ya se escribieron ledger, IVA y operator_payments, y un rollback
+        // parcial deja basura contable peor que una operación sin pasajeros.
+        // Se avisa en la respuesta en vez de tragarse el error.
+        const passengerRows = normalizeOperationPassengers({
+          customerId,
+          passengers: companions,
+        }).rows
+
+        if (passengerRows.length > 0) {
+          const { error: operationCustomerError } = await (supabase.from("operation_customers") as any)
+            .insert(passengerRows.map((p) => ({ operation_id: operation.id, ...p })))
+
           if (operationCustomerError) {
-            console.error(`❌ Error associating customer ${customerId} with operation ${operation.id}:`, operationCustomerError)
-            // No lanzar error, pero loguear para debug
-          } else {
-            
-            // Enviar notificación al cliente si está configurada
+            console.error(
+              `❌ Error associating ${passengerRows.length} passenger(s) with operation ${operation.id}:`,
+              operationCustomerError
+            )
+            warnings.push(
+              passengerRows.length === 1
+                ? "La operación se creó, pero no se pudo asociar el pasajero. Cargalo desde la pestaña Clientes."
+                : `La operación se creó, pero no se pudieron asociar los ${passengerRows.length} pasajeros. Cargalos desde la pestaña Clientes.`
+            )
+          } else if (customerId) {
+            // La notificación sale UNA sola vez y solo al titular: es quien
+            // responde por el pago, y los acompañantes suelen no tener mail.
             try {
               const { data: customer } = await supabase
                 .from("customers")
                 .select("*")
                 .eq("id", customerId)
+                .eq("org_id", (user as any).org_id)
                 .single()
-              
+
               if (customer) {
                 const customerData = customer as any
                 const { data: settings } = await supabase
@@ -880,9 +938,12 @@ export async function POST(request: Request) {
               // No lanzar error, solo loguear
             }
           }
-          
-      // Transferir documentos del lead al cliente (solo si hay lead_id)
-      if (lead_id) {
+        }
+
+        // Transferir documentos del lead al cliente (solo si hay lead_id).
+        // Exige `customerId`: sin titular resuelto, el update dejaría los
+        // documentos del lead con customer_id en NULL.
+        if (lead_id && customerId) {
           try {
             const { data: leadDocuments, error: docsError } = await supabase
               .from("documents")
@@ -926,8 +987,7 @@ export async function POST(request: Request) {
             console.error("Error transferring documents from lead to operation:", error)
           }
         }
-      }
-      
+
     // Comisión al referidor (VIB-62): si el cliente MAIN viene referido, generar
     // la comisión de la venta sobre el margen. Best-effort: no romper la creación.
     try {
@@ -940,6 +1000,7 @@ export async function POST(request: Request) {
         orgId: (user as any).org_id,
         agencyId: agency_id,
         currency: finalSaleCurrency,
+        operationDate: op.operation_date,
       })
     } catch (error) {
       console.error("Error calculando comisión de referido para nueva operación:", error)
@@ -1023,7 +1084,7 @@ export async function POST(request: Request) {
       console.warn('Error logging audit action:', auditError)
     }
 
-    return NextResponse.json({ operation })
+    return NextResponse.json(warnings.length > 0 ? { operation, warnings } : { operation })
   } catch (error) {
     console.error("Error in POST /api/operations:", error)
     return NextResponse.json({ error: "Error al crear operación" }, { status: 500 })
@@ -1112,45 +1173,89 @@ export async function GET(request: Request) {
     // Filtro de búsqueda por texto (file_code, destination, o nombre de cliente)
     const search = searchParams.get("search")
     if (search && search.length >= 2) {
-      // Buscar también por nombre de cliente
-      // Busca por first_name, last_name, y también por cada palabra individual
-      // para que "Lo Bianco" matchee con first_name="Lo" last_name="Bianco"
+      // Buscar también por nombre de pasajero (titular o acompañante).
+      //
+      // VIB-102: antes se armaba UN solo .or() con todas las palabras, así que
+      // "Maria Belen Olivera" matcheaba a CUALQUIER cliente llamado "Maria"
+      // (165 en Milla Cero) y el .limit(50) recortaba el listado de forma
+      // arbitraria: el titular real quedaba afuera y su operación no aparecía,
+      // aunque sí aparecía buscando por el apellido raro de una acompañante.
+      //
+      // Ahora cada palabra genera su propio .or() (PostgREST combina los `or=`
+      // repetidos con AND), o sea: cada palabra tiene que matchear nombre o
+      // apellido del MISMO cliente. Mismo criterio que /api/customers y
+      // /api/cash/movements. "Lo Bianco" sigue matcheando first_name="Lo" +
+      // last_name="Bianco".
       let operationIdsByCustomer: string[] = []
       try {
-        const searchWords = search.trim().split(/\s+/).filter(w => w.length >= 2)
-        const orConditions = [`first_name.ilike.%${search}%`, `last_name.ilike.%${search}%`]
-        for (const word of searchWords) {
-          orConditions.push(`first_name.ilike.%${word}%`)
-          orConditions.push(`last_name.ilike.%${word}%`)
+        const orGroups = buildPassengerSearchOrGroups(search)
+        let customersQuery = (supabase.from("customers") as any).select("id")
+        // Defensa en profundidad además de la RLS tenant_isolation.
+        if ((user as any).org_id) {
+          customersQuery = customersQuery.eq("org_id", (user as any).org_id)
         }
-        const { data: matchingCustomers } = await supabase
-          .from("customers")
-          .select("id")
-          .or(orConditions.join(","))
-          .limit(50)
+        for (const group of orGroups) {
+          customersQuery = customersQuery.or(group)
+        }
+
+        const { data: matchingCustomers } = orGroups.length
+          ? await customersQuery.limit(CUSTOMER_SEARCH_CAP)
+          : { data: [] as any[] }
 
         if (matchingCustomers && matchingCustomers.length > 0) {
+          if (matchingCustomers.length === CUSTOMER_SEARCH_CAP) {
+            console.warn(
+              `[operations][search] "${search}" alcanzó el tope de ${CUSTOMER_SEARCH_CAP} clientes; resultados posiblemente incompletos`
+            )
+          }
           const customerIds = matchingCustomers.map((c: any) => c.id)
           const { data: opCustomers } = await supabase
             .from("operation_customers")
             .select("operation_id")
             .in("customer_id", customerIds)
 
-          operationIdsByCustomer = (opCustomers || []).map((oc: any) => oc.operation_id)
+          // Dedup: una op con varios pasajeros que matchean repetía el mismo id
+          // en el filtro `id.in.(...)` e inflaba la URL de PostgREST.
+          operationIdsByCustomer = Array.from(
+            new Set((opCustomers || []).map((oc: any) => oc.operation_id).filter(Boolean))
+          )
+          if (operationIdsByCustomer.length > OPERATION_IDS_CAP) {
+            console.warn(
+              `[operations][search] "${search}" resolvió ${operationIdsByCustomer.length} operaciones por pasajero; se recortan a ${OPERATION_IDS_CAP}`
+            )
+            operationIdsByCustomer = operationIdsByCustomer.slice(0, OPERATION_IDS_CAP)
+          }
         }
       } catch (err) {
         console.error("Error searching customers for operations:", err)
       }
 
+      // Search también incluye airline_name + hotel_name (item 6 backlog Santi).
+      // RLS tenant_isolation acota a la org del user — no hay leak cross-org.
+      // El término va sanitizado: una coma o un paréntesis rompen la gramática
+      // de `or=` y tiraban toda la query del listado.
+      const safeSearch = sanitizeSearchTerm(search)
+      const textConditions: string[] = []
+      // Si el término queda vacío al sanitizar (ej. ",,,"), no agregamos
+      // `ilike.%%`: matchearía TODAS las operaciones en vez de ninguna.
+      if (safeSearch.length >= 2) {
+        textConditions.push(
+          `file_code.ilike.%${safeSearch}%`,
+          `destination.ilike.%${safeSearch}%`,
+          `airline_name.ilike.%${safeSearch}%`,
+          `hotel_name.ilike.%${safeSearch}%`
+        )
+      }
       if (operationIdsByCustomer.length > 0) {
-        const idsFilter = `id.in.(${operationIdsByCustomer.join(",")})`
-        // Search también incluye airline_name + hotel_name (item 6 backlog Santi).
-        // RLS tenant_isolation acota a la org del user — no hay leak cross-org.
-        query = query.or(`file_code.ilike.%${search}%,destination.ilike.%${search}%,airline_name.ilike.%${search}%,hotel_name.ilike.%${search}%,${idsFilter}`)
-        countQuery = countQuery.or(`file_code.ilike.%${search}%,destination.ilike.%${search}%,airline_name.ilike.%${search}%,hotel_name.ilike.%${search}%,${idsFilter}`)
+        textConditions.push(`id.in.(${operationIdsByCustomer.join(",")})`)
+      }
+      if (textConditions.length > 0) {
+        query = query.or(textConditions.join(","))
+        countQuery = countQuery.or(textConditions.join(","))
       } else {
-        query = query.or(`file_code.ilike.%${search}%,destination.ilike.%${search}%,airline_name.ilike.%${search}%,hotel_name.ilike.%${search}%`)
-        countQuery = countQuery.or(`file_code.ilike.%${search}%,destination.ilike.%${search}%,airline_name.ilike.%${search}%,hotel_name.ilike.%${search}%`)
+        // Búsqueda sin nada matcheable → resultado vacío explícito.
+        query = query.eq("id", NO_MATCH_UUID)
+        countQuery = countQuery.eq("id", NO_MATCH_UUID)
       }
     }
 

@@ -16,8 +16,9 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
+import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 import Link from "next/link"
-import { ArrowLeft, Pencil, AlertCircle, Trash2, Loader2, RefreshCw, HelpCircle, Receipt, Info, Users, FileText, CreditCard, Wrench, ShoppingBag, Calculator, BarChart3, Bell } from "lucide-react"
+import { ArrowLeft, Pencil, AlertCircle, Trash2, Loader2, RefreshCw, HelpCircle, Receipt, Info, Users, FileText, CreditCard, Wrench, ShoppingBag, Calculator, BarChart3, Bell, Copy } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -46,6 +47,10 @@ import dynamic from "next/dynamic"
 // clickear "Editar" en la vista de detalle.
 const EditOperationDialog = dynamic(
   () => import("./edit-operation-dialog").then((m) => ({ default: m.EditOperationDialog })),
+  { ssr: false }
+)
+const NewOperationDialog = dynamic(
+  () => import("./new-operation-dialog").then((m) => ({ default: m.NewOperationDialog })),
   { ssr: false }
 )
 import { OperationRequirementsSection } from "./operation-requirements-section"
@@ -99,6 +104,12 @@ function formatMoney(amount: number, currency: string) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`
+}
+
+/** Fecha DATE ("YYYY-MM-DD") a dd/MM/yyyy sin corrimiento de timezone. */
+function formatDateOnly(value: string) {
+  const d = parseDateOnlyLocal(value)
+  return d ? format(d, "dd/MM/yyyy", { locale: es }) : value
 }
 
 interface OperationService {
@@ -194,6 +205,8 @@ export function OperationDetailClient({
 }: OperationDetailClientProps) {
   const router = useRouter()
   const [editDialogOpen, setEditDialogOpen] = useState(false)
+  // VIB-109: duplicar esta operación (abre el alta precargada).
+  const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false)
   const [isDeletingAlerts, setIsDeletingAlerts] = useState(false)
   const [isGeneratingAlerts, setIsGeneratingAlerts] = useState(false)
   const isSupportMode = operationAccessScope === "agency-support"
@@ -377,6 +390,15 @@ export function OperationDetailClient({
                 <Receipt className="mr-2 h-4 w-4" />
                 Facturar
               </Link>
+            </Button>
+          )}
+          {/* VIB-109: ventas repetidas del mismo grupo. Abre el alta precargada
+              con esta operación; los pasajeros van vacíos y el POST normal crea
+              la operación nueva con toda su contabilidad. */}
+          {canEditOperation && (
+            <Button variant="outline" size="sm" onClick={() => setDuplicateDialogOpen(true)}>
+              <Copy className="mr-2 h-4 w-4" />
+              Duplicar
             </Button>
           )}
           {canEditOperation && (
@@ -607,7 +629,7 @@ export function OperationDetailClient({
                   🛒 Resumen de Compra
                 </CardTitle>
                 <CardDescription>
-                  Control rapido de compras a operadores y proveedores dentro de la operacion
+                  Compras a operadores y proveedores, con el detalle cargado en cada servicio
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -638,8 +660,21 @@ export function OperationDetailClient({
                                       {line.source === "base" ? "Base" : "Servicio"}
                                     </Badge>
                                   </div>
+                                  {/* VIB-111: el detalle que la agencia carga por servicio
+                                      (hotel, régimen, vuelo, fechas) solo salía en el PDF
+                                      del pasajero; acá se ve sin tener que generarlo. */}
+                                  {line.detailText && (
+                                    <p className="text-xs text-foreground/80">{line.detailText}</p>
+                                  )}
                                   {line.secondaryText && (
                                     <p className="text-xs text-muted-foreground">{line.secondaryText}</p>
+                                  )}
+                                  {(line.fileCode || line.dueDate) && (
+                                    <p className="text-xs text-muted-foreground">
+                                      {line.fileCode && <>File {line.fileCode}</>}
+                                      {line.fileCode && line.dueDate && " · "}
+                                      {line.dueDate && <>Vence {formatDateOnly(line.dueDate)}</>}
+                                    </p>
                                   )}
                                 </div>
                               </TableCell>
@@ -1051,6 +1086,24 @@ export function OperationDetailClient({
           userRole={userRole}
           operationLegs={operationLegs}
           operationOperators={operationOperators}
+        />
+      )}
+
+      {/* VIB-109: duplicar = alta precargada. No se clona nada en el servidor. */}
+      {canEditOperation && duplicateDialogOpen && (
+        <NewOperationDialog
+          open={duplicateDialogOpen}
+          onOpenChange={setDuplicateDialogOpen}
+          onSuccess={(newOperationId) => {
+            setDuplicateDialogOpen(false)
+            if (newOperationId) router.push(`/operations/${newOperationId}`)
+          }}
+          duplicateFrom={{ ...(operation as any), operation_operators: operationOperators }}
+          agencies={agencies}
+          sellers={sellers}
+          operators={operators}
+          userRole={userRole}
+          canPickOtherSeller={userRole !== "SELLER"}
         />
       )}
     </div>
