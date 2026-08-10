@@ -15,15 +15,27 @@ const DIM = "hsl(var(--foreground) / 0.55)"
 export function TourSpotlight({
   rect,
   interactive,
+  insideDialog = false,
 }: {
   rect: TourRect | null
   interactive: boolean
+  /**
+   * El elemento iluminado vive dentro de un diálogo modal. Cambia dos cosas:
+   * el atenuado sube por encima del overlay de Radix (z-50), y no se dibujan
+   * los blockers — el propio diálogo ya bloquea todo lo de afuera.
+   */
+  insideDialog?: boolean
 }) {
+  // z-[95] queda sobre el overlay del diálogo (z-50) y debajo de la tarjeta
+  // (z-[100]), que es el orden que hace falta.
+  const dimLayer = insideDialog ? "z-[95]" : "z-[90]"
+  const ringLayer = insideDialog ? "z-[96]" : "z-[92]"
+
   if (!rect) {
     return (
       <div
         aria-hidden
-        className="fixed inset-0 z-[90] animate-in fade-in duration-200"
+        className={`fixed inset-0 ${dimLayer} animate-in fade-in duration-200`}
         style={{ background: DIM }}
       />
     )
@@ -36,15 +48,15 @@ export function TourSpotlight({
     <>
       <div
         aria-hidden
-        className="pointer-events-none fixed z-[90] transition-all duration-200 ease-out motion-reduce:transition-none"
+        className={`pointer-events-none fixed ${dimLayer} transition-all duration-200 ease-out motion-reduce:transition-none`}
         style={{ ...box, boxShadow: `0 0 0 9999px ${DIM}` }}
       />
       <div
         aria-hidden
-        className="pointer-events-none fixed z-[92] animate-tour-pulse ring-1 ring-primary/60 transition-all duration-200 ease-out motion-reduce:animate-none motion-reduce:transition-none"
+        className={`pointer-events-none fixed ${ringLayer} animate-tour-pulse ring-1 ring-primary/60 transition-all duration-200 ease-out motion-reduce:animate-none motion-reduce:transition-none`}
         style={box}
       />
-      <SpotlightBlockers rect={rect} interactive={interactive} />
+      {!insideDialog && <SpotlightBlockers rect={rect} interactive={interactive} />}
     </>
   )
 }

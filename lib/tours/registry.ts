@@ -88,6 +88,11 @@ export function resolveTourForPath(pathname: string): TourDefinition | null {
   let bestScore = -1
 
   for (const tour of TOURS) {
+    // Las guías de formulario comparten ruta con la de su pantalla (el diálogo
+    // no tiene URL propia). Si compitieran acá, una de ellas podría terminar
+    // auto-disparándose o siendo "la guía de esta pantalla", y sus anclas viven
+    // dentro de un diálogo que en ese momento está cerrado.
+    if (tour.kind === "form") continue
     if (tour.exclude?.some((ex) => normalizePath(ex) === normalized)) continue
 
     const score = tour.match.reduce((max, pattern) => {

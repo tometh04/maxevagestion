@@ -904,7 +904,7 @@ export function NewOperationDialog({
                   control={form.control}
                   name="agency_id"
                   render={({ field }) => (
-                    <FormItem>
+                    <FormItem data-tour="op-new.agencia">
                       <FormLabel>Agencia *</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
@@ -929,7 +929,7 @@ export function NewOperationDialog({
                   control={form.control}
                   name="seller_id"
                   render={({ field }) => (
-                    <FormItem>
+                    <FormItem data-tour="op-new.vendedor-principal">
                       <FormLabel>Vendedor Principal *</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value} disabled={!canPickOtherSeller}>
                         <FormControl>
@@ -967,7 +967,7 @@ export function NewOperationDialog({
                   control={form.control}
                   name="customer_id"
                   render={({ field }) => (
-                    <FormItem>
+                    <FormItem data-tour="op-new.cliente">
                       <FormLabel>Pasajero principal {settings?.require_customer && <span className="text-destructive">*</span>}</FormLabel>
                       <div className="flex gap-2">
                         <div className="flex-1">
@@ -1010,7 +1010,7 @@ export function NewOperationDialog({
                   control={form.control}
                   name="seller_secondary_id"
                   render={({ field }) => (
-                    <FormItem>
+                    <FormItem data-tour="op-new.vendedor-secundario">
                       <FormLabel>Vendedor Secundario</FormLabel>
                       {/* VIB-105: el secundario NO se gatea con
                           `canPickOtherSeller`. Ese permiso decide de quién es la
@@ -1254,7 +1254,11 @@ export function NewOperationDialog({
                     <Package className="h-4 w-4 text-muted-foreground" />
                     <span className="text-xs font-medium text-muted-foreground">Operador & Tipo de Producto</span>
                   </div>
-                  <label htmlFor="useMultipleOperators" className="flex items-center gap-2 cursor-pointer">
+                  <label
+                    htmlFor="useMultipleOperators"
+                    className="flex items-center gap-2 cursor-pointer"
+                    data-tour="op-new.multi-operador"
+                  >
                     <input
                       type="checkbox"
                       id="useMultipleOperators"
@@ -1493,7 +1497,7 @@ export function NewOperationDialog({
                   control={form.control}
                   name="operator_id"
                   render={({ field }) => (
-                    <FormItem>
+                    <FormItem data-tour="op-new.operador">
                       <FormLabel>Operador {settings?.require_operator && <span className="text-destructive">*</span>}</FormLabel>
                       <div className="flex gap-2">
                         <Select
@@ -1533,7 +1537,7 @@ export function NewOperationDialog({
                   control={form.control}
                   name="type"
                   render={({ field }) => (
-                    <FormItem>
+                    <FormItem data-tour="op-new.tipo">
                       <FormLabel>Tipo *</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
@@ -1563,7 +1567,7 @@ export function NewOperationDialog({
                   <MapPin className="h-4 w-4 text-success" />
                   <span className="text-xs font-medium text-muted-foreground">Ruta del Viaje</span>
                 </div>
-            <div className="grid gap-x-6 gap-y-5 md:grid-cols-2">
+            <div className="grid gap-x-6 gap-y-5 md:grid-cols-2" data-tour="op-new.ruta">
               <FormField
                 control={form.control}
                 name="origin"
@@ -1653,7 +1657,7 @@ export function NewOperationDialog({
                 hoy (ej. cargar retroactivamente una venta del mes pasado).
                 Si queda vacía, el backend usa la fecha de hoy como default
                 (comportamiento legacy preservado). */}
-            <div className="grid gap-x-6 gap-y-5 md:grid-cols-2">
+            <div className="grid gap-x-6 gap-y-5 md:grid-cols-2" data-tour="op-new.fecha-venta">
               <FormField
                 control={form.control}
                 name="operation_date"
@@ -1693,7 +1697,7 @@ export function NewOperationDialog({
               />
             </div>
 
-            <div className="grid gap-x-6 gap-y-5 md:grid-cols-2">
+            <div className="grid gap-x-6 gap-y-5 md:grid-cols-2" data-tour="op-new.fechas-viaje">
               <FormField
                 control={form.control}
                 name="departure_date"
@@ -1739,7 +1743,7 @@ export function NewOperationDialog({
                 control={form.control}
                 name="customer_payment_deadline"
                 render={({ field }) => (
-                  <FormItem className="flex flex-col">
+                  <FormItem className="flex flex-col" data-tour="op-new.pago-limite">
                     <FormLabel>Fecha máxima de pago del cliente</FormLabel>
                     <FormControl>
                       <DateInputWithCalendar
@@ -1786,7 +1790,7 @@ export function NewOperationDialog({
                   <Users className="h-4 w-4 text-primary" />
                   <span className="text-xs font-medium text-muted-foreground">Pasajeros</span>
                 </div>
-            <div className="grid gap-x-6 gap-y-5 md:grid-cols-3">
+            <div className="grid gap-x-6 gap-y-5 md:grid-cols-3" data-tour="op-new.pasajeros">
               <FormField
                 control={form.control}
                 name="adults"
@@ -1861,7 +1865,10 @@ export function NewOperationDialog({
 
               <div className="grid md:grid-cols-2 gap-4">
                 {/* Sub-card: Estado & Monedas */}
-                <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+                <div
+                  className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4"
+                  data-tour="op-new.monedas"
+                >
                   <div className="flex items-center gap-1.5 mb-1">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5 text-accent-coral"><circle cx="12" cy="12" r="8"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                     <span className="text-xs font-medium text-foreground/70">Estado & Monedas</span>
@@ -1975,7 +1982,10 @@ export function NewOperationDialog({
                 </div>
 
                 {/* Sub-card: Montos */}
-                <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+                <div
+                  className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4"
+                  data-tour="op-new.montos"
+                >
                   <div className="flex items-center gap-1.5 mb-1">
                     <DollarSign className="h-3.5 w-3.5 text-success" />
                     <span className="text-xs font-medium text-foreground/70">Montos</span>
@@ -2046,7 +2056,7 @@ export function NewOperationDialog({
                 </div>
                 <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Códigos de reserva</h4>
               </div>
-              <div className="grid md:grid-cols-2 gap-4">
+              <div className="grid md:grid-cols-2 gap-4" data-tour="op-new.codigos">
                 <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-3">
                   <div className="flex items-center gap-1.5 mb-1">
                     <Plane className="h-3.5 w-3.5 text-accent-teal" />
@@ -2137,7 +2147,7 @@ export function NewOperationDialog({
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading}>
                 Cancelar
               </Button>
-              <Button type="submit" disabled={isLoading}>
+              <Button type="submit" disabled={isLoading} data-tour="op-new.guardar">
                 {isLoading ? (lead ? "Convirtiendo..." : "Creando...") : (lead ? "Convertir Lead" : "Crear Operación")}
               </Button>
             </DialogFooter>

@@ -1097,7 +1097,7 @@ export default function NewInvoicePage() {
               <p className="text-xs text-muted-foreground">Selecciona el tipo de factura a emitir</p>
             </div>
               <div className="grid grid-cols-2 gap-4">
-                <div>
+                <div data-tour="billing-new.tipo-comprobante">
                   <Label>Tipo de Comprobante *</Label>
                   <Select
                     value={formData.cbte_tipo.toString()}
@@ -1122,11 +1122,11 @@ export default function NewInvoicePage() {
                     B = CF/Exento/Mono · A = RI · E = Exportación
                   </p>
                 </div>
-                <div>
+                <div data-tour="billing-new.punto-venta">
                   <Label>Punto de Venta / Agencia *</Label>
                   {pointsOfSale.length > 0 && !pointsOfSale.some(a => a.has_ws_points) ? (
                     // Ninguna agencia tiene puntos de venta para web services
-                    <div className="rounded-md border border-accent-coral/15 bg-accent-coral/5 p-3 space-y-2">
+                    <div className="rounded-md border border-accent-coral/15 bg-accent-coral/5 p-3 space-y-2" data-tour="billing-new.pv-faltante">
                       <div className="flex items-start gap-2">
                         <AlertTriangle className="h-4 w-4 text-accent-coral mt-0.5 shrink-0" />
                         <div className="text-sm text-accent-coral">
@@ -1202,7 +1202,7 @@ export default function NewInvoicePage() {
               <p className="text-xs text-muted-foreground">Información del receptor de la factura</p>
             </div>
               <div className="grid grid-cols-2 gap-4">
-                <div>
+                <div data-tour="billing-new.cliente">
                   <div className="flex items-center gap-2 mb-1">
                     <Label>Seleccionar Cliente</Label>
                     <Button
@@ -1252,7 +1252,7 @@ export default function NewInvoicePage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div>
+                <div data-tour="billing-new.operacion">
                   <Label>Operación Asociada (Opcional)</Label>
                   <Select 
                     value={formData.operation_id} 
@@ -1290,7 +1290,7 @@ export default function NewInvoicePage() {
                 </div>
               </div>
               
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-4" data-tour="billing-new.receptor">
                 <div>
                   <Label>Nombre/Razón Social</Label>
                   <Input
@@ -1336,7 +1336,7 @@ export default function NewInvoicePage() {
               </div>
 
               {/* Condición IVA del receptor — determina el tipo de factura automáticamente */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-4" data-tour="billing-new.condicion-iva">
                 <div>
                   <Label>Condición IVA del receptor *</Label>
                   <Select
@@ -1399,7 +1399,7 @@ export default function NewInvoicePage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-4" data-tour="billing-new.fechas-servicio">
                 <div>
                   <Label>Fecha Desde (Servicio)</Label>
                   <Input
@@ -1420,7 +1420,7 @@ export default function NewInvoicePage() {
               
               {/* Moneda y Tipo de Cambio - Solo si hay operación en USD */}
               {selectedOperation?.sale_currency === 'USD' && (
-                <div className="p-4 bg-primary/5 dark:bg-primary rounded-lg border border-primary/15 dark:border-primary space-y-4">
+                <div className="p-4 bg-primary/5 dark:bg-primary rounded-lg border border-primary/15 dark:border-primary space-y-4" data-tour="billing-new.moneda">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-primary dark:text-primary">
                       ⚠️ Operación en USD - Configuración de Facturación
@@ -1450,7 +1450,7 @@ export default function NewInvoicePage() {
                     </div>
                     
                     {invoiceCurrency === 'PES' && (
-                      <div>
+                      <div data-tour="billing-new.tipo-cambio">
                         <Label>
                           Tipo de Cambio USD/ARS *
                           {loadingExchangeRate && (
@@ -1497,7 +1497,7 @@ export default function NewInvoicePage() {
           </div>
 
           {/* Items */}
-          <div className="rounded-xl border border-border/40 p-5 space-y-4">
+          <div className="rounded-xl border border-border/40 p-5 space-y-4" data-tour="billing-new.items">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-semibold">Conceptos / Items</h3>
@@ -1512,7 +1512,7 @@ export default function NewInvoicePage() {
             {/* Fase 1 — facturar por servicio: solo si la operación tiene ≥2 patas.
                 Permite emitir en 2 momentos (ej: primero el vuelo, después el hotel). */}
             {selectedOperation && (selectedOperation.operation_operators?.length || 0) >= 2 && (
-              <div className="rounded-lg border border-border/40 bg-muted/30 p-3 space-y-1.5">
+              <div className="rounded-lg border border-border/40 bg-muted/30 p-3 space-y-1.5" data-tour="billing-new.servicio">
                 <Label className="text-xs font-medium">Servicio a facturar</Label>
                 <Select value={selectedServiceKey} onValueChange={handleServiceChange}>
                   <SelectTrigger className="h-9">
@@ -1637,7 +1637,7 @@ export default function NewInvoicePage() {
 
         {/* Resumen */}
         <div className="space-y-6">
-          <div className="rounded-xl border border-border/40 p-5 space-y-4 sticky top-6">
+          <div className="rounded-xl border border-border/40 p-5 space-y-4 sticky top-6" data-tour="billing-new.resumen">
             <h3 className="text-sm font-semibold flex items-center gap-2">
               <Calculator className="h-4 w-4" />
               Resumen
@@ -1700,10 +1700,11 @@ export default function NewInvoicePage() {
               </div>
 
               <div className="space-y-2">
-                <Button 
-                  onClick={handleSubmit} 
+                <Button
+                  onClick={handleSubmit}
                   className="w-full"
                   disabled={saving}
+                  data-tour="billing-new.emitir"
                 >
                   {saving ? (
                     <Loader2 className="h-4 w-4 animate-spin mr-2" />

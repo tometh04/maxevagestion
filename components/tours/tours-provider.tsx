@@ -28,7 +28,7 @@ import {
   TOURS,
 } from "@/lib/tours/registry"
 import { resolveVisibleSteps } from "@/lib/tours/filter"
-import { entryStepIndex } from "@/lib/tours/entry"
+import { entryStepIndex, tourLaunchPath } from "@/lib/tours/entry"
 import { isAnchorActive } from "./use-tour-prepare"
 import type { TourDefinition, TourPermission, TourStep } from "@/lib/tours/types"
 import {
@@ -62,8 +62,15 @@ interface ToursContextValue {
   stepIndex: number
   /** La guía que corresponde al pathname actual, haya arrancado o no. */
   tourForCurrentPath: TourDefinition | null
-  /** Guías que este usuario puede correr, con su estado. */
-  availableTours: Array<{ tour: TourDefinition; status: TourStatus | null }>
+  /**
+   * Guías que este usuario puede correr, con su estado y si se pueden abrir
+   * desde donde está parado ahora.
+   */
+  availableTours: Array<{
+    tour: TourDefinition
+    status: TourStatus | null
+    launchable: boolean
+  }>
   /** ¿Le queda algo por descubrir en esta guía? Alimenta el punto del menú. */
   isUnseen: (tourId: string) => boolean
   toursDisabled: boolean
@@ -77,6 +84,8 @@ interface ToursContextValue {
   next: () => void
   prev: () => void
   close: () => void
+  /** Arranca la guía que el paso actual ofrece encadenar. */
+  startChained: () => void
   setToursDisabled: (value: boolean) => void
   resetAll: () => void
   /** El overlay avisa que el ancla del paso nunca apareció. */
@@ -181,6 +190,11 @@ export function ToursProvider({
         return resolveVisibleSteps(tour, roles, filterCtx).length > 0
       }).map((tour) => ({
         tour,
+        // Sabe adónde ir por sí sola, o ya estamos en su pantalla. Las guías de
+        // formulario caen siempre en el segundo caso: su primer paso no navega,
+        // abre un diálogo, así que solo se pueden empezar estando ahí.
+        launchable:
+          Boolean(tourLaunchPath(tour)) || tourCoversPath(tour, pathname || "/"),
         status:
           tour.scope === "org"
             ? orgSetup.completedSteps.length >= tour.steps.length
@@ -351,6 +365,20 @@ export function ToursProvider({
   )
 
   const next = useCallback(() => goToIndex(stepIndex + 1), [goToIndex, stepIndex])
+
+  /**
+   * Salta a la guía que ofrece este paso. Es una acción aparte de `next` a
+   * propósito: el encadenado se ofrece, no se impone. Quien solo quería el
+   * recorrido de la pantalla sigue con Siguiente.
+   */
+  const startChained = useCallback(() => {
+    const chained = activeStep?.nextTour
+    if (!chained || !getTourById(chained)) return
+    // La guía actual se da por completada: ya cumplió su función de presentar
+    // la pantalla y no tiene sentido que vuelva a ofrecerse sola.
+    finish("completed")
+    start(chained, 0)
+  }, [activeStep, finish, start])
   const prev = useCallback(() => goToIndex(stepIndex - 1), [goToIndex, stepIndex])
   const close = useCallback(() => finish("dismissed"), [finish])
 
@@ -452,6 +480,7 @@ export function ToursProvider({
       next,
       prev,
       close,
+      startChained,
       setToursDisabled,
       resetAll,
       reportMissingTarget,
@@ -474,6 +503,7 @@ export function ToursProvider({
       next,
       prev,
       close,
+      startChained,
       setToursDisabled,
       resetAll,
       reportMissingTarget,

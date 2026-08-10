@@ -70,6 +70,7 @@ export const operationDetailTour: TourDefinition = {
       ],
       placement: "bottom",
       align: "start",
+      nextTour: "op-pax",
     },
     {
       id: "tab-services",
@@ -97,6 +98,7 @@ export const operationDetailTour: TourDefinition = {
       align: "start",
       requirePermission: { module: "cash", permission: "read" },
       onMissing: "skip",
+      nextTour: "op-cobro",
     },
     {
       id: "tab-itinerary",

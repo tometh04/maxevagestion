@@ -10,7 +10,6 @@ import { Check, Compass, RotateCcw, Play } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Switch } from "@/components/ui/switch"
-import { tourLaunchPath } from "@/lib/tours/entry"
 import { useTours } from "./tours-provider"
 
 export function ToursMenu() {
@@ -111,44 +110,55 @@ export function ToursMenu() {
         )}
 
         <div className="max-h-64 overflow-y-auto p-2">
-          <p className="px-2.5 pb-1 pt-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Todas las guías
-          </p>
-          {availableTours.map(({ tour, status }) => {
-            // Se puede abrir desde acá si sabe a qué pantalla ir, o si ya
-            // estamos parados en la suya.
-            const canLaunch =
-              Boolean(tourLaunchPath(tour)) || tourForCurrentPath?.id === tour.id
+          {/* Dos grupos porque son cosas distintas: una te muestra de qué se
+              trata una pantalla, la otra te acompaña mientras cargás datos. */}
+          {(
+            [
+              { kind: "screen", label: "Recorridos por pantalla" },
+              { kind: "form", label: "Cargar datos" },
+            ] as const
+          ).map(({ kind, label }) => {
+            const group = availableTours.filter(({ tour }) => (tour.kind ?? "screen") === kind)
+            if (group.length === 0) return null
 
             return (
-              <button
-                key={tour.id}
-                type="button"
-                disabled={!canLaunch}
-                title={canLaunch ? undefined : tour.launchHint}
-                onClick={() => launch(tour.id)}
-                className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors ${
-                  canLaunch ? "hover:bg-muted" : "cursor-default opacity-60"
-                }`}
-              >
-                <span
-                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] ${
-                    status === "completed"
-                      ? "border-success/40 bg-success/10 text-success"
-                      : "border-border text-muted-foreground"
-                  }`}
-                >
-                  {status === "completed" ? <Check className="h-3 w-3" /> : null}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm">{tour.title}</span>
-                  {!canLaunch && tour.launchHint && (
-                    <span className="block truncate text-xs text-muted-foreground">
-                      {tour.launchHint}
-                    </span>
-                  )}
-                </span>
-              </button>
+              <div key={kind}>
+                <p className="px-2.5 pb-1 pt-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  {label}
+                </p>
+                {group.map(({ tour, status, launchable: canLaunch }) => {
+                  return (
+                    <button
+                      key={tour.id}
+                      type="button"
+                      disabled={!canLaunch}
+                      title={canLaunch ? undefined : tour.launchHint}
+                      onClick={() => launch(tour.id)}
+                      className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors ${
+                        canLaunch ? "hover:bg-muted" : "cursor-default opacity-60"
+                      }`}
+                    >
+                      <span
+                        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] ${
+                          status === "completed"
+                            ? "border-success/40 bg-success/10 text-success"
+                            : "border-border text-muted-foreground"
+                        }`}
+                      >
+                        {status === "completed" ? <Check className="h-3 w-3" /> : null}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm">{tour.title}</span>
+                        {!canLaunch && tour.launchHint && (
+                          <span className="block truncate text-xs text-muted-foreground">
+                            {tour.launchHint}
+                          </span>
+                        )}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
             )
           })}
         </div>

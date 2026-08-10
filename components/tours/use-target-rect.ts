@@ -40,6 +40,15 @@ const TARGET_TIMEOUT_MS = 10000
  * guía saltaba al siguiente y terminaba sola.
  */
 const TARGET_TIMEOUT_ROUTE_MS = 15000
+/**
+ * Presupuesto para un paso que ya declara que puede no estar (`onMissing`).
+ *
+ * Esos pasos apuntan a campos condicionales del mismo formulario: o están
+ * montados o no, no hay fetch ni navegación de por medio. Esperarles los 10s de
+ * arriba dejaba la pantalla atenuada y sin tarjeta durante diez segundos antes
+ * de saltear — se lee como que la guía se colgó.
+ */
+const TARGET_TIMEOUT_OPTIONAL_MS = 1200
 const SETTLE_TIMEOUT_MS = 600
 /** Cuánto se tolera que el ancla desaparezca antes de dar el paso por perdido. */
 const REACQUIRE_GRACE_MS = 3000
@@ -192,6 +201,15 @@ function scrollTargetIntoView(el: HTMLElement, smooth: boolean) {
   container.scrollTo({ top, behavior: smooth ? "smooth" : "auto" })
 }
 
+/** Cuánto esperar el ancla antes de darla por perdida. */
+function resolveBudget(step: TourStep, navigated: boolean): number {
+  // La navegación manda: la pantalla tiene que montar y traer sus datos, aunque
+  // el paso además sea opcional.
+  if (navigated) return TARGET_TIMEOUT_ROUTE_MS
+  if (step.onMissing) return TARGET_TIMEOUT_OPTIONAL_MS
+  return TARGET_TIMEOUT_MS
+}
+
 function waitForTargets(
   names: string[],
   cancelToken: { cancelled: boolean },
@@ -293,11 +311,7 @@ export function useStepTarget(params: {
         return
       }
 
-      const els = await waitForTargets(
-        names,
-        cancelToken,
-        navigatedRef.current ? TARGET_TIMEOUT_ROUTE_MS : TARGET_TIMEOUT_MS
-      )
+      const els = await waitForTargets(names, cancelToken, resolveBudget(step, navigatedRef.current))
       if (cancelToken.cancelled) return
       if (!els) {
         setPhase("missing")

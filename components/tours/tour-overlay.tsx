@@ -4,13 +4,15 @@
 // navegación entre pasos cross-route, resolución del ancla y render del
 // atenuado + la tarjeta.
 
-import { useEffect, useRef } from "react"
+import { useCallback, useEffect, useRef } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { normalizePath } from "@/lib/tours/registry"
+import { stepTargets } from "@/lib/tours/anchors"
+import { shouldSkipMissingStep } from "@/lib/tours/skip-chain"
 import { useTours } from "./tours-provider"
 import { useTourPrepare } from "./use-tour-prepare"
-import { useStepTarget } from "./use-target-rect"
-import { useModalOpen } from "./use-modal-open"
+import { queryVisibleAnchor, useStepTarget } from "./use-target-rect"
+import { useModalContext } from "./use-modal-open"
 import { TourSpotlight } from "./tour-spotlight"
 import { TourCard } from "./tour-card"
 
@@ -23,6 +25,7 @@ export function TourOverlay() {
     next,
     prev,
     close,
+    startChained,
     reportMissingTarget,
     reportStepShown,
   } = useTours()
@@ -39,7 +42,13 @@ export function TourOverlay() {
     if (needsNavigation && activeStep?.route) router.push(activeStep.route)
   }, [needsNavigation, activeStep?.route, router])
 
-  const modalOpen = useModalOpen(Boolean(activeStep))
+  const resolveTarget = useCallback(() => {
+    if (!activeStep) return null
+    const [first] = stepTargets(activeStep)
+    return first ? queryVisibleAnchor(first) : null
+  }, [activeStep])
+
+  const modal = useModalContext(Boolean(activeStep), resolveTarget)
 
   const stepKey = `${activeTour?.id ?? ""}:${stepIndex}`
 
@@ -59,10 +68,6 @@ export function TourOverlay() {
     runPrepare,
   })
 
-  useEffect(() => {
-    if (phase === "ready" || phase === "centered") reportStepShown()
-  }, [phase, stepKey, reportStepShown])
-
   // El ancla nunca apareció: salteamos el paso salvo que pida caer al centro.
   //
   // El guard por stepKey NO es decorativo. `reportMissingTarget` cambia de
@@ -71,16 +76,37 @@ export function TourOverlay() {
   // un salteo tras otro: la guía se va del paso 2 al último de golpe y, al
   // pasar por un paso con `route`, dispara una navegación en el camino.
   const skippedStepRef = useRef<string | null>(null)
+  // Cuántos se saltearon al hilo. Se pone en cero apenas un paso se dibuja,
+  // así una guía con condicionales salteados de a uno nunca acumula.
+  const consecutiveSkipsRef = useRef(0)
 
   useEffect(() => {
-    if (!activeTour) skippedStepRef.current = null
+    if (phase === "ready" || phase === "centered") {
+      consecutiveSkipsRef.current = 0
+      reportStepShown()
+    }
+  }, [phase, stepKey, reportStepShown])
+
+  useEffect(() => {
+    if (!activeTour) {
+      skippedStepRef.current = null
+      consecutiveSkipsRef.current = 0
+    }
   }, [activeTour])
 
   useEffect(() => {
     if (phase !== "missing") return
-    if (activeStep?.onMissing === "center") return
     if (skippedStepRef.current === stepKey) return
+    if (
+      !shouldSkipMissingStep({
+        onMissing: activeStep?.onMissing,
+        consecutiveSkips: consecutiveSkipsRef.current,
+      })
+    ) {
+      return
+    }
     skippedStepRef.current = stepKey
+    consecutiveSkipsRef.current += 1
     reportMissingTarget()
   }, [phase, stepKey, activeTour, activeStep?.onMissing, reportMissingTarget])
 
@@ -89,8 +115,20 @@ export function TourOverlay() {
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return
-      // No robarle las flechas a la tabla de operaciones ni al kanban.
       const target = event.target as HTMLElement | null
+
+      // Con el foco dentro de un diálogo de la app, el teclado es del
+      // formulario y no de la guía. Un SelectTrigger de Radix es un <button>:
+      // sin este corte, Enter abría el select Y avanzaba el paso, y Escape
+      // cerraba la guía en vez de cerrar el desplegable.
+      //
+      // El :not() no es opcional: la tarjeta de la guía también es
+      // role="dialog" y se auto-enfoca en cada paso, así que sin excluirla el
+      // corte se aplicaba siempre y las flechas dejaban de funcionar en todos
+      // lados.
+      if (target?.closest('[role="dialog"]:not([data-tour-card])')) return
+
+      // No robarle las flechas a la tabla de operaciones ni al kanban.
       if (
         target &&
         (target.isContentEditable ||
@@ -129,10 +167,15 @@ export function TourOverlay() {
         {`Paso ${stepIndex + 1} de ${visibleSteps.length}: ${activeStep.title}`}
       </div>
 
-      {/* Con un modal abierto el atenuado sobra (el overlay del dialog ya
-          cumple esa función) y los blockers estorbarían. */}
-      {showCard && !modalOpen && (
-        <TourSpotlight rect={anchored ? rect : null} interactive={activeStep.interactive === true} />
+      {/* Con un modal abierto hay dos casos: si lo iluminado está adentro, el
+          spotlight se muestra por encima del overlay de Radix; si está afuera,
+          el diálogo lo tapa y no hay nada que mostrar. */}
+      {showCard && (!modal.open || modal.targetInside) && (
+        <TourSpotlight
+          rect={anchored ? rect : null}
+          interactive={activeStep.interactive === true}
+          insideDialog={modal.targetInside}
+        />
       )}
 
       {showCard && (
@@ -142,6 +185,7 @@ export function TourOverlay() {
           totalSteps={visibleSteps.length}
           tourTitle={activeTour.title}
           rect={anchored ? rect : null}
+          onChain={startChained}
           onNext={next}
           onPrev={prev}
           onClose={close}

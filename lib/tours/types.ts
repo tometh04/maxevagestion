@@ -74,6 +74,14 @@ export interface TourStep {
    * completado en el estado org-scoped que alimenta el checklist del dashboard.
    */
   completesSetupKey?: string
+  /**
+   * En vez de avanzar al paso siguiente, arranca esta otra guía.
+   *
+   * Sirve para encadenar un recorrido de pantalla con una guía de carga sin
+   * fusionarlos: quien solo quería ver de qué se trata la pantalla no queda
+   * arrastrado a llenar un formulario de dieciséis pasos.
+   */
+  nextTour?: string
 }
 
 /**
@@ -83,10 +91,22 @@ export interface TourStep {
  */
 export type TourScope = "user" | "org"
 
+/**
+ * "screen" = recorrido por una pantalla. Auto-dispara y es la que ofrece el
+ * menú como "la guía de esta pantalla".
+ *
+ * "form" = acompaña el llenado de un formulario. Nunca auto-dispara ni compite
+ * por ser la guía de la pantalla: sus anclas viven dentro de un diálogo que
+ * puede no estar abierto. Se llega por encadenado o eligiéndola en el menú.
+ */
+export type TourKind = "screen" | "form"
+
 export interface TourDefinition {
   id: string
   title: string
   scope: TourScope
+  /** Default "screen". */
+  kind?: TourKind
   /**
    * Rutas que disparan este tour. `[param]` matchea cualquier segmento no
    * vacío. Un `/*` final habilita match por prefijo.
