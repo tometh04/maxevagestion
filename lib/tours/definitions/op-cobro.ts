@@ -38,6 +38,9 @@ export const opCobroTour: TourDefinition = {
         "El texto que aparece cuando todavía no hay movimientos dice que uses “Registrar Pago” tanto para lo que recibís del cliente como para lo que le pagás al operador. Está mal: para cobrar al pasajero es siempre “Registrar Cobro”.",
         "Lo que registres acá mueve la caja de verdad y baja la deuda del cliente. No es una anotación.",
       ],
+      // El tab tiene que quedar activo acá: el botón que abre el formulario
+      // vive adentro y sin esto el paso siguiente no encuentra nada que tocar.
+      prepare: { click: "operation.tab-payments", settleMs: 400 },
     },
     {
       id: "monto",

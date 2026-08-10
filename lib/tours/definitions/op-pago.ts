@@ -37,6 +37,9 @@ export const opPagoTour: TourDefinition = {
         "Este formulario no existe para todos los usuarios: necesita permiso sobre la caja. Si no lo tenés, el botón directamente no aparece.",
         "Cada pago descuenta del saldo pendiente con ese operador y mueve la caja.",
       ],
+      // Igual que en el cobro: sin el tab activo, el botón que abre el
+      // formulario no existe todavía en el DOM.
+      prepare: { click: "operation.tab-payments", settleMs: 400 },
       requirePermission: { module: "cash", permission: "write" },
     },
     {
