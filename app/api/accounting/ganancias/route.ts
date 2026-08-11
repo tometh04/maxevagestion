@@ -7,6 +7,9 @@ import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags
 import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
 import { isFinancialCostConcept } from "@/lib/accounting/financial-result"
 
+/** Chunk del `.in()` de operation_id: mantiene corta la URL de PostgREST. */
+const COMMISSION_IDS_CHUNK_SIZE = 200
+
 // Subcategorías de cuentas contables consideradas como gastos deducibles
 const SUBCATEGORIAS_DEDUCIBLES = [
   "GASTOS",
@@ -84,11 +87,38 @@ export async function GET(request: Request) {
     // For now, all expenses are treated as deducible (conservative approach)
     let chartAccountsMap: Record<string, any> = {}
 
-    // Get commissions paid in the quarter
-    const { data: commissions } = await (supabase.from("commission_records") as any)
-      .select("id, amount, percentage, status, date_calculated")
-      .gte("date_calculated", startOfDayAR(startDate))
-      .lte("date_calculated", endOfDayAR(endDate))
+    // Comisiones del trimestre.
+    //
+    // Se toman las comisiones DE LAS OPERACIONES que arriba entraron como
+    // ingreso, no las que caen en una ventana de fechas propia. Antes filtraba
+    // por `date_calculated`, una columna que `applyCommissionPlan()` reescribe
+    // con la fecha de hoy en cada recálculo (recalcular comisiones, editar la
+    // operación, un script de corrección masiva): un recálculo amontonaba en el
+    // trimestre en curso comisiones de operaciones de trimestres cerrados, que
+    // se restaban de un margen que no estaba en este cálculo. Al ir por
+    // `operation_id` el gasto y el ingreso salen del mismo conjunto, sin
+    // depender de ninguna fecha proxy.
+    const quarterOperationIds = (operations || [])
+      .map((op: any) => op.id)
+      .filter(Boolean) as string[]
+
+    const commissions: any[] = []
+    for (let i = 0; i < quarterOperationIds.length; i += COMMISSION_IDS_CHUNK_SIZE) {
+      const chunk = quarterOperationIds.slice(i, i + COMMISSION_IDS_CHUNK_SIZE)
+      const { data, error: commErr } = await (supabase.from("commission_records") as any)
+        .select("id, operation_id, amount, percentage, status")
+        .in("operation_id", chunk)
+      if (commErr) {
+        // Es un componente del resultado impositivo: si no se puede leer, el
+        // número saldría bajo en silencio. Mejor fallar que informar de menos.
+        console.error("Error querying commissions for ganancias:", commErr)
+        return NextResponse.json(
+          { error: "No se pudieron leer las comisiones del trimestre" },
+          { status: 500 }
+        )
+      }
+      commissions.push(...(data || []))
+    }
 
     // Calculate income (margins from operations)
     let totalMarginUSD = 0

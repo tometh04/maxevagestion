@@ -11,6 +11,7 @@ import {
 import { getOrgFeatureFlag } from "@/lib/settings/org-features"
 import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
 import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
+import { commissionDateColumn } from "@/lib/commissions/date-filter"
 
 /**
  * GET /api/reports/closing?months=6&agencyId=ALL
@@ -20,7 +21,7 @@ import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services
  *   - Margen Ventas
  *   - Gastos Fijos     (devengado: recurring_payments × meses activos)
  *   - Gastos Variables (efectivo: cash_movements EXPENSE no-turísticos)
- *   - Comisiones       (devengado: commission_records.date_calculated en el mes)
+ *   - Comisiones       (devengado: comisiones de las operaciones del mes)
  *   - Impuestos        (devengado fijo + efectivo variable, categoría "Impuestos")
  *   - Ganancia Real    = Margen − Fijos − Variables − Comisiones − Impuestos
  *
@@ -38,11 +39,17 @@ import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services
  *    mensual según su frequency (WEEKLY ≈ 4.35, MONTHLY=1, YEARLY=1/12,
  *    etc.).
  *
- * 3. **Comisiones devengadas**: la versión anterior filtraba por
+ * 3. **Comisiones devengadas**: la primera versión filtraba por
  *    `status = PAID` y `date_paid`, lo que daba casi todo en cero porque
  *    la mayoría de las comisiones quedan en PENDING hasta liquidar. La
- *    "ganancia real" devenga la comisión cuando la operación cierra
- *    (`date_calculated`), no cuando se paga. Incluimos PENDING + PAID.
+ *    "ganancia real" devenga la comisión con la venta, no cuando se paga.
+ *    Incluimos PENDING + PAID.
+ *
+ *    La segunda versión usó `date_calculated` para ubicar el mes, y eso
+ *    tampoco servía: esa columna la reescribe `applyCommissionPlan()` en cada
+ *    recálculo, así que un recálculo masivo mudaba las comisiones de meses
+ *    cerrados al mes en que se corrió. Ahora el mes lo da
+ *    `operations.operation_date`, el mismo con el que se agrupa el margen.
  *
  * 4. **Impuestos = recurrente + variable de la categoría "Impuestos"**:
  *    devengado para los recurring (IVA/IIBB mensual), efectivo para los
@@ -54,6 +61,9 @@ import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services
 export const dynamic = "force-dynamic"
 
 const TAX_CATEGORY_NAME = "Impuestos"
+
+/** Columna que define el mes de una comisión. Ver `lib/commissions/date-filter.ts`. */
+const COMMISSION_SALE_DATE_COLUMN = commissionDateColumn("sale")
 
 // Multiplicadores para normalizar recurring_payments a equivalente mensual.
 // Yami quiere ver el "costo mensual" agnóstico de la frecuencia; un pago
@@ -259,14 +269,26 @@ export async function GET(request: Request) {
     }
 
     // ---------------------------------------------------------------------
-    // 5. Commission records — DEVENGADAS (date_calculated, no date_paid)
+    // 5. Commission records — DEVENGADAS por mes de la operación.
     //    Incluye PENDING + PAID. Excluye REVERTED si el status existe.
+    //
+    // Va por `operations.operation_date`, el MISMO mes con el que se bucketea
+    // el margen (paso 8). Antes iba por `date_calculated`, y esa columna la
+    // reescribe `applyCommissionPlan()` con la fecha de hoy en cada recálculo:
+    // recalcular comisiones, editar la operación o correr un script de
+    // corrección masiva movía comisiones viejas al mes del recálculo. Como la
+    // "Ganancia Real" de la fila resta esas comisiones al margen del mes, los
+    // dos lados de la misma fila quedaban en meses distintos: el mes del
+    // recálculo hundido y los anteriores inflados. En agosto 2026, 188 de las
+    // 204 comisiones de ventas de julio habían saltado a agosto.
     // ---------------------------------------------------------------------
     let commQuery = (supabase.from("commission_records") as any)
-      .select("id, amount, status, date_calculated, agency_id, operations!inner(currency, sale_currency, agency_id)")
+      .select("id, amount, status, agency_id, operations!inner(operation_date, currency, sale_currency, agency_id)")
       .eq("org_id", user.org_id) // 🔴 scope multi-tenant explícito
-      .gte("date_calculated", fromIso)
-      .lte("date_calculated", toIso)
+      // La columna sale del helper compartido para que este cierre y la pantalla
+      // de Comisiones no puedan volver a divergir en qué mes es una comisión.
+      .gte(COMMISSION_SALE_DATE_COLUMN, fromIso)
+      .lte(COMMISSION_SALE_DATE_COLUMN, toIso)
       .neq("status", "REVERTED")
     if (agencyFilter) commQuery = commQuery.in("agency_id", agencyFilter)
     const { data: commissions, error: commErr } = (await commQuery) as { data: any[] | null; error: any }
@@ -281,7 +303,7 @@ export async function GET(request: Request) {
     const allDates: (string | null | undefined)[] = [
       ...(operations || []).map((o: any) => o.departure_date || o.operation_date),
       ...(cashMovements || []).map((c: any) => c.movement_date),
-      ...(commissions || []).map((c: any) => c.date_calculated),
+      ...(commissions || []).map((c: any) => c.operations?.operation_date),
     ].filter(Boolean)
     const fxLookup = await buildExchangeRateMap(supabase as any, allDates)
     const latestRate =
@@ -398,17 +420,23 @@ export async function GET(request: Request) {
     // ---------------------------------------------------------------------
     // 11. Comisiones devengadas
     //
-    // Filtramos por date_calculated en el mes, status != REVERTED.
+    // Al mes de la operación (`operations.operation_date`), status != REVERTED.
     // Incluye PENDING (todavía no se pagaron pero ya se generaron) y PAID.
-    // Esto refleja el "costo de comisiones" devengado en la operatoria
-    // del mes, no cuando efectivamente se cobraron las comisiones.
+    // Esto refleja el "costo de comisiones" devengado en la operatoria del mes,
+    // no cuando efectivamente se pagaron ni cuando corrió el último recálculo.
+    // Es el mismo mes con el que se bucketea el margen en el paso 8, que es lo
+    // que hace que la resta de la fila cierre.
     // ---------------------------------------------------------------------
     for (const c of commissions || []) {
-      const b = ensureBucket(monthKeyFromIso(c.date_calculated))
+      const opData = c.operations as {
+        operation_date?: string
+        currency?: string
+        sale_currency?: string
+      } | null
+      const b = ensureBucket(monthKeyFromIso(opData?.operation_date))
       if (!b) continue
-      const opData = c.operations as { currency?: string; sale_currency?: string } | null
       const cur = opData?.sale_currency || opData?.currency || "USD"
-      b.commissions_usd += toUsd(Number(c.amount) || 0, cur, c.date_calculated)
+      b.commissions_usd += toUsd(Number(c.amount) || 0, cur, opData?.operation_date ?? null)
     }
 
     // ---------------------------------------------------------------------
@@ -462,7 +490,7 @@ export async function GET(request: Request) {
         sources: {
           fixed: "recurring_payments (devengado, normalizado a equivalente mensual)",
           variable: "cash_movements EXPENSE no-turísticos (efectivo)",
-          commissions: "commission_records.date_calculated (devengado, PENDING+PAID)",
+          commissions: "commission_records por operations.operation_date (devengado, PENDING+PAID)",
           taxes: "categoría Impuestos en cash_movements + recurring_payments",
         },
       },
