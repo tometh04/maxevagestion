@@ -6,9 +6,31 @@ import { getOrgFeatureFlag } from "@/lib/settings/org-features"
 import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
 import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
 import { isFinancialCostConcept } from "@/lib/accounting/financial-result"
+import { computeGananciasResult } from "@/lib/accounting/ganancias-calc"
 
 /** Chunk del `.in()` de operation_id: mantiene corta la URL de PostgREST. */
 const COMMISSION_IDS_CHUNK_SIZE = 200
+
+type Currency = "ARS" | "USD"
+
+/**
+ * Moneda de una operación para este reporte.
+ *
+ * Vive acá y no en `lib/commissions/currency.ts` a propósito: aquel helper
+ * prioriza `operation.currency` sobre `sale_currency`, y este cálculo agrupa el
+ * margen por `sale_currency`. Si la comisión usara un criterio y el margen otro,
+ * una operación con las dos columnas distintas mandaría su ingreso a un balde y
+ * su costo al otro — exactamente el problema que este arreglo viene a sacar. El
+ * ingreso y su comisión tienen que salir del MISMO predicado.
+ */
+function operationCurrency(op: { sale_currency?: string | null }): Currency {
+  return op?.sale_currency === "USD" ? "USD" : "ARS"
+}
+
+/** Moneda de un movimiento suelto (gasto, retención). Default ARS. */
+function rowCurrency(row: { currency?: string | null }): Currency {
+  return row?.currency === "USD" ? "USD" : "ARS"
+}
 
 // Subcategorías de cuentas contables consideradas como gastos deducibles
 const SUBCATEGORIAS_DEDUCIBLES = [
@@ -52,7 +74,6 @@ export async function GET(request: Request) {
       .maybeSingle()
 
     const gananciasRatePercent = settings?.ganancias_rate ?? 35
-    const gananciasRate = gananciasRatePercent / 100
     const taxRegime = settings?.tax_regime || "RESPONSABLE_INSCRIPTO"
 
     // Get all operations in the quarter with their margins
@@ -123,11 +144,14 @@ export async function GET(request: Request) {
     // Calculate income (margins from operations)
     let totalMarginUSD = 0
     let totalMarginARS = 0
+    const currencyByOperation = new Map<string, Currency>()
     for (const op of (operations || [])) {
       const extra = (serviceExtras as any)[op.id]
       const netServiceMargin = extra ? (extra.saleExtra - extra.costExtra) : 0
       const margin = (Number(op.margin_amount) || 0) + netServiceMargin
-      if (op.sale_currency === "USD") totalMarginUSD += margin
+      const cur = operationCurrency(op)
+      currencyByOperation.set(op.id, cur)
+      if (cur === "USD") totalMarginUSD += margin
       else totalMarginARS += margin
     }
 
@@ -166,20 +190,24 @@ export async function GET(request: Request) {
     const totalExpensesARS = gastosDeduciblesARS + gastosNoDeduciblesARS
     const totalExpensesUSD = gastosDeduciblesUSD + gastosNoDeduciblesUSD
 
-    // Calculate commissions
-    const totalCommissions = (commissions || []).reduce((s: number, c: any) => s + (Number(c.amount) || 0), 0)
-
-    // Resultado impositivo: ingresos - gastos deducibles (NOT all gastos)
-    const resultadoImpositivoARS = totalMarginARS - gastosDeduciblesARS
-    const resultadoImpositivoUSD = totalMarginUSD - gastosDeduciblesUSD - totalCommissions
-
-    // Profit before tax (contable, includes all expenses)
-    const profitBeforeTaxARS = totalMarginARS - totalExpensesARS
-    const profitBeforeTaxUSD = totalMarginUSD - totalExpensesUSD - totalCommissions
-
-    // Quarterly provision based on resultado impositivo (estimated)
-    const provisionARS = Math.max(0, Math.round(resultadoImpositivoARS * gananciasRate * 100) / 100)
-    const provisionUSD = Math.max(0, Math.round(resultadoImpositivoUSD * gananciasRate * 100) / 100)
+    // Comisiones, separadas por moneda.
+    //
+    // `commission_records` no tiene columna de moneda: el `amount` está en la
+    // moneda de venta de su operación. Antes se sumaban todas en un solo número
+    // y ese número se restaba únicamente del resultado en USD: las comisiones en
+    // pesos se descontaban de los dólares (achicando la provisión en USD por
+    // algo que no eran dólares) y el resultado impositivo en ARS no descontaba
+    // ninguna comisión. Los dos lados quedaban mal, y el desglose de pantalla
+    // además mostraba el total mezclado con el símbolo "US$".
+    let totalCommissionsARS = 0
+    let totalCommissionsUSD = 0
+    for (const c of commissions) {
+      const amount = Number(c.amount) || 0
+      // La operación siempre está: las comisiones se leyeron por `operation_id`
+      // dentro de este mismo conjunto. El default ARS es defensivo.
+      if (currencyByOperation.get(c.operation_id) === "USD") totalCommissionsUSD += amount
+      else totalCommissionsARS += amount
+    }
 
     // Get retenciones de ganancias sufridas in the quarter
     const quarterMonths = Array.from({ length: 3 }, (_, i) =>
@@ -191,7 +219,28 @@ export async function GET(request: Request) {
       .eq("direction", "SUFFERED")
       .in("tax_period", quarterMonths)
 
-    const totalRetencionesGanancias = (retencionesGanancias || []).reduce((s: number, r: any) => s + Number(r.amount), 0)
+    // Retenciones sufridas, también separadas por moneda: se restan de la
+    // provisión de su propia moneda. La query ya traía `currency` y no se usaba,
+    // así que una retención en dólares bajaba la provisión en pesos peso a peso.
+    let retencionesARS = 0
+    let retencionesUSD = 0
+    for (const r of retencionesGanancias || []) {
+      const amount = Number(r.amount) || 0
+      if (rowCurrency(r) === "USD") retencionesUSD += amount
+      else retencionesARS += amount
+    }
+
+    // Resultado impositivo, resultado contable y provisión: cada moneda contra
+    // la suya. La aritmética vive en `lib/accounting/ganancias-calc.ts`, que es
+    // donde está testeado el invariante.
+    const calc = computeGananciasResult({
+      margin: { ars: totalMarginARS, usd: totalMarginUSD },
+      deductibleExpenses: { ars: gastosDeduciblesARS, usd: gastosDeduciblesUSD },
+      totalExpenses: { ars: totalExpensesARS, usd: totalExpensesUSD },
+      commissions: { ars: totalCommissionsARS, usd: totalCommissionsUSD },
+      withholdings: { ars: retencionesARS, usd: retencionesUSD },
+      ratePercent: gananciasRatePercent,
+    })
 
     return NextResponse.json({
       periodo: { year, quarter, startDate, endDate },
@@ -207,7 +256,13 @@ export async function GET(request: Request) {
       gastos: {
         total_ars: Math.round(totalExpensesARS * 100) / 100,
         total_usd: Math.round(totalExpensesUSD * 100) / 100,
-        comisiones: Math.round(totalCommissions * 100) / 100,
+        // Objeto y no un escalar a propósito: el escalar anterior era ARS+USD
+        // sumados y la pantalla lo dibujaba con "US$". No hay un solo número
+        // honesto para esto.
+        comisiones: {
+          ars: Math.round(totalCommissionsARS * 100) / 100,
+          usd: Math.round(totalCommissionsUSD * 100) / 100,
+        },
         gastos_deducibles: {
           ars: Math.round(gastosDeduciblesARS * 100) / 100,
           usd: Math.round(gastosDeduciblesUSD * 100) / 100,
@@ -217,20 +272,21 @@ export async function GET(request: Request) {
           usd: Math.round(gastosNoDeduciblesUSD * 100) / 100,
         },
       },
-      resultado_impositivo: {
-        ars: Math.round(resultadoImpositivoARS * 100) / 100,
-        usd: Math.round(resultadoImpositivoUSD * 100) / 100,
-      },
+      resultado_impositivo: calc.taxableResult,
       resultado: {
-        profit_before_tax_ars: Math.round(profitBeforeTaxARS * 100) / 100,
-        profit_before_tax_usd: Math.round(profitBeforeTaxUSD * 100) / 100,
+        profit_before_tax_ars: calc.profitBeforeTax.ars,
+        profit_before_tax_usd: calc.profitBeforeTax.usd,
       },
       provision: {
         rate: gananciasRatePercent,
-        estimated_ars: provisionARS,
-        estimated_usd: provisionUSD,
-        retenciones_sufridas: Math.round(totalRetencionesGanancias * 100) / 100,
-        neto_ars: Math.max(0, provisionARS - totalRetencionesGanancias),
+        estimated_ars: calc.provision.ars,
+        estimated_usd: calc.provision.usd,
+        retenciones_sufridas: {
+          ars: Math.round(retencionesARS * 100) / 100,
+          usd: Math.round(retencionesUSD * 100) / 100,
+        },
+        neto_ars: calc.provisionNet.ars,
+        neto_usd: calc.provisionNet.usd,
       },
     })
   } catch (error: any) {
