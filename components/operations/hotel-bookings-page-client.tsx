@@ -31,6 +31,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import {
   Select,
   SelectContent,
@@ -324,58 +325,23 @@ export function HotelBookingsPageClient({ agencies, sellers }: Props) {
         </div>
       )}
 
-      {/* Resumen por hotel */}
-      {searched && !loading && summary.length > 0 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Hotel className="h-4 w-4 text-muted-foreground" />
-              Resumen por hotel
-              <span className="ml-2 text-sm font-normal text-muted-foreground">
-                {totalReservas} reserva{totalReservas === 1 ? "" : "s"} · {usd.format(totalMonto)}
-              </span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Hotel</TableHead>
-                  <TableHead className="text-right">Reservas</TableHead>
-                  <TableHead className="text-right">Monto (USD)</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {summary.map((s) => (
-                  <TableRow key={s.hotel}>
-                    <TableCell className="font-medium">{s.hotel}</TableCell>
-                    <TableCell className="text-right tabular-nums">{s.reservas}</TableCell>
-                    <TableCell className="text-right tabular-nums text-muted-foreground">
-                      {s.montoUsd > 0 ? usd.format(s.montoUsd) : "—"}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Tabla de reservas */}
       {searched && !loading && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">
-              Reservas {rows.length > 0 && <span className="text-muted-foreground">({rows.length})</span>}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {rows.length === 0 ? (
-              <div className="py-10 text-center text-sm text-muted-foreground">
-                No se encontraron reservas con esos filtros.
-              </div>
-            ) : (
-              <>
+        <Tabs defaultValue="reservas" className="w-full">
+          <TabsList>
+            <TabsTrigger value="reservas">Reservas ({rows.length})</TabsTrigger>
+            <TabsTrigger value="resumen">Resumen por hotel ({summary.length})</TabsTrigger>
+          </TabsList>
+
+          {/* Tab: listado de reservas */}
+          <TabsContent value="reservas" className="mt-4">
+            <Card>
+              <CardContent className="pt-6">
+                {rows.length === 0 ? (
+                  <div className="py-10 text-center text-sm text-muted-foreground">
+                    No se encontraron reservas con esos filtros.
+                  </div>
+                ) : (
+                  <>
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -468,10 +434,57 @@ export function HotelBookingsPageClient({ agencies, sellers }: Props) {
                     </Button>
                   </div>
                 </div>
-              </>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Tab: resumen por hotel */}
+          <TabsContent value="resumen" className="mt-4">
+            {summary.length === 0 ? (
+              <Card>
+                <CardContent className="py-10 text-center text-sm text-muted-foreground">
+                  No hay datos para resumir.
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Hotel className="h-4 w-4 text-muted-foreground" />
+                    Resumen por hotel
+                    <span className="ml-2 text-sm font-normal text-muted-foreground">
+                      {totalReservas} reserva{totalReservas === 1 ? "" : "s"} · {usd.format(totalMonto)}
+                    </span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Hotel</TableHead>
+                        <TableHead className="text-right">Reservas</TableHead>
+                        <TableHead className="text-right">Monto (USD)</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {summary.map((s) => (
+                        <TableRow key={s.hotel}>
+                          <TableCell className="font-medium">{s.hotel}</TableCell>
+                          <TableCell className="text-right tabular-nums">{s.reservas}</TableCell>
+                          <TableCell className="text-right tabular-nums text-muted-foreground">
+                            {s.montoUsd > 0 ? usd.format(s.montoUsd) : "—"}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
             )}
-          </CardContent>
-        </Card>
+          </TabsContent>
+        </Tabs>
       )}
     </div>
   )
