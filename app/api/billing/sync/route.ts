@@ -7,6 +7,9 @@ import {
 } from "@/lib/billing/mercadopago"
 import { transitionFromMP, type MPPreapproval } from "@/lib/billing/state-machine"
 import { PLANS, type PlanId } from "@/lib/billing/plans"
+import { buildAgreedPriceUpdate } from "@/lib/billing/agreed-price"
+import { derivePlanFromAmount } from "@/lib/billing/derive-plan"
+import { getPlanPricing } from "@/lib/billing/plan-pricing"
 
 /**
  * POST /api/billing/sync
@@ -55,7 +58,10 @@ export async function POST(request: Request) {
   // Fetch org actual — sirve para idempotency, preservación y fallback.
   const { data: org } = await admin
     .from("organizations")
-    .select("subscription_status, current_period_ends_at, mp_last_synced_at, plan, mp_preapproval_id, trial_ends_at")
+    .select(
+      "subscription_status, current_period_ends_at, mp_last_synced_at, plan, " +
+      "mp_preapproval_id, trial_ends_at, custom_plan_id"
+    )
     .eq("id", orgId)
     .maybeSingle()
 
@@ -184,7 +190,10 @@ export async function POST(request: Request) {
   const chosenPlan =
     payloadPlan && (PLANS[payloadPlan as PlanId] || payloadPlan === "CUSTOM")
       ? payloadPlan
-      : derivePlanFromAmount(preapproval.auto_recurring?.transaction_amount)
+      : derivePlanFromAmount(
+          preapproval.auto_recurring?.transaction_amount,
+          await getPlanPricing(admin)
+        )
 
   // 6. State machine
   const transition = transitionFromMP(preapproval, undefined, {
@@ -209,6 +218,18 @@ export async function POST(request: Request) {
   if (chosenPlan && chosenPlan !== "CUSTOM" && chosenPlan !== org.plan) {
     updates.plan = chosenPlan
   }
+
+  // Congelar el precio que MP aceptó (grandfathering). El webhook es el writer
+  // autoritativo, pero a veces no llega — por eso existe este endpoint. Se ancla
+  // al plan efectivo después de este update, no al viejo.
+  const agreedPatch = buildAgreedPriceUpdate({
+    plan: updates.plan ?? org.plan,
+    transactionAmount: preapproval.auto_recurring?.transaction_amount,
+    eventType: transition.event_type,
+    hasCustomPlan: !!(org as any).custom_plan_id,
+    source: "checkout_sync",
+  })
+  if (agreedPatch) Object.assign(updates, agreedPatch)
 
   await admin.from("organizations").update(updates).eq("id", orgId)
 
@@ -246,10 +267,3 @@ export async function POST(request: Request) {
   })
 }
 
-function derivePlanFromAmount(amount: number | undefined): PlanId | null {
-  if (!amount) return null
-  for (const planId of Object.keys(PLANS) as PlanId[]) {
-    if (PLANS[planId].priceArsMonthly === amount) return planId
-  }
-  return null
-}

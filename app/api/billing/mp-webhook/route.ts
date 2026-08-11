@@ -9,6 +9,7 @@ import {
 } from "@/lib/billing/mercadopago"
 import { transitionFromMP, type MPPaymentEvent, type MPPreapproval } from "@/lib/billing/state-machine"
 import { isAccessAllowed } from "@/lib/billing/access"
+import { buildAgreedPriceUpdate } from "@/lib/billing/agreed-price"
 import { logSecurityEvent } from "@/lib/security/audit"
 import { notifyBillingSlack } from "@/lib/billing/slack-notify"
 
@@ -286,7 +287,10 @@ export async function POST(request: Request) {
   // 5. Idempotencia por last_modified.
   const { data: org } = await admin
     .from("organizations")
-    .select("id, name, subscription_status, current_period_ends_at, mp_last_synced_at, trial_ends_at")
+    .select(
+      "id, name, plan, custom_plan_id, subscription_status, " +
+      "current_period_ends_at, mp_last_synced_at, trial_ends_at"
+    )
     .eq("id", orgId)
     .maybeSingle()
   if (!org) {
@@ -380,6 +384,20 @@ export async function POST(request: Request) {
   if (transition.current_period_ends_at !== undefined) {
     updates.current_period_ends_at = transition.current_period_ends_at
   }
+
+  // Congelar el precio que MP aceptó para esta org (grandfathering). El checkout
+  // sabe lo que PIDIÓ; acá sabemos lo que MP autorizó, así que este es el writer
+  // autoritativo. Va piggybacked en el update que ya hacemos: un solo write
+  // atómico que hereda el retry de abajo (si falla → 503 y MP reintenta).
+  // Un rechazo o una cancelación no establecen precio — ver buildAgreedPriceUpdate.
+  const agreedPatch = buildAgreedPriceUpdate({
+    plan: org.plan,
+    transactionAmount: preapproval.auto_recurring?.transaction_amount,
+    eventType: transition.event_type,
+    hasCustomPlan: !!org.custom_plan_id,
+    source: "mp_webhook",
+  })
+  if (agreedPatch) Object.assign(updates, agreedPatch)
 
   const { error: orgUpdateErr } = await admin.from("organizations").update(updates).eq("id", orgId)
   if (orgUpdateErr) {

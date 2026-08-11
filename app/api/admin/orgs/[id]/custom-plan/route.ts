@@ -7,6 +7,7 @@ import { calculateEffectivePrice, type CustomPlanFeatures } from "@/lib/billing/
 import { cancelPreapproval } from "@/lib/billing/mercadopago"
 import { applyPriceChange } from "@/lib/billing/mp-update"
 import { ensureMpPlan } from "@/lib/billing/mp-plans"
+import { clearAgreedPriceUpdate } from "@/lib/billing/agreed-price"
 
 type CustomPlanBody = {
   display_name?: string
@@ -128,6 +129,9 @@ export async function POST(
   updateOrgData.max_users = 999
   updateOrgData.max_agencies = 99
   updateOrgData.max_operations_per_month = 99999
+  // El custom plan pasa a ser dueño del precio: el congelado del plan estándar
+  // anterior ya no aplica.
+  Object.assign(updateOrgData, clearAgreedPriceUpdate())
 
   // 2026-05-18 (caso VICO): si hay free_trial_days, seteamos
   // current_period_ends_at para que la UI del cliente sepa "hasta cuándo está

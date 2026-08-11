@@ -6,8 +6,9 @@ import { cancelPreapproval } from "@/lib/billing/mercadopago"
 import { mpErrorToUserMessage } from "@/lib/billing/mp-error-mapper"
 import { notifyBillingSlack } from "@/lib/billing/slack-notify"
 import type { PlanId } from "@/lib/billing/plans"
-import { PLANS } from "@/lib/billing/plans"
+import { PLANS, formatArs } from "@/lib/billing/plans"
 import { resolvePlanPrice } from "@/lib/billing/plan-pricing"
+import { agreedPriceFor, clearAgreedPriceUpdate } from "@/lib/billing/agreed-price"
 
 /**
  * POST /api/billing/checkout
@@ -56,7 +57,8 @@ export async function POST(request: Request) {
     .from("organizations")
     .select(
       "id, name, billing_email, plan, subscription_status, " +
-      "mp_preapproval_id, has_used_trial, current_period_ends_at"
+      "mp_preapproval_id, has_used_trial, current_period_ends_at, " +
+      "custom_plan_id, agreed_plan_price_ars, agreed_plan_id"
     )
     .eq("id", orgId)
     .single()
@@ -151,15 +153,41 @@ export async function POST(request: Request) {
     orgId, plan, backUrl, isReactivation, isRegularize, includeFreeTrial, startDate,
   })
 
-  // Precio efectivo: overlay de la tabla plan_prices sobre la constante PLANS.
-  // El precio estándar es editable desde platform-admin; el checkout debe cobrar
-  // el precio vigente, no el hardcodeado. Fallback a la constante si no hay fila.
-  const resolvedPrice = await resolvePlanPrice(admin, plan)
+  // Precio de lista vigente: overlay de la tabla plan_prices sobre la constante
+  // PLANS. El precio estándar es editable desde platform-admin; el checkout debe
+  // cobrar el vigente, no el hardcodeado. Fallback a la constante si no hay fila.
+  const listPrice = await resolvePlanPrice(admin, plan)
+
+  // Precio congelado de ESTA org (grandfathering). Solo vale si corresponde al
+  // plan que se está comprando — ver agreedPriceFor.
+  const agreedPrice = agreedPriceFor(org, plan)
+
+  // Regularizar es la MISMA suscripción cuyo cobro falló: el cliente no cambió
+  // de plan ni renegoció nada, así que conserva su precio. Reactivar una org
+  // CANCELLED y un alta nueva son relaciones nuevas → precio de lista vigente.
+  const useAgreed = isRegularize && agreedPrice !== null && agreedPrice > 0
+  const resolvedPrice = useAgreed ? agreedPrice : listPrice
+
   if (resolvedPrice === null || resolvedPrice <= 0) {
     return NextResponse.json(
       { error: "Plan no disponible para checkout self-serve. Contactanos a hola@vibook.ai" },
       { status: 400 }
     )
+  }
+
+  // Una regularización sin snapshot cae al precio de lista: no rompe nada, pero
+  // si esa org venía de un precio anterior le estamos subiendo el precio sin
+  // avisarle. Avisamos para que se pueda cargar el precio antes de que pague.
+  if (isRegularize && !useAgreed && listPrice !== null) {
+    notifyBillingSlack({
+      event: "BILLING_ALERT",
+      orgName: org.name,
+      orgId,
+      details:
+        `Regularización SIN precio pactado registrado — se va a cobrar el precio de lista ` +
+        `${formatArs(listPrice)}. Si esta org venía de un precio anterior, cargalo antes de que pague.`,
+      severity: "warning",
+    })
   }
 
   let mpPlan
@@ -211,6 +239,10 @@ export async function POST(request: Request) {
       is_regularize: isRegularize,
       start_date: startDate,
       cached_plan: mpPlan.cached,
+      // Auditoría del precio: con qué criterio se cobró este checkout.
+      list_price_ars: listPrice,
+      agreed_price_ars: agreedPrice,
+      priced_as: useAgreed ? "grandfathered" : "list",
     },
   })
   if (insertErr) {
@@ -235,6 +267,13 @@ export async function POST(request: Request) {
     // reconcile no re-fetchea un preapproval cancelado y no revierte el estado.
     // El nuevo se escribe cuando MP notifique subscription_preapproval.created.
     orgUpdates.mp_preapproval_id = null
+  }
+  // Reactivar una org CANCELLED es una relación nueva a precio de lista: el
+  // precio congelado viejo no debe sobrevivir. El webhook lo re-escribe con el
+  // monto que MP autorice. En regularize NO se limpia — ahí es justo el que
+  // queremos conservar.
+  if (wantsReactivation && !isRegularize) {
+    Object.assign(orgUpdates, clearAgreedPriceUpdate())
   }
   await admin.from("organizations").update(orgUpdates).eq("id", orgId)
 

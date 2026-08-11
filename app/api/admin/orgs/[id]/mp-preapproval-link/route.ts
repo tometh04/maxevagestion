@@ -5,7 +5,9 @@ import { isPlatformAdmin } from "@/lib/auth/platform"
 import { createPreapproval, cancelPreapproval } from "@/lib/billing/mercadopago"
 import { mpErrorToUserMessage } from "@/lib/billing/mp-error-mapper"
 import { logSecurityEvent } from "@/lib/security/audit"
-import { PLANS, type PlanId } from "@/lib/billing/plans"
+import { PLANS, formatArs, type PlanId } from "@/lib/billing/plans"
+import { resolvePlanPrice } from "@/lib/billing/plan-pricing"
+import { agreedPriceFor } from "@/lib/billing/agreed-price"
 
 /**
  * POST /api/admin/orgs/[id]/mp-preapproval-link
@@ -70,7 +72,10 @@ export async function POST(
   const admin = createAdminClient() as any
   const { data: org } = await admin
     .from("organizations")
-    .select("id, name, plan, subscription_status, mp_preapproval_id")
+    .select(
+      "id, name, plan, subscription_status, mp_preapproval_id, " +
+      "custom_plan_id, agreed_plan_price_ars, agreed_plan_id"
+    )
     .eq("id", orgId)
     .maybeSingle()
 
@@ -81,6 +86,17 @@ export async function POST(
   if (!planDef || planDef.contactSalesOnly || planDef.priceArsMonthly === null) {
     return NextResponse.json(
       { error: `El plan de la org (${org.plan}) no es cobrable self-serve.` },
+      { status: 400 }
+    )
+  }
+
+  // Este link es el camino manual que se usa justo cuando el débito automático
+  // de una org falla. Si acá cobráramos el precio de lista, una org que venía
+  // pagando el precio viejo perdería su precio congelado en el peor momento.
+  const amountArs = agreedPriceFor(org, plan) ?? (await resolvePlanPrice(admin, plan))
+  if (amountArs === null || amountArs <= 0) {
+    return NextResponse.json(
+      { error: `No se pudo resolver el precio del plan ${org.plan}.` },
       { status: 400 }
     )
   }
@@ -106,6 +122,7 @@ export async function POST(
       plan,
       payerEmail,
       backUrl,
+      amountArs,
       includeFreeTrial, // default false: cobro al aceptar
       freeTrialDays, // si viene, difiere el primer cobro N días (prioridad sobre includeFreeTrial)
     })
@@ -121,7 +138,7 @@ export async function POST(
     org_id: orgId,
     event_type: "CHECKOUT_INITIATED",
     external_id: null,
-    amount_cents: (planDef.priceArsMonthly ?? 0) * 100,
+    amount_cents: Math.round(amountArs * 100),
     currency: "ARS",
     status: "pending",
     payload: {
@@ -155,6 +172,9 @@ export async function POST(
     init_point: preapproval.init_point,
     preapproval_id: preapproval.id,
     payer_email: payerEmail,
-    note: "Mandale este link al cliente. Debe pagarlo con la cuenta de MP de ese email. El estado se activa solo cuando el pago se aprueba.",
+    amount_ars: amountArs,
+    note:
+      `Mandale este link al cliente. Se le va a cobrar ${formatArs(amountArs)}/mes. ` +
+      "Debe pagarlo con la cuenta de MP de ese email. El estado se activa solo cuando el pago se aprueba.",
   })
 }

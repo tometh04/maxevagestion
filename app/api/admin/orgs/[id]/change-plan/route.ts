@@ -7,6 +7,7 @@ import { isPlatformAdmin } from "@/lib/auth/platform"
 import { logSecurityEvent } from "@/lib/security/audit"
 import { PLANS } from "@/lib/billing/plans"
 import { resolvePlanPrice } from "@/lib/billing/plan-pricing"
+import { clearAgreedPriceUpdate } from "@/lib/billing/agreed-price"
 import { applyPriceChange } from "@/lib/billing/mp-update"
 import { calculateEffectivePrice } from "@/lib/billing/custom-plans"
 
@@ -68,6 +69,10 @@ export async function POST(
     plan: targetPlan,
     scheduled_plan: null,
     scheduled_plan_effective_at: null,
+    // Cambiar de plan es una relación de precio nueva: el precio congelado del
+    // plan anterior no aplica. El webhook lo re-escribe con el monto que MP
+    // autorice para el plan destino.
+    ...clearAgreedPriceUpdate(),
   }
   if (targetPlan === "PRO") {
     orgUpdates.max_users = PLANS.PRO.limits.maxUsers

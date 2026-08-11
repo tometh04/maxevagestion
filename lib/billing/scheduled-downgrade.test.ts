@@ -108,6 +108,17 @@ describe("buildDowngradeUpdate", () => {
       current_period_ends_at: FUTURE,
       scheduled_plan: null,
       scheduled_plan_effective_at: null,
+      agreed_plan_price_ars: null,
+      agreed_plan_id: null,
+      agreed_plan_price_source: null,
     })
+  })
+
+  it("limpia el precio pactado: la org queda PAST_DUE y a un click de regularizar", () => {
+    // Si el precio congelado de Enterprise sobreviviera al downgrade, el botón
+    // "Regularizar pago" le cobraría ese monto por un plan PRO.
+    const update = buildDowngradeUpdate({ scheduled_plan_effective_at: FUTURE })
+    expect(update.agreed_plan_price_ars).toBeNull()
+    expect(update.agreed_plan_id).toBeNull()
   })
 })

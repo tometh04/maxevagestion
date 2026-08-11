@@ -5,6 +5,7 @@ import { PLAN_ORDER } from "@/lib/billing/plans"
 import { PlanCard } from "./_components/plan-card"
 import { createAdminClient } from "@/lib/supabase/server"
 import { isAccessAllowed } from "@/lib/billing/guard"
+import { getPlanPricing } from "@/lib/billing/plan-pricing"
 
 export default async function OnboardingBillingPage() {
   const { user } = await getCurrentUser()
@@ -12,6 +13,10 @@ export default async function OnboardingBillingPage() {
   if (!user.org_id) redirect("/onboarding")
 
   const admin = createAdminClient() as any
+  // Precios efectivos (plan_prices editable desde admin). Antes esta pantalla
+  // leía la constante hardcodeada: si el precio de lista cambiaba, mostraba uno
+  // y el checkout cobraba otro.
+  const planPrices = await getPlanPricing(admin)
   const { data: org } = await admin
     .from("organizations")
     .select("name, subscription_status, current_period_ends_at, trial_ends_at, has_used_trial")
@@ -71,7 +76,12 @@ export default async function OnboardingBillingPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {PLAN_ORDER.map((planId) => (
-              <PlanCard key={planId} planId={planId} trialAvailable={!hasUsedTrial} />
+              <PlanCard
+                key={planId}
+                planId={planId}
+                priceArs={planPrices[planId]}
+                trialAvailable={!hasUsedTrial}
+              />
             ))}
           </div>
 

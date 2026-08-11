@@ -32,8 +32,9 @@ export function PlanPricesCard({ prices }: Props) {
         <CardTitle className="text-base">Precio del plan PRO</CardTitle>
         <CardDescription>
           Precio mensual del plan PRO (ARS). Cambiarlo afecta{" "}
-          <strong>nuevos checkouts y cambios de plan</strong>; no re-cobra a las suscripciones
-          ya activas (para eso, editá el precio de la cuenta puntual). Enterprise se cobra
+          <strong>solo a los checkouts nuevos y a los cambios de plan</strong>: las cuentas
+          que ya están pagando conservan su precio, tanto en el débito de Mercado Pago como
+          en el MRR y en lo que ven en su pantalla de Suscripción. Enterprise se cobra
           per-cuenta con un precio custom.
         </CardDescription>
       </CardHeader>

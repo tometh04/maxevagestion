@@ -61,13 +61,19 @@ export default async function AdminMetricsPage() {
   ] = await Promise.all([
     admin
       .from("organizations")
-      .select("id, plan, subscription_status, custom_plan_id, manual_mrr_override_ars, created_at, updated_at"),
+      .select(
+        "id, plan, subscription_status, custom_plan_id, manual_mrr_override_ars, " +
+        "agreed_plan_price_ars, agreed_plan_id, created_at, updated_at"
+      ),
     admin
       .from("custom_plans")
       .select("org_id, base_price_ars, discount_percent, discount_ends_at"),
     admin
       .from("organizations")
-      .select("id, plan, subscription_status, custom_plan_id, manual_mrr_override_ars, updated_at")
+      .select(
+        "id, plan, subscription_status, custom_plan_id, manual_mrr_override_ars, " +
+        "agreed_plan_price_ars, agreed_plan_id, updated_at"
+      )
       .in("subscription_status", ["CANCELLED", "SUSPENDED"])
       .gte("updated_at", since30d),
   ])
@@ -95,6 +101,8 @@ export default async function AdminMetricsPage() {
       subscription_status: o.subscription_status,
       custom_plan_id: o.custom_plan_id,
       manual_mrr_override_ars: o.manual_mrr_override_ars != null ? Number(o.manual_mrr_override_ars) : null,
+      agreed_plan_price_ars: o.agreed_plan_price_ars != null ? Number(o.agreed_plan_price_ars) : null,
+      agreed_plan_id: o.agreed_plan_id ?? null,
     }
     const cp = o.custom_plan_id ? cpMap.get(o.id) ?? null : null
 
@@ -129,6 +137,8 @@ export default async function AdminMetricsPage() {
       subscription_status: o.subscription_status,
       custom_plan_id: o.custom_plan_id,
       manual_mrr_override_ars: o.manual_mrr_override_ars != null ? Number(o.manual_mrr_override_ars) : null,
+      agreed_plan_price_ars: o.agreed_plan_price_ars != null ? Number(o.agreed_plan_price_ars) : null,
+      agreed_plan_id: o.agreed_plan_id ?? null,
     }
     const cp = o.custom_plan_id ? cpMap.get(o.id) ?? null : null
     churnMrr30d += computePotentialMrrArs(org, cp, planPrices)

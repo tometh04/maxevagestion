@@ -30,7 +30,10 @@ export async function TenantMetrics({ orgId }: { orgId: string }) {
       .maybeSingle(),
     admin
       .from("organizations")
-      .select("plan, subscription_status, custom_plan_id, manual_mrr_override_ars")
+      .select(
+        "plan, subscription_status, custom_plan_id, manual_mrr_override_ars, " +
+        "agreed_plan_price_ars, agreed_plan_id"
+      )
       .eq("id", orgId)
       .maybeSingle(),
     admin
@@ -40,11 +43,18 @@ export async function TenantMetrics({ orgId }: { orgId: string }) {
       .maybeSingle(),
   ])
 
-  const mrrOrg: MrrOrg = orgQ.data ?? {
-    plan: null,
-    subscription_status: "FREE",
-    custom_plan_id: null,
-    manual_mrr_override_ars: null,
+  // Mapeo explícito: Postgres devuelve los NUMERIC como string y pasarlos crudos
+  // hace que las comparaciones numéricas de computeMrrArs no funcionen.
+  const o = orgQ.data
+  const mrrOrg: MrrOrg = {
+    plan: o?.plan ?? null,
+    subscription_status: o?.subscription_status ?? "FREE",
+    custom_plan_id: o?.custom_plan_id ?? null,
+    manual_mrr_override_ars:
+      o?.manual_mrr_override_ars != null ? Number(o.manual_mrr_override_ars) : null,
+    agreed_plan_price_ars:
+      o?.agreed_plan_price_ars != null ? Number(o.agreed_plan_price_ars) : null,
+    agreed_plan_id: o?.agreed_plan_id ?? null,
   }
   const mrrCp: MrrCustomPlan | null = customPlanQ.data ?? null
   const effectiveMrr = computeMrrArs(mrrOrg, mrrCp, planPrices)

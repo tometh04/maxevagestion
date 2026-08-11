@@ -110,6 +110,14 @@ export interface CreatePreapprovalParams {
   customAmount?: number
   /** Requerido si plan === 'CUSTOM'. Aparece como "reason" en MP. */
   customReason?: string
+  /**
+   * Monto ARS a cobrar para un plan estándar. El caller es el que resuelve el
+   * precio (lista de `plan_prices` o precio congelado de la org): este módulo es
+   * un cliente HTTP fino y no hace I/O. Si no viene, cae a la constante `PLANS`
+   * — solo como último recurso, porque esa constante puede estar desalineada
+   * con el precio efectivo.
+   */
+  amountArs?: number
 }
 
 export interface PreapprovalResult {
@@ -137,7 +145,10 @@ export async function createPreapproval(params: CreatePreapprovalParams): Promis
     if (plan.priceArsMonthly === null || plan.contactSalesOnly) {
       throw new Error(`Plan ${params.plan} es contact-sales-only, no se puede crear preapproval`)
     }
-    amount = plan.priceArsMonthly
+    amount =
+      Number.isFinite(params.amountArs) && (params.amountArs as number) > 0
+        ? (params.amountArs as number)
+        : plan.priceArsMonthly
     // ASCII-only: em-dash (—) a veces rompe la API de MP con 500 genérico.
     reason = `Vibook - plan ${plan.name}`
   }

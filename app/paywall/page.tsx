@@ -3,6 +3,8 @@ import { redirect } from "next/navigation"
 import { getCurrentUser } from "@/lib/auth"
 import { createServerClient } from "@/lib/supabase/server"
 import { PLANS, PLAN_ORDER, formatArs } from "@/lib/billing/plans"
+import { getPlanPricing } from "@/lib/billing/plan-pricing"
+import { agreedPriceFor } from "@/lib/billing/agreed-price"
 import { CheckoutButton } from "@/components/billing/checkout-button"
 
 export const dynamic = "force-dynamic"
@@ -13,9 +15,16 @@ export default async function PaywallPage() {
 
   const supabase = await createServerClient()
   const { data: org } = await (supabase.from("organizations") as any)
-    .select("name, subscription_status, trial_ends_at, plan, billing_email")
+    .select(
+      "name, subscription_status, trial_ends_at, plan, billing_email, " +
+      "agreed_plan_price_ars, agreed_plan_id"
+    )
     .eq("id", user.org_id)
     .maybeSingle()
+
+  // Precios efectivos: `plan_prices` es legible con el server client (policy de
+  // SELECT para authenticated), así que no hace falta admin client acá.
+  const planPrices = await getPlanPricing(supabase as any)
 
   const status = (org as any)?.subscription_status as string | undefined
   // Si la sub está ACTIVE o TRIAL vigente, no hay que mostrar paywall — mandamos
@@ -60,6 +69,10 @@ export default async function PaywallPage() {
           {PLAN_ORDER.map((planId, idx) => {
             const plan = PLANS[planId]
             const isFeatured = idx === 1
+            // Si esta org ya venía pagando este plan a un precio congelado,
+            // mostramos ESE precio: es el que el checkout va a cobrarle al
+            // regularizar. Para los demás planes, el de lista.
+            const price = agreedPriceFor(org, planId) ?? planPrices[planId]
             return (
               <div
                 key={plan.id}
@@ -72,8 +85,8 @@ export default async function PaywallPage() {
                 <div>
                   <h3 className="text-lg font-semibold tracking-tight-h2">{plan.name}</h3>
                   <div className="text-3xl font-bold mt-1 tracking-tighter-h2">
-                    {plan.priceArsMonthly !== null
-                      ? <>{formatArs(plan.priceArsMonthly)}<span className="text-sm font-normal text-muted-foreground"> / mes</span></>
+                    {price !== null
+                      ? <>{formatArs(price)}<span className="text-sm font-normal text-muted-foreground"> / mes</span></>
                       : plan.priceLabel || "Consultar"}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">{plan.description}</p>
@@ -81,7 +94,10 @@ export default async function PaywallPage() {
                 <ul className="text-sm space-y-1 list-disc list-inside text-muted-foreground">
                   {plan.features.map((f, i) => <li key={i}>{f}</li>)}
                 </ul>
-                <CheckoutButton plan={plan.id} />
+                <CheckoutButton
+                  plan={plan.id}
+                  regularize={status === "PAST_DUE" && plan.id === org?.plan}
+                />
               </div>
             )
           })}

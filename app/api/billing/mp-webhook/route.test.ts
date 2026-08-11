@@ -236,3 +236,116 @@ describe("POST /api/billing/mp-webhook", () => {
     expect(mockFetchPreapproval).toHaveBeenCalledWith("pa-std")
   })
 })
+
+/**
+ * Grandfathering: el webhook es el writer autoritativo del precio pactado —
+ * el checkout sabe lo que PIDIÓ, acá sabemos lo que MP autorizó.
+ */
+describe("POST /api/billing/mp-webhook — snapshot del precio pactado", () => {
+  const baseOrg = {
+    id: "org-1",
+    name: "Lozada",
+    plan: "PRO",
+    custom_plan_id: null,
+    subscription_status: "PAST_DUE",
+    current_period_ends_at: null,
+    trial_ends_at: null,
+    mp_last_synced_at: null,
+  }
+
+  function setup(orgOverrides: any = {}) {
+    const updates: any[] = []
+    mockVerify.mockReturnValue(true)
+    mockCreateAdmin.mockReturnValue(
+      makeAdmin({
+        rawInsert: { data: { id: "raw-1" }, error: null },
+        maybeSingleData: null,
+        orgData: { ...baseOrg, ...orgOverrides },
+        updates,
+      })
+    )
+    return updates
+  }
+
+  function orgUpdateFrom(updates: any[]) {
+    return updates.find((u) => u.table === "organizations" && u.payload.subscription_status)
+  }
+
+  /** Pago aprobado: MP debitó 119000 aunque el precio de lista ya sea 139000. */
+  function approvedPayment(amount = 119000) {
+    mockFetchPreapproval.mockResolvedValue({
+      id: "pa-1",
+      status: "authorized",
+      external_reference: "org-1",
+      last_modified: new Date().toISOString(),
+      next_payment_date: "2026-09-10T00:00:00Z",
+      auto_recurring: { transaction_amount: amount, currency_id: "ARS" },
+    })
+    return new Request(
+      "http://localhost/api/billing/mp-webhook?type=subscription_authorized_payment&data.id=authpay-1",
+      { method: "POST", body: JSON.stringify({ preapproval_id: "pa-1", status: "approved" }) }
+    )
+  }
+
+  it("un pago aprobado congela el monto que MP debitó", async () => {
+    const updates = setup()
+    const res = await POST(approvedPayment(119000))
+    expect(res.status).toBe(200)
+
+    const orgUpdate = orgUpdateFrom(updates)
+    expect(orgUpdate.payload).toMatchObject({
+      subscription_status: "ACTIVE",
+      agreed_plan_price_ars: 119000,
+      agreed_plan_id: "PRO",
+      agreed_plan_price_source: "mp_webhook",
+    })
+  })
+
+  it("un pago RECHAZADO no pisa el precio pactado que ya había", async () => {
+    const updates = setup()
+    mockFetchPreapproval.mockResolvedValue({
+      id: "pa-1",
+      status: "authorized",
+      external_reference: "org-1",
+      last_modified: new Date().toISOString(),
+      auto_recurring: { transaction_amount: 139000, currency_id: "ARS" },
+    })
+    const r = new Request(
+      "http://localhost/api/billing/mp-webhook?type=subscription_authorized_payment&data.id=authpay-2",
+      { method: "POST", body: JSON.stringify({ preapproval_id: "pa-1", status: "rejected" }) }
+    )
+
+    const res = await POST(r)
+    expect(res.status).toBe(200)
+    const orgUpdate = orgUpdateFrom(updates)
+    expect(orgUpdate.payload.subscription_status).toBe("PAST_DUE")
+    expect(orgUpdate.payload).not.toHaveProperty("agreed_plan_price_ars")
+  })
+
+  it("no congela precio si la org tiene custom plan (ese contrato manda)", async () => {
+    const updates = setup({ custom_plan_id: "cp-1", plan: "ENTERPRISE" })
+    const res = await POST(approvedPayment(450000))
+    expect(res.status).toBe(200)
+    expect(orgUpdateFrom(updates).payload).not.toHaveProperty("agreed_plan_price_ars")
+  })
+
+  it("el early-return de acceso preservado no escribe precio", async () => {
+    // Preapproval pending + org con gracia vigente → sale por preserved_access.
+    const updates = setup({
+      current_period_ends_at: new Date(Date.now() + 2 * 24 * 3600 * 1000).toISOString(),
+    })
+    mockFetchPreapproval.mockResolvedValue({
+      id: "pa-pending",
+      status: "pending",
+      external_reference: "org-1",
+      last_modified: new Date().toISOString(),
+      auto_recurring: { transaction_amount: 139000, currency_id: "ARS" },
+    })
+
+    const res = await POST(req("type=subscription_preapproval&data.id=pa-pending"))
+    expect((await res.json()).preserved_access).toBe(true)
+    for (const u of updates) {
+      expect(u.payload).not.toHaveProperty("agreed_plan_price_ars")
+    }
+  })
+})

@@ -5,11 +5,18 @@
  * La tabla `organizations.plan` referencia uno de estos `id`.
  *
  * Alineado con la pricing de la landing (vibook.ai). Dos planes visibles:
- *   - PRO — $119.000 ARS/mes, 7 días trial gratis (cobro por MercadoPago).
+ *   - PRO — $139.000 ARS/mes, 7 días trial gratis (cobro por MercadoPago).
  *   - Enterprise — a consultar, incluye bot de ads → CRM.
  *
  * STARTER queda en el catálogo solo por backward compat con orgs antiguos
  * que tengan ese valor en `plan`. No se ofrece como opción de compra.
+ *
+ * IMPORTANTE: estos precios son el DEFAULT/fallback. El precio efectivo sale de
+ * la tabla `plan_prices` (editable desde /admin/billing) vía
+ * `lib/billing/plan-pricing.ts`. Cambiar esta constante NO cambia lo que se
+ * cobra mientras exista la fila en DB. Y las orgs ya suscriptas conservan su
+ * precio congelado (`organizations.agreed_plan_price_ars`) — ver
+ * `lib/billing/agreed-price.ts`.
  */
 
 export type PlanId = "STARTER" | "PRO" | "ENTERPRISE"
@@ -61,7 +68,7 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
     id: "PRO",
     name: "PRO",
     description: "Todo lo que necesitás para operar una agencia.",
-    priceArsMonthly: 119000,
+    priceArsMonthly: 139000,
     trialDays: 7,
     limits: {
       maxUsers: 999,

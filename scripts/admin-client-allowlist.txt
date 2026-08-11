@@ -77,6 +77,7 @@ app/api/cron/alerts/route.ts                                             # CRON 
 app/api/cron/apply-pricing-changes/route.ts                              # CRON — aplicar cambios de precio.
 app/api/cron/apply-pricing-changes/route.test.ts                         # TEST — tests del cron apply-pricing.
 app/api/billing/mp-webhook/route.test.ts                                 # TEST — mock de createAdminClient para tests del webhook MP.
+app/api/billing/checkout/route.test.ts                                   # TEST — mock de createAdminClient para tests del precio del checkout.
 app/api/admin/orgs/[id]/mp-preapproval-link/route.test.ts                # TEST — mock de createAdminClient para tests del preapproval per-org.
 app/api/admin/billing/plan-prices/route.test.ts                          # TEST — mock de createAdminClient para tests de precios de planes.
 app/api/admin/orgs/[id]/change-plan/route.test.ts                        # TEST — mock de createAdminClient para tests de cambio de plan.

@@ -101,6 +101,10 @@ describe("POST /api/admin/orgs/[id]/change-plan", () => {
       max_operations_per_month: 99999,
       custom_plan_id: null,
       scheduled_plan: null,
+      // Cambiar de plan invalida el precio congelado del plan anterior: si
+      // sobreviviera, un regularize posterior cobraría el monto viejo.
+      agreed_plan_price_ars: null,
+      agreed_plan_id: null,
     })
   })
 

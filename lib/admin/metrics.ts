@@ -3,12 +3,19 @@ import {
   type PlanPriceCatalog,
 } from "@/lib/billing/plan-pricing"
 import type { PlanId } from "@/lib/billing/plans"
+import { agreedPriceFor } from "@/lib/billing/agreed-price"
 
 export type MrrOrg = {
   plan: string | null
   subscription_status: string
   custom_plan_id: string | null
   manual_mrr_override_ars: number | null
+  /**
+   * Precio congelado de la org (grandfathering). Opcionales para que los
+   * callers/fixtures que no los pasan sigan comportándose igual que antes.
+   */
+  agreed_plan_price_ars?: number | string | null
+  agreed_plan_id?: string | null
 }
 
 export type MrrCustomPlan = {
@@ -41,9 +48,10 @@ const ENTERPRISE_FALLBACK_PLAN: PlanId = "PRO"
  *   1. Si status NOT IN (ACTIVE, PAST_DUE) → 0
  *   2. manual_mrr_override_ars > 0          → ese valor (real)
  *   3. custom_plan_id + customPlan          → custom plan effective price (real)
- *   4. planPrices[plan]                      → plan default/editado (real)
- *   5. ENTERPRISE sin config                 → PRO price (estimado)
- *   6. fallback                              → 0
+ *   4. agreed_plan_price_ars                 → precio congelado de la org (real)
+ *   5. planPrices[plan]                      → plan default/editado (real)
+ *   6. ENTERPRISE sin config                 → PRO price (estimado)
+ *   7. fallback                              → 0
  */
 export function computeMrrArs(
   org: MrrOrg,
@@ -117,6 +125,16 @@ function computeBaseMrrArs(
     const factor = discountActive ? 1 - customPlan.discount_percent / 100 : 1
     return { amount: Math.round(customPlan.base_price_ars * factor), estimated: false }
   }
+  // Precio congelado de la org (grandfathering): va DESPUÉS del override manual
+  // y del custom plan —esos son decisiones humanas explícitas de un platform
+  // admin y le ganan a un snapshot automático— pero ANTES del precio de lista.
+  // Sin esto, subir el precio de un plan infla el MRR de todas las orgs viejas
+  // sin que entre un peso: MP les sigue cobrando el monto anterior.
+  const agreed = agreedPriceFor(org, org.plan)
+  if (agreed !== null && agreed > 0) {
+    return { amount: Math.round(agreed), estimated: false }
+  }
+
   const planPrice = org.plan ? planPrices[org.plan as PlanId] : null
   if (planPrice && planPrice > 0) {
     return { amount: Math.round(planPrice), estimated: false }
