@@ -71,7 +71,53 @@ const usd = new Intl.NumberFormat("es-AR", {
   maximumFractionDigits: 0,
 })
 
-const PAGE_SIZE = 50
+const PAGE_SIZE = 25
+
+function Pager({
+  page,
+  totalPages,
+  rangeStart,
+  rangeEnd,
+  total,
+  onPrev,
+  onNext,
+}: {
+  page: number
+  totalPages: number
+  rangeStart: number
+  rangeEnd: number
+  total: number
+  onPrev: () => void
+  onNext: () => void
+}) {
+  if (totalPages <= 1) return null
+  return (
+    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
+      <span>
+        Mostrando {rangeStart}–{rangeEnd} de {total}
+      </span>
+      <div className="flex items-center gap-2">
+        <span>
+          Página {page} de {totalPages}
+        </span>
+        <Button variant="outline" size="sm" className="h-8" onClick={onPrev} disabled={page <= 1}>
+          <ChevronLeft className="h-4 w-4" />
+          Anterior
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8"
+          onClick={onNext}
+          disabled={page >= totalPages}
+        >
+          Siguiente
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  )
+}
 
 function fmtDate(d: string | null): string {
   if (!d) return "—"
@@ -83,6 +129,7 @@ function fmtDate(d: string | null): string {
 export function HotelBookingsPageClient({ agencies, sellers }: Props) {
   const router = useRouter()
   const [page, setPage] = useState(1)
+  const [sumPage, setSumPage] = useState(1)
   const [hotel, setHotel] = useState("")
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined)
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined)
@@ -119,6 +166,7 @@ export function HotelBookingsPageClient({ agencies, sellers }: Props) {
       setTruncated(Boolean(data.truncated))
       setSearched(true)
       setPage(1)
+      setSumPage(1)
     } catch (err: any) {
       setError(err?.message || "Error al buscar reservas")
       setRows([])
@@ -165,6 +213,7 @@ export function HotelBookingsPageClient({ agencies, sellers }: Props) {
     [summary]
   )
 
+  // Paginación del listado de reservas.
   const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
   const currentPage = Math.min(page, totalPages)
   const pageRows = useMemo(
@@ -173,6 +222,16 @@ export function HotelBookingsPageClient({ agencies, sellers }: Props) {
   )
   const rangeStart = rows.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1
   const rangeEnd = Math.min(currentPage * PAGE_SIZE, rows.length)
+
+  // Paginación del resumen por hotel.
+  const sumTotalPages = Math.max(1, Math.ceil(summary.length / PAGE_SIZE))
+  const sumCurrentPage = Math.min(sumPage, sumTotalPages)
+  const sumPageRows = useMemo(
+    () => summary.slice((sumCurrentPage - 1) * PAGE_SIZE, sumCurrentPage * PAGE_SIZE),
+    [summary, sumCurrentPage]
+  )
+  const sumRangeStart = summary.length === 0 ? 0 : (sumCurrentPage - 1) * PAGE_SIZE + 1
+  const sumRangeEnd = Math.min(sumCurrentPage * PAGE_SIZE, summary.length)
 
   const openOperation = useCallback(
     (operationId: string) => router.push(`/operations/${operationId}`),
@@ -404,36 +463,15 @@ export function HotelBookingsPageClient({ agencies, sellers }: Props) {
                   </TableBody>
                 </Table>
 
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
-                  <span>
-                    Mostrando {rangeStart}–{rangeEnd} de {rows.length}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <span>
-                      Página {currentPage} de {totalPages}
-                    </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-8"
-                      onClick={() => setPage((p) => Math.max(1, p - 1))}
-                      disabled={currentPage <= 1}
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                      Anterior
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-8"
-                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                      disabled={currentPage >= totalPages}
-                    >
-                      Siguiente
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
+                <Pager
+                  page={currentPage}
+                  totalPages={totalPages}
+                  rangeStart={rangeStart}
+                  rangeEnd={rangeEnd}
+                  total={rows.length}
+                  onPrev={() => setPage((p) => Math.max(1, p - 1))}
+                  onNext={() => setPage((p) => Math.min(totalPages, p + 1))}
+                />
                   </>
                 )}
               </CardContent>
@@ -469,7 +507,7 @@ export function HotelBookingsPageClient({ agencies, sellers }: Props) {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {summary.map((s) => (
+                      {sumPageRows.map((s) => (
                         <TableRow key={s.hotel}>
                           <TableCell className="font-medium">{s.hotel}</TableCell>
                           <TableCell className="text-right tabular-nums">{s.reservas}</TableCell>
@@ -480,6 +518,16 @@ export function HotelBookingsPageClient({ agencies, sellers }: Props) {
                       ))}
                     </TableBody>
                   </Table>
+
+                  <Pager
+                    page={sumCurrentPage}
+                    totalPages={sumTotalPages}
+                    rangeStart={sumRangeStart}
+                    rangeEnd={sumRangeEnd}
+                    total={summary.length}
+                    onPrev={() => setSumPage((p) => Math.max(1, p - 1))}
+                    onNext={() => setSumPage((p) => Math.min(sumTotalPages, p + 1))}
+                  />
                 </CardContent>
               </Card>
             )}
