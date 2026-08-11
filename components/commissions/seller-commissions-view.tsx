@@ -52,6 +52,8 @@ interface Commission {
   operation?: {
     id: string
     destination: string | null
+    /** Fecha de la venta: define a qué mes pertenece la comisión. */
+    operation_date?: string | null
     departure_date: string | null
     file_code: string | null
     short_code: string | null
@@ -105,6 +107,20 @@ function monthKey(date: Date): string {
 function monthKeyFromIso(iso: string | null | undefined): string {
   if (!iso) return "unknown"
   return iso.substring(0, 7) // "YYYY-MM"
+}
+
+/**
+ * A qué fecha pertenece una comisión: la de la venta.
+ *
+ * `date_calculated` NO sirve: `applyCommissionPlan()` la reescribe con la fecha
+ * de hoy en cada recálculo (recalcular comisiones, editar la operación, un
+ * script de corrección masiva), así que después de un recálculo las comisiones
+ * de las ventas de julio quedaban fechadas en agosto y desaparecían al filtrar
+ * julio. Es el mismo criterio que usan `/api/commissions` y el Reporte de
+ * Comisiones (VIB-65). Cae a `date_calculated` solo si la operación no vino.
+ */
+function saleDateOf(c: Commission): string | null {
+  return c.operation?.operation_date || c.date_calculated || null
 }
 
 function monthLabel(key: string): string {
@@ -173,27 +189,33 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
       result = result.filter((c) => c.status === statusFilter)
     }
 
-    // month — usar string slicing TZ-safe para evitar el bug de la zona horaria
+    // month — sobre la fecha de VENTA, no sobre `date_calculated`: esa columna
+    // la reescribe cada recálculo de comisiones, así que después de un recálculo
+    // las ventas de julio quedaban filtradas como si fueran de agosto.
+    // String slicing TZ-safe, igual que antes.
     if (monthFilterBalance !== "ALL") {
-      result = result.filter((c) => monthKeyFromIso(c.date_calculated) === monthFilterBalance)
+      result = result.filter(
+        (c) => monthKeyFromIso(saleDateOf(c)) === monthFilterBalance
+      )
     }
 
-    // date range
+    // date range — mismo criterio: fecha de venta, comparada como string
+    // "YYYY-MM-DD" para no volver a pasar por `new Date()` y su corrimiento.
     if (dateFrom) {
-      const from = new Date(dateFrom)
-      result = result.filter((c) => new Date(c.date_calculated) >= from)
+      result = result.filter((c) => (saleDateOf(c) ?? "") >= dateFrom)
     }
     if (dateTo) {
-      const to = new Date(dateTo)
-      to.setHours(23, 59, 59, 999)
-      result = result.filter((c) => new Date(c.date_calculated) <= to)
+      result = result.filter((c) => {
+        const d = saleDateOf(c)
+        return !!d && d.substring(0, 10) <= dateTo
+      })
     }
 
     return result
   }, [commissions, statusFilter, monthFilterBalance, dateFrom, dateTo])
 
   const { sortedData: sortedFilteredCommissions, sortConfig: balanceSortConfig, requestSort: requestBalanceSort } = useSortableData(filteredCommissions, {
-    key: "date_calculated",
+    key: "operation.operation_date",
     direction: "desc",
   })
 
@@ -218,7 +240,7 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
     const now = new Date()
     const key = monthKey(now)
     return commissions
-      .filter((c) => monthKeyFromIso(c.date_calculated) === key)
+      .filter((c) => monthKeyFromIso(saleDateOf(c)) === key)
       .reduce((s, c) => s + c.amount, 0)
   }, [commissions])
 
@@ -386,7 +408,7 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
               onValueChange={setMonthFilterBalance}
             >
               <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
-                <SelectValue placeholder="Mes" />
+                <SelectValue placeholder="Mes de venta" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">Todos los meses</SelectItem>
@@ -497,7 +519,7 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
               onValueChange={setMonthFilterHistory}
             >
               <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
-                <SelectValue placeholder="Mes" />
+                <SelectValue placeholder="Mes de pago" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">Todos los meses</SelectItem>

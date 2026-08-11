@@ -79,6 +79,8 @@ interface Commission {
     file_code?: string
     main_passenger_name?: string | null
     destination: string
+    /** Fecha de la venta: define a qué mes pertenece la comisión. */
+    operation_date?: string
     departure_date: string
     sale_amount_total: number
     operator_cost?: number
@@ -246,7 +248,10 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
   const fetchPaidCommissions = useCallback(async () => {
     setPaidLoading(true)
     try {
-      const params = new URLSearchParams({ status: "PAID" })
+      // Historial de Pagos: acá el mes que importa es el de la liquidación, no
+      // el de la venta. Es el único lugar de la pantalla que filtra por
+      // `date_paid` (ver `dateBasis` en /api/commissions).
+      const params = new URLSearchParams({ status: "PAID", dateBasis: "paid" })
       if (paidMonth !== "ALL") params.set("month", paidMonth)
       if (paidDateFrom) params.set("periodStart", paidDateFrom)
       if (paidDateTo) params.set("periodEnd", paidDateTo)
@@ -272,7 +277,14 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
     try {
       const now = new Date()
       const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
-      const params = new URLSearchParams({ status: "PAID", month: currentMonth })
+      // "Pagado este mes" = lo que salió de caja este mes, así que va por
+      // `date_paid`. Antes iba por `date_calculated` y el número era el de las
+      // comisiones calculadas este mes, no el de las pagadas.
+      const params = new URLSearchParams({
+        status: "PAID",
+        month: currentMonth,
+        dateBasis: "paid",
+      })
       const res = await fetch(`/api/commissions?${params.toString()}`)
       const data = await res.json()
       const totals = calcTotalsByCurrency(data.commissions || [])
@@ -670,9 +682,10 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
 
           {/* Filters */}
           <div className="flex items-center gap-2 flex-wrap" data-tour="commissions.period-selector">
+            <span className="text-xs text-muted-foreground">Mes de venta</span>
             <Select value={pendingMonth} onValueChange={setPendingMonth}>
               <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
-                <SelectValue placeholder="Mes" />
+                <SelectValue placeholder="Mes de venta" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">Todos los meses</SelectItem>
@@ -802,9 +815,12 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
                                       </Badge>
                                     )}
                                   </TableCell>
-                                  <TableCell className="text-center text-sm text-muted-foreground">
-                                    {c.operation?.departure_date
-                                      ? (parseDateOnlyLocal(c.operation.departure_date) ? format(parseDateOnlyLocal(c.operation.departure_date)!, "dd/MM/yyyy", { locale: es }) : "-")
+                                  {/* Fecha de venta, no de salida: es la que usa
+                                      el filtro por mes, así que tiene que ser la
+                                      que se ve al lado del filtro. */}
+                                  <TableCell className="text-center text-sm text-muted-foreground" title="Fecha de venta">
+                                    {c.operation?.operation_date
+                                      ? (parseDateOnlyLocal(c.operation.operation_date) ? format(parseDateOnlyLocal(c.operation.operation_date)!, "dd/MM/yyyy", { locale: es }) : "-")
                                       : "-"}
                                   </TableCell>
                                   <TableCell className="text-right text-sm tabular-nums">
@@ -904,9 +920,10 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
               </SelectContent>
             </Select>
 
+            <span className="text-xs text-muted-foreground">Mes de pago</span>
             <Select value={paidMonth} onValueChange={setPaidMonth}>
               <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
-                <SelectValue placeholder="Mes" />
+                <SelectValue placeholder="Mes de pago" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">Todos los meses</SelectItem>

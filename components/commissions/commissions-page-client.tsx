@@ -166,9 +166,12 @@ export function CommissionsPageClient({ sellerId }: CommissionsPageClientProps) 
             </SelectContent>
           </Select>
 
+          {/* Mes de la VENTA. `/api/commissions` filtra por
+              `operations.operation_date`: `date_calculated` se reescribe en
+              cada recálculo de comisiones y el filtro devolvía cualquier cosa. */}
           <Select value={monthFilter} onValueChange={setMonthFilter}>
             <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
-              <SelectValue placeholder="Mes" />
+              <SelectValue placeholder="Mes de venta" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">Todos los meses</SelectItem>

@@ -7,6 +7,10 @@ import {
   totalsByCurrency,
   type CommissionTotalsByCurrency,
 } from "@/lib/commissions/currency"
+import {
+  normalizeDateBasis,
+  resolveCommissionDateFilter,
+} from "@/lib/commissions/date-filter"
 
 export const dynamic = 'force-dynamic'
 
@@ -101,6 +105,18 @@ export async function GET(request: Request) {
     const periodEnd = searchParams.get("periodEnd")
     const month = searchParams.get("month") // Para filtrar por mes (YYYY-MM)
 
+    // Sobre qué fecha corren los filtros de período. El criterio (y el porqué de
+    // no usar `date_calculated`) vive en `lib/commissions/date-filter.ts`.
+    //   sale (default) → mes de la venta (operations.operation_date)
+    //   paid           → mes en que se le pagó al vendedor (date_paid)
+    const dateBasis = normalizeDateBasis(searchParams.get("dateBasis"))
+    const dateFilter = resolveCommissionDateFilter({
+      month,
+      periodStart,
+      periodEnd,
+      basis: dateBasis,
+    })
+
     // Determinar si puede ver todas las comisiones o solo las propias.
     // Antes era `role === ADMIN|SUPER_ADMIN` fijo; ahora respeta el matrix por
     // agencia: "ve todas" = tiene lectura de comisiones Y no está limitado a lo
@@ -111,13 +127,19 @@ export async function GET(request: Request) {
       !isOwnDataOnlyResolved(user, "commissions", matrix ?? undefined)
 
     // Always use commission_records (legacy commissions table is deprecated)
+    //
+    // El embed va con `!inner`: sin eso PostgREST ignora los filtros sobre
+    // `operations.*` (devuelve la fila con el embed en null en vez de excluirla),
+    // que es lo que necesita el filtro por mes de venta. `operation_id` es NOT
+    // NULL con FK, así que no se pierde ninguna comisión por el inner join.
     let query = (supabase.from("commission_records") as any)
       .select(`
         *,
-        operations:operation_id(
+        operations!inner(
           id,
           file_code,
           destination,
+          operation_date,
           departure_date,
           sale_amount_total,
           operator_cost,
@@ -152,20 +174,12 @@ export async function GET(request: Request) {
       query = query.eq("status", status.toUpperCase())
     }
 
-    // Filtro por mes (YYYY-MM)
-    if (month) {
-      const [year, monthNum] = month.split("-")
-      const startDate = `${year}-${monthNum}-01`
-      const endDate = new Date(parseInt(year), parseInt(monthNum), 0).toISOString().split("T")[0]
-      query = query.gte("date_calculated", startDate).lte("date_calculated", endDate)
+    // Filtro por período (mes y/o rango), sobre la columna que corresponda.
+    if (dateFilter.from) {
+      query = query.gte(dateFilter.column, dateFilter.from)
     }
-
-    // Filtro por rango de fechas
-    if (periodStart) {
-      query = query.gte("date_calculated", periodStart)
-    }
-    if (periodEnd) {
-      query = query.lte("date_calculated", periodEnd)
+    if (dateFilter.to) {
+      query = query.lte(dateFilter.column, dateFilter.to)
     }
 
     const { data: commissionRecords, error } = await query
@@ -286,6 +300,8 @@ export async function GET(request: Request) {
           file_code: cr.operations.file_code || "",
           main_passenger_name: mainPassengerByOperation.get(cr.operation_id) || "",
           destination: cr.operations.destination || "",
+          // Fecha de la venta: es la que define a qué mes pertenece la comisión.
+          operation_date: cr.operations.operation_date || "",
           departure_date: cr.operations.departure_date || "",
           currency: cr.operations.sale_currency || "USD",
           // La economía del paquete (venta, costo del operador y margen) es de la
@@ -312,7 +328,12 @@ export async function GET(request: Request) {
     const monthlyAcc = new Map<string, CommissionTotalsByCurrency & { count: number }>()
 
     commissions.forEach((comm: any) => {
-      const monthKey = comm.date_calculated ? comm.date_calculated.substring(0, 7) : "unknown"
+      // Mismo criterio que el filtro: el mes de una comisión es el de la venta,
+      // salvo que se esté mirando el historial de pagos. `date_calculated` no
+      // sirve para agrupar — la reescribe cada recálculo.
+      const monthSource =
+        dateBasis === "paid" ? comm.date_paid : comm.operation?.operation_date
+      const monthKey = monthSource ? String(monthSource).substring(0, 7) : "unknown"
       if (!monthlyAcc.has(monthKey)) {
         monthlyAcc.set(monthKey, { ...emptyTotalsByCurrency(), count: 0 })
       }
