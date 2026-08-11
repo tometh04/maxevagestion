@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { format } from "date-fns"
 import { Search, X, Download, Loader2, Hotel } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -75,7 +75,8 @@ export function HotelBookingsPageClient({ agencies, sellers }: Props) {
 
   const [rows, setRows] = useState<BookingRow[]>([])
   const [summary, setSummary] = useState<SummaryRow[]>([])
-  const [loading, setLoading] = useState(false)
+  // Arranca en loading: al montar se carga el listado completo (sin filtros).
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [truncated, setTruncated] = useState(false)
   const [searched, setSearched] = useState(false)
@@ -90,11 +91,11 @@ export function HotelBookingsPageClient({ agencies, sellers }: Props) {
     return p
   }, [hotel, dateFrom, dateTo, agencyId, sellerId])
 
-  const search = useCallback(async () => {
+  const fetchBookings = useCallback(async (params: URLSearchParams) => {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch(`/api/operations/hotel-bookings?${buildParams().toString()}`)
+      const res = await fetch(`/api/operations/hotel-bookings?${params.toString()}`)
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error || "Error al buscar reservas")
       setRows(data.rows || [])
@@ -108,7 +109,14 @@ export function HotelBookingsPageClient({ agencies, sellers }: Props) {
     } finally {
       setLoading(false)
     }
-  }, [buildParams])
+  }, [])
+
+  const search = useCallback(() => fetchBookings(buildParams()), [fetchBookings, buildParams])
+
+  // Al abrir la pantalla se lista todo (sin filtros); la búsqueda sólo acota.
+  useEffect(() => {
+    fetchBookings(new URLSearchParams())
+  }, [fetchBookings])
 
   const exportCsv = useCallback(() => {
     const p = buildParams()
@@ -127,12 +135,9 @@ export function HotelBookingsPageClient({ agencies, sellers }: Props) {
     setDateTo(undefined)
     setAgencyId("ALL")
     setSellerId("ALL")
-    setRows([])
-    setSummary([])
-    setSearched(false)
-    setError(null)
-    setTruncated(false)
-  }, [])
+    // Vuelve a mostrar el listado completo.
+    fetchBookings(new URLSearchParams())
+  }, [fetchBookings])
 
   const totalReservas = useMemo(
     () => summary.reduce((acc, s) => acc + s.reservas, 0),
@@ -151,8 +156,8 @@ export function HotelBookingsPageClient({ agencies, sellers }: Props) {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Reservas por hotel</h1>
         <p className="text-sm text-muted-foreground">
-          Buscá una cadena de hotel (ej. &ldquo;Iberostar&rdquo;) y un rango de fechas para listar
-          todas las reservas con su código, y ver la estadística por hotel.
+          Se listan todas las reservas con hotel y su código. Filtrá por cadena
+          (ej. &ldquo;Iberostar&rdquo;), fechas, agencia o vendedor para acotar.
         </p>
       </div>
 
@@ -282,6 +287,13 @@ export function HotelBookingsPageClient({ agencies, sellers }: Props) {
         </div>
       )}
 
+      {loading && (
+        <div className="py-16 text-center text-sm text-muted-foreground">
+          <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />
+          Cargando reservas…
+        </div>
+      )}
+
       {/* Resumen por hotel */}
       {searched && !loading && summary.length > 0 && (
         <Card>
@@ -379,12 +391,6 @@ export function HotelBookingsPageClient({ agencies, sellers }: Props) {
             )}
           </CardContent>
         </Card>
-      )}
-
-      {!searched && !loading && (
-        <div className="py-16 text-center text-sm text-muted-foreground">
-          Ingresá una cadena de hotel y hacé clic en <strong>Buscar</strong>.
-        </div>
       )}
     </div>
   )
