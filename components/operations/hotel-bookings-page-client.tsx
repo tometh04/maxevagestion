@@ -1,8 +1,19 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { format } from "date-fns"
-import { Search, X, Download, Loader2, Hotel } from "lucide-react"
+import {
+  Search,
+  X,
+  Download,
+  Loader2,
+  Hotel,
+  ExternalLink,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -59,6 +70,8 @@ const usd = new Intl.NumberFormat("es-AR", {
   maximumFractionDigits: 0,
 })
 
+const PAGE_SIZE = 50
+
 function fmtDate(d: string | null): string {
   if (!d) return "—"
   const s = d.slice(0, 10)
@@ -67,6 +80,8 @@ function fmtDate(d: string | null): string {
 }
 
 export function HotelBookingsPageClient({ agencies, sellers }: Props) {
+  const router = useRouter()
+  const [page, setPage] = useState(1)
   const [hotel, setHotel] = useState("")
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined)
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined)
@@ -102,6 +117,7 @@ export function HotelBookingsPageClient({ agencies, sellers }: Props) {
       setSummary(data.summary || [])
       setTruncated(Boolean(data.truncated))
       setSearched(true)
+      setPage(1)
     } catch (err: any) {
       setError(err?.message || "Error al buscar reservas")
       setRows([])
@@ -146,6 +162,20 @@ export function HotelBookingsPageClient({ agencies, sellers }: Props) {
   const totalMonto = useMemo(
     () => summary.reduce((acc, s) => acc + s.montoUsd, 0),
     [summary]
+  )
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
+  const currentPage = Math.min(page, totalPages)
+  const pageRows = useMemo(
+    () => rows.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    [rows, currentPage]
+  )
+  const rangeStart = rows.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1
+  const rangeEnd = Math.min(currentPage * PAGE_SIZE, rows.length)
+
+  const openOperation = useCallback(
+    (operationId: string) => router.push(`/operations/${operationId}`),
+    [router]
   )
 
   const hasFilters =
@@ -345,49 +375,100 @@ export function HotelBookingsPageClient({ agencies, sellers }: Props) {
                 No se encontraron reservas con esos filtros.
               </div>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Hotel</TableHead>
-                    <TableHead>Cód. reserva</TableHead>
-                    <TableHead>Cliente</TableHead>
-                    <TableHead>File</TableHead>
-                    <TableHead>Check-in</TableHead>
-                    <TableHead>Check-out</TableHead>
-                    <TableHead>Vendedor</TableHead>
-                    <TableHead className="text-right">Venta</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {rows.map((r, i) => (
-                    <TableRow key={`${r.operationId}-${r.source}-${i}`}>
-                      <TableCell className="font-medium">
-                        {r.hotelName || "—"}
-                        {r.source === "leg" && (
-                          <Badge variant="outline" className="ml-2 text-[10px]">
-                            tramo
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="font-mono text-xs">
-                        {r.reservationCode || "—"}
-                      </TableCell>
-                      <TableCell>{r.customerName || "—"}</TableCell>
-                      <TableCell className="font-mono text-xs text-muted-foreground">
-                        {r.fileCode || "—"}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap">{fmtDate(r.checkinDate)}</TableCell>
-                      <TableCell className="whitespace-nowrap">{fmtDate(r.checkoutDate)}</TableCell>
-                      <TableCell className="whitespace-nowrap">{r.sellerName || "—"}</TableCell>
-                      <TableCell className="whitespace-nowrap text-right tabular-nums">
-                        {r.saleAmount > 0
-                          ? `${r.saleCurrency} ${new Intl.NumberFormat("es-AR", { maximumFractionDigits: 0 }).format(r.saleAmount)}`
-                          : "—"}
-                      </TableCell>
+              <>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Hotel</TableHead>
+                      <TableHead>Cód. reserva</TableHead>
+                      <TableHead>Cliente</TableHead>
+                      <TableHead>File</TableHead>
+                      <TableHead>Check-in</TableHead>
+                      <TableHead>Check-out</TableHead>
+                      <TableHead>Vendedor</TableHead>
+                      <TableHead className="text-right">Venta</TableHead>
+                      <TableHead className="w-8" />
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {pageRows.map((r, i) => (
+                      <TableRow
+                        key={`${r.operationId}-${r.source}-${i}`}
+                        onClick={() => openOperation(r.operationId)}
+                        className="cursor-pointer"
+                        title="Abrir operación"
+                      >
+                        <TableCell className="font-medium">
+                          {r.hotelName || "—"}
+                          {r.source === "leg" && (
+                            <Badge variant="outline" className="ml-2 text-[10px]">
+                              tramo
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">
+                          {r.reservationCode || "—"}
+                        </TableCell>
+                        <TableCell>{r.customerName || "—"}</TableCell>
+                        <TableCell className="font-mono text-xs text-muted-foreground">
+                          {r.fileCode || "—"}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap">{fmtDate(r.checkinDate)}</TableCell>
+                        <TableCell className="whitespace-nowrap">{fmtDate(r.checkoutDate)}</TableCell>
+                        <TableCell className="whitespace-nowrap">{r.sellerName || "—"}</TableCell>
+                        <TableCell className="whitespace-nowrap text-right tabular-nums">
+                          {r.saleAmount > 0
+                            ? `${r.saleCurrency} ${new Intl.NumberFormat("es-AR", { maximumFractionDigits: 0 }).format(r.saleAmount)}`
+                            : "—"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Link
+                            href={`/operations/${r.operationId}`}
+                            target="_blank"
+                            rel="noopener"
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-flex text-muted-foreground hover:text-foreground"
+                            title="Abrir en pestaña nueva"
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                          </Link>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
+                  <span>
+                    Mostrando {rangeStart}–{rangeEnd} de {rows.length}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span>
+                      Página {currentPage} de {totalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8"
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={currentPage <= 1}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      Anterior
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8"
+                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={currentPage >= totalPages}
+                    >
+                      Siguiente
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </>
             )}
           </CardContent>
         </Card>
