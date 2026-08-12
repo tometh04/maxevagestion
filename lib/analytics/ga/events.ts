@@ -61,13 +61,19 @@ export type AnalyticsEventParams = {
     had_warnings: boolean
   }
 
+  /**
+   * `payment_currency` y no `currency`: `currency` es un parametro RESERVADO de
+   * GA4 (esquema de ecommerce, va junto a `value`). Google lo recolecta pero no
+   * deja registrarlo como dimension custom, asi que el dato nunca seria visible
+   * en un reporte. Mismo motivo para no usar `value`, `items` o `transaction_id`.
+   */
   payment_registered: {
-    currency: string
+    payment_currency: string
     payment_method: string
     requires_approval: boolean
     surface: AnalyticsSurface
   }
-  payment_marked_paid: { currency: string; surface: AnalyticsSurface }
+  payment_marked_paid: { payment_currency: string; surface: AnalyticsSurface }
 
   /**
    * A proposito NO lleva el detalle del rechazo de AFIP: la respuesta viene como

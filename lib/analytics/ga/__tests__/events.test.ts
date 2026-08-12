@@ -34,12 +34,12 @@ const SAMPLES: { [K in AnalyticsEventName]: AnalyticsEventParams[K] } = {
     had_warnings: false,
   },
   payment_registered: {
-    currency: "ARS",
+    payment_currency: "ARS",
     payment_method: "transfer",
     requires_approval: false,
     surface: "payments",
   },
-  payment_marked_paid: { currency: "USD", surface: "payments" },
+  payment_marked_paid: { payment_currency: "USD", surface: "payments" },
   invoice_authorized: { invoice_kind: "6", result: "error", surface: "invoices" },
   quotation_created: { mode: "create", sent: true, items_bucket: "2-5" },
   import_run: { entity: "operations", rows_bucket: "25+", result: "partial" },
@@ -54,6 +54,48 @@ describe("catalogo de eventos", () => {
   it.each(entries)("%s no pierde ningun parametro al pasar por el scrubber", (name, params) => {
     const scrubbed = scrubParams(params)
     expect(Object.keys(scrubbed).sort()).toEqual(Object.keys(params).sort())
+  })
+
+  /**
+   * Nombres que GA4 se reserva (esquema de ecommerce y params predefinidos).
+   * Se recolectan igual, pero la consola RECHAZA registrarlos como dimension
+   * custom con "Parameter name is not allowed for this scope", asi que el dato
+   * queda invisible en todos los reportes. Falla silenciosa y molesta de
+   * diagnosticar: por eso esta el test.
+   */
+  const GA4_RESERVED_PARAMS = [
+    "currency",
+    "value",
+    "items",
+    "item_id",
+    "item_name",
+    "transaction_id",
+    "coupon",
+    "shipping",
+    "tax",
+    "discount",
+    "affiliation",
+    "payment_type",
+    "price",
+    "quantity",
+    "index",
+    "promotion_id",
+    "promotion_name",
+    "creative_name",
+    "creative_slot",
+    "location_id",
+    "search_term",
+    "page_location",
+    "page_referrer",
+    "page_title",
+    "screen_name",
+    "language",
+    "content_group",
+  ]
+
+  it.each(entries)("%s no usa parametros reservados por GA4", (name, params) => {
+    const offenders = Object.keys(params).filter((k) => GA4_RESERVED_PARAMS.includes(k))
+    expect(offenders).toEqual([])
   })
 
   it("usa snake_case en todos los nombres de evento", () => {

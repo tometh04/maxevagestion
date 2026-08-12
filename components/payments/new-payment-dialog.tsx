@@ -408,7 +408,7 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
       if (createData.requires_approval) {
         toast.success("Pago creado. Queda pendiente de aprobación antes de impactar caja.")
         trackEvent("payment_registered", {
-          currency: values.currency,
+          payment_currency: values.currency,
           payment_method: values.method,
           requires_approval: true,
           surface: "payments",
@@ -440,7 +440,7 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
         } else {
           toast.success("Pago creado y marcado como pagado")
           trackEvent("payment_marked_paid", {
-            currency: values.currency,
+            payment_currency: values.currency,
             surface: "payments",
           })
         }
@@ -451,7 +451,7 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
       // Moneda y medio de pago, nunca el importe: el monto es dato financiero
       // del tenant y Postgres sigue siendo la única fuente de verdad.
       trackEvent("payment_registered", {
-        currency: values.currency,
+        payment_currency: values.currency,
         payment_method: values.method,
         requires_approval: false,
         surface: "payments",

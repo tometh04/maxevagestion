@@ -82,7 +82,7 @@ describe("gates", () => {
 describe("trackEvent", () => {
   it("emite el evento con sus params", () => {
     trackEvent("payment_registered", {
-      currency: "ARS",
+      payment_currency: "ARS",
       payment_method: "transfer",
       requires_approval: false,
       surface: "payments",
@@ -90,7 +90,7 @@ describe("trackEvent", () => {
     const [hit] = eventHits()
     expect(hit.name).toBe("payment_registered")
     expect(hit.params).toMatchObject({
-      currency: "ARS",
+      payment_currency: "ARS",
       payment_method: "transfer",
       requires_approval: false,
       surface: "payments",
@@ -99,7 +99,7 @@ describe("trackEvent", () => {
 
   it("descarta params prohibidos aunque se fuercen con un cast", () => {
     trackEvent("payment_registered", {
-      currency: "ARS",
+      payment_currency: "ARS",
       payment_method: "transfer",
       requires_approval: false,
       surface: "payments",
@@ -109,7 +109,7 @@ describe("trackEvent", () => {
     const [hit] = eventHits()
     expect(hit.params).not.toHaveProperty("amount")
     expect(hit.params).not.toHaveProperty("customer_email")
-    expect(hit.params.currency).toBe("ARS")
+    expect(hit.params.payment_currency).toBe("ARS")
   })
 
   it("pisa SIEMPRE page_location y page_path, aun en eventos custom", () => {

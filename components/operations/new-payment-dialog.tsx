@@ -160,7 +160,7 @@ export function NewPaymentDialog({
       // `surface` distingue este alta de la de /payments: son dos diálogos con
       // flujos distintos y sin el discriminador las métricas quedan mezcladas.
       trackEvent("payment_registered", {
-        currency: values.currency,
+        payment_currency: values.currency,
         payment_method: values.method,
         requires_approval: false,
         surface: "operation_detail",

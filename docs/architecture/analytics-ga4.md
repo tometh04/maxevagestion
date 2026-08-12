@@ -114,6 +114,18 @@ tecla.
    no registrados se recolectan pero no aparecen en reportes, y **no es
    retroactivo**.
 
+### Nombres reservados por GA4
+
+GA4 se reserva los nombres de su esquema de ecommerce y de los parámetros
+predefinidos: `currency`, `value`, `items`, `transaction_id`, `price`,
+`quantity`, `search_term`, `page_location`, `language`, etc. Los recolecta
+igual, pero la consola **rechaza registrarlos como dimensión custom** ("Parameter
+name is not allowed for this scope"), así que el dato queda invisible en todos
+los reportes.
+
+Por eso el parámetro de moneda de los pagos se llama `payment_currency` y no
+`currency`. El test `events.test.ts` valida la lista completa contra el catálogo.
+
 ### La trampa de los nombres de parámetro
 
 `scrubParams` descarta por fragmento de clave, así que un parámetro
