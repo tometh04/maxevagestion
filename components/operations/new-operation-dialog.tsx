@@ -1404,8 +1404,9 @@ export function NewOperationDialog({
 
                       {/* VIB-112: precio de venta de ESTE servicio. Desglose del
                           total de venta de la operación; se usa al facturar por
-                          servicio para controlar la base gravada de IVA. */}
-                      {(() => {
+                          servicio para controlar la base gravada de IVA. Sólo con
+                          2+ servicios: con uno solo, su precio es el total. */}
+                      {operatorList.length >= 2 && (() => {
                         const saleCur = (form.watch("sale_currency") || form.watch("currency") || "USD") as string
                         const saleVal = Number(op.sale_amount) || 0
                         const costVal = Number(op.cost) || 0
@@ -1504,70 +1505,71 @@ export function NewOperationDialog({
                       </span>
                     </div>
 
-                    {/* VIB-112: reparto de la venta por servicio. El total de venta
-                        es la fuente de verdad; esto es cómo se desglosa. */}
-                    {(() => {
+                    {/* VIB-112: desglose del precio de venta por servicio. Sólo
+                        tiene sentido con 2+ servicios y una venta total cargada
+                        (con un solo servicio, su precio ES el total; sin total no
+                        hay nada que repartir). Se muestra con encabezado propio
+                        para que no aparezca suelto y sin contexto. */}
+                    {operatorList.length >= 2 && (Number(form.watch("sale_amount_total")) || 0) > 0 && (() => {
                       const saleCur = (form.watch("sale_currency") || form.watch("currency") || "USD") as string
                       const saleTotal = Number(form.watch("sale_amount_total")) || 0
                       const assigned = operatorList.reduce((s, op) => s + (Number(op.sale_amount) || 0), 0)
                       const anyLoaded = operatorList.some((op) => (Number(op.sale_amount) || 0) > 0)
-                      if (!anyLoaded) return null
                       const diff = Math.round((assigned - saleTotal) * 100) / 100
                       const tolerance = Math.max(0.01, Math.abs(saleTotal) * 0.005)
-                      const mismatch = Math.abs(diff) > tolerance
+                      const mismatch = anyLoaded && Math.abs(diff) > tolerance
                       return (
-                        <div className="mt-2 pt-2 border-t border-border/40">
-                          <div className="flex justify-between items-center text-sm">
-                            <span className="font-medium text-muted-foreground">Venta asignada a servicios:</span>
-                            <span className="font-medium">
-                              {saleCur} {assigned.toLocaleString("es-AR", { minimumFractionDigits: 2 })} / {saleTotal.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-                            </span>
+                        <div className="mt-3 pt-3 border-t border-border/40">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Precio de venta por servicio</span>
+                            {anyLoaded && (
+                              <span className="text-xs font-medium">
+                                {saleCur} {assigned.toLocaleString("es-AR", { minimumFractionDigits: 2 })} / {saleTotal.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                              </span>
+                            )}
                           </div>
+                          <p className="text-xs text-muted-foreground mb-2">
+                            Opcional. Cuánto de la venta corresponde a cada servicio; se usa al facturar cada uno por separado.
+                          </p>
                           {mismatch && (
-                            <p className="text-xs text-accent-amber mt-1">
+                            <p className="text-xs text-accent-amber mb-2">
                               {diff > 0 ? "Asignaste" : "Falta asignar"} {saleCur} {Math.abs(diff).toLocaleString("es-AR", { minimumFractionDigits: 2 })} respecto del total de venta.
                             </p>
                           )}
+                          <div className="flex gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={() => {
+                                const shares = distributeSaleByCost({
+                                  legs: operatorList.map((op) => ({ cost: op.cost, cost_currency: op.cost_currency })),
+                                  saleAmountTotal: saleTotal,
+                                  saleCurrency: saleCur === "ARS" ? "ARS" : "USD",
+                                })
+                                setOperatorList((prev) => prev.map((op, i) => ({ ...op, sale_amount: shares[i] ?? 0 })))
+                              }}
+                            >
+                              Repartir ∝ costo
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={() => {
+                                const others = operatorList.slice(0, -1).reduce((s, op) => s + (Number(op.sale_amount) || 0), 0)
+                                const last = Math.round((saleTotal - others) * 100) / 100
+                                setOperatorList((prev) => prev.map((op, i) => (i === prev.length - 1 ? { ...op, sale_amount: last } : op)))
+                              }}
+                            >
+                              Completar la última
+                            </Button>
+                          </div>
                         </div>
                       )
                     })()}
-
-                    <div className="flex gap-2 mt-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-xs"
-                        onClick={() => {
-                          const saleCur = (form.watch("sale_currency") || form.watch("currency") || "USD") as "ARS" | "USD"
-                          const saleTotal = Number(form.watch("sale_amount_total")) || 0
-                          const shares = distributeSaleByCost({
-                            legs: operatorList.map((op) => ({ cost: op.cost, cost_currency: op.cost_currency })),
-                            saleAmountTotal: saleTotal,
-                            saleCurrency: saleCur === "ARS" ? "ARS" : "USD",
-                          })
-                          setOperatorList((prev) => prev.map((op, i) => ({ ...op, sale_amount: shares[i] ?? 0 })))
-                        }}
-                      >
-                        Repartir ∝ costo
-                      </Button>
-                      {operatorList.length > 1 && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => {
-                            const saleTotal = Number(form.watch("sale_amount_total")) || 0
-                            const others = operatorList.slice(0, -1).reduce((s, op) => s + (Number(op.sale_amount) || 0), 0)
-                            const last = Math.round((saleTotal - others) * 100) / 100
-                            setOperatorList((prev) => prev.map((op, i) => (i === prev.length - 1 ? { ...op, sale_amount: last } : op)))
-                          }}
-                        >
-                          Completar la última
-                        </Button>
-                      )}
-                    </div>
                   </div>
                 )}
 
