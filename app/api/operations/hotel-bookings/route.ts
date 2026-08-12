@@ -41,6 +41,7 @@ export async function GET(request: Request) {
     const hotel = searchParams.get("hotel")?.trim() ?? ""
     const dateFrom = searchParams.get("dateFrom")
     const dateTo = searchParams.get("dateTo")
+    const dateField = searchParams.get("dateField") === "created" ? "created" : "departure"
     const agencyId = searchParams.get("agencyId")
     const sellerId = searchParams.get("sellerId")
     const format = (searchParams.get("format") ?? "json").toLowerCase()
@@ -71,7 +72,7 @@ export async function GET(request: Request) {
       supabase,
       user as any,
       agencyIds,
-      { hotel, dateFrom, dateTo, agencyId, sellerId }
+      { hotel, dateFrom, dateTo, dateField, agencyId, sellerId }
     )
 
     if (format === "csv") {
@@ -120,6 +121,8 @@ function csvResponse(rows: HotelBookingRow[], truncated: boolean): NextResponse 
     "checkin",
     "checkout",
     "fecha_salida",
+    "fecha_regreso",
+    "fecha_carga",
     "vendedor",
     "estado",
     "monto_venta",
@@ -138,6 +141,8 @@ function csvResponse(rows: HotelBookingRow[], truncated: boolean): NextResponse 
       r.checkinDate,
       r.checkoutDate,
       r.departureDate,
+      r.returnDate,
+      r.createdAt ? String(r.createdAt).slice(0, 10) : "",
       r.sellerName,
       r.status,
       numEs(r.saleAmount),

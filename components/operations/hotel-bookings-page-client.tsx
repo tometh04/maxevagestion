@@ -133,6 +133,7 @@ export function HotelBookingsPageClient({ agencies, sellers }: Props) {
   const [hotel, setHotel] = useState("")
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined)
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined)
+  const [dateField, setDateField] = useState<"departure" | "created">("departure")
   const [agencyId, setAgencyId] = useState("ALL")
   const [sellerId, setSellerId] = useState("ALL")
 
@@ -149,10 +150,11 @@ export function HotelBookingsPageClient({ agencies, sellers }: Props) {
     if (hotel.trim()) p.set("hotel", hotel.trim())
     if (dateFrom) p.set("dateFrom", format(dateFrom, "yyyy-MM-dd"))
     if (dateTo) p.set("dateTo", format(dateTo, "yyyy-MM-dd"))
+    if (dateField !== "departure") p.set("dateField", dateField)
     if (agencyId !== "ALL") p.set("agencyId", agencyId)
     if (sellerId !== "ALL") p.set("sellerId", sellerId)
     return p
-  }, [hotel, dateFrom, dateTo, agencyId, sellerId])
+  }, [hotel, dateFrom, dateTo, dateField, agencyId, sellerId])
 
   const fetchBookings = useCallback(async (params: URLSearchParams) => {
     setLoading(true)
@@ -198,6 +200,7 @@ export function HotelBookingsPageClient({ agencies, sellers }: Props) {
     setHotel("")
     setDateFrom(undefined)
     setDateTo(undefined)
+    setDateField("departure")
     setAgencyId("ALL")
     setSellerId("ALL")
     // Vuelve a mostrar el listado completo.
@@ -247,7 +250,8 @@ export function HotelBookingsPageClient({ agencies, sellers }: Props) {
         <h1 className="text-2xl font-semibold tracking-tight">Reservas por hotel</h1>
         <p className="text-sm text-muted-foreground">
           Se listan todas las reservas con hotel y su código. Filtrá por cadena
-          (ej. &ldquo;Iberostar&rdquo;), fechas, agencia o vendedor para acotar.
+          (ej. &ldquo;Iberostar&rdquo;), agencia, vendedor o un rango de fechas. El rango puede ser
+          por <strong>viaje</strong> (fecha de salida) o por <strong>carga</strong> (cuándo se vendió).
         </p>
       </div>
 
@@ -272,7 +276,20 @@ export function HotelBookingsPageClient({ agencies, sellers }: Props) {
             </div>
 
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-muted-foreground">Desde (check-in)</label>
+              <label className="text-xs text-muted-foreground">Fecha por</label>
+              <Select value={dateField} onValueChange={(v) => setDateField(v as "departure" | "created")}>
+                <SelectTrigger className="h-9 min-w-[130px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="departure">Viaje (salida)</SelectItem>
+                  <SelectItem value="created">Carga (venta)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-muted-foreground">Desde</label>
               <DateInputWithCalendar
                 value={dateFrom}
                 onChange={(date) => {
@@ -285,7 +302,7 @@ export function HotelBookingsPageClient({ agencies, sellers }: Props) {
             </div>
 
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-muted-foreground">Hasta (check-in)</label>
+              <label className="text-xs text-muted-foreground">Hasta</label>
               <DateInputWithCalendar
                 value={dateTo}
                 onChange={(date) => {
