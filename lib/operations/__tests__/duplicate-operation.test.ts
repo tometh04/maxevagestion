@@ -112,6 +112,18 @@ describe("buildOperationDuplicateDraft (VIB-109)", () => {
     ])
   })
 
+  it("VIB-112: copia el precio de venta por servicio (parte del paquete del grupo)", () => {
+    const { operatorRows } = buildOperationDuplicateDraft({
+      operation_operators: [
+        { operator_id: "op-1", cost: 300, cost_currency: "USD", sale_amount: 500 },
+        { operator_id: "op-2", cost: 100, cost_currency: "USD", sale_amount: 0 },
+      ],
+    })
+    expect(operatorRows[0].sale_amount).toBe(500)
+    // Los que están en 0 no arrastran el campo (queda vacío para recargar).
+    expect(operatorRows[1]).not.toHaveProperty("sale_amount")
+  })
+
   it("clona el detalle del pasajero en vez de compartir la referencia", () => {
     const { operatorRows } = buildOperationDuplicateDraft(baseOperation)
     operatorRows[0].passenger_detail!.hotel_name = "Otro"

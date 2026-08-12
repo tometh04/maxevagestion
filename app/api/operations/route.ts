@@ -202,7 +202,7 @@ export async function POST(request: Request) {
     }
 
     // Procesar operadores: soportar formato nuevo (array) y formato antiguo (operator_id + operator_cost)
-    let operatorsList: Array<{operator_id: string, cost: number, cost_currency: string, product_type?: string, notes?: string, passenger_detail?: any, file_code?: string | null, payment_due_date?: string | null}> = []
+    let operatorsList: Array<{operator_id: string, cost: number, cost_currency: string, product_type?: string, notes?: string, passenger_detail?: any, file_code?: string | null, payment_due_date?: string | null, sale_amount?: number}> = []
     let totalOperatorCost = 0
     let finalOperatorCostCurrency = operator_cost_currency || currency || "USD"
     let primaryOperatorId: string | null = operator_id || null
@@ -224,7 +224,9 @@ export async function POST(request: Request) {
           notes: op.notes || undefined,
           passenger_detail: op.passenger_detail ?? undefined,
           file_code: (op.file_code && String(op.file_code).trim()) || null,
-          payment_due_date: sanitizeDueDate(op.payment_due_date)
+          payment_due_date: sanitizeDueDate(op.payment_due_date),
+          // VIB-112: precio de venta por pata (desglose informativo del total).
+          sale_amount: op.sale_amount === undefined ? 0 : Number(op.sale_amount) || 0,
         })
         totalOperatorCost += Number(op.cost)
         // Usar la moneda del primer operador como moneda principal
@@ -592,7 +594,8 @@ export async function POST(request: Request) {
           notes: operatorData.notes || null,
           passenger_detail: operatorData.passenger_detail ?? null,
           file_code: operatorData.file_code || null,
-          payment_due_date: operatorData.payment_due_date || null
+          payment_due_date: operatorData.payment_due_date || null,
+          sale_amount: operatorData.sale_amount ?? 0, // VIB-112
         }))
         
         const { error: opOpError } = await (supabase.from("operation_operators") as any)

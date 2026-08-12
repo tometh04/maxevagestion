@@ -43,6 +43,11 @@ function normalizeIncomingOperators(
       cost_currency: ((operatorData.cost_currency || fallbackCurrency || "USD").toUpperCase() === "ARS" ? "ARS" : "USD") as "ARS" | "USD",
       product_type: operatorData.product_type || null,
       notes: operatorData.notes || null,
+      // VIB-112: se distingue `undefined` (el caller no mandó el campo — hay que
+      // preservar el valor guardado) de `0` (lo puso en cero a propósito). Sin
+      // esto, un cliente con código viejo que mande `operators` sin sale_amount
+      // borraría el precio de venta por pata en el DELETE+INSERT de la RPC.
+      sale_amount: operatorData.sale_amount === undefined ? undefined : Number(operatorData.sale_amount) || 0,
       passenger_detail: operatorData.passenger_detail ?? null,
       file_code: (operatorData.file_code && String(operatorData.file_code).trim()) || null,
       payment_due_date: sanitizeDueDate(operatorData.payment_due_date),
@@ -472,13 +477,34 @@ export async function PATCH(
 
     let operatorRowsReplaced = false
     if (usesIncomingOperators) {
+      // VIB-112: preservación del precio de venta por pata cuando el caller no
+      // lo manda (sale_amount === undefined). La RPC hace DELETE+INSERT, así que
+      // sin esto un bundle viejo borraría el dato. Se aparea posicionalmente por
+      // operator_id: la N-ésima fila entrante de un operador toma el N-ésimo
+      // sale_amount guardado de ese operador.
+      const savedSaleAmountsByOperator = new Map<string, number[]>()
+      for (const row of (existingOperationOperators || []) as any[]) {
+        const key = String(row.operator_id)
+        const list = savedSaleAmountsByOperator.get(key) ?? []
+        list.push(Number(row.sale_amount) || 0)
+        savedSaleAmountsByOperator.set(key, list)
+      }
+      const consumedByOperator = new Map<string, number>()
+      const resolveSaleAmount = (operatorData: (typeof synchronizedOperators)[number]): number => {
+        if (operatorData.sale_amount !== undefined) return operatorData.sale_amount
+        const key = operatorData.operator_id
+        const idx = consumedByOperator.get(key) ?? 0
+        consumedByOperator.set(key, idx + 1)
+        return savedSaleAmountsByOperator.get(key)?.[idx] ?? 0
+      }
+
       const operatorsPayload = synchronizedOperators.map((operatorData) => ({
         operator_id: operatorData.operator_id,
         cost: operatorData.cost || 0,
         cost_currency: operatorData.cost_currency || "USD",
         product_type: operatorData.product_type || null,
         notes: operatorData.notes || null,
-        sale_amount: Number(operatorData.sale_amount) || 0,
+        sale_amount: resolveSaleAmount(operatorData),
         passenger_detail: operatorData.passenger_detail ?? null,
         file_code: operatorData.file_code || null,
         payment_due_date: operatorData.payment_due_date || null,
