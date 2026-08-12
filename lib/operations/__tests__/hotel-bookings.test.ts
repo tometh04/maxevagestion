@@ -183,6 +183,68 @@ describe("getHotelBookings", () => {
     expect(codes).not.toContain("OUT")
   })
 
+  it("modo viaje: incluye reservas cuya estadía SOLAPA el rango aunque salgan antes", async () => {
+    const { supabase } = makeSupabase({
+      operations: {
+        data: [
+          // Sale 30/05 pero regresa 10/06 → solapa junio.
+          {
+            id: "op-span", file_code: "SP", status: "OK",
+            hotel_name: "Iberostar", reservation_code_hotel: "SPAN",
+            checkin_date: null, checkout_date: "2026-06-10", departure_date: "2026-05-30",
+            return_date: "2026-06-10", created_at: "2026-01-01T00:00:00Z",
+            sale_amount_total: 100, sale_currency: "USD", currency: "USD",
+            sellers: { name: "Ana" }, operation_customers: [],
+          },
+        ],
+      },
+      operation_legs: { data: [] },
+    })
+
+    const res = await getHotelBookings(supabase, adminUser, AGENCIES, {
+      hotel: "Iberostar",
+      dateFrom: "2026-06-01",
+      dateTo: "2026-06-30",
+    })
+    expect(res.rows.map((r) => r.reservationCode)).toEqual(["SPAN"])
+  })
+
+  it("modo carga: filtra por created_at, no por la fecha de viaje", async () => {
+    const { supabase } = makeSupabase({
+      operations: {
+        data: [
+          // Cargada en junio, viaja en agosto (el caso de Lozada/Maxi).
+          {
+            id: "op-jun", file_code: "JUN", status: "OK",
+            hotel_name: "Iberostar Waves Punta Cana", reservation_code_hotel: "R81886",
+            checkin_date: null, checkout_date: null, departure_date: "2026-08-17",
+            return_date: "2026-08-23", created_at: "2026-06-04T12:00:00Z",
+            sale_amount_total: 100, sale_currency: "USD", currency: "USD",
+            sellers: { name: "Candela" }, operation_customers: [],
+          },
+          // Cargada en agosto, viaja en agosto → NO debe salir para "carga junio".
+          {
+            id: "op-ago", file_code: "AGO", status: "OK",
+            hotel_name: "Iberostar", reservation_code_hotel: "AGO",
+            checkin_date: null, checkout_date: null, departure_date: "2026-08-20",
+            return_date: "2026-08-27", created_at: "2026-08-01T10:00:00Z",
+            sale_amount_total: 100, sale_currency: "USD", currency: "USD",
+            sellers: { name: "Ana" }, operation_customers: [],
+          },
+        ],
+      },
+      operation_legs: { data: [] },
+    })
+
+    const res = await getHotelBookings(supabase, adminUser, AGENCIES, {
+      hotel: "Iberostar",
+      dateFrom: "2026-06-01",
+      dateTo: "2026-06-30",
+      dateField: "created",
+    })
+    expect(res.rows.map((r) => r.reservationCode)).toEqual(["R81886"])
+  })
+
   it("no doble-cuenta el monto en multidestino (suma solo la capa operación)", async () => {
     // Misma operación op-1 con hotel a nivel operación (Cancún) y un tramo
     // (Bávaro). Son 2 reservas distintas, pero el monto de la operación (1000)

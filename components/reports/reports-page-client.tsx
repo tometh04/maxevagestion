@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { BarChart3, TrendingUp, Wallet, Download, Percent, HelpCircle, Calendar, FileSearch, CalendarRange, Receipt, Coins, PackageSearch, CalendarClock, Landmark } from "lucide-react"
+import { BarChart3, TrendingUp, Wallet, Download, Percent, HelpCircle, Calendar, FileSearch, CalendarRange, Receipt, Coins, PackageSearch, CalendarClock, Landmark, Users } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -18,6 +18,7 @@ import { ConciliacionReport } from "./conciliacion-report"
 import { ClosingReport } from "./closing-report"
 import { ExpensesReport } from "./expenses-report"
 import { CommissionsReport } from "./commissions-report"
+import { ReferralsReport } from "./referrals-report"
 import { SalesBreakdownReport } from "./sales-breakdown-report"
 import { CashflowProjectionReport } from "./cashflow-projection-report"
 import { SocietarioReport } from "./societario-report"
@@ -57,6 +58,10 @@ export function ReportsPageClient({
   // Societario: dueños, admin y contable. Cosmético — el gate real está en
   // /api/reports/societario, que usa esta misma función.
   const canSeeSocietario = canViewSocietarioReport({ role: userRole, roles: userRoles })
+  // Referidores: quien administra los referidos (VIB-86). El vendedor no tiene
+  // que ver cuánto se lleva cada referidor, así que ni ve la pestaña; la API
+  // (módulo `referrals`) es la que realmente lo valida.
+  const canSeeReferrals = ["SUPER_ADMIN", "ORG_OWNER", "ADMIN", "CONTABLE"].includes(userRole)
 
   return (
     <div className="space-y-6">
@@ -133,6 +138,12 @@ export function ReportsPageClient({
             <Coins className="h-4 w-4" />
             Comisiones
           </TabsTrigger>
+          {canSeeReferrals && (
+            <TabsTrigger value="referrals" className="flex items-center gap-2">
+              <Users className="h-4 w-4" />
+              Referidores
+            </TabsTrigger>
+          )}
           <TabsTrigger value="vencimientos" className="flex items-center gap-2">
             <Calendar className="h-4 w-4" />
             Vencimientos
@@ -200,6 +211,12 @@ export function ReportsPageClient({
         <TabsContent value="commissions" className="mt-6">
           <CommissionsReport sellers={sellers} agencies={agencies} />
         </TabsContent>
+
+        {canSeeReferrals && (
+          <TabsContent value="referrals" className="mt-6">
+            <ReferralsReport agencies={agencies} />
+          </TabsContent>
+        )}
 
         <TabsContent value="vencimientos" className="mt-6">
           <VencimientosReport agencies={agencies} />

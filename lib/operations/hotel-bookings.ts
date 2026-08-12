@@ -48,12 +48,24 @@ export type HotelBookingsUser = {
   can_register_payments_on_agency_operations?: boolean | null
 }
 
+/**
+ * Por qué fecha filtra el rango:
+ * - "departure" (viaje): solapamiento del viaje [checkin||salida, checkout||regreso]
+ *   con el rango. Es "reservas que viajan/se alojan en tal período".
+ * - "created" (carga): fecha en que se cargó la operación en el sistema. Es
+ *   "reservas vendidas/cargadas en tal período" (lo que una agencia suele
+ *   entender por 'las reservas de tal mes').
+ */
+export type HotelBookingsDateField = "departure" | "created"
+
 export type HotelBookingsFilters = {
   /** Cadena/nombre de hotel a buscar (ilike parcial). */
   hotel?: string | null
-  /** Rango sobre COALESCE(checkin_date, departure_date). Formato YYYY-MM-DD. */
+  /** Rango de fechas (YYYY-MM-DD). Ver dateField para la semántica. */
   dateFrom?: string | null
   dateTo?: string | null
+  /** Qué fecha usa el rango. Default "departure" (viaje). */
+  dateField?: HotelBookingsDateField | null
   /** Filtro opcional por agencia concreta (además del scope por rol). */
   agencyId?: string | null
   /** Filtro opcional por vendedor concreto (además del scope por rol). */
@@ -70,7 +82,10 @@ export type HotelBookingRow = {
   checkinDate: string | null
   checkoutDate: string | null
   departureDate: string | null
-  /** Fecha usada para el filtro/orden: checkin con fallback a salida. */
+  returnDate: string | null
+  /** Fecha en que se cargó la operación (created_at). */
+  createdAt: string | null
+  /** Fecha usada para el orden: checkin con fallback a salida. */
   effectiveDate: string | null
   customerName: string | null
   sellerName: string | null
@@ -152,6 +167,40 @@ function withinRange(date: string | null, from?: string | null, to?: string | nu
 }
 
 /**
+ * ¿El viaje [start, end] solapa con el rango [from, to]? Usado para el modo
+ * "viaje": una reserva que empieza fuera del rango pero cuya estadía cae dentro
+ * (o al revés) igual debe aparecer. Sin from/to → siempre true.
+ */
+function overlapsRange(
+  start: string | null,
+  end: string | null,
+  from?: string | null,
+  to?: string | null
+): boolean {
+  if (!from && !to) return true
+  const s = (start || end || "").slice(0, 10)
+  const e = (end || start || "").slice(0, 10)
+  if (!s && !e) return false
+  if (to && s && s > to) return false // el viaje empieza después del rango
+  if (from && e && e < from) return false // el viaje termina antes del rango
+  return true
+}
+
+/** Aplica el filtro de rango según la fecha elegida (viaje vs carga). */
+function matchesDate(
+  dateField: HotelBookingsDateField,
+  start: string | null,
+  end: string | null,
+  createdAt: string | null,
+  from?: string | null,
+  to?: string | null
+): boolean {
+  if (!from && !to) return true
+  if (dateField === "created") return withinRange(createdAt, from, to)
+  return overlapsRange(start, end, from, to)
+}
+
+/**
  * Devuelve las reservas de hotel que matchean la cadena + rango de fechas,
  * junto con un resumen agregado por hotel.
  */
@@ -164,6 +213,7 @@ export async function getHotelBookings(
   const hotel = (filters.hotel ?? "").trim()
   const dateFrom = filters.dateFrom && DATE_RE.test(filters.dateFrom) ? filters.dateFrom : null
   const dateTo = filters.dateTo && DATE_RE.test(filters.dateTo) ? filters.dateTo : null
+  const dateField: HotelBookingsDateField = filters.dateField === "created" ? "created" : "departure"
   const agencyId = filters.agencyId && filters.agencyId !== "ALL" ? filters.agencyId : null
   const sellerId = filters.sellerId && filters.sellerId !== "ALL" ? filters.sellerId : null
 
@@ -174,9 +224,9 @@ export async function getHotelBookings(
   let opsQuery: any = supabase
     .from("operations")
     .select(`
-      id, file_code, status,
+      id, file_code, status, created_at,
       hotel_name, reservation_code_hotel,
-      checkin_date, checkout_date, departure_date,
+      checkin_date, checkout_date, departure_date, return_date,
       sale_amount_total, sale_currency, currency,
       sellers:seller_id(name),
       operation_customers(role, customers:customer_id(first_name, last_name))
@@ -197,8 +247,8 @@ export async function getHotelBookings(
       hotel_name, reservation_code_hotel,
       checkin_date, checkout_date, departure_date,
       operations!inner(
-        id, file_code, status, org_id, seller_id, agency_id,
-        departure_date, sale_amount_total, sale_currency, currency,
+        id, file_code, status, org_id, seller_id, agency_id, created_at,
+        departure_date, return_date, sale_amount_total, sale_currency, currency,
         sellers:seller_id(name),
         operation_customers(role, customers:customer_id(first_name, last_name))
       )
@@ -224,8 +274,11 @@ export async function getHotelBookings(
   const rawRows: RawRow[] = []
 
   for (const op of opsData) {
-    const effectiveDate = effectiveDateOf(op.checkin_date, op.departure_date)
-    if (!withinRange(effectiveDate, dateFrom, dateTo)) continue
+    // Ventana del viaje: [checkin||salida, checkout||regreso||inicio].
+    const start = effectiveDateOf(op.checkin_date, op.departure_date)
+    const end = op.checkout_date || op.return_date || start
+    const createdAt = op.created_at ?? null
+    if (!matchesDate(dateField, start, end, createdAt, dateFrom, dateTo)) continue
     rawRows.push({
       source: "operation",
       operationId: op.id,
@@ -235,7 +288,9 @@ export async function getHotelBookings(
       checkinDate: op.checkin_date ?? null,
       checkoutDate: op.checkout_date ?? null,
       departureDate: op.departure_date ?? null,
-      effectiveDate,
+      returnDate: op.return_date ?? null,
+      createdAt,
+      effectiveDate: start,
       customerName: customerName(op.operation_customers),
       sellerName: op.sellers?.name ?? null,
       status: op.status ?? null,
@@ -247,8 +302,10 @@ export async function getHotelBookings(
   for (const leg of legsData) {
     const op = leg.operations
     if (!op) continue
-    const effectiveDate = effectiveDateOf(leg.checkin_date, leg.departure_date || op.departure_date)
-    if (!withinRange(effectiveDate, dateFrom, dateTo)) continue
+    const start = effectiveDateOf(leg.checkin_date, leg.departure_date || op.departure_date)
+    const end = leg.checkout_date || op.return_date || start
+    const createdAt = op.created_at ?? null
+    if (!matchesDate(dateField, start, end, createdAt, dateFrom, dateTo)) continue
     rawRows.push({
       source: "leg",
       operationId: op.id,
@@ -258,7 +315,9 @@ export async function getHotelBookings(
       checkinDate: leg.checkin_date ?? null,
       checkoutDate: leg.checkout_date ?? null,
       departureDate: leg.departure_date || op.departure_date || null,
-      effectiveDate,
+      returnDate: op.return_date ?? null,
+      createdAt,
+      effectiveDate: start,
       customerName: customerName(op.operation_customers),
       sellerName: op.sellers?.name ?? null,
       status: op.status ?? null,

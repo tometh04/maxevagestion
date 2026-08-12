@@ -22,6 +22,7 @@ export interface DuplicableOperationOperator {
   product_type?: string | null
   notes?: string | null
   passenger_detail?: Record<string, string> | null
+  sale_amount?: number | string | null
 }
 
 export interface DuplicableOperation {
@@ -57,6 +58,7 @@ export interface OperationDuplicateOperatorRow {
   product_type?: string
   notes?: string
   passenger_detail?: Record<string, string>
+  sale_amount?: number
 }
 
 export interface OperationDuplicateDraft {
@@ -136,6 +138,9 @@ export function buildOperationDuplicateDraft(
     ...(row.passenger_detail && typeof row.passenger_detail === "object"
       ? { passenger_detail: { ...row.passenger_detail } }
       : {}),
+    // VIB-112: el precio de venta por servicio es parte de la definición del
+    // paquete que se repite entre ventas del grupo.
+    ...(toNumber(row.sale_amount) > 0 ? { sale_amount: toNumber(row.sale_amount) } : {}),
   }))
 
   return {

@@ -1,10 +1,11 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Table,
   TableBody,
@@ -15,8 +16,30 @@ import {
 } from "@/components/ui/table"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Loader2, Users2, Check, RotateCcw, Pencil, Plus } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import {
+  Loader2,
+  Users2,
+  RotateCcw,
+  Pencil,
+  Plus,
+  FileText,
+  AlertTriangle,
+  Wallet,
+} from "lucide-react"
 import { toast } from "sonner"
+import {
+  ReferralSettlementDialog,
+  type SettlementDialogCommission,
+} from "@/components/referrals/referral-settlement-dialog"
 
 interface CommissionRow {
   id: string
@@ -28,6 +51,8 @@ interface CommissionRow {
   status: "PENDING" | "PAID" | "CANCELLED"
   /** MANUAL = un admin ajustó el % de esta venta y el recálculo no lo pisa. */
   percentage_mode?: "AUTO" | "MANUAL"
+  /** Liquidación en la que se pagó. NULL + PAID = pagada sin salida de caja. */
+  settlement_id?: string | null
   date_calculated: string
   date_paid: string | null
   referral_partners?: { id: string; name: string } | null
@@ -39,6 +64,25 @@ interface CommissionRow {
     sale_currency: string | null
   } | null
   customers?: { id: string; first_name: string; last_name: string } | null
+}
+
+interface SettlementRow {
+  id: string
+  currency: string
+  amount: number
+  commissions_count: number
+  /** Nombre copiado al liquidar: la cuenta puede haberse borrado después. */
+  account_name: string
+  account_currency: string
+  cash_amount: number
+  exchange_rate: number | null
+  paid_at: string
+  status: "PAID" | "REVERTED"
+  is_regularization: boolean
+  notes: string | null
+  reversal_reason: string | null
+  referral_partners?: { id: string; name: string } | null
+  financial_accounts?: { id: string; name: string; currency: string } | null
 }
 
 interface Partner {
@@ -61,6 +105,12 @@ function fmt(amount: number, currency: string) {
   }
 }
 
+function fmtFecha(iso: string | null | undefined) {
+  if (!iso) return "—"
+  const [y, m, d] = String(iso).slice(0, 10).split("-")
+  return y && m && d ? `${d}/${m}/${y}` : "—"
+}
+
 /** Suma montos agrupando por moneda (no mezcla ARS/USD). */
 function sumByCurrency(rows: { amount: number; currency: string }[]) {
   const map = new Map<string, number>()
@@ -70,40 +120,59 @@ function sumByCurrency(rows: { amount: number; currency: string }[]) {
   return Array.from(map.entries()).map(([currency, amount]) => ({ currency, amount }))
 }
 
-export function ReferralsView() {
+export function ReferralsView({ canSettle = false }: { canSettle?: boolean }) {
   const [loading, setLoading] = useState(true)
   const [commissions, setCommissions] = useState<CommissionRow[]>([])
+  const [settlements, setSettlements] = useState<SettlementRow[]>([])
   const [partners, setPartners] = useState<Partner[]>([])
   const [savingId, setSavingId] = useState<string | null>(null)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [settling, setSettling] = useState<{
+    partnerName: string
+    rows: SettlementDialogCommission[]
+    regularize: boolean
+  } | null>(null)
+  const [reverting, setReverting] = useState<SettlementRow | null>(null)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [cRes, pRes] = await Promise.all([
+      const [cRes, pRes, sRes] = await Promise.all([
         fetch("/api/referral-commissions"),
         fetch("/api/referral-partners?include_inactive=true"),
+        fetch("/api/referral-settlements"),
       ])
       const cData = cRes.ok ? await cRes.json() : { commissions: [] }
       const pData = pRes.ok ? await pRes.json() : { partners: [] }
+      const sData = sRes.ok ? await sRes.json() : { settlements: [] }
       setCommissions(cData.commissions ?? [])
       setPartners(pData.partners ?? [])
+      setSettlements(sData.settlements ?? [])
+      setSelected(new Set())
     } catch {
       toast.error("No se pudieron cargar los referidos")
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     load()
-  }, [])
+  }, [load])
 
   const pending = useMemo(() => commissions.filter((c) => c.status === "PENDING"), [commissions])
-  const history = useMemo(
-    () => commissions.filter((c) => c.status !== "PENDING"),
-    [commissions],
-  )
+  const history = useMemo(() => commissions.filter((c) => c.status !== "PENDING"), [commissions])
   const paid = useMemo(() => commissions.filter((c) => c.status === "PAID"), [commissions])
+
+  /**
+   * Comisiones marcadas como pagadas antes de que el pago moviera plata: el
+   * referidor cobró, pero el egreso nunca salió de una cuenta. Se señalan para
+   * poder regularizarlas en vez de dejar la caja inflada para siempre.
+   */
+  const pagadasSinCaja = useMemo(
+    () => paid.filter((c) => !c.settlement_id),
+    [paid],
+  )
 
   const pendingTotals = useMemo(() => sumByCurrency(pending), [pending])
   const paidTotals = useMemo(
@@ -111,26 +180,13 @@ export function ReferralsView() {
     [paid],
   )
 
-  const changeStatus = async (row: CommissionRow, status: "PAID" | "PENDING") => {
-    setSavingId(row.id)
-    try {
-      const res = await fetch(`/api/referral-commissions/${row.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || "No se pudo actualizar")
-      }
-      const { commission } = await res.json()
-      setCommissions((prev) => prev.map((c) => (c.id === row.id ? { ...c, ...commission } : c)))
-      toast.success(status === "PAID" ? "Comisión marcada como pagada" : "Comisión vuelta a pendiente")
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Error al actualizar")
-    } finally {
-      setSavingId(null)
-    }
+  const toggle = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
   }
 
   /**
@@ -161,16 +217,27 @@ export function ReferralsView() {
     }
   }
 
-  // Agrupar pendientes por referidor para ver cuánto se le debe a cada uno.
-  const pendingByPartner = useMemo(() => {
-    const groups = new Map<string, { name: string; rows: CommissionRow[] }>()
+  /**
+   * Agrupa lo pendiente por referidor Y MONEDA: una liquidación es un solo pago
+   * desde una sola cuenta, así que ARS y USD nunca van juntos.
+   */
+  const pendingByGroup = useMemo(() => {
+    const groups = new Map<string, { name: string; currency: string; rows: CommissionRow[] }>()
     for (const c of pending) {
-      const id = c.referral_partners?.id || "—"
-      const name = c.referral_partners?.name || "Sin referidor"
-      if (!groups.has(id)) groups.set(id, { name, rows: [] })
-      groups.get(id)!.rows.push(c)
+      const partnerId = c.referral_partners?.id || "—"
+      const key = `${partnerId}::${c.currency}`
+      if (!groups.has(key)) {
+        groups.set(key, {
+          name: c.referral_partners?.name || "Sin referidor",
+          currency: c.currency,
+          rows: [],
+        })
+      }
+      groups.get(key)!.rows.push(c)
     }
-    return Array.from(groups.values()).sort((a, b) => a.name.localeCompare(b.name))
+    return Array.from(groups.values()).sort(
+      (a, b) => a.name.localeCompare(b.name) || a.currency.localeCompare(b.currency),
+    )
   }, [pending])
 
   if (loading) {
@@ -233,42 +300,223 @@ export function ReferralsView() {
         </Card>
       </div>
 
+      {/* Aviso de comisiones pagadas sin registrar el egreso. */}
+      {pagadasSinCaja.length > 0 && (
+        <Card className="border-amber-500/40 bg-amber-500/5">
+          <CardContent className="pt-5">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+              <div className="flex-1">
+                <p className="text-sm font-medium">
+                  {pagadasSinCaja.length} comisión(es) figuran pagadas pero no salieron de ninguna cuenta
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Se marcaron como pagadas cuando el sistema sólo registraba el estado. La plata salió
+                  de la agencia, así que el saldo de caja está mostrando de más. Podés registrarlas
+                  ahora indicando de qué cuenta salió.
+                </p>
+                {canSettle && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {Array.from(
+                      pagadasSinCaja.reduce((map, c) => {
+                        const key = `${c.referral_partners?.id ?? "—"}::${c.currency}`
+                        if (!map.has(key)) {
+                          map.set(key, {
+                            name: c.referral_partners?.name || "Sin referidor",
+                            currency: c.currency,
+                            rows: [] as CommissionRow[],
+                          })
+                        }
+                        map.get(key)!.rows.push(c)
+                        return map
+                      }, new Map<string, { name: string; currency: string; rows: CommissionRow[] }>()),
+                    ).map(([key, g]) => (
+                      <Button
+                        key={key}
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          setSettling({
+                            partnerName: g.name,
+                            regularize: true,
+                            rows: g.rows.map((r) => ({
+                              id: r.id,
+                              amount: r.amount,
+                              currency: r.currency,
+                              fileCode: r.operations?.file_code ?? null,
+                            })),
+                          })
+                        }
+                      >
+                        <Wallet className="mr-1.5 h-3.5 w-3.5" />
+                        {g.name} · {fmt(
+                          g.rows.reduce((a, r) => a + (Number(r.amount) || 0), 0),
+                          g.currency,
+                        )}
+                      </Button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Tabs defaultValue="pending">
         <TabsList>
           <TabsTrigger value="pending">Por pagar ({pending.length})</TabsTrigger>
+          <TabsTrigger value="settlements">Liquidaciones ({settlements.length})</TabsTrigger>
           <TabsTrigger value="history">Historial ({history.length})</TabsTrigger>
           <TabsTrigger value="partners">Referidores ({partners.length})</TabsTrigger>
         </TabsList>
 
         {/* POR PAGAR */}
         <TabsContent value="pending" className="mt-4 space-y-6">
-          {pendingByPartner.length === 0 ? (
+          {pendingByGroup.length === 0 ? (
             <EmptyState text="No hay comisiones pendientes de pago." />
           ) : (
-            pendingByPartner.map((group) => (
-              <Card key={group.name}>
-                <CardContent className="pt-5">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <Users2 className="h-4 w-4 text-accent-coral" />
-                      <span className="font-medium">{group.name}</span>
-                      <Badge variant="secondary">{group.rows.length}</Badge>
+            pendingByGroup.map((group) => {
+              const seleccionadas = group.rows.filter((r) => selected.has(r.id))
+              const totalSeleccionado = seleccionadas.reduce(
+                (a, r) => a + (Number(r.amount) || 0),
+                0,
+              )
+              const todasSeleccionadas =
+                group.rows.length > 0 && seleccionadas.length === group.rows.length
+
+              return (
+                <Card key={`${group.name}-${group.currency}`}>
+                  <CardContent className="pt-5">
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Users2 className="h-4 w-4 text-accent-coral" />
+                        <span className="font-medium">{group.name}</span>
+                        <Badge variant="outline">{group.currency}</Badge>
+                        <Badge variant="secondary">{group.rows.length}</Badge>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm font-semibold tabular-nums">
+                          {fmt(
+                            group.rows.reduce((a, r) => a + (Number(r.amount) || 0), 0),
+                            group.currency,
+                          )}
+                        </span>
+                        {canSettle && (
+                          <Button
+                            size="sm"
+                            disabled={seleccionadas.length === 0}
+                            onClick={() =>
+                              setSettling({
+                                partnerName: group.name,
+                                regularize: false,
+                                rows: seleccionadas.map((r) => ({
+                                  id: r.id,
+                                  amount: r.amount,
+                                  currency: r.currency,
+                                  fileCode: r.operations?.file_code ?? null,
+                                })),
+                              })
+                            }
+                          >
+                            <Wallet className="mr-1.5 h-3.5 w-3.5" />
+                            {seleccionadas.length === 0
+                              ? "Liquidar"
+                              : `Liquidar ${fmt(totalSeleccionado, group.currency)}`}
+                          </Button>
+                        )}
+                      </div>
                     </div>
-                    <div className="text-sm font-semibold">
-                      {sumByCurrency(group.rows).map((t) => (
-                        <span key={t.currency} className="ml-2">{fmt(t.amount, t.currency)}</span>
-                      ))}
-                    </div>
-                  </div>
-                  <CommissionsTable
-                    rows={group.rows}
-                    savingId={savingId}
-                    onPay={(r) => changeStatus(r, "PAID")}
-                    onChangePct={changePercentage}
-                  />
-                </CardContent>
-              </Card>
-            ))
+                    <CommissionsTable
+                      rows={group.rows}
+                      savingId={savingId}
+                      selectable={canSettle}
+                      selected={selected}
+                      allSelected={todasSeleccionadas}
+                      onToggle={toggle}
+                      onToggleAll={() =>
+                        setSelected((prev) => {
+                          const next = new Set(prev)
+                          if (todasSeleccionadas) group.rows.forEach((r) => next.delete(r.id))
+                          else group.rows.forEach((r) => next.add(r.id))
+                          return next
+                        })
+                      }
+                      onChangePct={changePercentage}
+                    />
+                  </CardContent>
+                </Card>
+              )
+            })
+          )}
+        </TabsContent>
+
+        {/* LIQUIDACIONES */}
+        <TabsContent value="settlements" className="mt-4">
+          {settlements.length === 0 ? (
+            <EmptyState text="Todavía no registraste ninguna liquidación a un referidor." />
+          ) : (
+            <Card>
+              <CardContent className="pt-5 overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Fecha</TableHead>
+                      <TableHead>Referidor</TableHead>
+                      <TableHead className="text-right">Comisiones</TableHead>
+                      <TableHead className="text-right">Total</TableHead>
+                      <TableHead>Salió de</TableHead>
+                      <TableHead>Estado</TableHead>
+                      <TableHead className="text-right">Acciones</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {settlements.map((s) => (
+                      <TableRow key={s.id}>
+                        <TableCell className="whitespace-nowrap">{fmtFecha(s.paid_at)}</TableCell>
+                        <TableCell>{s.referral_partners?.name || "—"}</TableCell>
+                        <TableCell className="text-right tabular-nums">{s.commissions_count}</TableCell>
+                        <TableCell className="text-right tabular-nums font-medium">
+                          {fmt(s.amount, s.currency)}
+                        </TableCell>
+                        <TableCell>
+                          <span>{s.financial_accounts?.name || s.account_name || "—"}</span>
+                          <span className="block text-xs text-muted-foreground tabular-nums">
+                            {fmt(s.cash_amount, s.account_currency)}
+                            {s.account_currency !== s.currency && s.exchange_rate
+                              ? ` · TC ${s.exchange_rate}`
+                              : ""}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          {s.status === "REVERTED" ? (
+                            <Badge variant="outline">Revertida</Badge>
+                          ) : s.is_regularization ? (
+                            <Badge className="border-0 bg-sky-500/10 text-sky-600 dark:text-sky-400">
+                              Regularización
+                            </Badge>
+                          ) : (
+                            <Badge className="border-0 bg-success/10 text-success">Pagada</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="space-x-1 text-right">
+                          <Button size="sm" variant="ghost" asChild>
+                            <a href={`/api/referral-settlements/${s.id}/pdf`} target="_blank" rel="noreferrer">
+                              <FileText className="mr-1 h-3.5 w-3.5" /> PDF
+                            </a>
+                          </Button>
+                          {canSettle && s.status === "PAID" && (
+                            <Button size="sm" variant="ghost" onClick={() => setReverting(s)}>
+                              <RotateCcw className="mr-1 h-3.5 w-3.5" /> Revertir
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
           )}
         </TabsContent>
 
@@ -279,12 +527,7 @@ export function ReferralsView() {
           ) : (
             <Card>
               <CardContent className="pt-5">
-                <CommissionsTable
-                  rows={history}
-                  savingId={savingId}
-                  showPartner
-                  onRevert={(r) => changeStatus(r, "PENDING")}
-                />
+                <CommissionsTable rows={history} savingId={savingId} showPartner showSettlement />
               </CardContent>
             </Card>
           )}
@@ -295,6 +538,25 @@ export function ReferralsView() {
           <PartnersManager partners={partners} onChanged={load} />
         </TabsContent>
       </Tabs>
+
+      {settling && (
+        <ReferralSettlementDialog
+          open
+          onOpenChange={(open) => !open && setSettling(null)}
+          partnerName={settling.partnerName}
+          commissions={settling.rows}
+          regularize={settling.regularize}
+          onDone={load}
+        />
+      )}
+
+      {reverting && (
+        <RevertSettlementDialog
+          settlement={reverting}
+          onClose={() => setReverting(null)}
+          onDone={load}
+        />
+      )}
     </div>
   )
 }
@@ -308,19 +570,106 @@ function EmptyState({ text }: { text: string }) {
   )
 }
 
+/**
+ * Revertir una liquidación. Pide motivo porque el contra-asiento queda en el
+ * libro mayor y alguien va a tener que entender por qué se hizo.
+ */
+function RevertSettlementDialog({
+  settlement,
+  onClose,
+  onDone,
+}: {
+  settlement: SettlementRow
+  onClose: () => void
+  onDone: () => void
+}) {
+  const [reason, setReason] = useState("")
+  const [saving, setSaving] = useState(false)
+
+  const submit = async () => {
+    if (!reason.trim()) {
+      toast.error("Indicá el motivo de la reversión")
+      return
+    }
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/referral-settlements/${settlement.id}/reverse`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: reason.trim() }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || "No se pudo revertir")
+      toast.success("Liquidación revertida y plata devuelta a la cuenta")
+      onClose()
+      onDone()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Error al revertir")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Revertir liquidación</DialogTitle>
+          <DialogDescription>
+            Se devuelven {fmt(settlement.cash_amount, settlement.account_currency)} a{" "}
+            {settlement.financial_accounts?.name || settlement.account_name || "la cuenta"} con un
+            contra-movimiento, y las{" "}
+            {settlement.commissions_count} comisión(es) vuelven a{" "}
+            {settlement.is_regularization ? "figurar como pagadas sin caja" : "quedar pendientes"}.
+          </DialogDescription>
+        </DialogHeader>
+        <div>
+          <Label className="mb-1.5 block">Motivo *</Label>
+          <Input
+            autoFocus
+            placeholder="Ej: se cargó en la cuenta equivocada"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") submit()
+            }}
+          />
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose} disabled={saving}>
+            Cancelar
+          </Button>
+          <Button variant="destructive" onClick={submit} disabled={saving || !reason.trim()}>
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Revertir"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function CommissionsTable({
   rows,
   savingId,
   showPartner,
-  onPay,
-  onRevert,
+  showSettlement,
+  selectable,
+  selected,
+  allSelected,
+  onToggle,
+  onToggleAll,
   onChangePct,
 }: {
   rows: CommissionRow[]
   savingId: string | null
   showPartner?: boolean
-  onPay?: (r: CommissionRow) => void
-  onRevert?: (r: CommissionRow) => void
+  /** Muestra si la comisión pagada tiene su salida de caja registrada. */
+  showSettlement?: boolean
+  selectable?: boolean
+  selected?: Set<string>
+  allSelected?: boolean
+  onToggle?: (id: string) => void
+  onToggleAll?: () => void
   /** Ajuste puntual del % de una venta. Solo para quien administra referidos. */
   onChangePct?: (r: CommissionRow, pct: string) => void
 }) {
@@ -339,6 +688,15 @@ function CommissionsTable({
       <Table>
         <TableHeader>
           <TableRow>
+            {selectable && (
+              <TableHead className="w-10">
+                <Checkbox
+                  checked={allSelected}
+                  onCheckedChange={() => onToggleAll?.()}
+                  aria-label="Seleccionar todas"
+                />
+              </TableHead>
+            )}
             <TableHead>Venta</TableHead>
             {showPartner && <TableHead>Referidor</TableHead>}
             <TableHead>Cliente</TableHead>
@@ -346,12 +704,20 @@ function CommissionsTable({
             <TableHead className="text-right">%</TableHead>
             <TableHead className="text-right">Comisión</TableHead>
             <TableHead>Estado</TableHead>
-            <TableHead className="text-right">Acción</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {rows.map((r) => (
-            <TableRow key={r.id}>
+            <TableRow key={r.id} data-state={selected?.has(r.id) ? "selected" : undefined}>
+              {selectable && (
+                <TableCell>
+                  <Checkbox
+                    checked={selected?.has(r.id) ?? false}
+                    onCheckedChange={() => onToggle?.(r.id)}
+                    aria-label={`Seleccionar ${r.operations?.file_code || "comisión"}`}
+                  />
+                </TableCell>
+              )}
               <TableCell>
                 <span className="font-medium">{r.operations?.file_code || "—"}</span>
                 {r.operations?.destination && (
@@ -386,6 +752,7 @@ function CommissionsTable({
                       type="button"
                       className="hover:underline underline-offset-2"
                       title="Ajustar el porcentaje de esta venta"
+                      disabled={savingId === r.id}
                       onClick={() => {
                         setEditingPctId(r.id)
                         setPctDraft(String(r.percentage ?? 0))
@@ -404,29 +771,10 @@ function CommissionsTable({
               <TableCell className="text-right tabular-nums font-medium">{fmt(r.amount, r.currency)}</TableCell>
               <TableCell>
                 <StatusBadge status={r.status} />
-              </TableCell>
-              <TableCell className="text-right">
-                {r.status === "PENDING" && onPay && (
-                  <Button size="sm" variant="outline" disabled={savingId === r.id} onClick={() => onPay(r)}>
-                    {savingId === r.id ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <>
-                        <Check className="mr-1 h-3.5 w-3.5" /> Pagar
-                      </>
-                    )}
-                  </Button>
-                )}
-                {r.status === "PAID" && onRevert && (
-                  <Button size="sm" variant="ghost" disabled={savingId === r.id} onClick={() => onRevert(r)}>
-                    {savingId === r.id ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <>
-                        <RotateCcw className="mr-1 h-3.5 w-3.5" /> Pendiente
-                      </>
-                    )}
-                  </Button>
+                {showSettlement && r.status === "PAID" && !r.settlement_id && (
+                  <span className="mt-0.5 block text-[10px] text-amber-600 dark:text-amber-400">
+                    sin salida de caja
+                  </span>
                 )}
               </TableCell>
             </TableRow>

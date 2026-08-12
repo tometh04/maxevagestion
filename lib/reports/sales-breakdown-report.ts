@@ -11,7 +11,9 @@
  * decir "cuánto vendimos de vuelos" hay que repartir la venta de la operación
  * entre sus ítems. El peso se elige en cascada:
  *
- *   1. El importe de venta del ítem, si está cargado en al menos uno.
+ *   1. El importe de venta del ítem (VIB-112), solo si el desglose de todas las
+ *      patas CUADRA con el total (si está cargado a medias, atribuiría el 100%
+ *      a las cargadas y mentiría).
  *   2. Si no, el costo del ítem — pero solo si todos comparten moneda: usar
  *      costos en ARS y USD como pesos deformaría el reparto.
  *   3. Si no, partes iguales.
@@ -31,6 +33,7 @@
  */
 
 import { roundMoney } from "@/lib/currency"
+import { reconcileOperatorSaleBreakdown } from "@/lib/operations/operator-sale-breakdown"
 import {
   SERVICES_BUCKET_KEY,
   UNSPECIFIED_BUCKET_KEY,
@@ -233,10 +236,16 @@ export function prorateOperation(
     return ka.localeCompare(kb) || String(a.id).localeCompare(String(b.id))
   })
 
+  // VIB-112: la venta cargada por ítem (sale_amount) se usa como peso SOLO si el
+  // desglose CUADRA con el total de la operación. Con carga parcial (unas patas
+  // con precio y otras en 0) la suma es > 0 pero atribuiría el 100% a las
+  // cargadas — el reporte mentiría. reconcileOperatorSaleBreakdown descarta ese
+  // caso (EMPTY o MISMATCH → no BALANCED) y se cae al reparto por costo de antes.
+  const breakdown = reconcileOperatorSaleBreakdown({ legs: ordered, saleAmountTotal: base })
   let weights = ordered.map((item) => Math.max(0, num(item.sale_amount)))
   let source: AttributionSource = "item_sale"
 
-  if (weights.reduce((acc, w) => acc + w, 0) <= 0) {
+  if (breakdown.status !== "BALANCED") {
     const currencies = new Set(ordered.map((i) => i.cost_currency || saleCurrency))
     if (currencies.size === 1) {
       weights = ordered.map((item) => Math.max(0, num(item.cost)))

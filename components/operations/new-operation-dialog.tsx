@@ -24,6 +24,7 @@ import {
   buildOperationDuplicateDraft,
   type DuplicableOperation,
 } from "@/lib/operations/duplicate-operation"
+import { distributeSaleByCost } from "@/lib/operations/operator-sale-breakdown"
 import {
   Select,
   SelectContent,
@@ -252,7 +253,7 @@ export function NewOperationDialog({
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
   const [useMultipleOperators, setUseMultipleOperators] = useState(false)
-  const [operatorList, setOperatorList] = useState<Array<{operator_id: string, cost: string | number, cost_currency: "ARS" | "USD", product_type?: string, notes?: string, passenger_detail?: Record<string, string>, file_code?: string, payment_due_date?: string}>>([])
+  const [operatorList, setOperatorList] = useState<Array<{operator_id: string, cost: string | number, cost_currency: "ARS" | "USD", product_type?: string, notes?: string, passenger_detail?: Record<string, string>, file_code?: string, payment_due_date?: string, sale_amount?: string | number}>>([])
   const [settings, setSettings] = useState<OperationSettings | null>(null)
   const [apiError, setApiError] = useState<string | null>(null)
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
@@ -716,7 +717,7 @@ export function NewOperationDialog({
         // Incluir lead_id si hay un lead
         ...(lead ? { lead_id: lead.id } : {}),
         operator_id: useMultipleOperators ? null : (values.operator_id || null),
-        operators: useMultipleOperators && operatorList.length > 0 ? operatorList.map(op => ({ ...op, cost: Number(op.cost) || 0, passenger_detail: sanitizePassengerDetail(op.passenger_detail), file_code: (op.file_code || "").trim() || null, payment_due_date: op.payment_due_date || null })) : undefined,
+        operators: useMultipleOperators && operatorList.length > 0 ? operatorList.map(op => ({ ...op, cost: Number(op.cost) || 0, sale_amount: Number(op.sale_amount) || 0, passenger_detail: sanitizePassengerDetail(op.passenger_detail), file_code: (op.file_code || "").trim() || null, payment_due_date: op.payment_due_date || null })) : undefined,
         seller_secondary_id: values.seller_secondary_id || null,
         commission_split: values.seller_secondary_id ? (values.commission_split ?? 50) : null,
         // Reparto de la comisión (VIB-63). Solo se mandan los porcentajes si el
@@ -925,7 +926,7 @@ export function NewOperationDialog({
                   control={form.control}
                   name="agency_id"
                   render={({ field }) => (
-                    <FormItem data-tour="op-new.agencia">
+                    <FormItem>
                       <FormLabel>Agencia *</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
@@ -950,7 +951,7 @@ export function NewOperationDialog({
                   control={form.control}
                   name="seller_id"
                   render={({ field }) => (
-                    <FormItem data-tour="op-new.vendedor-principal">
+                    <FormItem>
                       <FormLabel>Vendedor Principal *</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value} disabled={!canPickOtherSeller}>
                         <FormControl>
@@ -988,7 +989,7 @@ export function NewOperationDialog({
                   control={form.control}
                   name="customer_id"
                   render={({ field }) => (
-                    <FormItem data-tour="op-new.cliente">
+                    <FormItem>
                       <FormLabel>Pasajero principal {settings?.require_customer && <span className="text-destructive">*</span>}</FormLabel>
                       <div className="flex gap-2">
                         <div className="flex-1">
@@ -1031,7 +1032,7 @@ export function NewOperationDialog({
                   control={form.control}
                   name="seller_secondary_id"
                   render={({ field }) => (
-                    <FormItem data-tour="op-new.vendedor-secundario">
+                    <FormItem>
                       <FormLabel>Vendedor Secundario</FormLabel>
                       {/* VIB-105: el secundario NO se gatea con
                           `canPickOtherSeller`. Ese permiso decide de quién es la
@@ -1275,11 +1276,7 @@ export function NewOperationDialog({
                     <Package className="h-4 w-4 text-muted-foreground" />
                     <span className="text-xs font-medium text-muted-foreground">Operador & Tipo de Producto</span>
                   </div>
-                  <label
-                    htmlFor="useMultipleOperators"
-                    className="flex items-center gap-2 cursor-pointer"
-                    data-tour="op-new.multi-operador"
-                  >
+                  <label htmlFor="useMultipleOperators" className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
                       id="useMultipleOperators"
@@ -1426,6 +1423,37 @@ export function NewOperationDialog({
                     </div>
                       </div>
 
+                      {/* VIB-112: precio de venta de ESTE servicio. Desglose del
+                          total de venta de la operación; se usa al facturar por
+                          servicio para controlar la base gravada de IVA. Sólo con
+                          2+ servicios: con uno solo, su precio es el total. */}
+                      {operatorList.length >= 2 && (() => {
+                        const saleCur = (form.watch("sale_currency") || form.watch("currency") || "USD") as string
+                        const saleVal = Number(op.sale_amount) || 0
+                        const costVal = Number(op.cost) || 0
+                        const sameCurrency = (op.cost_currency || "USD") === saleCur
+                        const margin = saleVal - costVal
+                        return (
+                          <div className="pt-3">
+                            <label className="text-xs font-medium mb-1.5 block">
+                              Precio de venta <span className="text-muted-foreground font-normal">({saleCur}, opcional)</span>
+                            </label>
+                            <DecimalInput
+                              value={op.sale_amount ?? ""}
+                              onChange={(v) => updateOperator(index, "sale_amount", v)}
+                              onFocus={(e) => e.target.select()}
+                              placeholder="0.00"
+                              className="h-9 text-sm"
+                            />
+                            {saleVal > 0 && sameCurrency && (
+                              <p className={`text-xs mt-1 ${margin >= 0 ? "text-muted-foreground" : "text-destructive"}`}>
+                                Margen de este servicio: {saleCur} {margin.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                              </p>
+                            )}
+                          </div>
+                        )
+                      })()}
+
                       {/* Datos internos del servicio (opcional): NO se muestran al
                           pasajero. file_code = referencia interna de la agencia;
                           payment_due_date = fecha máxima de pago al operador (alimenta
@@ -1497,6 +1525,72 @@ export function NewOperationDialog({
                         {form.watch("sale_currency") || form.watch("currency") || "USD"} {calculatedMargin.toLocaleString("es-AR", { minimumFractionDigits: 2 })} ({calculatedMarginPercent.toFixed(1)}%)
                       </span>
                     </div>
+
+                    {/* VIB-112: desglose del precio de venta por servicio. Sólo
+                        tiene sentido con 2+ servicios y una venta total cargada
+                        (con un solo servicio, su precio ES el total; sin total no
+                        hay nada que repartir). Se muestra con encabezado propio
+                        para que no aparezca suelto y sin contexto. */}
+                    {operatorList.length >= 2 && (Number(form.watch("sale_amount_total")) || 0) > 0 && (() => {
+                      const saleCur = (form.watch("sale_currency") || form.watch("currency") || "USD") as string
+                      const saleTotal = Number(form.watch("sale_amount_total")) || 0
+                      const assigned = operatorList.reduce((s, op) => s + (Number(op.sale_amount) || 0), 0)
+                      const anyLoaded = operatorList.some((op) => (Number(op.sale_amount) || 0) > 0)
+                      const diff = Math.round((assigned - saleTotal) * 100) / 100
+                      const tolerance = Math.max(0.01, Math.abs(saleTotal) * 0.005)
+                      const mismatch = anyLoaded && Math.abs(diff) > tolerance
+                      return (
+                        <div className="mt-3 pt-3 border-t border-border/40">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Precio de venta por servicio</span>
+                            {anyLoaded && (
+                              <span className="text-xs font-medium">
+                                {saleCur} {assigned.toLocaleString("es-AR", { minimumFractionDigits: 2 })} / {saleTotal.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground mb-2">
+                            Opcional. Cuánto de la venta corresponde a cada servicio; se usa al facturar cada uno por separado.
+                          </p>
+                          {mismatch && (
+                            <p className="text-xs text-accent-amber mb-2">
+                              {diff > 0 ? "Asignaste" : "Falta asignar"} {saleCur} {Math.abs(diff).toLocaleString("es-AR", { minimumFractionDigits: 2 })} respecto del total de venta.
+                            </p>
+                          )}
+                          <div className="flex gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={() => {
+                                const shares = distributeSaleByCost({
+                                  legs: operatorList.map((op) => ({ cost: op.cost, cost_currency: op.cost_currency })),
+                                  saleAmountTotal: saleTotal,
+                                  saleCurrency: saleCur === "ARS" ? "ARS" : "USD",
+                                })
+                                setOperatorList((prev) => prev.map((op, i) => ({ ...op, sale_amount: shares[i] ?? 0 })))
+                              }}
+                            >
+                              Repartir ∝ costo
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={() => {
+                                const others = operatorList.slice(0, -1).reduce((s, op) => s + (Number(op.sale_amount) || 0), 0)
+                                const last = Math.round((saleTotal - others) * 100) / 100
+                                setOperatorList((prev) => prev.map((op, i) => (i === prev.length - 1 ? { ...op, sale_amount: last } : op)))
+                              }}
+                            >
+                              Completar la última
+                            </Button>
+                          </div>
+                        </div>
+                      )
+                    })()}
                   </div>
                 )}
 
@@ -1518,7 +1612,7 @@ export function NewOperationDialog({
                   control={form.control}
                   name="operator_id"
                   render={({ field }) => (
-                    <FormItem data-tour="op-new.operador">
+                    <FormItem>
                       <FormLabel>Operador {settings?.require_operator && <span className="text-destructive">*</span>}</FormLabel>
                       <div className="flex gap-2">
                         <Select
@@ -1558,7 +1652,7 @@ export function NewOperationDialog({
                   control={form.control}
                   name="type"
                   render={({ field }) => (
-                    <FormItem data-tour="op-new.tipo">
+                    <FormItem>
                       <FormLabel>Tipo *</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
@@ -1588,7 +1682,7 @@ export function NewOperationDialog({
                   <MapPin className="h-4 w-4 text-success" />
                   <span className="text-xs font-medium text-muted-foreground">Ruta del Viaje</span>
                 </div>
-            <div className="grid gap-x-6 gap-y-5 md:grid-cols-2" data-tour="op-new.ruta">
+            <div className="grid gap-x-6 gap-y-5 md:grid-cols-2">
               <FormField
                 control={form.control}
                 name="origin"
@@ -1678,7 +1772,7 @@ export function NewOperationDialog({
                 hoy (ej. cargar retroactivamente una venta del mes pasado).
                 Si queda vacía, el backend usa la fecha de hoy como default
                 (comportamiento legacy preservado). */}
-            <div className="grid gap-x-6 gap-y-5 md:grid-cols-2" data-tour="op-new.fecha-venta">
+            <div className="grid gap-x-6 gap-y-5 md:grid-cols-2">
               <FormField
                 control={form.control}
                 name="operation_date"
@@ -1718,7 +1812,7 @@ export function NewOperationDialog({
               />
             </div>
 
-            <div className="grid gap-x-6 gap-y-5 md:grid-cols-2" data-tour="op-new.fechas-viaje">
+            <div className="grid gap-x-6 gap-y-5 md:grid-cols-2">
               <FormField
                 control={form.control}
                 name="departure_date"
@@ -1764,7 +1858,7 @@ export function NewOperationDialog({
                 control={form.control}
                 name="customer_payment_deadline"
                 render={({ field }) => (
-                  <FormItem className="flex flex-col" data-tour="op-new.pago-limite">
+                  <FormItem className="flex flex-col">
                     <FormLabel>Fecha máxima de pago del cliente</FormLabel>
                     <FormControl>
                       <DateInputWithCalendar
@@ -1811,7 +1905,7 @@ export function NewOperationDialog({
                   <Users className="h-4 w-4 text-primary" />
                   <span className="text-xs font-medium text-muted-foreground">Pasajeros</span>
                 </div>
-            <div className="grid gap-x-6 gap-y-5 md:grid-cols-3" data-tour="op-new.pasajeros">
+            <div className="grid gap-x-6 gap-y-5 md:grid-cols-3">
               <FormField
                 control={form.control}
                 name="adults"
@@ -1886,10 +1980,7 @@ export function NewOperationDialog({
 
               <div className="grid md:grid-cols-2 gap-4">
                 {/* Sub-card: Estado & Monedas */}
-                <div
-                  className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4"
-                  data-tour="op-new.monedas"
-                >
+                <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
                   <div className="flex items-center gap-1.5 mb-1">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5 text-accent-coral"><circle cx="12" cy="12" r="8"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                     <span className="text-xs font-medium text-foreground/70">Estado & Monedas</span>
@@ -2003,10 +2094,7 @@ export function NewOperationDialog({
                 </div>
 
                 {/* Sub-card: Montos */}
-                <div
-                  className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4"
-                  data-tour="op-new.montos"
-                >
+                <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
                   <div className="flex items-center gap-1.5 mb-1">
                     <DollarSign className="h-3.5 w-3.5 text-success" />
                     <span className="text-xs font-medium text-foreground/70">Montos</span>
@@ -2077,7 +2165,7 @@ export function NewOperationDialog({
                 </div>
                 <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Códigos de reserva</h4>
               </div>
-              <div className="grid md:grid-cols-2 gap-4" data-tour="op-new.codigos">
+              <div className="grid md:grid-cols-2 gap-4">
                 <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-3">
                   <div className="flex items-center gap-1.5 mb-1">
                     <Plane className="h-3.5 w-3.5 text-accent-teal" />
@@ -2168,7 +2256,7 @@ export function NewOperationDialog({
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading}>
                 Cancelar
               </Button>
-              <Button type="submit" disabled={isLoading} data-tour="op-new.guardar">
+              <Button type="submit" disabled={isLoading}>
                 {isLoading ? (lead ? "Convirtiendo..." : "Creando...") : (lead ? "Convertir Lead" : "Crear Operación")}
               </Button>
             </DialogFooter>

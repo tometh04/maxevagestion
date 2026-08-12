@@ -7,6 +7,7 @@ import { useForm, type DefaultValues } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { parseDateOnlyLocal, formatDateOnlyLocal } from "@/lib/utils/date-only"
 import { serviceKind, PASSENGER_DETAIL_FIELDS, sanitizePassengerDetail } from "@/lib/operations/service-kind"
+import { distributeSaleByCost } from "@/lib/operations/operator-sale-breakdown"
 import * as z from "zod"
 import {
   Dialog,
@@ -210,7 +211,7 @@ export function EditOperationDialog({
   const [customOperationTypes, setCustomOperationTypes] = useState<Array<{ value: string; label: string }>>([])
 
   // Estado para múltiples operadores
-  type OperatorEntry = { operator_id: string; cost: string | number; cost_currency: "ARS" | "USD"; product_type?: string; notes?: string; id?: string; passenger_detail?: Record<string, string>; file_code?: string; payment_due_date?: string }
+  type OperatorEntry = { operator_id: string; cost: string | number; cost_currency: "ARS" | "USD"; product_type?: string; notes?: string; id?: string; passenger_detail?: Record<string, string>; file_code?: string; payment_due_date?: string; sale_amount?: string | number }
   const [useMultipleOperators, setUseMultipleOperators] = useState(false)
   const [operatorList, setOperatorList] = useState<OperatorEntry[]>([])
   const [operatorsLoaded, setOperatorsLoaded] = useState(false)
@@ -355,6 +356,7 @@ export function EditOperationDialog({
         passenger_detail: (oo.passenger_detail && typeof oo.passenger_detail === "object") ? oo.passenger_detail : undefined,
         file_code: oo.file_code || undefined,
         payment_due_date: oo.payment_due_date || undefined,
+        sale_amount: oo.sale_amount != null ? Number(oo.sale_amount) : undefined, // VIB-112
       }))
 
     // 1) Preferir los operadores que ya trajo el server (prop). Es confiable y
@@ -619,6 +621,7 @@ export function EditOperationDialog({
           passenger_detail: sanitizePassengerDetail(op.passenger_detail),
           file_code: (op.file_code || "").trim() || null,
           payment_due_date: op.payment_due_date || null,
+          sale_amount: Number(op.sale_amount) || 0, // VIB-112
         }))
         // El operador principal es el primero de la lista
         payload.operator_id = operatorList[0].operator_id || null
@@ -1040,6 +1043,36 @@ export function EditOperationDialog({
                         </div>
                       </div>
 
+                      {/* VIB-112: precio de venta de ESTE servicio (desglose del
+                          total; se usa al facturar por servicio). Sólo con 2+
+                          servicios: con uno solo, su precio es el total. */}
+                      {operatorList.length >= 2 && (() => {
+                        const saleCur = (form.watch("currency") || "USD") as string
+                        const saleVal = Number(op.sale_amount) || 0
+                        const costVal = Number(op.cost) || 0
+                        const sameCurrency = (op.cost_currency || "USD") === saleCur
+                        const margin = saleVal - costVal
+                        return (
+                          <div className="pt-3">
+                            <label className="text-xs font-medium mb-1.5 block">
+                              Precio de venta <span className="text-muted-foreground font-normal">({saleCur}, opcional)</span>
+                            </label>
+                            <DecimalInput
+                              value={op.sale_amount ?? ""}
+                              onChange={(v) => updateOperatorField(index, "sale_amount", v)}
+                              onFocus={(e) => e.target.select()}
+                              placeholder="0.00"
+                              className="h-9 text-sm"
+                            />
+                            {saleVal > 0 && sameCurrency && (
+                              <p className={`text-xs mt-1 ${margin >= 0 ? "text-muted-foreground" : "text-destructive"}`}>
+                                Margen de este servicio: {saleCur} {margin.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                              </p>
+                            )}
+                          </div>
+                        )
+                      })()}
+
                       {/* Datos internos del servicio (opcional): NO se muestran al
                           pasajero. file_code = referencia interna de la agencia;
                           payment_due_date = fecha máxima de pago al operador (alimenta
@@ -1105,6 +1138,71 @@ export function EditOperationDialog({
                       <span className="font-medium text-muted-foreground">Costo Total de Operadores:</span>
                       <span className="font-bold">{form.watch("currency")} {totalOperatorCost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span>
                     </div>
+
+                    {/* VIB-112: desglose del precio de venta por servicio. Sólo con
+                        2+ servicios y venta total cargada (con uno solo su precio
+                        es el total; sin total no hay nada que repartir). */}
+                    {operatorList.length >= 2 && (Number(form.watch("sale_amount_total")) || 0) > 0 && (() => {
+                      const saleCur = (form.watch("currency") || "USD") as string
+                      const saleTotal = Number(form.watch("sale_amount_total")) || 0
+                      const assigned = operatorList.reduce((s, op) => s + (Number(op.sale_amount) || 0), 0)
+                      const anyLoaded = operatorList.some((op) => (Number(op.sale_amount) || 0) > 0)
+                      const diff = Math.round((assigned - saleTotal) * 100) / 100
+                      const tolerance = Math.max(0.01, Math.abs(saleTotal) * 0.005)
+                      const mismatch = anyLoaded && Math.abs(diff) > tolerance
+                      return (
+                        <div className="mt-3 pt-3 border-t border-border/40">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Precio de venta por servicio</span>
+                            {anyLoaded && (
+                              <span className="text-xs font-medium">
+                                {saleCur} {assigned.toLocaleString("es-AR", { minimumFractionDigits: 2 })} / {saleTotal.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground mb-2">
+                            Opcional. Cuánto de la venta corresponde a cada servicio; se usa al facturar cada uno por separado.
+                          </p>
+                          {mismatch && (
+                            <p className="text-xs text-accent-amber mb-2">
+                              {diff > 0 ? "Asignaste" : "Falta asignar"} {saleCur} {Math.abs(diff).toLocaleString("es-AR", { minimumFractionDigits: 2 })} respecto del total de venta.
+                            </p>
+                          )}
+                          <div className="flex gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={() => {
+                                const cur = (form.watch("currency") || "USD") as "ARS" | "USD"
+                                const shares = distributeSaleByCost({
+                                  legs: operatorList.map((op) => ({ cost: op.cost, cost_currency: op.cost_currency })),
+                                  saleAmountTotal: saleTotal,
+                                  saleCurrency: cur === "ARS" ? "ARS" : "USD",
+                                })
+                                setOperatorList((prev) => prev.map((op, i) => ({ ...op, sale_amount: shares[i] ?? 0 })))
+                              }}
+                            >
+                              Repartir ∝ costo
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={() => {
+                                const others = operatorList.slice(0, -1).reduce((s, op) => s + (Number(op.sale_amount) || 0), 0)
+                                const last = Math.round((saleTotal - others) * 100) / 100
+                                setOperatorList((prev) => prev.map((op, i) => (i === prev.length - 1 ? { ...op, sale_amount: last } : op)))
+                              }}
+                            >
+                              Completar la última
+                            </Button>
+                          </div>
+                        </div>
+                      )
+                    })()}
                   </div>
                 )}
 

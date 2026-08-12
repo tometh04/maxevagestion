@@ -21,6 +21,13 @@ export default async function ReferralsPage() {
     redirect("/dashboard")
   }
 
+  // Liquidar saca plata de una cuenta, así que además de ver al referidor hace
+  // falta poder mover caja. Se resuelve en el servidor y se pasa como prop: la
+  // API valida lo mismo, esto sólo evita ofrecer un botón que va a dar 403.
+  const canSettle =
+    canPerformAction(user, "referrals", "read", matrix ?? undefined) &&
+    canPerformAction(user, "cash", "write", matrix ?? undefined)
+
   return (
     <div className="flex flex-1 flex-col gap-6 p-6">
       <div>
@@ -30,7 +37,7 @@ export default async function ReferralsPage() {
           cada venta, sobre la ganancia.
         </p>
       </div>
-      <ReferralsView />
+      <ReferralsView canSettle={canSettle} />
     </div>
   )
 }

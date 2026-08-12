@@ -151,6 +151,34 @@ describe("prorateOperation — invariante de suma", () => {
     expect(slices.find((s) => s.key === "HOTEL")!.sale).toBe(250)
   })
 
+  it("VIB-112: con desglose PARCIAL que no cuadra, NO usa item_sale (cae a costo)", () => {
+    // Una pata con venta cargada y otra en 0: la suma (400) no cuadra con el
+    // total (1000). Antes atribuía el 100% a la cargada; ahora se cae al costo.
+    const op = operation({ id: "op-p", sale_amount_total: 1000 })
+    const items = [
+      item({ operation_id: "op-p", id: "a", product_type: "FLIGHT", sale_amount: 400, cost: 300 }),
+      item({ operation_id: "op-p", id: "b", product_type: "HOTEL", sale_amount: 0, cost: 100 }),
+    ]
+
+    const { slices, source } = prorateOperation(op, items, undefined)
+    expect(source).toBe("item_cost")
+    expect(slices.find((s) => s.key === "FLIGHT")!.sale).toBe(750)
+    expect(slices.find((s) => s.key === "HOTEL")!.sale).toBe(250)
+  })
+
+  it("VIB-112: con desglose COMPLETO que cuadra, usa item_sale", () => {
+    const op = operation({ id: "op-b", sale_amount_total: 1000 })
+    const items = [
+      item({ operation_id: "op-b", id: "a", product_type: "FLIGHT", sale_amount: 700, cost: 300 }),
+      item({ operation_id: "op-b", id: "b", product_type: "HOTEL", sale_amount: 300, cost: 100 }),
+    ]
+
+    const { slices, source } = prorateOperation(op, items, undefined)
+    expect(source).toBe("item_sale")
+    expect(slices.find((s) => s.key === "FLIGHT")!.sale).toBe(700)
+    expect(slices.find((s) => s.key === "HOTEL")!.sale).toBe(300)
+  })
+
   it("reparte en partes iguales si los costos están en monedas distintas", () => {
     const op = operation({ id: "op-m", sale_amount_total: 1000 })
     const items = [
@@ -348,8 +376,9 @@ describe("buildSalesBreakdownReport", () => {
       operation({ id: "o3", sale_amount_total: 100 }),
     ]
     const items = [
-      item({ operation_id: "o1", product_type: "FLIGHT", sale_amount: 5 }),
-      item({ operation_id: "o1", product_type: "HOTEL", sale_amount: 5 }),
+      // o1: el desglose por venta CUADRA con el total (50+50=100) → item_sale.
+      item({ operation_id: "o1", product_type: "FLIGHT", sale_amount: 50 }),
+      item({ operation_id: "o1", product_type: "HOTEL", sale_amount: 50 }),
       item({ operation_id: "o2", product_type: "FLIGHT", cost: 5 }),
       item({ operation_id: "o2", product_type: "HOTEL", cost: 5 }),
     ]
