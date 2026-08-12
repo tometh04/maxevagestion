@@ -3,6 +3,8 @@
 import { Suspense, useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 
+import { trackEvent } from "@/lib/analytics/ga/track"
+
 const POLL_INTERVAL_MS = 2000
 const MAX_POLL_MS = 30_000
 
@@ -76,11 +78,15 @@ function ReturnClient() {
       // Sync activo — funciona con o sin preapproval_id en la URL.
       const ok = await trySync()
       if (ok) {
+        trackEvent("checkout_returned", { result: "done" })
         router.replace("/dashboard")
         return
       }
 
       if (Date.now() - started > MAX_POLL_MS) {
+        // No es "fallo": MP puede tardar en autorizar el preapproval. Lo medimos
+        // aparte para saber cuánta gente ve la pantalla de espera larga.
+        trackEvent("checkout_returned", { result: "pending" })
         setTimedOut(true)
         return
       }

@@ -6,7 +6,7 @@
     "dev": "next dev -p 3067",
     "build": "next build",
     "start": "next start -p 3005",
-    "lint": "next lint && npm run check:admin-client",
+    "lint": "next lint && npm run check:admin-client && npm run check:analytics",
     "check:admin-client": "bash scripts/check-admin-client.sh",
     "test": "jest",
     "test:watch": "jest --watch",
@@ -21,7 +21,8 @@
     "test:audit-fixes": "tsx scripts/test-audit-fixes.ts",
     "test:sistema-completo": "tsx scripts/test-sistema-completo.ts",
     "test:run-completo": "tsx scripts/run-test-completo-e2e.ts",
-    "limpieza:masiva": "tsx scripts/limpieza-masiva-pre-importacion.ts"
+    "limpieza:masiva": "tsx scripts/limpieza-masiva-pre-importacion.ts",
+    "check:analytics": "bash scripts/check-analytics.sh"
   },
   "dependencies": {
     "@afipsdk/afip.js": "^1.2.3",

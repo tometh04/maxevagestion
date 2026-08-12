@@ -3,10 +3,13 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { PLANS, SALES_CONTACT_URL, type PlanId } from "@/lib/billing/plans"
+import { trackEvent } from "@/lib/analytics/ga/track"
+import type { AnalyticsSurface } from "@/lib/analytics/ga/events"
 
 export function CheckoutButton({
   plan,
   regularize = false,
+  surface = "paywall",
 }: {
   plan: PlanId
   /**
@@ -16,6 +19,8 @@ export function CheckoutButton({
    * de "ya tenés una suscripción activa" si el preapproval viejo sigue vivo.
    */
   regularize?: boolean
+  /** Pantalla desde la que se lanza el checkout, para segmentar el funnel. */
+  surface?: AnalyticsSurface
 }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -35,6 +40,8 @@ export function CheckoutButton({
   async function go() {
     setLoading(true)
     setError(null)
+    // Solo el id del plan. `PLANS[plan]` tiene el precio: no se manda.
+    trackEvent("plan_selected", { plan_id: plan, surface })
     try {
       const res = await fetch("/api/billing/checkout", {
         method: "POST",
@@ -47,6 +54,7 @@ export function CheckoutButton({
         setLoading(false)
         return
       }
+      trackEvent("checkout_started", { plan_id: plan, regularize, surface })
       // Redirect a Mercado Pago — el user completa la suscripción ahí,
       // y MP nos redirige de vuelta a /settings/subscription?checkout=done.
       window.location.href = body.init_point

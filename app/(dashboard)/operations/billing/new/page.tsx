@@ -36,6 +36,7 @@ import {
 } from "@/lib/invoices/calculation"
 import type { ItemTaxTreatment } from "@/lib/invoices/calculation"
 import { NewCustomerDialog } from "@/components/customers/new-customer-dialog"
+import { trackEvent } from "@/lib/analytics/ga/track"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -1016,8 +1017,18 @@ export default function NewInvoicePage() {
             title: "✅ Factura autorizada por AFIP",
             description: `Nro: ${String(formData.pto_vta).padStart(4,'0')}-${String(authData.data?.cbte_nro).padStart(8,'0')} | CAE: ${authData.data?.cae} | Vto: ${authData.data?.cae_fch_vto}`,
           })
+          trackEvent("invoice_authorized", {
+            invoice_kind: String(formData.cbte_tipo),
+            result: "success",
+            surface: "billing_new",
+          })
           router.push('/operations/billing')
         } else {
+          trackEvent("invoice_authorized", {
+            invoice_kind: String(formData.cbte_tipo),
+            result: "error",
+            surface: "billing_new",
+          })
           // AFIP rechazó la autorización. NO redirigir — mostrar AlertDialog persistente
           // con el error completo para que el user no pierda el detalle (antes el toast
           // se iba al redirigir y la factura quedaba en draft sin que el user supiera

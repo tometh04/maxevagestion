@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { ArrowRight, Check, Sparkles, Zap } from "lucide-react"
 import { PLANS, SALES_CONTACT_URL, formatArs, type PlanId } from "@/lib/billing/plans"
+import { trackEvent } from "@/lib/analytics/ga/track"
 
 /**
  * Plan card — styled to match landing (vibook.ai/#pricing).
@@ -29,6 +30,8 @@ export function PlanCard({
   async function elegir() {
     setLoading(true)
     setError(null)
+    // Solo el id del plan: el precio efectivo (`priceArs`) no sale del navegador.
+    trackEvent("plan_selected", { plan_id: planId, surface: "onboarding" })
     try {
       const res = await fetch("/api/billing/checkout", {
         method: "POST",
@@ -41,6 +44,11 @@ export function PlanCard({
         setLoading(false)
         return
       }
+      trackEvent("checkout_started", {
+        plan_id: planId,
+        regularize: false,
+        surface: "onboarding",
+      })
       window.location.href = body.init_point
     } catch (err: any) {
       setError(err.message || "Error inesperado")

@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { supabase } from "@/lib/supabase/client"
+import { trackEvent } from "@/lib/analytics/ga/track"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -92,6 +93,7 @@ export function RegisterForm({
       if (wantsPro) {
         console.log("[register] wantsPro=true, redirigiendo a paywall")
       }
+      trackEvent("sign_up", { method: "email" })
       router.refresh()
       router.push("/onboarding/billing")
     } catch (err) {

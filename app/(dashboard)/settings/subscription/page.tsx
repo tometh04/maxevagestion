@@ -15,6 +15,7 @@ import { CustomPlanOwnerView } from "@/components/subscription/custom-plan-owner
 import { DowngradeDialog, UndoDowngradeButton } from "@/components/billing/downgrade-dialog"
 import { fetchPreapproval } from "@/lib/billing/mercadopago"
 import { MpSandboxBanner } from "@/components/admin/mp-sandbox-banner"
+import { CheckoutOutcomeTracker } from "@/components/analytics/checkout-outcome-tracker"
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING_PAYMENT: "Pendiente de pago",
@@ -184,6 +185,10 @@ export default async function SubscriptionPage({
       </div>
 
       <MpSandboxBanner />
+
+      {checkout === "done" || checkoutFailed ? (
+        <CheckoutOutcomeTracker result={checkoutFailed ? "failed" : "done"} />
+      ) : null}
 
       {checkoutFailed && (
         <Card className="border-destructive/15 bg-destructive/5">

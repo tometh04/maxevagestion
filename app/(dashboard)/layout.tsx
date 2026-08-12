@@ -4,6 +4,8 @@ import { AppSidebar } from "@/components/app-sidebar"
 import { SiteHeader } from "@/components/site-header"
 import { TaskShortcutProvider } from "@/components/tasks/task-shortcut-provider"
 import { PushNotificationManager } from "@/components/notifications/push-notification-manager"
+import { AnalyticsIdentity } from "@/components/analytics/analytics-identity"
+import { buildAnalyticsIdentity } from "@/lib/analytics/ga/identity"
 import { TrialBanner } from "@/components/trial-banner"
 import { PerfNavLogger } from "@/components/perf-nav-logger"
 import { canRunSetupTour } from "@/lib/onboarding/eligibility"
@@ -88,6 +90,13 @@ export default async function DashboardLayout({
   const onboardingState =
     setupEligible && user.org_id ? await getOrgOnboardingState(user.org_id) : null
 
+  // Telemetria user-scoped. Solo IDs anonimizados: nunca email, nombre ni datos
+  // de la agencia. `orgBanner` ya se resolvio arriba, asi que no cuesta queries.
+  const analyticsIdentity = buildAnalyticsIdentity(user, {
+    disableAuth: process.env.DISABLE_AUTH === "true",
+    plan: orgBanner?.plan ?? null,
+  })
+
   t.end(`role=${user.role} agencies=${agencies.length}`)
 
   return (
@@ -139,6 +148,7 @@ export default async function DashboardLayout({
             </SidebarInset>
             <TaskShortcutProvider currentUserId={user.id} agencyId={agencies[0]?.id || ""} />
             <PushNotificationManager userId={user.id} />
+            <AnalyticsIdentity identity={analyticsIdentity} />
             <PerfNavLogger />
             <CheckinReminderModal />
             <TourOverlay />

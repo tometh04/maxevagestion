@@ -37,6 +37,7 @@ import { cn } from "@/lib/utils"
 import { formatDateOnlyLocal } from "@/lib/utils/date-only"
 import { toast } from "sonner"
 import { useLeadRegions } from "@/lib/hooks/use-lead-regions"
+import { trackEvent } from "@/lib/analytics/ga/track"
 
 const REGION_TO_LIST: Record<string, string> = {
   ARGENTINA: "Leads - Argentina",
@@ -275,6 +276,12 @@ export function NewLeadDialog({
         const error = await response.json()
         throw new Error(error.error || "Error al crear lead")
       }
+
+      // Solo el canal y si quedó asignado: ni contacto, ni notas, ni montos.
+      trackEvent("lead_created", {
+        source_channel: values.source,
+        has_agency_assigned: Boolean(values.assigned_seller_id),
+      })
 
       form.reset()
       onOpenChange(false)

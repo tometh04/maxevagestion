@@ -72,6 +72,7 @@ import {
   shouldHideInvoiceTaxBreakdown,
 } from "@/lib/invoices/calculation"
 import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
+import { trackEvent } from "@/lib/analytics/ga/track"
 
 interface Invoice {
   id: string
@@ -192,9 +193,14 @@ export function InvoicesPageClient() {
   }
 
   const authorizeInvoice = async (invoiceId: string) => {
+    // Tipo de comprobante para la telemetría. No se manda el CAE, ni el número,
+    // ni el importe, ni el detalle del rechazo de AFIP (repite datos del receptor).
+    const invoiceKind = String(
+      invoices.find((i) => i.id === invoiceId)?.cbte_tipo ?? ""
+    )
     try {
       setAuthorizing(invoiceId)
-      
+
       const response = await fetch(`/api/invoices/${invoiceId}/authorize`, {
         method: 'POST',
       })
@@ -206,8 +212,18 @@ export function InvoicesPageClient() {
           title: "Factura autorizada",
           description: `CAE: ${data.data.cae}`,
         })
+        trackEvent("invoice_authorized", {
+          invoice_kind: invoiceKind,
+          result: "success",
+          surface: "invoices",
+        })
         loadInvoices()
       } else {
+        trackEvent("invoice_authorized", {
+          invoice_kind: invoiceKind,
+          result: "error",
+          surface: "invoices",
+        })
         toast({
           title: "Error al autorizar",
           description: data.error || "No se pudo autorizar la factura",

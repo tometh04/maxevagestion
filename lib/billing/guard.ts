@@ -33,7 +33,17 @@ export type { BillingSubscriptionStatus, BillingOrg } from "@/lib/billing/access
  * Wrappeado con React.cache para deduplicar dentro del mismo request.
  * Multi-tenant safe: la query filtra por user.org_id; per-request scope.
  */
-export const assertSubscriptionActive = cache(async (): Promise<BillingOrg | null> => {
+/**
+ * Lo que devuelve el guard: la regla de acceso más el plan.
+ *
+ * `plan` NO va en `BillingOrg` a propósito: ese tipo modela la regla pura de
+ * acceso (`isAccessAllowed`), que no mira el plan. Acá se agrega solo para que
+ * el layout del dashboard pueda segmentar telemetría por plan sin pagar una
+ * query extra por navegación.
+ */
+export type BillingOrgWithPlan = BillingOrg & { plan?: string | null }
+
+export const assertSubscriptionActive = cache(async (): Promise<BillingOrgWithPlan | null> => {
   // BYPASS LOGIN EN DESARROLLO - TODO: Remover antes de producción
   // Mismo patrón que lib/auth.ts: si DISABLE_AUTH=true en dev, no chequeamos
   // suscripción ni org_id (el user mock tiene org_id=null y forzaría redirect
@@ -53,13 +63,13 @@ export const assertSubscriptionActive = cache(async (): Promise<BillingOrg | nul
   const admin = createAdminClient() as any
   const { data } = await admin
     .from("organizations")
-    .select("subscription_status, current_period_ends_at, trial_ends_at")
+    .select("subscription_status, current_period_ends_at, trial_ends_at, plan")
     .eq("id", user.org_id)
     .maybeSingle()
 
   if (!data) redirect("/onboarding")
 
-  const org = data as BillingOrg
+  const org = data as BillingOrgWithPlan
   if (!isAccessAllowed(org)) {
     // PAST_DUE bloqueado → /settings/subscription (tiene botón "Regularizar pago")
     // Resto → /onboarding/billing (checkout estándar)

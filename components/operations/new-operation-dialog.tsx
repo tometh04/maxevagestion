@@ -55,6 +55,8 @@ import {
 } from "@/components/ui/alert-dialog"
 import { NewCustomerDialog } from "@/components/customers/new-customer-dialog"
 import { SearchableCombobox, type ComboboxOption } from "@/components/ui/searchable-combobox"
+import { trackEvent } from "@/lib/analytics/ga/track"
+import { bucketCount } from "@/lib/analytics/ga/scrub"
 
 // Configuración de operaciones
 interface OperationSettings {
@@ -791,8 +793,27 @@ export function NewOperationDialog({
 
       // La operación se creó pero algo secundario falló (ej. no se pudieron
       // asociar los pasajeros). No se silencia: el usuario tiene que saberlo.
-      for (const warning of (data.warnings as string[] | undefined) ?? []) {
+      const warnings = (data.warnings as string[] | undefined) ?? []
+      for (const warning of warnings) {
         toast({ title: "Atención", description: warning, variant: "destructive" })
+      }
+
+      // Telemetría: forma de la operación, nunca su plata ni sus personas.
+      // `operator_cost`, `sale_amount` y los nombres de pasajeros no salen de acá.
+      const trackedSaleCurrency = values.sale_currency || values.currency || "USD"
+      trackEvent("operation_created", {
+        passengers_bucket: bucketCount(companionList.length + 1),
+        services_bucket: bucketCount(useMultipleOperators ? operatorList.length : 1),
+        multi_operator: useMultipleOperators,
+        sale_currency: trackedSaleCurrency,
+        from_lead: Boolean(lead),
+        had_warnings: warnings.length > 0,
+      })
+      if (lead) {
+        trackEvent("lead_converted", {
+          sale_currency: trackedSaleCurrency,
+          had_quote: lead.quoted_price != null && lead.quoted_price !== "",
+        })
       }
 
       // Pasar el ID de la operación al callback

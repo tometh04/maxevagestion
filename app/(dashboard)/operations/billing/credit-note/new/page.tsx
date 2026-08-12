@@ -34,6 +34,7 @@ import {
 } from "@/lib/invoices/calculation"
 import type { ItemTaxTreatment } from "@/lib/invoices/calculation"
 import { deriveCreditNoteType, type CreditNoteKind } from "@/lib/invoices/credit-note"
+import { trackEvent } from "@/lib/analytics/ga/track"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -242,8 +243,18 @@ export default function NewCreditNotePage() {
           title: `✅ ${kindLabel} autorizada por AFIP`,
           description: `Nro: ${String(original.pto_vta).padStart(4, "0")}-${String(authData.data?.cbte_nro).padStart(8, "0")} | CAE: ${authData.data?.cae}`,
         })
+        trackEvent("invoice_authorized", {
+          invoice_kind: String(derivedCbteTipo ?? original.cbte_tipo),
+          result: "success",
+          surface: "billing_credit_note",
+        })
         router.push("/operations/billing")
       } else {
+        trackEvent("invoice_authorized", {
+          invoice_kind: String(derivedCbteTipo ?? original.cbte_tipo),
+          result: "error",
+          surface: "billing_credit_note",
+        })
         setAfipFailureAlert({
           message: authData.error || "AFIP no pudo autorizar el comprobante. Podés reintentar desde el listado.",
           pendingRedirect: true,

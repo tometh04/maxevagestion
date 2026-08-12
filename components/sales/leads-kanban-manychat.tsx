@@ -45,6 +45,7 @@ import {
   useSortable,
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
+import { trackEvent } from "@/lib/analytics/ga/track"
 
 function formatLeadDate(iso: string): string {
   return new Date(iso).toLocaleDateString("es-AR", { day: "2-digit", month: "short" }).replace(".", "")
@@ -501,6 +502,14 @@ export function LeadsKanbanManychat({
           ...(inferredStatus ? { status: previousStatus as any } : {}),
         })
         toast.error(data.error || "Error al mover lead")
+      } else {
+        // Nombres de columna del tablero, nunca datos del lead. Se emite recién
+        // acá y no en el optimistic update: si la API rechaza, no hubo cambio.
+        trackEvent("lead_stage_changed", {
+          from_stage: previousListName ?? "",
+          to_stage: targetListName,
+          board: "manychat",
+        })
       }
     } catch (error) {
       // Rollback completo (incluye status si se había inferido)

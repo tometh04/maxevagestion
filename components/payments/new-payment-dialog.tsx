@@ -39,6 +39,7 @@ import {
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { DollarSign, CalendarIcon, FileText, Loader2, Wallet, CheckCircle, Receipt, Plus, ExternalLink } from "lucide-react"
 import { toast } from "sonner"
+import { trackEvent } from "@/lib/analytics/ga/track"
 import {
   buildOpenOperationBasePayableOperators,
   type OperationOperatorPaymentLike,
@@ -406,6 +407,12 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
       // se crea recién cuando un admin aprueba el pago. Avisamos y cerramos.
       if (createData.requires_approval) {
         toast.success("Pago creado. Queda pendiente de aprobación antes de impactar caja.")
+        trackEvent("payment_registered", {
+          currency: values.currency,
+          payment_method: values.method,
+          requires_approval: true,
+          surface: "payments",
+        })
         onSuccess()
         onOpenChange(false)
         form.reset()
@@ -432,10 +439,23 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
           toast.warning("Pago creado pero no se pudo marcar como pagado: " + (error.error || ""))
         } else {
           toast.success("Pago creado y marcado como pagado")
+          trackEvent("payment_marked_paid", {
+            currency: values.currency,
+            surface: "payments",
+          })
         }
       } else {
         toast.success("Pago pendiente creado correctamente")
       }
+
+      // Moneda y medio de pago, nunca el importe: el monto es dato financiero
+      // del tenant y Postgres sigue siendo la única fuente de verdad.
+      trackEvent("payment_registered", {
+        currency: values.currency,
+        payment_method: values.method,
+        requires_approval: false,
+        surface: "payments",
+      })
 
       onSuccess()
       onOpenChange(false)

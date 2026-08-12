@@ -28,6 +28,8 @@ import {
   roundQuotationMoney,
 } from "@/lib/quotations/totals"
 import { useLeadRegions } from "@/lib/hooks/use-lead-regions"
+import { trackEvent } from "@/lib/analytics/ga/track"
+import { bucketCount } from "@/lib/analytics/ga/scrub"
 
 interface QuotationBuilderProps {
   open: boolean
@@ -1198,6 +1200,18 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
         })),
       }
 
+      // Telemetría: forma de la cotización, nunca su contenido. Ni destino, ni
+      // hoteles, ni precios, ni el teléfono al que se manda por WhatsApp.
+      const trackQuotation = (editing: boolean, sent: boolean) => {
+        trackEvent("quotation_created", {
+          mode: editing ? "edit" : "create",
+          sent,
+          items_bucket: bucketCount(
+            finalOptions.reduce((acc, opt) => acc + opt.items.length, 0)
+          ),
+        })
+      }
+
       // If editing existing, use PATCH; otherwise POST to create new
       const isEditing = !!activeQuotationId
       const quotationId = activeQuotationId
@@ -1244,10 +1258,12 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
         window.open(`https://wa.me/${cleanPhone}?text=${message}`, "_blank")
 
         toast.success(isEditing ? "Cotizacion actualizada y enviada" : "Cotizacion creada y enviada")
+        trackQuotation(isEditing, true)
         onSuccess?.(quotation)
         onOpenChange(false)
       } else {
         toast.success(isEditing ? "Cotizacion actualizada" : "Cotizacion guardada como borrador")
+        trackQuotation(isEditing, false)
         onSuccess?.(quotation)
       }
     } catch (error: any) {

@@ -34,6 +34,7 @@ import { DatePicker } from "@/components/ui/date-picker"
 import { formatDateOnlyLocal } from "@/lib/utils/date-only"
 import { Loader2, CreditCard, DollarSign, Calendar } from "lucide-react"
 import { toast } from "sonner"
+import { trackEvent } from "@/lib/analytics/ga/track"
 
 interface FinancialAccount {
   id: string
@@ -156,6 +157,14 @@ export function NewPaymentDialog({
       }
 
       toast.success("Pago creado exitosamente")
+      // `surface` distingue este alta de la de /payments: son dos diálogos con
+      // flujos distintos y sin el discriminador las métricas quedan mezcladas.
+      trackEvent("payment_registered", {
+        currency: values.currency,
+        payment_method: values.method,
+        requires_approval: false,
+        surface: "operation_detail",
+      })
       form.reset()
       onOpenChange(false)
       onSuccess()

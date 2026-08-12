@@ -5,6 +5,8 @@ import { Building2, BarChart3, ScrollText, LogOut, CircleDollarSign, LifeBuoy, M
 import { getCurrentUser } from "@/lib/auth"
 import { createServerClient } from "@/lib/supabase/server"
 import { isPlatformAdmin } from "@/lib/auth/platform"
+import { AnalyticsIdentity } from "@/components/analytics/analytics-identity"
+import { buildAnalyticsIdentity } from "@/lib/analytics/ga/identity"
 
 export const dynamic = "force-dynamic"
 
@@ -13,6 +15,14 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const supabase = await createServerClient()
   const isAdmin = await isPlatformAdmin(supabase, user.id)
   if (!isAdmin) redirect("/dashboard")
+
+  // Rol explicito: en el admin global el `users.role` del tenant no describe lo
+  // que la persona esta haciendo, y sin esto las sesiones de admin quedarian
+  // anonimas y mezcladas con el uso normal del producto.
+  const analyticsIdentity = buildAnalyticsIdentity(user, {
+    disableAuth: process.env.DISABLE_AUTH === "true",
+    role: "platform_admin",
+  })
 
   // Modo claro Vibook 2026-05-06: el admin estaba en "fake dark mode" —
   // usaba bg-foreground (token de TEXTO) como fondo, lo cual rompía la
@@ -28,6 +38,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   // se ve light, sin importar el theme del user en /dashboard.
   return (
     <div className="light-force flex min-h-screen bg-background text-foreground">
+      <AnalyticsIdentity identity={analyticsIdentity} />
       <aside className="w-64 shrink-0 border-r border-border bg-card flex flex-col">
         <div className="px-5 py-6 border-b border-border">
           <Link href="/admin/orgs" className="flex items-center gap-2">

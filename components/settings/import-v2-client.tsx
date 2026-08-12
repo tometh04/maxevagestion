@@ -40,6 +40,8 @@ import {
   Play,
 } from "lucide-react"
 import { toast } from "sonner"
+import { trackEvent } from "@/lib/analytics/ga/track"
+import { bucketCount } from "@/lib/analytics/ga/scrub"
 
 type Pipeline =
   | "operations-master"
@@ -156,11 +158,23 @@ export function ImportV2Client({ agencies }: Props) {
 
       if (!response.ok) {
         toast.error(data.error ?? "Error en la importación")
+        trackEvent("import_run", {
+          entity: pipeline,
+          rows_bucket: "0",
+          result: "error",
+        })
         return
       }
 
       setResult(data)
       setStage(dryRun ? "preview" : "done")
+      // Volumen en buckets, no el conteo exacto: el tamaño de la cartera de una
+      // agencia es dato suyo. Tampoco va el nombre del archivo.
+      trackEvent("import_run", {
+        entity: pipeline,
+        rows_bucket: bucketCount(Number(data.successRows) || 0),
+        result: Number(data.errorRows) > 0 ? "partial" : "success",
+      })
       toast.success(
         dryRun
           ? `Preview listo: ${data.successRows} OK, ${data.errorRows} errores`
