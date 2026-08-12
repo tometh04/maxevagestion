@@ -9177,6 +9177,7 @@ export type Database = {
           percentage: number
           percentage_mode: string
           referral_partner_id: string
+          settlement_id?: string | null
           status: string
           updated_at: string
         }
@@ -9197,6 +9198,7 @@ export type Database = {
           percentage?: number
           percentage_mode?: string
           referral_partner_id: string
+          settlement_id?: string | null
           status?: string
           updated_at?: string
         }
@@ -9217,6 +9219,7 @@ export type Database = {
           percentage?: number
           percentage_mode?: string
           referral_partner_id?: string
+          settlement_id?: string | null
           status?: string
           updated_at?: string
         }
@@ -9338,6 +9341,157 @@ export type Database = {
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "organizations_with_profile_completion"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      referral_settlements: {
+        Row: {
+          account_currency: string
+          account_id: string | null
+          account_name: string
+          agency_id: string | null
+          amount: number
+          cash_amount: number
+          commissions_count: number
+          created_at: string
+          created_by: string | null
+          currency: string
+          exchange_rate: number | null
+          id: string
+          is_regularization: boolean
+          ledger_movement_id: string | null
+          notes: string | null
+          org_id: string
+          paid_at: string
+          period_from: string | null
+          period_to: string | null
+          referral_partner_id: string
+          reversal_ledger_movement_id: string | null
+          reversal_reason: string | null
+          reverted_at: string | null
+          reverted_by: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          account_currency: string
+          account_id?: string | null
+          account_name: string
+          agency_id?: string | null
+          amount: number
+          cash_amount: number
+          commissions_count?: number
+          created_at?: string
+          created_by?: string | null
+          currency: string
+          exchange_rate?: number | null
+          id?: string
+          is_regularization?: boolean
+          ledger_movement_id?: string | null
+          notes?: string | null
+          org_id: string
+          paid_at?: string
+          period_from?: string | null
+          period_to?: string | null
+          referral_partner_id: string
+          reversal_ledger_movement_id?: string | null
+          reversal_reason?: string | null
+          reverted_at?: string | null
+          reverted_by?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          account_currency?: string
+          account_id?: string | null
+          account_name?: string
+          agency_id?: string | null
+          amount?: number
+          cash_amount?: number
+          commissions_count?: number
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          exchange_rate?: number | null
+          id?: string
+          is_regularization?: boolean
+          ledger_movement_id?: string | null
+          notes?: string | null
+          org_id?: string
+          paid_at?: string
+          period_from?: string | null
+          period_to?: string | null
+          referral_partner_id?: string
+          reversal_ledger_movement_id?: string | null
+          reversal_reason?: string | null
+          reverted_at?: string | null
+          reverted_by?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referral_settlements_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "financial_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_settlements_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_settlements_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_settlements_ledger_movement_id_fkey"
+            columns: ["ledger_movement_id"]
+            isOneToOne: false
+            referencedRelation: "ledger_movements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_settlements_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_settlements_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations_with_profile_completion"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_settlements_referral_partner_id_fkey"
+            columns: ["referral_partner_id"]
+            isOneToOne: false
+            referencedRelation: "referral_partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_settlements_reversal_ledger_movement_id_fkey"
+            columns: ["reversal_ledger_movement_id"]
+            isOneToOne: false
+            referencedRelation: "ledger_movements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_settlements_reverted_by_fkey"
+            columns: ["reverted_by"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]

@@ -5,11 +5,16 @@ import { canPerformAction, isOwnDataOnlyResolved } from "@/lib/permissions-api"
 export const dynamic = "force-dynamic"
 
 /**
- * Cambiar el estado de una comisión de referido (VIB-62): marcar PAGADO /
- * PENDIENTE / ANULADO. NO genera movimientos de caja ni asientos contables (por
- * decisión de diseño: es un registro/seguimiento). Solo deja constancia del
- * estado, la fecha y el monto liquidado, para saber qué se le debe a cada
- * referidor.
+ * Cambiar el estado de una comisión de referido (VIB-62) y ajustar su
+ * porcentaje puntual (VIB-86).
+ *
+ * PAGAR YA NO SE HACE ACÁ (VIB-86). Marcar PAID desde este endpoint sólo movía
+ * un flag: la plata nunca salía de ninguna cuenta y el saldo de caja quedaba
+ * inflado. El pago vive en `POST /api/referral-settlements`, que agrupa las
+ * comisiones de un referidor, genera el movimiento de caja y deja comprobante.
+ *
+ * Acá quedan las transiciones que NO mueven plata: anular una comisión y
+ * volver a pendiente una que se había anulado.
  *
  * Requiere permiso de ESCRITURA de comisiones y no estar limitado a "lo propio".
  */
@@ -46,7 +51,7 @@ export async function PATCH(
 
     // Verificar estado actual y tenant antes de transicionar (no confiar en RLS).
     const { data: current, error: fetchError } = await (supabase.from("referral_commissions") as any)
-      .select("id, amount, status, amount_paid, base_amount, percentage")
+      .select("id, amount, status, amount_paid, base_amount, percentage, settlement_id")
       .eq("id", id)
       .eq("org_id", (user as any).org_id)
       .maybeSingle()
@@ -114,6 +119,31 @@ export async function PATCH(
       return NextResponse.json({ success: true, commission: updated })
     }
 
+    // VIB-86: pagar exige mover plata de una cuenta. Marcarla PAID acá dejaba la
+    // comisión saldada sin egreso registrado, y la caja mostrando plata que ya
+    // no estaba.
+    if (nextStatus === "PAID") {
+      return NextResponse.json(
+        {
+          error:
+            "Para pagarle al referidor usá 'Liquidar' en la pantalla de Referidos: el pago tiene que salir de una cuenta.",
+        },
+        { status: 400 }
+      )
+    }
+
+    // Una comisión incluida en una liquidación se toca revirtiendo la
+    // liquidación, que además contra-asienta la salida de caja.
+    if (current.settlement_id) {
+      return NextResponse.json(
+        {
+          error:
+            "Esta comisión forma parte de una liquidación. Revertí la liquidación para poder cambiarla.",
+        },
+        { status: 409 }
+      )
+    }
+
     // Idempotencia: si ya está en el estado pedido, no hacemos nada.
     if (current.status === nextStatus) {
       return NextResponse.json({ success: true, commission: current, unchanged: true })
@@ -122,19 +152,7 @@ export async function PATCH(
     const nowIso = new Date().toISOString()
     const update: any = { status: nextStatus, updated_at: nowIso }
 
-    if (nextStatus === "PAID") {
-      update.date_paid = nowIso
-      // Monto liquidado: por defecto el total; permite override parcial validado.
-      let paid = Number(current.amount) || 0
-      if (body.amount_paid != null && body.amount_paid !== "") {
-        const p = Number(body.amount_paid)
-        if (!Number.isFinite(p) || p < 0) {
-          return NextResponse.json({ error: "Monto liquidado inválido" }, { status: 400 })
-        }
-        paid = Math.round(p * 100) / 100
-      }
-      update.amount_paid = paid
-    } else if (nextStatus === "PENDING") {
+    if (nextStatus === "PENDING") {
       // Revertir a pendiente: limpiar liquidación.
       update.date_paid = null
       update.amount_paid = 0
