@@ -76,6 +76,7 @@ import {
 import { normalizePaymentMethodForForm } from "@/lib/accounting/payment-counterparts"
 import { pickExactPendingMatch } from "@/lib/accounting/operator-payment-settlement"
 import { useCan } from "@/components/permissions/permissions-provider"
+import { paymentMethodOptionsFor } from "@/lib/payments/payment-methods"
 
 interface FinancialAccount {
   id: string
@@ -131,15 +132,10 @@ const editPaymentSchema = z.object({
 
 type EditPaymentFormValues = z.infer<typeof editPaymentSchema>
 
-const paymentMethods = [
-  { value: "Transferencia", label: "Transferencia Bancaria" },
-  { value: "Efectivo", label: "Efectivo" },
-  { value: "Tarjeta Crédito", label: "Tarjeta de Crédito" },
-  { value: "Tarjeta Débito", label: "Tarjeta de Débito" },
-  { value: "MercadoPago", label: "MercadoPago" },
-  { value: "PayPal", label: "PayPal" },
-  { value: "Otro", label: "Otro" },
-]
+// VIB-107: catálogo único en lib/payments/payment-methods.ts. Acá se usa
+// paymentMethodOptionsFor(field.value) en vez de la lista pelada: estos Select
+// EDITAN pagos ya guardados, y si el método histórico no está entre las opciones
+// el campo queda vacío y al guardar se pisa solo.
 
 const NO_BASE_OPERATOR_DEBT_MESSAGE =
   "No hay deudas pendientes de la operación base. Si necesitás pagar un servicio, hacelo desde la pestaña Servicios."
@@ -1730,7 +1726,7 @@ export function OperationPaymentsSection({
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {paymentMethods.map((method) => (
+                          {paymentMethodOptionsFor(field.value).map((method) => (
                             <SelectItem key={method.value} value={method.value}>
                               {method.label}
                             </SelectItem>
@@ -2112,7 +2108,7 @@ export function OperationPaymentsSection({
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {paymentMethods.map((method) => (
+                          {paymentMethodOptionsFor(field.value).map((method) => (
                             <SelectItem key={method.value} value={method.value}>
                               {method.label}
                             </SelectItem>
@@ -2342,7 +2338,7 @@ export function OperationPaymentsSection({
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {paymentMethods.map((method) => (
+                            {paymentMethodOptionsFor(field.value).map((method) => (
                               <SelectItem key={method.value} value={method.value}>
                                 {method.label}
                               </SelectItem>
@@ -2763,7 +2759,7 @@ export function OperationPaymentsSection({
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {paymentMethods.map((method) => (
+                            {paymentMethodOptionsFor(field.value).map((method) => (
                               <SelectItem key={method.value} value={method.value}>
                                 {method.label}
                               </SelectItem>

@@ -34,6 +34,7 @@ import { DatePicker } from "@/components/ui/date-picker"
 import { formatDateOnlyLocal } from "@/lib/utils/date-only"
 import { Loader2, CreditCard, DollarSign, Calendar } from "lucide-react"
 import { toast } from "sonner"
+import { PAYMENT_METHODS } from "@/lib/payments/payment-methods"
 import { trackEvent } from "@/lib/analytics/track"
 
 interface FinancialAccount {
@@ -58,14 +59,8 @@ const paymentSchema = z.object({
 
 type PaymentFormValues = z.infer<typeof paymentSchema>
 
-const paymentMethods = [
-  { value: "Transferencia", label: "Transferencia Bancaria" },
-  { value: "Efectivo", label: "Efectivo" },
-  { value: "Tarjeta Crédito", label: "Tarjeta de Crédito" },
-  { value: "Tarjeta Débito", label: "Tarjeta de Débito" },
-  { value: "Cheque", label: "Cheque" },
-  { value: "MercadoPago", label: "MercadoPago" },
-]
+// VIB-107: catálogo único en lib/payments/payment-methods.ts.
+const paymentMethods = PAYMENT_METHODS
 
 interface NewPaymentDialogProps {
   operationId: string

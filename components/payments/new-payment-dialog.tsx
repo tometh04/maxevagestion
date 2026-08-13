@@ -39,6 +39,7 @@ import {
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { DollarSign, CalendarIcon, FileText, Loader2, Wallet, CheckCircle, Receipt, Plus, ExternalLink } from "lucide-react"
 import { toast } from "sonner"
+import { PAYMENT_METHODS } from "@/lib/payments/payment-methods"
 import { trackEvent } from "@/lib/analytics/track"
 import {
   buildOpenOperationBasePayableOperators,
@@ -100,15 +101,7 @@ const paymentSchema = z.object({
 
 type PaymentFormValues = z.infer<typeof paymentSchema>
 
-const methodOptions = [
-  "Transferencia",
-  "Efectivo",
-  "Tarjeta Crédito",
-  "Tarjeta Débito",
-  "MercadoPago",
-  "PayPal",
-  "Otro",
-]
+// VIB-107: catálogo único en lib/payments/payment-methods.ts.
 
 interface NewPaymentDialogProps {
   open: boolean
@@ -678,8 +671,8 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {methodOptions.map((m) => (
-                          <SelectItem key={m} value={m}>{m}</SelectItem>
+                        {PAYMENT_METHODS.map((m) => (
+                          <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>

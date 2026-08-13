@@ -63,6 +63,7 @@ import { parseDateOnlyLocal, formatDateOnlyLocal } from "@/lib/utils/date-only"
 import { downloadReceiptPdf } from "@/lib/pdf/receipt-pdf"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
+import { PAYMENT_METHODS } from "@/lib/payments/payment-methods"
 import {
   calculateAmountInSaleCurrency,
   coercePositiveNumber,
@@ -173,15 +174,8 @@ const SERVICE_LABELS: Record<ServiceType, string> = {
   VISA: "Visa",
 }
 
-const paymentMethods = [
-  { value: "Transferencia", label: "Transferencia Bancaria" },
-  { value: "Efectivo", label: "Efectivo" },
-  { value: "Tarjeta Crédito", label: "Tarjeta de Crédito" },
-  { value: "Tarjeta Débito", label: "Tarjeta de Débito" },
-  { value: "MercadoPago", label: "MercadoPago" },
-  { value: "PayPal", label: "PayPal" },
-  { value: "Otro", label: "Otro" },
-]
+// VIB-107: catálogo único en lib/payments/payment-methods.ts.
+const paymentMethods = PAYMENT_METHODS
 
 const formatCurrency = (amount: number, currency: Currency | string) => {
   const formatted = new Intl.NumberFormat("es-AR", {
