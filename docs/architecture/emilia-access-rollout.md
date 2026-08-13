@@ -3,8 +3,9 @@
 ## Objetivo
 
 Emilia queda disponible para todos los tenants con suscripción vigente durante
-cuatro semanas. El corte versionado es `2026-08-11T19:32:31.000Z`, equivalente
-al 11 de agosto de 2026 a las 16:32:31 de Argentina.
+la ventana promocional, extendida tres meses calendario desde su corte anterior.
+El corte versionado es `2026-11-11T19:32:31.000Z`, equivalente al 11 de noviembre
+de 2026 a las 16:32:31 de Argentina.
 
 Después del corte acceden únicamente:
 

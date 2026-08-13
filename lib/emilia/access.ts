@@ -4,12 +4,12 @@ import { resolveUserPermissions } from "@/lib/permissions-agency"
 import type { UserRole } from "@/lib/permissions"
 
 /**
- * Cuatro semanas de acceso promocional para todos los tenants con suscripción
- * vigente. El instante equivale al 11/08/2026 16:32:31 en Argentina.
+ * Acceso promocional para todos los tenants con suscripción vigente, extendido
+ * tres meses calendario. El instante equivale al 11/11/2026 16:32:31 en Argentina.
  *
  * Railway puede sobrescribirlo con EMILIA_PROMOTION_END_AT sin redeploy.
  */
-export const DEFAULT_EMILIA_PROMOTION_END_AT = "2026-08-11T19:32:31.000Z"
+export const DEFAULT_EMILIA_PROMOTION_END_AT = "2026-11-11T19:32:31.000Z"
 
 export interface EmiliaAccessUser {
   id: string

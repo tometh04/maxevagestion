@@ -25,7 +25,7 @@ import {
 } from "@/lib/emilia/access"
 
 describe("Emilia access rollout", () => {
-  const beforeCutoff = Date.parse("2026-08-11T19:32:30.999Z")
+  const beforeCutoff = Date.parse("2026-11-11T19:32:30.999Z")
   const atCutoff = Date.parse(DEFAULT_EMILIA_PROMOTION_END_AT)
   const user = {
     id: "user-1",
@@ -56,7 +56,7 @@ describe("Emilia access rollout", () => {
     delete process.env.EMILIA_PROMOTION_END_AT
   })
 
-  it("habilita todos los planes durante las cuatro semanas promocionales", () => {
+  it("habilita todos los planes durante la ventana promocional extendida", () => {
     expect(isEmiliaPromotionActive(beforeCutoff)).toBe(true)
     expect(hasEmiliaPlanAccess({ plan: "STARTER", custom_plan_id: null }, beforeCutoff)).toBe(true)
     expect(hasEmiliaPlanAccess({ plan: "PRO", custom_plan_id: null }, beforeCutoff)).toBe(true)

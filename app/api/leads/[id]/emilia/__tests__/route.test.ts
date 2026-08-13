@@ -72,7 +72,7 @@ describe("/api/leads/[id]/emilia", () => {
       allowed: true,
       agencyIds: ["a1"],
       promotionActive: true,
-      promotionEndsAt: "2026-08-11T19:32:31.000Z",
+      promotionEndsAt: "2026-11-11T19:32:31.000Z",
       organization: {},
     })
   })

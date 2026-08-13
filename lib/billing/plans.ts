@@ -80,7 +80,7 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
       "Operaciones y clientes ilimitados",
       "CRM con pipeline Kanban",
       "Facturación electrónica AFIP self-serve",
-      "Emilia IA promocional hasta el 11/08/2026",
+      "Emilia IA promocional hasta el 11/11/2026",
       "WhatsApp integrado (multi-dispositivo)",
       "Dashboard multi-agencia",
       "Contabilidad automática + reportes",
