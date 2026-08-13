@@ -1,7 +1,7 @@
 // Mapa de calor de uso del producto (platform admin).
 //
 // Los datos salen de las RPC `admin_usage_*` (ver
-// supabase/migrations/20260813000001_admin_usage_heatmap.sql), que derivan la
+// supabase/migrations/20260813000010_admin_usage_heatmap.sql), que derivan la
 // actividad de las escrituras que ya existen en cada bounded context. Este
 // modulo tiene el catalogo de modulos y las funciones puras de presentacion:
 // nada de negocio, nada de plata.

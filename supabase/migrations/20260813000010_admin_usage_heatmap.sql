@@ -161,7 +161,7 @@ AS $$
 $$;
 
 COMMENT ON FUNCTION public._admin_usage_events(TIMESTAMPTZ) IS
-  'Interno. Union de escrituras de usuario por modulo. Ver 20260813000001_admin_usage_heatmap.sql.';
+  'Interno. Union de escrituras de usuario por modulo. Ver 20260813000010_admin_usage_heatmap.sql.';
 
 -- -----------------------------------------------------------------
 -- 1. Matriz org x modulo — el mapa de calor

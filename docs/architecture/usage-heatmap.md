@@ -57,14 +57,14 @@ este en la lista de la migracion cae del lado manual hasta que se agregue.
 ## Como esta armado
 
 ```txt
-supabase/migrations/20260813000001_admin_usage_heatmap.sql   (fase 1: escrituras)
+supabase/migrations/20260813000010_admin_usage_heatmap.sql   (fase 1: escrituras)
   _admin_usage_events(since)      union de ~30 tablas -> (org, actor, modulo, ts)
   admin_usage_by_org_module(days) la matriz del heatmap
   admin_usage_by_org(days)        resumen por org (dias activos, actores)
   admin_usage_by_hour(days)       dia x hora, en hora de Buenos Aires
   admin_usage_daily(days)         tendencia diaria
 
-supabase/migrations/20260813000002_usage_events.sql          (fase 2: lecturas)
+supabase/migrations/20260813000011_usage_events.sql          (fase 2: lecturas)
   usage_events                    event stream propio, sin PII
   admin_usage_reads_by_org_module(days)
 
