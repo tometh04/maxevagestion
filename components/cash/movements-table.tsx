@@ -43,6 +43,7 @@ export interface CashMovement {
   movement_date: string
   notes: string | null
   affects_balance?: boolean
+  is_agency_expense?: boolean
   reversed_at?: string | null
   reverses_movement_id?: string | null
   reversed_by_movement_id?: string | null
@@ -206,6 +207,14 @@ export function MovementsTable({
                       {movement.affects_balance === false && (
                         <Badge variant="outline" className="text-[10px]">
                           No afecta saldo
+                        </Badge>
+                      )}
+                      {movement.is_agency_expense === false && (
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] border-amber-500/30 text-amber-600 dark:text-amber-400"
+                        >
+                          No es gasto
                         </Badge>
                       )}
                     </div>

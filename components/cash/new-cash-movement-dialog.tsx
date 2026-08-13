@@ -49,7 +49,19 @@ const cashMovementSchema = z.object({
   affects_balance: z.boolean(),
   movement_date: z.string().min(1, "La fecha es requerida"),
   notes: z.string().optional(),
-})
+  // true = egreso normal (gasto). false = salida de caja que NO es gasto de
+  // agencia (comisión por fuera, baja financiera, vuelto, etc.).
+  is_agency_expense: z.boolean(),
+}).refine(
+  (v) =>
+    v.type !== "EXPENSE" ||
+    v.is_agency_expense ||
+    !!(v.notes && v.notes.trim()),
+  {
+    message: "Indicá el motivo (por qué esta salida no es un gasto)",
+    path: ["notes"],
+  }
+)
 
 type CashMovementFormValues = z.infer<typeof cashMovementSchema>
 
@@ -122,6 +134,7 @@ export function NewCashMovementDialog({
       affects_balance: true,
       movement_date: getDefaultDateTimeLocal(),
       notes: "",
+      is_agency_expense: true,
     },
   })
 
@@ -132,6 +145,9 @@ export function NewCashMovementDialog({
   useEffect(() => {
     form.setValue("category", "")
     form.setValue("category_id", null)
+    // El flag "no es gasto" solo aplica a egresos: al volver a INGRESO se
+    // normaliza a true para no arrastrar una selección del otro tipo.
+    if (movementType !== "EXPENSE") form.setValue("is_agency_expense", true)
   }, [movementType, form])
 
   // Sync currency when org default loads after mount
@@ -575,14 +591,50 @@ export function NewCashMovementDialog({
                 )}
               />
 
+              {movementType === "EXPENSE" && (
+                <FormField
+                  control={form.control}
+                  name="is_agency_expense"
+                  render={({ field }) => (
+                    <FormItem className="flex items-center justify-between rounded-xl border border-border/40 bg-background/60 p-3">
+                      <div className="space-y-1 pr-3">
+                        <FormLabel className="m-0">No es un gasto de agencia</FormLabel>
+                        <p className="text-xs text-muted-foreground">
+                          Salida de caja puntual (comisión pagada por fuera, baja
+                          financiera, vuelto, etc.). La plata sale igual, pero no
+                          cuenta en el Reporte de Gastos. Anotá el motivo abajo.
+                        </p>
+                      </div>
+                      <FormControl>
+                        <Switch
+                          checked={!field.value}
+                          onCheckedChange={(checked) => field.onChange(!checked)}
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+              )}
+
               <FormField
                 control={form.control}
                 name="notes"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Notas</FormLabel>
+                    <FormLabel>
+                      {movementType === "EXPENSE" && !form.watch("is_agency_expense")
+                        ? "Motivo *"
+                        : "Notas"}
+                    </FormLabel>
                     <FormControl>
-                      <Textarea placeholder="Notas adicionales..." {...field} />
+                      <Textarea
+                        placeholder={
+                          movementType === "EXPENSE" && !form.watch("is_agency_expense")
+                            ? "Por qué esta salida no es un gasto (para poder rastrearla)..."
+                            : "Notas adicionales..."
+                        }
+                        {...field}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

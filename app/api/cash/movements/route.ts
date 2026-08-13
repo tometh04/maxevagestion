@@ -36,11 +36,23 @@ export async function POST(request: Request) {
       is_touristic,
       movement_category,
       affects_balance,
+      is_agency_expense,
     } = body
 
     // Validate required fields
     if (!type || !category || amount === undefined || !currency || !movement_date || !financial_account_id) {
       return NextResponse.json({ error: "Faltan campos requeridos (financial_account_id es obligatorio)" }, { status: 400 })
+    }
+
+    // "Salida de caja que no es gasto": solo aplica a egresos. La plata sale
+    // igual (afecta saldo y genera ledger), pero se excluye del reporte de
+    // gastos. Se exige un motivo (notes) para poder rastrear de dónde salió.
+    const isAgencyExpense = type === "EXPENSE" ? is_agency_expense !== false : true
+    if (!isAgencyExpense && !(notes && String(notes).trim())) {
+      return NextResponse.json(
+        { error: "Indicá el motivo de la salida (por qué no es un gasto de agencia)" },
+        { status: 400 }
+      )
     }
 
     // Validar que la cuenta financiera existe y es del org del user
@@ -89,6 +101,7 @@ export async function POST(request: Request) {
       notes: notes || null,
       is_touristic: is_touristic !== false, // Default to true if not specified
       movement_category: is_touristic === false ? movement_category || null : null,
+      is_agency_expense: isAgencyExpense,
     }
 
     // Crear cash_movement (mantener compatibilidad)
@@ -295,6 +308,7 @@ export async function GET(request: Request) {
       .select(
         `
         id, type, category, amount, currency, movement_date, notes, financial_account_id,
+        is_agency_expense,
         reversed_at, reverses_movement_id, reversed_by_movement_id, reversal_reason,
         ledger_movements:ledger_movement_id (affects_balance),
         users:user_id (id, name),
@@ -409,6 +423,7 @@ export async function GET(request: Request) {
         movement_date: m.movement_date,
         notes: m.notes ?? null,
         affects_balance: linkedLedger?.affects_balance ?? true,
+        is_agency_expense: m.is_agency_expense ?? true,
         reversed_at: m.reversed_at ?? null,
         reverses_movement_id: m.reverses_movement_id ?? null,
         reversed_by_movement_id: m.reversed_by_movement_id ?? null,

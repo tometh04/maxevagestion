@@ -64,6 +64,7 @@ function makeSupabase(cashMovements: any[], extraTables: Record<string, any[]> =
   const isCalls: Array<[string, any]> = []
   const eqCalls: Array<[string, any]> = []
   const likeCalls: Array<[string, any]> = []
+  const notCalls: Array<[string, string, any]> = []
   const selectedColumns: string[] = []
   const client = {
     from: jest.fn((table: string) => {
@@ -79,7 +80,10 @@ function makeSupabase(cashMovements: any[], extraTables: Record<string, any[]> =
           return builder
         }),
         neq: jest.fn(() => builder),
-        not: jest.fn(() => builder),
+        not: jest.fn((col: string, op: string, val: any) => {
+          if (table === "cash_movements") notCalls.push([col, op, val])
+          return builder
+        }),
         like: jest.fn((col: string, val: any) => {
           if (table === "ledger_movements") likeCalls.push([col, val])
           return builder
@@ -97,7 +101,7 @@ function makeSupabase(cashMovements: any[], extraTables: Record<string, any[]> =
       return builder
     }),
   }
-  return { client, isCalls, eqCalls, likeCalls, selectedColumns }
+  return { client, isCalls, eqCalls, likeCalls, notCalls, selectedColumns }
 }
 
 async function gastosVariables(
@@ -105,14 +109,14 @@ async function gastosVariables(
   extra: Partial<Parameters<typeof fetchExpenses>[0]> = {},
   extraTables: Record<string, any[]> = {}
 ) {
-  const { client, isCalls, eqCalls, selectedColumns } = makeSupabase(cashMovements, extraTables)
+  const { client, isCalls, eqCalls, notCalls, selectedColumns } = makeSupabase(cashMovements, extraTables)
   const { expenses, totals, excludedTouristic } = await fetchExpenses({
     supabase: client,
     orgId: "org-1",
     type: "variable",
     ...extra,
   })
-  return { expenses, totals, excludedTouristic, isCalls, eqCalls, selectedColumns }
+  return { expenses, totals, excludedTouristic, isCalls, eqCalls, notCalls, selectedColumns }
 }
 
 describe("fetchExpenses — gastos variables", () => {
@@ -192,9 +196,10 @@ describe("fetchExpenses — excludeTouristic", () => {
     expect(excludedTouristic).toBe(1)
   })
 
-  it("descarta la devolución al cliente, que la lista de categorías deja pasar", async () => {
-    // CUSTOMER_REFUND no está en la exclusión por categoría y viaja con
-    // is_touristic = true: ya bajó la venta, no puede volver a restarse.
+  it("descarta la devolución al cliente también por turístico", async () => {
+    // CUSTOMER_REFUND ya se excluye por categoría en la query (ver el bloque
+    // "salidas que no son gasto"), pero además viaja con is_touristic = true: ya
+    // bajó la venta, así que un reporte contra-margen tampoco puede restarla.
     const { expenses, excludedTouristic } = await gastosVariables(
       [movimiento({ id: "refund", category: "CUSTOMER_REFUND", is_touristic: true })],
       { excludeTouristic: true }
@@ -219,6 +224,28 @@ describe("fetchExpenses — excludeTouristic", () => {
     })
     expect(eqCalls.map(([col]) => col)).not.toContain("is_touristic")
     expect(selectedColumns.join(" ")).toContain("is_touristic")
+  })
+})
+
+/**
+ * Salidas de caja que NO son gasto de agencia. Ambas se resuelven en la query
+ * (el reporte de Gastos y su PDF la comparten):
+ *  - CUSTOMER_REFUND (el "vuelto") se excluye por categoría, siempre.
+ *  - is_agency_expense = false marca a mano una salida puntual como no-gasto
+ *    (comisión pagada por fuera, baja financiera, aéreos mal cargados). Los
+ *    históricos son true por default, así que el reporte no cambia para nadie.
+ */
+describe("fetchExpenses — salidas que no son gasto", () => {
+  it("le pide a la base excluir la devolución al cliente por categoría", async () => {
+    const { notCalls } = await gastosVariables([movimiento()])
+    const categoryNotIn = notCalls.find(([col, op]) => col === "category" && op === "in")
+    expect(categoryNotIn).toBeDefined()
+    expect(String(categoryNotIn?.[2])).toContain("CUSTOMER_REFUND")
+  })
+
+  it("le pide a la base excluir las salidas marcadas como no-gasto", async () => {
+    const { eqCalls } = await gastosVariables([movimiento()])
+    expect(eqCalls).toContainEqual(["is_agency_expense", true])
   })
 })
 

@@ -10,7 +10,10 @@
  *  1. Recurrentes: `ledger_movements` type=EXPENSE con concepto
  *     "Gasto recurrente: ..." (solo existen cuando se pagaron efectivamente).
  *  2. Variables: `cash_movements` type=EXPENSE (se pagan al crearse).
- *     Se excluyen los conceptos de pago a operador / cliente.
+ *     Se excluyen: pago a operador / cliente, devoluciones al cliente
+ *     (CUSTOMER_REFUND, el "vuelto") y los egresos marcados como salida de caja
+ *     que NO es gasto (`is_agency_expense = false`). Todos son plata que sale de
+ *     la caja pero no gasto de agencia.
  *
  * El caller es responsable de auth, permisos y de pasar el `orgId` ya validado.
  */
@@ -251,7 +254,13 @@ export async function fetchExpenses(
       `)
       .eq("type", "EXPENSE")
       .eq("org_id", orgId)
-      .not("category", "in", '("OPERATOR_PAYMENT","Pago Operador","Pago Cliente")')
+      // Pagos a operador / cliente y devoluciones al cliente (CUSTOMER_REFUND,
+      // el "vuelto") salen de la caja pero no son gasto de agencia.
+      .not("category", "in", '("OPERATOR_PAYMENT","Pago Operador","Pago Cliente","CUSTOMER_REFUND")')
+      // Egresos marcados a mano como "salida de caja que no es gasto" (comisión
+      // pagada por fuera, baja financiera, aéreos mal cargados, etc.): la plata
+      // salió pero no cuenta como gasto. Los históricos son true por default.
+      .eq("is_agency_expense", true)
       // Un movimiento revertido no es un gasto: la reversa lo dejó en cero en
       // caja, pero el original seguía sumando acá. Reportado por Lozada — un
       // retiro anulado les seguía figurando en gastos después de sacarlo de la
