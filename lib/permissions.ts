@@ -242,6 +242,32 @@ export function canAccessModule(role: UserRole, module: Module): boolean {
 }
 
 /**
+ * Roles que administran la configuración del tenant (no de un módulo puntual):
+ * settings de operaciones, catálogos propios de la agencia, etc.
+ *
+ * Existe porque el chequeo natural — `role !== "ADMIN" && role !== "SUPER_ADMIN"` —
+ * tiene dos agujeros que se repiten en todo el repo:
+ *
+ *  1. **Deja afuera a `ORG_OWNER`**, que es el dueño del tenant y tiene
+ *     exactamente los permisos de SUPER_ADMIN (ver `PERMISSIONS`). El alias se
+ *     introdujo para no refactorizar las ~94 comparaciones literales, pero las
+ *     que comparan contra el string se lo pierden igual.
+ *  2. **Mira solo `user.role`** e ignora `additional_roles`, así que un usuario
+ *     con ADMIN como rol adicional queda bloqueado pese a tenerlo.
+ *
+ * No reemplaza a `canPerformAction`: eso resuelve permisos POR MÓDULO y admite
+ * overrides por agencia. Esto responde otra pregunta, más gruesa y deliberadamente
+ * no delegable a la matriz: "¿es administrador de la organización?".
+ */
+const ADMIN_LEVEL_ROLES: readonly UserRole[] = ["SUPER_ADMIN", "ORG_OWNER", "ADMIN"]
+
+export function hasAdminRole(roles: string | string[] | null | undefined): boolean {
+  if (!roles) return false
+  const list = Array.isArray(roles) ? roles : [roles]
+  return list.some((r) => ADMIN_LEVEL_ROLES.includes(r as UserRole))
+}
+
+/**
  * Verifica si un rol solo puede ver sus propios datos en un módulo
  */
 export function isOwnDataOnly(role: UserRole, module: Module): boolean {

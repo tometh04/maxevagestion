@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { canAccessModule } from "@/lib/permissions"
+import { canAccessModule, hasAdminRole } from "@/lib/permissions"
 import { getUserAgencyIds } from "@/lib/permissions-api"
 import { z } from "zod"
 
@@ -59,8 +59,11 @@ export async function GET(request: Request) {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
 
-    // Verificar permiso de acceso
-    if (!canAccessModule(user.role as any, "operations")) {
+    // Verificar permiso de acceso. Se evalúan TODOS los roles del usuario
+    // (role + additional_roles): con solo user.role, un rol adicional que sí
+    // habilita el módulo quedaba ignorado.
+    const userRoles: string[] = (user as any).roles ?? [user.role]
+    if (!userRoles.some((r) => canAccessModule(r as any, "operations"))) {
       return NextResponse.json(
         { error: "No tiene permiso para ver la configuración de operaciones" },
         { status: 403 }
@@ -182,9 +185,15 @@ export async function PUT(request: Request) {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
 
-    // Verificar permiso de acceso (solo ADMIN y SUPER_ADMIN)
-    if (!canAccessModule(user.role as any, "operations") || 
-        (user.role !== "ADMIN" && user.role !== "SUPER_ADMIN")) {
+    // Editar la configuración sigue siendo nivel administrador: NO se delega a
+    // la matriz por agencia, porque `operations:write` lo tiene también el
+    // vendedor y esto define catálogos de toda la agencia.
+    //
+    // Antes comparaba `user.role` contra "ADMIN"/"SUPER_ADMIN" literal, lo que
+    // dejaba afuera a ORG_OWNER —el dueño del tenant, que tiene los permisos de
+    // SUPER_ADMIN— e ignoraba additional_roles.
+    const userRoles: string[] = (user as any).roles ?? [user.role]
+    if (!hasAdminRole(userRoles)) {
       return NextResponse.json(
         { error: "No tiene permiso para editar la configuración de operaciones" },
         { status: 403 }

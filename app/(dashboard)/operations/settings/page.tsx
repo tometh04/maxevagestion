@@ -5,7 +5,10 @@ import { OperationsSettingsPageClient } from "@/components/operations/operations
 export default async function OperationsSettingsPage() {
   const { user } = await getCurrentUser()
   
-  if (!canAccessModule(user.role as any, "operations")) {
+  // Todos los roles del usuario (role + additional_roles), no solo el principal.
+  const userRoles: string[] = (user as any).roles ?? [user.role]
+
+  if (!userRoles.some((r) => canAccessModule(r as any, "operations"))) {
     return (
       <div className="space-y-6">
         <div>
