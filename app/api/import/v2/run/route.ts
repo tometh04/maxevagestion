@@ -3,6 +3,7 @@ import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { getUserAgencyIds } from "@/lib/permissions-api"
 import { PIPELINES, type ImportPipeline } from "@/lib/import"
+import { decodeCsvBuffer, hasReplacementCharacter } from "@/lib/import/decode-csv"
 import type { ExchangeRateMode } from "@/lib/import/types"
 
 export const dynamic = "force-dynamic"
@@ -77,7 +78,31 @@ export async function POST(request: Request) {
     const manualRateRaw = formData.get("manual_rate")?.toString()
     const manualRate = manualRateRaw ? Number(manualRateRaw) : undefined
 
-    const csvContent = await file.text()
+    // VIB-118: `file.text()` decodifica UTF-8 SIEMPRE. Excel en español exporta
+    // Windows-1252, donde la Ñ es 0xD1 (inválido en UTF-8) y terminaba como U+FFFD
+    // en la base, de forma irreversible. Detectamos la codificación real.
+    const { text: csvContent, encoding, usedFallback } = decodeCsvBuffer(
+      await file.arrayBuffer()
+    )
+    if (usedFallback) {
+      console.warn(
+        `[import] "${file.name}" no era UTF-8; se interpretó como ${encoding}.`
+      )
+    }
+
+    // Si el archivo YA venía con el carácter de reemplazo, el daño ocurrió antes
+    // de llegar acá y ninguna decodificación lo recupera. Cortamos en vez de
+    // meter nombres rotos a la base.
+    if (hasReplacementCharacter(csvContent)) {
+      return NextResponse.json(
+        {
+          error:
+            "El archivo contiene caracteres ilegibles (�), señal de que se guardó con una codificación incorrecta. " +
+            "Volvé a exportarlo desde Excel como \"CSV UTF-8 (delimitado por comas)\" y subilo de nuevo.",
+        },
+        { status: 400 }
+      )
+    }
 
     const pipeline = PIPELINES[pipelineName as ImportPipeline]
     const result = await pipeline(
