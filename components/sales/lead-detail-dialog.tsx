@@ -800,7 +800,7 @@ export function LeadDetailDialog({
           ) : null}
 
           {/* Cotizaciones del Lead */}
-          {(quotations.length > 0 || loadingQuotations) && (
+          {(quotations.length > 0 || loadingQuotations || (lead.status !== "WON" && lead.status !== "LOST")) && (
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -829,6 +829,11 @@ export function LeadDetailDialog({
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   Cargando cotizaciones...
                 </div>
+              ) : quotations.length === 0 ? (
+                <p className="text-xs text-muted-foreground py-1">
+                  Este lead no tiene cotizaciones.
+                  {lead.status !== "WON" && lead.status !== "LOST" && " Usá “Nueva” para cargar una a mano."}
+                </p>
               ) : (
                 <div className="space-y-2">
                   {quotations.map((q) => {
