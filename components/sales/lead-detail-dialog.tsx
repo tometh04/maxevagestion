@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
-import { ExternalLink, MapPin, Users, Phone, Mail, Instagram, Calendar, FileText, Edit, Trash2, ArrowRight, AlertTriangle, UserPlus, Loader2, CheckCircle2, User, Briefcase, Save, X, MessageSquare, Send, Archive, ArchiveRestore, ClipboardList, Clock, DollarSign, Eye, Download, MoreHorizontal } from "lucide-react"
+import { ExternalLink, MapPin, Users, Phone, Mail, Instagram, Calendar, FileText, Edit, Trash2, ArrowRight, AlertTriangle, UserPlus, Loader2, CheckCircle2, User, Briefcase, Save, X, MessageSquare, Send, Archive, ArchiveRestore, ClipboardList, Clock, DollarSign, Eye, Download, MoreHorizontal, Upload, Paperclip } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -47,6 +47,11 @@ import { downloadQuotationPdfFromPriceDialog } from "@/lib/pdf/quotation-pdf-htm
 import { QuotationPdfPriceDialog } from "@/components/sales/quotation-pdf-price-dialog"
 import { LeadEmiliaChat } from "@/components/sales/lead-emilia-chat"
 import { LeadOutcomeBadge } from "@/components/sales/lead-outcome-badge"
+
+// Las cotizaciones adjuntas (type QUOTATION) se muestran en la sección
+// Cotizaciones, no en el listado genérico de documentos. Referencia estable
+// para no re-disparar el fetch de LeadDocumentsSection en cada render.
+const DOCS_EXCLUDE_QUOTATION = ["QUOTATION"]
 
 const regionColors: Record<string, string> = {
   ARGENTINA: "bg-accent-coral/80",
@@ -288,6 +293,14 @@ export function LeadDetailDialog({
     quotation_options?: Array<{ id: string; title: string; total_amount: number }>
   }>>([])
   const [loadingQuotations, setLoadingQuotations] = useState(false)
+  // Cotizaciones hechas con otra app: se suben como archivo adjunto (type QUOTATION).
+  const [quotationFiles, setQuotationFiles] = useState<Array<{
+    id: string
+    file_url: string
+    uploaded_at: string
+  }>>([])
+  const [uploadingQuotationFile, setUploadingQuotationFile] = useState(false)
+  const quotationFileInputRef = React.useRef<HTMLInputElement>(null)
 
   const getQuotationDisplayAmount = (quotation: {
     total_amount: number
@@ -329,6 +342,79 @@ export function LeadDetailDialog({
     }
   }
 
+  // Cargar cotizaciones subidas como archivo (hechas con otra app)
+  const loadQuotationFiles = async () => {
+    if (!lead) return
+    try {
+      const response = await fetch(`/api/leads/${lead.id}/documents`)
+      if (response.ok) {
+        const data = await response.json()
+        const files = (data.documents || []).filter((d: any) => d.type === "QUOTATION")
+        setQuotationFiles(files)
+      }
+    } catch (error) {
+      console.error("Error loading quotation files:", error)
+    }
+  }
+
+  // Subir una cotización externa como archivo adjunto al lead
+  const handleQuotationFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !lead) return
+
+    const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp", "application/pdf"]
+    if (!allowedTypes.includes(file.type)) {
+      toast.error("Tipo de archivo no permitido. Solo imágenes (JPEG, PNG, WebP) y PDF")
+      if (quotationFileInputRef.current) quotationFileInputRef.current.value = ""
+      return
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("El archivo es demasiado grande. Máximo 10MB")
+      if (quotationFileInputRef.current) quotationFileInputRef.current.value = ""
+      return
+    }
+
+    try {
+      setUploadingQuotationFile(true)
+      const formData = new FormData()
+      formData.append("file", file)
+      formData.append("type", "QUOTATION")
+
+      const response = await fetch(`/api/leads/${lead.id}/documents/upload`, {
+        method: "POST",
+        body: formData,
+      })
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}))
+        throw new Error(err.error || "Error al subir el archivo")
+      }
+      toast.success("Cotización subida")
+      await loadQuotationFiles()
+    } catch (error: any) {
+      console.error("Error uploading quotation file:", error)
+      toast.error(error.message || "Error al subir el archivo")
+    } finally {
+      setUploadingQuotationFile(false)
+      if (quotationFileInputRef.current) quotationFileInputRef.current.value = ""
+    }
+  }
+
+  const handleDeleteQuotationFile = async (documentId: string) => {
+    if (!lead) return
+    if (!confirm("¿Eliminar esta cotización?")) return
+    try {
+      const response = await fetch(`/api/leads/${lead.id}/documents/${documentId}`, {
+        method: "DELETE",
+      })
+      if (!response.ok) throw new Error("Error al eliminar")
+      toast.success("Cotización eliminada")
+      await loadQuotationFiles()
+    } catch (error: any) {
+      console.error("Error deleting quotation file:", error)
+      toast.error(error.message || "Error al eliminar")
+    }
+  }
+
   // Cargar comentarios cuando se abre el dialog
   const loadComments = async () => {
     if (!lead) return
@@ -360,6 +446,7 @@ export function LeadDetailDialog({
     if (open && lead) {
       loadComments()
       loadQuotations()
+      loadQuotationFiles()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, lead?.id])
@@ -800,28 +887,53 @@ export function LeadDetailDialog({
           ) : null}
 
           {/* Cotizaciones del Lead */}
-          {(quotations.length > 0 || loadingQuotations || (lead.status !== "WON" && lead.status !== "LOST")) && (
+          {(quotations.length > 0 || quotationFiles.length > 0 || loadingQuotations || (lead.status !== "WON" && lead.status !== "LOST")) && (
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <div className="flex items-center justify-center h-6 w-6 rounded-md bg-accent-coral/10">
                     <ClipboardList className="h-3.5 w-3.5 text-accent-coral" />
                   </div>
-                  <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Cotizaciones ({quotations.length})</h4>
+                  <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Cotizaciones ({quotations.length + quotationFiles.length})</h4>
                 </div>
                 {lead.status !== "WON" && lead.status !== "LOST" && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setEditingQuotationId(null)
-                      setQuotationDialogOpen(true)
-                    }}
-                    className="h-7 text-xs"
-                  >
-                    <FileText className="h-3 w-3 mr-1" />
-                    Nueva
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    {/* Subir cotización hecha con otra app como archivo adjunto */}
+                    <input
+                      ref={quotationFileInputRef}
+                      type="file"
+                      accept="image/*,.pdf"
+                      onChange={handleQuotationFileUpload}
+                      className="hidden"
+                    />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => quotationFileInputRef.current?.click()}
+                      disabled={uploadingQuotationFile}
+                      className="h-7 text-xs"
+                      title="Subir una cotización hecha con otra app"
+                    >
+                      {uploadingQuotationFile ? (
+                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                      ) : (
+                        <Upload className="h-3 w-3 mr-1" />
+                      )}
+                      Subir
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setEditingQuotationId(null)
+                        setQuotationDialogOpen(true)
+                      }}
+                      className="h-7 text-xs"
+                    >
+                      <FileText className="h-3 w-3 mr-1" />
+                      Nueva
+                    </Button>
+                  </div>
                 )}
               </div>
               {loadingQuotations ? (
@@ -829,10 +941,10 @@ export function LeadDetailDialog({
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   Cargando cotizaciones...
                 </div>
-              ) : quotations.length === 0 ? (
+              ) : quotations.length === 0 && quotationFiles.length === 0 ? (
                 <p className="text-xs text-muted-foreground py-1">
                   Este lead no tiene cotizaciones.
-                  {lead.status !== "WON" && lead.status !== "LOST" && " Usá “Nueva” para cargar una a mano."}
+                  {lead.status !== "WON" && lead.status !== "LOST" && " Usá “Nueva” para armar una, o “Subir” para adjuntar la de otra app."}
                 </p>
               ) : (
                 <div className="space-y-2">
@@ -928,6 +1040,50 @@ export function LeadDetailDialog({
                       </div>
                     )
                   })}
+
+                  {/* Cotizaciones subidas como archivo (hechas con otra app) */}
+                  {quotationFiles.map((f) => (
+                    <div
+                      key={f.id}
+                      className="flex items-center justify-between p-3 rounded-lg bg-white/80 dark:bg-card/80 hover:bg-white dark:hover:bg-card transition-colors"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <Paperclip className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          <p className="text-sm font-medium truncate">Cotización adjunta</p>
+                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-muted text-muted-foreground">
+                            Archivo
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <Calendar className="h-3 w-3" />
+                            {format(new Date(f.uploaded_at), "dd/MM/yyyy")}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 ml-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0"
+                          onClick={() => window.open(f.file_url, "_blank")}
+                          title="Ver archivo"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+                          onClick={() => handleDeleteQuotationFile(f.id)}
+                          title="Eliminar"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -1088,7 +1244,7 @@ export function LeadDetailDialog({
               </div>
               <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Documentos</h4>
             </div>
-            <LeadDocumentsSection leadId={lead.id} />
+            <LeadDocumentsSection leadId={lead.id} excludeTypes={DOCS_EXCLUDE_QUOTATION} />
           </div>
         </div>
 

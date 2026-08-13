@@ -70,9 +70,12 @@ interface Document {
 
 interface LeadDocumentsSectionProps {
   leadId: string
+  /** Tipos de documento a ocultar de este listado (ej. las cotizaciones
+   *  adjuntas, que se muestran en su propia sección). */
+  excludeTypes?: string[]
 }
 
-export function LeadDocumentsSection({ leadId }: LeadDocumentsSectionProps) {
+export function LeadDocumentsSection({ leadId, excludeTypes }: LeadDocumentsSectionProps) {
   const [documents, setDocuments] = useState<Document[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
@@ -89,14 +92,18 @@ export function LeadDocumentsSection({ leadId }: LeadDocumentsSectionProps) {
         throw new Error("Error al cargar documentos")
       }
       const data = await response.json()
-      setDocuments(data.documents || [])
+      const all = (data.documents || []) as Document[]
+      const filtered = excludeTypes && excludeTypes.length > 0
+        ? all.filter((d) => !excludeTypes.includes(d.type))
+        : all
+      setDocuments(filtered)
     } catch (error) {
       console.error("Error loading documents:", error)
       toast.error("Error al cargar documentos")
     } finally {
       setLoading(false)
     }
-  }, [leadId])
+  }, [leadId, excludeTypes])
 
   useEffect(() => {
     loadDocuments()
