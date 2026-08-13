@@ -159,7 +159,25 @@ persona.
 ### Retencion
 
 `/api/cron/usage-retention` borra lo anterior a 90 dias, que es la ventana mas
-larga que ofrece la UI. Correr diario.
+larga que ofrece la UI.
+
+Railway Cron Service, igual que los demas crons del proyecto:
+
+```txt
+Nombre    cron-usage-retention
+Schedule  0 7 * * *            (UTC — 4 AM Argentina)
+Comando   curl -fSs -X POST https://app.vibook.ai/api/cron/usage-retention \
+            -H "Authorization: Bearer $CRON_SECRET"
+Variables CRON_SECRET, con el MISMO valor que el servicio web
+```
+
+`deleted: 0` es la respuesta correcta durante los primeros 90 dias: todavia no
+hay nada viejo. No confundirlo con un cron que no corre.
+
+Se evaluo `pg_cron` (esta disponible en el proyecto de Supabase y la purga es un
+DELETE puro, sin HTTP). Se descarto para no partir el lugar donde viven los
+schedules: tener seis crons en Railway y uno en la base es peor que la ventaja
+de ahorrarse un servicio.
 
 No hay tabla de rollup y es deliberado: al volumen actual (~50 usuarios activos)
 la agregacion sobre el crudo con los indices que ya estan es de milisegundos, y
