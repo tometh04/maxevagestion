@@ -25,6 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { productTypeLabel } from "@/lib/operations/product-types"
 import { COMPROBANTE_LABELS } from "@/lib/afip/types"
 import { translateAfipError } from "@/lib/afip/error-translator"
 import {
@@ -90,6 +91,9 @@ interface Operation {
 
 // Etiquetas ES para el tipo de producto de cada pata (operation_operators.product_type).
 // Espejo de BASE_PRODUCT_LABELS en lib/operations/purchase-summary.ts.
+// Los tipos personalizados por agencia (operation_settings.custom_product_types) no
+// están acá: caen en productTypeLabel(), que los muestra legibles en vez del valor
+// crudo con guiones bajos ("ALOJAMIENTO_Y_TRASLADOS" → "Alojamiento y traslados").
 const PRODUCT_TYPE_LABELS: Record<string, string> = {
   FLIGHT: "Aéreo",
   HOTEL: "Hotel",
@@ -105,7 +109,9 @@ const getLegLabel = (
   leg: NonNullable<Operation["operation_operators"]>[number],
   index: number
 ): string => {
-  const typeLabel = leg.product_type ? PRODUCT_TYPE_LABELS[leg.product_type] || leg.product_type : null
+  const typeLabel = leg.product_type
+    ? PRODUCT_TYPE_LABELS[leg.product_type] || productTypeLabel(leg.product_type)
+    : null
   const operatorName = leg.operators?.name?.trim() || null
   if (typeLabel && operatorName) return `${typeLabel} - ${operatorName}`
   if (typeLabel) return typeLabel
