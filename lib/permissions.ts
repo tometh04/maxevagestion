@@ -25,6 +25,8 @@ export type Module =
   | "documents"
   | "tasks"
   | "eve"
+  | "referrals"
+  | "library"
 
 export type Permission = "read" | "write" | "delete" | "export"
 
@@ -57,6 +59,8 @@ export const SUPER_ADMIN_PERMS: RolePermissions = {
   documents: { read: true, write: true, delete: true, export: true },
   tasks: { read: true, write: true, delete: true, export: true },
   eve: { read: true, write: true, delete: true, export: false },
+  referrals: { read: true, write: true, delete: true, export: true },
+  library: { read: true, write: true, delete: true, export: true },
 }
 
 export const PERMISSIONS: Record<UserRole, RolePermissions> = {
@@ -77,6 +81,11 @@ export const PERMISSIONS: Record<UserRole, RolePermissions> = {
     documents: { read: true, write: true, delete: false, export: true },
     tasks: { read: true, write: true, delete: false, export: false },
     eve: { read: true, write: true, delete: true, export: false },
+    // VIB-86: los referidores los da de alta el administrador, y el porcentaje
+    // que se lleva cada uno solo lo ve quien tiene este permiso.
+    referrals: { read: true, write: true, delete: true, export: true },
+    // Los administradores de la agencia gestionan la Biblioteca (VIB-70).
+    library: { read: true, write: true, delete: true, export: true },
   },
   CONTABLE: {
     dashboard: { read: false, write: false, delete: false, export: false }, // No ve dashboard general
@@ -93,6 +102,12 @@ export const PERMISSIONS: Record<UserRole, RolePermissions> = {
     documents: { read: false, write: false, delete: false, export: false }, // No ve documentos
     tasks: { read: true, write: true, delete: false, export: false },
     eve: { read: false, write: false, delete: false, export: false },
+    // Liquida las comisiones al referidor, así que las ve; no da de alta
+    // referidores. Antes no podía crearlos igual (customers.read = false), pero
+    // sí veía la pantalla: con el permiso propio esa inconsistencia se resuelve.
+    referrals: { read: true, write: false, delete: false, export: true },
+    // Consulta el material de capacitacion; no lo gestiona.
+    library: { read: true, write: false, delete: false, export: false },
   },
   SELLER: {
     dashboard: { read: true, write: false, delete: false, export: false, ownDataOnly: true }, // Solo sus datos
@@ -109,6 +124,11 @@ export const PERMISSIONS: Record<UserRole, RolePermissions> = {
     documents: { read: true, write: true, delete: false, export: false, ownDataOnly: true }, // Solo documentos de sus operaciones
     tasks: { read: true, write: true, delete: false, export: false, ownDataOnly: true },
     eve: { read: false, write: false, delete: false, export: false },
+    // VIB-86: el vendedor selecciona un referidor al cargar la venta, pero no
+    // ve cuánto se lleva ni puede darlo de alta. La API le manda solo el nombre.
+    referrals: { read: false, write: false, delete: false, export: false },
+    // El vendedor consulta la Biblioteca (material dirigido a su rol).
+    library: { read: true, write: false, delete: false, export: false },
   },
   VIEWER: {
     dashboard: { read: true, write: false, delete: false, export: false },
@@ -125,6 +145,9 @@ export const PERMISSIONS: Record<UserRole, RolePermissions> = {
     documents: { read: true, write: false, delete: false, export: false },
     tasks: { read: true, write: false, delete: false, export: false },
     eve: { read: false, write: false, delete: false, export: false },
+    // Rol de solo lectura: ve lo mismo que en comisiones, sin poder editar.
+    referrals: { read: true, write: false, delete: false, export: false },
+    library: { read: true, write: false, delete: false, export: false },
   },
   // POST_VENTA: ve y gestiona el seguimiento post-cierre de operaciones.
   // Puede cargar vouchers enviados, check-in realizado, y consultar requisitos
@@ -145,7 +168,56 @@ export const PERMISSIONS: Record<UserRole, RolePermissions> = {
     documents:  { read: true,  write: true,  delete: false, export: false }, // Cargar vouchers
     tasks:      { read: true,  write: true,  delete: false, export: false },
     eve:        { read: false, write: false, delete: false, export: false },
+    // Post venta no toca plata (commissions ya está en false).
+    referrals:  { read: false, write: false, delete: false, export: false },
+    library:    { read: true,  write: false, delete: false, export: false },
   },
+}
+
+/**
+ * VIB-69 — Asesor de viajes independiente (AVI).
+ *
+ * Un freelancer que vende para la agencia: carga sus ventas y ve solo lo suyo.
+ * NO es un `UserRole` nuevo: en DB es un SELLER con `is_independent_advisor`.
+ * La restricción "solo mis datos" ya está implementada y auditada para SELLER en
+ * toda la app (filtros de operaciones, RPCs con `p_role = 'SELLER'`, selectores
+ * de vendedor, reglas de comisión `type = 'SELLER'`); un string de rol nuevo
+ * caería en la rama "else" de esos checks y vería TODA la agencia.
+ *
+ * Lo que agrega el flag es un TECHO: los permisos efectivos del asesor son la
+ * intersección de lo que resuelva el sistema (defaults, overrides por agencia,
+ * roles adicionales) con esta matriz. Nunca puede terminar con más de esto.
+ *
+ * Delta contra SELLER: no ve leads ni el CRM (trae su propia cartera). El resto
+ * del endurecimiento es de comportamiento y vive en lib/permissions-api.ts:
+ * sin selector global de clientes y sin los permisos especiales de agencia.
+ */
+export const INDEPENDENT_ADVISOR_PERMS: RolePermissions = {
+  ...PERMISSIONS.SELLER,
+  leads: { read: false, write: false, delete: false, export: false },
+}
+
+/**
+ * Valor sintético que usa la UI para ofrecer "Asesor independiente" como una
+ * opción más en el selector de rol. Nunca se persiste: el endpoint lo traduce a
+ * `role = SELLER` + `is_independent_advisor = true`.
+ */
+export const INDEPENDENT_ADVISOR_ROLE_VALUE = "SELLER_INDEPENDENT"
+
+export type MaybeIndependentAdvisor = {
+  role?: string | null
+  is_independent_advisor?: boolean | null
+}
+
+/**
+ * ¿El usuario es un asesor de viajes independiente?
+ *
+ * Exige `role === "SELLER"` a propósito: si un admin le cambia el rol a otra
+ * cosa sin bajar el flag, el helper queda inerte en vez de aplicar un techo de
+ * vendedor sobre, por ejemplo, un contable.
+ */
+export function isIndependentAdvisor(user: MaybeIndependentAdvisor | null | undefined): boolean {
+  return user?.is_independent_advisor === true && user?.role === "SELLER"
 }
 
 /**
@@ -170,6 +242,32 @@ export function canAccessModule(role: UserRole, module: Module): boolean {
 }
 
 /**
+ * Roles que administran la configuración del tenant (no de un módulo puntual):
+ * settings de operaciones, catálogos propios de la agencia, etc.
+ *
+ * Existe porque el chequeo natural — `role !== "ADMIN" && role !== "SUPER_ADMIN"` —
+ * tiene dos agujeros que se repiten en todo el repo:
+ *
+ *  1. **Deja afuera a `ORG_OWNER`**, que es el dueño del tenant y tiene
+ *     exactamente los permisos de SUPER_ADMIN (ver `PERMISSIONS`). El alias se
+ *     introdujo para no refactorizar las ~94 comparaciones literales, pero las
+ *     que comparan contra el string se lo pierden igual.
+ *  2. **Mira solo `user.role`** e ignora `additional_roles`, así que un usuario
+ *     con ADMIN como rol adicional queda bloqueado pese a tenerlo.
+ *
+ * No reemplaza a `canPerformAction`: eso resuelve permisos POR MÓDULO y admite
+ * overrides por agencia. Esto responde otra pregunta, más gruesa y deliberadamente
+ * no delegable a la matriz: "¿es administrador de la organización?".
+ */
+const ADMIN_LEVEL_ROLES: readonly UserRole[] = ["SUPER_ADMIN", "ORG_OWNER", "ADMIN"]
+
+export function hasAdminRole(roles: string | string[] | null | undefined): boolean {
+  if (!roles) return false
+  const list = Array.isArray(roles) ? roles : [roles]
+  return list.some((r) => ADMIN_LEVEL_ROLES.includes(r as UserRole))
+}
+
+/**
  * Verifica si un rol solo puede ver sus propios datos en un módulo
  */
 export function isOwnDataOnly(role: UserRole, module: Module): boolean {
@@ -191,12 +289,12 @@ export function getAccessibleModules(role: UserRole): Module[] {
 export function shouldShowInSidebar(role: UserRole, module: Module): boolean {
   // CONTABLE no ve dashboard, leads, customers
   if (role === "CONTABLE") {
-    return ["operations", "operators", "cash", "accounting", "alerts", "reports", "commissions", "tasks"].includes(module)
+    return ["operations", "operators", "cash", "accounting", "alerts", "reports", "commissions", "tasks", "library"].includes(module)
   }
 
   // SELLER no ve operators, cash, accounting, settings
   if (role === "SELLER") {
-    return ["dashboard", "leads", "operations", "customers", "alerts", "reports", "commissions", "documents", "tasks"].includes(module)
+    return ["dashboard", "leads", "operations", "customers", "alerts", "reports", "commissions", "documents", "tasks", "library"].includes(module)
   }
 
   // VIEWER ve todo excepto settings y eve (eve es solo ADMIN/SUPER_ADMIN)
@@ -206,7 +304,7 @@ export function shouldShowInSidebar(role: UserRole, module: Module): boolean {
 
   // POST_VENTA ve operaciones, clientes, alertas, documentos, tareas y settings (requisitos de destino)
   if (role === "POST_VENTA") {
-    return ["dashboard", "operations", "customers", "alerts", "documents", "tasks", "settings"].includes(module)
+    return ["dashboard", "operations", "customers", "alerts", "documents", "tasks", "settings", "library"].includes(module)
   }
 
   // SUPER_ADMIN y ADMIN ven todo
@@ -230,7 +328,7 @@ export function usePermissions(role: UserRole) {
 const ALL_MODULES_LIST: Module[] = [
   "dashboard", "leads", "operations", "customers", "operators",
   "cash", "accounting", "alerts", "reports", "commissions",
-  "settings", "documents", "tasks", "eve",
+  "settings", "documents", "tasks", "eve", "referrals", "library",
 ]
 
 /**

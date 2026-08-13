@@ -23,8 +23,6 @@ function fmt(iso: string | null) {
   })
 }
 
-const PRO_PRICE_ARS = 119000
-
 /**
  * Acción "Bajar a plan PRO" para orgs Enterprise activas.
  *
@@ -35,11 +33,18 @@ const PRO_PRICE_ARS = 119000
 export function DowngradeDialog({
   effectiveAt,
   lostExtras,
+  proPriceArs,
 }: {
   /** current_period_ends_at — hasta cuándo conserva el plan actual. */
   effectiveAt: string | null
   /** Labels de los extras del custom plan que se pierden al bajar a PRO. */
   lostExtras?: string[]
+  /**
+   * Precio de lista vigente de PRO, resuelto server-side. Bajar de plan es una
+   * relación de precio nueva, así que acá va el de lista y no un precio
+   * congelado. Null si no se pudo resolver.
+   */
+  proPriceArs: number | null
 }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -79,9 +84,9 @@ export function DowngradeDialog({
                 <strong>{fmt(effectiveAt)}</strong>.
               </p>
               <p>
-                Ese día tu cuenta pasa al plan <strong>PRO</strong> (
-                {formatArs(PRO_PRICE_ARS)}/mes) y vas a tener que completar el pago de
-                PRO para seguir usándola.
+                Ese día tu cuenta pasa al plan <strong>PRO</strong>
+                {proPriceArs !== null ? ` (${formatArs(proPriceArs)}/mes)` : ""} y vas a
+                tener que completar el pago de PRO para seguir usándola.
               </p>
               {lostExtras && lostExtras.length > 0 && (
                 <>

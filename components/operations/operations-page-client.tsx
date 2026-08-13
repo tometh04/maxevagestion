@@ -1,5 +1,6 @@
 "use client"
 
+import type { SellerOption } from "@/lib/sellers/seller-option"
 import { useState, useEffect } from "react"
 import dynamic from "next/dynamic"
 import { OperationsFilters } from "./operations-filters"
@@ -36,12 +37,21 @@ interface CustomStatus {
 }
 
 interface OperationsPageClientProps {
-  sellers: Array<{ id: string; name: string }>
+  sellers: SellerOption[]
+  /** Vendedores asignables al crear (acotados por permiso/agencia). Cae a `sellers` si no se pasa. */
+  creatableSellers?: SellerOption[]
+  /** Vendedores elegibles como secundario (acotados por agencia, sin el permiso
+   *  de "cargar a nombre de otro" — VIB-105). Cae a `creatableSellers`/`sellers`. */
+  secondarySellers?: SellerOption[]
   agencies: Array<{ id: string; name: string }>
   operators: Array<{ id: string; name: string }>
   userRole: string
   userId: string
   canViewAgencyOperationsSupport: boolean
+  /** Si el usuario puede elegir a otro vendedor en el alta (default true para roles no-SELLER). */
+  canPickOtherSeller?: boolean
+  /** Si el usuario puede elegir vendedor secundario (default true; false para AVI). */
+  canPickSecondarySeller?: boolean
   userAgencyIds: string[]
   defaultAgencyId?: string
   defaultSellerId?: string
@@ -49,11 +59,15 @@ interface OperationsPageClientProps {
 
 export function OperationsPageClient({
   sellers,
+  creatableSellers,
+  secondarySellers,
   agencies,
   operators,
   userRole,
   userId,
   canViewAgencyOperationsSupport,
+  canPickOtherSeller = true,
+  canPickSecondarySeller = true,
   userAgencyIds,
   defaultAgencyId,
   defaultSellerId,
@@ -189,6 +203,7 @@ export function OperationsPageClient({
             onClick={handleExportCsv}
             disabled={exportingCsv}
             title="Exporta las operaciones filtradas (todas las columnas) en CSV"
+            data-tour="operations.export"
           >
             {exportingCsv ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -197,7 +212,11 @@ export function OperationsPageClient({
             )}
             {exportingCsv ? "Generando..." : "Exportar CSV"}
           </Button>
-          <Button size="sm" onClick={() => setNewOperationDialogOpen(true)}>
+          <Button
+            size="sm"
+            onClick={() => setNewOperationDialogOpen(true)}
+            data-tour="operations.new-button"
+          >
             <Plus className="mr-2 h-4 w-4" />
             Nueva Operación
           </Button>
@@ -224,10 +243,13 @@ export function OperationsPageClient({
         onOpenChange={setNewOperationDialogOpen}
         onSuccess={handleRefresh}
         agencies={agencies}
-        sellers={sellers}
+        sellers={creatableSellers ?? sellers}
+        secondarySellers={secondarySellers ?? creatableSellers ?? sellers}
         operators={operators}
         defaultAgencyId={defaultAgencyId}
         defaultSellerId={defaultSellerId}
+        canPickOtherSeller={canPickOtherSeller}
+        canPickSecondarySeller={canPickSecondarySeller}
         userRole={userRole}
       />
     </div>

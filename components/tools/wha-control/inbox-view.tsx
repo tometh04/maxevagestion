@@ -7,7 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { ArrowDown, ArrowLeft, Loader2, MessageSquare, Search, User, Users } from "lucide-react"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { ArrowDown, ArrowLeft, History, Loader2, MessageSquare, Paperclip, Search, Send, Smile, User, Users, X } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import { es } from "date-fns/locale"
 
@@ -53,6 +54,78 @@ interface InboxViewProps {
   agencies: Agency[]
 }
 
+const MEDIA_TYPES = new Set(["image", "sticker", "video", "audio", "voice", "document"])
+
+// Set curado de emojis comunes para el picker del composer (sin dependencias).
+const EMOJIS = [
+  "😀","😁","😂","🤣","😅","😊","😇","🙂","😉","😍","😘","😋","😎","🤩","🥳","😜",
+  "🤔","🤗","🙄","😴","😮","😢","😭","😤","😡","🥺","😱","😳","🤯","😬","🙃","😌",
+  "👍","👎","👌","🙏","👏","🙌","💪","🤝","✌️","🤞","👋","🤙","👇","👆","☝️","✅",
+  "❤️","🧡","💛","💚","💙","💜","🖤","💔","💕","🔥","⭐","✨","🎉","🎊","💯","👀",
+  "😩","😔","😐","😏","🤨","😒","🥰","🤓","🫠","🫡","🫣","🤭","😆","😝","🤪","😷",
+  "🙈","💩","👑","💰","📸","📍","⚽","🍺","☕","🎂","🌹","🌟","⚡","💨","❗","❓",
+]
+
+// Renderiza la media de un mensaje bajándola on-demand del endpoint proxy. Si
+// falla (media expirada en WhatsApp, device apagado), muestra un fallback.
+function MediaContent({ url, type }: { url: string; type: string }) {
+  const [error, setError] = useState(false)
+  if (error) {
+    return <span className="text-xs italic opacity-70">Media no disponible</span>
+  }
+  if (type === "image" || type === "sticker") {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={url}
+        loading="lazy"
+        alt=""
+        onError={() => setError(true)}
+        onClick={() => window.open(url, "_blank")}
+        className="rounded-lg max-h-64 max-w-full object-contain cursor-pointer"
+      />
+    )
+  }
+  if (type === "video") {
+    return (
+      <video
+        src={url}
+        controls
+        preload="metadata"
+        onError={() => setError(true)}
+        className="rounded-lg max-h-64 max-w-full"
+      />
+    )
+  }
+  if (type === "audio" || type === "voice") {
+    return (
+      <audio
+        src={url}
+        controls
+        preload="none"
+        onError={() => setError(true)}
+        className="w-[300px] max-w-full"
+      />
+    )
+  }
+  return (
+    <a href={url} target="_blank" rel="noreferrer" className="text-xs underline">
+      📄 Descargar documento
+    </a>
+  )
+}
+
+// Une la ventana nueva del polling con lo ya cargado (incluidas páginas viejas),
+// deduplicando por id y ordenando cronológicamente (sent_at ISO → localeCompare).
+function mergeById(a: Message[], b: Message[]): Message[] {
+  if (b.length === 0) return a
+  if (a.length === 0) return b
+  const map = new Map<string, Message>()
+  for (const m of a) map.set(m.id, m)
+  for (const m of b) map.set(m.id, m)
+  return Array.from(map.values()).sort((x, y) => x.sent_at.localeCompare(y.sent_at))
+}
+
 export function InboxView({ agencies }: InboxViewProps) {
   const [devices, setDevices] = useState<Device[]>([])
   const [selectedAgencyId, setSelectedAgencyId] = useState<string>("all")
@@ -64,8 +137,31 @@ export function InboxView({ agencies }: InboxViewProps) {
   const [loadingChats, setLoadingChats] = useState(false)
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [showThread, setShowThread] = useState(false)
+  const [hasMore, setHasMore] = useState(false)
+  const [loadingOlder, setLoadingOlder] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [backfillNote, setBackfillNote] = useState<string | null>(null)
+  const [messageInput, setMessageInput] = useState("")
+  const [sending, setSending] = useState(false)
+  const [sendError, setSendError] = useState<string | null>(null)
+  const [attachedImage, setAttachedImage] = useState<{
+    base64: string
+    mimeType: string
+    preview: string
+  } | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const scrollAreaRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const isFirstMessageLoad = useRef(true)
+
+  const getViewport = useCallback(
+    () =>
+      scrollAreaRef.current?.querySelector<HTMLElement>(
+        "[data-radix-scroll-area-viewport]"
+      ) ?? null,
+    []
+  )
 
   const scrollToBottom = useCallback(() => {
     setTimeout(() => {
@@ -128,10 +224,13 @@ export function InboxView({ agencies }: InboxViewProps) {
     return () => clearInterval(interval)
   }, [fetchChats])
 
-  // Load messages when chat selected
+  // Load messages when chat selected. First load replaces with the newest window
+  // and scrolls to bottom; polling merges the fresh tail without clobbering older
+  // pages the user may have loaded.
   const fetchMessages = useCallback(async () => {
     if (!selectedChat) return
-    if (isFirstMessageLoad.current) {
+    const first = isFirstMessageLoad.current
+    if (first) {
       setLoadingMessages(true)
     }
     try {
@@ -143,14 +242,20 @@ export function InboxView({ agencies }: InboxViewProps) {
       const res = await fetch(`/api/wha-control/chats/${selectedChat.id}/messages?${params}`)
       if (res.ok) {
         const data = await res.json()
-        setMessages(data.messages || [])
-        // Auto-scroll to bottom after messages load
-        scrollToBottom()
+        const fresh: Message[] = data.messages || []
+        if (first) {
+          setMessages(fresh)
+          setHasMore(!!data.hasMore)
+          scrollToBottom()
+        } else {
+          // Polling: merge fresh tail with what's already loaded (dedupe by id).
+          setMessages((prev) => mergeById(prev, fresh))
+        }
       }
     } catch (err) {
       console.error("Error fetching messages:", err)
     } finally {
-      if (isFirstMessageLoad.current) {
+      if (first) {
         setLoadingMessages(false)
         isFirstMessageLoad.current = false
       }
@@ -159,11 +264,164 @@ export function InboxView({ agencies }: InboxViewProps) {
 
   useEffect(() => {
     isFirstMessageLoad.current = true
+    setHasMore(false)
+    setMessageInput("")
+    setSendError(null)
+    setBackfillNote(null)
     fetchMessages()
     if (!selectedChat) return
     const interval = setInterval(fetchMessages, 30000)
     return () => clearInterval(interval)
   }, [fetchMessages, selectedChat])
+
+  // Load older messages (paginate backwards with the `before` cursor), prepending
+  // them while preserving scroll position so the view doesn't jump.
+  const loadOlder = useCallback(async (): Promise<number> => {
+    if (!selectedChat || loadingOlder || messages.length === 0) return 0
+    setLoadingOlder(true)
+    const viewport = getViewport()
+    const prevHeight = viewport?.scrollHeight ?? 0
+    try {
+      const chatIds = selectedChat._chatIds || [selectedChat.id]
+      const params = new URLSearchParams({ limit: "100", before: messages[0].sent_at })
+      if (chatIds.length > 1) {
+        params.set("chatIds", chatIds.join(","))
+      }
+      const res = await fetch(`/api/wha-control/chats/${selectedChat.id}/messages?${params}`)
+      if (res.ok) {
+        const data = await res.json()
+        const older: Message[] = data.messages || []
+        if (older.length > 0) {
+          setMessages((prev) => mergeById(older, prev))
+          setHasMore(!!data.hasMore)
+          requestAnimationFrame(() => {
+            const vp = getViewport()
+            if (vp) vp.scrollTop = vp.scrollHeight - prevHeight
+          })
+        } else {
+          setHasMore(false)
+        }
+        return older.length
+      }
+    } catch (err) {
+      console.error("Error loading older messages:", err)
+    } finally {
+      setLoadingOlder(false)
+    }
+    return 0
+  }, [selectedChat, loadingOlder, messages, getViewport])
+
+  // Send a reply (text and/or image). The connector persists the outbound row
+  // (Baileys echo), so we just re-fetch shortly after to pull it in.
+  const handleSend = useCallback(async () => {
+    if (!selectedChat || sending) return
+    const text = messageInput.trim()
+    if (!text && !attachedImage) return
+    setSending(true)
+    setSendError(null)
+    try {
+      const body = attachedImage
+        ? { imageBase64: attachedImage.base64, mimeType: attachedImage.mimeType, caption: text || undefined }
+        : { text }
+      const res = await fetch(`/api/wha-control/chats/${selectedChat.id}/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+      if (res.ok) {
+        setMessageInput("")
+        setAttachedImage(null)
+        setTimeout(() => {
+          fetchMessages().then(scrollToBottom)
+        }, 1200)
+      } else {
+        const data = await res.json().catch(() => ({}))
+        setSendError(data.error || "No se pudo enviar el mensaje")
+      }
+    } catch {
+      setSendError("Error de conexión al enviar")
+    } finally {
+      setSending(false)
+      // Mantener el foco en el input para poder seguir escribiendo/enviando.
+      inputRef.current?.focus()
+    }
+  }, [selectedChat, sending, messageInput, attachedImage, fetchMessages, scrollToBottom])
+
+  // Adjuntar imagen desde el disco (se lee como base64 para mandarla al connector).
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = "" // permitir re-seleccionar el mismo archivo
+    if (!file || !file.type.startsWith("image/")) return
+    if (file.size > 16 * 1024 * 1024) {
+      setSendError("La imagen supera los 16 MB")
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      const dataUrl = reader.result as string
+      const base64 = dataUrl.split(",")[1] || ""
+      setAttachedImage({ base64, mimeType: file.type, preview: dataUrl })
+    }
+    reader.readAsDataURL(file)
+  }, [])
+
+  // Insertar emoji en la posición del cursor del input.
+  const insertEmoji = useCallback((emoji: string) => {
+    const input = inputRef.current
+    const start = input?.selectionStart ?? messageInput.length
+    const end = input?.selectionEnd ?? messageInput.length
+    const next = messageInput.slice(0, start) + emoji + messageInput.slice(end)
+    setMessageInput(next)
+    requestAnimationFrame(() => {
+      if (!input) return
+      input.focus()
+      const pos = start + emoji.length
+      input.setSelectionRange(pos, pos)
+    })
+  }, [messageInput])
+
+  // Ask the connector to backfill older WhatsApp history for this chat, then pull
+  // the newly-stored messages in. The sync is async and best-effort in Baileys
+  // (WhatsApp may return nothing for a chat), so we poll a few times and, if still
+  // empty, say so instead of spinning forever.
+  const handleBackfill = useCallback(async () => {
+    if (!selectedChat || syncing) return
+    setSyncing(true)
+    setBackfillNote(null)
+    try {
+      const res = await fetch(`/api/wha-control/chats/${selectedChat.id}/sync-history`, {
+        method: "POST",
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setBackfillNote(data.error || "No se pudo pedir el historial")
+        setSyncing(false)
+        return
+      }
+      // El sync es asíncrono: reintentamos cada 3s hasta ~18s.
+      let attempts = 0
+      const poll = async () => {
+        attempts++
+        const got = await loadOlder()
+        if (got > 0) {
+          setSyncing(false)
+          return
+        }
+        if (attempts >= 6) {
+          setSyncing(false)
+          setBackfillNote(
+            "WhatsApp no devolvió historial anterior para este chat. El backfill es best-effort: para traer todo el historial hay que reconectar el dispositivo con sincronización completa."
+          )
+          return
+        }
+        setTimeout(poll, 3000)
+      }
+      setTimeout(poll, 3000)
+    } catch {
+      setSyncing(false)
+      setBackfillNote("Error al pedir el historial")
+    }
+  }, [selectedChat, syncing, loadOlder])
 
   const getChatName = (chat: Chat) => {
     if (chat.is_group) {
@@ -324,10 +582,11 @@ export function InboxView({ agencies }: InboxViewProps) {
                 <span className="hidden sm:inline text-xs">Ir al final</span>
               </Button>
             </div>
-            <ScrollArea className="flex-1 p-4">
+            <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
               {loadingMessages ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                <div className="flex flex-col items-center justify-center gap-2 py-10 text-muted-foreground">
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                  <span className="text-xs">Cargando mensajes…</span>
                 </div>
               ) : messages.length === 0 ? (
                 <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
@@ -335,10 +594,55 @@ export function InboxView({ agencies }: InboxViewProps) {
                 </div>
               ) : (
                 <div className="space-y-2">
+                  {/* Cargar historial: paginado hacia atrás o backfill de WhatsApp */}
+                  <div className="flex justify-center pb-1">
+                    {hasMore ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 gap-1.5 text-xs text-muted-foreground"
+                        onClick={loadOlder}
+                        disabled={loadingOlder}
+                      >
+                        {loadingOlder ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          "Cargar mensajes anteriores"
+                        )}
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 gap-1.5 text-xs text-muted-foreground"
+                        onClick={handleBackfill}
+                        disabled={syncing}
+                      >
+                        {syncing ? (
+                          <>
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            Sincronizando…
+                          </>
+                        ) : (
+                          <>
+                            <History className="h-3.5 w-3.5" />
+                            Traer historial anterior de WhatsApp
+                          </>
+                        )}
+                      </Button>
+                    )}
+                  </div>
+                  {backfillNote && (
+                    <p className="px-2 pb-2 text-center text-[11px] leading-snug text-muted-foreground">
+                      {backfillNote}
+                    </p>
+                  )}
                   {messages.map((msg) => {
                     const isOutbound = msg.direction === "outbound"
                     const typeIcon = getTypeIcon(msg.message_type)
                     const isGroupChat = selectedChat?.is_group
+                    const isMedia = MEDIA_TYPES.has(msg.message_type)
+                    const mediaUrl = `/api/wha-control/chats/${selectedChat?.id}/media/${msg.id}`
                     const participantPhone = msg.participant_jid
                       ? msg.participant_jid.split("@")[0]
                       : null
@@ -361,7 +665,12 @@ export function InboxView({ agencies }: InboxViewProps) {
                               {participantName}
                             </p>
                           )}
-                          {typeIcon && !msg.body_text && (
+                          {isMedia && (
+                            <div className={msg.body_text ? "mb-1" : ""}>
+                              <MediaContent url={mediaUrl} type={msg.message_type} />
+                            </div>
+                          )}
+                          {!isMedia && typeIcon && !msg.body_text && (
                             <span className="text-lg">{typeIcon} <span className="text-xs opacity-70">{msg.message_type}</span></span>
                           )}
                           {msg.body_text && (
@@ -381,6 +690,108 @@ export function InboxView({ agencies }: InboxViewProps) {
                 </div>
               )}
             </ScrollArea>
+            {/* Composer */}
+            <div className="border-t">
+              {sendError && (
+                <p className="px-4 pt-2 text-xs text-destructive">{sendError}</p>
+              )}
+              {attachedImage && (
+                <div className="flex items-center gap-2 px-3 pt-2">
+                  <div className="relative">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={attachedImage.preview}
+                      alt=""
+                      className="h-16 w-16 rounded-lg object-cover border border-border/60"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setAttachedImage(null)}
+                      className="absolute -right-1.5 -top-1.5 rounded-full border border-border bg-background p-0.5 text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                  <span className="text-xs text-muted-foreground">Imagen lista para enviar</span>
+                </div>
+              )}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  handleSend()
+                }}
+                className="flex items-center gap-1.5 p-3"
+              >
+                {/* Emoji picker */}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9 flex-shrink-0 rounded-full text-muted-foreground"
+                    >
+                      <Smile className="h-5 w-5" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="start" className="w-64 p-2">
+                    <div className="grid max-h-52 grid-cols-8 gap-0.5 overflow-y-auto">
+                      {EMOJIS.map((e) => (
+                        <button
+                          key={e}
+                          type="button"
+                          onClick={() => insertEmoji(e)}
+                          className="rounded p-0.5 text-xl leading-none hover:bg-accent"
+                        >
+                          {e}
+                        </button>
+                      ))}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+                {/* Adjuntar imagen */}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 w-9 flex-shrink-0 rounded-full text-muted-foreground"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Paperclip className="h-5 w-5" />
+                </Button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleFileSelect}
+                />
+                <Input
+                  ref={inputRef}
+                  value={messageInput}
+                  onChange={(e) => {
+                    setMessageInput(e.target.value)
+                    if (sendError) setSendError(null)
+                  }}
+                  placeholder="Escribí un mensaje…"
+                  className="h-9 rounded-full border-border/60"
+                  autoComplete="off"
+                  autoFocus
+                />
+                <Button
+                  type="submit"
+                  size="icon"
+                  className="h-9 w-9 rounded-full flex-shrink-0"
+                  disabled={sending || (!messageInput.trim() && !attachedImage)}
+                >
+                  {sending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
+                </Button>
+              </form>
+            </div>
           </>
         ) : (
           <CardContent className="flex flex-1 items-center justify-center">

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canPerformAction } from "@/lib/permissions-api"
+import { isIndependentAdvisor } from "@/lib/permissions"
 
 /**
  * GET /api/manychat/list-order?agencyId=xxx
@@ -10,6 +11,12 @@ import { canPerformAction } from "@/lib/permissions-api"
 export async function GET(request: Request) {
   try {
     const { user } = await getCurrentUser()
+
+    // VIB-69: el asesor independiente no ve el CRM ni sus columnas.
+    if (isIndependentAdvisor(user)) {
+      return NextResponse.json({ error: "No tiene permiso para ver leads" }, { status: 403 })
+    }
+
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
     const agencyId = searchParams.get("agencyId")

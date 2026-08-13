@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { getRequestPermissions } from "@/lib/permissions/request"
+import { isOwnDataOnlyResolved } from "@/lib/permissions-api"
 import { buildSellerMessageScopeFilter, getSellerOperationIds } from "@/lib/whatsapp/message-access"
 
 export async function GET(request: Request) {
   try {
-    const { user } = await getCurrentUser()
-    const supabase = await createServerClient()
+    const { user, supabase, matrix } = await getRequestPermissions()
     const { searchParams } = new URL(request.url)
     const requestedCustomerId = searchParams.get("customerId")
     const requestedChannel = searchParams.get("channel")
@@ -30,8 +31,11 @@ export async function GET(request: Request) {
       .eq("org_id", userOrgId)
     const orgAgencyIds = (orgAgencies || []).map((a: any) => a.id)
 
+    // Restringido a datos propios (operations.ownDataOnly por agencia): solo ve
+    // mensajes de sus operaciones.
+    const ownData = isOwnDataOnlyResolved(user, "operations", matrix ?? undefined)
     const sellerOperationIds =
-      user.role === "SELLER" ? await getSellerOperationIds(supabase, user.id) : []
+      ownData ? await getSellerOperationIds(supabase, user.id) : []
 
     // Query mensajes
     let query = (supabase.from("whatsapp_messages") as any)
@@ -43,7 +47,7 @@ export async function GET(request: Request) {
       `)
       .order("scheduled_for", { ascending: true })
 
-    if (user.role === "SELLER") {
+    if (ownData) {
       query = query.or(buildSellerMessageScopeFilter(user.id, sellerOperationIds))
     } else if (orgAgencyIds.length > 0) {
       query = query.in("agency_id", orgAgencyIds)
@@ -98,7 +102,7 @@ export async function GET(request: Request) {
     let countsQuery = (supabase.from("whatsapp_messages") as any)
       .select("status, customer_id, operation_id")
 
-    if (user.role === "SELLER") {
+    if (ownData) {
       countsQuery = countsQuery.or(buildSellerMessageScopeFilter(user.id, sellerOperationIds))
     } else if (orgAgencyIds.length > 0) {
       countsQuery = countsQuery.in("agency_id", orgAgencyIds)

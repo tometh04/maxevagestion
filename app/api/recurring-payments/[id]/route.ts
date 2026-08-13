@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
-import { getCurrentUser } from "@/lib/auth"
 import { canPerformAction, getScopedAgenciesForUser } from "@/lib/permissions-api"
+import { getRequestPermissions } from "@/lib/permissions/request"
 import {
   updateRecurringPayment,
   deleteRecurringPayment,
@@ -12,12 +11,11 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await getCurrentUser()
-    const supabase = await createServerClient()
+    const { user, supabase, matrix } = await getRequestPermissions()
     const { id } = await params
 
     // Verificar permisos
-    if (!canPerformAction(user, "accounting", "write")) {
+    if (!canPerformAction(user, "accounting", "write", matrix ?? undefined)) {
       return NextResponse.json({ error: "No tiene permiso para actualizar pagos recurrentes" }, { status: 403 })
     }
 
@@ -69,12 +67,11 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await getCurrentUser()
-    const supabase = await createServerClient()
+    const { user, supabase, matrix } = await getRequestPermissions()
     const { id } = await params
 
     // Verificar permisos
-    if (!canPerformAction(user, "accounting", "write")) {
+    if (!canPerformAction(user, "accounting", "write", matrix ?? undefined)) {
       return NextResponse.json({ error: "No tiene permiso para eliminar pagos recurrentes" }, { status: 403 })
     }
 

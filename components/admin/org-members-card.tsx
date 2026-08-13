@@ -1,11 +1,14 @@
 import { createAdminClient } from "@/lib/supabase/server"
+import { getCurrentUser } from "@/lib/auth"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
+import { MemberRowActions } from "@/components/admin/member-row-actions"
 
 type Props = { orgId: string }
 
 export async function OrgMembersCard({ orgId }: Props) {
   const admin = createAdminClient() as any
+  const { user: currentUser } = await getCurrentUser()
 
   const [{ data: members }, { data: authData }] = await Promise.all([
     admin
@@ -52,6 +55,7 @@ export async function OrgMembersCard({ orgId }: Props) {
                   <Th>Activo</Th>
                   <Th>Último login</Th>
                   <Th>Creado</Th>
+                  <Th>Acciones</Th>
                 </tr>
               </thead>
               <tbody>
@@ -83,6 +87,15 @@ export async function OrgMembersCard({ orgId }: Props) {
                       </Td>
                       <Td className="text-muted-foreground">{relativeTime(lastSignIn)}</Td>
                       <Td className="text-muted-foreground">{relativeTime(m.created_at)}</Td>
+                      <Td>
+                        <MemberRowActions
+                          orgId={orgId}
+                          memberId={m.id}
+                          email={m.email}
+                          isActive={m.is_active}
+                          isSelf={m.id === currentUser.id}
+                        />
+                      </Td>
                     </tr>
                   )
                 })}

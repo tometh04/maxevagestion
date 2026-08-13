@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import {
   Select,
@@ -18,25 +18,59 @@ const ledgerDateTypes: DateTypeOption[] = [
   { value: "OPERACION", label: "Operación", shortLabel: "Op." },
 ]
 
-interface LedgerFiltersProps {
-  agencies: Array<{ id: string; name: string }>
-  onFiltersChange: (filters: {
-    dateFrom?: string
-    dateTo?: string
-    dateType?: string
-    type?: string
-    currency?: string
-    agencyId?: string
-  }) => void
+export interface LedgerFiltersState {
+  dateFrom?: string
+  dateTo?: string
+  dateType?: string
+  type?: string
+  currency?: string
+  agencyId?: string
+  accountId?: string
 }
 
-export function LedgerFilters({ agencies, onFiltersChange }: LedgerFiltersProps) {
+export interface LedgerAccountOption {
+  id: string
+  name: string
+  currency: string
+}
+
+interface LedgerFiltersProps {
+  agencies: Array<{ id: string; name: string }>
+  accounts?: LedgerAccountOption[]
+  initialAccountId?: string
+  initialCurrency?: string
+  onFiltersChange: (filters: LedgerFiltersState) => void
+}
+
+export function LedgerFilters({
+  agencies,
+  accounts = [],
+  initialAccountId,
+  initialCurrency,
+  onFiltersChange,
+}: LedgerFiltersProps) {
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined)
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined)
   const [dateType, setDateType] = useState<string>("MOVIMIENTO")
   const [type, setType] = useState("ALL")
-  const [currency, setCurrency] = useState("ALL")
+  const [currency, setCurrency] = useState(initialCurrency || "ALL")
   const [agencyId, setAgencyId] = useState("ALL")
+  const [accountId, setAccountId] = useState(initialAccountId || "ALL")
+
+  // Deep-link desde Cuentas Financieras ("Ver movimientos"): aplicar el filtro
+  // inicial sin que el usuario tenga que tocar "Aplicar".
+  const appliedInitial = useRef(false)
+  useEffect(() => {
+    if (appliedInitial.current) return
+    if (!initialAccountId && !initialCurrency) return
+    appliedInitial.current = true
+    onFiltersChange({
+      accountId: initialAccountId && initialAccountId !== "ALL" ? initialAccountId : undefined,
+      currency: initialCurrency && initialCurrency !== "ALL" ? initialCurrency : undefined,
+      dateType: "MOVIMIENTO",
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialAccountId, initialCurrency])
 
   const formatDateString = (date: Date | undefined): string | undefined => {
     return date ? format(date, "yyyy-MM-dd") : undefined
@@ -50,6 +84,7 @@ export function LedgerFilters({ agencies, onFiltersChange }: LedgerFiltersProps)
       type: type !== "ALL" ? type : undefined,
       currency: currency !== "ALL" ? currency : undefined,
       agencyId: agencyId !== "ALL" ? agencyId : undefined,
+      accountId: accountId !== "ALL" ? accountId : undefined,
     })
   }
 
@@ -60,6 +95,7 @@ export function LedgerFilters({ agencies, onFiltersChange }: LedgerFiltersProps)
     setType("ALL")
     setCurrency("ALL")
     setAgencyId("ALL")
+    setAccountId("ALL")
     onFiltersChange({})
   }
 
@@ -89,6 +125,22 @@ export function LedgerFilters({ agencies, onFiltersChange }: LedgerFiltersProps)
           ))}
         </SelectContent>
       </Select>
+
+      {accounts.length > 0 && (
+        <Select value={accountId} onValueChange={setAccountId}>
+          <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[180px] w-auto">
+            <SelectValue placeholder="Cuenta" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">Todas las cuentas</SelectItem>
+            {accounts.map((account) => (
+              <SelectItem key={account.id} value={account.id}>
+                {account.name} ({account.currency})
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
 
       <Select value={type} onValueChange={setType}>
         <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px] w-auto">

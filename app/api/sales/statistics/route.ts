@@ -2,15 +2,24 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { getUserAgencyIds } from "@/lib/permissions-api"
+import { isIndependentAdvisor } from "@/lib/permissions"
 import { subMonths, startOfMonth, endOfMonth, format, parseISO, differenceInDays, eachDayOfInterval, startOfDay, endOfDay } from "date-fns"
 import { es } from "date-fns/locale"
 import { getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
+import { resolveLeadResolution } from "@/lib/leads/outcome"
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: Request) {
   try {
     const { user } = await getCurrentUser()
+
+    // VIB-69: son las estadísticas del CRM (leads por vendedor, conversión de la
+    // agencia). El asesor independiente no accede a leads.
+    if (isIndependentAdvisor(user)) {
+      return NextResponse.json({ error: "No tiene permiso para ver leads" }, { status: 403 })
+    }
+
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
@@ -35,6 +44,7 @@ export async function GET(request: Request) {
       .select(`
         id,
         status,
+        outcome,
         source,
         region,
         destination,
@@ -178,15 +188,27 @@ export async function GET(request: Request) {
 
     // Procesar leads
     let totalLeads = 0
-    let totalConverted = 0
-    let totalLost = 0
+    // VIB-68: conversión = venta real (con operación) + venta manual (marcada
+    // sin operación). Se cuentan por separado y descarte pasa a medirse por el
+    // eje `outcome`, no solo por status LOST.
+    let totalSales = 0        // ventas reales + manuales
+    let totalRealSales = 0    // con operación cargada
+    let totalManualSales = 0  // marcadas a mano, sin operación
+    let totalDiscarded = 0
     let totalDepositsUsd = 0
 
     for (const lead of leads || []) {
       totalLeads++
 
-      const isConverted = convertedLeadIds.has(lead.id)
-      if (isConverted) totalConverted++
+      const res = resolveLeadResolution({
+        outcome: lead.outcome,
+        status: lead.status,
+        hasOperation: convertedLeadIds.has(lead.id),
+      })
+      if (res.isSale) totalSales++
+      if (res.isRealSale) totalRealSales++
+      if (res.isManualSale) totalManualSales++
+      if (res.isDiscarded) totalDiscarded++
 
       // Pipeline
       if (pipeline[lead.status]) {
@@ -199,14 +221,11 @@ export async function GET(request: Request) {
         }
       }
 
-      // Por estado
-      if (lead.status === "LOST") totalLost++
-
       // Por origen
       const source = lead.source || "Other"
       if (bySource[source]) {
         bySource[source].count++
-        if (isConverted) bySource[source].converted++
+        if (res.isSale) bySource[source].converted++
       }
 
       // Por región
@@ -215,7 +234,7 @@ export async function GET(request: Request) {
         byRegion[region] = { region, count: 0, converted: 0 }
       }
       byRegion[region].count++
-      if (isConverted) byRegion[region].converted++
+      if (res.isSale) byRegion[region].converted++
 
       // Por vendedor
       if (lead.assigned_seller_id) {
@@ -229,7 +248,7 @@ export async function GET(request: Request) {
           }
         }
         bySeller[lead.assigned_seller_id].leads++
-        if (isConverted) bySeller[lead.assigned_seller_id].converted++
+        if (res.isSale) bySeller[lead.assigned_seller_id].converted++
       }
 
       // Por período (día o mes)
@@ -240,8 +259,8 @@ export async function GET(request: Request) {
           : format(createdAt, "yyyy-MM")
         if (monthlyStats[monthKey]) {
           monthlyStats[monthKey].newLeads++
-          if (isConverted) monthlyStats[monthKey].wonLeads++
-          if (lead.status === "LOST") monthlyStats[monthKey].lostLeads++
+          if (res.isSale) monthlyStats[monthKey].wonLeads++
+          if (res.isDiscarded) monthlyStats[monthKey].lostLeads++
         }
       }
     }
@@ -255,11 +274,13 @@ export async function GET(request: Request) {
       s.conversionRate = s.leads > 0 ? (s.converted / s.leads) * 100 : 0
     })
 
-    // Conversion rate general (leads convertidos a operación / total)
-    const overallConversionRate = totalLeads > 0 ? (totalConverted / totalLeads) * 100 : 0
+    // Conversión general = ventas (reales + manuales) / total.
+    const overallConversionRate = totalLeads > 0 ? (totalSales / totalLeads) * 100 : 0
+    // Conversión de ventas reales (con operación cargada) / total.
+    const realConversionRate = totalLeads > 0 ? (totalRealSales / totalLeads) * 100 : 0
 
-    // Leads activos = no convertidos a operación (excluyendo perdidos)
-    const activeLeads = totalLeads - totalConverted - totalLost
+    // Leads activos = ni vendidos ni descartados (siguen en trabajo).
+    const activeLeads = totalLeads - totalSales - totalDiscarded
 
     // Top vendedores por conversión
     const topSellers = Object.values(bySeller)
@@ -289,9 +310,15 @@ export async function GET(request: Request) {
       overview: {
         totalLeads,
         activeLeads,
-        wonLeads: totalConverted,
-        lostLeads: totalLost,
+        // wonLeads = todas las ventas (reales + manuales), por compat de UI.
+        wonLeads: totalSales,
+        realSales: totalRealSales,
+        manualSales: totalManualSales,
+        discardedLeads: totalDiscarded,
+        // lostLeads = descartados (nombre legacy mantenido por compat).
+        lostLeads: totalDiscarded,
         conversionRate: Math.round(overallConversionRate * 10) / 10,
+        realConversionRate: Math.round(realConversionRate * 10) / 10,
         totalDeposits: Math.round(totalDepositsUsd * 100) / 100,
         newThisMonth: newThisPeriod,
       },

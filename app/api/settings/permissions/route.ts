@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { loadFullAgencyMatrix, CONFIGURABLE_ROLES, buildDefaultMatrix, type ResolvedPermissionsMatrix } from "@/lib/permissions-agency"
+import { loadFullAgencyMatrix, CONFIGURABLE_ROLES, ALL_MODULES, buildDefaultMatrix, type ResolvedPermissionsMatrix } from "@/lib/permissions-agency"
 import type { UserRole } from "@/lib/permissions"
 
 /**
@@ -113,6 +113,16 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: "Agencia no encontrada" }, { status: 404 })
     }
 
+    const unknownModules = Object.keys(permissions).filter(
+      (m) => !(ALL_MODULES as string[]).includes(m)
+    )
+    if (unknownModules.length > 0) {
+      return NextResponse.json(
+        { error: `Módulos desconocidos: ${unknownModules.join(", ")}` },
+        { status: 400 }
+      )
+    }
+
     const rows = Object.entries(permissions).map(([module, perms]) => ({
       org_id: user.org_id as string,
       agency_id: agencyId,
@@ -131,7 +141,10 @@ export async function PUT(req: Request) {
 
     if (error) {
       console.error("[permissions] upsert error:", error)
-      return NextResponse.json({ error: "Error al guardar permisos" }, { status: 500 })
+      return NextResponse.json(
+        { error: "Error al guardar permisos", detail: error.message },
+        { status: 500 }
+      )
     }
 
     return NextResponse.json({ success: true })

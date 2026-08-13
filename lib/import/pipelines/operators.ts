@@ -14,6 +14,7 @@ import type {
 
 const SCHEMA = {
   name: ["nombre", "name", "operador"],
+  cuit: ["cuit", "num_iva", "cuit_dni"],
   contact_name: ["contacto", "contact_name", "nombre_contacto"],
   contact_email: ["email_contacto", "contact_email"],
   contact_phone: ["telefono_contacto", "contact_phone"],
@@ -107,6 +108,7 @@ export const operatorsPipeline: PipelineFn = async (
       {
         agency_id: config.agencyId,
         name: effectiveName,
+        cuit: row.cuit || null,
         contact_name: row.contact_name || null,
         contact_email: row.contact_email || null,
         contact_phone: row.contact_phone || null,

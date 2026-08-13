@@ -3,6 +3,8 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+// Fix UTC shift en fechas DATE (VICO 2026-05-22)
+import { parseDateOnlyLocal, formatDateOnlyLocal } from "@/lib/utils/date-only"
 
 type ManualPayment = {
   id: string
@@ -25,8 +27,8 @@ export function ManualPaymentsSection({
   const [creating, setCreating] = useState(false)
   const [form, setForm] = useState({
     amount_ars: "",
-    paid_at: new Date().toISOString().slice(0, 10),
-    covers_from: new Date().toISOString().slice(0, 10),
+    paid_at: formatDateOnlyLocal(new Date()) ?? "",
+    covers_from: formatDateOnlyLocal(new Date()) ?? "",
     covers_to: "",
     payment_method: "",
     receipt_ref: "",
@@ -167,7 +169,7 @@ export function ManualPaymentsSection({
           <tbody>
             {payments.map((p) => (
               <tr key={p.id} className="border-b last:border-0">
-                <td className="py-1">{new Date(p.paid_at).toLocaleDateString("es-AR")}</td>
+                <td className="py-1">{(parseDateOnlyLocal(p.paid_at) ?? new Date(p.paid_at)).toLocaleDateString("es-AR")}</td>
                 <td>${Number(p.amount_ars).toLocaleString("es-AR")}</td>
                 <td>
                   {p.covers_from} → {p.covers_to}

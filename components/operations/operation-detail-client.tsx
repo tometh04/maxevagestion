@@ -1,5 +1,6 @@
 "use client"
 
+import type { SellerOption } from "@/lib/sellers/seller-option"
 import { useMemo, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -15,8 +16,9 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
+import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 import Link from "next/link"
-import { ArrowLeft, Pencil, AlertCircle, Trash2, Loader2, RefreshCw, HelpCircle, Receipt, Info, Users, FileText, CreditCard, Wrench, ShoppingBag, Calculator, BarChart3, Bell } from "lucide-react"
+import { ArrowLeft, Pencil, AlertCircle, Trash2, Loader2, RefreshCw, HelpCircle, Receipt, Info, Users, FileText, CreditCard, Wrench, ShoppingBag, Calculator, BarChart3, Bell, Copy } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -47,6 +49,10 @@ const EditOperationDialog = dynamic(
   () => import("./edit-operation-dialog").then((m) => ({ default: m.EditOperationDialog })),
   { ssr: false }
 )
+const NewOperationDialog = dynamic(
+  () => import("./new-operation-dialog").then((m) => ({ default: m.NewOperationDialog })),
+  { ssr: false }
+)
 import { OperationRequirementsSection } from "./operation-requirements-section"
 import { PassengersSection } from "./passengers-section"
 import { OperationServicesSection } from "./operation-services-section"
@@ -59,8 +65,9 @@ import {
 } from "@/lib/operations/payment-operators"
 import { buildOperationPurchaseSummary } from "@/lib/operations/purchase-summary"
 import { toast } from "sonner"
+import { useCan } from "@/components/permissions/permissions-provider"
 
-type OperationAccessScope = "full" | "own" | "agency-support"
+type OperationAccessScope = "full" | "own" | "agency-support" | "agency-payments"
 
 const statusLabels: Record<string, string> = {
   RESERVED: "Reservado",
@@ -99,6 +106,12 @@ function formatMoney(amount: number, currency: string) {
   })}`
 }
 
+/** Fecha DATE ("YYYY-MM-DD") a dd/MM/yyyy sin corrimiento de timezone. */
+function formatDateOnly(value: string) {
+  const d = parseDateOnlyLocal(value)
+  return d ? format(d, "dd/MM/yyyy", { locale: es }) : value
+}
+
 interface OperationService {
   id: string
   service_type: string
@@ -120,12 +133,24 @@ interface OperationDetailClientProps {
   payments: any[]
   alerts: any[]
   agencies: Array<{ id: string; name: string }>
-  sellers: Array<{ id: string; name: string }>
+  sellers: SellerOption[]
   operators: Array<{ id: string; name: string }>
   userRole: string
   operationAccessScope: OperationAccessScope
   canAddServicesOnAgencyOperations?: boolean
+  /** SELLER con can_register_payments_on_agency_operations: habilita imputar
+   * cobros/pagos en esta operación aunque no sea el vendedor asignado. */
+  canRegisterAgencyPayments?: boolean
   commissionRecords?: Array<{ percentage: number | null; seller_id: string; amount: number }>
+  /** Comisión al referidor por esta venta (VIB-62), si el cliente vino referido. */
+  referralCommission?: {
+    amount: number
+    percentage: number
+    base_amount: number
+    currency: string
+    status: string
+    referral_partners?: { name: string } | null
+  } | null
   operationServices?: OperationService[]
   operatorPayments?: OperationOperatorPaymentLike[]
   /** Operadores asignados a la operación (operation_operators). Usado para
@@ -169,7 +194,9 @@ export function OperationDetailClient({
   userRole,
   operationAccessScope,
   canAddServicesOnAgencyOperations = false,
+  canRegisterAgencyPayments = false,
   commissionRecords = [],
+  referralCommission = null,
   operationServices = [],
   operatorPayments = [],
   operationOperators = [],
@@ -178,19 +205,43 @@ export function OperationDetailClient({
 }: OperationDetailClientProps) {
   const router = useRouter()
   const [editDialogOpen, setEditDialogOpen] = useState(false)
+  // VIB-109: duplicar esta operación (abre el alta precargada).
+  const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false)
   const [isDeletingAlerts, setIsDeletingAlerts] = useState(false)
   const [isGeneratingAlerts, setIsGeneratingAlerts] = useState(false)
   const isSupportMode = operationAccessScope === "agency-support"
-  const canEditOperation = !isSupportMode && !["VIEWER", "CONTABLE"].includes(userRole)
-  const canManagePassengers = !isSupportMode && !["VIEWER", "CONTABLE"].includes(userRole)
-  const canManageDocuments = !isSupportMode && !["VIEWER", "CONTABLE"].includes(userRole)
-  const canAddServices = isSupportMode
-    ? canAddServicesOnAgencyOperations
+  // Modo "cobros": SELLER con can_register_payments_on_agency_operations sobre una
+  // operación ajena de su agencia. Solo plata: ve/imputa pagos, no edita la op.
+  const isPaymentsMode = operationAccessScope === "agency-payments"
+  // Scopes de agencia (no propietario) → datos de la operación en solo lectura.
+  const isAgencyScopedReadonly = isSupportMode || isPaymentsMode
+  const canWriteCashForServices = useCan("cash", "write")
+  const canEditOperation = !isAgencyScopedReadonly && !["VIEWER", "CONTABLE"].includes(userRole)
+  const canManagePassengers = !isAgencyScopedReadonly && !["VIEWER", "CONTABLE"].includes(userRole)
+  const canManageDocuments = !isAgencyScopedReadonly && !["VIEWER", "CONTABLE"].includes(userRole)
+  // Alta de servicios: solo postventa con su flag. El modo cobros nunca agrega servicios.
+  const canAddServices = isAgencyScopedReadonly
+    ? isSupportMode && canAddServicesOnAgencyOperations
     : !["VIEWER", "CONTABLE"].includes(userRole)
-  const canManageExistingServices = !isSupportMode && !["VIEWER", "CONTABLE"].includes(userRole)
-  const canManageServicePayments = !isSupportMode && !["SELLER", "VIEWER"].includes(userRole)
-  const canViewFinancialTabs = !isSupportMode && userRole !== "SELLER"
-  const canManageAlerts = !isSupportMode && userRole !== "VIEWER"
+  const canManageExistingServices = !isAgencyScopedReadonly && !["VIEWER", "CONTABLE"].includes(userRole)
+  // ¿Puede operar pagos en ESTA operación? Propietario/roles con caja, o el modo
+  // cobros, o un vendedor con el flag de cobros aunque el scope primario sea
+  // postventa (usuario con ambos permisos).
+  const paymentsAllowedHere = !isAgencyScopedReadonly || isPaymentsMode || canRegisterAgencyPayments
+  // Gestionar pagos de servicios = cash.write (matrix por agencia). El servidor
+  // (/api/payments) valida el mismo permiso.
+  const canManageServicePayments = paymentsAllowedHere && canWriteCashForServices
+  const canReadCash = useCan("cash", "read")
+  const canViewFinancialTabs = !isAgencyScopedReadonly && userRole !== "SELLER"
+  // El tab "Pagos Operación" (cobros al pasajero / pagos a operador) NO es
+  // finanzas-admin: se muestra a quien pueda operar caja según el matrix por
+  // agencia — incluidos vendedores con `cash` habilitado, que son los que
+  // registran los cobros. Contabilidad y Métricas siguen atadas a
+  // canViewFinancialTabs. El botón "Registrar Pago" y el server (/api/payments)
+  // igual validan cash.write, así que esto solo destapa el acceso legítimo.
+  const canViewOperationPayments =
+    canViewFinancialTabs || (paymentsAllowedHere && (canReadCash || canWriteCashForServices))
+  const canManageAlerts = !isAgencyScopedReadonly && userRole !== "VIEWER"
   const operatorNameMap = useMemo(
     () => new Map(operators.map((operator) => [operator.id, operator.name])),
     [operators]
@@ -302,7 +353,7 @@ export function OperationDetailClient({
         </BreadcrumbList>
       </Breadcrumb>
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between" data-tour="operation.header">
         <div className="flex items-center gap-4">
           <Link href="/operations">
             <Button variant="ghost" size="sm">
@@ -321,8 +372,13 @@ export function OperationDetailClient({
               Postventa
             </Badge>
           )}
+          {isPaymentsMode && (
+            <Badge variant="outline" className="border-primary/15 bg-primary/5 text-primary">
+              Cobros
+            </Badge>
+          )}
           <Badge variant="secondary" className="bg-secondary/60 text-secondary-foreground">{statusLabels[operation.status] || operation.status}</Badge>
-          {!isSupportMode && (
+          {!isAgencyScopedReadonly && (
             <SendStatementButton
               operationId={operation.id}
               defaultEmail={mainCustomerEmail}
@@ -336,6 +392,15 @@ export function OperationDetailClient({
               </Link>
             </Button>
           )}
+          {/* VIB-109: ventas repetidas del mismo grupo. Abre el alta precargada
+              con esta operación; los pasajeros van vacíos y el POST normal crea
+              la operación nueva con toda su contabilidad. */}
+          {canEditOperation && (
+            <Button variant="outline" size="sm" onClick={() => setDuplicateDialogOpen(true)}>
+              <Copy className="mr-2 h-4 w-4" />
+              Duplicar
+            </Button>
+          )}
           {canEditOperation && (
             <Button onClick={() => setEditDialogOpen(true)}>
               <Pencil className="mr-2 h-4 w-4" />
@@ -347,47 +412,47 @@ export function OperationDetailClient({
 
       <Tabs defaultValue="info" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="info" className="gap-1.5">
+          <TabsTrigger value="info" className="gap-1.5" data-tour="operation.tab-info">
             <Info className="h-3.5 w-3.5" />
             Información
           </TabsTrigger>
-          <TabsTrigger value="customers" className="gap-1.5">
+          <TabsTrigger value="customers" className="gap-1.5" data-tour="operation.tab-customers">
             <Users className="h-3.5 w-3.5" />
             Clientes ({customers.length})
           </TabsTrigger>
-          <TabsTrigger value="documents" className="gap-1.5">
+          <TabsTrigger value="documents" className="gap-1.5" data-tour="operation.tab-documents">
             <FileText className="h-3.5 w-3.5" />
             Documentos ({documents?.length || 0})
           </TabsTrigger>
-          {canViewFinancialTabs && (
-            <TabsTrigger value="payments" className="gap-1.5">
+          {canViewOperationPayments && (
+            <TabsTrigger value="payments" className="gap-1.5" data-tour="operation.tab-payments">
               <CreditCard className="h-3.5 w-3.5" />
               Pagos Operación ({operationBasePayments.length})
             </TabsTrigger>
           )}
-          <TabsTrigger value="services" className="gap-1.5">
+          <TabsTrigger value="services" className="gap-1.5" data-tour="operation.tab-services">
             <Wrench className="h-3.5 w-3.5" />
             Servicios
           </TabsTrigger>
-          {!isSupportMode && (
-            <TabsTrigger value="itinerary" className="gap-1.5">
+          {!isAgencyScopedReadonly && (
+            <TabsTrigger value="itinerary" className="gap-1.5" data-tour="operation.tab-itinerary">
               <ShoppingBag className="h-3.5 w-3.5" />
               Detalle de Compra
             </TabsTrigger>
           )}
           {canViewFinancialTabs && (
-            <TabsTrigger value="accounting" className="gap-1.5">
+            <TabsTrigger value="accounting" className="gap-1.5" data-tour="operation.tab-accounting">
               <Calculator className="h-3.5 w-3.5" />
               Contabilidad
             </TabsTrigger>
           )}
           {canViewFinancialTabs && (
-            <TabsTrigger value="metrics" className="gap-1.5">
+            <TabsTrigger value="metrics" className="gap-1.5" data-tour="operation.tab-metrics">
               <BarChart3 className="h-3.5 w-3.5" />
               Métricas
             </TabsTrigger>
           )}
-          <TabsTrigger value="alerts" className="gap-1.5">
+          <TabsTrigger value="alerts" className="gap-1.5" data-tour="operation.tab-alerts">
             <Bell className="h-3.5 w-3.5" />
             Alertas ({alerts?.length || 0})
           </TabsTrigger>
@@ -557,14 +622,14 @@ export function OperationDetailClient({
             </Card>
           </div>
 
-          {!isSupportMode && (
+          {!isAgencyScopedReadonly && (
             <Card className="rounded-xl border border-border/40">
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-base">
                   🛒 Resumen de Compra
                 </CardTitle>
                 <CardDescription>
-                  Control rapido de compras a operadores y proveedores dentro de la operacion
+                  Compras a operadores y proveedores, con el detalle cargado en cada servicio
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -595,8 +660,21 @@ export function OperationDetailClient({
                                       {line.source === "base" ? "Base" : "Servicio"}
                                     </Badge>
                                   </div>
+                                  {/* VIB-111: el detalle que la agencia carga por servicio
+                                      (hotel, régimen, vuelo, fechas) solo salía en el PDF
+                                      del pasajero; acá se ve sin tener que generarlo. */}
+                                  {line.detailText && (
+                                    <p className="text-xs text-foreground/80">{line.detailText}</p>
+                                  )}
                                   {line.secondaryText && (
                                     <p className="text-xs text-muted-foreground">{line.secondaryText}</p>
+                                  )}
+                                  {(line.fileCode || line.dueDate) && (
+                                    <p className="text-xs text-muted-foreground">
+                                      {line.fileCode && <>File {line.fileCode}</>}
+                                      {line.fileCode && line.dueDate && " · "}
+                                      {line.dueDate && <>Vence {formatDateOnly(line.dueDate)}</>}
+                                    </p>
                                   )}
                                 </div>
                               </TableCell>
@@ -657,7 +735,7 @@ export function OperationDetailClient({
             }
 
             return (
-            <Card className="rounded-xl border border-border/40">
+            <Card className="rounded-xl border border-border/40" data-tour="operation.financial">
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-base">
                   💰 Financiero
@@ -714,6 +792,47 @@ export function OperationDetailClient({
                     </div>
                   </div>
                 </div>
+
+                {/* Comisión al referidor (VIB-62) */}
+                {referralCommission && referralCommission.amount > 0 && (
+                  <div className="rounded-xl border border-accent-coral/30 bg-accent-coral/5 p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold">🤝 Comisión referido</span>
+                        {referralCommission.referral_partners?.name && (
+                          <span className="text-xs text-muted-foreground">
+                            {referralCommission.referral_partners.name}
+                          </span>
+                        )}
+                        {referralCommission.status === "PAID" ? (
+                          <Badge className="bg-success/10 text-success border-0">Pagada</Badge>
+                        ) : referralCommission.status === "CANCELLED" ? (
+                          <Badge variant="outline">Anulada</Badge>
+                        ) : (
+                          <Badge className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-0">Pendiente</Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-6 text-sm">
+                        <div className="text-right">
+                          <span className="text-xs text-muted-foreground">Base (margen)</span>
+                          <p className="font-medium">
+                            {referralCommission.currency} {referralCommission.base_amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-xs text-muted-foreground">%</span>
+                          <p className="font-medium">{referralCommission.percentage}%</p>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-xs text-muted-foreground">Comisión</span>
+                          <p className="font-semibold text-accent-coral">
+                            {referralCommission.currency} {referralCommission.amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Desglose: Servicios */}
                 {hasServices && (
@@ -933,7 +1052,7 @@ export function OperationDetailClient({
             canEditServices={canManageExistingServices}
             canDeleteServices={canManageExistingServices}
             canManagePayments={canManageServicePayments}
-            showFinancialColumns={!isSupportMode && userRole !== "SELLER"}
+            showFinancialColumns={!isAgencyScopedReadonly && userRole !== "SELLER"}
             servicePayments={servicePayments}
             operationCurrency={operationCurrency}
             operationData={{
@@ -948,7 +1067,7 @@ export function OperationDetailClient({
           />
         </TabsContent>
 
-        {!isSupportMode && (
+        {!isAgencyScopedReadonly && (
           <TabsContent value="itinerary" className="space-y-4">
             <ItinerarySection operationId={operation.id} operation={{ ...operation, operation_customers: customers }} />
           </TabsContent>
@@ -967,6 +1086,24 @@ export function OperationDetailClient({
           userRole={userRole}
           operationLegs={operationLegs}
           operationOperators={operationOperators}
+        />
+      )}
+
+      {/* VIB-109: duplicar = alta precargada. No se clona nada en el servidor. */}
+      {canEditOperation && duplicateDialogOpen && (
+        <NewOperationDialog
+          open={duplicateDialogOpen}
+          onOpenChange={setDuplicateDialogOpen}
+          onSuccess={(newOperationId) => {
+            setDuplicateDialogOpen(false)
+            if (newOperationId) router.push(`/operations/${newOperationId}`)
+          }}
+          duplicateFrom={{ ...(operation as any), operation_operators: operationOperators }}
+          agencies={agencies}
+          sellers={sellers}
+          operators={operators}
+          userRole={userRole}
+          canPickOtherSeller={userRole !== "SELLER"}
         />
       )}
     </div>

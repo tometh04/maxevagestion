@@ -28,6 +28,8 @@ import { Switch } from "@/components/ui/switch"
 import { toast } from "sonner"
 import { Building2, DollarSign, Calendar, FileText } from "lucide-react"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
+// Fix UTC shift en fechas DATE (VICO 2026-05-22)
+import { parseDateOnlyLocal, formatDateOnlyLocal } from "@/lib/utils/date-only"
 
 const recurringPaymentSchema = z.object({
   amount: z.coerce.number().min(0.01, "El monto debe ser mayor a 0"),
@@ -81,9 +83,9 @@ export function EditRecurringPaymentDialog({
       amount: 0,
       currency: "ARS",
       frequency: "MONTHLY",
-      start_date: new Date().toISOString().split("T")[0],
+      start_date: formatDateOnlyLocal(new Date()) ?? "",
       end_date: null,
-      next_due_date: new Date().toISOString().split("T")[0],
+      next_due_date: formatDateOnlyLocal(new Date()) ?? "",
       is_active: true,
       description: "",
       notes: null,
@@ -115,9 +117,9 @@ export function EditRecurringPaymentDialog({
           amount: payment.amount || 0,
           currency: payment.currency || "ARS",
           frequency: payment.frequency || "MONTHLY",
-          start_date: payment.start_date || new Date().toISOString().split("T")[0],
+          start_date: payment.start_date || (formatDateOnlyLocal(new Date()) ?? ""),
           end_date: payment.end_date || null,
-          next_due_date: payment.next_due_date || new Date().toISOString().split("T")[0],
+          next_due_date: payment.next_due_date || (formatDateOnlyLocal(new Date()) ?? ""),
           is_active: payment.is_active !== undefined ? payment.is_active : true,
           description: payment.description || "",
           notes: payment.notes || null,
@@ -220,7 +222,7 @@ export function EditRecurringPaymentDialog({
                   <p className="text-sm font-medium">Proveedor: {providerName}</p>
                   <p className="text-xs text-muted-foreground">
                     Última generación: {payment.last_generated_date
-                      ? new Date(payment.last_generated_date).toLocaleDateString("es-AR")
+                      ? (parseDateOnlyLocal(payment.last_generated_date) ?? new Date(payment.last_generated_date)).toLocaleDateString("es-AR")
                       : "Nunca"}
                   </p>
                 </div>

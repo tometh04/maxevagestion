@@ -2,12 +2,14 @@ import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import {
   fetchPayment,
+  fetchAuthorizedPayment,
   fetchPreapproval,
   searchPreapprovalsByPayerEmail,
   verifyWebhookSignature,
 } from "@/lib/billing/mercadopago"
 import { transitionFromMP, type MPPaymentEvent, type MPPreapproval } from "@/lib/billing/state-machine"
 import { isAccessAllowed } from "@/lib/billing/access"
+import { buildAgreedPriceUpdate } from "@/lib/billing/agreed-price"
 import { logSecurityEvent } from "@/lib/security/audit"
 import { notifyBillingSlack } from "@/lib/billing/slack-notify"
 
@@ -141,17 +143,35 @@ export async function POST(request: Request) {
   let consumedCheckoutEventId: string | null = null
   try {
     if (type === "subscription_authorized_payment") {
-      const preapprovalId = body?.preapproval_id || body?.data?.preapproval_id
+      let preapprovalId = body?.preapproval_id || body?.data?.preapproval_id
+      let authPaymentStatus: string | undefined = body?.status
       if (!preapprovalId) {
-        // Terminal: sin preapproval_id no hay forma de resolver. No reintentar.
-        console.warn("mp-webhook: subscription_authorized_payment sin preapproval_id")
-        await markProcessed()
-        return NextResponse.json({ ok: true, warning: "missing preapproval_id" })
+        // MP NO siempre manda preapproval_id en el body — a veces solo el id del
+        // authorized_payment (data.id). Sin esto, los cobros de preapprovals
+        // PER-ORG (link admin, sin plan compartido) quedaban sin linkear. Buscamos
+        // el authorized_payment para obtener preapproval_id + el estado real del pago.
+        const authPaymentId = body?.data?.id ?? resolvedId
+        if (!authPaymentId) {
+          // Terminal: sin ningún id no hay forma de resolver. No reintentar.
+          console.warn("mp-webhook: subscription_authorized_payment sin preapproval_id ni authorized_payment id")
+          await markProcessed()
+          return NextResponse.json({ ok: true, warning: "missing preapproval_id" })
+        }
+        const authPayment = await fetchAuthorizedPayment(String(authPaymentId))
+        preapprovalId = authPayment?.preapproval_id
+        // El estado que importa es el del PAGO (approved/rejected), no el del
+        // authorized_payment (processed/scheduled).
+        authPaymentStatus = authPayment?.payment?.status ?? authPaymentStatus
+        if (!preapprovalId) {
+          console.warn("mp-webhook: authorized_payment sin preapproval_id", { authPaymentId })
+          await markProcessed()
+          return NextResponse.json({ ok: true, warning: "authorized_payment sin preapproval_id" })
+        }
       }
       preapproval = await fetchPreapproval(String(preapprovalId))
       paymentEvent = {
         type: "subscription_authorized_payment",
-        status: body?.status || "pending",
+        status: authPaymentStatus || "pending",
       }
     } else if (type === "payment") {
       // payment no siempre trae preapproval_id en el payload del webhook.
@@ -267,7 +287,10 @@ export async function POST(request: Request) {
   // 5. Idempotencia por last_modified.
   const { data: org } = await admin
     .from("organizations")
-    .select("id, name, subscription_status, current_period_ends_at, mp_last_synced_at, trial_ends_at")
+    .select(
+      "id, name, plan, custom_plan_id, subscription_status, " +
+      "current_period_ends_at, mp_last_synced_at, trial_ends_at"
+    )
     .eq("id", orgId)
     .maybeSingle()
   if (!org) {
@@ -361,6 +384,20 @@ export async function POST(request: Request) {
   if (transition.current_period_ends_at !== undefined) {
     updates.current_period_ends_at = transition.current_period_ends_at
   }
+
+  // Congelar el precio que MP aceptó para esta org (grandfathering). El checkout
+  // sabe lo que PIDIÓ; acá sabemos lo que MP autorizó, así que este es el writer
+  // autoritativo. Va piggybacked en el update que ya hacemos: un solo write
+  // atómico que hereda el retry de abajo (si falla → 503 y MP reintenta).
+  // Un rechazo o una cancelación no establecen precio — ver buildAgreedPriceUpdate.
+  const agreedPatch = buildAgreedPriceUpdate({
+    plan: org.plan,
+    transactionAmount: preapproval.auto_recurring?.transaction_amount,
+    eventType: transition.event_type,
+    hasCustomPlan: !!org.custom_plan_id,
+    source: "mp_webhook",
+  })
+  if (agreedPatch) Object.assign(updates, agreedPatch)
 
   const { error: orgUpdateErr } = await admin.from("organizations").update(updates).eq("id", orgId)
   if (orgUpdateErr) {

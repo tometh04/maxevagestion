@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 // Fix UTC shift en fechas DATE (VICO 2026-05-22)
-import { parseDateOnlyLocal } from "@/lib/utils/date-only"
+import { parseDateOnlyLocal, formatDateOnlyLocal } from "@/lib/utils/date-only"
 import Link from "next/link"
 import {
   Dialog,
@@ -116,7 +116,7 @@ export function BulkPaymentDialog({
   const [paymentCurrency, setPaymentCurrency] = useState<"ARS" | "USD">("USD")
   const [exchangeRate, setExchangeRate] = useState<string>("")
   const [receiptNumber, setReceiptNumber] = useState<string>("")
-  const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().split("T")[0])
+  const [paymentDate, setPaymentDate] = useState<string>(formatDateOnlyLocal(new Date()) ?? "")
   const [notes, setNotes] = useState<string>("")
   
   const [submitting, setSubmitting] = useState(false)
@@ -125,6 +125,12 @@ export function BulkPaymentDialog({
   const [depositBonus, setDepositBonus] = useState(false)
   const [bonusPercentage, setBonusPercentage] = useState("1.45")
   const [bonusAccountId, setBonusAccountId] = useState("")
+
+  // Costo financiero: la comisión que cobra la financiera, en pesos y desde
+  // otra caja. Es independiente de la bonificación: puede haber una sin la otra.
+  const [financialFee, setFinancialFee] = useState(false)
+  const [feeAmount, setFeeAmount] = useState("")
+  const [feeAccountId, setFeeAccountId] = useState("")
 
   // Reset cuando se cierra el dialog
   useEffect(() => {
@@ -138,6 +144,9 @@ export function BulkPaymentDialog({
       setDepositBonus(false)
       setBonusPercentage("1.45")
       setBonusAccountId("")
+      setFinancialFee(false)
+      setFeeAmount("")
+      setFeeAccountId("")
       setPaymentAccountId("")
       setPaymentCurrency("USD")
       setExchangeRate("")
@@ -371,6 +380,16 @@ export function BulkPaymentDialog({
       return
     }
 
+    if (financialFee && !(parseFloat(feeAmount) > 0)) {
+      toast.error("Debe ingresar el monto en pesos de la comisión de la financiera")
+      return
+    }
+
+    if (financialFee && !feeAccountId) {
+      toast.error("Debe seleccionar la cuenta en pesos de la que sale la comisión")
+      return
+    }
+
     setSubmitting(true)
     try {
       const payments = Array.from(selectedPayments).map(paymentId => {
@@ -396,6 +415,14 @@ export function BulkPaymentDialog({
                 enabled: true,
                 percentage: parseFloat(bonusPercentage),
                 bonus_account_id: bonusAccountId,
+              },
+            }
+          : {}),
+        ...(financialFee && parseFloat(feeAmount) > 0 && feeAccountId
+          ? {
+              financial_fee: {
+                amount_ars: parseFloat(feeAmount),
+                account_id: feeAccountId,
               },
             }
           : {}),
@@ -436,6 +463,10 @@ export function BulkPaymentDialog({
 
   const totalPaymentAmount = calculateTotal()
   const selectedOperator = operators.find(op => op.id === selectedOperatorId)
+
+  // La comisión de la financiera se paga siempre en pesos: el backend rechaza
+  // cualquier otra moneda porque la validación de saldo no convierte.
+  const arsAccounts = financialAccounts.filter((acc) => acc.currency === "ARS")
 
   // Determinar si podemos mostrar las deudas
   const canShowPayments = selectedOperatorId && selectedCurrency
@@ -832,6 +863,67 @@ export function BulkPaymentDialog({
                             selectedCurrency
                           )}{" "}
                           · Cancela deuda: {formatCurrency(totalPaymentAmount, selectedCurrency)}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Costo financiero (comisión de la financiera) */}
+              <div className="rounded-xl border border-border/30 bg-background p-3 space-y-3">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="financial-fee"
+                    checked={financialFee}
+                    onCheckedChange={(checked) => setFinancialFee(checked === true)}
+                  />
+                  <Label htmlFor="financial-fee" className="text-sm font-medium cursor-pointer">
+                    Costo financiero (comisión de la financiera)
+                  </Label>
+                </div>
+
+                {financialFee && (
+                  <div className="grid gap-3 md:grid-cols-2 pl-6">
+                    <div>
+                      <Label className="text-xs">Monto en pesos *</Label>
+                      <DecimalInput
+                        value={feeAmount}
+                        onChange={(v) => setFeeAmount(v)}
+                        placeholder="0,00"
+                        onFocus={(e) => e.target.select()}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Cuenta en pesos de la que sale *</Label>
+                      <Select value={feeAccountId} onValueChange={setFeeAccountId}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar cuenta" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {arsAccounts.length === 0 ? (
+                            <div className="px-2 py-3 text-sm text-muted-foreground">
+                              No hay cuentas en pesos activas
+                            </div>
+                          ) : (
+                            arsAccounts.map((account) => (
+                              <SelectItem key={account.id} value={account.id}>
+                                {account.name}
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {parseFloat(feeAmount) > 0 && (
+                      <div className="md:col-span-2 bg-accent-coral/10 border border-accent-coral/30 rounded p-2">
+                        <div className="text-sm text-foreground">
+                          <span className="font-medium">Sale de la cuenta en pesos: </span>
+                          {formatCurrency(parseFloat(feeAmount), "ARS")}
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-1">
+                          No modifica el pago al operador ni cuenta como gasto de la agencia:
+                          se netea contra la ganancia financiera.
                         </div>
                       </div>
                     )}

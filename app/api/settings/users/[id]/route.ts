@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { normalizeAdvisorManagerLink } from "@/lib/commissions/advisor-manager-link"
 import { createClient } from "@supabase/supabase-js"
 
 /**
@@ -34,7 +35,13 @@ export async function PATCH(
       "default_commission_percentage",
       "can_view_agency_operations_support",
       "can_add_services_on_agency_operations",
+      "can_create_operations_for_other_sellers",
+      "can_register_payments_on_agency_operations",
+      "is_independent_advisor",
       "additional_roles",
+      // VIB-102: quién administra a este vendedor y con qué porcentaje.
+      "advisor_manager_id",
+      "advisor_manager_percentage",
     ]
     const updateData: Record<string, any> = {}
 
@@ -62,7 +69,7 @@ export async function PATCH(
     // Verificar que el usuario existe
     const { data: existingUser, error: fetchError } = await supabase
       .from("users")
-      .select("id, role, org_id")
+      .select("id, role, org_id, is_independent_advisor, advisor_manager_id")
       .eq("id", userId)
       .single()
 
@@ -85,6 +92,55 @@ export async function PATCH(
     if (updateData.additional_roles !== undefined) {
       const primaryRole = updateData.role ?? (existingUser as any).role
       updateData.additional_roles = updateData.additional_roles.filter((r: string) => r !== primaryRole)
+    }
+
+    // VIB-69: coherencia del asesor de viajes independiente.
+    // El flag solo tiene sentido sobre un SELLER; si el rol efectivo pasa a ser
+    // otro, se apaga solo en vez de quedar latente en la fila. Y si está
+    // prendido, el usuario no puede además acumular roles adicionales ni los
+    // permisos especiales de agencia: son ampliaciones para gente de la agencia,
+    // no para un freelancer externo.
+    const touchesRoleOrAdvisorFlag =
+      updateData.role !== undefined || updateData.is_independent_advisor !== undefined
+    const effectiveRole = updateData.role ?? (existingUser as any).role
+    const willBeIndependent =
+      updateData.is_independent_advisor ?? (existingUser as any).is_independent_advisor === true
+
+    if (!touchesRoleOrAdvisorFlag) {
+      // Update que no toca ni rol ni flag: no hay nada que normalizar.
+    } else if (effectiveRole !== "SELLER") {
+      if (willBeIndependent) updateData.is_independent_advisor = false
+    } else if (willBeIndependent) {
+      updateData.is_independent_advisor = true
+      updateData.additional_roles = []
+      updateData.can_view_agency_operations_support = false
+      updateData.can_add_services_on_agency_operations = false
+      updateData.can_create_operations_for_other_sellers = false
+      updateData.can_register_payments_on_agency_operations = false
+    }
+
+    // VIB-102: administrador del vendedor. Se valida contra la base (tenant y
+    // tipo de usuario) y se normaliza el par id/porcentaje antes de escribir.
+    const link = await normalizeAdvisorManagerLink({
+      supabase,
+      orgId: user.org_id,
+      targetUserId: userId,
+      currentManagerId: (existingUser as any).advisor_manager_id ?? null,
+      input: {
+        advisor_manager_id: updateData.advisor_manager_id,
+        advisor_manager_percentage: updateData.advisor_manager_percentage,
+      },
+    })
+
+    if (!link.ok) {
+      return NextResponse.json({ error: link.error }, { status: 400 })
+    }
+    delete updateData.advisor_manager_id
+    delete updateData.advisor_manager_percentage
+    Object.assign(updateData, link.values)
+
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({ error: "No hay campos para actualizar" }, { status: 400 })
     }
 
     // Actualizar usuario

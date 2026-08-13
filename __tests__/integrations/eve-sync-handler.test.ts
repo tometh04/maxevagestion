@@ -11,6 +11,7 @@ import type { NormalizedEveLead } from "@/lib/integrations/eve/payload-adapter"
 function buildQueryMock(overrides: Partial<{
   select: any
   eq: any
+  order: any
   maybeSingle: any
   insert: any
   update: any
@@ -20,6 +21,10 @@ function buildQueryMock(overrides: Partial<{
   const mock: any = {}
   mock.select = jest.fn().mockReturnValue(mock)
   mock.eq = jest.fn().mockReturnValue(mock)
+  // `resolveListNameForAgency` lee manychat_list_order ordenado por position.
+  // Default: la agencia no tiene listas configuradas → el resolver devuelve el
+  // nombre candidato tal cual, que es lo que estos tests esperan.
+  mock.order = jest.fn().mockResolvedValue({ data: [], error: null })
   mock.maybeSingle = jest.fn().mockResolvedValue({ data: null, error: null })
   mock.insert = jest.fn().mockReturnValue(mock)
   mock.update = jest.fn().mockReturnValue(mock)

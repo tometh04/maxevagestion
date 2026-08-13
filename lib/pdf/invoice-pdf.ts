@@ -26,6 +26,8 @@ import { buildAfipQrPayload, buildAfipQrUrl } from "@/lib/afip/qr"
 export interface InvoicePdfBranding {
   /** Logo PNG en bytes. Se renderiza arriba del header naranja. */
   logoPngBytes?: Uint8Array | Buffer
+  /** Formato real de `logoPngBytes`. Sin esto un logo JPEG no se embebe. */
+  logoFormat?: "PNG" | "JPEG"
   /** Color del header en hex (#RRGGBB). Default: naranja Vibook. */
   primaryColorHex?: string
   /** Texto de T&Cs / política. Se imprime en footer si hay espacio. */
@@ -132,7 +134,10 @@ export async function renderInvoicePdf(params: InvoicePdfParams): Promise<Uint8A
   let logoImage: Awaited<ReturnType<typeof pdfDoc.embedPng>> | null = null
   if (branding?.logoPngBytes) {
     try {
-      logoImage = await pdfDoc.embedPng(branding.logoPngBytes)
+      logoImage =
+        branding.logoFormat === "JPEG"
+          ? await pdfDoc.embedJpg(branding.logoPngBytes)
+          : await pdfDoc.embedPng(branding.logoPngBytes)
     } catch (err) {
       console.warn("[invoice-pdf] No se pudo embeber logo del tenant:", err)
     }

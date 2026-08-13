@@ -2,7 +2,8 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
-import { getUserAgencyIds, canPerformAction } from "@/lib/permissions-api"
+import { getUserAgencyIds, canPerformAction, isOwnDataOnlyResolved } from "@/lib/permissions-api"
+import { resolveUserPermissions } from "@/lib/permissions-agency"
 import { revalidateTag, CACHE_TAGS } from "@/lib/cache"
 import { getOrgFeatureFlag } from "@/lib/settings/org-features"
 import type { UserRole } from "@/lib/permissions"
@@ -15,8 +16,19 @@ export async function GET(request: Request) {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
 
+    // Permisos dinámicos por agencia para el gate del módulo y el scope ownData.
+    const matrix = user.org_id
+      ? await resolveUserPermissions(
+          supabase as any,
+          user.id,
+          user.org_id,
+          (user as any).roles ?? [user.role],
+          await getUserAgencyIds(supabase, user.id, user.role as UserRole)
+        )
+      : null
+
     // Permission check: verify the user can access the operators module
-    if (!canAccessModule(user.role as UserRole, "operators")) {
+    if (!canPerformAction(user, "operators", "read", matrix ?? undefined)) {
       return NextResponse.json({ error: "No tiene permisos para acceder a operadores" }, { status: 403 })
     }
 
@@ -55,10 +67,11 @@ export async function GET(request: Request) {
       query = query.eq("org_id", user.org_id)
     }
 
-    // SELLERs adicionalmente ven solo operators vinculados a operaciones de sus agencias.
+    // Restringido a datos propios (operators.ownDataOnly por agencia): solo ve
+    // operadores vinculados a operaciones de sus agencias.
     // Excepción: cuando se usa como selector en formularios de operación (?selector=true)
     // se muestran todos los operadores del org para no bloquear la creación/edición.
-    if (user.role === "SELLER" && !isSelector) {
+    if (isOwnDataOnlyResolved(user, "operators", matrix ?? undefined) && !isSelector) {
       const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as UserRole)
       if (agencyIds.length === 0) {
         return NextResponse.json({ operators: [] })

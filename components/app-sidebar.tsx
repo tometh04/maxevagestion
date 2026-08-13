@@ -14,9 +14,10 @@ import {
   HelpCircle,
   Bot,
   Megaphone,
+  Library,
 } from "lucide-react"
 import Link from "next/link"
-import { shouldShowInSidebar, type UserRole } from "@/lib/permissions"
+import { shouldShowInSidebar, type UserRole, type Module } from "@/lib/permissions"
 import { checkResolvedPermission, type ResolvedPermissionsMatrix } from "@/lib/permissions-agency"
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
@@ -41,7 +42,10 @@ interface NavSubItem {
   title: string
   url: string
   items?: NavSubSubItem[]
-  module?: "dashboard" | "leads" | "operations" | "customers" | "operators" | "cash" | "accounting" | "alerts" | "reports" | "settings" | "commissions" | "eve"
+  // Se usa el tipo Module en vez de repetir la lista: como unión literal ya
+  // había quedado sin "tasks" ni "documents", así que un ítem de sidebar con un
+  // módulo válido no compilaba.
+  module?: Module
   badge?: {
     variant: 'warning' | 'error' | 'info'
     tooltip: string
@@ -53,7 +57,7 @@ interface NavItem {
   url: string
   icon?: React.ComponentType<{ className?: string }>
   items?: NavSubItem[]
-  module?: "dashboard" | "leads" | "operations" | "customers" | "operators" | "cash" | "accounting" | "alerts" | "reports" | "settings" | "commissions" | "eve"
+  module?: Module
   collapsible?: boolean
   requiresGrowthStudio?: boolean
 }
@@ -94,7 +98,9 @@ const allNavigation: NavItem[] = [
     items: [
       { title: "Inicio", url: "/growth-studio" },
       { title: "Campañas", url: "/growth-studio/campaigns" },
-      { title: "Biblioteca", url: "/growth-studio/library" },
+      // Renombrado de "Biblioteca" a "Imágenes" para no chocar con la sección
+      // top-level "Biblioteca" (capacitaciones, VIB-70).
+      { title: "Imágenes", url: "/growth-studio/library" },
       { title: "Mi marca", url: "/growth-studio/brand" },
     ],
   },
@@ -117,6 +123,7 @@ const allNavigation: NavItem[] = [
     module: "operations",
     items: [
       { title: "Operaciones", url: "/operations" },
+      { title: "Reservas por hotel", url: "/operations/hotel-bookings" },
       { title: "Estadísticas", url: "/operations/statistics" },
       { title: "Facturación", url: "/operations/billing" },
       { title: "Configuración", url: "/operations/settings" },
@@ -135,6 +142,9 @@ const allNavigation: NavItem[] = [
       { title: "Contabilidad", url: "/accounting/ledger" },
       { title: "Impuestos", url: "/accounting/iva" },
       { title: "Comisiones", url: "/commissions", module: "commissions" as const },
+      // VIB-86: módulo propio. Colgado de `commissions` se le mostraba al
+      // vendedor, que al entrar era redirigido al dashboard.
+      { title: "Referidos", url: "/referrals", module: "referrals" as const },
       { title: "Reportes", url: "/reports", module: "reports" as const },
       { title: "Configuración", url: "/finances/settings" },
     ],
@@ -169,7 +179,15 @@ const allNavigation: NavItem[] = [
       { title: "Prompt", url: "/eve/prompt" },
     ],
   },
-  // 8. Cerebro
+  // 8. Biblioteca (capacitaciones, VIB-70)
+  {
+    title: "Biblioteca",
+    url: "/library",
+    icon: Library,
+    module: "library",
+    collapsible: false,
+  },
+  // 9. Cerebro
   {
     title: "🧠 Cerebro",
     url: "/tools/cerebro",

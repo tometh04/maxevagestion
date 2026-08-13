@@ -34,7 +34,8 @@ import {
   FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL,
 } from "@/lib/feature-flags"
 import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
-import { serviceKind, type ServiceKind } from "@/lib/operations/service-kind"
+import { serviceKind, formatPassengerDetail } from "@/lib/operations/service-kind"
+import { toEmbeddableLogo } from "@/lib/pdf/logo"
 
 export interface StatementCompany {
   name: string
@@ -116,34 +117,6 @@ function fmtShort(d: string | null | undefined): string {
   return m ? `${m[3]}/${m[2]}/${m[1]}` : String(d)
 }
 
-/** Une las partes no vacías de un detalle con " · ". */
-function joinDetail(parts: (string | null | undefined)[]): string {
-  return parts
-    .map((p) => (p ?? "").toString().trim())
-    .filter(Boolean)
-    .join(" · ")
-}
-
-/**
- * Compone el detalle del pasajero a partir del objeto estructurado
- * (operation_operators.passenger_detail) cargado por la agencia, según el tipo.
- * Devuelve "" si no hay nada cargado (el caller cae al fallback de tramos).
- */
-function structuredDetail(pd: any, kind: ServiceKind): string {
-  if (!pd || typeof pd !== "object") return ""
-  if (kind === "HOTEL") {
-    const range =
-      pd.checkin && pd.checkout
-        ? `Del ${fmtShort(pd.checkin)} al ${fmtShort(pd.checkout)}`
-        : ""
-    return joinDetail([pd.hotel_name, pd.room_type, pd.meal_plan, range])
-  }
-  if (kind === "FLIGHT") {
-    return joinDetail([pd.airline, pd.flight_info, fmtShort(pd.flight_date)])
-  }
-  return (pd.detail || "").toString().trim()
-}
-
 /**
  * Arma el detalle de la operación para el PDF/email.
  *
@@ -198,7 +171,9 @@ export async function buildOperationStatementData(params: {
     website: getSetting("website"),
     taxId: getSetting("tax_id"),
     email: getSetting("email"),
-    logo: getSetting("brand_logo"),
+    // `brand_logo` guarda la URL pública de Storage: hay que bajarla, jsPDF no
+    // descarga nada. Si no se puede, queda "" y el PDF cae al nombre.
+    logo: await toEmbeddableLogo(getSetting("brand_logo")),
   }
 
   // --- Cliente MAIN + destinatario sugerido ---
@@ -261,7 +236,7 @@ export async function buildOperationStatementData(params: {
     const kind = serviceKind(oo.product_type)
     // Prioridad: detalle estructurado cargado por la agencia > tramos > campos
     // de la operación > blanco. NUNCA el operador mayorista.
-    let description = structuredDetail(oo.passenger_detail, kind)
+    let description = formatPassengerDetail(oo.passenger_detail, kind)
     if (!description) {
       if (kind === "HOTEL") {
         const leg = hotelLegs.shift()

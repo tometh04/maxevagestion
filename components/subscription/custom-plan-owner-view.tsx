@@ -34,6 +34,7 @@ export function CustomPlanOwnerView({
   org,
   checkoutUrl,
   canManageBilling = false,
+  proPriceArs,
 }: {
   plan: CustomPlan
   org: Org
@@ -41,6 +42,8 @@ export function CustomPlanOwnerView({
   checkoutUrl: string | null
   /** True si el user es ADMIN/SUPER_ADMIN del org → puede programar/deshacer el downgrade. */
   canManageBilling?: boolean
+  /** Precio de lista vigente de PRO, resuelto server-side (para el downgrade). */
+  proPriceArs: number | null
 }) {
   const enterpriseFeatures = PLANS.ENTERPRISE.features
   const effective = plan.base_price_ars * (1 - (plan.discount_percent ?? 0) / 100)
@@ -243,6 +246,7 @@ export function CustomPlanOwnerView({
                 <DowngradeDialog
                   effectiveAt={org.current_period_ends_at}
                   lostExtras={lostExtras}
+                  proPriceArs={proPriceArs}
                 />
               </div>
             )

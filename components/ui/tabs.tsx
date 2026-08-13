@@ -12,7 +12,13 @@ const TabsList = React.forwardRef<
   <TabsPrimitive.List
     ref={ref}
     className={cn(
-      "inline-flex items-center justify-center bg-transparent border-b border-border/40 rounded-none p-0 h-auto gap-0 text-muted-foreground",
+      // `max-w-full flex-wrap` hace que la barra pase a una segunda fila cuando
+      // hay más tabs de los que entran a lo ancho (Reportes, etc.) en vez de
+      // cortarse: así se ven y se pueden clickear todos sin scroll ni hovers
+      // escondidos. Con pocos tabs se comporta igual que antes (una sola fila
+      // del ancho de su contenido). `justify-start` alinea las filas a la
+      // izquierda. Mismo criterio que ya usa la pantalla de Configuración.
+      "inline-flex flex-wrap items-center justify-start bg-transparent border-b border-border/40 rounded-none p-0 h-auto gap-0 text-muted-foreground max-w-full",
       className
     )}
     {...props}

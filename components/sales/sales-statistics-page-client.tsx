@@ -55,8 +55,12 @@ interface SalesStatistics {
     totalLeads: number
     activeLeads: number
     wonLeads: number
+    realSales: number
+    manualSales: number
+    discardedLeads: number
     lostLeads: number
     conversionRate: number
+    realConversionRate: number
     totalDeposits: number
     newThisMonth: number
   }
@@ -415,7 +419,12 @@ export function SalesStatisticsPageClient() {
               <p className={`text-base font-semibold ${stats.overview.conversionRate >= 20 ? 'text-success' : stats.overview.conversionRate >= 10 ? 'text-accent-coral' : 'text-destructive'}`}>
                 {stats.overview.conversionRate}%
               </p>
-              <p className="text-[10px] text-muted-foreground">{stats.overview.wonLeads} convertidos</p>
+              <p className="text-[10px] text-muted-foreground">
+                {stats.overview.realSales} ventas
+                {stats.overview.manualSales > 0 && (
+                  <span className="text-muted-foreground/70"> (+{stats.overview.manualSales} s/op)</span>
+                )}
+              </p>
             </div>
           </div>
         </Card>
@@ -662,7 +671,7 @@ export function SalesStatisticsPageClient() {
 
           {/* Info adicional */}
           <div className="flex items-center justify-between text-[10px] text-muted-foreground px-1">
-            <span>{stats.overview.activeLeads} activos • {stats.overview.wonLeads} convertidos • {stats.overview.lostLeads} perdidos</span>
+            <span>{stats.overview.activeLeads} activos • {stats.overview.realSales} ventas reales • {stats.overview.manualSales} ventas s/op • {stats.overview.discardedLeads} descartados</span>
             <span>Total depósitos: {formatFullCurrency(stats.overview.totalDeposits)}</span>
           </div>
         </TabsContent>

@@ -59,9 +59,11 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { cn } from "@/lib/utils"
+import { parseDateOnlyLocal, formatDateOnlyLocal } from "@/lib/utils/date-only"
 import { downloadReceiptPdf } from "@/lib/pdf/receipt-pdf"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
+import { PAYMENT_METHODS } from "@/lib/payments/payment-methods"
 import {
   calculateAmountInSaleCurrency,
   coercePositiveNumber,
@@ -172,15 +174,8 @@ const SERVICE_LABELS: Record<ServiceType, string> = {
   VISA: "Visa",
 }
 
-const paymentMethods = [
-  { value: "Transferencia", label: "Transferencia Bancaria" },
-  { value: "Efectivo", label: "Efectivo" },
-  { value: "Tarjeta Crédito", label: "Tarjeta de Crédito" },
-  { value: "Tarjeta Débito", label: "Tarjeta de Débito" },
-  { value: "MercadoPago", label: "MercadoPago" },
-  { value: "PayPal", label: "PayPal" },
-  { value: "Otro", label: "Otro" },
-]
+// VIB-107: catálogo único en lib/payments/payment-methods.ts.
+const paymentMethods = PAYMENT_METHODS
 
 const formatCurrency = (amount: number, currency: Currency | string) => {
   const formatted = new Intl.NumberFormat("es-AR", {
@@ -314,9 +309,12 @@ export function OperationServicesSection({
         saleCurrency: customerIncomeReferenceCurrency,
       })
     : false
+  // Pago al operador del servicio: el TC solo aplica si la moneda del pago difiere
+  // de la moneda del COSTO del servicio. Pagar ARS un costo en ARS no tiene
+  // conversión, así que no se pide TC (evita el amount_usd basura por TC=1).
   const showExchangeRateField = selectedPayerType === "CUSTOMER"
     ? needsCustomerIncomeManualExchangeRate
-    : selectedPaymentCurrency === "ARS"
+    : !!selectedService && selectedPaymentCurrency !== selectedService.cost_currency
   const paymentAmountValue = Number(selectedPaymentAmount) || 0
   const selectedExchangeRateNumber = coercePositiveNumber(selectedExchangeRate)
   const exchangeRatePreview = selectedService && selectedExchangeRateNumber && paymentAmountValue > 0
@@ -631,13 +629,13 @@ export function OperationServicesSection({
           paymentCurrency: values.currency,
           saleCurrency: getCustomerIncomeReferenceCurrency({ service }),
         })
-      : values.currency === "ARS"
+      : values.currency !== service.cost_currency
 
     if (requiresManualExchangeRate && !values.exchange_rate) {
       paymentForm.setError("exchange_rate", {
         message: values.payer_type === "CUSTOMER"
           ? "Ingresá el tipo de cambio para convertir el cobro a la moneda del servicio"
-          : "Ingresá el tipo de cambio para ARS",
+          : "Ingresá el tipo de cambio: la moneda del pago difiere de la moneda del costo del servicio",
       })
       return
     }
@@ -652,8 +650,8 @@ export function OperationServicesSection({
       currency: values.currency,
       financial_account_id: values.financial_account_id,
       exchange_rate: requiresManualExchangeRate ? values.exchange_rate : null,
-      date_paid: values.date_paid.toISOString().split("T")[0],
-      date_due: values.date_paid.toISOString().split("T")[0],
+      date_paid: formatDateOnlyLocal(values.date_paid),
+      date_due: formatDateOnlyLocal(values.date_paid),
       status: "PAID",
       notes: values.notes,
     }
@@ -970,7 +968,7 @@ export function OperationServicesSection({
                             try {
                               const d = p.date_paid || p.date_due
                               if (!d) return "-"
-                              return format(new Date(d), "dd/MM/yyyy", { locale: es })
+                              return format(parseDateOnlyLocal(d) ?? new Date(d), "dd/MM/yyyy", { locale: es })
                             } catch { return "-" }
                           })()}
                         </TableCell>

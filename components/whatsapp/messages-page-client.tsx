@@ -74,6 +74,11 @@ interface MessagesPageClientProps {
   agencies: Array<{ id: string; name: string }>
   userId: string
   userRole: string
+  /** Conteos EXACTOS del server para los estados que se acumulan (no derivados
+   *  de la lista cargada). Las pendientes se cuentan del set cargado (todas
+   *  entran). VIB-61 audit. */
+  sentCount: number
+  skippedCount: number
 }
 
 export function MessagesPageClient({
@@ -82,6 +87,8 @@ export function MessagesPageClient({
   agencies,
   userId,
   userRole,
+  sentCount,
+  skippedCount,
 }: MessagesPageClientProps) {
   const [messages, setMessages] = useState(initialMessages)
   const [filter, setFilter] = useState("PENDING")
@@ -90,6 +97,9 @@ export function MessagesPageClient({
   const [templatesOpen, setTemplatesOpen] = useState(false)
   const [dateFilter, setDateFilter] = useState<"TODAY" | "TOMORROW" | "THIS_WEEK" | "ALL">("TODAY")
   const canManageAutomations = userRole === "SUPER_ADMIN" || userRole === "ADMIN"
+  // Conteos exactos del server (SENT/SKIPPED se acumulan); los ajustamos local
+  // al marcar/omitir. PENDING se cuenta de lo cargado (todas entran).
+  const [serverCounts, setServerCounts] = useState({ sent: sentCount, skipped: skippedCount })
 
   // Filtrar mensajes por fecha y estado
   const filteredMessages = messages.filter((msg) => {
@@ -134,18 +144,27 @@ export function MessagesPageClient({
     return true
   })
 
+  // PENDING sale del set cargado (traemos todas las pendientes). SENT/SKIPPED
+  // son los conteos exactos del server (solo cargamos las recientes en la lista).
   const counts = {
     PENDING: messages.filter((m) => m.status === "PENDING").length,
-    SENT: messages.filter((m) => m.status === "SENT").length,
-    SKIPPED: messages.filter((m) => m.status === "SKIPPED").length,
+    SENT: serverCounts.sent,
+    SKIPPED: serverCounts.skipped,
   }
 
   async function fetchMessages() {
     setLoading(true)
     try {
-      const response = await fetch("/api/whatsapp/messages?status=ALL&limit=2000")
-      const data = await response.json()
-      setMessages(data.messages || [])
+      // VIB-61 (audit): recargamos TODAS las pendientes + las recientes de cada
+      // estado (igual que el server render), para no cortar pendientes recientes
+      // como pasaba con el fetch único de 2000 ordenado por fecha ascendente.
+      const [pRes, sRes, kRes] = await Promise.all([
+        fetch("/api/whatsapp/messages?status=PENDING&limit=2000"),
+        fetch("/api/whatsapp/messages?status=SENT&limit=500"),
+        fetch("/api/whatsapp/messages?status=SKIPPED&limit=500"),
+      ])
+      const [p, s, k] = await Promise.all([pRes.json(), sRes.json(), kRes.json()])
+      setMessages([...(p.messages || []), ...(s.messages || []), ...(k.messages || [])])
     } catch (error) {
       console.error("Error fetching messages:", error)
     } finally {
@@ -206,6 +225,13 @@ export function MessagesPageClient({
 
       if (response.ok) {
         const targetMessage = messages.find((message) => message.id === messageId)
+        const prev = targetMessage?.status
+        if (prev && prev !== "SENT") {
+          setServerCounts((c) => ({
+            sent: c.sent + 1,
+            skipped: prev === "SKIPPED" ? Math.max(0, c.skipped - 1) : c.skipped,
+          }))
+        }
         setMessages(messages.map((m) =>
           m.id === messageId ? { ...m, status: "SENT", sent_at: new Date().toISOString() } : m
         ))
@@ -230,6 +256,13 @@ export function MessagesPageClient({
 
       if (response.ok) {
         const targetMessage = messages.find((message) => message.id === messageId)
+        const prev = targetMessage?.status
+        if (prev && prev !== "SKIPPED") {
+          setServerCounts((c) => ({
+            skipped: c.skipped + 1,
+            sent: prev === "SENT" ? Math.max(0, c.sent - 1) : c.sent,
+          }))
+        }
         setMessages(messages.map((m) =>
           m.id === messageId ? { ...m, status: "SKIPPED" } : m
         ))

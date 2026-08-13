@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { trackEvent } from "@/lib/analytics/track"
 
 const PLANS = [
   { id: "STARTER", title: "Starter", users: 3, agencies: 1, ops: 50, desc: "Para agencias recién empezando." },
@@ -45,6 +46,13 @@ export default function OnboardingPage() {
         setSubmitting(false)
         return
       }
+      // Solo señales de completitud del formulario: ni el nombre de la agencia,
+      // ni el mail de facturación, ni el CUIT salen del navegador.
+      trackEvent("onboarding_org_created", {
+        plan_id: plan,
+        has_billing_contact: billingEmail.trim().length > 0,
+        has_tax_id: cuit.trim().length > 0,
+      })
       // Éxito — redirigir al dashboard.
       router.replace("/dashboard")
     } catch (err: any) {

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
-import { parseDateOnlyLocal } from "@/lib/utils/date-only"
+import { parseDateOnlyLocal, formatDateOnlyLocal } from "@/lib/utils/date-only"
 import { Badge } from "@/components/ui/badge"
 import {
   Table,
@@ -63,6 +63,7 @@ import { cn } from "@/lib/utils"
 import { downloadReceiptPdf } from "@/lib/pdf/receipt-pdf"
 import {
   calculateAmountInSaleCurrency,
+  isExchangeRatePlausibleVsMarket,
   normalizeSupportedCurrency,
   requiresCustomerIncomeExchangeRate,
 } from "@/lib/payments/customer-income-fx"
@@ -74,6 +75,8 @@ import {
 } from "@/lib/operations/payment-operators"
 import { normalizePaymentMethodForForm } from "@/lib/accounting/payment-counterparts"
 import { pickExactPendingMatch } from "@/lib/accounting/operator-payment-settlement"
+import { useCan } from "@/components/permissions/permissions-provider"
+import { paymentMethodOptionsFor } from "@/lib/payments/payment-methods"
 
 interface FinancialAccount {
   id: string
@@ -129,15 +132,10 @@ const editPaymentSchema = z.object({
 
 type EditPaymentFormValues = z.infer<typeof editPaymentSchema>
 
-const paymentMethods = [
-  { value: "Transferencia", label: "Transferencia Bancaria" },
-  { value: "Efectivo", label: "Efectivo" },
-  { value: "Tarjeta Crédito", label: "Tarjeta de Crédito" },
-  { value: "Tarjeta Débito", label: "Tarjeta de Débito" },
-  { value: "MercadoPago", label: "MercadoPago" },
-  { value: "PayPal", label: "PayPal" },
-  { value: "Otro", label: "Otro" },
-]
+// VIB-107: catálogo único en lib/payments/payment-methods.ts. Acá se usa
+// paymentMethodOptionsFor(field.value) en vez de la lista pelada: estos Select
+// EDITAN pagos ya guardados, y si el método histórico no está entre las opciones
+// el campo queda vacío y al guardar se pisa solo.
 
 const NO_BASE_OPERATOR_DEBT_MESSAGE =
   "No hay deudas pendientes de la operación base. Si necesitás pagar un servicio, hacelo desde la pestaña Servicios."
@@ -181,6 +179,11 @@ export function OperationPaymentsSection({
   paymentWithholdings = [],
 }: OperationPaymentsSectionProps) {
   const router = useRouter()
+  // Permiso resuelto por agencia (matrix dinámico). El botón "Registrar Pago"
+  // (egreso / pago a operador) ya NO depende de un rol fijo: si la agencia
+  // habilita cash.write para el rol, el vendedor puede imputar pagos. El server
+  // (/api/payments POST) valida lo mismo con cash.write.
+  const canWriteCash = useCan("cash", "write")
   const [incomeDialogOpen, setIncomeDialogOpen] = useState(false)
   const [expenseDialogOpen, setExpenseDialogOpen] = useState(false)
   const [refundDialogOpen, setRefundDialogOpen] = useState(false)
@@ -190,11 +193,16 @@ export function OperationPaymentsSection({
   const [downloadingReceiptId, setDownloadingReceiptId] = useState<string | null>(null)
   const [sendingReceiptId, setSendingReceiptId] = useState<string | null>(null)
   const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([])
+  // TC de referencia del mercado (ARS por 1 USD) para pre-cargar y validar el TC
+  // de cobros/devoluciones ARS↔USD (evita que se cargue un TC absurdo tipo 1).
+  const [marketArsPerUsd, setMarketArsPerUsd] = useState<number | null>(null)
   // Bank tax (Ley 25413) — for income and expense dialogs
   const [applyBankTaxIncome, setApplyBankTaxIncome] = useState(false)
   const [bankTaxRateIncome, setBankTaxRateIncome] = useState<string>("0.6")
   const [applyBankTaxExpense, setApplyBankTaxExpense] = useState(false)
   const [bankTaxRateExpense, setBankTaxRateExpense] = useState<string>("0.6")
+  const [applyBankTaxEdit, setApplyBankTaxEdit] = useState(false)
+  const [bankTaxRateEdit, setBankTaxRateEdit] = useState<string>("0.6")
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [editingPayment, setEditingPayment] = useState<any>(null)
   const [markAsPaid, setMarkAsPaid] = useState(false)
@@ -232,6 +240,10 @@ export function OperationPaymentsSection({
   // Optimistic: due_date override por id para reflejar el cambio antes de router.refresh()
   const [dueDateOverrides, setDueDateOverrides] = useState<Record<string, string | null>>({})
   const operatorNameById = new Map(operators.map((operator) => [operator.id, operator.name]))
+  // Nombre de la cuenta financiera por id — para mostrar en qué cuenta impactó
+  // cada cobro/devolución del cliente (pedido VICO). Se arma desde la misma
+  // lista que puebla el dropdown al registrar el pago, así que siempre matchea.
+  const accountNameById = new Map(financialAccounts.map((a) => [a.id, a.name]))
   const customerSaleCurrency = normalizeSupportedCurrency(saleCurrency || currency)
 
   const withholdingsByPayment = useMemo(() => {
@@ -319,6 +331,15 @@ export function OperationPaymentsSection({
         }
       }
       fetchFinancialAccounts()
+
+      // TC de referencia del mercado — para pre-cargar y validar cobros ARS↔USD.
+      fetch("/api/exchange-rates/latest?fromCurrency=USD&toCurrency=ARS")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          const rate = Number(d?.rate)
+          if (rate > 0) setMarketArsPerUsd(rate)
+        })
+        .catch(() => {})
     }
   }, [incomeDialogOpen, expenseDialogOpen, editDialogOpen, refundDialogOpen])
 
@@ -377,7 +398,7 @@ export function OperationPaymentsSection({
   }
 
   const handleSaveDueDate = async (operatorPaymentId: string, date: Date | undefined) => {
-    const dueDateStr = date ? date.toISOString().split("T")[0] : null
+    const dueDateStr = date ? formatDateOnlyLocal(date) : null
     setSavingDueDateId(operatorPaymentId)
     try {
       const res = await fetch(`/api/accounting/operator-payments/${operatorPaymentId}`, {
@@ -523,7 +544,11 @@ export function OperationPaymentsSection({
     },
   })
   const refundCurrency = refundForm.watch("currency")
-  const refundNeedsExchangeRate = refundCurrency === "ARS"
+  // Igual que el cobro: el TC solo aplica si la moneda de la devolución difiere de
+  // la moneda de la venta. Devolver ARS en una operación ARS no tiene conversión,
+  // así que no se pide TC (evita el amount_usd basura por TC=1).
+  const refundNeedsExchangeRate =
+    normalizeSupportedCurrency(refundCurrency) !== customerSaleCurrency
 
   useEffect(() => {
     const currentOperatorPaymentId = expenseForm.getValues("operator_payment_id")
@@ -593,6 +618,21 @@ export function OperationPaymentsSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expenseDialogOpen, openOperatorDebts, watchedExpenseAmount, watchedExpenseCurrency])
 
+  // El TC en un pago a operador SOLO tiene sentido cuando la moneda del pago
+  // difiere de la moneda de la deuda del operador (misma lógica que el cobro al
+  // cliente vs. la moneda de la venta). Si la deuda es ARS y se paga en ARS, no
+  // hay conversión: pedir un TC obligaba al usuario a inventar un "1", lo que
+  // guardaba un amount_usd basura (= monto en ARS) en la columna Equiv. USD.
+  const watchedExpenseOperatorPaymentId = expenseForm.watch("operator_payment_id")
+  const selectedExpenseDebt = useMemo(
+    () => openOperatorDebts.find((d) => d.id === watchedExpenseOperatorPaymentId) || null,
+    [openOperatorDebts, watchedExpenseOperatorPaymentId]
+  )
+  const expenseNeedsExchangeRate =
+    !!selectedExpenseDebt &&
+    normalizeSupportedCurrency(watchedExpenseCurrency) !==
+      normalizeSupportedCurrency(selectedExpenseDebt.currency)
+
   const selectedExpenseAccount = useMemo(
     () => financialAccounts.find((a) => a.id === watchedExpenseAccountId) || null,
     [financialAccounts, watchedExpenseAccountId]
@@ -628,7 +668,9 @@ export function OperationPaymentsSection({
     },
   })
 
-  const canEditPayments = ["ADMIN", "SUPER_ADMIN", "CONTABLE"].includes(userRole)
+  // Editar pago = cash.write (matrix por agencia). El servidor
+  // (/api/payments PATCH) valida el mismo permiso.
+  const canEditPayments = canWriteCash
   const incomePaymentCurrency = incomeForm.watch("currency")
   const incomeNeedsExchangeRate = requiresCustomerIncomeExchangeRate({
     payerType: "CUSTOMER",
@@ -636,9 +678,34 @@ export function OperationPaymentsSection({
     paymentCurrency: incomePaymentCurrency,
     saleCurrency: customerSaleCurrency,
   })
+
+  // Pre-cargar el TC de referencia en el diálogo de cobro cuando hace falta y el
+  // campo está vacío. Así el usuario no tiene que inventarlo (evita el "1" que
+  // hacía amount_usd = monto en ARS y destruía la deuda del cliente).
+  useEffect(() => {
+    if (
+      incomeDialogOpen &&
+      incomeNeedsExchangeRate &&
+      marketArsPerUsd &&
+      !incomeForm.getValues("exchange_rate")
+    ) {
+      incomeForm.setValue("exchange_rate", marketArsPerUsd)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [incomeDialogOpen, incomeNeedsExchangeRate, marketArsPerUsd])
+
   const editPaymentCurrency = editForm.watch("currency")
   const isEditingCustomerIncome =
     editingPayment?.payer_type === "CUSTOMER" && editingPayment?.direction === "INCOME"
+  // Para pagos a operador el TC solo aplica si la moneda del pago difiere de la
+  // moneda de la deuda del operador (mismo criterio que crear). Si no se puede
+  // resolver la deuda (pago legacy sin link), cae al criterio viejo (ARS).
+  const editOperatorDebt =
+    editingPayment?.payer_type === "OPERATOR"
+      ? (operatorPayments || []).find(
+          (op: any) => op.id === editingPayment?.operator_payment_id
+        )
+      : null
   const editNeedsExchangeRate = isEditingCustomerIncome
     ? requiresCustomerIncomeExchangeRate({
         payerType: editingPayment?.payer_type,
@@ -646,7 +713,33 @@ export function OperationPaymentsSection({
         paymentCurrency: editPaymentCurrency,
         saleCurrency: customerSaleCurrency,
       })
-    : editPaymentCurrency === "ARS"
+    : editingPayment?.payer_type === "OPERATOR" && editOperatorDebt
+      ? normalizeSupportedCurrency(editPaymentCurrency) !==
+        normalizeSupportedCurrency((editOperatorDebt as any).currency)
+      : editPaymentCurrency === "ARS"
+
+  // Bank tax (Ley 25413): computed values for EDIT dialog — mismo patrón que
+  // los diálogos de crear (income/expense). El impuesto solo se ofrece cuando
+  // la cuenta financiera seleccionada tiene una tasa configurada (> 0).
+  const watchedEditAccountId = editForm.watch("financial_account_id")
+  const watchedEditAmount = editForm.watch("amount")
+  const selectedEditAccount = useMemo(
+    () => financialAccounts.find((a) => a.id === watchedEditAccountId) || null,
+    [financialAccounts, watchedEditAccountId]
+  )
+  const editAccountHasBankTax = selectedEditAccount?.bank_tax_rate != null && selectedEditAccount.bank_tax_rate > 0
+  const bankTaxAmountEdit = useMemo(() => {
+    if (!applyBankTaxEdit || !watchedEditAmount) return 0
+    const rate = Number(bankTaxRateEdit) || 0
+    return Math.round(watchedEditAmount * (rate / 100) * 100) / 100
+  }, [applyBankTaxEdit, watchedEditAmount, bankTaxRateEdit])
+
+  useEffect(() => {
+    if (selectedEditAccount?.bank_tax_rate != null && selectedEditAccount.bank_tax_rate > 0) {
+      setBankTaxRateEdit(String(selectedEditAccount.bank_tax_rate))
+    }
+    setApplyBankTaxEdit(false)
+  }, [selectedEditAccount])
 
   const formatSaleCurrencyPreview = (amount: number, paymentCurrency: string, exchangeRate?: number | null) => {
     const equivalent = calculateAmountInSaleCurrency({
@@ -724,13 +817,16 @@ export function OperationPaymentsSection({
           amount: values.amount,
           currency: values.currency,
           method: values.method,
-          date_paid: values.date_paid.toISOString().split("T")[0],
+          date_paid: formatDateOnlyLocal(values.date_paid),
           exchange_rate: editNeedsExchangeRate ? values.exchange_rate : null,
           financial_account_id: values.financial_account_id || null,
           notes: values.notes,
           markAsPaid: markAsPaid || undefined,
           apply_rg5617: markAsPaid ? applyRg5617Edit : undefined,
           apply_rg3819: markAsPaid ? applyRg3819Edit : undefined,
+          // Ley 25413: solo mandamos el impuesto si el user lo tildó y hay monto.
+          bank_tax_rate: applyBankTaxEdit && bankTaxAmountEdit > 0 ? Number(bankTaxRateEdit) : undefined,
+          bank_tax_amount: applyBankTaxEdit && bankTaxAmountEdit > 0 ? bankTaxAmountEdit : undefined,
         }),
       })
 
@@ -888,10 +984,25 @@ export function OperationPaymentsSection({
       return
     }
 
+    // Sanidad del TC: un valor absurdo (ej. 1) hacía amount_usd = monto en ARS y
+    // destruía la deuda del cliente. Bloqueamos valores off por orden de magnitud
+    // vs el TC de referencia. (El backend valida lo mismo como red de seguridad.)
+    if (
+      incomeNeedsExchangeRate &&
+      values.exchange_rate &&
+      marketArsPerUsd &&
+      !isExchangeRatePlausibleVsMarket(Number(values.exchange_rate), marketArsPerUsd)
+    ) {
+      toast.error(
+        `El tipo de cambio (${values.exchange_rate}) parece incorrecto. El de referencia es ~${Math.round(marketArsPerUsd)} ARS por USD.`
+      )
+      return
+    }
+
     setIsLoading(true)
     try {
       const { payer_type, direction, payer_name, ...restValues } = values
-      const datePaidStr = values.date_paid.toISOString().split("T")[0]
+      const datePaidStr = formatDateOnlyLocal(values.date_paid)
       const body: Record<string, unknown> = {
         operation_id: operationId,
         payer_type: "CUSTOMER",
@@ -964,9 +1075,16 @@ export function OperationPaymentsSection({
       return
     }
 
-    // Validar tipo de cambio si es ARS
-    if (values.currency === "ARS" && !values.exchange_rate) {
-      toast.error("Debe ingresar el tipo de cambio para pagos en ARS")
+    // Validar tipo de cambio solo cuando la moneda del pago difiere de la moneda
+    // de la deuda del operador (p. ej. deuda en USD y se paga en ARS). Si coinciden
+    // (deuda ARS pagada en ARS) no hay conversión y no se pide TC.
+    const expenseDebt = openOperatorDebts.find((d) => d.id === values.operator_payment_id)
+    const submitNeedsExchangeRate =
+      !!expenseDebt &&
+      normalizeSupportedCurrency(values.currency) !==
+        normalizeSupportedCurrency(expenseDebt.currency)
+    if (submitNeedsExchangeRate && !values.exchange_rate) {
+      toast.error("Debe ingresar el tipo de cambio: la moneda del pago difiere de la deuda del operador")
       return
     }
 
@@ -983,9 +1101,9 @@ export function OperationPaymentsSection({
         operator_payment_id: operator_payment_id || null,
         ...restValues,
         financial_account_id: values.financial_account_id,
-        exchange_rate: values.currency === "ARS" ? values.exchange_rate : null,
-        date_paid: values.date_paid.toISOString().split("T")[0],
-        date_due: values.date_paid.toISOString().split("T")[0],
+        exchange_rate: submitNeedsExchangeRate ? values.exchange_rate : null,
+        date_paid: formatDateOnlyLocal(values.date_paid),
+        date_due: formatDateOnlyLocal(values.date_paid),
         status: "PAID",
       }
 
@@ -1018,13 +1136,13 @@ export function OperationPaymentsSection({
       return
     }
     if (refundNeedsExchangeRate && !values.exchange_rate) {
-      toast.error("Debe ingresar el tipo de cambio para devoluciones en ARS")
+      toast.error("Debe ingresar el tipo de cambio: la moneda de la devolución difiere de la moneda de la operación")
       return
     }
 
     setIsLoading(true)
     try {
-      const datePaidStr = values.date_paid.toISOString().split("T")[0]
+      const datePaidStr = formatDateOnlyLocal(values.date_paid)
       const body: Record<string, unknown> = {
         operation_id: operationId,
         payer_type: "CUSTOMER",
@@ -1193,7 +1311,7 @@ export function OperationPaymentsSection({
                     <span className={`text-xs ${isOverdue && !isPaid ? "text-destructive font-medium" : "text-muted-foreground"}`}>
                       {dueDate ? format(dueDate, "dd/MM/yyyy", { locale: es }) : "Sin fecha"}
                     </span>
-                    {(userRole === "ADMIN" || userRole === "SUPER_ADMIN") && (
+                    {canWriteCash && (
                       <Popover
                         open={editingDueDateId === opId}
                         onOpenChange={(open) => setEditingDueDateId(open ? opId : null)}
@@ -1283,20 +1401,30 @@ export function OperationPaymentsSection({
               </Button>
             )}
             {/* Botón Registrar Cobro - visible para todos */}
-            <Button onClick={() => setIncomeDialogOpen(true)} size="sm" variant="default">
+            <Button
+              onClick={() => setIncomeDialogOpen(true)}
+              size="sm"
+              variant="default"
+              data-tour="op-cobro.boton"
+            >
               <Plus className="mr-2 h-4 w-4" />
               Registrar Cobro
             </Button>
-            {/* Botón Registrar Pago - solo para ADMIN y SUPER_ADMIN */}
-            {(userRole === "ADMIN" || userRole === "SUPER_ADMIN") && (
-              <Button onClick={() => setExpenseDialogOpen(true)} size="sm" variant="outline">
+            {/* Botón Registrar Pago - habilitado por cash.write (matrix por agencia) */}
+            {canWriteCash && (
+              <Button
+                onClick={() => setExpenseDialogOpen(true)}
+                size="sm"
+                variant="outline"
+                data-tour="op-pago.boton"
+              >
               <Plus className="mr-2 h-4 w-4" />
               Registrar Pago
             </Button>
             )}
             {/* Botón Registrar Devolución - egreso hacia el cliente (reintegro de seña).
-                Mueve plata fuera de caja → solo ADMIN y SUPER_ADMIN. */}
-            {(userRole === "ADMIN" || userRole === "SUPER_ADMIN") && (
+                Mueve plata fuera de caja → cash.write (matrix por agencia). */}
+            {canWriteCash && (
               <Button
                 onClick={() => setRefundDialogOpen(true)}
                 size="sm"
@@ -1336,7 +1464,7 @@ export function OperationPaymentsSection({
                         try {
                           const d = payment.date_paid || payment.date_due
                           if (!d) return "-"
-                          return format(new Date(d), "dd/MM/yyyy", { locale: es })
+                          return format(parseDateOnlyLocal(d) ?? new Date(d), "dd/MM/yyyy", { locale: es })
                         } catch { return "-" }
                       })()}
                     </TableCell>
@@ -1375,6 +1503,11 @@ export function OperationPaymentsSection({
                           {payment.payer_type === "OPERATOR" && payment.operator_id && (
                             <span className="text-xs font-medium">
                               {operatorNameById.get(payment.operator_id) || "Operador seleccionado"}
+                            </span>
+                          )}
+                          {payment.payer_type === "CUSTOMER" && payment.financial_account_id && accountNameById.get(payment.financial_account_id) && (
+                            <span className="text-xs font-medium">
+                              {accountNameById.get(payment.financial_account_id)}
                             </span>
                           )}
                           {withholdingsByPayment.get(payment.id)?.map((w, i) => (
@@ -1584,7 +1717,7 @@ export function OperationPaymentsSection({
                   control={incomeForm.control}
                   name="method"
                   render={({ field }) => (
-                    <FormItem>
+                    <FormItem data-tour="op-cobro.metodo">
                       <FormLabel>Método de Pago</FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
@@ -1593,7 +1726,7 @@ export function OperationPaymentsSection({
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {paymentMethods.map((method) => (
+                          {paymentMethodOptionsFor(field.value).map((method) => (
                             <SelectItem key={method.value} value={method.value}>
                               {method.label}
                             </SelectItem>
@@ -1610,7 +1743,7 @@ export function OperationPaymentsSection({
                     control={incomeForm.control}
                     name="amount"
                     render={({ field }) => (
-                      <FormItem>
+                      <FormItem data-tour="op-cobro.monto">
                         <FormLabel>Monto</FormLabel>
                         <FormControl>
                           <DecimalInput {...field} />
@@ -1624,7 +1757,7 @@ export function OperationPaymentsSection({
                     control={incomeForm.control}
                     name="currency"
                     render={({ field }) => (
-                      <FormItem>
+                      <FormItem data-tour="op-cobro.moneda">
                         <FormLabel>Moneda</FormLabel>
                         <Select onValueChange={field.onChange} defaultValue={field.value}>
                           <FormControl>
@@ -1649,7 +1782,7 @@ export function OperationPaymentsSection({
                   control={incomeForm.control}
                   name="exchange_rate"
                   render={({ field }) => (
-                    <FormItem>
+                    <FormItem data-tour="op-cobro.tipo-cambio">
                       <FormLabel>Tipo de Cambio (ARS por 1 USD)</FormLabel>
                       <FormControl>
                         <DecimalInput
@@ -1684,7 +1817,7 @@ export function OperationPaymentsSection({
                     control={incomeForm.control}
                     name="date_paid"
                     render={({ field }) => (
-                      <FormItem className="flex flex-col">
+                      <FormItem className="flex flex-col" data-tour="op-cobro.fecha">
                         <FormLabel>Fecha del Cobro</FormLabel>
                         <Popover>
                           <PopoverTrigger asChild>
@@ -1723,7 +1856,7 @@ export function OperationPaymentsSection({
                     control={incomeForm.control}
                     name="financial_account_id"
                     render={({ field }) => (
-                      <FormItem>
+                      <FormItem data-tour="op-cobro.cuenta">
                         <FormLabel>Cuenta Financiera *</FormLabel>
                         <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
@@ -1758,7 +1891,10 @@ export function OperationPaymentsSection({
 
               {/* Bank tax (Ley 25413) — semi-automatic deduction for bank accounts */}
               {incomeAccountHasBankTax && (
-                <div className="rounded-[var(--vb-r-sm)] border border-[var(--vb-border)] bg-background/60 p-3 space-y-3">
+                <div
+                  className="rounded-[var(--vb-r-sm)] border border-[var(--vb-border)] bg-background/60 p-3 space-y-3"
+                  data-tour="op-cobro.impuesto-ley"
+                >
                   <div className="flex items-center gap-2">
                     <Checkbox
                       id="bank-tax-income"
@@ -1801,7 +1937,7 @@ export function OperationPaymentsSection({
                 const watchedCurrency = incomeForm.watch("currency")
                 const isCash = watchedMethod === "Efectivo"
                 return (
-                  <div className="rounded-[var(--vb-r-sm)] border border-accent-coral/30 bg-accent-coral/5 p-4 space-y-3">
+                  <div className="rounded-[var(--vb-r-sm)] border border-accent-coral/30 bg-accent-coral/5 p-4 space-y-3" data-tour="op-cobro.percepciones">
                     <div className="flex items-center gap-1.5">
                       <Receipt className="h-3.5 w-3.5 text-accent-coral" />
                       <span className="text-xs font-medium text-foreground/70">Percepciones Impositivas</span>
@@ -1855,7 +1991,7 @@ export function OperationPaymentsSection({
                 control={incomeForm.control}
                 name="notes"
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem data-tour="op-cobro.notas">
                     <FormLabel className="flex items-center gap-1.5"><StickyNote className="h-3 w-3 text-muted-foreground" /> Notas (opcional)</FormLabel>
                     <FormControl>
                       <Input placeholder="Referencia, comprobante, etc." {...field} />
@@ -1881,7 +2017,7 @@ export function OperationPaymentsSection({
                     control={incomeForm.control}
                     name="payer_name"
                     render={({ field }) => (
-                      <FormItem>
+                      <FormItem data-tour="op-cobro.quien-abona">
                         <FormLabel>¿Quién abona? (opcional)</FormLabel>
                         <Select
                           onValueChange={(v) => {
@@ -1922,7 +2058,7 @@ export function OperationPaymentsSection({
                 <Button type="button" variant="outline" onClick={() => setIncomeDialogOpen(false)}>
                   Cancelar
                 </Button>
-                <Button type="submit" disabled={isLoading}>
+                <Button type="submit" disabled={isLoading} data-tour="op-cobro.guardar">
                   {isLoading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -1972,7 +2108,7 @@ export function OperationPaymentsSection({
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {paymentMethods.map((method) => (
+                          {paymentMethodOptionsFor(field.value).map((method) => (
                             <SelectItem key={method.value} value={method.value}>
                               {method.label}
                             </SelectItem>
@@ -2202,7 +2338,7 @@ export function OperationPaymentsSection({
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {paymentMethods.map((method) => (
+                            {paymentMethodOptionsFor(field.value).map((method) => (
                               <SelectItem key={method.value} value={method.value}>
                                 {method.label}
                               </SelectItem>
@@ -2401,6 +2537,45 @@ export function OperationPaymentsSection({
                   )}
                 </div>
 
+                {/* Bank tax (Ley 25413) — deducción semi-automática al editar,
+                    misma lógica que los diálogos de crear (income/expense) */}
+                {editAccountHasBankTax && (
+                  <div className="rounded-[var(--vb-r-sm)] border border-[var(--vb-border)] bg-background/60 p-3 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="bank-tax-edit"
+                        checked={applyBankTaxEdit}
+                        onCheckedChange={(checked) => setApplyBankTaxEdit(checked === true)}
+                      />
+                      <label htmlFor="bank-tax-edit" className="text-sm font-medium cursor-pointer flex items-center gap-1.5">
+                        <Landmark className="h-3.5 w-3.5 text-muted-foreground" />
+                        Deducir imp. Ley 25413 (déb/créd bancarios)
+                      </label>
+                    </div>
+                    {applyBankTaxEdit && (
+                      <div className="ml-6 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs text-muted-foreground whitespace-nowrap">Tasa %</label>
+                          <DecimalInput
+                            value={bankTaxRateEdit}
+                            onChange={(v) => setBankTaxRateEdit(String(v))}
+                            className="h-7 w-20 text-xs"
+                          />
+                        </div>
+                        {bankTaxAmountEdit > 0 && (
+                          <p className="text-xs text-muted-foreground">
+                            Se creará un egreso automático de{" "}
+                            <span className="font-medium text-destructive">
+                              {bankTaxAmountEdit.toLocaleString("es-AR", { style: "currency", currency: editForm.watch("currency") })}
+                            </span>
+                            {" "}en la misma cuenta (impuesto bancario).
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <FormField
                   control={editForm.control}
                   name="notes"
@@ -2498,7 +2673,7 @@ export function OperationPaymentsSection({
         </Dialog>
       )}
 
-      {(userRole === "ADMIN" || userRole === "SUPER_ADMIN") && (
+      {canWriteCash && (
         <Dialog open={expenseDialogOpen} onOpenChange={setExpenseDialogOpen}>
           <DialogContent className="max-w-lg max-h-[95vh] flex flex-col">
             <DialogHeader>
@@ -2526,7 +2701,7 @@ export function OperationPaymentsSection({
                   control={expenseForm.control}
                   name="operator_payment_id"
                   render={({ field }) => (
-                    <FormItem>
+                    <FormItem data-tour="op-pago.deuda">
                       <FormLabel>Deuda a saldar</FormLabel>
                       {openOperatorDebts.length === 0 ? (
                         <p className="text-sm text-muted-foreground">{NO_BASE_OPERATOR_DEBT_MESSAGE}</p>
@@ -2575,7 +2750,7 @@ export function OperationPaymentsSection({
                     control={expenseForm.control}
                     name="method"
                     render={({ field }) => (
-                      <FormItem>
+                      <FormItem data-tour="op-pago.metodo">
                         <FormLabel>Método de Pago</FormLabel>
                         <Select onValueChange={field.onChange} defaultValue={field.value}>
                           <FormControl>
@@ -2584,7 +2759,7 @@ export function OperationPaymentsSection({
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {paymentMethods.map((method) => (
+                            {paymentMethodOptionsFor(field.value).map((method) => (
                               <SelectItem key={method.value} value={method.value}>
                                 {method.label}
                               </SelectItem>
@@ -2601,7 +2776,7 @@ export function OperationPaymentsSection({
                       control={expenseForm.control}
                       name="amount"
                       render={({ field }) => (
-                        <FormItem>
+                        <FormItem data-tour="op-pago.monto">
                           <FormLabel>Monto</FormLabel>
                           <FormControl>
                             <DecimalInput {...field} />
@@ -2615,7 +2790,7 @@ export function OperationPaymentsSection({
                       control={expenseForm.control}
                       name="currency"
                       render={({ field }) => (
-                        <FormItem>
+                        <FormItem data-tour="op-pago.moneda">
                           <FormLabel>Moneda</FormLabel>
                           <Select onValueChange={field.onChange} defaultValue={field.value}>
                             <FormControl>
@@ -2635,13 +2810,14 @@ export function OperationPaymentsSection({
                   </div>
                 </div>
 
-                {/* Tipo de cambio - solo visible cuando moneda es ARS */}
-                {expenseForm.watch("currency") === "ARS" && (
+                {/* Tipo de cambio - solo visible cuando el pago está en otra
+                    moneda que la deuda del operador (hay conversión real) */}
+                {expenseNeedsExchangeRate && (
                   <FormField
                     control={expenseForm.control}
                     name="exchange_rate"
                     render={({ field }) => (
-                      <FormItem>
+                      <FormItem data-tour="op-pago.tipo-cambio">
                         <FormLabel>Tipo de Cambio (ARS por 1 USD)</FormLabel>
                         <FormControl>
                           <DecimalInput
@@ -2672,7 +2848,7 @@ export function OperationPaymentsSection({
                       control={expenseForm.control}
                       name="date_paid"
                       render={({ field }) => (
-                        <FormItem className="flex flex-col">
+                        <FormItem className="flex flex-col" data-tour="op-pago.fecha">
                           <FormLabel>Fecha del Pago</FormLabel>
                           <Popover>
                             <PopoverTrigger asChild>
@@ -2711,7 +2887,7 @@ export function OperationPaymentsSection({
                       control={expenseForm.control}
                       name="financial_account_id"
                       render={({ field }) => (
-                        <FormItem className="flex flex-col">
+                        <FormItem className="flex flex-col" data-tour="op-pago.cuenta">
                           <FormLabel>Cuenta Financiera *</FormLabel>
                           <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl>
@@ -2746,7 +2922,7 @@ export function OperationPaymentsSection({
 
                 {/* Bank tax (Ley 25413) — semi-automatic deduction for bank accounts */}
                 {expenseAccountHasBankTax && (
-                  <div className="rounded-[var(--vb-r-sm)] border border-[var(--vb-border)] bg-[var(--vb-bg)]/60 p-3 space-y-3">
+                  <div className="rounded-[var(--vb-r-sm)] border border-[var(--vb-border)] bg-[var(--vb-bg)]/60 p-3 space-y-3" data-tour="op-pago.impuesto-ley">
                     <div className="flex items-center gap-2">
                       <Checkbox
                         id="bank-tax-expense"
@@ -2786,7 +2962,7 @@ export function OperationPaymentsSection({
                   control={expenseForm.control}
                   name="notes"
                   render={({ field }) => (
-                    <FormItem>
+                    <FormItem data-tour="op-pago.notas">
                       <FormLabel className="flex items-center gap-1.5"><StickyNote className="h-3 w-3 text-muted-foreground" /> Notas (opcional)</FormLabel>
                       <FormControl>
                         <Input placeholder="Referencia, comprobante, etc." {...field} />
@@ -2802,7 +2978,7 @@ export function OperationPaymentsSection({
                 <Button type="button" variant="outline" onClick={() => setExpenseDialogOpen(false)}>
                   Cancelar
                 </Button>
-                <Button type="submit" disabled={isLoading || openOperatorDebts.length === 0}>
+                <Button type="submit" disabled={isLoading || openOperatorDebts.length === 0} data-tour="op-pago.guardar">
                   {isLoading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />

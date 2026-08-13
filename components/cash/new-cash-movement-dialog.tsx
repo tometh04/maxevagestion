@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
@@ -49,7 +49,19 @@ const cashMovementSchema = z.object({
   affects_balance: z.boolean(),
   movement_date: z.string().min(1, "La fecha es requerida"),
   notes: z.string().optional(),
-})
+  // true = egreso normal (gasto). false = salida de caja que NO es gasto de
+  // agencia (comisión por fuera, baja financiera, vuelto, etc.).
+  is_agency_expense: z.boolean(),
+}).refine(
+  (v) =>
+    v.type !== "EXPENSE" ||
+    v.is_agency_expense ||
+    !!(v.notes && v.notes.trim()),
+  {
+    message: "Indicá el motivo (por qué esta salida no es un gasto)",
+    path: ["notes"],
+  }
+)
 
 type CashMovementFormValues = z.infer<typeof cashMovementSchema>
 
@@ -122,6 +134,7 @@ export function NewCashMovementDialog({
       affects_balance: true,
       movement_date: getDefaultDateTimeLocal(),
       notes: "",
+      is_agency_expense: true,
     },
   })
 
@@ -132,6 +145,9 @@ export function NewCashMovementDialog({
   useEffect(() => {
     form.setValue("category", "")
     form.setValue("category_id", null)
+    // El flag "no es gasto" solo aplica a egresos: al volver a INGRESO se
+    // normaliza a true para no arrastrar una selección del otro tipo.
+    if (movementType !== "EXPENSE") form.setValue("is_agency_expense", true)
   }, [movementType, form])
 
   // Sync currency when org default loads after mount
@@ -139,29 +155,41 @@ export function NewCashMovementDialog({
     form.setValue("currency", defaultCurrency)
   }, [defaultCurrency, form])
 
-  // 2026-05-19: fetch lazy de operations si el caller no las pasa enriquecidas.
-  // Patrón espejo de new-payment-dialog.tsx — limit 500, ordenadas por
-  // created_at desc para que las más recientes aparezcan primero.
+  // Fetch lazy de operations si el caller no las pasa. VIB-61 (audit): cuando el
+  // dialog las trae él mismo, antes usaba limit=500 + filtro client-side, así que
+  // una operación más vieja no se podía encontrar ni buscándola. Ahora la
+  // búsqueda pega al server (/api/operations?search=). Si el caller SÍ pasa las
+  // operaciones, se respeta ese set (filtro client-side abajo).
+  const fetchOps = useCallback(async (search?: string) => {
+    try {
+      const params = new URLSearchParams({ sortBy: "created_at", sortDirection: "desc" })
+      const term = (search || "").trim()
+      if (term.length >= 2) {
+        params.set("search", term)
+        params.set("limit", "50")
+      } else {
+        params.set("limit", "500")
+      }
+      const res = await fetch(`/api/operations?${params.toString()}`)
+      if (res.ok) {
+        const data = await res.json()
+        setFetchedOperations(data.operations || [])
+      }
+    } catch (err) {
+      console.error("Error fetching operations for cash movement dialog:", err)
+    }
+  }, [])
+
   useEffect(() => {
     if (!open) return
     if (operations.length > 0) {
-      // Si el caller las pasó, usar esas (pueden venir con datos enriquecidos)
+      // El caller las pasó: usar esas (pueden venir con datos enriquecidos).
       setFetchedOperations(operations)
       return
     }
-    async function fetchOps() {
-      try {
-        const res = await fetch("/api/operations?limit=500&sortBy=created_at&sortDirection=desc")
-        if (res.ok) {
-          const data = await res.json()
-          setFetchedOperations(data.operations || [])
-        }
-      } catch (err) {
-        console.error("Error fetching operations for cash movement dialog:", err)
-      }
-    }
-    fetchOps()
-  }, [open, operations])
+    const t = setTimeout(() => fetchOps(searchOp), 250)
+    return () => clearTimeout(t)
+  }, [open, operations, searchOp, fetchOps])
 
   // Helpers compartidos con new-payment-dialog (extraer a util si los repetimos en 3+ lugares).
   function getMainCustomerName(op: any): string {
@@ -187,6 +215,10 @@ export function NewCashMovementDialog({
 
   const filteredOps = useMemo(() => {
     const all = fetchedOperations || []
+    // Si las operaciones las trajimos nosotros (caller no las pasó), la búsqueda
+    // ya se resolvió server-side → mostramos lo que vino. Si las pasó el caller,
+    // filtramos client-side sobre ese set.
+    if (operations.length === 0) return all.slice(0, 50)
     if (!searchOp.trim()) return all.slice(0, 50)
     const s = searchOp.toLowerCase()
     return all
@@ -203,7 +235,7 @@ export function NewCashMovementDialog({
         )
       })
       .slice(0, 50)
-  }, [fetchedOperations, searchOp])
+  }, [fetchedOperations, searchOp, operations])
 
   // Cargar cuentas financieras y categorías de gasto cuando se abre el dialog
   useEffect(() => {
@@ -559,14 +591,50 @@ export function NewCashMovementDialog({
                 )}
               />
 
+              {movementType === "EXPENSE" && (
+                <FormField
+                  control={form.control}
+                  name="is_agency_expense"
+                  render={({ field }) => (
+                    <FormItem className="flex items-center justify-between rounded-xl border border-border/40 bg-background/60 p-3">
+                      <div className="space-y-1 pr-3">
+                        <FormLabel className="m-0">No es un gasto de agencia</FormLabel>
+                        <p className="text-xs text-muted-foreground">
+                          Salida de caja puntual (comisión pagada por fuera, baja
+                          financiera, vuelto, etc.). La plata sale igual, pero no
+                          cuenta en el Reporte de Gastos. Anotá el motivo abajo.
+                        </p>
+                      </div>
+                      <FormControl>
+                        <Switch
+                          checked={!field.value}
+                          onCheckedChange={(checked) => field.onChange(!checked)}
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+              )}
+
               <FormField
                 control={form.control}
                 name="notes"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Notas</FormLabel>
+                    <FormLabel>
+                      {movementType === "EXPENSE" && !form.watch("is_agency_expense")
+                        ? "Motivo *"
+                        : "Notas"}
+                    </FormLabel>
                     <FormControl>
-                      <Textarea placeholder="Notas adicionales..." {...field} />
+                      <Textarea
+                        placeholder={
+                          movementType === "EXPENSE" && !form.watch("is_agency_expense")
+                            ? "Por qué esta salida no es un gasto (para poder rastrearla)..."
+                            : "Notas adicionales..."
+                        }
+                        {...field}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

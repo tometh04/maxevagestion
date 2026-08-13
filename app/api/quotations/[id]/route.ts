@@ -5,11 +5,12 @@ import { getCurrentUser } from "@/lib/auth"
 import { normalizeQuotationPricingMode } from "@/lib/quotations/presentation"
 import { normalizeRegion } from "@/lib/manychat/sync"
 import {
-  cleanupInsertedQuotationOptions,
-  insertQuotationOptionsOrThrow,
   prepareQuotationOptionsForPersistence,
   QuotationStructurePersistenceError,
+  replaceQuotationStructure,
+  snapshotQuotationStructure,
 } from "@/lib/quotations/persistence"
+import { logAudit, getClientIP } from "@/lib/audit"
 
 export const dynamic = "force-dynamic"
 
@@ -132,6 +133,9 @@ export async function PATCH(
       "package_description", "notes", "internal_notes",
       "terms_and_conditions", "status",
       "subtotal", "total_amount", "pricing_mode",
+      // El POST de creación lo persiste; faltaba acá, así que cada edición lo
+      // descartaba en silencio.
+      "payment_methods",
     ]
 
     for (const field of allowedFields) {
@@ -152,7 +156,7 @@ export async function PATCH(
     }
 
     let preparedOptions: ReturnType<typeof prepareQuotationOptionsForPersistence> | null = null
-    let existingOptionIds: string[] = []
+    let structureSnapshot: { options: any[]; items: any[] } = { options: [], items: [] }
     if (body.options && Array.isArray(body.options)) {
       try {
         preparedOptions = prepareQuotationOptionsForPersistence(body.options, body.currency || existing.currency || "USD")
@@ -167,19 +171,33 @@ export async function PATCH(
       updateData.subtotal = preparedOptions[0].total_amount
       updateData.total_amount = preparedOptions[0].total_amount
 
-      const { data: currentOptions, error: currentOptionsError } = await supabase
-        .from("quotation_options")
-        .select("id")
-        .eq("quotation_id", id)
-
-      if (currentOptionsError) {
-        console.error("Error loading existing quotation options before PATCH:", currentOptionsError)
+      try {
+        structureSnapshot = await snapshotQuotationStructure(supabase, id)
+      } catch (error) {
+        console.error("Error loading existing quotation structure before PATCH:", {
+          quotationId: id,
+          ...getQuotationPersistenceLogContext(error),
+        })
         return NextResponse.json({ error: "No se pudo preparar la actualización de la cotización" }, { status: 500 })
       }
 
-      existingOptionIds = Array.isArray(currentOptions)
-        ? currentOptions.map((option: { id: string }) => option.id)
-        : []
+      // Un cliente que no hidrató las opciones existentes manda su placeholder
+      // (una sola opción en blanco) y el guard de `length === 0` no lo frena.
+      // Si la cantidad se achica sin que el usuario lo haya pedido explícito,
+      // frenamos en vez de destruir la estructura.
+      if (
+        structureSnapshot.options.length > preparedOptions.length &&
+        body.options_replace !== true
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              `La cotización tiene ${structureSnapshot.options.length} opciones y se recibieron ${preparedOptions.length}. ` +
+              "Recargá la cotización antes de guardar para no perder opciones.",
+          },
+          { status: 409 }
+        )
+      }
     }
 
     // Lógica de cambio de estado
@@ -215,83 +233,30 @@ export async function PATCH(
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    // Si se enviaron opciones nuevas, reemplazar: borrar viejas primero, insertar nuevas después.
+    // Reemplazo de la estructura (opciones + items).
     //
-    // Bug fix 2026-05-26: el código anterior insertaba nuevas ANTES de borrar viejas.
-    // Si hay un unique constraint en (quotation_id, option_number) — que existe en
-    // producción — el insert falla porque option_number=1 ya existe. Invertimos el
-    // orden: delete → insert. Si el insert falla, el header se restaura y el usuario
-    // puede reintentar (la cotización queda sin opciones momentáneamente, pero eso
-    // es mejor que nunca poder editar).
+    // Historia: hasta 2026-05-26 se insertaba antes de borrar, y el unique de
+    // (quotation_id, option_number) hacía fallar el insert. Se invirtió a
+    // delete → insert, lo que dejó una ventana en la que un insert fallido
+    // destruía la estructura para siempre (el rollback sólo reponía el header).
+    // Hoy replaceQuotationStructure() lo hace en una sola transacción vía RPC,
+    // con el camino legacy + restore del snapshot como fallback.
     if (preparedOptions) {
-      let insertedOptionIds: string[] = []
-
       try {
-        // Paso 1: borrar opciones viejas y sus items (CASCADE en la FK los borra)
-        if (existingOptionIds.length > 0) {
-          const { error: deleteOldOptionsError } = await supabase
-            .from("quotation_options")
-            .delete()
-            .in("id", existingOptionIds)
-            .eq("quotation_id", id)
-
-          if (deleteOldOptionsError) {
-            throw new QuotationStructurePersistenceError(
-              "No se pudo eliminar la estructura anterior de la cotización.",
-              "old_options_delete_failed",
-              {
-                quotationId: id,
-                oldOptionIds: existingOptionIds,
-                cause: deleteOldOptionsError.message,
-              }
-            )
-          }
-        }
-
-        // Paso 1b: limpiar ítems huérfanos (legacy sin option_id)
-        const { error: orphanItemsError } = await supabase
-          .from("quotation_items")
-          .delete()
-          .eq("quotation_id", id)
-          .is("option_id", null)
-
-        if (orphanItemsError) {
-          throw new QuotationStructurePersistenceError(
-            "No se pudieron limpiar ítems legacy de la cotización.",
-            "orphan_items_delete_failed",
-            {
-              quotationId: id,
-              cause: orphanItemsError.message,
-            }
-          )
-        }
-
-        // Paso 2: insertar opciones nuevas (ya no hay conflicto de option_number)
-        const insertResult = await insertQuotationOptionsOrThrow({
+        await replaceQuotationStructure({
           supabase,
           quotationId: id,
           currency: updated.currency || "USD",
           preparedOptions,
           orgId: existing.org_id ?? user.org_id ?? null,
+          snapshot: structureSnapshot,
         })
-        insertedOptionIds = insertResult.optionIds
       } catch (error) {
         console.error("Error persisting quotation structure during PATCH:", {
           quotationId: id,
           quotationNumber: existing.quotation_number,
           ...getQuotationPersistenceLogContext(error),
         })
-
-        if (insertedOptionIds.length > 0) {
-          try {
-            await cleanupInsertedQuotationOptions(supabase, insertedOptionIds, id)
-          } catch (cleanupError) {
-            console.error("Error cleaning up new quotation options after PATCH failure:", {
-              quotationId: id,
-              ...getQuotationPersistenceLogContext(cleanupError),
-            })
-          }
-        }
 
         const { error: restoreError } = await supabase
           .from("quotations")
@@ -305,11 +270,42 @@ export async function PATCH(
           })
         }
 
+        logAudit(supabase, {
+          user_id: user.id,
+          user_email: user.email,
+          action: "UPDATE",
+          entity_type: "quotation",
+          entity_id: id,
+          details: {
+            failed: true,
+            quotation_number: existing.quotation_number,
+            previous_structure: structureSnapshot,
+          },
+          ip_address: getClientIP(request) || undefined,
+        })
+
         return NextResponse.json(
           { error: "No se pudo guardar la estructura completa de la cotización. Se conservaron los datos anteriores." },
           { status: 500 }
         )
       }
+
+      // Auditoría con la estructura anterior: si algo la borra, esto es lo
+      // único con lo que se puede reconstruir (ver el caso de operation_legs).
+      logAudit(supabase, {
+        user_id: user.id,
+        user_email: user.email,
+        action: "UPDATE",
+        entity_type: "quotation",
+        entity_id: id,
+        details: {
+          quotation_number: existing.quotation_number,
+          previous_option_count: structureSnapshot.options.length,
+          new_option_count: preparedOptions.length,
+          previous_structure: structureSnapshot,
+        },
+        ip_address: getClientIP(request) || undefined,
+      })
     }
 
     // Devolver cotización actualizada completa

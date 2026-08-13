@@ -319,15 +319,11 @@ export async function POST(
 
     // 12. Calcular comisiones
     try {
-      const { calculateCommission, createOrUpdateCommissionRecords } = await import("@/lib/commissions/calculate")
-      const commissionOp = {
-        ...operation,
-        seller_id: operation.seller_id,
-      }
-      const commissionData = await calculateCommission(commissionOp)
-      if (commissionData.totalCommission > 0) {
-        await createOrUpdateCommissionRecords(commissionOp, commissionData)
-      }
+      const { recalculateOperationCommissions } = await import("@/lib/commissions/calculate")
+      await recalculateOperationCommissions(supabase, {
+        ...(operation as any),
+        margin_amount: Number((operation as any).margin_amount) || 0,
+      })
     } catch (commError) {
       console.error("Error calculating commissions:", commError)
     }

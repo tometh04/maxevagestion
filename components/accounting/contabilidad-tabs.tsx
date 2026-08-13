@@ -13,6 +13,8 @@ interface ContabilidadTabsProps {
   monthlyPositionContent: React.ReactNode
   facturasComprasContent: React.ReactNode
   showPartnerAccounts?: boolean
+  /** Tab inicial (deep-link, ej. ?tab=ledger&accountId=... desde Cuentas Financieras) */
+  initialTab?: string
 }
 
 export function ContabilidadTabs({
@@ -25,12 +27,25 @@ export function ContabilidadTabs({
   monthlyPositionContent,
   facturasComprasContent,
   showPartnerAccounts = true,
+  initialTab,
 }: ContabilidadTabsProps) {
+  const validTabs = [
+    "ledger",
+    "asientos",
+    "operators",
+    "debts",
+    "partners",
+    "posicion",
+    "facturas-compras",
+    "plan-cuentas",
+  ]
+  const defaultTab = initialTab && validTabs.includes(initialTab) ? initialTab : "ledger"
+
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold tracking-tight">Contabilidad</h1>
 
-      <Tabs defaultValue="ledger">
+      <Tabs defaultValue={defaultTab}>
         <TabsList>
           <TabsTrigger value="ledger" className="gap-1.5">
             <BookOpen className="h-3.5 w-3.5" />

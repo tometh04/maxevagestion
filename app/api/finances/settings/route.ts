@@ -60,6 +60,16 @@ const financialSettingsSchema = z.object({
   // Modo de cálculo de costo de operadores para cotizaciones
   default_cost_calculation_mode: z.enum(['SIMPLE', 'COMMISSIONABLE']).optional(),
   default_commission_percentage: z.number().min(0).max(100).optional(),
+  // Base de comisiones neta de IVA (VIB-95). Opt-in por agencia. La alícuota se
+  // guarda como fracción (0.105 = 10,5%); commission_net_from es la fecha de corte
+  // (solo operaciones con operation_date >= aplican base neta). NULL = todas.
+  commission_base_net_of_iva: z.boolean().optional(),
+  commission_iva_rate: z.number().min(0).max(0.999).optional(),
+  commission_net_from: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida (YYYY-MM-DD)")
+    .nullable()
+    .optional(),
 })
 
 // GET - Obtener configuración financiera

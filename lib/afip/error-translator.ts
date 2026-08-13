@@ -182,6 +182,23 @@ export function translateAfipError(rawMessage: string | null | undefined): AfipE
   const raw = (rawMessage || '').trim()
   const code = extractCode(raw)
 
+  // 10015 es ambiguo en AFIP: puede ser "punto de venta inexistente" o la regla
+  // de documento del receptor ("si DocTipo distinto a 99, DocNro debe ser mayor
+  // a 0"). Desambiguamos por contenido para no mostrar "PV inexistente" cuando
+  // en realidad el problema es el documento del receptor.
+  if (code === 10015 && /docnro|doctipo|documento/i.test(raw)) {
+    return {
+      code,
+      rawMessage: raw,
+      title: 'Documento del receptor inválido',
+      explanation:
+        'Para Factura B/C a consumidor final sin identificar, AFIP exige DocTipo 99 (Consumidor Final) con DocNro 0. El comprobante quedó con otro tipo de documento y número 0.',
+      action:
+        'Vibook ahora corrige esto automáticamente al autorizar. Si todavía lo ves, recargá la página y reintentá, o volvé a crear la factura eligiendo la condición IVA del receptor.',
+      severity: 'data',
+    }
+  }
+
   if (code !== null && KNOWN_ERRORS[code]) {
     return {
       code,

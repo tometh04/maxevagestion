@@ -1,10 +1,12 @@
 "use client"
 
+import type { SellerOption } from "@/lib/sellers/seller-option"
 import { useRef, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { LeadDetailDialog } from "@/components/sales/lead-detail-dialog"
+import { LeadOutcomeBadge } from "@/components/sales/lead-outcome-badge"
 import { AdvancedTagsSection } from "./advanced-tags-section"
 
 type TagAssignment = {
@@ -33,6 +35,7 @@ export type LeadAdvancedFull = {
   destination?: string
   region?: string
   status?: string
+  outcome?: string | null
   source?: string | null
   trello_url?: string | null
   trello_list_id?: string | null
@@ -86,7 +89,7 @@ interface LeadCardAdvancedProps {
   lead: LeadAdvancedFull
   orgId: string
   agencies: Array<{ id: string; name: string }>
-  sellers: Array<{ id: string; name: string }>
+  sellers: SellerOption[]
   operators: Array<{
     id: string
     name: string
@@ -204,6 +207,15 @@ export function LeadCardAdvanced({
           <p className="text-[10px] text-muted-foreground mt-1.5">
             → {lead.assigned_seller.name}
           </p>
+        )}
+        {(lead.outcome || (lead.operations && lead.operations.length > 0) || lead.status === "LOST") && (
+          <div className="mt-1.5">
+            <LeadOutcomeBadge
+              outcome={lead.outcome}
+              status={lead.status}
+              hasOperation={!!(lead.operations && lead.operations.length > 0)}
+            />
+          </div>
         )}
       </Card>
 

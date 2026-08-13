@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
 import {
   ArrowLeft, Send, Loader2, User, ShieldCheck, Building2,
-  Mail, Clock, LifeBuoy,
+  Mail, Clock, LifeBuoy, Bug, Lightbulb, HelpCircle, ExternalLink, Paperclip,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -14,6 +14,8 @@ import { cn } from "@/lib/utils"
 interface Reply {
   id: string
   author_role: "user" | "admin"
+  author_name: string | null
+  source: string | null
   content: string
   created_at: string
 }
@@ -28,6 +30,13 @@ interface TicketDetail {
   user_email: string
   user_name: string | null
   org_name: string | null
+  category: string | null
+  severity: string | null
+  priority: string | null
+  ai_rationale: string | null
+  linear_issue_url: string | null
+  linear_identifier: string | null
+  attachments: { name: string; url: string; type: string; size: number }[] | null
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -35,6 +44,23 @@ const STATUS_LABELS: Record<string, string> = {
   in_progress: "En progreso",
   resolved: "Resuelto",
   closed: "Cerrado",
+}
+
+const CATEGORY_CONFIG: Record<string, { label: string; icon: typeof Bug }> = {
+  bug: { label: "Bug", icon: Bug },
+  improvement: { label: "Mejora", icon: Lightbulb },
+  question: { label: "Consulta", icon: HelpCircle },
+}
+
+const PRIORITY_CONFIG: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; className?: string }> = {
+  urgent: { label: "Urgente", variant: "destructive" },
+  high: { label: "Alta", variant: "default", className: "bg-orange-500 hover:bg-orange-500" },
+  normal: { label: "Normal", variant: "secondary" },
+  low: { label: "Baja", variant: "outline" },
+}
+
+const SEVERITY_LABELS: Record<string, string> = {
+  low: "Baja", medium: "Media", high: "Alta", critical: "Crítica",
 }
 
 function formatDate(d: string) {
@@ -139,11 +165,97 @@ export default function AdminTicketDetailPage() {
         </div>
       </div>
 
+      {/* Clasificación del bot + Linear */}
+      {(ticket.category || ticket.priority || ticket.linear_issue_url) && (
+        <div className="border rounded-lg p-4 mb-4 flex flex-wrap items-center gap-x-6 gap-y-2">
+          {ticket.category && CATEGORY_CONFIG[ticket.category] && (
+            <div className="flex items-center gap-1.5 text-sm">
+              {(() => {
+                const Icon = CATEGORY_CONFIG[ticket.category].icon
+                return <Icon className="h-4 w-4 text-muted-foreground" />
+              })()}
+              <span className="font-medium">{CATEGORY_CONFIG[ticket.category].label}</span>
+            </div>
+          )}
+          {ticket.priority && PRIORITY_CONFIG[ticket.priority] && (
+            <div className="flex items-center gap-1.5 text-sm">
+              <span className="text-muted-foreground">Prioridad:</span>
+              <Badge variant={PRIORITY_CONFIG[ticket.priority].variant} className={PRIORITY_CONFIG[ticket.priority].className}>
+                {PRIORITY_CONFIG[ticket.priority].label}
+              </Badge>
+            </div>
+          )}
+          {ticket.severity && (
+            <div className="text-sm">
+              <span className="text-muted-foreground">Severidad:</span>{" "}
+              <span className="font-medium">{SEVERITY_LABELS[ticket.severity] || ticket.severity}</span>
+            </div>
+          )}
+          {ticket.linear_issue_url && (
+            <a
+              href={ticket.linear_issue_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-sm text-primary hover:underline ml-auto"
+            >
+              <ExternalLink className="h-4 w-4" />
+              {ticket.linear_identifier || "Ver en Linear"}
+            </a>
+          )}
+          {ticket.ai_rationale && (
+            <p className="w-full text-xs text-muted-foreground italic border-t pt-2 mt-1">
+              {ticket.ai_rationale}
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Description */}
       {ticket.description && (
         <div className="border rounded-lg p-4 mb-4 bg-muted/30">
           <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">Descripción original</p>
           <p className="text-sm whitespace-pre-wrap">{ticket.description}</p>
+        </div>
+      )}
+
+      {/* Adjuntos */}
+      {ticket.attachments && ticket.attachments.length > 0 && (
+        <div className="border rounded-lg p-4 mb-4">
+          <p className="text-xs font-semibold text-muted-foreground uppercase mb-2">
+            Adjuntos ({ticket.attachments.length})
+          </p>
+          <div className="flex flex-wrap gap-3">
+            {ticket.attachments.map((a) =>
+              a.type?.startsWith("image/") ? (
+                <a
+                  key={a.url}
+                  href={a.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block"
+                  title={a.name}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={a.url}
+                    alt={a.name}
+                    className="h-24 w-24 object-cover rounded-md border hover:opacity-80 transition-opacity"
+                  />
+                </a>
+              ) : (
+                <a
+                  key={a.url}
+                  href={a.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-accent"
+                >
+                  <Paperclip className="h-4 w-4 text-muted-foreground" />
+                  <span className="truncate max-w-[200px]">{a.name}</span>
+                </a>
+              ),
+            )}
+          </div>
         </div>
       )}
 
@@ -177,6 +289,9 @@ export default function AdminTicketDetailPage() {
                   "text-[10px] mt-1",
                   r.author_role === "admin" ? "text-primary-foreground/60" : "text-muted-foreground"
                 )}>
+                  {r.source === "linear" && (
+                    <span>vía Linear{r.author_name ? ` · ${r.author_name}` : ""} · </span>
+                  )}
                   {formatDate(r.created_at)}
                 </p>
               </div>

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { getUserAgencyIds } from "@/lib/permissions-api"
+import { getUserAgencyIds, isOwnDataOnlyResolved } from "@/lib/permissions-api"
+import { resolveUserPermissions } from "@/lib/permissions-agency"
 import { buildExchangeRateMap, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
 import { getOrgFeatureFlag } from "@/lib/settings/org-features"
 import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
@@ -26,6 +27,12 @@ export async function GET(request: Request) {
 
     // Obtener agencias del usuario
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
+
+    // "Solo mis datos" en el dashboard (matrix por agencia).
+    const matrix = (user as any).org_id
+      ? await resolveUserPermissions(supabase as any, user.id, (user as any).org_id, user.role, agencyIds)
+      : null
+    const dashOwnData = isOwnDataOnlyResolved(user, "dashboard", matrix ?? undefined)
 
     // ============================================
     // 1. CALCULAR DEUDORES POR VENTAS (Cuentas por Cobrar)
@@ -65,6 +72,11 @@ export async function GET(request: Request) {
       const isAdminRole = user.role === "SUPER_ADMIN" || (user.role as string) === "ORG_OWNER"
       if (agencyIds.length > 0 && !isAdminRole) {
         operationsQuery = operationsQuery.in("agency_id", agencyIds)
+      }
+
+      // dashboard.ownDataOnly → solo las operaciones propias.
+      if (dashOwnData) {
+        operationsQuery = operationsQuery.eq("seller_id", user.id)
       }
 
       // Filtrar por rango de fechas usando created_at (fecha de venta/carga, consistente con KPIs de ventas)
@@ -183,7 +195,7 @@ export async function GET(request: Request) {
           currency,
           status,
           due_date,
-          operations:operation_id (id, agency_id, departure_date, created_at)
+          operations:operation_id (id, agency_id, seller_id, departure_date, created_at)
         `)
         .in("status", ["PENDING", "OVERDUE"])
 
@@ -199,6 +211,8 @@ export async function GET(request: Request) {
           const opCreatedAt = operation.created_at
           if (dateFrom && opCreatedAt < `${dateFrom}T00:00:00.000Z`) return false
           if (dateTo && opCreatedAt > `${dateTo}T23:59:59.999Z`) return false
+          // dashboard.ownDataOnly → solo deuda de operaciones propias.
+          if (dashOwnData && operation.seller_id !== user.id) return false
           return true
         })
         // Filtrar por agencia si se especifica

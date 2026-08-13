@@ -20,29 +20,56 @@ export default async function MessagesPage() {
   const canLoadMessages = user.role === "SUPER_ADMIN" || user.role === "SELLER" || agencyIds.length > 0
   const canLoadTemplates = user.role === "SUPER_ADMIN" || agencyIds.length > 0
 
-  // Obtener mensajes pendientes (hasta 2000 para cubrir todos los mensajes).
-  // 🔴 CROSS-TENANT FIX (2026-05-21): SIEMPRE filtrar por org_id antes que
-  // los filtros adicionales de rol. SUPER_ADMIN en Vibook es del TENANT
-  // (no del platform — eso es isPlatformAdmin()), por lo tanto NO debe
-  // ver mensajes de otros tenants. Ver CLAUDE.md regla de oro multi-tenant.
-  let messagesQuery = (supabase.from("whatsapp_messages") as any)
-    .select(`
-      *,
-      message_templates:template_id (name, emoji_prefix, category),
-      customers:customer_id (first_name, last_name, email),
-      operations:operation_id (destination, departure_date, checkin_date, checkout_date, file_code, seller_id)
-    `)
-    .eq("org_id", (user as any).org_id)
-    .order("scheduled_for", { ascending: true })
-    .limit(2000)
-
-  if (user.role === "SELLER") {
-    messagesQuery = messagesQuery.or(buildSellerMessageScopeFilter(user.id, sellerOperationIds))
-  } else if (user.role !== "SUPER_ADMIN" && agencyIds.length > 0) {
-    messagesQuery = messagesQuery.in("agency_id", agencyIds)
+  // Scope reutilizable (org + rol). SUPER_ADMIN en Vibook es del TENANT, no del
+  // platform, así que igual se filtra por org_id (regla de oro multi-tenant).
+  const scopeMessages = (q: any) => {
+    q = q.eq("org_id", (user as any).org_id)
+    if (user.role === "SELLER") {
+      q = q.or(buildSellerMessageScopeFilter(user.id, sellerOperationIds))
+    } else if (user.role !== "SUPER_ADMIN" && agencyIds.length > 0) {
+      q = q.in("agency_id", agencyIds)
+    }
+    return q
   }
 
-  const { data: messages } = canLoadMessages ? await messagesQuery : { data: [] as any[] }
+  // VIB-61 (audit): antes se traían 2000 mensajes ordenados por scheduled_for
+  // ASC (los más VIEJOS) y los KPIs (Pendientes/Enviados/Omitidos) se contaban
+  // sobre ese set → con >2000 mensajes acumulados los contadores mentían y los
+  // pendientes recientes podían faltar. Ahora:
+  //  - Conteos EXACTOS de SENT/SKIPPED en la DB (los que se acumulan).
+  //  - Se cargan TODAS las pendientes (accionables) + las enviadas/omitidas
+  //    recientes, así ningún pendiente reciente queda afuera.
+  const countStatus = async (status: string): Promise<number> => {
+    if (!canLoadMessages) return 0
+    const { count } = await scopeMessages(
+      (supabase.from("whatsapp_messages") as any).select("id", { count: "exact", head: true }),
+    ).eq("status", status)
+    return count || 0
+  }
+
+  const MSG_SELECT = `
+    *,
+    message_templates:template_id (name, emoji_prefix, category),
+    customers:customer_id (first_name, last_name, email),
+    operations:operation_id (destination, departure_date, checkin_date, checkout_date, file_code, seller_id)
+  `
+  const base = () => scopeMessages((supabase.from("whatsapp_messages") as any).select(MSG_SELECT))
+
+  const [pendingRes, sentRes, skippedRes, sentCount, skippedCount] = canLoadMessages
+    ? await Promise.all([
+        base().eq("status", "PENDING").order("scheduled_for", { ascending: true }).limit(2000),
+        base().eq("status", "SENT").order("scheduled_for", { ascending: false }).limit(500),
+        base().eq("status", "SKIPPED").order("scheduled_for", { ascending: false }).limit(500),
+        countStatus("SENT"),
+        countStatus("SKIPPED"),
+      ])
+    : [{ data: [] as any[] }, { data: [] as any[] }, { data: [] as any[] }, 0, 0]
+
+  const messages = [
+    ...((pendingRes as any).data || []),
+    ...((sentRes as any).data || []),
+    ...((skippedRes as any).data || []),
+  ]
 
   let templates: any[] = []
   if ((user.role === "SUPER_ADMIN" || user.role === "ADMIN") && canLoadTemplates) {
@@ -68,6 +95,8 @@ export default async function MessagesPage() {
       agencies={agencies}
       userId={user.id}
       userRole={user.role}
+      sentCount={sentCount}
+      skippedCount={skippedCount}
     />
   )
 }

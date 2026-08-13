@@ -5,7 +5,7 @@ import { useToast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { Loader2, Plus, Send, Eye, Download, Search, Filter, User, DollarSign, ShieldCheck, AlertCircle, RefreshCw, FileMinus, FilePlus, Mail } from "lucide-react"
+import { Loader2, Plus, Send, Eye, Download, Search, Filter, User, DollarSign, ShieldCheck, AlertCircle, RefreshCw, FileMinus, FilePlus, Mail, Trash2 } from "lucide-react"
 import { SendDocumentEmailDialog } from "@/components/shared/send-document-email-dialog"
 import { useRouter } from "next/navigation"
 import {
@@ -53,6 +53,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { COMPROBANTE_LABELS } from "@/lib/afip/types"
@@ -62,6 +72,7 @@ import {
   shouldHideInvoiceTaxBreakdown,
 } from "@/lib/invoices/calculation"
 import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
+import { trackEvent } from "@/lib/analytics/track"
 
 interface Invoice {
   id: string
@@ -125,6 +136,8 @@ export function InvoicesPageClient() {
   const [statusFilter, setStatusFilter] = useState("ALL")
   const [search, setSearch] = useState("")
   const [authorizing, setAuthorizing] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<string | null>(null)
+  const [invoiceToDelete, setInvoiceToDelete] = useState<Invoice | null>(null)
   const [verifying, setVerifying] = useState(false)
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
   const [exporting, setExporting] = useState(false)
@@ -180,9 +193,14 @@ export function InvoicesPageClient() {
   }
 
   const authorizeInvoice = async (invoiceId: string) => {
+    // Tipo de comprobante para la telemetría. No se manda el CAE, ni el número,
+    // ni el importe, ni el detalle del rechazo de AFIP (repite datos del receptor).
+    const invoiceKind = String(
+      invoices.find((i) => i.id === invoiceId)?.cbte_tipo ?? ""
+    )
     try {
       setAuthorizing(invoiceId)
-      
+
       const response = await fetch(`/api/invoices/${invoiceId}/authorize`, {
         method: 'POST',
       })
@@ -194,8 +212,18 @@ export function InvoicesPageClient() {
           title: "Factura autorizada",
           description: `CAE: ${data.data.cae}`,
         })
+        trackEvent("invoice_authorized", {
+          invoice_kind: invoiceKind,
+          result: "success",
+          surface: "invoices",
+        })
         loadInvoices()
       } else {
+        trackEvent("invoice_authorized", {
+          invoice_kind: invoiceKind,
+          result: "error",
+          surface: "invoices",
+        })
         toast({
           title: "Error al autorizar",
           description: data.error || "No se pudo autorizar la factura",
@@ -211,6 +239,42 @@ export function InvoicesPageClient() {
       })
     } finally {
       setAuthorizing(null)
+    }
+  }
+
+  const deleteInvoice = async (invoiceId: string) => {
+    try {
+      setDeleting(invoiceId)
+
+      const response = await fetch(`/api/invoices/${invoiceId}`, {
+        method: 'DELETE',
+      })
+
+      const data = await response.json()
+
+      if (response.ok && data.success) {
+        toast({
+          title: "Borrador eliminado",
+          description: "La factura en borrador se eliminó correctamente.",
+        })
+        setInvoiceToDelete(null)
+        loadInvoices()
+      } else {
+        toast({
+          title: "Error al eliminar",
+          description: data.error || "No se pudo eliminar el borrador",
+          variant: "destructive",
+        })
+      }
+    } catch (error: any) {
+      console.error('Error deleting invoice:', error)
+      toast({
+        title: "Error",
+        description: error.message || "Error al eliminar factura",
+        variant: "destructive",
+      })
+    } finally {
+      setDeleting(null)
     }
   }
 
@@ -379,6 +443,7 @@ export function InvoicesPageClient() {
                 size="sm"
                 className="h-8 rounded-full"
                 disabled={exporting}
+                data-tour="billing.export"
               >
                 {exporting ? (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -426,7 +491,7 @@ export function InvoicesPageClient() {
               </div>
             </PopoverContent>
           </Popover>
-          <Button size="sm" className="h-8 rounded-full" asChild>
+          <Button size="sm" className="h-8 rounded-full" asChild data-tour="billing.new-invoice">
             <Link href="/operations/billing/new">
               <Plus className="mr-2 h-4 w-4" />
               Nueva Factura
@@ -436,7 +501,7 @@ export function InvoicesPageClient() {
       </div>
 
       {/* Filtros */}
-      <div className="flex items-center gap-2 flex-wrap">
+      <div className="flex items-center gap-2 flex-wrap" data-tour="billing.filters">
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -463,7 +528,7 @@ export function InvoicesPageClient() {
       </div>
 
       {/* Tabla de facturas */}
-      <div className="rounded-xl border border-border/40 overflow-hidden">
+      <div className="rounded-xl border border-border/40 overflow-hidden" data-tour="billing.table">
         <div className="max-h-[60vh] overflow-y-auto">
           <Table>
             <TableHeader className="sticky top-0 bg-background z-10">
@@ -561,6 +626,23 @@ export function InvoicesPageClient() {
                               <Send className="mr-1 h-4 w-4" />
                               Autorizar
                             </>
+                          )}
+                        </Button>
+                      )}
+                      {/* Solo borradores/rechazadas sin CAE se pueden eliminar (invariante fiscal). */}
+                      {(invoice.status === 'draft' || invoice.status === 'rejected') && !invoice.cae && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Eliminar borrador"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => setInvoiceToDelete(invoice)}
+                          disabled={deleting === invoice.id}
+                        >
+                          {deleting === invoice.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
                           )}
                         </Button>
                       )}
@@ -943,6 +1025,47 @@ export function InvoicesPageClient() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={!!invoiceToDelete}
+        onOpenChange={(open) => { if (!open) setInvoiceToDelete(null) }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar este borrador?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se eliminará el borrador
+              {invoiceToDelete?.customers
+                ? ` de ${invoiceToDelete.customers.first_name} ${invoiceToDelete.customers.last_name}`
+                : ""}
+              {typeof invoiceToDelete?.imp_total === "number"
+                ? ` por ${formatCurrency(invoiceToDelete.imp_total, invoiceToDelete.moneda)}`
+                : ""}
+              . Esta acción no se puede deshacer. Solo se eliminan borradores sin CAE (las facturas autorizadas no se pueden borrar).
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={!!deleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={!!deleting}
+              onClick={(e) => {
+                e.preventDefault()
+                if (invoiceToDelete) deleteInvoice(invoiceToDelete.id)
+              }}
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Eliminando...
+                </>
+              ) : (
+                "Eliminar borrador"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

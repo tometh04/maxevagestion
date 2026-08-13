@@ -420,7 +420,7 @@ export function MarginsReport({ userRole, userId, sellers, agencies }: MarginsRe
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Margen Total
+              {data?.commission_net_applies ? "Ganancia bruta" : "Margen Total"}
             </CardTitle>
             <TrendingUp className="h-4 w-4 text-success" />
           </CardHeader>
@@ -433,6 +433,24 @@ export function MarginsReport({ userRole, userId, sellers, agencies }: MarginsRe
             </p>
           </CardContent>
         </Card>
+        {data?.commission_net_applies && (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Ganancia neta (base de comisión)
+              </CardTitle>
+              <TrendingUp className="h-4 w-4 text-success" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-success">
+                {totals.currency === "USD" ? "US$" : "$"} {Math.round(totals.total_margin_net || 0).toLocaleString("es-AR")}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Ganancia bruta menos IVA. Las comisiones se calculan sobre este monto.
+              </p>
+            </CardContent>
+          </Card>
+        )}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -544,7 +562,12 @@ export function MarginsReport({ userRole, userId, sellers, agencies }: MarginsRe
                     <TableHead className="text-right">Operaciones</TableHead>
                     <TableHead className="text-right">Venta Total</TableHead>
                     <TableHead className="text-right">Costo Total</TableHead>
-                    <TableHead className="text-right">Margen Total</TableHead>
+                    <TableHead className="text-right">
+                      {data?.commission_net_applies ? "Ganancia bruta" : "Margen Total"}
+                    </TableHead>
+                    {data?.commission_net_applies && (
+                      <TableHead className="text-right">Ganancia neta (US$)</TableHead>
+                    )}
                     <TableHead className="text-right">% Margen Prom.</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -571,6 +594,11 @@ export function MarginsReport({ userRole, userId, sellers, agencies }: MarginsRe
                       <TableCell className="text-right">
                         <MoneyStack ars={s.total_margin_ars} usd={s.total_margin_usd} sign />
                       </TableCell>
+                      {data?.commission_net_applies && (
+                        <TableCell className="text-right font-medium text-success">
+                          US$ {Math.round(s.total_margin_net_usd_equiv || 0).toLocaleString("es-AR")}
+                        </TableCell>
+                      )}
                       <TableCell className="text-right">
                         <Badge variant={s.avg_margin_percent >= 20 ? "default" : "secondary"}>
                           {s.avg_margin_percent.toFixed(1)}%

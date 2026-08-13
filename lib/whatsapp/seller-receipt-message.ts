@@ -1,5 +1,6 @@
 import { SupabaseClient } from "@supabase/supabase-js"
 import { buildReceiptFileName } from "@/lib/receipts/receipt-file"
+import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 
 function buildReceiptNumber(paymentId: string): string {
   return `1000-${paymentId.replace(/-/g, "").slice(-8).toUpperCase()}`
@@ -76,7 +77,7 @@ export async function upsertSellerReceiptMessage(
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`
-  const paidDate = new Date(payment.date_paid || payment.date_due || new Date().toISOString()).toLocaleDateString("es-AR")
+  const paidDate = (parseDateOnlyLocal(payment.date_paid || payment.date_due || new Date().toISOString()) ?? new Date(payment.date_paid || payment.date_due || new Date().toISOString())).toLocaleDateString("es-AR")
   const operationLabel = [operation.file_code, operation.destination].filter(Boolean).join(" · ") || "Operación"
   const message = [
     `Recibo listo · ${customerLastName || customerName} · ${receiptFileName}`,

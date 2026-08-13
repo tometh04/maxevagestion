@@ -1,15 +1,16 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
-import { getCurrentUser } from "@/lib/auth"
+import { getRequestPermissions } from "@/lib/permissions/request"
+import { isOwnDataOnlyResolved } from "@/lib/permissions-api"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { getOrgFeatureFlag } from "@/lib/settings/org-features"
 import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
 import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
+import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 
 export async function GET(request: Request) {
   try {
-    const { user } = await getCurrentUser()
+    const { user, supabase, matrix } = await getRequestPermissions()
 
     // 🔴 Fix cross-tenant CRÍTICO (2026-05-18, sweep /reports/*): defense-in-depth
     // RLS no está protegiendo confiablemente; agregamos .eq("org_id", user.org_id)
@@ -19,7 +20,6 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
     }
 
-    const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
     const reportType = searchParams.get("type") || "operations"
@@ -27,6 +27,12 @@ export async function GET(request: Request) {
     const dateFrom = searchParams.get("dateFrom")
     const dateTo = searchParams.get("dateTo")
     const agencyId = searchParams.get("agencyId")
+
+    // VIB-61 (audit): antes el export capaba a 1000 filas y se presentaba como el
+    // reporte completo. Subimos el tope (mismo criterio que ledger/export) y
+    // marcamos el archivo como PARCIAL si se alcanza, en vez de mentir que está
+    // completo. 10k es un export on-demand acotado, no afecta el uso normal.
+    const EXPORT_CAP = 10000
 
     // Obtener agencias del usuario
     const { data: userAgencies } = await supabase
@@ -60,7 +66,7 @@ export async function GET(request: Request) {
           query = query.in("agency_id", agencyIds)
         }
 
-        const { data: ops } = await query.limit(1000)
+        const { data: ops } = await query.limit(EXPORT_CAP)
 
         // Servicios adicionales (operation_services): si la flag está ON, sumamos
         // su venta a sale_amount_total para que la venta_total exportada refleje
@@ -122,7 +128,7 @@ export async function GET(request: Request) {
           query = query.in("agency_id", agencyIds)
         }
 
-        const { data: customers } = await query.limit(1000)
+        const { data: customers } = await query.limit(EXPORT_CAP)
         data = (customers || []).map((c: any) => ({
           nombre: c.first_name || "",
           apellido: c.last_name || "",
@@ -208,16 +214,16 @@ export async function GET(request: Request) {
               .order("date_due", { ascending: false })
             if (dateFrom) chunkQuery = chunkQuery.gte("date_due", dateFrom)
             if (dateTo) chunkQuery = chunkQuery.lte("date_due", dateTo)
-            const { data: chunkPayments } = await chunkQuery.limit(1000)
+            const { data: chunkPayments } = await chunkQuery.limit(EXPORT_CAP)
             if (chunkPayments) allPayments.push(...chunkPayments)
           }
-          // SELLER: restringir a sus propias operaciones
-          const filteredByRole = user.role === "SELLER"
+          // reports.ownDataOnly por agencia → restringir a sus propias operaciones
+          const filteredByRole = isOwnDataOnlyResolved(user, "reports", matrix ?? undefined)
             ? allPayments.filter((p: any) => p.seller_id === user.id || p.operations?.seller_id === user.id)
             : allPayments
-          data = filteredByRole.slice(0, 1000).map((p: any) => ({
-            fecha_vencimiento: p.date_due ? format(new Date(p.date_due), "dd/MM/yyyy") : "",
-            fecha_pago: p.date_paid ? format(new Date(p.date_paid), "dd/MM/yyyy") : "",
+          data = filteredByRole.slice(0, EXPORT_CAP).map((p: any) => ({
+            fecha_vencimiento: p.date_due ? format(parseDateOnlyLocal(p.date_due) ?? new Date(p.date_due), "dd/MM/yyyy") : "",
+            fecha_pago: p.date_paid ? format(parseDateOnlyLocal(p.date_paid) ?? new Date(p.date_paid), "dd/MM/yyyy") : "",
             monto: p.amount || 0,
             moneda: p.currency || "ARS",
             estado: p.status || "",
@@ -242,10 +248,10 @@ export async function GET(request: Request) {
           break
         }
 
-        const { data: payments } = await query.limit(1000)
+        const { data: payments } = await query.limit(EXPORT_CAP)
         data = (payments || []).map((p: any) => ({
-          fecha_vencimiento: p.date_due ? format(new Date(p.date_due), "dd/MM/yyyy") : "",
-          fecha_pago: p.date_paid ? format(new Date(p.date_paid), "dd/MM/yyyy") : "",
+          fecha_vencimiento: p.date_due ? format(parseDateOnlyLocal(p.date_due) ?? new Date(p.date_due), "dd/MM/yyyy") : "",
+          fecha_pago: p.date_paid ? format(parseDateOnlyLocal(p.date_paid) ?? new Date(p.date_paid), "dd/MM/yyyy") : "",
           monto: p.amount || 0,
           moneda: p.currency || "ARS",
           estado: p.status || "",
@@ -275,6 +281,11 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: "Tipo de reporte no soportado" }, { status: 400 })
     }
 
+    // Si se alcanzó el tope, el export es PARCIAL: lo marcamos en el nombre del
+    // archivo para no dar la falsa impresión de que trae todo.
+    const truncated = data.length >= EXPORT_CAP
+    const partialTag = truncated ? "-PARCIAL" : ""
+
     // Generar según formato
     switch (exportFormat) {
       case "csv": {
@@ -282,13 +293,13 @@ export async function GET(request: Request) {
         return new NextResponse(csvContent, {
           headers: {
             "Content-Type": "text/csv; charset=utf-8",
-            "Content-Disposition": `attachment; filename="${reportType}-${format(new Date(), "yyyy-MM-dd")}.csv"`,
+            "Content-Disposition": `attachment; filename="${reportType}${partialTag}-${format(new Date(), "yyyy-MM-dd")}.csv"`,
           },
         })
       }
 
       case "json": {
-        return NextResponse.json({ data, columns })
+        return NextResponse.json({ data, columns, truncated })
       }
 
       default:

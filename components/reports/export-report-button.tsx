@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Download, FileSpreadsheet, FileText, Loader2 } from "lucide-react"
 import { toast } from "sonner"
+import { formatDateOnlyLocal } from "@/lib/utils/date-only"
 
 interface ExportReportButtonProps {
   reportType: "operations" | "customers" | "payments" | "leads"
@@ -51,7 +52,7 @@ export function ExportReportButton({
         const url = window.URL.createObjectURL(blob)
         const a = document.createElement("a")
         a.href = url
-        a.download = `${reportType}-${new Date().toISOString().split("T")[0]}.csv`
+        a.download = `${reportType}-${formatDateOnlyLocal(new Date())}.csv`
         document.body.appendChild(a)
         a.click()
         window.URL.revokeObjectURL(url)
@@ -63,7 +64,7 @@ export function ExportReportButton({
         const url = window.URL.createObjectURL(blob)
         const a = document.createElement("a")
         a.href = url
-        a.download = `${reportType}-${new Date().toISOString().split("T")[0]}.json`
+        a.download = `${reportType}-${formatDateOnlyLocal(new Date())}.json`
         document.body.appendChild(a)
         a.click()
         window.URL.revokeObjectURL(url)

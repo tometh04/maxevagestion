@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
-import { getCurrentUser } from "@/lib/auth"
 import { canPerformAction } from "@/lib/permissions-api"
+import { getRequestPermissions } from "@/lib/permissions/request"
 
 /**
  * Marca un cupón como pagado.
@@ -13,13 +12,12 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await getCurrentUser()
+    const { user, supabase, matrix } = await getRequestPermissions()
 
-    if (!canPerformAction(user, "cash", "write")) {
+    if (!canPerformAction(user, "cash", "write", matrix ?? undefined)) {
       return NextResponse.json({ error: "No tiene permiso para marcar cupones como pagados" }, { status: 403 })
     }
 
-    const supabase = await createServerClient()
     const { id } = await params
     const couponId = id
     const body = await request.json()

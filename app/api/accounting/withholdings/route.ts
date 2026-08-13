@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { canPerformAction } from "@/lib/permissions-api"
+import { getRequestPermissions } from "@/lib/permissions/request"
 
 export async function GET(request: Request) {
   try {
@@ -67,12 +69,14 @@ export async function GET(request: Request) {
  */
 export async function POST(request: Request) {
   try {
-    const { user } = await getCurrentUser()
-    if (!["ADMIN", "SUPER_ADMIN", "CONTABLE"].includes(user.role)) {
+    const { user, supabase, matrix } = await getRequestPermissions()
+    // Gate por accounting.write (matrix por agencia). El set previo
+    // [ADMIN,SUPER_ADMIN,CONTABLE] coincide con el default de accounting.write;
+    // además ahora ORG_OWNER queda habilitado, como en el resto del sistema.
+    if (!canPerformAction(user, "accounting", "write", matrix ?? undefined)) {
       return NextResponse.json({ error: "No autorizado" }, { status: 403 })
     }
 
-    const supabase = await createServerClient()
     const body = await request.json()
 
     // Cross-tenant fix (2026-05-18): inyectar org_id del user en el insert.

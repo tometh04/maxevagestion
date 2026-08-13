@@ -9,7 +9,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { PlaneLanding, ChevronRight, MapPin, Users, Calendar } from "lucide-react"
 import { format, differenceInDays } from "date-fns"
 import { es } from "date-fns/locale"
-import { parseDateOnlyLocal } from "@/lib/utils/date-only"
+import { parseDateOnlyLocal, formatDateOnlyLocal } from "@/lib/utils/date-only"
 import Link from "next/link"
 
 interface Operation {
@@ -37,10 +37,10 @@ export function UpcomingReturnsCard({ agencyId, sellerId }: UpcomingReturnsCardP
   const fetchUpcomingReturns = useCallback(async () => {
     try {
       setLoading(true)
-      const today = new Date().toISOString().split("T")[0]
+      const today = formatDateOnlyLocal(new Date()) ?? ""
       const nextThreeMonths = new Date()
       nextThreeMonths.setDate(nextThreeMonths.getDate() + 90)
-      const nextThreeMonthsStr = nextThreeMonths.toISOString().split("T")[0]
+      const nextThreeMonthsStr = formatDateOnlyLocal(nextThreeMonths) ?? ""
 
       const params = new URLSearchParams()
       params.set("status", "CONFIRMED")

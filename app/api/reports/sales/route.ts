@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
-import { getCurrentUser } from "@/lib/auth"
+import { getRequestPermissions } from "@/lib/permissions/request"
+import { isOwnDataOnlyResolved } from "@/lib/permissions-api"
 import { getExchangeRate, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
 import { getOrgFeatureFlag } from "@/lib/settings/org-features"
 import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
@@ -8,7 +8,7 @@ import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services
 
 export async function GET(request: Request) {
   try {
-    const { user } = await getCurrentUser()
+    const { user, supabase, matrix } = await getRequestPermissions()
 
     // 🔴 Fix cross-tenant CRÍTICO (2026-05-18, sweep /reports/*): defense-in-depth
     // RLS no está protegiendo confiablemente; agregamos .eq("org_id", user.org_id)
@@ -16,8 +16,6 @@ export async function GET(request: Request) {
     if (!user.org_id) {
       return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
     }
-
-    const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
     const dateFrom = searchParams.get("dateFrom")
@@ -57,10 +55,11 @@ export async function GET(request: Request) {
       query = query.lte("operation_date", dateTo)
     }
 
-    // Filtro de vendedor (si no es SELLER, puede ver todos)
+    // Filtro de vendedor. Si está restringido a datos propios (reports.ownDataOnly
+    // por agencia), se fuerza a las ventas propias.
     if (sellerId && sellerId !== "ALL") {
       query = query.eq("seller_id", sellerId)
-    } else if (user.role === "SELLER") {
+    } else if (isOwnDataOnlyResolved(user, "reports", matrix ?? undefined)) {
       query = query.eq("seller_id", user.id)
     }
 

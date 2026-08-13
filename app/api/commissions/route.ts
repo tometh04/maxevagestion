@@ -1,10 +1,60 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
-import { getCurrentUser } from "@/lib/auth"
+import { getRequestPermissions } from "@/lib/permissions/request"
+import { canPerformAction, isOwnDataOnlyResolved } from "@/lib/permissions-api"
+import {
+  emptyTotalsByCurrency,
+  getCommissionCurrency,
+  totalsByCurrency,
+  type CommissionTotalsByCurrency,
+} from "@/lib/commissions/currency"
+import {
+  normalizeDateBasis,
+  resolveCommissionDateFilter,
+} from "@/lib/commissions/date-filter"
 
 export const dynamic = 'force-dynamic'
 
 const COMMISSION_THRESHOLD_KEY = "commissions.payout_collection_threshold"
+
+/** Chunk para el `.in()` de operation_id (evita URLs gigantes en PostgREST). */
+const OPERATION_IDS_CHUNK_SIZE = 200
+
+/**
+ * Nombre del pasajero principal por operación (`operation_customers` con
+ * role = MAIN). Devuelve un Map vacío si falla: es un dato de presentación y no
+ * debe tumbar el listado de comisiones, que cae al código de operación.
+ */
+async function fetchMainPassengers(
+  supabase: any,
+  orgId: string,
+  operationIds: string[]
+): Promise<Map<string, string>> {
+  const byOperation = new Map<string, string>()
+  if (operationIds.length === 0) return byOperation
+
+  for (let i = 0; i < operationIds.length; i += OPERATION_IDS_CHUNK_SIZE) {
+    const chunk = operationIds.slice(i, i + OPERATION_IDS_CHUNK_SIZE)
+    const { data, error } = await (supabase.from("operation_customers") as any)
+      .select("operation_id, customers:customer_id(first_name, last_name)")
+      .eq("org_id", orgId)
+      .eq("role", "MAIN")
+      .in("operation_id", chunk)
+
+    if (error) {
+      console.error("[commissions] Error resolviendo pasajero principal:", error)
+      continue
+    }
+
+    for (const row of data || []) {
+      const customer = row.customers
+      if (!customer || byOperation.has(row.operation_id)) continue
+      const name = `${customer.first_name || ""} ${customer.last_name || ""}`.trim()
+      if (name) byOperation.set(row.operation_id, name)
+    }
+  }
+
+  return byOperation
+}
 
 /**
  * Umbral de cobranza (config por org, key/value en organization_settings) a
@@ -39,14 +89,13 @@ async function getCommissionCollectionThreshold(supabase: any, orgId: string): P
 // GET - Obtener comisiones
 export async function GET(request: Request) {
   try {
-    const { user } = await getCurrentUser()
+    const { user, supabase, matrix } = await getRequestPermissions()
 
     // Cross-tenant fix (2026-05-18): no confiar en RLS; scopear explícito.
     if (!(user as any).org_id) {
       return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
     }
 
-    const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
     // Parámetros de filtro
@@ -56,17 +105,41 @@ export async function GET(request: Request) {
     const periodEnd = searchParams.get("periodEnd")
     const month = searchParams.get("month") // Para filtrar por mes (YYYY-MM)
 
-    // Determinar si puede ver todas las comisiones o solo las propias
-    const canViewAll = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN'
+    // Sobre qué fecha corren los filtros de período. El criterio (y el porqué de
+    // no usar `date_calculated`) vive en `lib/commissions/date-filter.ts`.
+    //   sale (default) → mes de la venta (operations.operation_date)
+    //   paid           → mes en que se le pagó al vendedor (date_paid)
+    const dateBasis = normalizeDateBasis(searchParams.get("dateBasis"))
+    const dateFilter = resolveCommissionDateFilter({
+      month,
+      periodStart,
+      periodEnd,
+      basis: dateBasis,
+    })
+
+    // Determinar si puede ver todas las comisiones o solo las propias.
+    // Antes era `role === ADMIN|SUPER_ADMIN` fijo; ahora respeta el matrix por
+    // agencia: "ve todas" = tiene lectura de comisiones Y no está limitado a lo
+    // propio. Así un ADMIN configurado como "solo comisiones propias" se scopea,
+    // y un rol con lectura no restringida (p.ej. CONTABLE) ve todas.
+    const canViewAll =
+      canPerformAction(user, "commissions", "read", matrix ?? undefined) &&
+      !isOwnDataOnlyResolved(user, "commissions", matrix ?? undefined)
 
     // Always use commission_records (legacy commissions table is deprecated)
+    //
+    // El embed va con `!inner`: sin eso PostgREST ignora los filtros sobre
+    // `operations.*` (devuelve la fila con el embed en null en vez de excluirla),
+    // que es lo que necesita el filtro por mes de venta. `operation_id` es NOT
+    // NULL con FK, así que no se pierde ninguna comisión por el inner join.
     let query = (supabase.from("commission_records") as any)
       .select(`
         *,
-        operations:operation_id(
+        operations!inner(
           id,
           file_code,
           destination,
+          operation_date,
           departure_date,
           sale_amount_total,
           operator_cost,
@@ -87,25 +160,26 @@ export async function GET(request: Request) {
     }
     // Si es admin y no hay sellerId o sellerId=ALL, no filtra → trae todos
 
+    // Comisiones saldadas en un cierre administrativo (VIB-94): quedan fuera por
+    // defecto. No son deuda ni pago, y si aparecieran acá volverían a sumar en
+    // "por pagar", que es justo lo que el cierre vino a limpiar. Con
+    // `includeSettled=true` se pueden consultar para auditar.
+    const includeSettled = searchParams.get("includeSettled") === "true"
+    if (!includeSettled) {
+      query = query.is("settled_at", null)
+    }
+
     // Filtros
     if (status && status !== "ALL") {
       query = query.eq("status", status.toUpperCase())
     }
 
-    // Filtro por mes (YYYY-MM)
-    if (month) {
-      const [year, monthNum] = month.split("-")
-      const startDate = `${year}-${monthNum}-01`
-      const endDate = new Date(parseInt(year), parseInt(monthNum), 0).toISOString().split("T")[0]
-      query = query.gte("date_calculated", startDate).lte("date_calculated", endDate)
+    // Filtro por período (mes y/o rango), sobre la columna que corresponda.
+    if (dateFilter.from) {
+      query = query.gte(dateFilter.column, dateFilter.from)
     }
-
-    // Filtro por rango de fechas
-    if (periodStart) {
-      query = query.gte("date_calculated", periodStart)
-    }
-    if (periodEnd) {
-      query = query.lte("date_calculated", periodEnd)
+    if (dateFilter.to) {
+      query = query.lte(dateFilter.column, dateFilter.to)
     }
 
     const { data: commissionRecords, error } = await query
@@ -172,6 +246,17 @@ export async function GET(request: Request) {
       return (collectedPctByOp[cr.operation_id] ?? 0) >= COLLECTIBLE_THRESHOLD * 100
     }
 
+    // Pasajero principal de cada operación. El vendedor identifica su comisión
+    // por el pasajero, no por el código de operación (pedido de Lozada), así que
+    // el nombre tiene que viajar en la respuesta.
+    const mainPassengerByOperation = await fetchMainPassengers(
+      supabase,
+      (user as any).org_id,
+      Array.from(
+        new Set(filteredRecords.map((cr: any) => cr.operation_id).filter(Boolean))
+      ) as string[]
+    )
+
     // Fetch seller names from users table (scopeado por org)
     const sellerIds = Array.from(new Set(filteredRecords.map((cr: any) => cr.seller_id).filter(Boolean))) as string[]
     let sellersMap: Record<string, { name: string; email: string }> = {}
@@ -192,6 +277,10 @@ export async function GET(request: Request) {
         id: cr.id,
         operation_id: cr.operation_id,
         seller_id: cr.seller_id,
+        // Moneda al tope del objeto: `commission_records` no la tiene, sale de
+        // la venta. Antes había que bajar a `operation.currency` para saberla,
+        // y los consumidores que no lo hacían terminaban sumando ARS con USD.
+        currency: cr.operations?.sale_currency || "USD",
         seller_name: seller?.name || "Sin vendedor",
         seller_email: seller?.email || "",
         sellers: seller ? { id: cr.seller_id, name: seller.name } : null,
@@ -209,50 +298,67 @@ export async function GET(request: Request) {
           id: cr.operations.id,
           short_code: cr.operations.file_code || "",
           file_code: cr.operations.file_code || "",
+          main_passenger_name: mainPassengerByOperation.get(cr.operation_id) || "",
           destination: cr.operations.destination || "",
+          // Fecha de la venta: es la que define a qué mes pertenece la comisión.
+          operation_date: cr.operations.operation_date || "",
           departure_date: cr.operations.departure_date || "",
-          sale_amount_total: parseFloat(cr.operations.sale_amount_total || 0),
-          operator_cost: parseFloat(cr.operations.operator_cost || 0),
-          margin_amount: parseFloat(cr.operations.margin_amount || 0),
           currency: cr.operations.sale_currency || "USD",
+          // La economía del paquete (venta, costo del operador y margen) es de la
+          // agencia, no del vendedor: quien solo puede ver lo suyo recibe su
+          // comisión y nada más (VIB-94). Ocultarlo únicamente en la tabla no
+          // alcanzaba: viajaba en el JSON de esta misma respuesta.
+          ...(canViewAll
+            ? {
+                sale_amount_total: parseFloat(cr.operations.sale_amount_total || 0),
+                operator_cost: parseFloat(cr.operations.operator_cost || 0),
+                margin_amount: parseFloat(cr.operations.margin_amount || 0),
+              }
+            : {}),
         } : null,
       }
     })
 
-    // Calcular resumen mensual
-    const monthlySummary = new Map<string, { total: number; pending: number; paid: number; count: number }>()
+    // Resumen mensual y totales, SEPARADOS POR MONEDA.
+    //
+    // Antes se sumaba `amount` de todas las comisiones en un solo número, sin
+    // importar si estaban en pesos o en dólares, y la UI lo mostraba con "$".
+    // Un vendedor con comisiones en las dos monedas veía pesos más dólares
+    // sumados. Ver `lib/commissions/currency.ts`.
+    const monthlyAcc = new Map<string, CommissionTotalsByCurrency & { count: number }>()
 
     commissions.forEach((comm: any) => {
-      const monthKey = comm.date_calculated ? comm.date_calculated.substring(0, 7) : "unknown"
-      if (!monthlySummary.has(monthKey)) {
-        monthlySummary.set(monthKey, { total: 0, pending: 0, paid: 0, count: 0 })
+      // Mismo criterio que el filtro: el mes de una comisión es el de la venta,
+      // salvo que se esté mirando el historial de pagos. `date_calculated` no
+      // sirve para agrupar — la reescribe cada recálculo.
+      const monthSource =
+        dateBasis === "paid" ? comm.date_paid : comm.operation?.operation_date
+      const monthKey = monthSource ? String(monthSource).substring(0, 7) : "unknown"
+      if (!monthlyAcc.has(monthKey)) {
+        monthlyAcc.set(monthKey, { ...emptyTotalsByCurrency(), count: 0 })
       }
-      const summary = monthlySummary.get(monthKey)!
-      summary.total += comm.amount
+      const summary = monthlyAcc.get(monthKey)!
+      const bucket = summary[getCommissionCurrency(comm)]
+      bucket.total += comm.amount
+      bucket.count += 1
       summary.count += 1
-      if (comm.status === "PENDING") {
-        summary.pending += comm.amount
-      } else if (comm.status === "PAID") {
-        summary.paid += comm.amount
-      }
+      if (comm.status === "PAID") bucket.paid += comm.amount
+      else bucket.pending += comm.amount
     })
 
-    const monthlySummaryArray = Array.from(monthlySummary.entries()).map(([month, data]) => ({
+    const monthlySummary = Array.from(monthlyAcc.entries()).map(([month, data]) => ({
       month,
       ...data,
     }))
 
-    // Calcular totales
-    const totals = {
-      pending: commissions.filter((c: any) => c.status === "PENDING").reduce((sum: number, c: any) => sum + c.amount, 0),
-      paid: commissions.filter((c: any) => c.status === "PAID").reduce((sum: number, c: any) => sum + c.amount, 0),
-      total: commissions.reduce((sum: number, c: any) => sum + c.amount, 0),
-    }
+    const totals = totalsByCurrency(commissions as any)
 
     return NextResponse.json({
       commissions,
       totals,
-      monthlySummary: monthlySummaryArray,
+      monthlySummary,
+      /** false → la respuesta no trae venta/costo/margen de la operación. */
+      canViewOperationEconomics: canViewAll,
     })
 
   } catch (error: any) {

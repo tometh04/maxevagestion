@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth"
 import jsPDF from "jspdf"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
+import { toEmbeddableLogo } from "@/lib/pdf/logo"
 
 // Colors matching brand (golden/orange)
 const GOLD = [196, 155, 42] as const   // #C49B2A - golden
@@ -52,7 +53,10 @@ export async function GET(
     const companyPhone = getOrgSetting('phone', '')
     const companyWebsite = getOrgSetting('website', '')
     const companyTaxId = getOrgSetting('tax_id', '')
-    const companyLogo = getOrgSetting('brand_logo', '')
+    // `brand_logo` es la URL pública de Storage; jsPDF no descarga nada, así
+    // que hay que bajarla y pasarla en base64. Si falla queda "" y el header
+    // cae al nombre de la agencia.
+    const companyLogo = await toEmbeddableLogo(getOrgSetting('brand_logo', ''))
 
     // Fetch operation with customers (scopeada por org)
     const { data: operation } = await (supabase.from("operations") as any)

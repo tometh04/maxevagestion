@@ -54,7 +54,10 @@ export async function GET(
     query = query.in("chat_id", allChatIds)
   }
 
-  query = query.order("sent_at", { ascending: true }).limit(limit)
+  // Traer la ventana MÁS NUEVA primero (sent_at DESC + limit) y revertir abajo,
+  // para que el hilo muestre los últimos mensajes, no los 100 más viejos. El
+  // cursor `before` pagina hacia atrás (mensajes anteriores a esa fecha).
+  query = query.order("sent_at", { ascending: false }).limit(limit)
 
   if (before) {
     query = query.lt("sent_at", before)
@@ -66,12 +69,19 @@ export async function GET(
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  // Extract sender_name from raw_payload.pushName and strip raw_payload from response
-  const enriched = (messages || []).map((msg: any) => {
-    const senderName = msg.raw_payload?.pushName || null
-    const { raw_payload, ...rest } = msg
-    return { ...rest, sender_name: senderName }
-  })
+  // Si vinieron `limit` filas, probablemente hay más historial hacia atrás.
+  const hasMore = (messages || []).length === limit
 
-  return NextResponse.json({ messages: enriched })
+  // Extract sender_name from raw_payload.pushName and strip raw_payload from response.
+  // Revertimos a orden ascendente (contrato que espera la UI: más viejo → más nuevo).
+  const enriched = (messages || [])
+    .slice()
+    .reverse()
+    .map((msg: any) => {
+      const senderName = msg.raw_payload?.pushName || null
+      const { raw_payload, ...rest } = msg
+      return { ...rest, sender_name: senderName }
+    })
+
+  return NextResponse.json({ messages: enriched, hasMore })
 }

@@ -99,14 +99,18 @@ export function DebtsSalesPageClient({ sellers: initialSellers, agencies = [] }:
   const [agencyFilter, setAgencyFilter] = useState<string>("ALL")
   const [dateFromFilter, setDateFromFilter] = useState<Date | undefined>(undefined)
   const [dateToFilter, setDateToFilter] = useState<Date | undefined>(undefined)
+  // "Saldo al": fecha de corte para reconstruir el saldo como estaba a esa fecha
+  // (ej: cierre de Ganancias al 31/12). Vacío = saldo actual.
+  const [asOfDate, setAsOfDate] = useState<Date | undefined>(undefined)
   const [manualPaymentOpen, setManualPaymentOpen] = useState(false)
 
   // Debounce para campos de texto (300ms para búsqueda rápida y responsiva)
   const debouncedCustomerFilter = useDebounce(customerFilter, 300)
-  
+
   // Debounce para fechas (500ms - da tiempo para completar la selección de fecha)
   const debouncedDateFrom = useDebounce(dateFromFilter, 500)
   const debouncedDateTo = useDebounce(dateToFilter, 500)
+  const debouncedAsOf = useDebounce(asOfDate, 500)
 
   const fetchDebtors = useCallback(async () => {
     setLoading(true)
@@ -131,6 +135,9 @@ export function DebtsSalesPageClient({ sellers: initialSellers, agencies = [] }:
       if (debouncedDateTo) {
         params.append("dateTo", format(debouncedDateTo, "yyyy-MM-dd"))
       }
+      if (debouncedAsOf) {
+        params.append("asOf", format(debouncedAsOf, "yyyy-MM-dd"))
+      }
 
       const response = await fetch(`/api/accounting/debts-sales?${params.toString()}`)
       if (response.ok) {
@@ -147,7 +154,7 @@ export function DebtsSalesPageClient({ sellers: initialSellers, agencies = [] }:
     } finally {
       setLoading(false)
     }
-  }, [currencyFilter, debouncedCustomerFilter, sellerFilter, agencyFilter, debouncedDateFrom, debouncedDateTo])
+  }, [currencyFilter, debouncedCustomerFilter, sellerFilter, agencyFilter, debouncedDateFrom, debouncedDateTo, debouncedAsOf])
 
   useEffect(() => {
     fetchDebtors()
@@ -402,8 +409,11 @@ export function DebtsSalesPageClient({ sellers: initialSellers, agencies = [] }:
     const detailSheet = XLSX.utils.json_to_sheet(detailData)
     XLSX.utils.book_append_sheet(workbook, detailSheet, "Detalle Operaciones")
 
-    // Guardar archivo
-    const fileName = `deudores-por-ventas-${format(new Date(), "yyyy-MM-dd", { locale: es })}.xlsx`
+    // Guardar archivo. Si hay fecha de corte, el nombre lo refleja para que
+    // quede claro que es el saldo a esa fecha (ej: cierre al 31/12).
+    const fileName = asOfDate
+      ? `deudores-al-${format(asOfDate, "yyyy-MM-dd", { locale: es })}.xlsx`
+      : `deudores-por-ventas-${format(new Date(), "yyyy-MM-dd", { locale: es })}.xlsx`
     XLSX.writeFile(workbook, fileName)
   }
 
@@ -584,7 +594,14 @@ export function DebtsSalesPageClient({ sellers: initialSellers, agencies = [] }:
             className="h-8 text-xs rounded-full"
           />
 
-          {(dateFromFilter !== undefined || dateToFilter !== undefined || currencyFilter !== "ALL" || customerFilter || sellerFilter !== "ALL" || agencyFilter !== "ALL") && (
+          <DateInputWithCalendar
+            value={asOfDate}
+            onChange={setAsOfDate}
+            placeholder="Saldo al…"
+            className="h-8 text-xs rounded-full"
+          />
+
+          {(dateFromFilter !== undefined || dateToFilter !== undefined || asOfDate !== undefined || currencyFilter !== "ALL" || customerFilter || sellerFilter !== "ALL" || agencyFilter !== "ALL") && (
             <Button
               variant="ghost"
               size="sm"
@@ -596,6 +613,7 @@ export function DebtsSalesPageClient({ sellers: initialSellers, agencies = [] }:
                 setCustomerFilter("")
                 setDateFromFilter(undefined)
                 setDateToFilter(undefined)
+                setAsOfDate(undefined)
               }}
             >
               <X className="mr-1 h-3.5 w-3.5" />
@@ -603,6 +621,13 @@ export function DebtsSalesPageClient({ sellers: initialSellers, agencies = [] }:
             </Button>
           )}
       </div>
+
+      {asOfDate && (
+        <div className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-2 text-sm">
+          Mostrando <strong>saldos al {format(asOfDate, "dd/MM/yyyy", { locale: es })}</strong> — solo
+          operaciones y cobros hasta esa fecha. Ideal para el cierre contable.
+        </div>
+      )}
 
       {/* Resumen */}
       <div className="grid gap-4 md:grid-cols-3">

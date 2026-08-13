@@ -18,8 +18,17 @@ describe("isAccessAllowed", () => {
     expect(isAccessAllowed(makeOrg({ subscription_status: "TRIALING" }))).toBe(true)
   })
 
-  it("allows PAST_DUE (banner pero puede entrar durante retry)", () => {
-    expect(isAccessAllowed(makeOrg({ subscription_status: "PAST_DUE" }))).toBe(true)
+  it("allows PAST_DUE dentro de la gracia (banner pero puede entrar durante retry)", () => {
+    // PAST_DUE con período reciente (dentro de la gracia) → tiene acceso.
+    const oneDayAgo = new Date(Date.now() - 86400_000).toISOString()
+    expect(isAccessAllowed(makeOrg({
+      subscription_status: "PAST_DUE",
+      current_period_ends_at: oneDayAgo,
+    }))).toBe(true)
+  })
+
+  it("blocks PAST_DUE con current_period_ends_at null (defensivo)", () => {
+    expect(isAccessAllowed(makeOrg({ subscription_status: "PAST_DUE" }))).toBe(false)
   })
 
   it("blocks PENDING_PAYMENT", () => {
@@ -80,18 +89,18 @@ describe("isAccessAllowed", () => {
     expect(isAccessAllowed(orgWithSchedule)).toBe(true)
   })
 
-  it("PAST_DUE post-downgrade: acceso durante la gracia de 3 días, bloqueado después", () => {
+  it("PAST_DUE post-downgrade: acceso durante la gracia de 5 días, bloqueado después", () => {
     // Tras el cron la org queda PAST_DUE con current_period_ends_at congelado.
-    const oneDayAgo = new Date(Date.now() - 86400_000).toISOString()
-    expect(isAccessAllowed(makeOrg({
-      subscription_status: "PAST_DUE",
-      current_period_ends_at: oneDayAgo, // dentro de los 3 días
-    }))).toBe(true)
-
     const fourDaysAgo = new Date(Date.now() - 4 * 86400_000).toISOString()
     expect(isAccessAllowed(makeOrg({
       subscription_status: "PAST_DUE",
-      current_period_ends_at: fourDaysAgo, // pasada la gracia
+      current_period_ends_at: fourDaysAgo, // dentro de los 5 días
+    }))).toBe(true)
+
+    const sevenDaysAgo = new Date(Date.now() - 7 * 86400_000).toISOString()
+    expect(isAccessAllowed(makeOrg({
+      subscription_status: "PAST_DUE",
+      current_period_ends_at: sevenDaysAgo, // pasada la gracia
     }))).toBe(false)
   })
 })

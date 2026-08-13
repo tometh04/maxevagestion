@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
-import { getCurrentUser } from "@/lib/auth"
-import { canAccessModule, isOwnDataOnly } from "@/lib/permissions"
+import { getRequestPermissions } from "@/lib/permissions/request"
+import { canPerformAction, isOwnDataOnlyResolved } from "@/lib/permissions-api"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { getOrgFeatureFlag } from "@/lib/settings/org-features"
 import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
 import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
+import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 
 // Escapar HTML para prevenir XSS
 function escapeHtml(str: string | null | undefined): string {
@@ -24,10 +24,10 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await getCurrentUser()
+    const { user, supabase, matrix } = await getRequestPermissions()
 
-    // Verificar permiso de acceso al módulo customers
-    if (!canAccessModule(user.role as any, "customers")) {
+    // Verificar permiso de acceso al módulo customers (matrix por agencia)
+    if (!canPerformAction(user, "customers", "read", matrix ?? undefined)) {
       return NextResponse.json({ error: "No tiene permiso para ver clientes" }, { status: 403 })
     }
 
@@ -36,11 +36,11 @@ export async function GET(
       return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
     }
 
-    const supabase = await createServerClient()
     const { id: customerId } = await params
 
-    // Si es SELLER con ownDataOnly, verificar que el cliente pertenece a sus operaciones
-    if (isOwnDataOnly(user.role as any, "customers")) {
+    // Restringido a clientes propios (customers.ownDataOnly por agencia):
+    // verificar que el cliente pertenece a sus operaciones.
+    if (isOwnDataOnlyResolved(user, "customers", matrix ?? undefined)) {
       const { data: sellerOps } = await (supabase.from("operations") as any)
         .select("id")
         .eq("org_id", (user as any).org_id)
@@ -371,7 +371,7 @@ export async function GET(
             const amountLabel = `${isRefund ? "-" : ""}${p.currency} ${p.amount?.toLocaleString("es-AR")}`
             return `
               <tr>
-                <td>${format(new Date(p.date_due), "dd/MM/yyyy")}</td>
+                <td>${format(parseDateOnlyLocal(p.date_due) ?? new Date(p.date_due), "dd/MM/yyyy")}</td>
                 <td>${concept}</td>
                 <td>${escapeHtml(p.operations?.destination) || "-"}</td>
                 <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>

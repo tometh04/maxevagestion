@@ -1,0 +1,59 @@
+{
+  "//": "Superficies que el agente autónomo NO puede tocar. Derivado 1:1 de las 'Reglas no negociables' y bounded contexts de AGENTS.md. Si el diff del agente toca CUALQUIER path que matchee estos globs, run.mjs aborta: no abre PR, comenta el motivo en el issue y marca `agent-blocked`. El label agent-ready es curaduría; esto es la red de seguridad real.",
+  "protectedGlobs": [
+    "supabase/migrations/**",
+    "supabase/**/*.sql",
+
+    "lib/accounting/**",
+    "lib/billing/**",
+    "lib/payments/**",
+    "lib/afip/**",
+    "lib/commissions/**",
+    "lib/invoices/**",
+    "lib/operator-payments/**",
+
+    "lib/permissions.ts",
+    "lib/permissions-*.ts",
+    "lib/auth.ts",
+    "lib/auth/**",
+    "lib/supabase/admin-scope.ts",
+    "lib/supabase/server.ts",
+
+    "lib/integrations/hmac.ts",
+    "lib/integrations/secrets.ts",
+    "scripts/admin-client-allowlist.txt",
+    "scripts/check-admin-client.sh",
+
+    "middleware.ts",
+    "instrumentation.ts",
+    "next.config.js",
+    "next.config.mjs",
+
+    "app/api/cron/**",
+    "app/api/webhooks/**",
+    "app/api/billing/**",
+    "app/api/payments/**",
+    "app/api/accounting/**",
+    "app/admin/**",
+
+    ".env",
+    ".env.*",
+    "**/*.pem",
+    "**/*.key",
+
+    ".github/**",
+    "scripts/agent/**"
+  ],
+  "//caps": "Topes de blast radius. Un diff que exceda cualquiera de estos se trata como 'demasiado grande para autónomo' y va a humano (agent-blocked).",
+  "maxChangedFiles": 12,
+  "maxChangedLines": 400,
+  "//forbiddenContent": "Regex sobre el CONTENIDO agregado del diff. Aunque el path no esté en el blocklist, si el agente introduce estos patrones, aborta. Cierra la puerta a que 'ensanche' permisos o toque service-role desde un archivo permitido.",
+  "forbiddenAddedContent": [
+    "createAdminClient",
+    "SUPABASE_SERVICE_ROLE_KEY",
+    "service_role",
+    "DISABLE_AUTH",
+    "isPlatformAdmin",
+    "\\bas any\\b"
+  ]
+}

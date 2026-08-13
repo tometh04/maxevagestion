@@ -52,15 +52,20 @@ interface Commission {
   operation?: {
     id: string
     destination: string | null
+    /** Fecha de la venta: define a qué mes pertenece la comisión. */
+    operation_date?: string | null
     departure_date: string | null
     file_code: string | null
     short_code: string | null
-    margin_amount: number | null
+    main_passenger_name?: string | null
     currency: string | null
-    sale_amount_total: number | null
-    operator_cost: number | null
   } | null
 }
+
+// Esta vista es la del vendedor restringido a lo suyo (ver
+// `app/(dashboard)/commissions/page.tsx`). La venta, el costo del operador y el
+// margen de la operación no llegan a esta pantalla: son de la agencia y
+// `/api/commissions` ya no los manda a quien solo ve sus propias comisiones.
 
 interface SellerCommissionsViewProps {
   userId: string
@@ -76,9 +81,14 @@ function fmtCurrency(amount: number, currency?: string | null): string {
   return formatCurrency(amount, cur)
 }
 
+/**
+ * El vendedor reconoce su comisión por el pasajero, no por el código de
+ * operación (pedido de Lozada). El código queda de respaldo para las
+ * operaciones sin pasajero principal cargado.
+ */
 function operationLabel(op: Commission["operation"]): string {
   if (!op) return "-"
-  return op.file_code || op.short_code || "-"
+  return op.main_passenger_name || op.file_code || op.short_code || "-"
 }
 
 function monthKey(date: Date): string {
@@ -97,6 +107,20 @@ function monthKey(date: Date): string {
 function monthKeyFromIso(iso: string | null | undefined): string {
   if (!iso) return "unknown"
   return iso.substring(0, 7) // "YYYY-MM"
+}
+
+/**
+ * A qué fecha pertenece una comisión: la de la venta.
+ *
+ * `date_calculated` NO sirve: `applyCommissionPlan()` la reescribe con la fecha
+ * de hoy en cada recálculo (recalcular comisiones, editar la operación, un
+ * script de corrección masiva), así que después de un recálculo las comisiones
+ * de las ventas de julio quedaban fechadas en agosto y desaparecían al filtrar
+ * julio. Es el mismo criterio que usan `/api/commissions` y el Reporte de
+ * Comisiones (VIB-65). Cae a `date_calculated` solo si la operación no vino.
+ */
+function saleDateOf(c: Commission): string | null {
+  return c.operation?.operation_date || c.date_calculated || null
 }
 
 function monthLabel(key: string): string {
@@ -165,27 +189,33 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
       result = result.filter((c) => c.status === statusFilter)
     }
 
-    // month — usar string slicing TZ-safe para evitar el bug de la zona horaria
+    // month — sobre la fecha de VENTA, no sobre `date_calculated`: esa columna
+    // la reescribe cada recálculo de comisiones, así que después de un recálculo
+    // las ventas de julio quedaban filtradas como si fueran de agosto.
+    // String slicing TZ-safe, igual que antes.
     if (monthFilterBalance !== "ALL") {
-      result = result.filter((c) => monthKeyFromIso(c.date_calculated) === monthFilterBalance)
+      result = result.filter(
+        (c) => monthKeyFromIso(saleDateOf(c)) === monthFilterBalance
+      )
     }
 
-    // date range
+    // date range — mismo criterio: fecha de venta, comparada como string
+    // "YYYY-MM-DD" para no volver a pasar por `new Date()` y su corrimiento.
     if (dateFrom) {
-      const from = new Date(dateFrom)
-      result = result.filter((c) => new Date(c.date_calculated) >= from)
+      result = result.filter((c) => (saleDateOf(c) ?? "") >= dateFrom)
     }
     if (dateTo) {
-      const to = new Date(dateTo)
-      to.setHours(23, 59, 59, 999)
-      result = result.filter((c) => new Date(c.date_calculated) <= to)
+      result = result.filter((c) => {
+        const d = saleDateOf(c)
+        return !!d && d.substring(0, 10) <= dateTo
+      })
     }
 
     return result
   }, [commissions, statusFilter, monthFilterBalance, dateFrom, dateTo])
 
   const { sortedData: sortedFilteredCommissions, sortConfig: balanceSortConfig, requestSort: requestBalanceSort } = useSortableData(filteredCommissions, {
-    key: "date_calculated",
+    key: "operation.operation_date",
     direction: "desc",
   })
 
@@ -210,7 +240,7 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
     const now = new Date()
     const key = monthKey(now)
     return commissions
-      .filter((c) => monthKeyFromIso(c.date_calculated) === key)
+      .filter((c) => monthKeyFromIso(saleDateOf(c)) === key)
       .reduce((s, c) => s + c.amount, 0)
   }, [commissions])
 
@@ -306,8 +336,12 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
 
       <Tabs defaultValue="balance" className="w-full">
         <TabsList>
-          <TabsTrigger value="balance">Mi Balance</TabsTrigger>
-          <TabsTrigger value="history">Historial de Pagos</TabsTrigger>
+          <TabsTrigger value="balance" data-tour="commissions.tab-pending">
+            Mi Balance
+          </TabsTrigger>
+          <TabsTrigger value="history" data-tour="commissions.tab-history">
+            Historial de Pagos
+          </TabsTrigger>
         </TabsList>
 
         {/* ============================================================= */}
@@ -315,7 +349,7 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
         {/* ============================================================= */}
         <TabsContent value="balance" className="space-y-6 mt-4">
           {/* KPI cards */}
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-3" data-tour="commissions.summary">
             {/* Pending */}
             <div className="rounded-xl border border-border/40 p-5 space-y-1">
               <div className="flex items-center gap-2">
@@ -357,7 +391,7 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
           </div>
 
           {/* Filters */}
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap" data-tour="commissions.period-selector">
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
                 <SelectValue placeholder="Estado" />
@@ -374,7 +408,7 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
               onValueChange={setMonthFilterBalance}
             >
               <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
-                <SelectValue placeholder="Mes" />
+                <SelectValue placeholder="Mes de venta" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">Todos los meses</SelectItem>
@@ -420,10 +454,9 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
               <Table>
                 <TableHeader className="sticky top-0 bg-background z-10">
                   <TableRow>
-                    <SortableTableHead sortKey="operation.file_code" sortConfig={balanceSortConfig} onSort={requestBalanceSort}>Operacion</SortableTableHead>
+                    <SortableTableHead sortKey="operation.main_passenger_name" sortConfig={balanceSortConfig} onSort={requestBalanceSort}>Pasajero</SortableTableHead>
                     <SortableTableHead sortKey="operation.destination" sortConfig={balanceSortConfig} onSort={requestBalanceSort}>Destino</SortableTableHead>
                     <SortableTableHead sortKey="operation.departure_date" sortConfig={balanceSortConfig} onSort={requestBalanceSort}>Fecha Salida</SortableTableHead>
-                    <SortableTableHead sortKey="operation.margin_amount" sortConfig={balanceSortConfig} onSort={requestBalanceSort} className="text-right">Margen</SortableTableHead>
                     <SortableTableHead sortKey="percentage" sortConfig={balanceSortConfig} onSort={requestBalanceSort} className="text-right">% Comision</SortableTableHead>
                     <SortableTableHead sortKey="amount" sortConfig={balanceSortConfig} onSort={requestBalanceSort} className="text-right">Monto</SortableTableHead>
                     <SortableTableHead sortKey="status" sortConfig={balanceSortConfig} onSort={requestBalanceSort}>Estado</SortableTableHead>
@@ -449,14 +482,6 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
                               parseDateOnlyLocal(c.operation.departure_date)!,
                               "dd/MM/yyyy",
                               { locale: es }
-                            )
-                          : "-"}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {c.operation?.margin_amount != null
-                          ? fmtCurrency(
-                              c.operation.margin_amount,
-                              c.operation.currency
                             )
                           : "-"}
                       </TableCell>
@@ -494,7 +519,7 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
               onValueChange={setMonthFilterHistory}
             >
               <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
-                <SelectValue placeholder="Mes" />
+                <SelectValue placeholder="Mes de pago" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">Todos los meses</SelectItem>
@@ -587,7 +612,7 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
                         <TableHeader className="sticky top-0 bg-background z-10">
                           <TableRow>
                             <TableHead>Fecha Pago</TableHead>
-                            <TableHead>Operacion</TableHead>
+                            <TableHead>Pasajero</TableHead>
                             <TableHead>Destino</TableHead>
                             <TableHead className="text-right">Monto</TableHead>
                             <TableHead className="text-right">%</TableHead>

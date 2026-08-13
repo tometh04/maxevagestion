@@ -68,6 +68,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { toast } from "sonner"
+import { INDEPENDENT_ADVISOR_ROLE_VALUE } from "@/lib/permissions"
 
 interface User {
   id: string
@@ -78,6 +79,12 @@ interface User {
   is_active: boolean
   can_view_agency_operations_support?: boolean
   can_add_services_on_agency_operations?: boolean
+  can_create_operations_for_other_sellers?: boolean
+  can_register_payments_on_agency_operations?: boolean
+  is_independent_advisor?: boolean
+  /** VIB-102: quién administra a este vendedor y cobra un % de sus ventas. */
+  advisor_manager_id?: string | null
+  advisor_manager_percentage?: number | null
   created_at: string
   email_confirmed_at?: string | null
   user_agencies?: Array<{ agency_id: string; agencies: { name: string } }>
@@ -88,11 +95,16 @@ interface Agency {
   name: string
 }
 
+// VIB-69: "Asesor independiente" se elige como un rol más, pero no es un rol de
+// DB: se guarda como Vendedor + is_independent_advisor. Ver lib/permissions.ts.
+const AVI = INDEPENDENT_ADVISOR_ROLE_VALUE
+
 const roleLabels: Record<string, string> = {
   SUPER_ADMIN: "Super Admin",
   ADMIN: "Administrador",
   CONTABLE: "Contable",
   SELLER: "Vendedor",
+  [AVI]: "Asesor independiente",
   VIEWER: "Observador",
   POST_VENTA: "Post-venta",
 }
@@ -102,6 +114,7 @@ const roleColors: Record<string, string> = {
   ADMIN: "bg-accent-teal",
   CONTABLE: "bg-success",
   SELLER: "bg-accent-coral",
+  [AVI]: "bg-amber-600",
   VIEWER: "bg-muted-foreground",
   POST_VENTA: "bg-blue-500",
 }
@@ -111,8 +124,31 @@ const roleDescriptions: Record<string, string> = {
   ADMIN: "Gestión completa sin eliminar",
   CONTABLE: "Solo módulos financieros",
   SELLER: "Solo sus propios datos",
+  [AVI]: "Freelance: solo sus propias ventas",
   VIEWER: "Solo lectura",
   POST_VENTA: "Seguimiento post-cierre de operaciones",
+}
+
+/**
+ * VIB-102. Valor del `<Select>` cuando el vendedor no tiene administrador.
+ * Radix no acepta `value=""` en un item, así que el "sin nada" necesita un
+ * centinela; la API lo interpreta como null.
+ */
+const NO_MANAGER = "NONE"
+
+/** Porcentaje que se propone al asignar un administrador por primera vez. */
+const DEFAULT_MANAGER_PCT = "5"
+
+/** El valor de rol que muestra la UI para un usuario (Vendedor vs Asesor). */
+function displayRoleValue(user: Pick<User, "role" | "is_independent_advisor">): string {
+  return user.is_independent_advisor && user.role === "SELLER" ? AVI : user.role
+}
+
+/** Traduce el valor elegido en la UI al payload que espera la API. */
+function roleValueToPayload(value: string): { role: string; is_independent_advisor: boolean } {
+  return value === AVI
+    ? { role: "SELLER", is_independent_advisor: true }
+    : { role: value, is_independent_advisor: false }
 }
 
 export function UsersSettings() {
@@ -124,6 +160,9 @@ export function UsersSettings() {
   const [changePasswordDialogOpen, setChangePasswordDialogOpen] = useState(false)
   const [permissionsDialogOpen, setPermissionsDialogOpen] = useState(false)
   const [changeRoleDialogOpen, setChangeRoleDialogOpen] = useState(false)
+  const [advisorManagerDialogOpen, setAdvisorManagerDialogOpen] = useState(false)
+  const [advisorManagerId, setAdvisorManagerId] = useState(NO_MANAGER)
+  const [advisorManagerPct, setAdvisorManagerPct] = useState("")
   const [selectedRole, setSelectedRole] = useState("")
   const [selectedAdditionalRoles, setSelectedAdditionalRoles] = useState<string[]>([])
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
@@ -134,6 +173,8 @@ export function UsersSettings() {
   const [specialPermissions, setSpecialPermissions] = useState({
     can_view_agency_operations_support: false,
     can_add_services_on_agency_operations: false,
+    can_create_operations_for_other_sellers: false,
+    can_register_payments_on_agency_operations: false,
   })
 
   // Form state
@@ -191,7 +232,7 @@ export function UsersSettings() {
       const response = await fetch("/api/settings/users/invite", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newUser),
+        body: JSON.stringify({ ...newUser, ...roleValueToPayload(newUser.role) }),
       })
 
       const data = await response.json()
@@ -293,6 +334,8 @@ export function UsersSettings() {
     setSpecialPermissions({
       can_view_agency_operations_support: Boolean(user.can_view_agency_operations_support),
       can_add_services_on_agency_operations: Boolean(user.can_add_services_on_agency_operations),
+      can_create_operations_for_other_sellers: Boolean(user.can_create_operations_for_other_sellers),
+      can_register_payments_on_agency_operations: Boolean(user.can_register_payments_on_agency_operations),
     })
     setPermissionsDialogOpen(true)
   }
@@ -327,6 +370,65 @@ export function UsersSettings() {
     }
   }
 
+  // ── VIB-102: administrador del vendedor ──────────────────────────────────
+
+  const handleOpenAdvisorManager = (user: User) => {
+    setSelectedUser(user)
+    setAdvisorManagerId(user.advisor_manager_id || NO_MANAGER)
+    setAdvisorManagerPct(
+      user.advisor_manager_percentage != null ? String(user.advisor_manager_percentage) : ""
+    )
+    setAdvisorManagerDialogOpen(true)
+  }
+
+  const handleSaveAdvisorManager = async () => {
+    if (!selectedUser) return
+
+    const sinAdministrador = advisorManagerId === NO_MANAGER
+    const pct = Number(advisorManagerPct)
+
+    // Un administrador sin porcentaje no cobra nada, y descubrirlo en la
+    // liquidación es tarde. La API lo acepta (deja el vínculo a medias a
+    // propósito); acá se pide completarlo.
+    if (!sinAdministrador && (!advisorManagerPct.trim() || !Number.isFinite(pct) || pct <= 0)) {
+      toast.error("Ingresá el porcentaje que cobra el administrador")
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      const response = await fetch(`/api/settings/users/${selectedUser.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          advisor_manager_id: sinAdministrador ? null : advisorManagerId,
+          advisor_manager_percentage: sinAdministrador ? null : pct,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        toast.error(data.error || "Error al guardar el administrador")
+        return
+      }
+
+      toast.success(
+        sinAdministrador
+          ? "Se quitó el administrador"
+          : "Administrador actualizado. Aplica a las ventas que se calculen desde ahora."
+      )
+      setAdvisorManagerDialogOpen(false)
+      setSelectedUser(null)
+      loadData()
+    } catch (error) {
+      console.error("Error saving advisor manager:", error)
+      toast.error("Error al guardar el administrador")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   const handleActivateUser = async (user: User) => {
     try {
       toast.info("Activando acceso...")
@@ -355,8 +457,13 @@ export function UsersSettings() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          role: selectedRole,
-          additional_roles: selectedAdditionalRoles.filter((r) => r !== selectedRole),
+          ...roleValueToPayload(selectedRole),
+          // VIB-69: el asesor independiente no acumula roles adicionales — la API
+          // también lo fuerza, acá evitamos mandar un payload contradictorio.
+          additional_roles:
+            selectedRole === AVI
+              ? []
+              : selectedAdditionalRoles.filter((r) => r !== selectedRole),
         }),
       })
 
@@ -367,7 +474,10 @@ export function UsersSettings() {
         return
       }
 
-      const allRoles = [selectedRole, ...selectedAdditionalRoles.filter((r) => r !== selectedRole)]
+      const allRoles =
+        selectedRole === AVI
+          ? [AVI]
+          : [selectedRole, ...selectedAdditionalRoles.filter((r) => r !== selectedRole)]
       const rolesLabel = allRoles.map((r) => roleLabels[r] || r).join(" + ")
       toast.success(`Rol actualizado a ${rolesLabel}`)
       setChangeRoleDialogOpen(false)
@@ -470,7 +580,7 @@ export function UsersSettings() {
           </Button>
           <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>
             <DialogTrigger asChild>
-              <Button size="sm">
+              <Button size="sm" data-tour="settings.invite-user-button">
                 <UserPlus className="mr-2 h-3.5 w-3.5" />
                 Invitar Usuario
               </Button>
@@ -548,7 +658,7 @@ export function UsersSettings() {
                     </Select>
                   </div>
 
-                  {newUser.role === "SELLER" && (
+                  {(newUser.role === "SELLER" || newUser.role === AVI) && (
                     <div className="space-y-2">
                       <Label htmlFor="commission">% Comisión por defecto</Label>
                       <DecimalInput
@@ -656,8 +766,8 @@ export function UsersSettings() {
                   </TableCell>
                   <TableCell>
                     <div className="space-y-1">
-                      <Badge className={`${roleColors[user.role]} text-white`}>
-                        {roleLabels[user.role] || user.role}
+                      <Badge className={`${roleColors[displayRoleValue(user)]} text-white`}>
+                        {roleLabels[displayRoleValue(user)] || user.role}
                       </Badge>
                       {user.additional_roles && user.additional_roles.length > 0 && (
                         <div className="flex flex-wrap gap-1">
@@ -668,7 +778,7 @@ export function UsersSettings() {
                           ))}
                         </div>
                       )}
-                      {user.role === "SELLER" && (user.can_view_agency_operations_support || user.can_add_services_on_agency_operations) && (
+                      {user.role === "SELLER" && !user.is_independent_advisor && (user.can_view_agency_operations_support || user.can_add_services_on_agency_operations || user.can_create_operations_for_other_sellers || user.can_register_payments_on_agency_operations) && (
                         <div className="flex flex-wrap gap-1">
                           {user.can_view_agency_operations_support && (
                             <Badge variant="outline" className="text-[10px]">
@@ -680,7 +790,31 @@ export function UsersSettings() {
                               Alta servicios
                             </Badge>
                           )}
+                          {user.can_create_operations_for_other_sellers && (
+                            <Badge variant="outline" className="text-[10px]">
+                              Carga por otros
+                            </Badge>
+                          )}
+                          {user.can_register_payments_on_agency_operations && (
+                            <Badge variant="outline" className="text-[10px]">
+                              Cobros agencia
+                            </Badge>
+                          )}
                         </div>
+                      )}
+                      {/* VIB-102: quién le cobra un % a este vendedor. Va en la
+                          tabla y no solo dentro del diálogo porque es plata que
+                          sale de cada venta: tiene que verse de un vistazo al
+                          revisar el equipo. */}
+                      {user.advisor_manager_id && (
+                        <Badge variant="outline" className="text-[10px] font-normal">
+                          Lo administra{" "}
+                          {users.find((u) => u.id === user.advisor_manager_id)?.name ||
+                            "otro usuario"}
+                          {user.advisor_manager_percentage != null
+                            ? ` · ${user.advisor_manager_percentage}%`
+                            : " · sin %"}
+                        </Badge>
                       )}
                     </div>
                   </TableCell>
@@ -751,17 +885,30 @@ export function UsersSettings() {
                           <Mail className="mr-2 h-4 w-4" />
                           Reenviar invitación
                         </DropdownMenuItem>
-                        {user.role === "SELLER" && (
+                        {/* VIB-69: los permisos especiales amplían el alcance a
+                            operaciones de la agencia — no aplican a un asesor
+                            independiente, que solo trabaja sobre lo suyo. */}
+                        {user.role === "SELLER" && !user.is_independent_advisor && (
                           <DropdownMenuItem onClick={() => handleOpenPermissions(user)}>
                             <Shield className="mr-2 h-4 w-4" />
                             Permisos especiales
+                          </DropdownMenuItem>
+                        )}
+                        {/* VIB-102: aplica a cualquier vendedor, no solo al
+                            asesor independiente. El vínculo es lo que paga la
+                            comisión; atarlo además al flag haría que apagarlo
+                            cortara la comisión sin que nadie lo pida. */}
+                        {user.role === "SELLER" && (
+                          <DropdownMenuItem onClick={() => handleOpenAdvisorManager(user)}>
+                            <UserCog className="mr-2 h-4 w-4" />
+                            Administrador de ventas
                           </DropdownMenuItem>
                         )}
                         {user.role !== "SUPER_ADMIN" && (
                           <DropdownMenuItem
                             onClick={() => {
                               setSelectedUser(user)
-                              setSelectedRole(user.role)
+                              setSelectedRole(displayRoleValue(user))
                               setSelectedAdditionalRoles(user.additional_roles ?? [])
                               setChangeRoleDialogOpen(true)
                             }}
@@ -871,6 +1018,13 @@ export function UsersSettings() {
                     <p>✗ Sin acceso a caja ni config</p>
                   </>
                 )}
+                {role === AVI && (
+                  <>
+                    <p>✓ Carga y gestiona solo sus propias ventas</p>
+                    <p>✓ Sus clientes, sus cobros y sus comisiones</p>
+                    <p>✗ Sin acceso al CRM ni al resto de la agencia</p>
+                  </>
+                )}
                 {role === "VIEWER" && (
                   <>
                     <p>✓ Solo lectura en todo</p>
@@ -890,6 +1044,87 @@ export function UsersSettings() {
           ))}
         </div>
       </div>
+
+      {/* VIB-102: administrador del vendedor */}
+      <Dialog open={advisorManagerDialogOpen} onOpenChange={setAdvisorManagerDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Administrador de ventas</DialogTitle>
+            <DialogDescription>
+              Quién administra a <strong>{selectedUser?.name}</strong> y cobra una parte de cada
+              venta suya.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="advisor-manager">Administrado por</Label>
+              <Select
+                value={advisorManagerId}
+                onValueChange={(value) => {
+                  setAdvisorManagerId(value)
+                  // Al asignar administrador por primera vez se propone el 5%,
+                  // que es el trato habitual. Un valor ya cargado no se pisa.
+                  if (value !== NO_MANAGER && !advisorManagerPct.trim()) {
+                    setAdvisorManagerPct(DEFAULT_MANAGER_PCT)
+                  }
+                }}
+              >
+                <SelectTrigger id="advisor-manager">
+                  <SelectValue placeholder="Sin administrador" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_MANAGER}>Sin administrador</SelectItem>
+                  {users
+                    .filter(
+                      (u) =>
+                        u.id !== selectedUser?.id &&
+                        u.is_active &&
+                        // Un asesor independiente solo ve lo suyo: si administrara
+                        // a otro vería ventas ajenas. La API también lo rechaza.
+                        !u.is_independent_advisor
+                    )
+                    .map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        {u.name || u.email}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {advisorManagerId !== NO_MANAGER && (
+              <div className="space-y-2">
+                <Label htmlFor="advisor-manager-pct">% que cobra sobre cada venta</Label>
+                <DecimalInput
+                  id="advisor-manager-pct"
+                  value={advisorManagerPct}
+                  onChange={setAdvisorManagerPct}
+                  placeholder="5"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Se calcula sobre la ganancia de la operación, igual que la comisión del
+                  vendedor.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setAdvisorManagerDialogOpen(false)}
+              disabled={submitting}
+            >
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveAdvisorManager} disabled={submitting}>
+              {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Guardar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={permissionsDialogOpen} onOpenChange={setPermissionsDialogOpen}>
         <DialogContent className="max-w-md">
@@ -937,6 +1172,42 @@ export function UsersSettings() {
                     setSpecialPermissions((prev) => ({
                       ...prev,
                       can_add_services_on_agency_operations: checked,
+                    }))
+                  }
+                />
+              </div>
+
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium">Cargar operaciones a nombre de otro vendedor</p>
+                  <p className="text-xs text-muted-foreground">
+                    Habilita elegir a otro vendedor de sus mismas agencias al crear una operación. La venta y la comisión quedan a nombre del vendedor elegido.
+                  </p>
+                </div>
+                <Switch
+                  checked={specialPermissions.can_create_operations_for_other_sellers}
+                  onCheckedChange={(checked) =>
+                    setSpecialPermissions((prev) => ({
+                      ...prev,
+                      can_create_operations_for_other_sellers: checked,
+                    }))
+                  }
+                />
+              </div>
+
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium">Registrar cobros en operaciones de la agencia</p>
+                  <p className="text-xs text-muted-foreground">
+                    Permite imputar cobros al pasajero y pagos al operador en operaciones de otros vendedores de sus mismas agencias. Sólo pagos: no habilita editar la operación ni sus datos. Requiere tener Caja habilitada.
+                  </p>
+                </div>
+                <Switch
+                  checked={specialPermissions.can_register_payments_on_agency_operations}
+                  onCheckedChange={(checked) =>
+                    setSpecialPermissions((prev) => ({
+                      ...prev,
+                      can_register_payments_on_agency_operations: checked,
                     }))
                   }
                 />
@@ -1102,6 +1373,12 @@ export function UsersSettings() {
               </Select>
             </div>
 
+            {selectedRole === AVI ? (
+              <p className="text-xs text-muted-foreground">
+                El asesor independiente no puede combinarse con otros roles: su alcance
+                queda limitado a sus propias ventas.
+              </p>
+            ) : (
             <div className="space-y-2">
               <Label>Roles adicionales</Label>
               <p className="text-xs text-muted-foreground">
@@ -1109,7 +1386,7 @@ export function UsersSettings() {
               </p>
               <div className="rounded-lg border border-border/30 bg-background p-3 space-y-2">
                 {Object.entries(roleLabels)
-                  .filter(([value]) => value !== "SUPER_ADMIN" && value !== selectedRole)
+                  .filter(([value]) => value !== "SUPER_ADMIN" && value !== AVI && value !== selectedRole)
                   .map(([value, label]) => (
                     <div key={value} className="flex items-center justify-between">
                       <div>
@@ -1128,6 +1405,7 @@ export function UsersSettings() {
                   ))}
               </div>
             </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setChangeRoleDialogOpen(false)}>

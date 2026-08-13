@@ -3,7 +3,8 @@ import { headers } from "next/headers"
 import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
 import { createServerClient } from "@/lib/supabase/server"
-import { getScopedAgenciesForUser } from "@/lib/permissions-api"
+import { canPerformAction, getScopedAgenciesForUser } from "@/lib/permissions-api"
+import { resolveUserPermissions } from "@/lib/permissions-agency"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ContabilidadTabs } from "@/components/accounting/contabilidad-tabs"
 import { makeTimer } from "@/lib/perf-log"
@@ -88,7 +89,12 @@ const ChartOfAccountsTree = dynamic(
   }
 )
 
-export default async function ContabilidadPage() {
+export default async function ContabilidadPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ tab?: string; accountId?: string; currency?: string }>
+}) {
+  const sp = (await searchParams) || {}
   const __perfReqId = (await headers()).get("x-perf-req-id") || undefined
   const t = makeTimer("page(accounting/ledger)", __perfReqId)
 
@@ -128,21 +134,51 @@ export default async function ContabilidadPage() {
   // PERF: paralelizamos las 3 fuentes (agencies scope, sellers, operators).
   // getScopedAgenciesForUser hace queries propias dentro pero no dependen
   // de sellers/operators, así que se pueden lanzar en paralelo.
-  const [agencies, sellersRes, operatorsRes] = await Promise.all([
+  // Cuentas financieras para el filtro/export del Libro Mayor.
+  // Cross-tenant: filtro explícito por org_id, no confiar en RLS.
+  const accountsQuery = supabase
+    .from("financial_accounts")
+    .select("id, name, currency, agency_id")
+    .eq("is_active", true)
+    .eq("org_id", (user as any).org_id)
+    .order("currency")
+    .order("name")
+
+  const [agencies, sellersRes, operatorsRes, accountsRes] = await Promise.all([
     getScopedAgenciesForUser(supabase, user),
     sellersQuery,
     supabase.from("operators").select("id, name").order("name"),
+    accountsQuery,
   ])
-  t.mark("parallel agencies+sellers+operators")
+  t.mark("parallel agencies+sellers+operators+accounts")
   const sellers = sellersRes.data
   const operators = operatorsRes.data
 
-  const showPartnerAccounts = ["SUPER_ADMIN", "ADMIN", "CONTABLE"].includes(user.role)
+  // Cuentas visibles: las de las agencias del user + las compartidas (agency_id null).
+  const scopedAgencyIds = new Set(agencies.map((a: any) => a.id))
+  const accounts = (accountsRes.data || [])
+    .filter((a: any) => !a.agency_id || scopedAgencyIds.has(a.agency_id))
+    .map((a: any) => ({ id: a.id, name: a.name, currency: a.currency }))
+
+  // Cuentas de Socios: gate por la matriz resuelta, no por un set de roles
+  // hardcodeado que dejaba afuera al ORG_OWNER. Los flags de escritura/borrado
+  // se resuelven acá para que los botones coincidan con lo que aceptan
+  // /api/partner-accounts/*.
+  const partnerMatrix = await resolveUserPermissions(
+    supabase as any,
+    user.id,
+    (user as any).org_id,
+    ((user as any).roles ?? [user.role]) as any,
+    agencies.map((a: any) => a.id)
+  )
+  const showPartnerAccounts = canPerformAction(user, "accounting", "read", partnerMatrix ?? undefined)
+  t.mark("partner accounts permissions")
 
   t.end(`agencies=${agencies.length} sellers=${sellers?.length ?? 0} operators=${operators?.length ?? 0}`)
 
   return (
     <ContabilidadTabs
+      initialTab={sp.tab}
       journalEntriesContent={
         <JournalEntriesPageClient />
       }
@@ -153,7 +189,13 @@ export default async function ContabilidadPage() {
         <MonthlyPositionPageClient agencies={agencies} userRole={user.role || "SELLER"} />
       }
       ledgerContent={
-        <LedgerPageClient agencies={agencies} userRole={user.role} />
+        <LedgerPageClient
+          agencies={agencies}
+          accounts={accounts}
+          initialAccountId={sp.accountId}
+          initialCurrency={sp.currency}
+          userRole={user.role}
+        />
       }
       debtsSalesContent={
         <DebtsSalesPageClient sellers={(sellers || []).map((s: any) => ({ id: s.id, name: s.name }))} />
@@ -166,7 +208,11 @@ export default async function ContabilidadPage() {
       }
       partnerAccountsContent={
         showPartnerAccounts
-          ? <PartnerAccountsClient userRole={user.role} agencies={agencies} />
+          ? <PartnerAccountsClient
+              canWrite={canPerformAction(user, "accounting", "write", partnerMatrix ?? undefined)}
+              canDelete={canPerformAction(user, "accounting", "delete", partnerMatrix ?? undefined)}
+              agencies={agencies}
+            />
           : <div />
       }
       facturasComprasContent={

@@ -148,6 +148,13 @@ module.exports = {
   			'slide-out-right': {
   				from: { opacity: 1, transform: 'translateX(0)' },
   				to: { opacity: 0, transform: 'translateX(16px)' }
+  			},
+  			// Anillo de atención alrededor del hueco del spotlight (guías in-app).
+  			// Va en un div aparte para no pelear con el box-shadow de 9999px que
+  			// dibuja el atenuado.
+  			'tour-pulse': {
+  				'0%, 100%': { boxShadow: '0 0 0 0 hsl(var(--primary) / 0.45)' },
+  				'50%': { boxShadow: '0 0 0 6px hsl(var(--primary) / 0)' }
   			}
   		},
   		animation: {
@@ -159,7 +166,8 @@ module.exports = {
   			'scale-in': 'scale-in 0.2s ease-out both',
   			'scale-out': 'scale-out 0.2s ease-in both',
   			'slide-in-right': 'slide-in-right 0.3s ease-out both',
-  			'slide-out-right': 'slide-out-right 0.3s ease-in both'
+  			'slide-out-right': 'slide-out-right 0.3s ease-in both',
+  			'tour-pulse': 'tour-pulse 2s ease-out infinite'
   		}
   	}
   },

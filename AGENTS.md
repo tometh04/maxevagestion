@@ -16,7 +16,7 @@ comisiones, documentos y alertas, pero hoy tambien incluye:
 - Platform admin global separado de los roles de tenant.
 - Permisos dinamicos por agencia y soporte multi-rol.
 - Integraciones Manychat, Callbell, ChatSell, Eve, Emilia, WhatsApp/WHA Control,
-  AFIP, OpenAI, web push y Tawk.
+  AFIP, OpenAI y web push.
 - Imports masivos, soporte, knowledge base, feature flags por tenant y crons en
   Railway.
 
@@ -181,6 +181,11 @@ rapido".
 ### Anti-patrones a evitar
 
 - Query user-facing sin `org_id` cuando la tabla es tenant-scoped.
+- Usar `.limit(0)` como fail-safe de "que no devuelva nada". `.limit()` y
+  `.range()` escriben el mismo parametro `limit` de PostgREST, asi que la
+  paginacion del endpoint lo pisa y la query devuelve todo lo que sobreviva a
+  los demas filtros. Para cortar en cero, filtrar por un valor imposible
+  (ver `emptyResult()` en `lib/permissions-api.ts`).
 - `createAdminClient()` en endpoints de usuario sin allowlist y justificacion.
 - "Arreglar" permisos ocultando botones pero dejando la API abierta.
 - Calculos de ledger, saldo, comision, IVA, AFIP o billing dentro de componentes.
@@ -296,6 +301,27 @@ Roles definidos en `lib/permissions.ts`:
 
 `ORG_OWNER` es alias SaaS de owner de tenant. `POST_VENTA` gestiona seguimiento
 post-cierre. Los usuarios pueden tener roles adicionales.
+
+**Asesor de viajes independiente (AVI, VIB-69)**: no es un rol nuevo. Es un
+`SELLER` con `users.is_independent_advisor = true`, pensado para freelancers que
+venden para la agencia y solo deben ver lo suyo. Se modela asi a proposito: la
+restriccion "solo mis datos" ya esta implementada y auditada para `SELLER` en
+toda la app (filtros, RPCs con `p_role = 'SELLER'`, selectores de vendedor,
+reglas de comision `type = 'SELLER'`), y un string de rol nuevo caeria en la rama
+"else" de esos checks, o sea que veria toda la agencia.
+
+Reglas al tocarlo:
+
+- `isIndependentAdvisor(user)` en `lib/permissions.ts` es el unico predicado.
+- `INDEPENDENT_ADVISOR_PERMS` es un **techo**: los permisos efectivos son la
+  interseccion con lo que resuelva el sistema. Ni un override de
+  `agency_role_permissions` ni un rol adicional pueden ampliarlo.
+- El techo se aplica en `resolveUserPermissions` (matriz, UI y sidebar) y en
+  `canPerformAction` / `isOwnDataOnlyResolved` (gates sin matriz).
+- No ve leads/CRM, ni la cartera de clientes de la agencia, ni recibe los
+  permisos especiales de agencia (`can_view_agency_operations_support`,
+  `can_create_operations_for_other_sellers`,
+  `can_register_payments_on_agency_operations`).
 
 ### Permisos
 
@@ -597,7 +623,6 @@ Activas/relevantes:
 - AFIP.
 - OpenAI.
 - Web push.
-- Tawk allowlist.
 
 Trello es legacy/residual. Quedan columnas como `trello_url`,
 `trello_list_id`, `trello_full_data` y tabla `settings_trello`, pero no asumir

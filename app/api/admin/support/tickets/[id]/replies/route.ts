@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { isPlatformAdmin } from '@/lib/auth/platform'
+import { createLinearComment } from '@/lib/integrations/linear'
 
 export async function GET(
   _req: NextRequest,
@@ -19,7 +20,7 @@ export async function GET(
 
   const { data: ticket } = await (admin as any)
     .from('support_tickets')
-    .select('id, subject, description, status, created_at, updated_at, user_id, org_id')
+    .select('id, subject, description, status, created_at, updated_at, user_id, org_id, category, severity, priority, ai_rationale, linear_issue_url, linear_identifier, attachments')
     .eq('id', id)
     .single()
 
@@ -47,7 +48,7 @@ export async function GET(
 
   const { data: replies } = await (admin as any)
     .from('support_ticket_replies')
-    .select('id, author_id, author_role, content, created_at')
+    .select('id, author_id, author_role, author_name, source, content, created_at')
     .eq('ticket_id', id)
     .order('created_at', { ascending: true })
 
@@ -103,6 +104,25 @@ export async function POST(
     .update({ status: 'in_progress' })
     .eq('id', id)
     .eq('status', 'open')
+
+  // Two-way: replicar la respuesta de soporte como comentario en Linear.
+  // Best-effort, no bloquea la respuesta.
+  try {
+    const { data: ticket } = await (admin as any)
+      .from('support_tickets')
+      .select('linear_issue_id')
+      .eq('id', id)
+      .single()
+    if (ticket?.linear_issue_id) {
+      const author = user?.name || 'Soporte'
+      await createLinearComment(
+        ticket.linear_issue_id,
+        `**${author}** (soporte) respondió:\n\n${content.trim()}`,
+      )
+    }
+  } catch (err) {
+    console.error('Error posteando comentario en Linear (no bloqueante):', err)
+  }
 
   return NextResponse.json({ reply })
 }

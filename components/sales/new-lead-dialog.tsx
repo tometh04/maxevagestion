@@ -34,8 +34,10 @@ import { CalendarIcon, User, MapPin, UserCheck, StickyNote } from "lucide-react"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { cn } from "@/lib/utils"
+import { formatDateOnlyLocal } from "@/lib/utils/date-only"
 import { toast } from "sonner"
 import { useLeadRegions } from "@/lib/hooks/use-lead-regions"
+import { trackEvent } from "@/lib/analytics/track"
 
 const REGION_TO_LIST: Record<string, string> = {
   ARGENTINA: "Leads - Argentina",
@@ -49,7 +51,7 @@ const REGION_TO_LIST: Record<string, string> = {
 
 const leadSchema = z.object({
   agency_id: z.string().min(1, "La agencia es requerida"),
-  source: z.enum(["Manychat", "Instagram", "WhatsApp", "Meta Ads", "Referido", "Cliente", "Other"]),
+  source: z.enum(["Manychat", "Agente Blanco", "Instagram", "WhatsApp", "Meta Ads", "Referido", "Cliente", "Other"]),
   status: z.enum(["NEW", "IN_PROGRESS", "QUOTED", "WON", "LOST"]),
   region: z.string().min(1, "La región es requerida"),
   destination: z.string().min(1, "El destino es requerido"),
@@ -266,7 +268,7 @@ export function NewLeadDialog({
           deposit_amount: values.deposit_amount || null,
           deposit_currency: values.deposit_currency || null,
           deposit_method: values.deposit_method || null,
-          deposit_date: values.deposit_date ? values.deposit_date.toISOString().split("T")[0] : null,
+          deposit_date: values.deposit_date ? formatDateOnlyLocal(values.deposit_date) : null,
         }),
       })
 
@@ -274,6 +276,12 @@ export function NewLeadDialog({
         const error = await response.json()
         throw new Error(error.error || "Error al crear lead")
       }
+
+      // Solo el canal y si quedó asignado: ni contacto, ni notas, ni montos.
+      trackEvent("lead_created", {
+        source_channel: values.source,
+        has_agency_assigned: Boolean(values.assigned_seller_id),
+      })
 
       form.reset()
       onOpenChange(false)
@@ -318,7 +326,10 @@ export function NewLeadDialog({
             )}
 
             {/* Contacto */}
-            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+            <div
+              className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4"
+              data-tour="lead-new.contacto"
+            >
               <div className="flex items-center gap-1.5">
                 <User className="h-3.5 w-3.5 text-primary" />
                 <span className="text-xs font-medium text-foreground/70">Contacto</span>
@@ -384,7 +395,10 @@ export function NewLeadDialog({
             </div>
 
             {/* Viaje */}
-            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+            <div
+              className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4"
+              data-tour="lead-new.viaje"
+            >
               <div className="flex items-center gap-1.5">
                 <MapPin className="h-3.5 w-3.5 text-success" />
                 <span className="text-xs font-medium text-foreground/70">Viaje</span>
@@ -433,7 +447,10 @@ export function NewLeadDialog({
             </div>
 
             {/* Asignación */}
-            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+            <div
+              className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4"
+              data-tour="lead-new.asignacion"
+            >
               <div className="flex items-center gap-1.5">
                 <UserCheck className="h-3.5 w-3.5 text-accent-violet" />
                 <span className="text-xs font-medium text-foreground/70">Asignación</span>
@@ -524,7 +541,7 @@ export function NewLeadDialog({
                   control={form.control}
                   name="list_name"
                   render={({ field }) => (
-                    <FormItem>
+                    <FormItem data-tour="lead-new.lista">
                       <FormLabel>Lista del CRM</FormLabel>
                       <Select
                         onValueChange={field.onChange}
@@ -588,7 +605,7 @@ export function NewLeadDialog({
                 control={form.control}
                 name="source"
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem data-tour="lead-new.origen">
                     <FormLabel>Origen</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
@@ -598,6 +615,7 @@ export function NewLeadDialog({
                       </FormControl>
                       <SelectContent>
                         <SelectItem value="Manychat">Manychat</SelectItem>
+                        <SelectItem value="Agente Blanco">Agente Blanco</SelectItem>
                         <SelectItem value="Instagram">Instagram</SelectItem>
                         <SelectItem value="WhatsApp">WhatsApp</SelectItem>
                         <SelectItem value="Meta Ads">Meta Ads</SelectItem>
@@ -612,7 +630,10 @@ export function NewLeadDialog({
               />
             </div>
 
-            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+            <div
+              className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4"
+              data-tour="lead-new.senia"
+            >
               <div className="flex items-center gap-1.5">
                 <CalendarIcon className="h-3.5 w-3.5 text-accent-coral" />
                 <span className="text-xs font-medium text-foreground/70">Información Contable</span>
@@ -760,7 +781,7 @@ export function NewLeadDialog({
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
                 Cancelar
               </Button>
-              <Button type="submit" disabled={loading}>
+              <Button type="submit" disabled={loading} data-tour="lead-new.guardar">
                 {loading ? "Creando..." : "Crear Lead"}
               </Button>
             </DialogFooter>

@@ -19,9 +19,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { Button } from "@/components/ui/button"
 import { Pie, PieChart, Cell } from "recharts"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
-import { Loader2, PieChart as PieChartIcon } from "lucide-react"
+import { Download, Loader2, PieChart as PieChartIcon } from "lucide-react"
+import { toast } from "sonner"
+// Fix UTC shift en fechas DATE (VICO 2026-05-22)
+import { formatDateOnlyLocal } from "@/lib/utils/date-only"
 
 // Paleta categórica de respaldo (para categorías sin color propio). Tonos
 // distinguibles que funcionan en light/dark. La categoría usa su color propio
@@ -51,7 +55,7 @@ interface Expense {
 interface CategorySlice {
   category: string
   total: number
-  percent: number
+  share: number
   color: string
 }
 
@@ -62,26 +66,38 @@ interface ExpensesSummaryTabProps {
 export function ExpensesSummaryTab({ agencies }: ExpensesSummaryTabProps) {
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [loading, setLoading] = useState(true)
+  const [downloading, setDownloading] = useState(false)
 
   const [dateFrom, setDateFrom] = useState(() => {
     const d = new Date()
     d.setDate(1)
-    return d.toISOString().split("T")[0]
+    return formatDateOnlyLocal(d) ?? ""
   })
   const [dateTo, setDateTo] = useState(() => {
     const d = new Date()
     d.setMonth(d.getMonth() + 1)
     d.setDate(0) // último día del mes actual
-    return d.toISOString().split("T")[0]
+    return formatDateOnlyLocal(d) ?? ""
   })
   const [currency, setCurrency] = useState("ARS")
+  // Cotización única para todo el período (modo cierre de mes). Vacío = se usa
+  // el tipo de cambio de la fecha de cada gasto, que es el costo real
+  // acumulado. Al cierre dolarizan todo a una sola cotización que ellos fijan.
+  const [fixedRate, setFixedRate] = useState("")
   const [agencyFilter, setAgencyFilter] = useState("ALL")
+  // Criterio del filtro por agencia: "office" = oficina a la que se cargó el
+  // gasto; "account" = oficina de la cuenta desde la que salió la plata.
+  const [agencyMode, setAgencyMode] = useState<"office" | "account">("office")
 
   const fetchExpenses = useCallback(async () => {
     setLoading(true)
     try {
       const params = new URLSearchParams({ dateFrom, dateTo, currency })
-      if (agencyFilter !== "ALL") params.set("agencyId", agencyFilter)
+      if (fixedRate.trim() !== "" && Number(fixedRate) > 0) params.set("exchangeRate", fixedRate)
+      if (agencyFilter !== "ALL") {
+        params.set("agencyId", agencyFilter)
+        params.set("agencyMode", agencyMode)
+      }
 
       const res = await fetch(`/api/expenses/monthly?${params}`)
       if (res.ok) {
@@ -96,11 +112,46 @@ export function ExpensesSummaryTab({ agencies }: ExpensesSummaryTabProps) {
     } finally {
       setLoading(false)
     }
-  }, [dateFrom, dateTo, currency, agencyFilter])
+  }, [dateFrom, dateTo, currency, fixedRate, agencyFilter, agencyMode])
 
   useEffect(() => {
     fetchExpenses()
   }, [fetchExpenses])
+
+  // Descarga el reporte completo (PDF) con los mismos filtros de esta pantalla.
+  // El documento lo arma el server: la versión larga vive en Reportes > Gastos.
+  const handleDownloadPdf = async () => {
+    setDownloading(true)
+    try {
+      const params = new URLSearchParams({ dateFrom, dateTo, currency })
+      if (fixedRate.trim() !== "" && Number(fixedRate) > 0) params.set("exchangeRate", fixedRate)
+      if (agencyFilter !== "ALL") {
+        params.set("agencyId", agencyFilter)
+        params.set("agencyMode", agencyMode)
+      }
+
+      const res = await fetch(`/api/reports/expenses/pdf?${params}`)
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        throw new Error(body?.error || "No se pudo generar el PDF")
+      }
+
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `reporte-gastos-${currency}-${dateFrom}_${dateTo}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+      toast.success("Reporte descargado")
+    } catch (err: any) {
+      toast.error(err.message || "No se pudo generar el PDF")
+    } finally {
+      setDownloading(false)
+    }
+  }
 
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat("es-AR", {
@@ -127,7 +178,7 @@ export function ExpensesSummaryTab({ agencies }: ExpensesSummaryTabProps) {
       .map(([category, g]) => ({
         category,
         total: g.total,
-        percent: totalSum > 0 ? (g.total / totalSum) * 100 : 0,
+        share: totalSum > 0 ? (g.total / totalSum) * 100 : 0,
         dbColor: g.color,
       }))
       .sort((a, b) => b.total - a.total)
@@ -145,7 +196,7 @@ export function ExpensesSummaryTab({ agencies }: ExpensesSummaryTabProps) {
   return (
     <div className="space-y-4">
       {/* Filters */}
-      <div className="flex items-center gap-2 flex-wrap">
+      <div className="flex items-end gap-2 flex-wrap">
         <div className="space-y-1">
           <Label className="text-xs font-medium text-muted-foreground">Desde</Label>
           <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-[150px]" />
@@ -155,17 +206,47 @@ export function ExpensesSummaryTab({ agencies }: ExpensesSummaryTabProps) {
           <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-[150px]" />
         </div>
         <div className="space-y-1">
-          <Label className="text-xs font-medium text-muted-foreground">Moneda</Label>
+          <Label className="text-xs font-medium text-muted-foreground">Ver montos en</Label>
+          {/* La torta necesita una sola unidad, así que acá siempre se valúa.
+              El rótulo lo dice para que no se lea como moneda original. */}
           <Select value={currency} onValueChange={setCurrency}>
-            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[120px]">
+            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[170px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="ARS">ARS</SelectItem>
-              <SelectItem value="USD">USD</SelectItem>
+              <SelectItem value="ARS">Todo valuado en ARS</SelectItem>
+              <SelectItem value="USD">Todo valuado en USD</SelectItem>
             </SelectContent>
           </Select>
         </div>
+        <div className="space-y-1">
+          <Label className="text-xs font-medium text-muted-foreground">Tipo de cambio</Label>
+          <Input
+            type="number"
+            min={0}
+            step="0.01"
+            inputMode="decimal"
+            placeholder="Del día"
+            value={fixedRate}
+            onChange={(e) => setFixedRate(e.target.value)}
+            className="h-8 text-xs rounded-full border-border/60 bg-background w-[130px]"
+            title="Vacío: se usa la cotización del día de cada gasto. Con un valor: se convierte todo el período a esa cotización."
+          />
+        </div>
+        {agencies.length > 1 && (
+          <div className="space-y-1">
+            <Label className="text-xs font-medium text-muted-foreground">Ver por</Label>
+            <Select value={agencyMode} onValueChange={(v) => setAgencyMode(v as "office" | "account")}>
+              <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[120px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="office">Oficina del gasto</SelectItem>
+                <SelectItem value="account">Cuenta pagadora</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
         {agencies.length > 1 && (
           <div className="space-y-1">
             <Label className="text-xs font-medium text-muted-foreground">Agencia</Label>
@@ -184,6 +265,22 @@ export function ExpensesSummaryTab({ agencies }: ExpensesSummaryTabProps) {
             </Select>
           </div>
         )}
+
+        <div className="ml-auto">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleDownloadPdf}
+            disabled={downloading || loading}
+          >
+            {downloading ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4 mr-2" />
+            )}
+            Descargar PDF
+          </Button>
+        </div>
       </div>
 
       {loading ? (
@@ -192,7 +289,7 @@ export function ExpensesSummaryTab({ agencies }: ExpensesSummaryTabProps) {
         </div>
       ) : slices.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
-          No hay gastos en {currency} en el período seleccionado
+          No hay gastos en el período seleccionado
         </div>
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
@@ -262,7 +359,7 @@ export function ExpensesSummaryTab({ agencies }: ExpensesSummaryTabProps) {
                       {formatCurrency(slice.total)}
                     </TableCell>
                     <TableCell className="text-right tabular-nums text-muted-foreground">
-                      {slice.percent.toFixed(1)}%
+                      {slice.share.toFixed(1)}%
                     </TableCell>
                   </TableRow>
                 ))}

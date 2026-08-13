@@ -18,6 +18,8 @@ const SCHEMA = {
   email: ["email"],
   document_number: ["dni", "document_number", "numero_documento", "numero_de_documento"],
   document_type: ["tipo_documento", "document_type", "tipo_de_documento"],
+  nationality: ["nacionalidad", "nationality"],
+  date_of_birth: ["fecha_nacimiento", "fecha_de_nacimiento", "date_of_birth", "fec_nac"],
 }
 
 // 2026-05-18 (Tomi, reportado por VICO): antes REQUIRED = [first_name,
@@ -128,6 +130,8 @@ export const customersPipeline: PipelineFn = async (
         email: row.email || null,
         document_number: row.document_number || null,
         document_type: row.document_type || null,
+        nationality: row.nationality || null,
+        date_of_birth: row.date_of_birth || null,
       },
       rollbackLog
     )

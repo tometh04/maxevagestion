@@ -90,11 +90,17 @@ export async function reserveGrowthStudioGeneration(
     {
       p_org_id: context.orgId,
       p_agency_id: input.agencyId,
-      p_campaign_id: input.campaignId,
+      // `supabase gen types` tipa los parámetros de las funciones como no
+      // nullables: Postgres no declara la nullability de un argumento. La
+      // función SÍ contempla NULL en los dos (ver
+      // 20260716000003_growth_studio_campaigns_assets.sql: `IF p_campaign_id
+      // IS NOT NULL` / `IF p_quality IS NOT NULL`), así que el cast solo
+      // corrige la imprecisión del tipo generado.
+      p_campaign_id: input.campaignId as string,
       p_kind: input.kind,
       p_prompt_version: input.promptVersion,
       p_model: input.model,
-      p_quality: input.quality ?? null,
+      p_quality: (input.quality ?? null) as string,
       p_input_snapshot: input.inputSnapshot,
       p_idempotency_key: input.idempotencyKey,
       p_created_by: context.userId,
@@ -171,7 +177,8 @@ export async function completeGrowthStudioGeneration(
       p_status: "completed",
       p_output_snapshot: input.output,
       p_usage_data: input.usage,
-      p_error_code: null,
+      // Idem: el generado no expresa que el parámetro acepta NULL.
+      p_error_code: null as unknown as string,
       p_created_by: context.userId,
     }
   )

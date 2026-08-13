@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
-import { createServerClient, createAdminClient } from "@/lib/supabase/server"
-import { getCurrentUser } from "@/lib/auth"
-import { canPerformAction, getScopedAgenciesForUser } from "@/lib/permissions-api"
+import { createAdminClient } from "@/lib/supabase/server"
+import { canPerformAction, getScopedAgenciesForUser, isOwnDataOnlyResolved } from "@/lib/permissions-api"
+import { getRequestPermissions } from "@/lib/permissions/request"
 import {
   createLedgerMovement,
   calculateARSEquivalent,
@@ -18,9 +18,9 @@ import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
  */
 export async function POST(request: Request) {
   try {
-    const { user } = await getCurrentUser()
+    const { user, supabase, matrix } = await getRequestPermissions()
 
-    if (!canPerformAction(user, "accounting", "write") && !canPerformAction(user, "cash", "write")) {
+    if (!canPerformAction(user, "accounting", "write", matrix ?? undefined) && !canPerformAction(user, "cash", "write", matrix ?? undefined)) {
       return NextResponse.json({ error: "No tiene permiso para crear gastos" }, { status: 403 })
     }
 
@@ -30,8 +30,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
     }
     const userOrgId = (user as any).org_id as string
-
-    const supabase = await createServerClient()
     // adminDb justificado: cash_movements/ledger pueden tener triggers que
     // requieren bypass del filtro RLS para escribir asientos contables.
     // Igual filtramos por org en todas las queries.
@@ -249,14 +247,13 @@ export async function POST(request: Request) {
  */
 export async function GET(request: Request) {
   try {
-    const { user } = await getCurrentUser()
+    const { user, supabase, matrix } = await getRequestPermissions()
     // Cross-tenant fix (2026-05-18): no confiar en RLS, filtrar org_id explícito.
     if (!(user as any).org_id) {
       return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
     }
     const userOrgId = (user as any).org_id as string
 
-    const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
     const dateFrom = searchParams.get("dateFrom")
@@ -271,11 +268,16 @@ export async function GET(request: Request) {
         id, type, category, category_id, amount, currency, movement_date, notes,
         financial_account_id, ledger_movement_id, created_at,
         expense_classification, cc_payment_group_id,
+        ledger_movements:ledger_movement_id (affects_balance),
         users:user_id (id, name)
       `)
       .eq("type", "EXPENSE")
       .eq("is_touristic", false)
       .eq("org_id", userOrgId)
+      // Mismo criterio que el reporte de gastos: un movimiento revertido ya no
+      // es un gasto, y uno excluido del saldo tampoco (se filtra abajo, porque
+      // vive en el asiento vinculado).
+      .is("reversed_at", null)
       .order("movement_date", { ascending: false })
 
     if (dateFrom) query = query.gte("movement_date", dateFrom)
@@ -283,14 +285,22 @@ export async function GET(request: Request) {
     if (categoryId) query = query.eq("category_id", categoryId)
     if (currencyParam && currencyParam !== "ALL") query = query.eq("currency", currencyParam)
     if (agencyId && agencyId !== "ALL") query = query.eq("agency_id", agencyId)
-    if (user.role === "SELLER") query = query.eq("user_id", user.id)
+    // Restringido a gastos propios (cash.ownDataOnly por agencia)
+    if (isOwnDataOnlyResolved(user, "cash", matrix ?? undefined)) query = query.eq("user_id", user.id)
 
-    const { data: expenses, error } = await query
+    const { data: rawExpenses, error } = await query
 
     if (error) {
       console.error("Error fetching variable expenses:", error)
       return NextResponse.json({ error: "Error al obtener gastos" }, { status: 500 })
     }
+
+    // Excluido del saldo → no es un gasto. El embed to-one puede llegar como
+    // objeto o dentro de un array según la versión de PostgREST.
+    const expenses = (rawExpenses || []).filter((e: any) => {
+      const ledger = Array.isArray(e.ledger_movements) ? e.ledger_movements[0] : e.ledger_movements
+      return !ledger || ledger.affects_balance !== false
+    })
 
     // Get categories for enrichment (scopeado por org)
     const { data: categories } = await (supabase.from("recurring_payment_categories") as any)

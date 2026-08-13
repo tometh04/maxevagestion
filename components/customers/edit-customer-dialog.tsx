@@ -33,6 +33,7 @@ import { toast } from "sonner"
 import { Loader2, User, FileText, Globe, Settings2 } from "lucide-react"
 import { useCustomerSettings } from "@/hooks/use-customer-settings"
 import { CustomFieldsForm } from "./custom-fields-form"
+import { ReferralPartnerSelect, type ReferralValue } from "./referral-partner-select"
 
 interface Customer {
   id: string
@@ -45,6 +46,8 @@ interface Customer {
   document_number?: string | null
   date_of_birth?: string | null
   nationality?: string | null
+  referral_partner_id?: string | null
+  referral_commission_percentage?: number | null
 }
 
 interface EditCustomerDialogProps {
@@ -83,6 +86,24 @@ export function EditCustomerDialog({
 }: EditCustomerDialogProps) {
   const [isLoading, setIsLoading] = useState(false)
   const { settings, loading: settingsLoading } = useCustomerSettings()
+  const [referral, setReferral] = useState<ReferralValue>({
+    referralPartnerId: customer.referral_partner_id ?? null,
+    referralCommissionPercentage:
+      customer.referral_commission_percentage != null
+        ? String(customer.referral_commission_percentage)
+        : "",
+  })
+
+  // Sincronizar el estado de referido cuando cambia el cliente (reapertura).
+  useEffect(() => {
+    setReferral({
+      referralPartnerId: customer.referral_partner_id ?? null,
+      referralCommissionPercentage:
+        customer.referral_commission_percentage != null
+          ? String(customer.referral_commission_percentage)
+          : "",
+    })
+  }, [customer])
 
   // Generar schema dinámicamente según configuración
   const customerSchema = useMemo(() => {
@@ -189,6 +210,11 @@ export function EditCustomerDialog({
           document_number: values.document_number || null,
           date_of_birth: values.date_of_birth || null,
           nationality: values.nationality || null,
+          referral_partner_id: referral.referralPartnerId,
+          referral_commission_percentage:
+            referral.referralPartnerId && referral.referralCommissionPercentage.trim() !== ""
+              ? referral.referralCommissionPercentage
+              : null,
         }),
       })
 
@@ -389,6 +415,9 @@ export function EditCustomerDialog({
                 />
               </div>
             </div>
+
+            {/* Referido (VIB-62) */}
+            <ReferralPartnerSelect value={referral} onChange={setReferral} />
 
             {/* Campos personalizados */}
             {settings?.custom_fields && settings.custom_fields.length > 0 && (

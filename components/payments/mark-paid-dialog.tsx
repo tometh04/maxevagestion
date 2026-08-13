@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react"
 // Fix UTC shift en fechas DATE (VICO 2026-05-22)
-import { parseDateOnlyLocal } from "@/lib/utils/date-only"
+import { parseDateOnlyLocal, formatDateOnlyLocal } from "@/lib/utils/date-only"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
@@ -97,7 +97,7 @@ export function MarkPaidDialog({
   const form = useForm<MarkPaidFormValues>({
     resolver: zodResolver(markPaidSchema) as any,
     defaultValues: {
-      datePaid: new Date().toISOString().split("T")[0],
+      datePaid: formatDateOnlyLocal(new Date()) ?? "",
       reference: "",
       financial_account_id: "",
       exchange_rate: undefined,

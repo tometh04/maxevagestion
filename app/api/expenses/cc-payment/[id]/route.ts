@@ -3,6 +3,8 @@ import { createServerClient, createAdminClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canPerformAction } from "@/lib/permissions-api"
 import { invalidateBalanceCache } from "@/lib/accounting/ledger"
+import { revertOperatorPaymentSettlement } from "@/lib/accounting/operator-payment-settlement"
+import { removePaymentCounterpartMovement } from "@/lib/accounting/payment-counterparts"
 
 /**
  * DELETE /api/expenses/cc-payment/[id]
@@ -44,9 +46,69 @@ export async function DELETE(
 
     // Get all cash_movements in this group (filtro explícito org)
     const { data: movements } = await (supabase.from("cash_movements") as any)
-      .select("id, ledger_movement_id, financial_account_id")
+      .select("id, ledger_movement_id, financial_account_id, payment_id")
       .eq("cc_payment_group_id", id)
       .eq("org_id", userOrgId)
+
+    // Revertir liquidaciones de deuda de operador hechas desde este resumen.
+    // Los items "cancela deuda" crearon un `payments` (con su ledger OPERATOR_PAYMENT,
+    // el settlement de la deuda y la contrapartida CxP); su cash_movement lleva
+    // payment_id. Sin revertir esto, borrar el resumen dejaría la deuda en PAID y
+    // el ledger/payment/contrapartida huérfanos (bug detectado en verificación).
+    // Los items de gasto NO tienen payment_id → no entran acá.
+    const settlementPaymentIds = Array.from(
+      new Set((movements || []).map((m: any) => m.payment_id).filter(Boolean))
+    ) as string[]
+
+    for (const paymentId of settlementPaymentIds) {
+      const { data: payment } = await (supabase.from("payments") as any)
+        .select("id, operation_id, operator_id, operator_payment_id, payer_type, direction, currency, amount, reference, date_paid, ledger_movement_id")
+        .eq("id", paymentId)
+        .maybeSingle()
+      if (!payment) continue
+
+      // 1. Revertir la imputación a la deuda (paid_amount/status vuelven).
+      if (payment.payer_type === "OPERATOR" && payment.operator_payment_id) {
+        try {
+          await revertOperatorPaymentSettlement(supabase, {
+            operatorPaymentId: payment.operator_payment_id,
+            paymentAmount: parseFloat(payment.amount),
+            currentPaymentId: payment.id,
+            removedLedgerMovementId: payment.ledger_movement_id,
+          })
+        } catch (e) {
+          console.error("Error revirtiendo settlement en cc-payment DELETE:", e)
+        }
+      }
+
+      // 2. Quitar la contrapartida CxP (best-effort, igual que el DELETE de pagos).
+      try {
+        await removePaymentCounterpartMovement({
+          supabase,
+          paymentId: payment.id,
+          operationId: payment.operation_id,
+          direction: payment.direction,
+          payerType: payment.payer_type,
+          currency: payment.currency,
+          amount: parseFloat(payment.amount),
+          reference: payment.reference || null,
+          datePaid: payment.date_paid || null,
+          excludeLedgerMovementId: payment.ledger_movement_id || null,
+        })
+      } catch (e) {
+        console.warn("No se pudo quitar la contrapartida CxP:", e)
+      }
+
+      // 3. Borrar el ledger del settlement (el que impactó la cuenta origen).
+      if (payment.ledger_movement_id) {
+        let del = adminDb.from("ledger_movements").delete().eq("id", payment.ledger_movement_id)
+        if (group.org_id) del = del.eq("org_id", group.org_id)
+        await del
+      }
+
+      // 4. Borrar el payment (cash_movements.payment_id es ON DELETE SET NULL).
+      await adminDb.from("payments").delete().eq("id", payment.id)
+    }
 
     if (movements && movements.length > 0) {
       const movementIds = movements.map((m: any) => m.id)
@@ -77,9 +139,15 @@ export async function DELETE(
       return NextResponse.json({ error: "Error al eliminar pago de tarjeta" }, { status: 500 })
     }
 
-    // Invalidate balance cache
-    if (group.source_account_id) {
-      await invalidateBalanceCache(group.source_account_id)
+    // Invalidate balance cache de todas las cuentas afectadas (incluye las de
+    // cada pata en pagos multi-moneda, tomadas de los cash_movements del grupo).
+    const affectedAccounts = new Set<string>()
+    if (group.source_account_id) affectedAccounts.add(group.source_account_id)
+    for (const m of movements || []) {
+      if (m.financial_account_id) affectedAccounts.add(m.financial_account_id)
+    }
+    for (const accId of Array.from(affectedAccounts)) {
+      await invalidateBalanceCache(accId)
     }
 
     return NextResponse.json({ success: true })

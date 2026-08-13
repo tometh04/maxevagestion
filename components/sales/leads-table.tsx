@@ -1,5 +1,6 @@
 "use client"
 
+import type { SellerOption } from "@/lib/sellers/seller-option"
 import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
 import {
@@ -56,7 +57,7 @@ interface Lead {
 interface LeadsTableProps {
   leads?: Lead[]
   agencies: Array<{ id: string; name: string }>
-  sellers: Array<{ id: string; name: string }>
+  sellers: SellerOption[]
   operators: Array<{ id: string; name: string }>
   onRefresh?: () => void
   agencyId?: string

@@ -1,8 +1,8 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 // Fix UTC shift en fechas DATE (VICO 2026-05-22)
-import { parseDateOnlyLocal } from "@/lib/utils/date-only"
+import { parseDateOnlyLocal, formatDateOnlyLocal } from "@/lib/utils/date-only"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
@@ -39,6 +39,8 @@ import {
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { DollarSign, CalendarIcon, FileText, Loader2, Wallet, CheckCircle, Receipt, Plus, ExternalLink } from "lucide-react"
 import { toast } from "sonner"
+import { PAYMENT_METHODS } from "@/lib/payments/payment-methods"
+import { trackEvent } from "@/lib/analytics/track"
 import {
   buildOpenOperationBasePayableOperators,
   type OperationOperatorPaymentLike,
@@ -99,15 +101,7 @@ const paymentSchema = z.object({
 
 type PaymentFormValues = z.infer<typeof paymentSchema>
 
-const methodOptions = [
-  "Transferencia",
-  "Efectivo",
-  "Tarjeta Crédito",
-  "Tarjeta Débito",
-  "MercadoPago",
-  "PayPal",
-  "Otro",
-]
+// VIB-107: catálogo único en lib/payments/payment-methods.ts.
 
 interface NewPaymentDialogProps {
   open: boolean
@@ -139,7 +133,16 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
     message?: string
   } | null>(null)
 
-  const today = new Date().toISOString().split("T")[0]
+  // Cuando el operador tiene varias deudas pendientes y el monto no matchea
+  // ninguna exacto, el backend responde 409 y acá le pedimos al usuario que
+  // elija a qué deuda imputar el pago (en vez de adivinar por FIFO).
+  const [ambiguousDebtAlert, setAmbiguousDebtAlert] = useState<{
+    candidates: Array<{ id: string; operator_id: string; amount: number; paid_amount: number; pending: number; due_date: string | null }>
+    pendingValues: PaymentFormValues
+    message?: string
+  } | null>(null)
+
+  const today = formatDateOnlyLocal(new Date()) ?? ""
 
   const form = useForm<PaymentFormValues>({
     resolver: zodResolver(paymentSchema) as any,
@@ -176,7 +179,35 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
     }
   }, [watchDirection, form])
 
-  // Cargar operaciones
+  // Cargar operaciones. VIB-61 (audit): antes se traían 500 y se filtraba
+  // client-side, así que una operación más vieja que las 500 recientes no se
+  // podía encontrar ni buscándola. Ahora la búsqueda pega al server
+  // (/api/operations?search=), que ya busca por código/destino/cliente/aerolínea.
+  const fetchOperations = useCallback(async (search?: string) => {
+    setLoadingOps(true)
+    try {
+      const params = new URLSearchParams({ sortBy: "created_at", sortDirection: "desc" })
+      const term = (search || "").trim()
+      if (term.length >= 2) {
+        params.set("search", term)
+        params.set("limit", "50")
+      } else {
+        params.set("limit", "500") // sin búsqueda: lista reciente amplia
+      }
+      const response = await fetch(`/api/operations?${params.toString()}`)
+      if (response.ok) {
+        const data = await response.json()
+        setOperations(data.operations || [])
+      }
+    } catch (error) {
+      console.error("Error fetching operations:", error)
+      toast.error("Error al cargar operaciones")
+    } finally {
+      setLoadingOps(false)
+    }
+  }, [])
+
+  // Reset al cerrar
   useEffect(() => {
     if (!open) {
       form.reset()
@@ -186,25 +217,15 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
       setSearchOp("")
       setApplyRg5617(false)
       setApplyRg3819(false)
-      return
     }
-    async function fetchOperations() {
-      setLoadingOps(true)
-      try {
-        const response = await fetch("/api/operations?limit=500&sortBy=created_at&sortDirection=desc")
-        if (response.ok) {
-          const data = await response.json()
-          setOperations(data.operations || [])
-        }
-      } catch (error) {
-        console.error("Error fetching operations:", error)
-        toast.error("Error al cargar operaciones")
-      } finally {
-        setLoadingOps(false)
-      }
-    }
-    fetchOperations()
   }, [open, form])
+
+  // Fetch (debounced) al abrir y cuando cambia la búsqueda.
+  useEffect(() => {
+    if (!open) return
+    const t = setTimeout(() => fetchOperations(searchOp), 250)
+    return () => clearTimeout(t)
+  }, [open, searchOp, fetchOperations])
 
   // Cargar cuentas financieras (filtradas por moneda)
   useEffect(() => {
@@ -247,40 +268,10 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
     return op.leads?.contact_name || ""
   }
 
-  function getAllCustomerNames(op: any): string {
-    const ocs = (op.operation_customers ?? []) as any[]
-    return ocs
-      .map((oc) => {
-        const c = oc.customers
-        if (!c) return ""
-        return `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim()
-      })
-      .filter(Boolean)
-      .join(" ")
-  }
-
-  // Filtrar operaciones por búsqueda.
-  // 2026-05-19: ahora busca también por nombre/apellido de TODOS los pasajeros
-  // de la operación y por contact_name del lead. Andres reportó que era
-  // "complicado" filtrar solo por código/destino.
-  const filteredOperations = useMemo(() => {
-    if (!searchOp.trim()) return operations.slice(0, 50)
-    const s = searchOp.toLowerCase()
-    return operations
-      .filter((op) => {
-        const code = (op.file_code || "").toLowerCase()
-        const dest = (op.destination || "").toLowerCase()
-        const customers = getAllCustomerNames(op).toLowerCase()
-        const leadName = (op.leads?.contact_name || "").toLowerCase()
-        return (
-          code.includes(s) ||
-          dest.includes(s) ||
-          customers.includes(s) ||
-          leadName.includes(s)
-        )
-      })
-      .slice(0, 50)
-  }, [operations, searchOp])
+  // La búsqueda ya se resuelve server-side (/api/operations?search=), que matchea
+  // por código, destino, cliente, aerolínea y hotel. Acá solo mostramos lo que
+  // devolvió el server (evita refiltrar y descartar matches por aerolínea/hotel).
+  const filteredOperations = useMemo(() => operations.slice(0, 50), [operations])
 
   // Cuando se selecciona operación, auto-setear la moneda
   useEffect(() => {
@@ -350,7 +341,7 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
     }
   }, [form, open, watchDirection, watchOperationId])
 
-  const submitPayment = async (values: PaymentFormValues, opts: { force?: boolean } = {}) => {
+  const submitPayment = async (values: PaymentFormValues, opts: { force?: boolean; operatorPaymentId?: string } = {}) => {
     setIsLoading(true)
     try {
       // 1. Crear el pago. Si force=true, salteamos la detección de duplicados del backend.
@@ -362,6 +353,9 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
           payer_type: values.payer_type,
           direction: values.direction,
           operator_id: values.payer_type === "OPERATOR" ? values.operator_id || null : null,
+          // Deuda específica elegida por el usuario cuando el operador tiene varias
+          // patas pendientes (viene del picker de ambigüedad).
+          operator_payment_id: opts.operatorPaymentId ?? null,
           amount: values.amount,
           currency: values.currency,
           method: values.method,
@@ -387,6 +381,16 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
           })
           return
         }
+        // 409 AMBIGUOUS_OPERATOR_PAYMENT → varias patas del mismo operador; que el
+        // usuario elija a cuál imputar (evita imputar a la equivocada por FIFO).
+        if (createResponse.status === 409 && error?.code === "AMBIGUOUS_OPERATOR_PAYMENT") {
+          setAmbiguousDebtAlert({
+            candidates: Array.isArray(error.candidates) ? error.candidates : [],
+            pendingValues: values,
+            message: error.error,
+          })
+          return
+        }
         throw new Error(error.error || "Error al crear pago")
       }
 
@@ -396,6 +400,12 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
       // se crea recién cuando un admin aprueba el pago. Avisamos y cerramos.
       if (createData.requires_approval) {
         toast.success("Pago creado. Queda pendiente de aprobación antes de impactar caja.")
+        trackEvent("payment_registered", {
+          payment_currency: values.currency,
+          payment_method: values.method,
+          requires_approval: true,
+          surface: "payments",
+        })
         onSuccess()
         onOpenChange(false)
         form.reset()
@@ -422,10 +432,23 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
           toast.warning("Pago creado pero no se pudo marcar como pagado: " + (error.error || ""))
         } else {
           toast.success("Pago creado y marcado como pagado")
+          trackEvent("payment_marked_paid", {
+            payment_currency: values.currency,
+            surface: "payments",
+          })
         }
       } else {
         toast.success("Pago pendiente creado correctamente")
       }
+
+      // Moneda y medio de pago, nunca el importe: el monto es dato financiero
+      // del tenant y Postgres sigue siendo la única fuente de verdad.
+      trackEvent("payment_registered", {
+        payment_currency: values.currency,
+        payment_method: values.method,
+        requires_approval: false,
+        surface: "payments",
+      })
 
       onSuccess()
       onOpenChange(false)
@@ -464,6 +487,14 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
     setDuplicateAlert(null)
     setIsLoading(true)
     await submitPayment(values, { force: true })
+  }
+
+  const handlePickAmbiguousDebt = async (operatorPaymentId: string) => {
+    if (!ambiguousDebtAlert) return
+    const values = ambiguousDebtAlert.pendingValues
+    setAmbiguousDebtAlert(null)
+    setIsLoading(true)
+    await submitPayment(values, { operatorPaymentId })
   }
 
   const selectedOp = operations.find((o) => o.id === watchOperationId)
@@ -640,8 +671,8 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {methodOptions.map((m) => (
-                          <SelectItem key={m} value={m}>{m}</SelectItem>
+                        {PAYMENT_METHODS.map((m) => (
+                          <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -955,6 +986,49 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
           <AlertDialogAction onClick={handleConfirmDuplicate} disabled={isLoading}>
             {isLoading ? "Creando..." : "Crear igual"}
           </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+
+    {/* Varias deudas del mismo operador: el usuario elige a cuál imputar el pago */}
+    <AlertDialog open={ambiguousDebtAlert !== null} onOpenChange={(open) => !open && setAmbiguousDebtAlert(null)}>
+      <AlertDialogContent className="max-w-lg">
+        <AlertDialogHeader>
+          <AlertDialogTitle>¿A qué deuda corresponde el pago?</AlertDialogTitle>
+          <AlertDialogDescription asChild>
+            <div className="space-y-3">
+              <p>
+                {ambiguousDebtAlert?.message ||
+                  "Este operador tiene varias deudas pendientes en la operación y el monto no coincide exactamente con ninguna. Elegí a cuál imputar el pago."}
+              </p>
+              <div className="space-y-2">
+                {ambiguousDebtAlert?.candidates.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => handlePickAmbiguousDebt(c.id)}
+                    disabled={isLoading}
+                    className="w-full text-left rounded-md border border-border/60 bg-muted/30 hover:bg-muted p-3 text-sm disabled:opacity-50"
+                  >
+                    <div className="font-medium text-foreground">
+                      Pendiente {c.pending.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                      <span className="text-muted-foreground">
+                        {" "}(deuda total {c.amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })})
+                      </span>
+                    </div>
+                    {c.due_date && (
+                      <div className="text-muted-foreground text-xs">
+                        Vence {parseDateOnlyLocal(c.due_date)?.toLocaleDateString("es-AR") ?? c.due_date}
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={isLoading}>Cancelar</AlertDialogCancel>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

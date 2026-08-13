@@ -23,8 +23,12 @@ const standardStatusOptions = [
   { value: "TRAVELLED", label: "Viajado" },
 ]
 
+// "OPERACION" filtra por operations.operation_date (fecha de venta), NO por
+// created_at. Se nombra "Fecha de Venta" igual que en dashboard-filters.tsx:
+// el label "Operación" no le decía a nadie que ese era el filtro de venta, y
+// los users terminaban usando el rango de viaje (departure_date) por defecto.
 const paymentDateTypes: DateTypeOption[] = [
-  { value: "OPERACION", label: "Operación", shortLabel: "Op." },
+  { value: "OPERACION", label: "Fecha de Venta", shortLabel: "Venta" },
   { value: "COBRO", label: "Cobro", shortLabel: "Cobro" },
   { value: "PAGO", label: "Pago", shortLabel: "Pago" },
   { value: "VENCIMIENTO", label: "Vencimiento", shortLabel: "Venc." },
@@ -120,7 +124,7 @@ export function OperationsFilters({ sellers, agencies, customStatuses = [], onFi
     (paymentDateType !== "" && (paymentDateFrom !== undefined || paymentDateTo !== undefined))
 
   return (
-    <div className="flex items-center gap-2 flex-wrap">
+    <div className="flex items-center gap-2 flex-wrap" data-tour="operations.filters">
       <Select value={status} onValueChange={setStatus}>
         <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px] w-auto">
           <SelectValue placeholder="Seleccionar estado" />
@@ -170,7 +174,7 @@ export function OperationsFilters({ sellers, agencies, customStatuses = [], onFi
             setDateTo(undefined)
           }
         }}
-        placeholder="Viaje Desde"
+        label="Viaje desde"
         className="h-8 text-xs rounded-full"
       />
 
@@ -182,7 +186,7 @@ export function OperationsFilters({ sellers, agencies, customStatuses = [], onFi
           }
           setDateTo(date)
         }}
-        placeholder="Viaje Hasta"
+        label="Viaje hasta"
         minDate={dateFrom}
         className="h-8 text-xs rounded-full"
       />

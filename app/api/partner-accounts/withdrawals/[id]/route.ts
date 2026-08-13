@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
-import { getCurrentUser } from "@/lib/auth"
+import { canPerformAction } from "@/lib/permissions-api"
+import { getRequestPermissions } from "@/lib/permissions/request"
 
 // DELETE - Eliminar un retiro
 export async function DELETE(
@@ -9,23 +9,29 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-    const { user } = await getCurrentUser()
-    
-    // Solo SUPER_ADMIN puede eliminar retiros
-    if (user.role !== "SUPER_ADMIN") {
-      return NextResponse.json({ error: "Solo el administrador puede eliminar retiros" }, { status: 403 })
+    // Gate por accounting.delete. Coincide con el "solo SUPER_ADMIN" anterior
+    // (ADMIN y CONTABLE tienen delete: false) pero además habilita al ORG_OWNER
+    // y respeta los overrides por agencia.
+    const { user, supabase, matrix } = await getRequestPermissions()
+    if (!canPerformAction(user, "accounting", "delete", matrix ?? undefined)) {
+      return NextResponse.json({ error: "No autorizado para eliminar movimientos de socios" }, { status: 403 })
     }
 
-    const supabase = await createServerClient()
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+    const orgId = (user as any).org_id as string
 
-    // Obtener el retiro con sus referencias
+    // Obtener el retiro con sus referencias. `partner_withdrawals` no tiene
+    // org_id: el tenant se valida contra el socio, si no un id enumerable
+    // permitiría borrar el movimiento de otra organización.
     const { data: withdrawal, error: fetchError } = await (supabase
       .from("partner_withdrawals") as any)
-      .select("*, partner:partner_id(partner_name)")
+      .select("*, partner:partner_id(partner_name, org_id)")
       .eq("id", id)
       .single()
 
-    if (fetchError || !withdrawal) {
+    if (fetchError || !withdrawal || withdrawal.partner?.org_id !== orgId) {
       return NextResponse.json({ error: "Retiro no encontrado" }, { status: 404 })
     }
 
@@ -56,7 +62,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Error al eliminar retiro" }, { status: 500 })
     }
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: true,
       message: `Retiro de ${withdrawal.currency} ${withdrawal.amount} eliminado`
     })
@@ -65,4 +71,3 @@ export async function DELETE(
     return NextResponse.json({ error: "Error interno" }, { status: 500 })
   }
 }
-

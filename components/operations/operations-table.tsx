@@ -1,5 +1,6 @@
 "use client"
 
+import { toSellerOptions, type SellerOption } from "@/lib/sellers/seller-option"
 import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { ColumnDef, OnChangeFn, SortingState } from "@tanstack/react-table"
 import { Badge } from "@/components/ui/badge"
@@ -12,7 +13,7 @@ import { DataTableColumnHeader } from "@/components/ui/data-table-column-header"
 import { ServerPagination } from "@/components/ui/server-pagination"
 import { Input } from "@/components/ui/input"
 import { useDebounce } from "@/hooks/use-debounce"
-import { MoreHorizontal, Pencil, Eye, Trash2, Search } from "lucide-react"
+import { MoreHorizontal, Pencil, Eye, Trash2, Search, Copy } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,6 +28,10 @@ import dynamic from "next/dynamic"
 // editar una operación desde el listado.
 const EditOperationDialog = dynamic(
   () => import("./edit-operation-dialog").then((m) => ({ default: m.EditOperationDialog })),
+  { ssr: false }
+)
+const NewOperationDialog = dynamic(
+  () => import("./new-operation-dialog").then((m) => ({ default: m.NewOperationDialog })),
   { ssr: false }
 )
 import {
@@ -83,6 +88,8 @@ interface Operation {
   reservation_code_air?: string | null
   reservation_code_hotel?: string | null
   type?: string | null
+  invoice_status?: "INVOICED" | "PARTIAL" | "NOT_INVOICED"
+  invoiced_amount?: number
 }
 
 interface OperationsTableProps {
@@ -114,6 +121,10 @@ export function OperationsTable({
   const [filters, setFilters] = useState(initialFilters)
   const [editingOperation, setEditingOperation] = useState<Operation | null>(null)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
+  // VIB-109: duplicar operación (precarga del alta, no clon server-side).
+  const [duplicateSource, setDuplicateSource] = useState<any | null>(null)
+  const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false)
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null)
   const [deletingOperation, setDeletingOperation] = useState<Operation | null>(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -136,7 +147,7 @@ export function OperationsTable({
   
   // Datos para el diálogo de edición (se cargarán cuando sea necesario)
   const [agencies, setAgencies] = useState<Array<{ id: string; name: string }>>([])
-  const [sellers, setSellers] = useState<Array<{ id: string; name: string }>>([])
+  const [sellers, setSellers] = useState<SellerOption[]>([])
   const [allOperators, setAllOperators] = useState<Array<{ id: string; name: string }>>([])
   const hideFinancialColumns = userRole === "SELLER" && canViewAgencyOperationsSupport
   
@@ -156,7 +167,9 @@ export function OperationsTable({
       ])
       
       setAgencies(agenciesData.agencies || [])
-      setSellers((sellersData.users || []).map((u: any) => ({ id: u.id, name: u.name })))
+      // El .map() de acá también descartaba el porcentaje, y este alimenta el
+      // diálogo de edición: editar una venta compartida la dejaba en 0/0.
+      setSellers(toSellerOptions(sellersData.users))
       setAllOperators((operatorsData.operators || []).map((o: any) => ({ id: o.id, name: o.name })))
     } catch (error) {
       console.error("Error loading dialog data:", error)
@@ -175,6 +188,32 @@ export function OperationsTable({
     setEditingOperation(operation)
     setEditDialogOpen(true)
   }, [agencies.length, loadDialogData])
+
+  // VIB-109: duplicar = abrir el alta precargada. La fila del listado no trae
+  // todas las columnas de las patas (product_type, passenger_detail), así que
+  // se pide la operación completa antes de precargar.
+  const handleDuplicateClick = useCallback(async (operation: Operation) => {
+    setDuplicatingId(operation.id)
+    try {
+      if (agencies.length === 0) {
+        await loadDialogData()
+      }
+      const response = await fetch(`/api/operations/${operation.id}`)
+      if (!response.ok) throw new Error("No se pudo cargar la operación")
+      const data = await response.json()
+      setDuplicateSource(data.operation)
+      setDuplicateDialogOpen(true)
+    } catch (error) {
+      console.error("Error preparing duplicate:", error)
+      toast({
+        title: "Error",
+        description: "No se pudo preparar la copia de la operación",
+        variant: "destructive",
+      })
+    } finally {
+      setDuplicatingId(null)
+    }
+  }, [agencies.length, loadDialogData, toast])
 
   const fetchOperations = useCallback(async () => {
     setLoading(true)
@@ -339,6 +378,15 @@ export function OperationsTable({
                     <DropdownMenuItem onClick={() => handleEditClick(operation)}>
                       <Pencil className="mr-2 h-4 w-4" />
                       Editar
+                    </DropdownMenuItem>
+                    {/* VIB-109: ventas repetidas del mismo grupo (mismo paquete,
+                        distintos pasajeros). Abre el alta precargada. */}
+                    <DropdownMenuItem
+                      onClick={() => handleDuplicateClick(operation)}
+                      disabled={duplicatingId === operation.id}
+                    >
+                      <Copy className="mr-2 h-4 w-4" />
+                      {duplicatingId === operation.id ? "Preparando..." : "Duplicar"}
                     </DropdownMenuItem>
                   </>
                 )}
@@ -645,6 +693,45 @@ export function OperationsTable({
     }
 
     cols.push({
+      accessorKey: "invoice_status",
+      enableSorting: false,
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Facturado" />
+      ),
+      cell: ({ row }) => {
+        const st = row.original.invoice_status || "NOT_INVOICED"
+        if (st === "INVOICED") {
+          return (
+            <Badge variant="success" className="text-[10px] px-1.5 py-0">
+              Facturado
+            </Badge>
+          )
+        }
+        if (st === "PARTIAL") {
+          const amount = row.original.invoiced_amount
+          return (
+            <Badge
+              variant="coral"
+              className="text-[10px] px-1.5 py-0"
+              title={
+                amount != null
+                  ? `Facturado ${row.original.currency} ${amount.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  : undefined
+              }
+            >
+              Parcial
+            </Badge>
+          )
+        }
+        return (
+          <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground">
+            No facturado
+          </Badge>
+        )
+      },
+    })
+
+    cols.push({
       accessorKey: "status",
       header: ({ column }) => (
         <DataTableColumnHeader column={column} title="Estado" />
@@ -657,7 +744,7 @@ export function OperationsTable({
     })
 
     return cols
-  }, [handleDeleteClick, handleEditClick, hideFinancialColumns, userId, userRole])
+  }, [handleDeleteClick, handleEditClick, handleDuplicateClick, duplicatingId, hideFinancialColumns, userId, userRole])
 
   if (loading) {
     return (
@@ -677,7 +764,7 @@ export function OperationsTable({
     <>
       <div className="space-y-4">
         {/* Búsqueda server-side */}
-        <div className="relative max-w-sm">
+        <div className="relative max-w-sm" data-tour="operations.search">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
             placeholder="Buscar por destino, cliente, código..."
@@ -710,7 +797,10 @@ export function OperationsTable({
           }, {} as Record<string, { sale: number; paid: number; pending: number; opPaid: number; opPending: number; margin: number }>)
 
           return (
-            <div className="flex flex-wrap gap-2 text-xs py-2 px-3 bg-muted/50 rounded-md border">
+            <div
+              className="flex flex-wrap gap-2 text-xs py-2 px-3 bg-muted/50 rounded-md border"
+              data-tour="operations.totals"
+            >
               <span className="font-semibold text-muted-foreground mr-1">Totales página:</span>
               {Object.entries(totals).map(([currency, t]) => (
                 <div key={currency} className="flex flex-wrap gap-x-3 gap-y-1">
@@ -725,14 +815,17 @@ export function OperationsTable({
           )
         })()}
 
-        <DataTable
-          columns={columns}
-          data={operations}
-          showPagination={false}
-          manualSorting
-          sorting={sorting}
-          onSortingChange={handleSortingChange}
-        />
+        <div data-tour="operations.table">
+          <DataTable
+            columns={columns}
+            data={operations}
+            showPagination={false}
+            manualSorting
+            sorting={sorting}
+            onSortingChange={handleSortingChange}
+            persistKey="operations-table"
+          />
+        </div>
         
         {/* Paginación server-side */}
         {total > 0 && (
@@ -765,6 +858,32 @@ export function OperationsTable({
           agencies={agencies}
           sellers={sellers}
           operators={allOperators}
+        />
+      )}
+
+      {/* VIB-109: alta precargada desde otra operación. El POST es el de
+          siempre, así que la operación nueva genera su propia contabilidad. */}
+      {duplicateSource && (
+        <NewOperationDialog
+          open={duplicateDialogOpen}
+          onOpenChange={(open) => {
+            setDuplicateDialogOpen(open)
+            if (!open) setDuplicateSource(null)
+          }}
+          onSuccess={() => {
+            setDuplicateDialogOpen(false)
+            setDuplicateSource(null)
+            fetchOperations()
+          }}
+          duplicateFrom={duplicateSource}
+          agencies={agencies}
+          sellers={sellers}
+          operators={allOperators}
+          userRole={userRole}
+          // Conservador: al duplicar, un vendedor no reasigna la venta. La copia
+          // arranca con el vendedor de la operación original (que es él mismo,
+          // porque sólo ve las propias) y el servidor valida igual.
+          canPickOtherSeller={userRole !== "SELLER"}
         />
       )}
 

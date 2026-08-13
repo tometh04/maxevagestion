@@ -2,6 +2,42 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { getUserAgencyIds } from "@/lib/permissions-api"
+import { isIndependentAdvisor } from "@/lib/permissions"
+
+/**
+ * VIB-69 — El ⌘K de un asesor independiente.
+ *
+ * La RPC acota operaciones y leads por `p_role = 'SELLER'`, pero los clientes los
+ * devuelve por org: cualquier vendedor puede buscar la base entera de la agencia.
+ * Para un freelancer externo eso es justamente lo que no queremos, así que acá
+ * dejamos pasar solo los clientes que son suyos — los de sus operaciones y los
+ * que él dio de alta, el mismo criterio que usa applyCustomersFilters.
+ */
+async function filterOwnCustomerIds(
+  supabase: any,
+  userId: string,
+  candidateIds: string[]
+): Promise<Set<string>> {
+  if (candidateIds.length === 0) return new Set()
+
+  const [createdRes, linkedRes] = await Promise.all([
+    supabase.from("customers").select("id").in("id", candidateIds).eq("created_by", userId),
+    supabase
+      .from("operation_customers")
+      .select("customer_id, operations!inner(seller_id)")
+      .in("customer_id", candidateIds)
+      .eq("operations.seller_id", userId),
+  ])
+
+  const allowed = new Set<string>()
+  for (const row of (createdRes?.data || []) as Array<{ id: string }>) {
+    if (row.id) allowed.add(row.id)
+  }
+  for (const row of (linkedRes?.data || []) as Array<{ customer_id: string }>) {
+    if (row.customer_id) allowed.add(row.customer_id)
+  }
+  return allowed
+}
 
 /**
  * GET /api/search?q=<term>
@@ -63,6 +99,17 @@ export async function GET(request: Request) {
       passenger_name: string | null
     }>
 
+    // VIB-69: el asesor independiente no ve leads ni operadores, y de los
+    // clientes solo los suyos.
+    const advisor = isIndependentAdvisor(user)
+    const allowedCustomerIds = advisor
+      ? await filterOwnCustomerIds(
+          supabase,
+          user.id,
+          rows.filter((r) => r.result_type === "customer").map((r) => r.id)
+        )
+      : null
+
     const queryLower = query.toLowerCase()
     const statusOpLabels: Record<string, string> = {
       RESERVED: "Reservado",
@@ -94,6 +141,11 @@ export async function GET(request: Request) {
       const key = `${r.result_type}:${r.id}`
       if (seen.has(key)) continue
       seen.add(key)
+
+      if (advisor) {
+        if (r.result_type === "lead" || r.result_type === "operator") continue
+        if (r.result_type === "customer" && !allowedCustomerIds?.has(r.id)) continue
+      }
 
       if (r.result_type === "operation") {
         let title = r.title

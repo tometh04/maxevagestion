@@ -17,6 +17,7 @@ import { ServerPagination } from "@/components/ui/server-pagination"
 import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
 import Link from "next/link"
 import { CashMovementReverseButton } from "@/components/cash/cash-movement-reverse-button"
+import { useCan } from "@/components/permissions/permissions-provider"
 import { Undo2, BookOpen } from "lucide-react"
 
 interface MovementOperation {
@@ -42,6 +43,7 @@ export interface CashMovement {
   movement_date: string
   notes: string | null
   affects_balance?: boolean
+  is_agency_expense?: boolean
   reversed_at?: string | null
   reverses_movement_id?: string | null
   reversed_by_movement_id?: string | null
@@ -77,7 +79,9 @@ export function MovementsTable({
   type,
   customerQuery,
 }: MovementsTableProps) {
-  const canReverse = ["ADMIN", "SUPER_ADMIN", "CONTABLE"].includes(userRole || "")
+  // Reversar movimiento = cash.write (matrix por agencia). El servidor
+  // (/api/cash-movements/[id]/reverse) valida el mismo permiso.
+  const canReverse = useCan("cash", "write")
   const [movements, setMovements] = useState<CashMovement[]>(initialMovements || [])
   const [loading, setLoading] = useState(!initialMovements)
 
@@ -203,6 +207,14 @@ export function MovementsTable({
                       {movement.affects_balance === false && (
                         <Badge variant="outline" className="text-[10px]">
                           No afecta saldo
+                        </Badge>
+                      )}
+                      {movement.is_agency_expense === false && (
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] border-amber-500/30 text-amber-600 dark:text-amber-400"
+                        >
+                          No es gasto
                         </Badge>
                       )}
                     </div>

@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { BarChart3, TrendingUp, Wallet, Download, Percent, HelpCircle, Calendar, FileSearch, CalendarRange } from "lucide-react"
+import { BarChart3, TrendingUp, Wallet, Download, Percent, HelpCircle, Calendar, FileSearch, CalendarRange, Receipt, Coins, PackageSearch, CalendarClock, Landmark, Users } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -16,6 +16,13 @@ import { MarginsReport } from "./margins-report"
 import { VencimientosReport } from "./vencimientos-report"
 import { ConciliacionReport } from "./conciliacion-report"
 import { ClosingReport } from "./closing-report"
+import { ExpensesReport } from "./expenses-report"
+import { CommissionsReport } from "./commissions-report"
+import { ReferralsReport } from "./referrals-report"
+import { SalesBreakdownReport } from "./sales-breakdown-report"
+import { CashflowProjectionReport } from "./cashflow-projection-report"
+import { SocietarioReport } from "./societario-report"
+import { canViewSocietarioReport } from "@/lib/reports/societario-access"
 import {
   Breadcrumb,
   BreadcrumbList,
@@ -28,15 +35,33 @@ import Link from "next/link"
 
 interface ReportsPageClientProps {
   userRole: string
+  /** `role` + `additional_roles`: un SELLER con CONTABLE adicional entra igual. */
+  userRoles?: string[]
   userId: string
   sellers: Array<{ id: string; name: string }>
   agencies: Array<{ id: string; name: string }>
 }
 
-export function ReportsPageClient({ userRole, userId, sellers, agencies }: ReportsPageClientProps) {
+export function ReportsPageClient({
+  userRole,
+  userRoles,
+  userId,
+  sellers,
+  agencies,
+}: ReportsPageClientProps) {
   const [activeTab, setActiveTab] = useState("sales")
 
   const canSeeCashFlow = ["SUPER_ADMIN", "ADMIN", "CONTABLE"].includes(userRole)
+  // El reporte de gastos expone egresos del tenant: mismo círculo que caja /
+  // contabilidad, incluyendo al owner. La API valida el permiso real.
+  const canSeeExpenses = ["SUPER_ADMIN", "ORG_OWNER", "ADMIN", "CONTABLE"].includes(userRole)
+  // Societario: dueños, admin y contable. Cosmético — el gate real está en
+  // /api/reports/societario, que usa esta misma función.
+  const canSeeSocietario = canViewSocietarioReport({ role: userRole, roles: userRoles })
+  // Referidores: quien administra los referidos (VIB-86). El vendedor no tiene
+  // que ver cuánto se lleva cada referidor, así que ni ve la pestaña; la API
+  // (módulo `referrals`) es la que realmente lo valida.
+  const canSeeReferrals = ["SUPER_ADMIN", "ORG_OWNER", "ADMIN", "CONTABLE"].includes(userRole)
 
   return (
     <div className="space-y-6">
@@ -82,6 +107,10 @@ export function ReportsPageClient({ userRole, userId, sellers, agencies }: Repor
             <TrendingUp className="h-4 w-4" />
             Ventas
           </TabsTrigger>
+          <TabsTrigger value="sales-breakdown" className="flex items-center gap-2">
+            <PackageSearch className="h-4 w-4" />
+            Por producto
+          </TabsTrigger>
           <TabsTrigger value="margins" className="flex items-center gap-2">
             <Percent className="h-4 w-4" />
             Márgenes
@@ -90,6 +119,29 @@ export function ReportsPageClient({ userRole, userId, sellers, agencies }: Repor
             <TabsTrigger value="cashflow" className="flex items-center gap-2">
               <Wallet className="h-4 w-4" />
               Flujo de Caja
+            </TabsTrigger>
+          )}
+          {canSeeExpenses && (
+            <TabsTrigger value="cashflow-projection" className="flex items-center gap-2">
+              <CalendarClock className="h-4 w-4" />
+              Caja proyectada
+            </TabsTrigger>
+          )}
+          {canSeeExpenses && (
+            <TabsTrigger value="expenses" className="flex items-center gap-2">
+              <Receipt className="h-4 w-4" />
+              Gastos
+            </TabsTrigger>
+          )}
+          {/* Visible para todos: un vendedor ve solo sus comisiones (la API lo scopea). */}
+          <TabsTrigger value="commissions" className="flex items-center gap-2">
+            <Coins className="h-4 w-4" />
+            Comisiones
+          </TabsTrigger>
+          {canSeeReferrals && (
+            <TabsTrigger value="referrals" className="flex items-center gap-2">
+              <Users className="h-4 w-4" />
+              Referidores
             </TabsTrigger>
           )}
           <TabsTrigger value="vencimientos" className="flex items-center gap-2">
@@ -108,6 +160,12 @@ export function ReportsPageClient({ userRole, userId, sellers, agencies }: Repor
               Cierre de Mes
             </TabsTrigger>
           )}
+          {canSeeSocietario && (
+            <TabsTrigger value="societario" className="flex items-center gap-2">
+              <Landmark className="h-4 w-4" />
+              Societario
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="sales" className="mt-6">
@@ -117,6 +175,10 @@ export function ReportsPageClient({ userRole, userId, sellers, agencies }: Repor
             sellers={sellers}
             agencies={agencies}
           />
+        </TabsContent>
+
+        <TabsContent value="sales-breakdown" className="mt-6">
+          <SalesBreakdownReport sellers={sellers} agencies={agencies} />
         </TabsContent>
 
         <TabsContent value="margins" className="mt-6">
@@ -134,6 +196,28 @@ export function ReportsPageClient({ userRole, userId, sellers, agencies }: Repor
           </TabsContent>
         )}
 
+        {canSeeExpenses && (
+          <TabsContent value="cashflow-projection" className="mt-6">
+            <CashflowProjectionReport agencies={agencies} />
+          </TabsContent>
+        )}
+
+        {canSeeExpenses && (
+          <TabsContent value="expenses" className="mt-6">
+            <ExpensesReport agencies={agencies} />
+          </TabsContent>
+        )}
+
+        <TabsContent value="commissions" className="mt-6">
+          <CommissionsReport sellers={sellers} agencies={agencies} />
+        </TabsContent>
+
+        {canSeeReferrals && (
+          <TabsContent value="referrals" className="mt-6">
+            <ReferralsReport agencies={agencies} />
+          </TabsContent>
+        )}
+
         <TabsContent value="vencimientos" className="mt-6">
           <VencimientosReport agencies={agencies} />
         </TabsContent>
@@ -147,6 +231,12 @@ export function ReportsPageClient({ userRole, userId, sellers, agencies }: Repor
         {canSeeCashFlow && (
           <TabsContent value="closing" className="mt-6">
             <ClosingReport agencies={agencies} />
+          </TabsContent>
+        )}
+
+        {canSeeSocietario && (
+          <TabsContent value="societario" className="mt-6">
+            <SocietarioReport agencies={agencies} />
           </TabsContent>
         )}
       </Tabs>

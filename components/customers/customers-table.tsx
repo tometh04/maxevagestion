@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { ColumnDef } from "@tanstack/react-table"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import { DataTable } from "@/components/ui/data-table"
 import { DataTableColumnHeader } from "@/components/ui/data-table-column-header"
@@ -41,6 +42,7 @@ interface Customer {
   trips: number
   totalSpentByCurrency: Record<string, number>
   agency_id?: string
+  referral_partner_id?: string | null
 }
 
 interface CustomersTableProps {
@@ -130,9 +132,14 @@ export function CustomersTable({ initialFilters }: CustomersTableProps) {
           const fullName = `${row.original.first_name || ""} ${row.original.last_name || ""}`.trim()
           const extractedName = extractCustomerName(fullName || row.original.first_name || "")
           return (
-            <div className="font-medium">
-              {extractedName || fullName || "-"}
-          </div>
+            <div className="flex items-center gap-2 font-medium">
+              <span>{extractedName || fullName || "-"}</span>
+              {row.original.referral_partner_id && (
+                <Badge className="bg-accent-coral/10 text-accent-coral border-0 text-[10px] px-1.5 py-0">
+                  Referido
+                </Badge>
+              )}
+            </div>
           )
         },
       },

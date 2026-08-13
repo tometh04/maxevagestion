@@ -5,6 +5,7 @@ import {
   getAccessibleModules,
   shouldShowInSidebar,
   usePermissions,
+  PERMISSIONS,
 } from '../../permissions'
 import type { UserRole, Module, Permission } from '../../permissions'
 
@@ -226,9 +227,15 @@ describe('Permissions System', () => {
 
   // ─── getAccessibleModules ───────────────────────────────────────────
   describe('getAccessibleModules', () => {
-    it('should return all 13 modules for SUPER_ADMIN', () => {
+    it('should return every module in the matrix for SUPER_ADMIN', () => {
+      // Antes esto era `toBe(13)` y quedó en rojo al agregarse `eve` (VIB-81):
+      // un número hardcodeado convierte cada módulo nuevo en un test roto, y una
+      // suite en rojo deja de avisar sobre lo que sí importa. Ahora se compara
+      // contra la propia matriz, que es lo que se quería verificar.
       const modules = getAccessibleModules('SUPER_ADMIN')
-      expect(modules.length).toBe(13)
+      const todosLosModulos = Object.keys(PERMISSIONS.SUPER_ADMIN)
+
+      expect(modules.sort()).toEqual(todosLosModulos.sort())
       expect(modules).toContain('dashboard')
       expect(modules).toContain('settings')
     })
@@ -357,6 +364,39 @@ describe('Permissions System', () => {
       expect(perms.canWrite('settings')).toBe(true)
       expect(perms.canDelete('settings')).toBe(true)
       expect(perms.ownDataOnly('settings')).toBe(false)
+    })
+  })
+
+  // ─── library (VIB-70) ───────────────────────────────────────────────
+  describe('library module (VIB-70)', () => {
+    it('every role has a library entry (matriz completa)', () => {
+      const roles: UserRole[] = [
+        'SUPER_ADMIN', 'ORG_OWNER', 'ADMIN', 'CONTABLE', 'SELLER', 'VIEWER', 'POST_VENTA',
+      ]
+      for (const role of roles) {
+        expect(PERMISSIONS[role].library).toBeDefined()
+      }
+    })
+
+    it('admins can manage the library, non-admins can only read', () => {
+      expect(hasPermission('ADMIN', 'library', 'write')).toBe(true)
+      expect(hasPermission('SUPER_ADMIN', 'library', 'write')).toBe(true)
+
+      for (const role of ['SELLER', 'VIEWER', 'CONTABLE', 'POST_VENTA'] as UserRole[]) {
+        expect(hasPermission(role, 'library', 'read')).toBe(true)
+        expect(hasPermission(role, 'library', 'write')).toBe(false)
+        expect(hasPermission(role, 'library', 'delete')).toBe(false)
+      }
+    })
+
+    it('la biblioteca es compartida: SELLER no tiene ownDataOnly', () => {
+      expect(isOwnDataOnly('SELLER', 'library')).toBe(false)
+    })
+
+    it('los roles con lectura ven la Biblioteca en el sidebar', () => {
+      for (const role of ['SELLER', 'CONTABLE', 'VIEWER', 'POST_VENTA', 'ADMIN'] as UserRole[]) {
+        expect(shouldShowInSidebar(role, 'library')).toBe(true)
+      }
     })
   })
 })

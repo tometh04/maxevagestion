@@ -25,6 +25,8 @@ import {
 } from "@/components/ui/select"
 import { Plus, Trash2, AlertCircle, CheckCircle2 } from "lucide-react"
 import { toast } from "sonner"
+// Fix UTC shift en fechas DATE (VICO 2026-05-22)
+import { formatDateOnlyLocal } from "@/lib/utils/date-only"
 
 interface ChartAccount {
   id: string
@@ -73,7 +75,7 @@ export function CreateJournalEntryDialog({
 
   // Form state
   const [entryDate, setEntryDate] = useState(
-    new Date().toISOString().split("T")[0]
+    formatDateOnlyLocal(new Date()) ?? ""
   )
   const [description, setDescription] = useState("")
   const [notes, setNotes] = useState("")
@@ -139,7 +141,7 @@ export function CreateJournalEntryDialog({
   }
 
   const resetForm = () => {
-    setEntryDate(new Date().toISOString().split("T")[0])
+    setEntryDate(formatDateOnlyLocal(new Date()) ?? "")
     setDescription("")
     setNotes("")
     setLines([

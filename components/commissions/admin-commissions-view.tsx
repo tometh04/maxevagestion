@@ -12,6 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
+import { getCommissionCurrency } from "@/lib/commissions/currency"
 import {
   Select,
   SelectContent,
@@ -40,7 +41,7 @@ import { CommissionsSettings } from "@/components/settings/commissions-settings"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 // Fix UTC shift en fechas DATE (VICO 2026-05-22)
-import { parseDateOnlyLocal } from "@/lib/utils/date-only"
+import { parseDateOnlyLocal, formatDateOnlyLocal } from "@/lib/utils/date-only"
 import {
   DollarSign,
   Users,
@@ -76,7 +77,10 @@ interface Commission {
     id: string
     short_code?: string
     file_code?: string
+    main_passenger_name?: string | null
     destination: string
+    /** Fecha de la venta: define a qué mes pertenece la comisión. */
+    operation_date?: string
     departure_date: string
     sale_amount_total: number
     operator_cost?: number
@@ -123,8 +127,26 @@ const fmtCurrency = (value: number, currency = "USD") =>
     minimumFractionDigits: 2,
   }).format(value)
 
-const getCommCurrency = (c: Commission): string =>
-  c.operation?.currency || c.operation?.sale_currency || "USD"
+/**
+ * Delega en `lib/commissions/currency.ts`: la regla de qué moneda es una
+ * comisión vive en un solo lugar, compartida con el endpoint, la tarjeta del
+ * dashboard y el reporte de comisiones.
+ */
+const getCommCurrency = (c: Commission): string => getCommissionCurrency(c as any)
+
+/**
+ * Cómo se identifica una comisión en pantalla: por el pasajero, no por el
+ * código de operación (pedido de Lozada, el vendedor reconoce al pasajero).
+ * El código queda de respaldo cuando la operación no tiene pasajero principal
+ * cargado, y el id corto como último recurso.
+ */
+function commissionLabel(c: Commission): string {
+  return (
+    c.operation?.main_passenger_name ||
+    c.operation?.file_code ||
+    c.operation_id.slice(0, 8)
+  )
+}
 
 function generateMonthOptions() {
   const options: { value: string; label: string }[] = []
@@ -194,7 +216,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
   const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([])
   const [payAccountId, setPayAccountId] = useState("")
   const [payExchangeRate, setPayExchangeRate] = useState("")
-  const [payDate, setPayDate] = useState(() => new Date().toISOString().split("T")[0])
+  const [payDate, setPayDate] = useState(() => formatDateOnlyLocal(new Date()) ?? "")
   const [payNotes, setPayNotes] = useState("")
   const [paySubmitting, setPaySubmitting] = useState(false)
 
@@ -226,7 +248,10 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
   const fetchPaidCommissions = useCallback(async () => {
     setPaidLoading(true)
     try {
-      const params = new URLSearchParams({ status: "PAID" })
+      // Historial de Pagos: acá el mes que importa es el de la liquidación, no
+      // el de la venta. Es el único lugar de la pantalla que filtra por
+      // `date_paid` (ver `dateBasis` en /api/commissions).
+      const params = new URLSearchParams({ status: "PAID", dateBasis: "paid" })
       if (paidMonth !== "ALL") params.set("month", paidMonth)
       if (paidDateFrom) params.set("periodStart", paidDateFrom)
       if (paidDateTo) params.set("periodEnd", paidDateTo)
@@ -252,7 +277,14 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
     try {
       const now = new Date()
       const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
-      const params = new URLSearchParams({ status: "PAID", month: currentMonth })
+      // "Pagado este mes" = lo que salió de caja este mes, así que va por
+      // `date_paid`. Antes iba por `date_calculated` y el número era el de las
+      // comisiones calculadas este mes, no el de las pagadas.
+      const params = new URLSearchParams({
+        status: "PAID",
+        month: currentMonth,
+        dateBasis: "paid",
+      })
       const res = await fetch(`/api/commissions?${params.toString()}`)
       const data = await res.json()
       const totals = calcTotalsByCurrency(data.commissions || [])
@@ -379,7 +411,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
     setPayAmounts(amounts)
     setPayAccountId("")
     setPayExchangeRate("")
-    setPayDate(new Date().toISOString().split("T")[0])
+    setPayDate(formatDateOnlyLocal(new Date()) ?? "")
     setPayNotes("")
     setPayDialogOpen(true)
     fetchFinancialAccounts()
@@ -563,15 +595,15 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
-          <TabsTrigger value="por-pagar" className="gap-1.5">
+          <TabsTrigger value="por-pagar" className="gap-1.5" data-tour="commissions.tab-pending">
             <Clock className="h-3.5 w-3.5" />
             Por Pagar
           </TabsTrigger>
-          <TabsTrigger value="historial" className="gap-1.5">
+          <TabsTrigger value="historial" className="gap-1.5" data-tour="commissions.tab-history">
             <History className="h-3.5 w-3.5" />
             Historial de Pagos
           </TabsTrigger>
-          <TabsTrigger value="reglas" className="gap-1.5">
+          <TabsTrigger value="reglas" className="gap-1.5" data-tour="commissions.tab-rules">
             <Settings2 className="h-3.5 w-3.5" />
             Reglas
           </TabsTrigger>
@@ -580,7 +612,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
         {/* ─── TAB: Por Pagar ─── */}
         <TabsContent value="por-pagar" className="space-y-6 mt-6">
           {/* KPI Cards */}
-          <div className="grid gap-4 md:grid-cols-4">
+          <div className="grid gap-4 md:grid-cols-4" data-tour="commissions.summary">
             {/* Total Pendiente USD */}
             <div className="rounded-xl border border-border/40 p-5">
               <div className="flex items-center gap-2 mb-2">
@@ -649,10 +681,11 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
           </div>
 
           {/* Filters */}
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap" data-tour="commissions.period-selector">
+            <span className="text-xs text-muted-foreground">Mes de venta</span>
             <Select value={pendingMonth} onValueChange={setPendingMonth}>
               <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
-                <SelectValue placeholder="Mes" />
+                <SelectValue placeholder="Mes de venta" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">Todos los meses</SelectItem>
@@ -764,7 +797,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
                                       className="text-primary hover:underline"
                                       prefetch={false}
                                     >
-                                      {c.operation?.file_code || c.operation_id.slice(0, 8)}
+                                      {commissionLabel(c)}
                                     </Link>
                                     {" - "}
                                     {c.operation?.destination || "Sin destino"}
@@ -782,9 +815,12 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
                                       </Badge>
                                     )}
                                   </TableCell>
-                                  <TableCell className="text-center text-sm text-muted-foreground">
-                                    {c.operation?.departure_date
-                                      ? (parseDateOnlyLocal(c.operation.departure_date) ? format(parseDateOnlyLocal(c.operation.departure_date)!, "dd/MM/yyyy", { locale: es }) : "-")
+                                  {/* Fecha de venta, no de salida: es la que usa
+                                      el filtro por mes, así que tiene que ser la
+                                      que se ve al lado del filtro. */}
+                                  <TableCell className="text-center text-sm text-muted-foreground" title="Fecha de venta">
+                                    {c.operation?.operation_date
+                                      ? (parseDateOnlyLocal(c.operation.operation_date) ? format(parseDateOnlyLocal(c.operation.operation_date)!, "dd/MM/yyyy", { locale: es }) : "-")
                                       : "-"}
                                   </TableCell>
                                   <TableCell className="text-right text-sm tabular-nums">
@@ -884,9 +920,10 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
               </SelectContent>
             </Select>
 
+            <span className="text-xs text-muted-foreground">Mes de pago</span>
             <Select value={paidMonth} onValueChange={setPaidMonth}>
               <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
-                <SelectValue placeholder="Mes" />
+                <SelectValue placeholder="Mes de pago" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">Todos los meses</SelectItem>
@@ -927,7 +964,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
                   <TableRow>
                     <SortableTableHead sortKey="date_paid" sortConfig={paidSortConfig} onSort={requestPaidSort}>Fecha Pago</SortableTableHead>
                     <SortableTableHead sortKey="sellers.name" sortConfig={paidSortConfig} onSort={requestPaidSort}>Vendedor</SortableTableHead>
-                    <SortableTableHead sortKey="operation.file_code" sortConfig={paidSortConfig} onSort={requestPaidSort}>Operacion</SortableTableHead>
+                    <SortableTableHead sortKey="operation.main_passenger_name" sortConfig={paidSortConfig} onSort={requestPaidSort}>Pasajero</SortableTableHead>
                     <SortableTableHead sortKey="operation.destination" sortConfig={paidSortConfig} onSort={requestPaidSort}>Destino</SortableTableHead>
                     <SortableTableHead sortKey="amount" sortConfig={paidSortConfig} onSort={requestPaidSort} className="text-right">Monto</SortableTableHead>
                     <TableHead>Estado</TableHead>
@@ -965,7 +1002,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
                             className="text-primary hover:underline"
                             prefetch={false}
                           >
-                            {c.operation?.file_code || c.operation_id.slice(0, 8)}
+                            {commissionLabel(c)}
                           </Link>
                         </TableCell>
                         <TableCell className="text-sm">
@@ -1055,7 +1092,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium truncate">
                               <Link href={`/operations/${c.operation_id}`} className="text-primary hover:underline" prefetch={false}>
-                                {c.operation?.file_code || c.operation_id.slice(0, 8)}
+                                {commissionLabel(c)}
                               </Link>
                               {" - "}
                               {c.operation?.destination || "Sin destino"}

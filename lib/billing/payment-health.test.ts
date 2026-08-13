@@ -42,13 +42,38 @@ describe("isSilentChargeFailure", () => {
     ).toBe(false)
   })
 
-  it("NO alerta si el próximo cobro todavía no venció (dentro del grace)", () => {
+  it("NO alerta si el próximo cobro todavía no venció (dentro del grace de 5d)", () => {
     expect(
       isSilentChargeFailure({
         effectiveStatus: "ACTIVE",
         mpStatus: "authorized",
-        nextPaymentDate: "2026-07-12T00:00:00Z", // ayer, dentro del grace de 3d
+        nextPaymentDate: "2026-07-12T00:00:00Z", // ayer, dentro del grace de 5d
         lastChargedDate: null,
+        now: NOW,
+      })
+    ).toBe(false)
+  })
+
+  it("detecta el reintento FUTURO: next_payment adelante pero último cobro de hace >1 ciclo", () => {
+    // Caso Milla Cero: la versión vieja NO lo agarraba (exigía next_payment vencido).
+    expect(
+      isSilentChargeFailure({
+        effectiveStatus: "ACTIVE",
+        mpStatus: "authorized",
+        nextPaymentDate: "2026-08-26T00:00:00Z", // reintento futuro
+        lastChargedDate: "2026-06-26T00:00:00Z", // pagó hasta ~26/07, gap de 61d
+        now: NOW,
+      })
+    ).toBe(true)
+  })
+
+  it("NO alerta con next_payment futuro y ciclo vigente cubierto (sub sana)", () => {
+    expect(
+      isSilentChargeFailure({
+        effectiveStatus: "ACTIVE",
+        mpStatus: "authorized",
+        nextPaymentDate: "2026-08-05T00:00:00Z",
+        lastChargedDate: "2026-07-05T00:00:00Z", // ciclo normal (~31d)
         now: NOW,
       })
     ).toBe(false)

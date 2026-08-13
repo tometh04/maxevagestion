@@ -53,6 +53,7 @@ const MODULE_LABELS: Record<string, string> = {
   settings: "Configuración",
   documents: "Documentos",
   tasks: "Tareas",
+  library: "Biblioteca",
 }
 
 const ALL_MODULES = Object.keys(MODULE_LABELS)
@@ -108,25 +109,31 @@ export function PermissionsMatrix({
     }))
   }
 
+  /** fetch no rechaza en 4xx/5xx: hay que chequear res.ok explícitamente. */
+  async function putRolePermissions(role: string) {
+    const res = await fetch("/api/settings/permissions", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agencyId, role, permissions: matrix[role] }),
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => null)
+      throw new Error(body?.detail || body?.error || `HTTP ${res.status}`)
+    }
+  }
+
   async function handleSaveRole(role: string) {
     if (!agencyId) return
     setSaving(true)
     try {
-      const res = await fetch("/api/settings/permissions", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          agencyId,
-          role,
-          permissions: matrix[role],
-        }),
-      })
-      if (!res.ok) throw new Error()
+      await putRolePermissions(role)
       // Recalcular customized para el rol
       await loadMatrix(agencyId)
       toast.success(`Permisos de ${ROLE_LABELS[role]} guardados`)
-    } catch {
-      toast.error("Error al guardar los permisos")
+    } catch (e) {
+      toast.error("Error al guardar los permisos", {
+        description: e instanceof Error ? e.message : undefined,
+      })
     } finally {
       setSaving(false)
     }
@@ -136,17 +143,29 @@ export function PermissionsMatrix({
     if (!agencyId) return
     setSaving(true)
     try {
-      await Promise.all(
-        CONFIGURABLE_ROLES.map((role) =>
-          fetch("/api/settings/permissions", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ agencyId, role, permissions: matrix[role] }),
-          })
-        )
+      const results = await Promise.allSettled(
+        CONFIGURABLE_ROLES.map((role) => putRolePermissions(role))
       )
       await loadMatrix(agencyId)
-      toast.success("Todos los permisos guardados")
+
+      const failed = results.flatMap((r, i) =>
+        r.status === "rejected" ? [{ role: CONFIGURABLE_ROLES[i], reason: r.reason }] : []
+      )
+      if (failed.length === 0) {
+        toast.success("Todos los permisos guardados")
+      } else {
+        toast.error(
+          `No se pudieron guardar ${failed.length} de ${CONFIGURABLE_ROLES.length} roles`,
+          {
+            description: failed
+              .map(
+                (f) =>
+                  `${ROLE_LABELS[f.role]}: ${f.reason instanceof Error ? f.reason.message : "error"}`
+              )
+              .join(" · "),
+          }
+        )
+      }
     } catch {
       toast.error("Error al guardar los permisos")
     } finally {

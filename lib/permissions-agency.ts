@@ -13,85 +13,33 @@
 import { cache } from "react"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/lib/supabase/types"
-import { PERMISSIONS, mergeRolePermissions, type Module, type UserRole } from "@/lib/permissions"
+import type { UserRole } from "@/lib/permissions"
+import {
+  ALL_MODULES,
+  FULL_ACCESS_ROLES,
+  FULL_ACCESS_MATRIX,
+  CONFIGURABLE_ROLES,
+  buildDefaultMatrix,
+  buildDefaultMatrixMulti,
+  clampMatrixForIndependentAdvisor,
+  type ResolvedModulePerms,
+  type ResolvedPermissionsMatrix,
+} from "@/lib/permissions/resolved"
 
-export type ResolvedModulePerms = {
-  read: boolean
-  write: boolean
-  delete: boolean
-  export: boolean
-  ownDataOnly: boolean
-}
-
-/** module → ResolvedModulePerms */
-export type ResolvedPermissionsMatrix = Record<string, ResolvedModulePerms>
-
-const ALL_MODULES: Module[] = [
-  "dashboard", "leads", "operations", "customers", "operators",
-  "cash", "accounting", "alerts", "reports", "commissions",
-  "settings", "documents", "tasks", "eve",
-]
-
-/** Roles que siempre tienen full access — no consultan DB */
-const FULL_ACCESS_ROLES: UserRole[] = ["SUPER_ADMIN", "ORG_OWNER"]
-
-/** Roles que pueden tener permisos personalizados por agencia */
-export const CONFIGURABLE_ROLES: UserRole[] = ["ADMIN", "CONTABLE", "SELLER", "VIEWER", "POST_VENTA"]
-
-const FULL_ACCESS_MATRIX: ResolvedPermissionsMatrix = Object.fromEntries(
-  ALL_MODULES.map((m) => [
-    m,
-    { read: true, write: true, delete: true, export: true, ownDataOnly: false },
-  ])
-)
-
-/** Convierte la matriz estática de un rol al formato ResolvedPermissionsMatrix */
-export function buildDefaultMatrix(role: UserRole): ResolvedPermissionsMatrix {
-  if (FULL_ACCESS_ROLES.includes(role)) return FULL_ACCESS_MATRIX
-  const rolePerms = PERMISSIONS[role]
-  return Object.fromEntries(
-    ALL_MODULES.map((m) => {
-      const p = rolePerms?.[m]
-      return [
-        m,
-        {
-          read: p?.read ?? false,
-          write: p?.write ?? false,
-          delete: p?.delete ?? false,
-          export: p?.export ?? false,
-          ownDataOnly: p?.ownDataOnly ?? false,
-        },
-      ]
-    })
-  )
-}
-
-/**
- * Versión multi-rol de buildDefaultMatrix.
- * Fusiona la matriz estática de múltiples roles con OR/AND logic.
- */
-export function buildDefaultMatrixMulti(roles: UserRole[]): ResolvedPermissionsMatrix {
-  if (roles.length === 0) return buildDefaultMatrix("VIEWER" as UserRole)
-  if (roles.length === 1) return buildDefaultMatrix(roles[0])
-  if (roles.some((r) => FULL_ACCESS_ROLES.includes(r))) return FULL_ACCESS_MATRIX
-
-  const merged = mergeRolePermissions(roles)
-  return Object.fromEntries(
-    ALL_MODULES.map((m) => {
-      const p = merged[m]
-      return [
-        m,
-        {
-          read: p?.read ?? false,
-          write: p?.write ?? false,
-          delete: p?.delete ?? false,
-          export: p?.export ?? false,
-          ownDataOnly: p?.ownDataOnly ?? false,
-        },
-      ]
-    })
-  )
-}
+// Re-export de los helpers PUROS (client-safe) para no romper los ~27 imports
+// existentes que consumen estos símbolos desde "@/lib/permissions-agency".
+export {
+  ALL_MODULES,
+  CONFIGURABLE_ROLES,
+  buildDefaultMatrix,
+  buildDefaultMatrixMulti,
+  clampMatrixForIndependentAdvisor,
+  checkResolvedPermission,
+  checkOwnDataOnly,
+  assertPermission,
+  getCustomizedModules,
+} from "@/lib/permissions/resolved"
+export type { ResolvedModulePerms, ResolvedPermissionsMatrix } from "@/lib/permissions/resolved"
 
 type DbPermRow = {
   agency_id: string
@@ -133,6 +81,33 @@ async function fetchAgencyPermissions(
 }
 
 /**
+ * VIB-69: ¿este usuario es un asesor de viajes independiente?
+ *
+ * Se lee acá adentro en vez de recibirlo por parámetro para que el techo del
+ * asesor aplique en los ~50 call sites de `resolveUserPermissions` sin tener que
+ * tocarlos uno por uno — olvidarse de uno significaría mostrarle a un freelancer
+ * el CRM de la agencia. Es un SELECT de una columna, deduplicado por request
+ * junto con el resto de `resolveUserPermissions` vía React.cache().
+ */
+async function fetchIsIndependentAdvisor(
+  supabase: SupabaseClient<Database>,
+  userId: string
+): Promise<boolean> {
+  const { data, error } = await (supabase as any)
+    .from("users")
+    .select("is_independent_advisor")
+    .eq("id", userId)
+    .maybeSingle()
+
+  if (error) {
+    console.error("[permissions-agency] Error fetching independent advisor flag:", error.message)
+    return false
+  }
+
+  return data?.is_independent_advisor === true
+}
+
+/**
  * Resuelve la matriz efectiva de permisos para un usuario.
  *
  * Acepta un rol único (string) o múltiples roles (string[]) para soporte multi-rol.
@@ -154,8 +129,17 @@ export const resolveUserPermissions = cache(async (
 ): Promise<ResolvedPermissionsMatrix> => {
   const roles = (Array.isArray(roleOrRoles) ? roleOrRoles : [roleOrRoles]) as UserRole[]
 
+  // VIB-69: el asesor independiente es un SELLER, así que el flag solo puede
+  // aplicar cuando ese es el rol primario. Se consulta antes del early-return de
+  // full access para que un rol adicional no pueda saltear el techo.
+  const independentAdvisor = roles[0] === "SELLER"
+    ? await fetchIsIndependentAdvisor(supabase, _userId)
+    : false
+
   if (roles.some((r) => FULL_ACCESS_ROLES.includes(r))) {
-    return FULL_ACCESS_MATRIX
+    return independentAdvisor
+      ? clampMatrixForIndependentAdvisor(FULL_ACCESS_MATRIX)
+      : FULL_ACCESS_MATRIX
   }
 
   const rows = await fetchAgencyPermissions(supabase, agencyIds, roles.map(String))
@@ -193,31 +177,8 @@ export const resolveUserPermissions = cache(async (
     result[m] = merged[m] ?? defaults[m]
   }
 
-  return result
+  return independentAdvisor ? clampMatrixForIndependentAdvisor(result) : result
 })
-
-/**
- * Verifica un permiso específico contra una ResolvedPermissionsMatrix.
- * Usado por canPerformAction cuando se pasa matrix dinámica.
- */
-export function checkResolvedPermission(
-  matrix: ResolvedPermissionsMatrix,
-  module: string,
-  permission: "read" | "write" | "delete" | "export"
-): boolean {
-  return matrix[module]?.[permission] === true
-}
-
-/**
- * Verifica si el rol solo puede ver sus propios datos en el módulo,
- * según la matrix resuelta.
- */
-export function checkOwnDataOnly(
-  matrix: ResolvedPermissionsMatrix,
-  module: string
-): boolean {
-  return matrix[module]?.ownDataOnly === true
-}
 
 /**
  * Carga la matriz completa de TODAS las agencias de una org y TODOS los roles
@@ -263,50 +224,4 @@ export async function loadFullAgencyMatrix(
   }
 
   return result
-}
-
-/**
- * Helper para API routes: dada la matrix ya resuelta, verifica un permiso.
- * Patrón recomendado cuando la ruta ya llamó resolveUserPermissions():
- *
- *   const agencyIds = await getUserAgencyIds(supabase, user.id, user.role)
- *   const perms = await resolveUserPermissions(supabase, user.id, org_id, user.role, agencyIds)
- *   if (!assertPermission(user.role, perms, "accounting", "read")) return 403
- *
- * Incluye el bypass de SUPER_ADMIN/ORG_OWNER y el fallback estático cuando
- * no hay matrix (org_id null / dev mode).
- */
-export function assertPermission(
-  role: string,
-  matrix: ResolvedPermissionsMatrix | null,
-  module: string,
-  permission: "read" | "write" | "delete" | "export"
-): boolean {
-  if (role === "SUPER_ADMIN" || role === "ORG_OWNER") return true
-  if (matrix) return checkResolvedPermission(matrix, module, permission)
-  // Fallback estático (sin importar permissions-api para evitar circular dep)
-  const defaults = buildDefaultMatrix(role as UserRole)
-  return defaults[module]?.[permission] === true
-}
-
-/**
- * Retorna los módulos que tienen permisos customizados en DB (difieren del default)
- * para una agencia y rol dados. Útil para mostrar badge "Personalizado" en la UI.
- */
-export function getCustomizedModules(
-  matrix: ResolvedPermissionsMatrix,
-  role: UserRole
-): string[] {
-  const defaults = buildDefaultMatrix(role)
-  return ALL_MODULES.filter((m) => {
-    const d = defaults[m]
-    const c = matrix[m]
-    return (
-      d.read !== c.read ||
-      d.write !== c.write ||
-      d.delete !== c.delete ||
-      d.export !== c.export ||
-      d.ownDataOnly !== c.ownDataOnly
-    )
-  })
 }

@@ -83,6 +83,15 @@ export async function POST(request: Request) {
       )
     }
 
+    // Comisión dada por saldada en un cierre administrativo (VIB-94): no es
+    // deuda, así que pagarla sacaría plata de la caja contra nada.
+    if (commission.settled_at) {
+      return NextResponse.json(
+        { error: "La comisión está saldada y no se puede pagar" },
+        { status: 400 }
+      )
+    }
+
     const operation = commission.operations
 
     // Validar que la cuenta financiera existe (scopeada por org)

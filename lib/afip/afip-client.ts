@@ -254,6 +254,7 @@ export async function getPointsOfSale(config: AfipConfig): Promise<{
     numero: number
     tipo: string
     bloqueado: boolean
+    dadoDeBaja: boolean
   }>
   error?: string
 }> {
@@ -264,11 +265,19 @@ export async function getPointsOfSale(config: AfipConfig): Promise<{
     // getSalesPoints devuelve array o null
     const list: any[] = Array.isArray(salesPoints) ? salesPoints : salesPoints ? [salesPoints] : []
 
-    const data = list.map((pv: any) => ({
-      numero: Number(pv.Nro ?? pv.numero ?? pv.number),
-      tipo: String(pv.EmisionTipo ?? pv.tipo ?? pv.type ?? ''),
-      bloqueado: pv.Bloqueado === 'S' || pv.bloqueado === true,
-    }))
+    const data = list.map((pv: any) => {
+      // AFIP marca los PV dados de baja con FchBaja = fecha (YYYYMMDD).
+      // Los activos vienen con FchBaja = "NULL" (string) o vacío. Un PV dado
+      // de baja NO puede emitir (error 10005), así que hay que excluirlo.
+      const fchBaja = String(pv.FchBaja ?? pv.fchBaja ?? '').trim().toUpperCase()
+      const dadoDeBaja = fchBaja !== '' && fchBaja !== 'NULL'
+      return {
+        numero: Number(pv.Nro ?? pv.numero ?? pv.number),
+        tipo: String(pv.EmisionTipo ?? pv.tipo ?? pv.type ?? ''),
+        bloqueado: pv.Bloqueado === 'S' || pv.bloqueado === true,
+        dadoDeBaja,
+      }
+    })
 
     console.log('[AFIP] getSalesPoints raw:', JSON.stringify(salesPoints).substring(0, 500))
     return { success: true, data }

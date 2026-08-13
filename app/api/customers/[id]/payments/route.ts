@@ -1,17 +1,16 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
-import { getCurrentUser } from "@/lib/auth"
-import { canAccessModule, isOwnDataOnly } from "@/lib/permissions"
+import { getRequestPermissions } from "@/lib/permissions/request"
+import { canPerformAction, isOwnDataOnlyResolved } from "@/lib/permissions-api"
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await getCurrentUser()
+    const { user, supabase, matrix } = await getRequestPermissions()
 
-    // Verificar permiso de acceso al módulo customers
-    if (!canAccessModule(user.role as any, "customers")) {
+    // Verificar permiso de acceso al módulo customers (matrix por agencia)
+    if (!canPerformAction(user, "customers", "read", matrix ?? undefined)) {
       return NextResponse.json({ error: "No tiene permiso para ver clientes" }, { status: 403 })
     }
 
@@ -21,7 +20,6 @@ export async function GET(
     }
 
     const { id: customerId } = await params
-    const supabase = await createServerClient()
 
     // Verificar que el cliente pertenece al org del user
     const { data: customerCheck } = await (supabase.from("customers") as any)
@@ -33,8 +31,9 @@ export async function GET(
       return NextResponse.json({ error: "Cliente no encontrado" }, { status: 404 })
     }
 
-    // Si es SELLER con ownDataOnly, verificar que el cliente pertenece a sus operaciones
-    if (isOwnDataOnly(user.role as any, "customers")) {
+    // Restringido a clientes propios (customers.ownDataOnly por agencia):
+    // verificar que el cliente pertenece a sus operaciones.
+    if (isOwnDataOnlyResolved(user, "customers", matrix ?? undefined)) {
       const { data: sellerOps } = await (supabase.from("operations") as any)
         .select("id")
         .eq("org_id", (user as any).org_id)

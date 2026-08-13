@@ -4,6 +4,8 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { PLANS, formatArs, type PlanId } from "@/lib/billing/plans"
+import { resolvePlanPrice } from "@/lib/billing/plan-pricing"
+import { agreedPriceFor } from "@/lib/billing/agreed-price"
 import { PaymentMethodCard } from "@/components/billing/payment-method-card"
 import { BillingHistoryTable } from "@/components/billing/billing-history-table"
 import { CancelDialog } from "@/components/billing/cancel-dialog"
@@ -13,6 +15,7 @@ import { CustomPlanOwnerView } from "@/components/subscription/custom-plan-owner
 import { DowngradeDialog, UndoDowngradeButton } from "@/components/billing/downgrade-dialog"
 import { fetchPreapproval } from "@/lib/billing/mercadopago"
 import { MpSandboxBanner } from "@/components/admin/mp-sandbox-banner"
+import { CheckoutOutcomeTracker } from "@/components/analytics/checkout-outcome-tracker"
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING_PAYMENT: "Pendiente de pago",
@@ -136,6 +139,7 @@ export default async function SubscriptionPage({
           org={org as any}
           checkoutUrl={checkoutUrl}
           canManageBilling={canManageBilling}
+          proPriceArs={await resolvePlanPrice(admin, "PRO")}
         />
       )
     }
@@ -149,6 +153,15 @@ export default async function SubscriptionPage({
     .limit(20)
 
   const plan = PLANS[org.plan as PlanId]
+  // Precio de lista vigente (tabla plan_prices editable desde admin, fallback a
+  // la constante) vs. el precio congelado de esta org. Mostramos lo que la org
+  // realmente paga: si subió el precio del plan, quien ya estaba suscripto sigue
+  // pagando el suyo y verlo en $139.000 sería una mentira que genera tickets.
+  const listPlanPrice = await resolvePlanPrice(admin, org.plan)
+  const agreedPlanPrice = agreedPriceFor(org, org.plan)
+  const resolvedPlanPrice = agreedPlanPrice ?? listPlanPrice
+  const isGrandfathered =
+    agreedPlanPrice !== null && listPlanPrice !== null && agreedPlanPrice < listPlanPrice
   const status = org.subscription_status as string
   const isCancelledWithAccess =
     status === "CANCELLED" &&
@@ -172,6 +185,10 @@ export default async function SubscriptionPage({
       </div>
 
       <MpSandboxBanner />
+
+      {checkout === "done" || checkoutFailed ? (
+        <CheckoutOutcomeTracker result={checkoutFailed ? "failed" : "done"} />
+      ) : null}
 
       {checkoutFailed && (
         <Card className="border-destructive/15 bg-destructive/5">
@@ -269,15 +286,21 @@ export default async function SubscriptionPage({
           <CardHeader>
             <CardTitle>{plan.name}</CardTitle>
             <div className="text-2xl font-bold">
-              {plan.priceArsMonthly !== null ? (
+              {resolvedPlanPrice !== null ? (
                 <>
-                  {formatArs(plan.priceArsMonthly)}
+                  {formatArs(resolvedPlanPrice)}
                   <span className="text-sm font-normal text-muted-foreground"> /mes</span>
                 </>
               ) : (
                 plan.priceLabel || "Consultar"
               )}
             </div>
+            {isGrandfathered && (
+              <p className="text-xs text-muted-foreground">
+                Precio congelado de tu suscripción. El precio actual del plan es{" "}
+                {formatArs(listPlanPrice!)}.
+              </p>
+            )}
             <p className="text-sm text-muted-foreground">{plan.description}</p>
           </CardHeader>
           <CardContent>
@@ -308,7 +331,10 @@ export default async function SubscriptionPage({
               período actual. Seguís con Enterprise hasta el{" "}
               <strong>{fmt(org.current_period_ends_at)}</strong>.
             </p>
-            <DowngradeDialog effectiveAt={org.current_period_ends_at} />
+            <DowngradeDialog
+              effectiveAt={org.current_period_ends_at}
+              proPriceArs={await resolvePlanPrice(admin, "PRO")}
+            />
           </CardContent>
         </Card>
       )}

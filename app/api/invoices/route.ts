@@ -5,6 +5,7 @@ import { getUserAgencyIds } from "@/lib/permissions-api"
 import { canAccessModule } from "@/lib/permissions"
 import { calculateInvoice } from "@/lib/invoices/calculation"
 import { isCreditNote, isCreditOrDebitNote, ledgerSign } from "@/lib/invoices/credit-note"
+import { normalizeReceptorDoc } from "@/lib/afip/afip-config"
 import { z } from "zod"
 
 export const dynamic = 'force-dynamic'
@@ -282,6 +283,14 @@ export async function POST(request: Request) {
     const fchServHasta = validatedData.fch_serv_hasta || fchServDesde
     const fechaVtoPago = validatedData.fecha_vto_pago || fchServHasta
 
+    // Consumidor final sin identificar: DocTipo=99 cuando no hay documento
+    // (regla AFIP 10015). Evita guardar borradores con DocTipo=96/DocNro=0.
+    const receptorDoc = normalizeReceptorDoc(
+      validatedData.cbte_tipo,
+      validatedData.receptor_doc_tipo,
+      validatedData.receptor_doc_nro
+    )
+
     const { data: invoice, error: invoiceError } = await (supabase.from("invoices") as any)
       .insert({
         agency_id: validatedData.agency_id, // Usar la agencia del punto de venta
@@ -292,8 +301,8 @@ export async function POST(request: Request) {
         cbte_tipo: validatedData.cbte_tipo,
         pto_vta: validatedData.pto_vta,
         concepto: validatedData.concepto,
-        receptor_doc_tipo: validatedData.receptor_doc_tipo,
-        receptor_doc_nro: validatedData.receptor_doc_nro,
+        receptor_doc_tipo: receptorDoc.docTipo,
+        receptor_doc_nro: receptorDoc.docNro,
         receptor_nombre: validatedData.receptor_nombre || "CONSUMIDOR FINAL",
         receptor_domicilio: validatedData.receptor_domicilio,
         receptor_condicion_iva: validatedData.receptor_condicion_iva,
@@ -352,8 +361,8 @@ export async function POST(request: Request) {
 
     if (itemsError) {
       console.error("Error creating invoice items:", itemsError)
-      // Rollback: eliminar factura
-      await supabase.from("invoices").delete().eq("id", invoice.id)
+      // Rollback: eliminar factura (scope explícito por org, no confiar en RLS)
+      await supabase.from("invoices").delete().eq("id", invoice.id).eq("org_id", agency.org_id)
       return NextResponse.json(
         { error: "Error al crear items de factura" },
         { status: 500 }

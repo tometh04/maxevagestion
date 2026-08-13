@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
-import { getCurrentUser } from "@/lib/auth"
+import { canPerformAction } from "@/lib/permissions-api"
+import { getRequestPermissions } from "@/lib/permissions/request"
 
 /**
  * POST /api/partner-accounts/distribute-profits
@@ -8,15 +8,19 @@ import { getCurrentUser } from "@/lib/auth"
  */
 export async function POST(request: Request) {
   try {
-    const { user } = await getCurrentUser()
-    
-    if (!["SUPER_ADMIN", "ADMIN", "CONTABLE"].includes(user.role)) {
+    // Gate por accounting.write (antes: set de roles hardcodeado sin ORG_OWNER).
+    const { user, supabase, matrix } = await getRequestPermissions()
+    if (!canPerformAction(user, "accounting", "write", matrix ?? undefined)) {
       return NextResponse.json({ error: "No autorizado" }, { status: 403 })
     }
 
-    const supabase = await createServerClient()
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+    const orgId = (user as any).org_id as string
+
     const body = await request.json()
-    
+
     const { year, month, profitAmount, exchangeRate, agencyId } = body
 
     if (!year || !month || profitAmount === undefined || !exchangeRate) {
@@ -31,6 +35,7 @@ export async function POST(request: Request) {
     const { data: partners, error: partnersError } = await (supabase.from("partner_accounts") as any)
       .select("id, partner_name, profit_percentage")
       .eq("is_active", true)
+      .eq("org_id", orgId)
       .order("partner_name", { ascending: true })
 
     if (partnersError) {
@@ -52,10 +57,13 @@ export async function POST(request: Request) {
     }
 
     // Verificar si ya se distribuyeron ganancias para este mes/año
+    // Scopeado por org: sin el filtro, la distribución de otro tenant para el
+    // mismo mes bloqueaba la propia.
     const { data: existingAllocations, error: checkError } = await (supabase.from("partner_profit_allocations") as any)
       .select("partner_id, year, month")
       .eq("year", year)
       .eq("month", month)
+      .eq("org_id", orgId)
       .limit(1)
 
     if (checkError) {
@@ -89,6 +97,7 @@ export async function POST(request: Request) {
         exchange_rate: exchangeRate,
         status: "ALLOCATED",
         created_by: user.id,
+        org_id: orgId,
       }
 
       allocations.push(allocation)
@@ -130,13 +139,15 @@ export async function POST(request: Request) {
  */
 export async function GET(request: Request) {
   try {
-    const { user } = await getCurrentUser()
-    
-    if (!["SUPER_ADMIN", "ADMIN", "CONTABLE"].includes(user.role)) {
+    const { user, supabase, matrix } = await getRequestPermissions()
+    if (!canPerformAction(user, "accounting", "read", matrix ?? undefined)) {
       return NextResponse.json({ error: "No autorizado" }, { status: 403 })
     }
 
-    const supabase = await createServerClient()
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     const { searchParams } = new URL(request.url)
     const year = searchParams.get("year")
     const month = searchParams.get("month")
@@ -146,6 +157,7 @@ export async function GET(request: Request) {
         *,
         partner:partner_id(id, partner_name, profit_percentage)
       `)
+      .eq("org_id", (user as any).org_id)
       .order("created_at", { ascending: false })
 
     if (year) {

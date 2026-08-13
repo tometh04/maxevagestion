@@ -1,0 +1,73 @@
+name: linear-agent
+
+# Agente autónomo que toma issues de Linear etiquetados `agent-ready` y propone un
+# cambio (dry-run: comenta el diff; pr: abre draft PR). Nunca mergea.
+# Corre en runner efímero SIN service-role ni env financieras: el agente solo edita
+# código y corre lint/tests estáticos.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "dry-run (comenta el diff) | pr (abre draft PR)"
+        type: choice
+        options: ["dry-run", "pr"]
+        default: "dry-run"
+      max_issues:
+        description: "Máximo de issues a procesar en esta corrida"
+        default: "3"
+  schedule:
+    - cron: "*/15 * * * *" # cada 15 min (arrancar en dry-run; ver README antes de pasar a pr)
+
+# Una sola corrida a la vez: evita que dos ejecuciones tomen el mismo issue.
+concurrency:
+  group: linear-agent
+  cancel-in-progress: false
+
+permissions:
+  contents: write # push de la branch del agente
+  pull-requests: write # abrir el draft PR
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Instalar dependencias
+        run: |
+          npm ci
+          # Claude Agent SDK como dep efímera (no se commitea). --legacy-peer-deps
+          # porque el SDK pide zod@^4 y el repo pinea zod@3; solo usamos query(),
+          # que no depende de zod, así que el zod 3 del repo sirve.
+          npm i --no-save --legacy-peer-deps @anthropic-ai/claude-agent-sdk
+
+      - name: Configurar git para los commits del agente
+        run: |
+          git config user.name "vibook-agent[bot]"
+          git config user.email "vibook-agent@users.noreply.github.com"
+
+      - name: Correr el agente
+        env:
+          # Secrets AISLADOS: nada de SUPABASE_SERVICE_ROLE_KEY ni env financieras.
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          LINEAR_API_KEY: ${{ secrets.AGENT_LINEAR_API_KEY }}
+          LINEAR_TEAM_ID: ${{ secrets.AGENT_LINEAR_TEAM_ID }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # gh CLI + push
+          MODE: ${{ github.event.inputs.mode || 'dry-run' }}
+          MAX_ISSUES: ${{ github.event.inputs.max_issues || '3' }}
+          # Haiku por defecto: las tareas agent-ready son chicas y el input ya está
+          # acotado (sin AGENTS.md por turno, sin checks repo-wide, tope de turnos).
+          # La suscripción NO abarata la automatización (Anthropic la cobra a rate de
+          # API desde jun-2026), así que la única palanca real es modelo + tokens.
+          # Override con la Variable AGENT_MODEL: 'sonnet' si notás caída de calidad.
+          AGENT_MODEL: ${{ vars.AGENT_MODEL || 'haiku' }}
+        run: node scripts/agent/run.mjs

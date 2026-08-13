@@ -36,11 +36,23 @@ export async function POST(request: Request) {
       is_touristic,
       movement_category,
       affects_balance,
+      is_agency_expense,
     } = body
 
     // Validate required fields
     if (!type || !category || amount === undefined || !currency || !movement_date || !financial_account_id) {
       return NextResponse.json({ error: "Faltan campos requeridos (financial_account_id es obligatorio)" }, { status: 400 })
+    }
+
+    // "Salida de caja que no es gasto": solo aplica a egresos. La plata sale
+    // igual (afecta saldo y genera ledger), pero se excluye del reporte de
+    // gastos. Se exige un motivo (notes) para poder rastrear de dónde salió.
+    const isAgencyExpense = type === "EXPENSE" ? is_agency_expense !== false : true
+    if (!isAgencyExpense && !(notes && String(notes).trim())) {
+      return NextResponse.json(
+        { error: "Indicá el motivo de la salida (por qué no es un gasto de agencia)" },
+        { status: 400 }
+      )
     }
 
     // Validar que la cuenta financiera existe y es del org del user
@@ -89,6 +101,7 @@ export async function POST(request: Request) {
       notes: notes || null,
       is_touristic: is_touristic !== false, // Default to true if not specified
       movement_category: is_touristic === false ? movement_category || null : null,
+      is_agency_expense: isAgencyExpense,
     }
 
     // Crear cash_movement (mantener compatibilidad)
@@ -285,14 +298,21 @@ export async function GET(request: Request) {
     // 1. Todos los movimientos (con Y sin operación asociada)
     // 2. Filtro por movement_date nativo (columna que siempre existió en cash_movements),
     //    evitando el bug de ledger_movements.movement_date que en prod puede ser NULL
+    // VIB-61 (audit): el filtro de agencia se aplicaba en memoria DESPUÉS del
+    // range → paginación inconsistente (una página podía venir casi vacía con
+    // total diciendo cientos). Ahora va en la query vía inner join en operations.
+    const filterAgency = !!(agencyId && agencyId !== "ALL")
+    const opEmbed = filterAgency ? "operations:operation_id!inner" : "operations:operation_id"
+
     let query = (supabase.from("cash_movements") as any)
       .select(
         `
         id, type, category, amount, currency, movement_date, notes, financial_account_id,
+        is_agency_expense,
         reversed_at, reverses_movement_id, reversed_by_movement_id, reversal_reason,
         ledger_movements:ledger_movement_id (affects_balance),
         users:user_id (id, name),
-        operations:operation_id (
+        ${opEmbed} (
           id,
           destination,
           file_code,
@@ -378,6 +398,11 @@ export async function GET(request: Request) {
     if (user.role === "SELLER") {
       query = query.eq("user_id", user.id)
     }
+    // Filtro de agencia server-side (inner join en operations). Excluye los
+    // movimientos sin operación, igual que hacía el filtro en memoria previo.
+    if (filterAgency) {
+      query = query.eq("operations.agency_id", agencyId)
+    }
 
     const { data: rawMovements, error: movError, count } = await query
 
@@ -398,6 +423,7 @@ export async function GET(request: Request) {
         movement_date: m.movement_date,
         notes: m.notes ?? null,
         affects_balance: linkedLedger?.affects_balance ?? true,
+        is_agency_expense: m.is_agency_expense ?? true,
         reversed_at: m.reversed_at ?? null,
         reverses_movement_id: m.reverses_movement_id ?? null,
         reversed_by_movement_id: m.reversed_by_movement_id ?? null,
@@ -415,10 +441,7 @@ export async function GET(request: Request) {
       }
     })
 
-    // Filtro de agencia (solo si viene el parámetro)
-    if (agencyId && agencyId !== "ALL") {
-      movements = movements.filter((m: any) => m.operations?.agency_id === agencyId)
-    }
+    // (El filtro de agencia ahora va en la query — ver inner join arriba.)
 
     const total = count ?? movements.length
     const totalPages = total > 0 ? Math.ceil(total / limit) : 0

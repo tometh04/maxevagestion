@@ -7,7 +7,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { AfipConfig } from "./afip-config"
-import { isAfipConfigValid, getEmisorCuit } from "./afip-config"
+import { isAfipConfigValid, getEmisorCuit, normalizeReceptorDoc } from "./afip-config"
 import { afipRateCache } from "./rate-cache"
 import { diffVoucher, type VoucherFields, type VoucherDiff } from "./diff"
 import { getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
@@ -449,13 +449,21 @@ export class AfipService {
       }))
     }
 
+    // Consumidor final sin identificar: AFIP exige DocTipo=99 cuando DocNro=0
+    // (regla 10015). Red de seguridad por si el draft quedó con DocTipo=96/DocNro=0.
+    const receptorDoc = normalizeReceptorDoc(
+      draft.cbte_tipo,
+      draft.receptor_doc_tipo,
+      draft.receptor_doc_nro
+    )
+
     const payload: any = {
       CantReg: 1,
       PtoVta: draft.pto_vta,
       CbteTipo: draft.cbte_tipo,
       Concepto: draft.concepto,
-      DocTipo: draft.receptor_doc_tipo,
-      DocNro: parseInt(String(draft.receptor_doc_nro).replace(/\D/g, ""), 10),
+      DocTipo: receptorDoc.docTipo,
+      DocNro: parseInt(receptorDoc.docNro || "0", 10),
       CbteFch: parseInt(this.formatDate(draft.fecha_emision || new Date()), 10),
       ImpTotal: draft.imp_total,
       ImpTotConc: draft.imp_tot_conc || 0,

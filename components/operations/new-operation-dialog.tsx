@@ -1,5 +1,7 @@
 "use client"
 
+import { previewSharedSplit } from "@/lib/commissions/split-preview"
+import type { SellerOption } from "@/lib/sellers/seller-option"
 import { useState, useEffect } from "react"
 import * as React from "react"
 import { useForm } from "react-hook-form"
@@ -19,6 +21,11 @@ import { Textarea } from "@/components/ui/textarea"
 import { DecimalInput } from "@/components/ui/decimal-input"
 import { serviceKind, PASSENGER_DETAIL_FIELDS, sanitizePassengerDetail } from "@/lib/operations/service-kind"
 import {
+  buildOperationDuplicateDraft,
+  type DuplicableOperation,
+} from "@/lib/operations/duplicate-operation"
+import { distributeSaleByCost } from "@/lib/operations/operator-sale-breakdown"
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -33,6 +40,7 @@ import { Label } from "@/components/ui/label"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { cn } from "@/lib/utils"
+import { formatDateOnlyLocal, parseDateOnlyLocal, todayInArgentina } from "@/lib/utils/date-only"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { useToast } from "@/hooks/use-toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -48,6 +56,8 @@ import {
 } from "@/components/ui/alert-dialog"
 import { NewCustomerDialog } from "@/components/customers/new-customer-dialog"
 import { SearchableCombobox, type ComboboxOption } from "@/components/ui/searchable-combobox"
+import { trackEvent } from "@/lib/analytics/track"
+import { bucketCount } from "@/lib/analytics/ga/scrub"
 
 // Configuración de operaciones
 interface OperationSettings {
@@ -60,6 +70,10 @@ interface OperationSettings {
   custom_product_types?: Array<{ value: string; label: string }>
   custom_operation_types?: Array<{ value: string; label: string }>
 }
+
+/** VIB-106: tope de acompañantes en el alta (el titular va aparte). El máximo
+ *  real cargado en producción es 16 pasajeros por operación. */
+const MAX_COMPANIONS = 24
 
 const operatorSchema = z.object({
   operator_id: z.string().min(1, "El operador es requerido"),
@@ -185,6 +199,13 @@ interface LeadData {
   agency_id?: string | null
   assigned_seller_id?: string | null
   notes?: string | null
+  // Prefill enriquecido (VIB-68 seguimiento): datos del lead que hoy se
+  // aprovechan para precargar la operación. La seña (deposit_*) NO va acá:
+  // se transfiere server-side vía transferLeadToOperation.
+  quoted_price?: number | string | null
+  estimated_departure_date?: string | null
+  region?: string | null
+  deposit_currency?: string | null
 }
 
 interface NewOperationDialogProps {
@@ -192,12 +213,25 @@ interface NewOperationDialogProps {
   onOpenChange: (open: boolean) => void
   onSuccess: (operationId?: string) => void // Ahora puede recibir el ID de la operación creada
   agencies: Array<{ id: string; name: string }>
-  sellers: Array<{ id: string; name: string; default_commission_percentage?: number | null }>
+  sellers: SellerOption[]
+  /** Candidatos a vendedor secundario. Se separan de `sellers` porque el
+   *  secundario no depende del permiso "cargar a nombre de otro" (VIB-105).
+   *  Cae a `sellers` si no se pasa. */
+  secondarySellers?: SellerOption[]
   operators: Array<{ id: string; name: string }>
   defaultAgencyId?: string
   defaultSellerId?: string
   lead?: LeadData // Prop opcional para convertir lead a operación
+  /** VIB-109: operación de la que se precarga el alta al duplicar. No se clona
+   *  nada en el servidor — el POST normal crea la operación con todos sus side
+   *  effects contables. */
+  duplicateFrom?: DuplicableOperation | null
   userRole?: string
+  /** Si el usuario puede elegir a otro vendedor PRINCIPAL. Cuando es false, el
+   *  selector queda bloqueado a sí mismo (default true). */
+  canPickOtherSeller?: boolean
+  /** Si el usuario puede elegir vendedor SECUNDARIO (default true). */
+  canPickSecondarySeller?: boolean
 }
 
 export function NewOperationDialog({
@@ -206,16 +240,20 @@ export function NewOperationDialog({
   onSuccess,
   agencies,
   sellers,
+  secondarySellers,
   operators,
   defaultAgencyId,
   defaultSellerId,
   lead,
+  duplicateFrom,
   userRole,
+  canPickOtherSeller = true,
+  canPickSecondarySeller = true,
 }: NewOperationDialogProps) {
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
   const [useMultipleOperators, setUseMultipleOperators] = useState(false)
-  const [operatorList, setOperatorList] = useState<Array<{operator_id: string, cost: string | number, cost_currency: "ARS" | "USD", product_type?: string, notes?: string, passenger_detail?: Record<string, string>}>>([])
+  const [operatorList, setOperatorList] = useState<Array<{operator_id: string, cost: string | number, cost_currency: "ARS" | "USD", product_type?: string, notes?: string, passenger_detail?: Record<string, string>, file_code?: string, payment_due_date?: string, sale_amount?: string | number}>>([])
   const [settings, setSettings] = useState<OperationSettings | null>(null)
   const [apiError, setApiError] = useState<string | null>(null)
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
@@ -238,6 +276,12 @@ export function NewOperationDialog({
   const customersRef = React.useRef(customers)
   const [loadingCustomers, setLoadingCustomers] = useState(false)
   const [showNewCustomerDialog, setShowNewCustomerDialog] = useState(false)
+  // VIB-106: acompañantes cargados en el alta (ids de customers, "" = fila vacía).
+  const [companionList, setCompanionList] = useState<string[]>([])
+  // A qué campo escribe el cliente que se cree con el botón "+": el titular o
+  // una fila de acompañante. Sin esto, crear un cliente desde una fila de
+  // acompañante pisaría el titular.
+  const [newCustomerTarget, setNewCustomerTarget] = useState<"main" | number>("main")
 
   useEffect(() => {
     customersRef.current = customers
@@ -358,6 +402,20 @@ export function NewOperationDialog({
     }
   }, [open, loadSettings, loadCustomers])
 
+  // Candidatos a vendedor secundario. Por defecto los mismos que el principal,
+  // pero la página manda una lista propia: un SELLER sin el permiso de "cargar
+  // a nombre de otro" sólo se ve a sí mismo como principal y aun así puede
+  // elegir secundario entre sus compañeros de agencia (VIB-105).
+  const secondarySellerOptions = secondarySellers ?? sellers
+
+  // Para resolver el % de comisión de cada vendedor hace falta mirar en las dos
+  // listas: el principal puede estar sólo en una y el secundario en la otra.
+  const sellersForCommissionLookup = React.useMemo(() => {
+    const byId = new Map<string, SellerOption>()
+    for (const s of [...sellers, ...secondarySellerOptions]) byId.set(s.id, s)
+    return Array.from(byId.values())
+  }, [sellers, secondarySellerOptions])
+
   // Estados disponibles (estándar + personalizados)
   const availableStatuses = React.useMemo(() => {
     const standard = [
@@ -398,6 +456,28 @@ export function NewOperationDialog({
     return ""
   }, [lead?.destination])
 
+  // Prefill enriquecido desde el lead (VIB-68 seguimiento). Best-effort: el
+  // usuario confirma/completa en el form antes de guardar.
+  const leadSaleAmount = React.useMemo(() => {
+    const n = Number(lead?.quoted_price)
+    return Number.isFinite(n) && n > 0 ? n : 0
+  }, [lead?.quoted_price])
+
+  const leadCurrency = React.useMemo<"ARS" | "USD">(() => {
+    return lead?.deposit_currency === "ARS" ? "ARS" : "USD"
+  }, [lead?.deposit_currency])
+
+  // Solo precargamos la fecha de salida si la estimada existe y NO es pasada
+  // (una fecha pasada dispararía el 400 de validación de fechas en el submit).
+  const leadDepartureDate = React.useMemo<Date | undefined>(() => {
+    const d = parseDateOnlyLocal(lead?.estimated_departure_date)
+    if (!d) return undefined
+    const asStr = formatDateOnlyLocal(d)
+    return asStr && asStr >= todayInArgentina() ? d : undefined
+  }, [lead?.estimated_departure_date])
+
+  const leadNotes = lead?.notes ?? ""
+
   const form = useForm<OperationFormValues>({
     resolver: zodResolver(operationSchema),
     defaultValues: {
@@ -412,17 +492,17 @@ export function NewOperationDialog({
       customer_id: null,
       origin: "Buenos Aires",
       destination: cleanedDestination,
-      departure_date: undefined,
+      departure_date: leadDepartureDate,
       return_date: undefined,
       adults: 2,
       children: 0,
       infants: 0,
       status: settings?.default_status || "RESERVED",
-      sale_amount_total: 0,
+      sale_amount_total: leadSaleAmount,
       operator_cost: 0,
-      currency: "USD",
-      sale_currency: "USD",
-      operator_cost_currency: "USD",
+      currency: leadCurrency,
+      sale_currency: leadCurrency,
+      operator_cost_currency: leadCurrency,
       reservation_code_air: null,
       reservation_code_hotel: null,
       airline_name: null,
@@ -430,7 +510,7 @@ export function NewOperationDialog({
       operation_date: null,
       itr_localizador: null,
       customer_payment_deadline: null,
-      passenger_notes: "",
+      passenger_notes: leadNotes,
       operators: [],
     },
   })
@@ -448,28 +528,49 @@ export function NewOperationDialog({
         customer_id: null,
         origin: "Buenos Aires",
         destination: cleanedDestination,
-        departure_date: undefined,
+        departure_date: leadDepartureDate,
         return_date: undefined,
         adults: 2,
         children: 0,
         infants: 0,
         status: settings?.default_status || "RESERVED",
-        sale_amount_total: 0,
+        sale_amount_total: leadSaleAmount,
         operator_cost: 0,
-        currency: "USD",
-        sale_currency: "USD",
-        operator_cost_currency: "USD",
+        currency: leadCurrency,
+        sale_currency: leadCurrency,
+        operator_cost_currency: leadCurrency,
         reservation_code_air: null,
         reservation_code_hotel: null,
         operation_date: null,
         itr_localizador: null,
         customer_payment_deadline: null,
-        passenger_notes: "",
+        passenger_notes: leadNotes,
         operators: [],
       })
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, lead?.id, cleanedDestination, defaultAgencyId, defaultSellerId, settings?.default_status])
+  }, [open, lead?.id, cleanedDestination, leadDepartureDate, leadSaleAmount, leadCurrency, leadNotes, defaultAgencyId, defaultSellerId, settings?.default_status])
+
+  // VIB-109: precarga al duplicar. Mismo mecanismo que el prefill desde lead:
+  // se resetea el form y, aparte, la lista de operadores (que es estado propio).
+  // Los pasajeros quedan vacíos a propósito: es lo que cambia entre las ventas
+  // de un mismo grupo.
+  useEffect(() => {
+    if (!open || !duplicateFrom) return
+    const draft = buildOperationDuplicateDraft(duplicateFrom, {
+      status: settings?.default_status || "RESERVED",
+    })
+    form.reset({
+      ...(draft.formValues as any),
+      customer_id: null,
+      operator_id: null,
+      operators: [],
+    })
+    setCompanionList([])
+    setOperatorList(draft.operatorRows)
+    setUseMultipleOperators(draft.hasOperators)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, duplicateFrom, settings?.default_status])
 
   // Actualizar estado por defecto cuando se carga la configuración
   useEffect(() => {
@@ -517,6 +618,14 @@ export function NewOperationDialog({
     updated[index] = { ...updated[index], [field]: value }
     setOperatorList(updated)
   }
+
+  // VIB-106: acompañantes. Mismo patrón que la lista de operadores — una fila
+  // por acompañante, con el id del cliente ("" mientras no se eligió).
+  const addCompanion = () => setCompanionList((prev) => [...prev, ""])
+  const removeCompanion = (index: number) =>
+    setCompanionList((prev) => prev.filter((_, i) => i !== index))
+  const updateCompanion = (index: number, customerId: string) =>
+    setCompanionList((prev) => prev.map((id, i) => (i === index ? customerId : id)))
 
   // Función para crear nuevo operador
   const handleCreateOperator = async () => {
@@ -608,36 +717,47 @@ export function NewOperationDialog({
         // Incluir lead_id si hay un lead
         ...(lead ? { lead_id: lead.id } : {}),
         operator_id: useMultipleOperators ? null : (values.operator_id || null),
-        operators: useMultipleOperators && operatorList.length > 0 ? operatorList.map(op => ({ ...op, cost: Number(op.cost) || 0, passenger_detail: sanitizePassengerDetail(op.passenger_detail) })) : undefined,
+        operators: useMultipleOperators && operatorList.length > 0 ? operatorList.map(op => ({ ...op, cost: Number(op.cost) || 0, sale_amount: Number(op.sale_amount) || 0, passenger_detail: sanitizePassengerDetail(op.passenger_detail), file_code: (op.file_code || "").trim() || null, payment_due_date: op.payment_due_date || null })) : undefined,
         seller_secondary_id: values.seller_secondary_id || null,
         commission_split: values.seller_secondary_id ? (values.commission_split ?? 50) : null,
-        // Overrides absolutos (29/04 — Tomi opción B): si hay secondary, persistir
-        // los valores absolutos. Si el usuario no tocó los inputs, fallback al
-        // halfDefault calculado del pct del principal (= split 50/50). Esto asegura
-        // que TODAS las operaciones nuevas usen el path nuevo, no el legacy.
+        // Reparto de la comisión (VIB-63). Solo se mandan los porcentajes si el
+        // usuario los editó a mano: en ese caso la operación queda MANUAL y el
+        // servidor los respeta. Si no los tocó, no se mandan y el servidor
+        // calcula el reparto — que es lo que hay que hacer, porque antes esta
+        // misma línea mandaba ceros cuando el porcentaje no llegaba a la
+        // pantalla y dejaba la venta sin comisionar para los dos.
         ...(values.seller_secondary_id ? (() => {
-          const principalSellerForSubmit = sellers.find((s) => s.id === values.seller_id)
-          const principalPctForSubmit = Number(principalSellerForSubmit?.default_commission_percentage ?? 0)
-          const halfDefaultForSubmit = Math.round((principalPctForSubmit / 2) * 100) / 100
+          const repartoEditado =
+            values.commission_pct_primary != null || values.commission_pct_secondary != null
+          if (!repartoEditado) return {}
+
+          const auto = previewSharedSplit(sellersForCommissionLookup, values.seller_id, values.seller_secondary_id)
           return {
-            commission_pct_primary: Number(values.commission_pct_primary ?? halfDefaultForSubmit),
-            commission_pct_secondary: Number(values.commission_pct_secondary ?? halfDefaultForSubmit),
+            commission_pct_primary: Number(
+              values.commission_pct_primary ?? auto.primary
+            ),
+            commission_pct_secondary: Number(
+              values.commission_pct_secondary ?? auto.secondary
+            ),
           }
         })() : { commission_pct_primary: null, commission_pct_secondary: null }),
         origin: values.origin || null,
         customer_id: values.customer_id || null,
-        return_date: values.return_date ? values.return_date.toISOString().split("T")[0] : null,
+        // VIB-106: acompañantes cargados en el alta. El titular sigue yendo en
+        // `customer_id`; el server arma las filas de operation_customers.
+        companions: companionList.filter(Boolean),
+        return_date: values.return_date ? formatDateOnlyLocal(values.return_date) : null,
         checkin_date: null,
         checkout_date: null,
-        departure_date: values.departure_date ? values.departure_date.toISOString().split("T")[0] : null,
+        departure_date: values.departure_date ? formatDateOnlyLocal(values.departure_date) : null,
         // operation_date = fecha de venta (cuándo se cerró la op). Puede
         // ser distinta a created_at si se carga retroactivamente. Si el
         // user no la setea, queda null y el backend usa created_at como
         // fallback (comportamiento legacy preservado).
-        operation_date: values.operation_date ? values.operation_date.toISOString().split("T")[0] : null,
+        operation_date: values.operation_date ? formatDateOnlyLocal(values.operation_date) : null,
         itr_localizador: values.itr_localizador || null,
         // Fecha máxima de pago del cliente (usada por el PDF de detalle).
-        customer_payment_deadline: values.customer_payment_deadline ? values.customer_payment_deadline.toISOString().split("T")[0] : null,
+        customer_payment_deadline: values.customer_payment_deadline ? formatDateOnlyLocal(values.customer_payment_deadline) : null,
         // Info adicional para el pasajero (usada por el PDF de detalle).
         passenger_notes: values.passenger_notes?.trim() || null,
         sale_currency: values.sale_currency || values.currency || "USD",
@@ -671,12 +791,38 @@ export function NewOperationDialog({
         title: lead ? "Lead convertido a operación" : "Operación creada",
         description: lead ? "El lead se ha convertido a operación correctamente" : "La operación se ha creado correctamente",
       })
-      
+
+      // La operación se creó pero algo secundario falló (ej. no se pudieron
+      // asociar los pasajeros). No se silencia: el usuario tiene que saberlo.
+      const warnings = (data.warnings as string[] | undefined) ?? []
+      for (const warning of warnings) {
+        toast({ title: "Atención", description: warning, variant: "destructive" })
+      }
+
+      // Telemetría: forma de la operación, nunca su plata ni sus personas.
+      // `operator_cost`, `sale_amount` y los nombres de pasajeros no salen de acá.
+      const trackedSaleCurrency = values.sale_currency || values.currency || "USD"
+      trackEvent("operation_created", {
+        passengers_bucket: bucketCount(companionList.length + 1),
+        services_bucket: bucketCount(useMultipleOperators ? operatorList.length : 1),
+        multi_operator: useMultipleOperators,
+        sale_currency: trackedSaleCurrency,
+        from_lead: Boolean(lead),
+        had_warnings: warnings.length > 0,
+      })
+      if (lead) {
+        trackEvent("lead_converted", {
+          sale_currency: trackedSaleCurrency,
+          had_quote: lead.quoted_price != null && lead.quoted_price !== "",
+        })
+      }
+
       // Pasar el ID de la operación al callback
       onSuccess(operationId)
       onOpenChange(false)
       form.reset()
       setOperatorList([])
+      setCompanionList([])
       setUseMultipleOperators(false)
       setApiError(null)
     } catch (error) {
@@ -708,6 +854,7 @@ export function NewOperationDialog({
         setApiError(null)
     form.reset()
     setOperatorList([])
+    setCompanionList([])
     setUseMultipleOperators(false)
     onOpenChange(false)
     setPendingClose(false)
@@ -727,11 +874,19 @@ export function NewOperationDialog({
           onPointerDownOutside={(e) => e.preventDefault()}
         >
         <DialogHeader>
-          <DialogTitle>{lead ? "Convertir Lead a Operación" : "Nueva Operación"}</DialogTitle>
+          <DialogTitle>
+            {lead
+              ? "Convertir Lead a Operación"
+              : duplicateFrom
+                ? "Duplicar Operación"
+                : "Nueva Operación"}
+          </DialogTitle>
           <DialogDescription>
             {lead
               ? "Completa los datos para convertir este lead en una operación. Todos los campos están disponibles, incluyendo OCR para crear cliente."
-              : "Crear una nueva operación manualmente"}
+              : duplicateFrom
+                ? "Se copiaron destino, fechas, montos y operadores. Cargá los pasajeros de esta venta; los cobros y pagos no se copian."
+                : "Crear una nueva operación manualmente"}
           </DialogDescription>
         </DialogHeader>
 
@@ -798,7 +953,7 @@ export function NewOperationDialog({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Vendedor Principal *</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
+                      <Select onValueChange={field.onChange} value={field.value} disabled={!canPickOtherSeller}>
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder="Seleccionar vendedor" />
@@ -821,13 +976,13 @@ export function NewOperationDialog({
 
             <div className="border-t border-border/40 -mx-6" />
 
-            {/* Section: Cliente */}
+            {/* Section: Pasajeros */}
             <div>
               <div className="flex items-center gap-2 mb-4">
                 <div className="flex items-center justify-center h-6 w-6 rounded-md bg-accent-teal/10">
                   <User className="h-3.5 w-3.5 text-accent-teal" />
                 </div>
-                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Cliente</h4>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Pasajeros</h4>
               </div>
               <div className="grid gap-x-6 gap-y-5 md:grid-cols-2">
                 <FormField
@@ -835,7 +990,7 @@ export function NewOperationDialog({
                   name="customer_id"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Cliente {settings?.require_customer && <span className="text-destructive">*</span>}</FormLabel>
+                      <FormLabel>Pasajero principal {settings?.require_customer && <span className="text-destructive">*</span>}</FormLabel>
                       <div className="flex gap-2">
                         <div className="flex-1">
                           <SearchableCombobox
@@ -859,7 +1014,10 @@ export function NewOperationDialog({
                           type="button"
                           variant="outline"
                           size="icon"
-                          onClick={() => setShowNewCustomerDialog(true)}
+                          onClick={() => {
+                            setNewCustomerTarget("main")
+                            setShowNewCustomerDialog(true)
+                          }}
                           title="Crear nuevo cliente"
                         >
                           <Plus className="h-4 w-4" />
@@ -876,9 +1034,14 @@ export function NewOperationDialog({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Vendedor Secundario</FormLabel>
+                      {/* VIB-105: el secundario NO se gatea con
+                          `canPickOtherSeller`. Ese permiso decide de quién es la
+                          operación; el secundario sólo comparte la comisión, y
+                          eso lo hace cualquier vendedor de la agencia. */}
                       <Select
                         onValueChange={(value) => field.onChange(value === "none" ? null : value)}
                         value={field.value || "none"}
+                        disabled={!canPickSecondarySeller}
                       >
                         <FormControl>
                           <SelectTrigger>
@@ -890,7 +1053,7 @@ export function NewOperationDialog({
                           {/* Excluir al vendedor principal: no puede ser su propio
                               secundario (dispararía el split 50/50 y le cobraría
                               la mitad de la comisión). */}
-                          {sellers
+                          {secondarySellerOptions
                             .filter((seller) => seller.id !== form.watch("seller_id"))
                             .map((seller) => (
                               <SelectItem key={seller.id} value={seller.id}>
@@ -905,20 +1068,130 @@ export function NewOperationDialog({
                 />
               </div>
 
+              {/* VIB-106: acompañantes. Antes había que crear la operación,
+                  buscarla, entrar y cargarlos de a uno desde la pestaña Clientes.
+                  Se reusa el mismo buscador que el titular (ya scopeado por org). */}
+              <div className="mt-5">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Acompañantes {companionList.length > 0 && `(${companionList.filter(Boolean).length})`}
+                  </label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8"
+                    onClick={addCompanion}
+                    disabled={!form.watch("customer_id") || companionList.length >= MAX_COMPANIONS}
+                    title={
+                      !form.watch("customer_id")
+                        ? "Elegí primero el pasajero principal"
+                        : companionList.length >= MAX_COMPANIONS
+                          ? `Máximo ${MAX_COMPANIONS} acompañantes`
+                          : undefined
+                    }
+                  >
+                    <Plus className="h-3.5 w-3.5 mr-1" />
+                    Agregar acompañante
+                  </Button>
+                </div>
+
+                {companionList.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    Opcional. Podés cargarlos ahora o después desde la pestaña Clientes de la operación.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {companionList.map((companionId, index) => {
+                      // No ofrecer clientes ya elegidos (el server los deduplica igual).
+                      const taken = new Set(
+                        [form.watch("customer_id"), ...companionList.filter((_, i) => i !== index)].filter(Boolean) as string[]
+                      )
+                      const selected = customers.find((c) => c.id === companionId)
+                      return (
+                        <div key={index} className="flex gap-2">
+                          <div className="flex-1">
+                            <SearchableCombobox
+                              value={companionId || ""}
+                              onChange={(value) => updateCompanion(index, value || "")}
+                              placeholder="Buscar acompañante..."
+                              searchPlaceholder="Escribí el nombre..."
+                              emptyMessage="No se encontró el cliente"
+                              disabled={loadingCustomers}
+                              initialLabel={selected ? `${selected.first_name} ${selected.last_name}` : ""}
+                              searchFn={async (term) => {
+                                const options = await searchCustomers(term)
+                                return options.filter((option) => !taken.has(option.value))
+                              }}
+                            />
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            onClick={() => {
+                              setNewCustomerTarget(index)
+                              setShowNewCustomerDialog(true)
+                            }}
+                            title="Crear nuevo cliente"
+                          >
+                            <Plus className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeCompanion(index)}
+                            title="Quitar acompañante"
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {/* Aviso, no validación: los conteos de adultos/menores son
+                    comerciales y no siempre coinciden con los pasajeros cargados. */}
+                {(() => {
+                  const declared =
+                    (Number(form.watch("adults")) || 0) +
+                    (Number(form.watch("children")) || 0) +
+                    (Number(form.watch("infants")) || 0)
+                  const loaded = (form.watch("customer_id") ? 1 : 0) + companionList.filter(Boolean).length
+                  if (declared <= 1 || loaded === 0 || loaded >= declared) return null
+                  return (
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Cargaste {loaded} de {declared} pasajeros declarados.
+                    </p>
+                  )
+                })()}
+              </div>
+
               {/* Comisión compartida: dos inputs absolutos (29/04 — Tomi opción B).
                   Default principalPct/2 cada uno. ADMIN/SUPER_ADMIN/CONTABLE pueden editar.
                   Validación reactiva: suma ≤ pct del vendedor principal. */}
               {form.watch("seller_secondary_id") && form.watch("seller_secondary_id") !== "none" && (() => {
                 const canEdit = ["SUPER_ADMIN", "ADMIN", "CONTABLE"].includes(userRole || "")
-                const principalSeller = sellers.find((seller) => seller.id === form.watch("seller_id"))
-                const principalPct = Number(principalSeller?.default_commission_percentage ?? 0)
-                const halfDefault = Math.round((principalPct / 2) * 100) / 100
+                // El sugerido sale de la misma función que usa el servidor. Antes
+                // acá se calculaba la mitad del porcentaje DEL PRINCIPAL y se le
+                // mostraba también al secundario, que cobra sobre el suyo.
+                const sugerido = previewSharedSplit(
+                  sellersForCommissionLookup,
+                  form.watch("seller_id"),
+                  form.watch("seller_secondary_id")
+                )
                 const primaryVal = form.watch("commission_pct_primary")
                 const secondaryVal = form.watch("commission_pct_secondary")
-                const primaryNum = primaryVal != null ? Number(primaryVal) : halfDefault
-                const secondaryNum = secondaryVal != null ? Number(secondaryVal) : halfDefault
-                const sum = primaryNum + secondaryNum
-                const exceedsPrincipal = principalPct > 0 && sum > principalPct + 0.01
+                const reparto = previewSharedSplit(
+                  sellersForCommissionLookup,
+                  form.watch("seller_id"),
+                  form.watch("seller_secondary_id"),
+                  { primary: primaryVal, secondary: secondaryVal }
+                )
+                const sum = reparto.total
+                const exceedsCeiling = reparto.exceedsCeiling
 
                 return (
                   <div className="space-y-3 mt-4">
@@ -931,7 +1204,7 @@ export function NewOperationDialog({
                             <FormLabel>Comisión vendedor principal (%)</FormLabel>
                             <FormControl>
                               <DecimalInput
-                                value={field.value ?? halfDefault}
+                                value={field.value ?? sugerido.primary}
                                 onChange={(v) => field.onChange(Number(v))}
                                 onBlur={field.onBlur}
                                 name={field.name}
@@ -952,7 +1225,7 @@ export function NewOperationDialog({
                             <FormLabel>Comisión vendedor secundario (%)</FormLabel>
                             <FormControl>
                               <DecimalInput
-                                value={field.value ?? halfDefault}
+                                value={field.value ?? sugerido.secondary}
                                 onChange={(v) => field.onChange(Number(v))}
                                 onBlur={field.onBlur}
                                 name={field.name}
@@ -966,17 +1239,19 @@ export function NewOperationDialog({
                         )}
                       />
                     </div>
-                    {/* Bug #12: el label decía "Comisión vendedor principal: X%" pero
-                        X era el default_commission_percentage del seller (el CAP del
-                        split), no el input live del primario. Cuando el seller no tenía
-                        default cargado, mostraba "0.00%" y confundía. Renombrado a
-                        "Cap del vendedor principal" y ocultado cuando = 0. */}
-                    <div className={`text-xs ${exceedsPrincipal ? "text-destructive font-medium" : "text-muted-foreground"}`}>
+                    {/* El tope pasó a ser simétrico (VIB-63): cada vendedor hasta
+                        su propio porcentaje y el total hasta el mayor de los dos.
+                        Antes el techo era el porcentaje del principal, así que
+                        cargar una venta con un secundario que comisiona más
+                        devolvía 400 y había que invertir los vendedores. */}
+                    <div className={`text-xs ${exceedsCeiling ? "text-destructive font-medium" : "text-muted-foreground"}`}>
                       Suma: {sum.toFixed(2)}%
-                      {principalPct > 0 && (
-                        <> · Cap del vendedor principal: {principalPct.toFixed(2)}%</>
+                      {reparto.ceiling > 0 && (
+                        <> · Tope: {reparto.ceiling.toFixed(2)}%</>
                       )}
-                      {exceedsPrincipal && " — la suma no puede superar el cap del principal"}
+                      {exceedsCeiling && " — el reparto no puede superar la comisión más alta de los dos"}
+                      {reparto.primaryMax == null && " — falta cargar la comisión del vendedor principal"}
+                      {reparto.secondaryMax == null && " — falta cargar la comisión del vendedor secundario"}
                     </div>
                   </div>
                 )
@@ -1148,6 +1423,67 @@ export function NewOperationDialog({
                     </div>
                       </div>
 
+                      {/* VIB-112: precio de venta de ESTE servicio. Desglose del
+                          total de venta de la operación; se usa al facturar por
+                          servicio para controlar la base gravada de IVA. Sólo con
+                          2+ servicios: con uno solo, su precio es el total. */}
+                      {operatorList.length >= 2 && (() => {
+                        const saleCur = (form.watch("sale_currency") || form.watch("currency") || "USD") as string
+                        const saleVal = Number(op.sale_amount) || 0
+                        const costVal = Number(op.cost) || 0
+                        const sameCurrency = (op.cost_currency || "USD") === saleCur
+                        const margin = saleVal - costVal
+                        return (
+                          <div className="pt-3">
+                            <label className="text-xs font-medium mb-1.5 block">
+                              Precio de venta <span className="text-muted-foreground font-normal">({saleCur}, opcional)</span>
+                            </label>
+                            <DecimalInput
+                              value={op.sale_amount ?? ""}
+                              onChange={(v) => updateOperator(index, "sale_amount", v)}
+                              onFocus={(e) => e.target.select()}
+                              placeholder="0.00"
+                              className="h-9 text-sm"
+                            />
+                            {saleVal > 0 && sameCurrency && (
+                              <p className={`text-xs mt-1 ${margin >= 0 ? "text-muted-foreground" : "text-destructive"}`}>
+                                Margen de este servicio: {saleCur} {margin.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                              </p>
+                            )}
+                          </div>
+                        )
+                      })()}
+
+                      {/* Datos internos del servicio (opcional): NO se muestran al
+                          pasajero. file_code = referencia interna de la agencia;
+                          payment_due_date = fecha máxima de pago al operador (alimenta
+                          el vencimiento del pago a operador). */}
+                      <div className="pt-3 border-t border-border/40">
+                        <label className="text-xs font-medium text-muted-foreground mb-2 block">
+                          Datos internos (opcional)
+                        </label>
+                        <div className="grid gap-3 grid-cols-1 md:grid-cols-2">
+                          <div>
+                            <label className="text-xs font-medium mb-1.5 block">N° de File (interno)</label>
+                            <Input
+                              value={op.file_code || ""}
+                              onChange={(e) => updateOperator(index, "file_code", e.target.value)}
+                              placeholder="Código de referencia"
+                              className="h-9 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-medium mb-1.5 block">Fecha máx. de pago</label>
+                            <Input
+                              type="date"
+                              value={op.payment_due_date || ""}
+                              onChange={(e) => updateOperator(index, "payment_due_date", e.target.value)}
+                              className="h-9 text-sm"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
                       {/* Detalle para el pasajero (opcional), según el tipo de servicio.
                           Se exporta en el PDF "Detalle de la Operación". */}
                       <div className="pt-3 border-t border-border/40">
@@ -1189,6 +1525,72 @@ export function NewOperationDialog({
                         {form.watch("sale_currency") || form.watch("currency") || "USD"} {calculatedMargin.toLocaleString("es-AR", { minimumFractionDigits: 2 })} ({calculatedMarginPercent.toFixed(1)}%)
                       </span>
                     </div>
+
+                    {/* VIB-112: desglose del precio de venta por servicio. Sólo
+                        tiene sentido con 2+ servicios y una venta total cargada
+                        (con un solo servicio, su precio ES el total; sin total no
+                        hay nada que repartir). Se muestra con encabezado propio
+                        para que no aparezca suelto y sin contexto. */}
+                    {operatorList.length >= 2 && (Number(form.watch("sale_amount_total")) || 0) > 0 && (() => {
+                      const saleCur = (form.watch("sale_currency") || form.watch("currency") || "USD") as string
+                      const saleTotal = Number(form.watch("sale_amount_total")) || 0
+                      const assigned = operatorList.reduce((s, op) => s + (Number(op.sale_amount) || 0), 0)
+                      const anyLoaded = operatorList.some((op) => (Number(op.sale_amount) || 0) > 0)
+                      const diff = Math.round((assigned - saleTotal) * 100) / 100
+                      const tolerance = Math.max(0.01, Math.abs(saleTotal) * 0.005)
+                      const mismatch = anyLoaded && Math.abs(diff) > tolerance
+                      return (
+                        <div className="mt-3 pt-3 border-t border-border/40">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Precio de venta por servicio</span>
+                            {anyLoaded && (
+                              <span className="text-xs font-medium">
+                                {saleCur} {assigned.toLocaleString("es-AR", { minimumFractionDigits: 2 })} / {saleTotal.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground mb-2">
+                            Opcional. Cuánto de la venta corresponde a cada servicio; se usa al facturar cada uno por separado.
+                          </p>
+                          {mismatch && (
+                            <p className="text-xs text-accent-amber mb-2">
+                              {diff > 0 ? "Asignaste" : "Falta asignar"} {saleCur} {Math.abs(diff).toLocaleString("es-AR", { minimumFractionDigits: 2 })} respecto del total de venta.
+                            </p>
+                          )}
+                          <div className="flex gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={() => {
+                                const shares = distributeSaleByCost({
+                                  legs: operatorList.map((op) => ({ cost: op.cost, cost_currency: op.cost_currency })),
+                                  saleAmountTotal: saleTotal,
+                                  saleCurrency: saleCur === "ARS" ? "ARS" : "USD",
+                                })
+                                setOperatorList((prev) => prev.map((op, i) => ({ ...op, sale_amount: shares[i] ?? 0 })))
+                              }}
+                            >
+                              Repartir ∝ costo
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={() => {
+                                const others = operatorList.slice(0, -1).reduce((s, op) => s + (Number(op.sale_amount) || 0), 0)
+                                const last = Math.round((saleTotal - others) * 100) / 100
+                                setOperatorList((prev) => prev.map((op, i) => (i === prev.length - 1 ? { ...op, sale_amount: last } : op)))
+                              }}
+                            >
+                              Completar la última
+                            </Button>
+                          </div>
+                        </div>
+                      )
+                    })()}
                   </div>
                 )}
 
@@ -1934,7 +2336,12 @@ export function NewOperationDialog({
               first_name: customer.first_name,
               last_name: customer.last_name,
             }])
-            form.setValue("customer_id", customer.id, { shouldValidate: true, shouldDirty: true })
+            if (newCustomerTarget === "main") {
+              form.setValue("customer_id", customer.id, { shouldValidate: true, shouldDirty: true })
+            } else {
+              updateCompanion(newCustomerTarget, customer.id)
+            }
+            setNewCustomerTarget("main")
             setShowNewCustomerDialog(false)
           }
         }}

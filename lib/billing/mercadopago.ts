@@ -110,6 +110,14 @@ export interface CreatePreapprovalParams {
   customAmount?: number
   /** Requerido si plan === 'CUSTOM'. Aparece como "reason" en MP. */
   customReason?: string
+  /**
+   * Monto ARS a cobrar para un plan estándar. El caller es el que resuelve el
+   * precio (lista de `plan_prices` o precio congelado de la org): este módulo es
+   * un cliente HTTP fino y no hace I/O. Si no viene, cae a la constante `PLANS`
+   * — solo como último recurso, porque esa constante puede estar desalineada
+   * con el precio efectivo.
+   */
+  amountArs?: number
 }
 
 export interface PreapprovalResult {
@@ -137,7 +145,10 @@ export async function createPreapproval(params: CreatePreapprovalParams): Promis
     if (plan.priceArsMonthly === null || plan.contactSalesOnly) {
       throw new Error(`Plan ${params.plan} es contact-sales-only, no se puede crear preapproval`)
     }
-    amount = plan.priceArsMonthly
+    amount =
+      Number.isFinite(params.amountArs) && (params.amountArs as number) > 0
+        ? (params.amountArs as number)
+        : plan.priceArsMonthly
     // ASCII-only: em-dash (—) a veces rompe la API de MP con 500 genérico.
     reason = `Vibook - plan ${plan.name}`
   }
@@ -407,6 +418,24 @@ export async function fetchPayment(paymentId: string): Promise<any> {
   if (!res.ok) {
     const text = await res.text()
     throw new Error(`MP fetch payment failed (${res.status}): ${text}`)
+  }
+  return await res.json()
+}
+
+/**
+ * Trae un authorized_payment (cobro de una suscripción). El webhook
+ * `subscription_authorized_payment` a veces manda SOLO el id del authorized_payment
+ * (no el preapproval_id). Este endpoint devuelve `preapproval_id` y `payment`
+ * (con `status` approved/rejected), necesarios para linkear el cobro a la org.
+ * Doc: GET /authorized_payments/{id}
+ */
+export async function fetchAuthorizedPayment(authorizedPaymentId: string): Promise<any> {
+  const res = await fetch(`${MP_API}/authorized_payments/${authorizedPaymentId}`, {
+    headers: { Authorization: `Bearer ${mpAccessToken()}` },
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`MP fetch authorized_payment failed (${res.status}): ${text}`)
   }
   return await res.json()
 }

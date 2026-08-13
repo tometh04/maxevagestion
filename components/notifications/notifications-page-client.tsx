@@ -46,9 +46,18 @@ interface Alert {
   }
 }
 
+interface AlertCounts {
+  total: number
+  unread: number
+  criticalUnread: number
+  warningUnread: number
+}
+
 interface NotificationsPageClientProps {
   initialAlerts: Alert[]
   userId: string
+  /** Conteos EXACTOS calculados en el server (no derivados de la lista cargada). */
+  counts: AlertCounts
 }
 
 const severityConfig: Record<string, { icon: any; color: string; bg: string }> = {
@@ -72,10 +81,15 @@ const typeLabels: Record<string, string> = {
 export function NotificationsPageClient({
   initialAlerts,
   userId,
+  counts: initialCounts,
 }: NotificationsPageClientProps) {
   const [alerts, setAlerts] = useState(initialAlerts)
   const [filter, setFilter] = useState("all")
   const [typeFilter, setTypeFilter] = useState("all")
+  // Conteos exactos del server; los ajustamos localmente al resolver para que
+  // sigan siendo fieles sin recargar (VIB-61 audit: antes se contaba sobre la
+  // lista truncada y las alertas viejas no entraban en los KPIs).
+  const [counts, setCounts] = useState<AlertCounts>(initialCounts)
 
   const filteredAlerts = alerts.filter((alert) => {
     if (filter === "unread" && alert.is_resolved) return false
@@ -84,7 +98,7 @@ export function NotificationsPageClient({
     return true
   })
 
-  const unreadCount = alerts.filter((a) => !a.is_resolved).length
+  const unreadCount = counts.unread
 
   async function markAsResolved(alertId: string) {
     try {
@@ -96,7 +110,16 @@ export function NotificationsPageClient({
 
       if (!response.ok) throw new Error("Error al actualizar")
 
-      setAlerts(alerts.map((a) => 
+      const resolved = alerts.find((a) => a.id === alertId)
+      if (resolved && !resolved.is_resolved) {
+        setCounts((c) => ({
+          ...c,
+          unread: Math.max(0, c.unread - 1),
+          criticalUnread: c.criticalUnread - (resolved.severity === "CRITICAL" ? 1 : 0),
+          warningUnread: c.warningUnread - (resolved.severity === "WARNING" ? 1 : 0),
+        }))
+      }
+      setAlerts(alerts.map((a) =>
         a.id === alertId ? { ...a, is_resolved: true } : a
       ))
       toast.success("Notificación marcada como leída")
@@ -116,7 +139,17 @@ export function NotificationsPageClient({
         })
       }
 
+      // Decrementamos por lo realmente resuelto (no a 0 fijo): si hubiera más
+      // sin leer que las cargadas, los KPIs siguen reflejando el resto.
+      const crit = unreadAlerts.filter((a) => a.severity === "CRITICAL").length
+      const warn = unreadAlerts.filter((a) => a.severity === "WARNING").length
       setAlerts(alerts.map((a) => ({ ...a, is_resolved: true })))
+      setCounts((c) => ({
+        ...c,
+        unread: Math.max(0, c.unread - unreadAlerts.length),
+        criticalUnread: Math.max(0, c.criticalUnread - crit),
+        warningUnread: Math.max(0, c.warningUnread - warn),
+      }))
       toast.success("Todas las notificaciones marcadas como leídas")
     } catch (error) {
       toast.error("Error al actualizar notificaciones")
@@ -145,7 +178,7 @@ export function NotificationsPageClient({
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-destructive">
-              {alerts.filter((a) => a.severity === "CRITICAL" && !a.is_resolved).length}
+              {counts.criticalUnread}
             </div>
           </CardContent>
         </Card>
@@ -157,7 +190,7 @@ export function NotificationsPageClient({
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-accent-coral">
-              {alerts.filter((a) => a.severity === "WARNING" && !a.is_resolved).length}
+              {counts.warningUnread}
             </div>
           </CardContent>
         </Card>
@@ -168,7 +201,7 @@ export function NotificationsPageClient({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{alerts.length}</div>
+            <div className="text-2xl font-bold">{counts.total}</div>
           </CardContent>
         </Card>
       </div>

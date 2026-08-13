@@ -4,8 +4,8 @@ import { getCurrentUser } from "@/lib/auth"
 import { generateFileCode } from "@/lib/accounting/file-code"
 import { transferLeadToOperation, getOrCreateDefaultAccount, createLedgerMovement, calculateARSEquivalent } from "@/lib/accounting/ledger"
 import { createSaleIVA, createPurchaseIVA } from "@/lib/accounting/iva"
-import { createOperatorPayment, calculateDueDate } from "@/lib/accounting/operator-payments"
-import { canPerformAction, getUserAgencyIds } from "@/lib/permissions-api"
+import { createOperatorPayment, calculateDueDate, sanitizeDueDate } from "@/lib/accounting/operator-payments"
+import { canPerformAction, getUserAgencyIds, canCreateOperationsForOtherSellers, canAssignSecondarySeller, isSellerWithinUserAgencies, NO_MATCH_UUID } from "@/lib/permissions-api"
 import { resolveUserPermissions } from "@/lib/permissions-agency"
 import { revalidateTag, CACHE_TAGS } from "@/lib/cache"
 import { generateMessagesFromAlerts } from "@/lib/whatsapp/alert-messages"
@@ -14,11 +14,25 @@ import { sendCustomerNotifications } from "@/lib/customers/customer-service"
 import { logAudit, getClientIP } from "@/lib/audit"
 import { enforceUserRateLimit } from "@/lib/rate-limit"
 import { checkLimit } from "@/lib/billing/limits"
-import { getSellerPercentage } from "@/lib/commissions/calculate"
+import { resolveSellerCommissionProfiles } from "@/lib/commissions/seller-commission-profile"
+import { splitModeForCreate } from "@/lib/commissions/split-mode"
+import { validateManualSplit } from "@/lib/commissions/validate-shared-split"
 import { calculateOperationBalances, roundMoney } from "@/lib/operations/operation-financials"
 import { getOrgFeatureFlag } from "@/lib/settings/org-features"
 import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
 import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
+import { ledgerSign } from "@/lib/invoices/credit-note"
+import { buildPassengerSearchOrGroups, sanitizeSearchTerm } from "@/lib/operations/passenger-search"
+import {
+  normalizeOperationPassengers,
+  findCustomersOutsideOrg,
+} from "@/lib/operations/operation-passengers"
+
+// VIB-102: topes de la búsqueda por nombre de pasajero en GET /api/operations.
+// Existen para no armar una URL de PostgREST gigante con `id.in.(...)`; con el
+// match por AND de palabras una búsqueda real cae muy por debajo de estos topes.
+const CUSTOMER_SEARCH_CAP = 500
+const OPERATION_IDS_CAP = 500
 
 export async function POST(request: Request) {
   try {
@@ -60,7 +74,11 @@ export async function POST(request: Request) {
       operator_id, // Compatibilidad hacia atrás: operador único
       operators, // Nuevo formato: array de operadores [{operator_id, cost, cost_currency, notes?}]
       type,
-      customer_id, // Cliente seleccionado directamente
+      customer_id, // Cliente seleccionado directamente (titular)
+      // VIB-106: acompañantes cargados junto con el alta. Se llama `companions`
+      // y no `passengers` porque `operations.passengers` ya existe como columna
+      // legacy de texto libre (ver más abajo, se guarda como JSON string).
+      companions,
       origin,
       destination,
       destination_id,
@@ -146,39 +164,45 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "El operador es requerido" }, { status: 400 })
     }
 
-    // Validación overrides de comisión (29/04 — Tomi opción B):
-    // Si vienen los dos campos absolutos, la suma no puede exceder el %
-    // que comisiona el vendedor principal. Sólo aplica con secundario.
+    // Reparto manual de la comisión entre los dos vendedores (VIB-63).
+    // Las reglas son simétricas: cada uno hasta su propio porcentaje, y el total
+    // hasta el mayor de los dos. Antes el tope era el porcentaje del principal,
+    // lo que hacía imposible cargar una venta cuando el secundario comisionaba
+    // más — y por eso se invertían los vendedores para poder guardarla.
     if (
       normalizedSecondaryId &&
       commission_pct_primary != null &&
       commission_pct_secondary != null
     ) {
-      const primaryPctNum = Number(commission_pct_primary)
-      const secondaryPctNum = Number(commission_pct_secondary)
+      const profiles = await resolveSellerCommissionProfiles(supabase, (user as any).org_id, [
+        seller_id,
+        normalizedSecondaryId,
+      ])
+      const primaryProfile = profiles.get(seller_id)
+      const secondaryProfile = profiles.get(normalizedSecondaryId)
 
-      if (Number.isNaN(primaryPctNum) || Number.isNaN(secondaryPctNum) || primaryPctNum < 0 || secondaryPctNum < 0) {
-        return NextResponse.json(
-          { error: "Las comisiones deben ser números no negativos" },
-          { status: 400 }
-        )
-      }
+      const validation = validateManualSplit(
+        {
+          sellerId: seller_id,
+          name: primaryProfile?.name ?? null,
+          maxPercentage: primaryProfile?.percentage ?? null,
+          assignedPercentage: Number(commission_pct_primary),
+        },
+        {
+          sellerId: normalizedSecondaryId,
+          name: secondaryProfile?.name ?? null,
+          maxPercentage: secondaryProfile?.percentage ?? null,
+          assignedPercentage: Number(commission_pct_secondary),
+        }
+      )
 
-      const principalPct = await getSellerPercentage(seller_id)
-      const sumOverrides = primaryPctNum + secondaryPctNum
-
-      if (sumOverrides > principalPct + 0.01) {
-        return NextResponse.json(
-          {
-            error: `La suma de comisiones (${sumOverrides.toFixed(2)}%) no puede superar la comisión del vendedor principal (${principalPct.toFixed(2)}%)`,
-          },
-          { status: 400 }
-        )
+      if (!validation.ok) {
+        return NextResponse.json({ error: validation.error }, { status: 400 })
       }
     }
 
     // Procesar operadores: soportar formato nuevo (array) y formato antiguo (operator_id + operator_cost)
-    let operatorsList: Array<{operator_id: string, cost: number, cost_currency: string, product_type?: string, notes?: string, passenger_detail?: any}> = []
+    let operatorsList: Array<{operator_id: string, cost: number, cost_currency: string, product_type?: string, notes?: string, passenger_detail?: any, file_code?: string | null, payment_due_date?: string | null, sale_amount?: number}> = []
     let totalOperatorCost = 0
     let finalOperatorCostCurrency = operator_cost_currency || currency || "USD"
     let primaryOperatorId: string | null = operator_id || null
@@ -198,7 +222,11 @@ export async function POST(request: Request) {
           cost_currency: op.cost_currency || currency || "USD",
           product_type: op.product_type || undefined,
           notes: op.notes || undefined,
-          passenger_detail: op.passenger_detail ?? undefined
+          passenger_detail: op.passenger_detail ?? undefined,
+          file_code: (op.file_code && String(op.file_code).trim()) || null,
+          payment_due_date: sanitizeDueDate(op.payment_due_date),
+          // VIB-112: precio de venta por pata (desglose informativo del total).
+          sale_amount: op.sale_amount === undefined ? 0 : Number(op.sale_amount) || 0,
         })
         totalOperatorCost += Number(op.cost)
         // Usar la moneda del primer operador como moneda principal
@@ -262,9 +290,67 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "El monto de venta no puede ser negativo" }, { status: 400 })
     }
 
+    // VIB-106: la forma de la lista de pasajeros se valida ACÁ, antes de crear
+    // nada. Un 400 después del insert dejaría la operación creada con ledger,
+    // IVA y deudas al operador ya escritos.
+    const passengersShape = normalizeOperationPassengers({
+      customerId: customer_id,
+      passengers: companions,
+    })
+    if (passengersShape.error) {
+      return NextResponse.json({ error: passengersShape.error }, { status: 400 })
+    }
+    if (passengersShape.rows.length > 0) {
+      const foreignCustomers = await findCustomersOutsideOrg(
+        supabase,
+        passengersShape.rows.map((p) => p.customer_id),
+        (user as any).org_id
+      )
+      if (foreignCustomers.length > 0) {
+        return NextResponse.json(
+          { error: "Uno o más pasajeros no pertenecen a tu organización" },
+          { status: 400 }
+        )
+      }
+    }
+
+    // Avisos no bloqueantes que viajan en la respuesta (la operación se creó,
+    // pero algo secundario falló y el usuario tiene que enterarse).
+    const warnings: string[] = []
+
     // Check permissions
-    if (user.role === "SELLER" && seller_id !== user.id) {
-      return NextResponse.json({ error: "No puedes crear operaciones para otros vendedores" }, { status: 403 })
+    // Un SELLER sólo puede cargar a nombre de OTRO vendedor (principal) si el
+    // admin le habilitó `can_create_operations_for_other_sellers`. El VENDEDOR
+    // SECUNDARIO es otra cosa (VIB-105): la operación sigue siendo suya y sólo
+    // parte la comisión con un compañero, así que no pide ese permiso — sí pide
+    // que el destino sea de sus mismas agencias. Los demás roles ya podían
+    // asignar cualquier vendedor.
+    if (user.role === "SELLER") {
+      if (seller_id && seller_id !== user.id && !canCreateOperationsForOtherSellers(user as any)) {
+        return NextResponse.json({ error: "No puedes crear operaciones para otros vendedores" }, { status: 403 })
+      }
+      if (
+        normalizedSecondaryId &&
+        normalizedSecondaryId !== user.id &&
+        !canAssignSecondarySeller(user as any)
+      ) {
+        return NextResponse.json(
+          { error: "No puedes asignar un vendedor secundario" },
+          { status: 403 }
+        )
+      }
+      const targetSellerIds = [seller_id, normalizedSecondaryId].filter(
+        (id): id is string => Boolean(id) && id !== user.id
+      )
+      for (const targetId of targetSellerIds) {
+        const withinAgency = await isSellerWithinUserAgencies(supabase, targetId, agencyIds)
+        if (!withinAgency) {
+          return NextResponse.json(
+            { error: "Solo puedes asignar operaciones a vendedores de tus agencias" },
+            { status: 403 }
+          )
+        }
+      }
     }
 
     // Calculate margin usando el costo total de todos los operadores
@@ -289,6 +375,13 @@ export async function POST(request: Request) {
       commission_split: normalizedSecondaryId ? (commission_split ?? 50) : null,
       commission_pct_primary: normalizedSecondaryId && commission_pct_primary != null ? Number(commission_pct_primary) : null,
       commission_pct_secondary: normalizedSecondaryId && commission_pct_secondary != null ? Number(commission_pct_secondary) : null,
+      // En AUTO los commission_pct_* son un snapshot que recalcula el servidor,
+      // así que una UI que mande 0 ya no puede dejar la venta sin comisionar.
+      commission_split_mode: splitModeForCreate({
+        secondarySellerId: normalizedSecondaryId,
+        pctPrimary: commission_pct_primary,
+        pctSecondary: commission_pct_secondary,
+      }),
       operator_id: primaryOperatorId, // Operador principal (compatibilidad hacia atrás)
       type,
       product_type: inferredProductType,
@@ -414,20 +507,14 @@ export async function POST(request: Request) {
 
     // Calcular comisiones automáticamente al crear la operación
     try {
-      const { calculateCommission, createOrUpdateCommissionRecords } = await import("@/lib/commissions/calculate")
-      const commissionOp = {
+      const { recalculateOperationCommissions } = await import("@/lib/commissions/calculate")
+      await recalculateOperationCommissions(supabase, {
         ...op,
-        seller_id: op.seller_primary_id || op.seller_id || seller_id,
+        org_id: op.org_id || (user as any).org_id,
+        seller_id: op.seller_id || seller_id,
         seller_secondary_id: op.seller_secondary_id || normalizedSecondaryId || null,
-        sale_amount_total: Number(op.sale_amount_total) || 0,
-        operator_cost: Number(op.operator_cost) || totalOperatorCost || 0,
         margin_amount: Number(op.margin_amount) || marginAmount || 0,
-        margin_percentage: Number(op.margin_percentage) || marginPercentage || 0,
-      }
-      const commissionData = await calculateCommission(commissionOp)
-      if (commissionData.totalCommission > 0) {
-        await createOrUpdateCommissionRecords(commissionOp, commissionData)
-      }
+      })
     } catch (error) {
       console.error("Error calculating commission for new operation:", error)
     }
@@ -505,7 +592,10 @@ export async function POST(request: Request) {
           cost_currency: operatorData.cost_currency,
           product_type: operatorData.product_type || null,
           notes: operatorData.notes || null,
-          passenger_detail: operatorData.passenger_detail ?? null
+          passenger_detail: operatorData.passenger_detail ?? null,
+          file_code: operatorData.file_code || null,
+          payment_due_date: operatorData.payment_due_date || null,
+          sale_amount: operatorData.sale_amount ?? 0, // VIB-112
         }))
         
         const { error: opOpError } = await (supabase.from("operation_operators") as any)
@@ -525,7 +615,9 @@ export async function POST(request: Request) {
       for (const operatorData of operatorsList) {
         if (operatorData.cost > 0) {
       try {
-        const dueDate = calculateDueDate(
+        // Fecha máxima de pago: si la agencia la cargó a mano en el operador, se
+        // usa como due_date; si no, se autocalcula por tipo de producto.
+        const dueDate = operatorData.payment_due_date || calculateDueDate(
           inferredProductType,
               departure_date,
           checkin_date || undefined,
@@ -540,7 +632,8 @@ export async function POST(request: Request) {
           dueDate,
           op.id, // operationId
           `Pago automático generado para operación ${operation.id}`,
-          (user as any).org_id
+          (user as any).org_id,
+          operatorData.file_code || null
         )
       } catch (error) {
             console.error(`Error creating operator payment for ${operatorData.operator_id}:`, error)
@@ -779,30 +872,45 @@ export async function POST(request: Request) {
           return NextResponse.json({ error: "Se debe asociar al menos un cliente" }, { status: 400 })
         }
 
-        // Asociar cliente a la operación
-        if (customerId) {
-          const { data: operationCustomerData, error: operationCustomerError } = await (supabase.from("operation_customers") as any)
-            .insert({
-              operation_id: operation.id,
-              customer_id: customerId,
-              role: "MAIN"
-            })
-            .select()
-            .single()
-          
+        // Asociar pasajeros a la operación (VIB-106: titular + acompañantes).
+        //
+        // `customerId` puede haberse resuelto recién acá (alta desde lead), así
+        // que la lista se rearma con el titular ya conocido. La validación de
+        // forma y de org ya corrió arriba; esto solo puede fallar por un
+        // problema de base, y en ese caso NO se revierte la operación: para este
+        // punto ya se escribieron ledger, IVA y operator_payments, y un rollback
+        // parcial deja basura contable peor que una operación sin pasajeros.
+        // Se avisa en la respuesta en vez de tragarse el error.
+        const passengerRows = normalizeOperationPassengers({
+          customerId,
+          passengers: companions,
+        }).rows
+
+        if (passengerRows.length > 0) {
+          const { error: operationCustomerError } = await (supabase.from("operation_customers") as any)
+            .insert(passengerRows.map((p) => ({ operation_id: operation.id, ...p })))
+
           if (operationCustomerError) {
-            console.error(`❌ Error associating customer ${customerId} with operation ${operation.id}:`, operationCustomerError)
-            // No lanzar error, pero loguear para debug
-          } else {
-            
-            // Enviar notificación al cliente si está configurada
+            console.error(
+              `❌ Error associating ${passengerRows.length} passenger(s) with operation ${operation.id}:`,
+              operationCustomerError
+            )
+            warnings.push(
+              passengerRows.length === 1
+                ? "La operación se creó, pero no se pudo asociar el pasajero. Cargalo desde la pestaña Clientes."
+                : `La operación se creó, pero no se pudieron asociar los ${passengerRows.length} pasajeros. Cargalos desde la pestaña Clientes.`
+            )
+          } else if (customerId) {
+            // La notificación sale UNA sola vez y solo al titular: es quien
+            // responde por el pago, y los acompañantes suelen no tener mail.
             try {
               const { data: customer } = await supabase
                 .from("customers")
                 .select("*")
                 .eq("id", customerId)
+                .eq("org_id", (user as any).org_id)
                 .single()
-              
+
               if (customer) {
                 const customerData = customer as any
                 const { data: settings } = await supabase
@@ -833,9 +941,12 @@ export async function POST(request: Request) {
               // No lanzar error, solo loguear
             }
           }
-          
-      // Transferir documentos del lead al cliente (solo si hay lead_id)
-      if (lead_id) {
+        }
+
+        // Transferir documentos del lead al cliente (solo si hay lead_id).
+        // Exige `customerId`: sin titular resuelto, el update dejaría los
+        // documentos del lead con customer_id en NULL.
+        if (lead_id && customerId) {
           try {
             const { data: leadDocuments, error: docsError } = await supabase
               .from("documents")
@@ -879,12 +990,37 @@ export async function POST(request: Request) {
             console.error("Error transferring documents from lead to operation:", error)
           }
         }
-      }
-      
+
+    // Comisión al referidor (VIB-62): si el cliente MAIN viene referido, generar
+    // la comisión de la venta sobre el margen. Best-effort: no romper la creación.
+    try {
+      const { createOrUpdateReferralCommission } = await import("@/lib/referrals/calculate")
+      await createOrUpdateReferralCommission({
+        supabase,
+        operationId: operation.id,
+        customerId,
+        marginAmount: Number(op.margin_amount) || marginAmount || 0,
+        orgId: (user as any).org_id,
+        agencyId: agency_id,
+        currency: finalSaleCurrency,
+        operationDate: op.operation_date,
+      })
+    } catch (error) {
+      console.error("Error calculando comisión de referido para nueva operación:", error)
+    }
+
     // Update lead status to WON if lead_id exists
     if (lead_id) {
-      // Actualizar lead a WON
-      await (supabase.from("leads") as any).update({ status: "WON" }).eq("id", lead_id)
+      // Actualizar lead a WON y marcar el resultado como venta real (VIB-68).
+      // outcome='SALE' + operación asociada => venta real confirmada en reportes.
+      await (supabase.from("leads") as any)
+        .update({
+          status: "WON",
+          outcome: "SALE",
+          outcome_at: new Date().toISOString(),
+          outcome_by: user.id,
+        })
+        .eq("id", lead_id)
       
       // Transfer all ledger_movements from lead to operation
       try {
@@ -928,24 +1064,12 @@ export async function POST(request: Request) {
       // No lanzamos error para no romper la creación de la operación
     }
 
-    // Crear registro de comisión del vendedor si se especificó porcentaje
-    if (commission_percentage && commission_percentage > 0 && marginAmount > 0) {
-      try {
-        const commissionAmount = (marginAmount * commission_percentage) / 100
-        await (supabase.from("commission_records") as any).insert({
-          operation_id: operation.id,
-          seller_id: seller_id,
-          agency_id: agency_id,
-          amount: Math.round(commissionAmount * 100) / 100,
-          percentage: commission_percentage,
-          status: "PENDING",
-          date_calculated: new Date().toISOString(),
-        })
-      } catch (error) {
-        console.error("Error creating commission record:", error)
-        // No lanzamos error para no romper la creación de la operación
-      }
-    }
+    // (VIB-63) Acá había un tercer camino de escritura de comisiones, que
+    // insertaba un commission_records a partir de `body.commission_percentage`
+    // después de que el recálculo ya hubiera creado el suyo. Chocaba contra el
+    // índice único (operation_id, seller_id) y el error se tragaba en el catch,
+    // así que el porcentaje del body no hacía nada salvo ensuciar los logs.
+    // La comisión la calcula ahora recalculateOperationCommissions, más arriba.
 
     // Invalidar caché del dashboard (los KPIs cambian al crear una operación)
     revalidateTag(CACHE_TAGS.DASHBOARD)
@@ -963,7 +1087,7 @@ export async function POST(request: Request) {
       console.warn('Error logging audit action:', auditError)
     }
 
-    return NextResponse.json({ operation })
+    return NextResponse.json(warnings.length > 0 ? { operation, warnings } : { operation })
   } catch (error) {
     console.error("Error in POST /api/operations:", error)
     return NextResponse.json({ error: "Error al crear operación" }, { status: 500 })
@@ -1052,45 +1176,89 @@ export async function GET(request: Request) {
     // Filtro de búsqueda por texto (file_code, destination, o nombre de cliente)
     const search = searchParams.get("search")
     if (search && search.length >= 2) {
-      // Buscar también por nombre de cliente
-      // Busca por first_name, last_name, y también por cada palabra individual
-      // para que "Lo Bianco" matchee con first_name="Lo" last_name="Bianco"
+      // Buscar también por nombre de pasajero (titular o acompañante).
+      //
+      // VIB-102: antes se armaba UN solo .or() con todas las palabras, así que
+      // "Maria Belen Olivera" matcheaba a CUALQUIER cliente llamado "Maria"
+      // (165 en Milla Cero) y el .limit(50) recortaba el listado de forma
+      // arbitraria: el titular real quedaba afuera y su operación no aparecía,
+      // aunque sí aparecía buscando por el apellido raro de una acompañante.
+      //
+      // Ahora cada palabra genera su propio .or() (PostgREST combina los `or=`
+      // repetidos con AND), o sea: cada palabra tiene que matchear nombre o
+      // apellido del MISMO cliente. Mismo criterio que /api/customers y
+      // /api/cash/movements. "Lo Bianco" sigue matcheando first_name="Lo" +
+      // last_name="Bianco".
       let operationIdsByCustomer: string[] = []
       try {
-        const searchWords = search.trim().split(/\s+/).filter(w => w.length >= 2)
-        const orConditions = [`first_name.ilike.%${search}%`, `last_name.ilike.%${search}%`]
-        for (const word of searchWords) {
-          orConditions.push(`first_name.ilike.%${word}%`)
-          orConditions.push(`last_name.ilike.%${word}%`)
+        const orGroups = buildPassengerSearchOrGroups(search)
+        let customersQuery = (supabase.from("customers") as any).select("id")
+        // Defensa en profundidad además de la RLS tenant_isolation.
+        if ((user as any).org_id) {
+          customersQuery = customersQuery.eq("org_id", (user as any).org_id)
         }
-        const { data: matchingCustomers } = await supabase
-          .from("customers")
-          .select("id")
-          .or(orConditions.join(","))
-          .limit(50)
+        for (const group of orGroups) {
+          customersQuery = customersQuery.or(group)
+        }
+
+        const { data: matchingCustomers } = orGroups.length
+          ? await customersQuery.limit(CUSTOMER_SEARCH_CAP)
+          : { data: [] as any[] }
 
         if (matchingCustomers && matchingCustomers.length > 0) {
+          if (matchingCustomers.length === CUSTOMER_SEARCH_CAP) {
+            console.warn(
+              `[operations][search] "${search}" alcanzó el tope de ${CUSTOMER_SEARCH_CAP} clientes; resultados posiblemente incompletos`
+            )
+          }
           const customerIds = matchingCustomers.map((c: any) => c.id)
           const { data: opCustomers } = await supabase
             .from("operation_customers")
             .select("operation_id")
             .in("customer_id", customerIds)
 
-          operationIdsByCustomer = (opCustomers || []).map((oc: any) => oc.operation_id)
+          // Dedup: una op con varios pasajeros que matchean repetía el mismo id
+          // en el filtro `id.in.(...)` e inflaba la URL de PostgREST.
+          operationIdsByCustomer = Array.from(
+            new Set((opCustomers || []).map((oc: any) => oc.operation_id).filter(Boolean))
+          )
+          if (operationIdsByCustomer.length > OPERATION_IDS_CAP) {
+            console.warn(
+              `[operations][search] "${search}" resolvió ${operationIdsByCustomer.length} operaciones por pasajero; se recortan a ${OPERATION_IDS_CAP}`
+            )
+            operationIdsByCustomer = operationIdsByCustomer.slice(0, OPERATION_IDS_CAP)
+          }
         }
       } catch (err) {
         console.error("Error searching customers for operations:", err)
       }
 
+      // Search también incluye airline_name + hotel_name (item 6 backlog Santi).
+      // RLS tenant_isolation acota a la org del user — no hay leak cross-org.
+      // El término va sanitizado: una coma o un paréntesis rompen la gramática
+      // de `or=` y tiraban toda la query del listado.
+      const safeSearch = sanitizeSearchTerm(search)
+      const textConditions: string[] = []
+      // Si el término queda vacío al sanitizar (ej. ",,,"), no agregamos
+      // `ilike.%%`: matchearía TODAS las operaciones en vez de ninguna.
+      if (safeSearch.length >= 2) {
+        textConditions.push(
+          `file_code.ilike.%${safeSearch}%`,
+          `destination.ilike.%${safeSearch}%`,
+          `airline_name.ilike.%${safeSearch}%`,
+          `hotel_name.ilike.%${safeSearch}%`
+        )
+      }
       if (operationIdsByCustomer.length > 0) {
-        const idsFilter = `id.in.(${operationIdsByCustomer.join(",")})`
-        // Search también incluye airline_name + hotel_name (item 6 backlog Santi).
-        // RLS tenant_isolation acota a la org del user — no hay leak cross-org.
-        query = query.or(`file_code.ilike.%${search}%,destination.ilike.%${search}%,airline_name.ilike.%${search}%,hotel_name.ilike.%${search}%,${idsFilter}`)
-        countQuery = countQuery.or(`file_code.ilike.%${search}%,destination.ilike.%${search}%,airline_name.ilike.%${search}%,hotel_name.ilike.%${search}%,${idsFilter}`)
+        textConditions.push(`id.in.(${operationIdsByCustomer.join(",")})`)
+      }
+      if (textConditions.length > 0) {
+        query = query.or(textConditions.join(","))
+        countQuery = countQuery.or(textConditions.join(","))
       } else {
-        query = query.or(`file_code.ilike.%${search}%,destination.ilike.%${search}%,airline_name.ilike.%${search}%,hotel_name.ilike.%${search}%`)
-        countQuery = countQuery.or(`file_code.ilike.%${search}%,destination.ilike.%${search}%,airline_name.ilike.%${search}%,hotel_name.ilike.%${search}%`)
+        // Búsqueda sin nada matcheable → resultado vacío explícito.
+        query = query.eq("id", NO_MATCH_UUID)
+        countQuery = countQuery.eq("id", NO_MATCH_UUID)
       }
     }
 
@@ -1099,15 +1267,17 @@ export async function GET(request: Request) {
     const paymentDateTo = searchParams.get("paymentDateTo")
     const paymentDateType = searchParams.get("paymentDateType") // "OPERACION" | "COBRO" | "PAGO" | "VENCIMIENTO"
 
-    // Filtro por fecha de carga de operación (created_at) — sin JOIN a payments
+    // Filtro por fecha de operación / venta (operation_date) — sin JOIN a payments.
+    // NO usar created_at: es la fecha de carga en el sistema y difiere de la fecha de
+    // venta real en importaciones históricas y en ops cargadas con retraso (migration 046).
     if (paymentDateType === "OPERACION") {
       if (paymentDateFrom) {
-        query = query.gte("created_at", `${paymentDateFrom}T00:00:00`)
-        countQuery = countQuery.gte("created_at", `${paymentDateFrom}T00:00:00`)
+        query = query.gte("operation_date", paymentDateFrom)
+        countQuery = countQuery.gte("operation_date", paymentDateFrom)
       }
       if (paymentDateTo) {
-        query = query.lte("created_at", `${paymentDateTo}T23:59:59`)
-        countQuery = countQuery.lte("created_at", `${paymentDateTo}T23:59:59`)
+        query = query.lte("operation_date", paymentDateTo)
+        countQuery = countQuery.lte("operation_date", paymentDateTo)
       }
     }
 
@@ -1406,6 +1576,28 @@ export async function GET(request: Request) {
       }
     }
 
+    // Facturación (2026-07-16): estado de facturado por operación para mostrar
+    // una columna en el listado sin tener que abrir op x op. Una operación está
+    // facturada si tiene facturas AFIP con status="authorized" asociadas. Sumamos
+    // con signo contable (NC restan, ND/facturas suman) igual que el guard de
+    // POST /api/invoices, para reflejar cancelaciones por nota de crédito.
+    // Cross-tenant: filtro explícito por org_id (no confiar en RLS).
+    const invoicedByOp: Record<string, number> = {}
+    if (operationIds.length > 0) {
+      const { data: authInvoices } = await supabase
+        .from("invoices")
+        .select("operation_id, imp_total, cbte_tipo")
+        .eq("org_id", (user as any).org_id)
+        .eq("status", "authorized")
+        .in("operation_id", operationIds)
+      for (const inv of (authInvoices || []) as any[]) {
+        const opId = inv.operation_id
+        if (!opId) continue
+        invoicedByOp[opId] =
+          (invoicedByOp[opId] || 0) + ledgerSign(inv.cbte_tipo) * (Number(inv.imp_total) || 0)
+      }
+    }
+
     // Servicios adicionales: si la flag está ON, sumar su venta a sale_amount_total
     // para que "A cobrar" (pending_amount) refleje servicios impagos del cliente.
     const includeServicesInSale = await getOrgFeatureFlag(
@@ -1443,9 +1635,23 @@ export async function GET(request: Request) {
         operatorPaid: paymentData.operator_paid,
       })
       
+      // Estado de facturación: comparamos lo facturado (neto de NC) contra la
+      // venta total. Total vs Parcial vs No facturado. Mismo criterio de
+      // comparación que el guard de creación de facturas (imp_total comparable
+      // a sale_amount_total).
+      const invoicedAmount = invoicedByOp[op.id] || 0
+      const saleTotalForInvoice = Number(op.sale_amount_total) || 0
+      let invoice_status: "INVOICED" | "PARTIAL" | "NOT_INVOICED" = "NOT_INVOICED"
+      if (invoicedAmount > 0.01) {
+        invoice_status =
+          invoicedAmount >= saleTotalForInvoice - 0.01 ? "INVOICED" : "PARTIAL"
+      }
+
       return {
         ...op,
         customer_name: customerName,
+        invoice_status,
+        invoiced_amount: roundMoney(invoicedAmount),
         paid_amount: paymentData.customer_paid, // Monto Cobrado
         scheduled_pending_amount: paymentData.customer_pending,
         pending_amount: balances.customerPending, // A cobrar

@@ -1,8 +1,11 @@
 import type { Metadata } from "next"
+import { Suspense } from "react"
 import { Inter } from "next/font/google"
 import { Toaster } from "sonner"
 import { Toaster as ShadcnToaster } from "@/components/ui/toaster"
 import { ThemeProvider } from "@/components/theme-provider"
+import { AnalyticsPageView } from "@/components/analytics/analytics-page-view"
+import { GoogleAnalytics } from "@/components/analytics/google-analytics"
 import { createServerClient } from "@/lib/supabase/server"
 import "./globals.css"
 
@@ -97,6 +100,13 @@ export default function RootLayout({
             }}
           />
           <ShadcnToaster />
+          {/* Telemetria de producto. Ambos componentes se auto-excluyen en
+              `/cotizacion/*` (vistas publicas de clientes finales) y cuando
+              NEXT_PUBLIC_GA_MEASUREMENT_ID no esta seteada. */}
+          <GoogleAnalytics />
+          <Suspense fallback={null}>
+            <AnalyticsPageView />
+          </Suspense>
         </ThemeProvider>
       </body>
     </html>

@@ -58,6 +58,8 @@ interface Customer {
   date_of_birth?: string | null
   nationality?: string | null
   agency_id?: string
+  referral_partner_id?: string | null
+  referral_commission_percentage?: number | null
 }
 
 interface CustomerDetailClientProps {
@@ -65,6 +67,8 @@ interface CustomerDetailClientProps {
   operations: any[]
   payments: any[]
   documents: any[]
+  /** Nombre del referidor (VIB-62), para el badge "Referido de X". */
+  referralPartnerName?: string | null
 }
 
 export function CustomerDetailClient({
@@ -72,6 +76,7 @@ export function CustomerDetailClient({
   operations,
   payments,
   documents,
+  referralPartnerName = null,
 }: CustomerDetailClientProps) {
   const router = useRouter()
   const [editDialogOpen, setEditDialogOpen] = useState(false)
@@ -111,9 +116,16 @@ export function CustomerDetailClient({
             </Button>
           </Link>
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">
-              {customer.first_name} {customer.last_name}
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-semibold tracking-tight">
+                {customer.first_name} {customer.last_name}
+              </h1>
+              {customer.referral_partner_id && (
+                <Badge className="bg-accent-coral/10 text-accent-coral border-0">
+                  Referido{referralPartnerName ? ` de ${referralPartnerName}` : ""}
+                </Badge>
+              )}
+            </div>
             <p className="text-xs font-medium text-muted-foreground">{customer.email}</p>
           </div>
         </div>

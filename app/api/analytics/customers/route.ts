@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { isIndependentAdvisor } from "@/lib/permissions"
 import { subMonths, format } from "date-fns"
 import { buildExchangeRateMap, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
 import { getOrgFeatureFlag } from "@/lib/settings/org-features"
@@ -36,6 +37,13 @@ export async function GET(request: Request) {
       .from("operations")
       .select("id, agency_id")
       .eq("org_id", user.org_id)
+
+    // VIB-69: el asesor independiente solo analiza su propia cartera. Este
+    // endpoint arma la lista de clientes a partir de las operaciones, así que
+    // acotarlas por vendedor acota también los clientes.
+    if (isIndependentAdvisor(user)) {
+      operationsQuery = operationsQuery.eq("seller_id", user.id)
+    }
 
     // Filtrar por agencia
     if (agencyId && agencyId !== "ALL") {

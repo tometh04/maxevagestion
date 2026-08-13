@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
-import { getCurrentUser } from "@/lib/auth"
 import { canPerformAction } from "@/lib/permissions-api"
+import { getRequestPermissions } from "@/lib/permissions/request"
 import { getExchangeRate } from "@/lib/accounting/exchange-rates"
 import { getOrgAgencyIds } from "@/lib/organizations"
 
@@ -11,13 +10,12 @@ import { getOrgAgencyIds } from "@/lib/organizations"
  */
 export async function POST(request: Request) {
   try {
-    const { user } = await getCurrentUser()
+    const { user, supabase, matrix } = await getRequestPermissions()
 
-    if (!canPerformAction(user, "cash", "write")) {
+    if (!canPerformAction(user, "cash", "write", matrix ?? undefined)) {
       return NextResponse.json({ error: "No tiene permiso para transferir entre cajas" }, { status: 403 })
     }
 
-    const supabase = await createServerClient()
     const body = await request.json()
 
     const {

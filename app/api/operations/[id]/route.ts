@@ -1,15 +1,19 @@
+import { splitModeForUpdate } from "@/lib/commissions/split-mode"
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { updateSaleIVA, updatePurchaseIVA, deleteSaleIVA, deletePurchaseIVA, createPurchaseIVA } from "@/lib/accounting/iva"
 import { invalidateBalanceCache } from "@/lib/accounting/ledger"
 import { revalidateTag, CACHE_TAGS } from "@/lib/cache"
-import { createOperatorPayment, calculateDueDate } from "@/lib/accounting/operator-payments"
+import { createOperatorPayment, calculateDueDate, sanitizeDueDate } from "@/lib/accounting/operator-payments"
 import { getOpenOperatorPaymentStatus } from "@/lib/accounting/operator-payment-settlement"
 import { logAudit, getClientIP } from "@/lib/audit"
 import { enforceUserRateLimit } from "@/lib/rate-limit"
 import { getOperationVisibleDocuments } from "@/lib/documents/operation-documents"
 import { sumOperationOperatorCosts } from "@/lib/operations/operation-financials"
+
+/** Señal interna: conservar los tramos y no tocar operation_legs. */
+class SkipLegsSync extends Error {}
 
 type IncomingOperatorPayload = {
   operator_id: string
@@ -19,6 +23,8 @@ type IncomingOperatorPayload = {
   notes?: string | null
   sale_amount?: number
   passenger_detail?: any
+  file_code?: string | null
+  payment_due_date?: string | null
 }
 
 function normalizeIncomingOperators(
@@ -37,7 +43,14 @@ function normalizeIncomingOperators(
       cost_currency: ((operatorData.cost_currency || fallbackCurrency || "USD").toUpperCase() === "ARS" ? "ARS" : "USD") as "ARS" | "USD",
       product_type: operatorData.product_type || null,
       notes: operatorData.notes || null,
+      // VIB-112: se distingue `undefined` (el caller no mandó el campo — hay que
+      // preservar el valor guardado) de `0` (lo puso en cero a propósito). Sin
+      // esto, un cliente con código viejo que mande `operators` sin sale_amount
+      // borraría el precio de venta por pata en el DELETE+INSERT de la RPC.
+      sale_amount: operatorData.sale_amount === undefined ? undefined : Number(operatorData.sale_amount) || 0,
       passenger_detail: operatorData.passenger_detail ?? null,
+      file_code: (operatorData.file_code && String(operatorData.file_code).trim()) || null,
+      payment_due_date: sanitizeDueDate(operatorData.payment_due_date),
     }))
 }
 
@@ -77,6 +90,19 @@ export async function GET(
           operator_id,
           operator_payment_id,
           operators:operator_id(id, name)
+        ),
+        operation_legs(
+          id,
+          order_index,
+          destination,
+          departure_date,
+          reservation_code_air,
+          airline_name,
+          itr_localizador,
+          hotel_name,
+          reservation_code_hotel,
+          checkin_date,
+          checkout_date
         ),
         iva_purchases(
           operator_id,
@@ -195,6 +221,24 @@ export async function PATCH(
       return NextResponse.json({ error: "No autorizado" }, { status: 403 })
     }
 
+    // v1 (2026-07-27): un SELLER no puede REASIGNAR el vendedor de una operación
+    // existente. El permiso can_create_operations_for_other_sellers habilita
+    // sólo el ALTA a nombre de otro (ver POST /api/operations); reasignar por
+    // edición queda fuera de alcance y se bloquea para no saltear ese límite.
+    if (userRole === "SELLER") {
+      const changesPrimary =
+        body.seller_id !== undefined && body.seller_id !== currentOp.seller_id
+      const changesSecondary =
+        body.seller_secondary_id !== undefined &&
+        (body.seller_secondary_id ?? null) !== (currentOp.seller_secondary_id ?? null)
+      if (changesPrimary || changesSecondary) {
+        return NextResponse.json(
+          { error: "No puedes reasignar el vendedor de una operación existente" },
+          { status: 403 }
+        )
+      }
+    }
+
     // Validaciones de fechas
     const today = new Date()
     today.setHours(0, 0, 0, 0)
@@ -252,28 +296,38 @@ export async function PATCH(
       body.commission_pct_primary != null &&
       body.commission_pct_secondary != null
     ) {
-      const primaryPctNum = Number(body.commission_pct_primary)
-      const secondaryPctNum = Number(body.commission_pct_secondary)
-
-      if (Number.isNaN(primaryPctNum) || Number.isNaN(secondaryPctNum) || primaryPctNum < 0 || secondaryPctNum < 0) {
-        return NextResponse.json(
-          { error: "Las comisiones deben ser números no negativos" },
-          { status: 400 }
-        )
-      }
-
+      // Reglas simétricas (VIB-63): cada vendedor hasta su propio porcentaje y
+      // el total hasta el mayor de los dos, sin importar quién es el principal.
       const effectivePrimaryId = body.seller_id ?? currentOp.seller_id
-      const { getSellerPercentage } = await import("@/lib/commissions/calculate")
-      const principalPct = await getSellerPercentage(effectivePrimaryId)
-      const sumOverrides = primaryPctNum + secondaryPctNum
+      const { resolveSellerCommissionProfiles } = await import(
+        "@/lib/commissions/seller-commission-profile"
+      )
+      const { validateManualSplit } = await import("@/lib/commissions/validate-shared-split")
 
-      if (sumOverrides > principalPct + 0.01) {
-        return NextResponse.json(
-          {
-            error: `La suma de comisiones (${sumOverrides.toFixed(2)}%) no puede superar la comisión del vendedor principal (${principalPct.toFixed(2)}%)`,
-          },
-          { status: 400 }
-        )
+      const profiles = await resolveSellerCommissionProfiles(supabase, (user as any).org_id, [
+        effectivePrimaryId,
+        effectiveSecondaryId,
+      ])
+      const primaryProfile = profiles.get(effectivePrimaryId)
+      const secondaryProfile = profiles.get(effectiveSecondaryId)
+
+      const validation = validateManualSplit(
+        {
+          sellerId: effectivePrimaryId,
+          name: primaryProfile?.name ?? null,
+          maxPercentage: primaryProfile?.percentage ?? null,
+          assignedPercentage: Number(body.commission_pct_primary),
+        },
+        {
+          sellerId: effectiveSecondaryId,
+          name: secondaryProfile?.name ?? null,
+          maxPercentage: secondaryProfile?.percentage ?? null,
+          assignedPercentage: Number(body.commission_pct_secondary),
+        }
+      )
+
+      if (!validation.ok) {
+        return NextResponse.json({ error: validation.error }, { status: 400 })
       }
     }
 
@@ -305,7 +359,16 @@ export async function PATCH(
     }
 
     // Extraer operators y legs del body para no enviarlos a la tabla operations
-    const { operators: incomingOperators, legs: incomingLegs, ...bodyWithoutOperators } = body
+    // OJO: todo lo que quede en bodyWithoutOperators se spreadea a updateData y
+    // va como columna a `operations`. Cualquier flag de control que mande el
+    // cliente TIENE que sacarse acá o el update falla con "column ... does not
+    // exist" (incidente 2026-07-21: `legs_replace` rompió todas las ediciones).
+    const {
+      operators: incomingOperators,
+      legs: incomingLegs,
+      legs_replace: incomingLegsReplace,
+      ...bodyWithoutOperators
+    } = body
     const normalizedIncomingOperators = normalizeIncomingOperators(
       incomingOperators,
       currentOp.operator_cost_currency || currentOp.sale_currency || currentOp.currency || "USD"
@@ -324,6 +387,8 @@ export async function PATCH(
       ? synchronizedOperators[0]
       : null
     const auditWarnings: string[] = []
+    // Snapshot de tramos borrados por un sync con lista vacía (ver más abajo).
+    let deletedLegsSnapshot: any[] | null = null
 
     if (usesIncomingOperators) {
       const hasInvalidOperatorCost = synchronizedOperators.some((operatorData) => Number.isNaN(operatorData.cost) || operatorData.cost < 0)
@@ -382,6 +447,20 @@ export async function PATCH(
       }
     }
 
+    // Modo del reparto (VIB-63). La regla vive en lib porque también la aplica
+    // el alta y porque el caso sutil —el formulario reenviando el snapshot que
+    // escribió el propio servidor— merece estar probado.
+    const nuevoModo = splitModeForUpdate({
+      secondaryRemoved: updateData.seller_secondary_id === null,
+      incomingPctPrimary: updateData.commission_pct_primary,
+      incomingPctSecondary: updateData.commission_pct_secondary,
+      storedPctPrimary: currentOp.commission_pct_primary,
+      storedPctSecondary: currentOp.commission_pct_secondary,
+    })
+    if (nuevoModo) {
+      updateData.commission_split_mode = nuevoModo
+    }
+
     const oldSaleAmount = currentOp.sale_amount_total
     const oldOperatorCost = currentOp.operator_cost
     const newSaleAmount = updateData.sale_amount_total ?? oldSaleAmount
@@ -398,14 +477,37 @@ export async function PATCH(
 
     let operatorRowsReplaced = false
     if (usesIncomingOperators) {
+      // VIB-112: preservación del precio de venta por pata cuando el caller no
+      // lo manda (sale_amount === undefined). La RPC hace DELETE+INSERT, así que
+      // sin esto un bundle viejo borraría el dato. Se aparea posicionalmente por
+      // operator_id: la N-ésima fila entrante de un operador toma el N-ésimo
+      // sale_amount guardado de ese operador.
+      const savedSaleAmountsByOperator = new Map<string, number[]>()
+      for (const row of (existingOperationOperators || []) as any[]) {
+        const key = String(row.operator_id)
+        const list = savedSaleAmountsByOperator.get(key) ?? []
+        list.push(Number(row.sale_amount) || 0)
+        savedSaleAmountsByOperator.set(key, list)
+      }
+      const consumedByOperator = new Map<string, number>()
+      const resolveSaleAmount = (operatorData: (typeof synchronizedOperators)[number]): number => {
+        if (operatorData.sale_amount !== undefined) return operatorData.sale_amount
+        const key = operatorData.operator_id
+        const idx = consumedByOperator.get(key) ?? 0
+        consumedByOperator.set(key, idx + 1)
+        return savedSaleAmountsByOperator.get(key)?.[idx] ?? 0
+      }
+
       const operatorsPayload = synchronizedOperators.map((operatorData) => ({
         operator_id: operatorData.operator_id,
         cost: operatorData.cost || 0,
         cost_currency: operatorData.cost_currency || "USD",
         product_type: operatorData.product_type || null,
         notes: operatorData.notes || null,
-        sale_amount: Number(operatorData.sale_amount) || 0,
+        sale_amount: resolveSaleAmount(operatorData),
         passenger_detail: operatorData.passenger_detail ?? null,
+        file_code: operatorData.file_code || null,
+        payment_due_date: operatorData.payment_due_date || null,
       }))
 
       const { error: rpcError } = await (supabase.rpc as any)("replace_operation_operators", {
@@ -439,8 +541,43 @@ export async function PATCH(
     // ============================================
     // SINCRONIZAR TRAMOS DEL VIAJE (operation_legs)
     // ============================================
+    // El sync es delete-all + insert: un cliente que manda `legs: []` sin haber
+    // cargado los tramos existentes los borra (bug 2026-07-21, dos operaciones
+    // de VICO perdidas sin backup).
+    //
+    // El front ya no manda `legs` si no los cargó, pero eso no alcanza: un
+    // navegador con el bundle viejo en memoria sigue mandando `legs: []`. Por eso
+    // la garantía vive acá: borrar TODOS los tramos existentes sólo se permite
+    // si el cliente lo afirma explícitamente con `legs_replace: true`, que sólo
+    // manda cuando pudo cargarlos. Sin esa marca, se conservan.
     if (Array.isArray(incomingLegs)) {
       try {
+        const { data: existingLegs } = await (supabase.from("operation_legs") as any)
+          .select("*")
+          .eq("operation_id", operationId)
+
+        const wouldWipeLegs = incomingLegs.length === 0 && (existingLegs?.length || 0) > 0
+        const clientConfirmedReplace = body.legs_replace === true
+
+        if (wouldWipeLegs && !clientConfirmedReplace) {
+          auditWarnings.push(
+            `Se conservaron ${existingLegs.length} tramo(s): llegó una lista vacía sin confirmación de reemplazo`
+          )
+          console.warn("[operations] PATCH con legs vacíos sin legs_replace, se conservan los tramos", {
+            operationId,
+            existingLegs: existingLegs.length,
+          })
+          // Salteamos el sync por completo: no se borra ni se inserta nada.
+          throw new SkipLegsSync()
+        }
+
+        if (wouldWipeLegs) {
+          deletedLegsSnapshot = existingLegs
+          auditWarnings.push(
+            `Se eliminaron ${existingLegs.length} tramo(s) del viaje (reemplazo confirmado por el cliente)`
+          )
+        }
+
         await (supabase.from("operation_legs") as any)
           .delete()
           .eq("operation_id", operationId)
@@ -468,8 +605,12 @@ export async function PATCH(
           }
         }
       } catch (error) {
-        console.error("Error sincronizando operation_legs:", error)
-        auditWarnings.push("Fallo inesperado sincronizando tramos del viaje")
+        // SkipLegsSync no es un fallo: es la salida deliberada que conserva los
+        // tramos cuando el cliente no confirmó el reemplazo.
+        if (!(error instanceof SkipLegsSync)) {
+          console.error("Error sincronizando operation_legs:", error)
+          auditWarnings.push("Fallo inesperado sincronizando tramos del viaje")
+        }
       }
     }
 
@@ -503,6 +644,9 @@ export async function PATCH(
           product_type: operatorData.product_type || null,
           notes: operatorData.notes || null,
           sale_amount: Number(operatorData.sale_amount) || 0,
+          passenger_detail: operatorData.passenger_detail ?? null,
+          file_code: operatorData.file_code || null,
+          payment_due_date: operatorData.payment_due_date || null,
         }))
 
         const { error: rpcError } = await (supabase.rpc as any)("replace_operation_operators", {
@@ -677,7 +821,7 @@ export async function PATCH(
               if (!opPay) {
                 if (operatorData.cost <= 0) continue
 
-                const dueDate = calculateDueDate(
+                const dueDate = operatorData.payment_due_date || calculateDueDate(
                   (operatorData.product_type || op.product_type || currentOp.product_type || null) as any,
                   op.operation_date || currentOp.operation_date || op.created_at?.split("T")[0],
                   op.checkin_date || currentOp.checkin_date || undefined,
@@ -692,7 +836,8 @@ export async function PATCH(
                   dueDate,
                   operationId,
                   `Deuda nueva por edición de operación ${op.file_code || operationId.slice(0, 8)}`,
-                  (user as any).org_id
+                  (user as any).org_id,
+                  operatorData.file_code || null
                 )
                 continue
               }
@@ -848,7 +993,7 @@ export async function PATCH(
 
           for (const operatorData of synchronizedOperators) {
             if (operatorData.cost > 0) {
-              const dueDate = calculateDueDate(
+              const dueDate = operatorData.payment_due_date || calculateDueDate(
                 (operatorData.product_type || op.product_type || currentOp.product_type || null) as any,
                 op.operation_date || currentOp.operation_date || op.created_at?.split("T")[0],
                 op.checkin_date || currentOp.checkin_date || undefined,
@@ -863,7 +1008,8 @@ export async function PATCH(
                 dueDate,
                 operationId,
                 `Pago automático actualizado para operación ${op.file_code || operationId.slice(0, 8)}`,
-                (user as any).org_id
+                (user as any).org_id,
+                operatorData.file_code || null
               )
             }
           }
@@ -937,11 +1083,22 @@ export async function PATCH(
     }
 
     // ============================================
-    // REASIGNAR OPERATOR_PAYMENTS SI CAMBIÓ EL OPERADOR
+    // REASIGNAR OPERATOR_PAYMENTS SI CAMBIÓ EL OPERADOR (SOLO PATH LEGACY MONO-OPERADOR)
     // ============================================
+    // 🔴 Bug fix (Lozada VG, op multi-operador "todo figura Sudameria"): este bloque
+    // es lógica legacy de operación con UN solo operador. `body.operator_id` es SIEMPRE
+    // el operador PRIMARIO (= operatorList[0]). En una operación multi-operador,
+    // reasignar a ciegas TODAS las deudas pendientes del viejo primario al nuevo
+    // COLAPSABA las deudas por servicio al operador primario (ej: la deuda de FTA
+    // quedaba con operator_id = Sudameria), y luego un pago a FTA se imputaba a Sudameria.
+    //
+    // Cuando usesIncomingOperators=true, los operator_payments YA se sincronizaron
+    // por línea con su operator_id correcto en el bloque de sync de arriba
+    // (guardado por operatorArtifactsChanged = usesIncomingOperators). Por eso acá
+    // solo corremos la reasignación en el path legacy (sin array de operadores).
     const oldOperatorId = currentOp.operator_id
     const newOperatorId = body.operator_id
-    if (newOperatorId && newOperatorId !== oldOperatorId) {
+    if (!usesIncomingOperators && newOperatorId && newOperatorId !== oldOperatorId) {
       try {
         // Reasignar todos los operator_payments pendientes al nuevo operador
         const { data: reassigned, error: reassignError } = await (supabase.from("operator_payments") as any)
@@ -977,16 +1134,47 @@ export async function PATCH(
     }
 
     // Calcular comisiones automáticamente en cada update (si tiene vendedor y margen)
-    let commissionData: { totalCommission: number; percentage: number; primaryCommission: number; secondaryCommission: number | null } | null = null
+    let commissionData: { totalCommission: number; primaryCommission: number; secondaryCommission: number | null } | null = null
     try {
-      const { calculateCommission, createOrUpdateCommissionRecords } = await import("@/lib/commissions/calculate")
-      commissionData = await calculateCommission(op)
+      const { recalculateOperationCommissions } = await import("@/lib/commissions/calculate")
+      const { plan } = await recalculateOperationCommissions(supabase, {
+        ...op,
+        org_id: op.org_id || (user as any).org_id,
+        seller_id: op.seller_id,
+        margin_amount: Number(op.margin_amount) || 0,
+      })
 
-      if (commissionData.totalCommission > 0) {
-        await createOrUpdateCommissionRecords(op, commissionData)
+      // Forma que espera el asiento contable de comisiones.
+      commissionData = {
+        totalCommission: plan.totalCommission,
+        primaryCommission: plan.entries.find((e) => e.role === "PRIMARY")?.amount ?? 0,
+        secondaryCommission: plan.entries.find((e) => e.role === "SECONDARY")?.amount ?? null,
       }
     } catch (error) {
       console.error("Error calculating commission:", error)
+    }
+
+    // Comisión al referidor (VIB-62): recalcular sobre el margen si el cliente MAIN
+    // viene referido. Idempotente: el servicio limpia/actualiza la comisión previa.
+    try {
+      const { data: mainCustomer } = await (supabase.from("operation_customers") as any)
+        .select("customer_id")
+        .eq("operation_id", operationId)
+        .eq("role", "MAIN")
+        .maybeSingle()
+      const { createOrUpdateReferralCommission } = await import("@/lib/referrals/calculate")
+      await createOrUpdateReferralCommission({
+        supabase,
+        operationId,
+        customerId: mainCustomer?.customer_id ?? null,
+        marginAmount: Number(op.margin_amount) || 0,
+        orgId: op.org_id,
+        agencyId: op.agency_id,
+        currency: op.sale_currency || op.currency,
+        operationDate: op.operation_date,
+      })
+    } catch (error) {
+      console.error("Error recalculando comisión de referido:", error)
     }
 
     // ============================================
@@ -1051,6 +1239,7 @@ export async function PATCH(
             }))
           : null,
         warnings: auditWarnings,
+        deleted_legs: deletedLegsSnapshot,
       },
       ip_address: getClientIP(request) || undefined,
     })

@@ -10,6 +10,7 @@ jest.mock("@/lib/supabase/server", () => ({
 jest.mock("@/lib/billing/mercadopago", () => ({
   verifyWebhookSignature: jest.fn(),
   fetchPayment: jest.fn(),
+  fetchAuthorizedPayment: jest.fn(),
   fetchPreapproval: jest.fn(),
   searchPreapprovalsByPayerEmail: jest.fn(),
 }))
@@ -21,12 +22,14 @@ import { createAdminClient } from "@/lib/supabase/server"
 import {
   verifyWebhookSignature,
   fetchPayment,
+  fetchAuthorizedPayment,
   fetchPreapproval,
 } from "@/lib/billing/mercadopago"
 
 const mockCreateAdmin = createAdminClient as jest.Mock
 const mockVerify = verifyWebhookSignature as jest.Mock
 const mockFetchPayment = fetchPayment as jest.Mock
+const mockFetchAuthPayment = fetchAuthorizedPayment as jest.Mock
 const mockFetchPreapproval = fetchPreapproval as jest.Mock
 
 /**
@@ -34,7 +37,7 @@ const mockFetchPreapproval = fetchPreapproval as jest.Mock
  *  - organizations → cfg.orgData
  *  - billing_events → cfg.maybeSingleData (dup lookup / recentRejection)
  */
-function makeAdmin(cfg: { rawInsert?: any; maybeSingleData?: any; orgData?: any }) {
+function makeAdmin(cfg: { rawInsert?: any; maybeSingleData?: any; orgData?: any; updates?: any[] }) {
   const builder = (table: string): any => {
     const b: any = {
       select: () => b,
@@ -50,7 +53,10 @@ function makeAdmin(cfg: { rawInsert?: any; maybeSingleData?: any; orgData?: any 
         Promise.resolve({
           data: table === "organizations" ? cfg.orgData ?? null : cfg.maybeSingleData ?? null,
         }),
-      update: () => ({ eq: () => Promise.resolve({ error: null }) }),
+      update: (payload: any) => {
+        if (cfg.updates) cfg.updates.push({ table, payload })
+        return { eq: () => Promise.resolve({ error: null }) }
+      },
       insert: () => ({
         select: () => ({
           single: () =>
@@ -127,7 +133,7 @@ describe("POST /api/billing/mp-webhook", () => {
 
   it("un preapproval PENDING no revoca el acceso vigente (PAST_DUE en gracia)", async () => {
     mockVerify.mockReturnValue(true)
-    // Org PAST_DUE con gracia vigente (period vence en +2 días → dentro de los 3 de gracia).
+    // Org PAST_DUE con gracia vigente (period vence en +2 días → dentro de los 5 de gracia).
     const graceFuture = new Date(Date.now() + 2 * 24 * 3600 * 1000).toISOString()
     mockCreateAdmin.mockReturnValue(
       makeAdmin({
@@ -158,5 +164,188 @@ describe("POST /api/billing/mp-webhook", () => {
     // Clave: NO baja a PENDING_PAYMENT; preserva el estado con acceso.
     expect(json.preserved_access).toBe(true)
     expect(json.kept_status).toBe("PAST_DUE")
+  })
+
+  it("subscription_authorized_payment SIN preapproval_id en el body → busca el authorized_payment y linkea a ACTIVE (caso per-org)", async () => {
+    mockVerify.mockReturnValue(true)
+    const updates: any[] = []
+    mockCreateAdmin.mockReturnValue(
+      makeAdmin({
+        rawInsert: { data: { id: "raw-1" }, error: null },
+        maybeSingleData: null,
+        orgData: {
+          id: "org-1", name: "Milla Cero", subscription_status: "PAST_DUE",
+          current_period_ends_at: null, trial_ends_at: null, mp_last_synced_at: null,
+        },
+        updates,
+      })
+    )
+    // El webhook trae solo el id del authorized_payment (data.id), sin preapproval_id.
+    mockFetchAuthPayment.mockResolvedValue({
+      preapproval_id: "pa-perorg",
+      status: "processed",
+      payment: { id: 170162139791, status: "approved" },
+    })
+    mockFetchPreapproval.mockResolvedValue({
+      id: "pa-perorg", status: "authorized",
+      external_reference: "org-1", // resuelve la org por acá
+      last_modified: new Date().toISOString(),
+      next_payment_date: "2026-08-29T13:36:18.000Z",
+      auto_recurring: { transaction_amount: 119000, currency_id: "ARS" },
+    })
+
+    const res = await POST(req("type=subscription_authorized_payment&data.id=authpay-1"))
+    expect(res.status).toBe(200)
+    // Buscó el authorized_payment con el id del webhook.
+    expect(mockFetchAuthPayment).toHaveBeenCalledWith("authpay-1")
+    // Linkeó: dejó ACTIVE con el preapproval y el vencimiento real.
+    const orgUpdate = updates.find((u) => u.table === "organizations" && u.payload.subscription_status)
+    expect(orgUpdate).toBeTruthy()
+    expect(orgUpdate.payload.subscription_status).toBe("ACTIVE")
+    expect(orgUpdate.payload.mp_preapproval_id).toBe("pa-perorg")
+    expect(orgUpdate.payload.current_period_ends_at).toBe("2026-08-29T13:36:18.000Z")
+  })
+
+  it("subscription_authorized_payment CON preapproval_id en el body → NO llama al fetch nuevo (flujo estándar intacto)", async () => {
+    mockVerify.mockReturnValue(true)
+    mockCreateAdmin.mockReturnValue(
+      makeAdmin({
+        rawInsert: { data: { id: "raw-1" }, error: null },
+        maybeSingleData: null,
+        orgData: {
+          id: "org-2", name: "Empresa Mensual", subscription_status: "ACTIVE",
+          current_period_ends_at: null, trial_ends_at: null, mp_last_synced_at: null,
+        },
+      })
+    )
+    mockFetchPreapproval.mockResolvedValue({
+      id: "pa-std", status: "authorized", external_reference: "org-2",
+      last_modified: new Date().toISOString(),
+      next_payment_date: "2026-09-01T00:00:00Z",
+      auto_recurring: { transaction_amount: 119000, currency_id: "ARS" },
+    })
+
+    // El body trae preapproval_id → no debe tocar el authorized_payment endpoint.
+    const r = new Request("http://localhost/api/billing/mp-webhook?type=subscription_authorized_payment&data.id=authpay-2", {
+      method: "POST",
+      body: JSON.stringify({ preapproval_id: "pa-std", status: "approved" }),
+    })
+    const res = await POST(r)
+    expect(res.status).toBe(200)
+    expect(mockFetchAuthPayment).not.toHaveBeenCalled()
+    expect(mockFetchPreapproval).toHaveBeenCalledWith("pa-std")
+  })
+})
+
+/**
+ * Grandfathering: el webhook es el writer autoritativo del precio pactado —
+ * el checkout sabe lo que PIDIÓ, acá sabemos lo que MP autorizó.
+ */
+describe("POST /api/billing/mp-webhook — snapshot del precio pactado", () => {
+  const baseOrg = {
+    id: "org-1",
+    name: "Lozada",
+    plan: "PRO",
+    custom_plan_id: null,
+    subscription_status: "PAST_DUE",
+    current_period_ends_at: null,
+    trial_ends_at: null,
+    mp_last_synced_at: null,
+  }
+
+  function setup(orgOverrides: any = {}) {
+    const updates: any[] = []
+    mockVerify.mockReturnValue(true)
+    mockCreateAdmin.mockReturnValue(
+      makeAdmin({
+        rawInsert: { data: { id: "raw-1" }, error: null },
+        maybeSingleData: null,
+        orgData: { ...baseOrg, ...orgOverrides },
+        updates,
+      })
+    )
+    return updates
+  }
+
+  function orgUpdateFrom(updates: any[]) {
+    return updates.find((u) => u.table === "organizations" && u.payload.subscription_status)
+  }
+
+  /** Pago aprobado: MP debitó 119000 aunque el precio de lista ya sea 139000. */
+  function approvedPayment(amount = 119000) {
+    mockFetchPreapproval.mockResolvedValue({
+      id: "pa-1",
+      status: "authorized",
+      external_reference: "org-1",
+      last_modified: new Date().toISOString(),
+      next_payment_date: "2026-09-10T00:00:00Z",
+      auto_recurring: { transaction_amount: amount, currency_id: "ARS" },
+    })
+    return new Request(
+      "http://localhost/api/billing/mp-webhook?type=subscription_authorized_payment&data.id=authpay-1",
+      { method: "POST", body: JSON.stringify({ preapproval_id: "pa-1", status: "approved" }) }
+    )
+  }
+
+  it("un pago aprobado congela el monto que MP debitó", async () => {
+    const updates = setup()
+    const res = await POST(approvedPayment(119000))
+    expect(res.status).toBe(200)
+
+    const orgUpdate = orgUpdateFrom(updates)
+    expect(orgUpdate.payload).toMatchObject({
+      subscription_status: "ACTIVE",
+      agreed_plan_price_ars: 119000,
+      agreed_plan_id: "PRO",
+      agreed_plan_price_source: "mp_webhook",
+    })
+  })
+
+  it("un pago RECHAZADO no pisa el precio pactado que ya había", async () => {
+    const updates = setup()
+    mockFetchPreapproval.mockResolvedValue({
+      id: "pa-1",
+      status: "authorized",
+      external_reference: "org-1",
+      last_modified: new Date().toISOString(),
+      auto_recurring: { transaction_amount: 139000, currency_id: "ARS" },
+    })
+    const r = new Request(
+      "http://localhost/api/billing/mp-webhook?type=subscription_authorized_payment&data.id=authpay-2",
+      { method: "POST", body: JSON.stringify({ preapproval_id: "pa-1", status: "rejected" }) }
+    )
+
+    const res = await POST(r)
+    expect(res.status).toBe(200)
+    const orgUpdate = orgUpdateFrom(updates)
+    expect(orgUpdate.payload.subscription_status).toBe("PAST_DUE")
+    expect(orgUpdate.payload).not.toHaveProperty("agreed_plan_price_ars")
+  })
+
+  it("no congela precio si la org tiene custom plan (ese contrato manda)", async () => {
+    const updates = setup({ custom_plan_id: "cp-1", plan: "ENTERPRISE" })
+    const res = await POST(approvedPayment(450000))
+    expect(res.status).toBe(200)
+    expect(orgUpdateFrom(updates).payload).not.toHaveProperty("agreed_plan_price_ars")
+  })
+
+  it("el early-return de acceso preservado no escribe precio", async () => {
+    // Preapproval pending + org con gracia vigente → sale por preserved_access.
+    const updates = setup({
+      current_period_ends_at: new Date(Date.now() + 2 * 24 * 3600 * 1000).toISOString(),
+    })
+    mockFetchPreapproval.mockResolvedValue({
+      id: "pa-pending",
+      status: "pending",
+      external_reference: "org-1",
+      last_modified: new Date().toISOString(),
+      auto_recurring: { transaction_amount: 139000, currency_id: "ARS" },
+    })
+
+    const res = await POST(req("type=subscription_preapproval&data.id=pa-pending"))
+    expect((await res.json()).preserved_access).toBe(true)
+    for (const u of updates) {
+      expect(u.payload).not.toHaveProperty("agreed_plan_price_ars")
+    }
   })
 })

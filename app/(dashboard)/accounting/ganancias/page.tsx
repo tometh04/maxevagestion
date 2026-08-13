@@ -35,6 +35,34 @@ export default function GananciasPage() {
 
   const quarterLabel = `Q${quarter} ${year} (${["Ene-Mar", "Abr-Jun", "Jul-Sep", "Oct-Dic"][quarter - 1]})`
 
+  /**
+   * Importe en las dos monedas. ARS y USD nunca se suman entre sí: el endpoint
+   * los devuelve separados y acá se muestran como dos renglones. Antes llegaba
+   * un solo número con las dos monedas sumadas y se dibujaba con "US$".
+   * La línea en pesos se omite si es cero, para no ensuciar a las agencias que
+   * operan en una sola moneda.
+   */
+  const MoneyPair = ({
+    value,
+    className = "",
+    sign = "",
+  }: {
+    value?: { ars?: number; usd?: number } | null
+    className?: string
+    sign?: string
+  }) => (
+    <div className="text-right">
+      <p className={`font-medium ${className}`}>
+        {sign}{formatMoney(value?.usd ?? 0, "USD")}
+      </p>
+      {!!value?.ars && (
+        <p className={`text-sm ${className}`}>
+          {sign}{formatMoney(value.ars)}
+        </p>
+      )}
+    </div>
+  )
+
   return (
     <div className="space-y-6">
       <div>
@@ -104,7 +132,10 @@ export default function GananciasPage() {
                 {data.gastos.total_ars > 0 && (
                   <p className="text-sm text-destructive">+ {formatMoney(data.gastos.total_ars)}</p>
                 )}
-                <p className="text-xs text-muted-foreground">Comisiones: {formatMoney(data.gastos.comisiones, "USD")}</p>
+                <p className="text-xs text-muted-foreground">
+                  Comisiones: {formatMoney(data.gastos.comisiones?.usd ?? 0, "USD")}
+                  {!!data.gastos.comisiones?.ars && ` + ${formatMoney(data.gastos.comisiones.ars)}`}
+                </p>
               </CardContent>
             </Card>
             <Card>
@@ -132,7 +163,9 @@ export default function GananciasPage() {
                   <p className="text-sm text-accent-coral">+ {formatMoney(data.provision.estimated_ars)}</p>
                 )}
                 <p className="text-xs text-muted-foreground">
-                  Ret. sufridas: {formatMoney(data.provision.retenciones_sufridas)}
+                  Ret. sufridas: {formatMoney(data.provision.retenciones_sufridas?.ars ?? 0)}
+                  {!!data.provision.retenciones_sufridas?.usd &&
+                    ` + ${formatMoney(data.provision.retenciones_sufridas.usd, "USD")}`}
                 </p>
               </CardContent>
             </Card>
@@ -162,25 +195,42 @@ export default function GananciasPage() {
                 </div>
                 <div className="flex justify-between py-2 border-b">
                   <span className="text-sm">- Comisiones vendedores</span>
-                  <p className="font-medium text-destructive">- {formatMoney(data.gastos.comisiones, "USD")}</p>
+                  <MoneyPair value={data.gastos.comisiones} className="text-destructive" sign="- " />
                 </div>
+                {/* Las dos monedas bajan por la columna en paralelo: cada renglón
+                    resta lo suyo de lo suyo, así el desglose se puede seguir de
+                    arriba a abajo sin que aparezca ni desaparezca una moneda. */}
                 <div className="flex justify-between py-2 border-b bg-muted/30 px-2 rounded">
                   <span className="text-sm font-bold">= Resultado antes de impuestos</span>
-                  <p className={`font-bold ${data.resultado.profit_before_tax_usd >= 0 ? "text-success" : "text-destructive"}`}>
-                    {formatMoney(data.resultado.profit_before_tax_usd, "USD")}
-                  </p>
+                  <div className="text-right">
+                    <p className={`font-bold ${data.resultado.profit_before_tax_usd >= 0 ? "text-success" : "text-destructive"}`}>
+                      {formatMoney(data.resultado.profit_before_tax_usd, "USD")}
+                    </p>
+                    {data.resultado.profit_before_tax_ars !== 0 && (
+                      <p className={`text-sm font-bold ${data.resultado.profit_before_tax_ars >= 0 ? "text-success" : "text-destructive"}`}>
+                        {formatMoney(data.resultado.profit_before_tax_ars)}
+                      </p>
+                    )}
+                  </div>
                 </div>
                 <div className="flex justify-between py-2 border-b">
                   <span className="text-sm">× Alícuota Ganancias ({data.provision.rate}%)</span>
-                  <p className="font-medium text-accent-coral">= {formatMoney(data.provision.estimated_usd, "USD")}</p>
+                  <MoneyPair
+                    value={{ ars: data.provision.estimated_ars, usd: data.provision.estimated_usd }}
+                    className="text-accent-coral"
+                    sign="= "
+                  />
                 </div>
                 <div className="flex justify-between py-2 border-b">
                   <span className="text-sm">- Retenciones de Ganancias sufridas</span>
-                  <p className="font-medium text-success">- {formatMoney(data.provision.retenciones_sufridas)}</p>
+                  <MoneyPair value={data.provision.retenciones_sufridas} className="text-success" sign="- " />
                 </div>
                 <div className="flex justify-between py-3 font-bold text-lg">
                   <span>= Provisión Neta Estimada</span>
-                  <p className="text-accent-coral">{formatMoney(data.provision.neto_ars)}</p>
+                  <MoneyPair
+                    value={{ ars: data.provision.neto_ars, usd: data.provision.neto_usd }}
+                    className="text-accent-coral"
+                  />
                 </div>
               </div>
             </CardContent>

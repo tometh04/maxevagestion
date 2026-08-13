@@ -1,0 +1,5 @@
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+
+exports[`generateExpensesReportPdf mantiene el output byte-a-byte (guarda del refactor del kit): huella 1`] = `"02c075fea70d68ed56435bbe4488e1b910e08c5d8d0998f056bcbfc5ebb6da73"`;
+
+exports[`generateExpensesReportPdf mantiene el output byte-a-byte (guarda del refactor del kit): longitud 1`] = `46743`;

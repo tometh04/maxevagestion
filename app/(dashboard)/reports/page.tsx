@@ -73,6 +73,9 @@ export default async function ReportsPage() {
   return (
     <ReportsPageClient
       userRole={user.role}
+      // Roles adicionales incluidos: un SELLER con CONTABLE cargado como rol
+      // extra tiene que ver las mismas pestañas que un CONTABLE.
+      userRoles={((user as any).roles ?? [user.role]) as string[]}
       userId={user.id}
       sellers={sellers}
       agencies={agencies || []}

@@ -69,6 +69,30 @@ export function requiresCustomerIncomeExchangeRate({
   return normalizeSupportedCurrency(paymentCurrency) !== normalizeSupportedCurrency(saleCurrency)
 }
 
+/**
+ * Sanea el tipo de cambio ARS/USD ingresado a mano contra el TC de referencia del
+ * mercado. Un cobro en ARS sobre una venta en USD (o viceversa) exige un TC real
+ * (~1500 ARS/USD hoy); el sistema ya obliga a que NO esté vacío, pero aceptaba
+ * valores absurdos como 1 ("1 peso = 1 dólar"), que hacían amount_usd = monto en
+ * ARS y destruían la deuda del cliente (caso real op #17955bf1: deuda USD 1.270 →
+ * USD -1.948.180).
+ *
+ * Banda amplia (factor 10) a propósito: solo bloquea errores de ORDEN DE MAGNITUD
+ * (1, 10, 100 cuando el mercado es ~1500), no diferencias razonables de cotización.
+ * Si no hay TC de referencia disponible, no bloquea (devuelve true).
+ */
+export function isExchangeRatePlausibleVsMarket(
+  rate: number | null | undefined,
+  marketRate: number | null | undefined
+): boolean {
+  const r = coercePositiveNumber(rate)
+  if (!r) return false
+  const m = coercePositiveNumber(marketRate)
+  if (!m) return true // sin referencia, no bloquear
+  const ratio = r / m
+  return ratio >= 0.1 && ratio <= 10
+}
+
 export function calculateAmountInSaleCurrency({
   paymentCurrency,
   saleCurrency,

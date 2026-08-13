@@ -26,33 +26,50 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const agencyId = searchParams.get("agencyId")
 
-  // RLS + filtro explícito (defense-in-depth)
-  let query = supabase
-    .from("purchase_invoices")
-    .select(
-      `id, invoice_type, invoice_number, invoice_date, currency,
-       net_amount, total_amount, total_ars_equivalent, status, notes, created_at,
-       operator:operator_id (id, name, cuit),
-       operation:operation_id (id, file_code, destination, agency_id, seller_id)`,
-    )
-    .eq("org_id", user.org_id) // 🔴 scope multi-tenant explícito
-    .neq("status", "PAID")
-    .order("invoice_date", { ascending: true })
-    .limit(500)
+  // VIB-61 (audit): antes esto traía `.limit(500)` y filtraba por agencia/seller
+  // EN MEMORIA después del corte, y los totales (deuda a proveedores ARS/USD +
+  // count) se sumaban sobre ese set truncado → la deuda subreportaba en orgs con
+  // muchas facturas abiertas. Ahora:
+  //  - El filtro de agencia/seller va en la query (inner join), no en memoria.
+  //  - Traemos TODAS las facturas impagas (paginado) para que los totales sean
+  //    el agregado real, no el de las 500 más antiguas.
+  const filterAgency = !!(agencyId && agencyId !== "all")
+  const filterSeller = user.role === "SELLER"
+  const needInnerOp = filterAgency || filterSeller
 
-  const { data, error } = await query
+  // El join a operation es !inner solo cuando filtramos por un campo suyo, para
+  // que el filtro realmente acote (y preservar el comportamiento previo: al
+  // filtrar por agencia/seller se excluían las facturas sin operación asociada).
+  const opSelect = needInnerOp
+    ? `operation:operation_id!inner (id, file_code, destination, agency_id, seller_id)`
+    : `operation:operation_id (id, file_code, destination, agency_id, seller_id)`
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  const buildQuery = () => {
+    let q = (supabase.from("purchase_invoices") as any)
+      .select(
+        `id, invoice_type, invoice_number, invoice_date, currency,
+         net_amount, total_amount, total_ars_equivalent, status, notes, created_at,
+         operator:operator_id (id, name, cuit),
+         ${opSelect}`,
+      )
+      .eq("org_id", user.org_id) // 🔴 scope multi-tenant explícito
+      .neq("status", "PAID")
+    if (filterAgency) q = q.eq("operation.agency_id", agencyId)
+    if (filterSeller) q = q.eq("operation.seller_id", user.id)
+    return q.order("invoice_date", { ascending: true })
   }
 
-  let rows = (data || []) as any[]
-
-  if (agencyId && agencyId !== "all") {
-    rows = rows.filter((r) => r.operation?.agency_id === agencyId)
-  }
-  if (user.role === "SELLER") {
-    rows = rows.filter((r) => r.operation?.seller_id === user.id)
+  // Traer todas las filas paginando (evita el techo de max-rows de PostgREST).
+  const PAGE = 1000
+  const rows: any[] = []
+  for (let from = 0; from <= 100000; from += PAGE) {
+    const { data, error } = await buildQuery().range(from, from + PAGE - 1)
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+    const batch = (data || []) as any[]
+    rows.push(...batch)
+    if (batch.length < PAGE) break
   }
 
   // Calcular días desde la fecha de la factura

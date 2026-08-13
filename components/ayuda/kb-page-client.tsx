@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { Search, BookOpen, FileText, ChevronRight, Plane, DollarSign, Users, Settings, BarChart3, ShoppingCart, Calculator, Bell, Play } from "lucide-react"
+import { Search, BookOpen, FileText, ChevronRight, Plane, DollarSign, Users, Settings, BarChart3, ShoppingCart, Calculator, Bell, Play, Sparkles } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -20,6 +20,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Bell,
   BookOpen,
   FileText,
+  Sparkles,
 }
 
 interface KbPageClientProps {

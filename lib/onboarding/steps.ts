@@ -1,53 +1,14 @@
-// Definición de los pasos del onboarding de bienvenida.
+// Progreso ORG-SCOPED de la configuración inicial de la agencia.
 //
-// Vive en lib/ (no "use client") para que tanto los componentes cliente
-// (tour/checklist) como el endpoint server-side de persistencia puedan
-// compartir las mismas keys sin importar un módulo client.
+// El contenido de los pasos (títulos, textos, anclas) vive en
+// lib/tours/definitions/setup-cuenta.ts. Acá queda solo el estado persistido,
+// que consumen tanto el cliente como el endpoint de persistencia.
+//
+// ONBOARDING_STEP_KEYS es una lista literal a propósito y no se deriva del
+// registry de guías: el sanitizer no debe depender de él (evita un ciclo de
+// imports). El test de invariantes verifica que ambas listas coincidan.
 
-export interface OnboardingStep {
-  key: string
-  title: string
-  description: string
-  route: string
-  icon: string
-}
-
-export const ONBOARDING_STEPS: OnboardingStep[] = [
-  {
-    key: "empresa",
-    title: "Completar datos de empresa",
-    description:
-      'Cargá razón social, CUIT, dirección y logo. Esta info aparece en facturas y presupuestos. Completá los campos en el tab "Mi Empresa" y hacé click en Guardar.',
-    route: "/settings?tab=interface",
-    icon: "🏢",
-  },
-  {
-    key: "usuarios",
-    title: "Invitar a tu equipo",
-    description:
-      "Sumá vendedores, contadores o administradores. Cada rol ve solo lo que le corresponde. Usá el botón Invitar usuario.",
-    route: "/settings?tab=users",
-    icon: "👥",
-  },
-  {
-    key: "cuenta",
-    title: "Crear una cuenta financiera",
-    description:
-      "Necesitás al menos una cuenta (caja, banco, billetera) para registrar cobros y pagos. Usá el botón + Nueva cuenta.",
-    route: "/accounting/financial-accounts",
-    icon: "💰",
-  },
-  {
-    key: "afip",
-    title: "Conectar AFIP",
-    description:
-      "Habilitá la facturación electrónica para emitir facturas A, B y C. Subí tu certificado digital y configurá el punto de venta.",
-    route: "/settings?tab=afip",
-    icon: "📄",
-  },
-]
-
-export const ONBOARDING_STEP_KEYS = ONBOARDING_STEPS.map((s) => s.key)
+export const ONBOARDING_STEP_KEYS = ["empresa", "usuarios", "cuenta", "afip"]
 
 // Key bajo la que se guarda el estado del onboarding en organization_settings
 // (KV por org). El progreso es a nivel ORGANIZACIÓN: los pasos (datos de

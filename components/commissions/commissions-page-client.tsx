@@ -17,17 +17,35 @@ interface CommissionsPageClientProps {
   sellerId: string
 }
 
-interface MonthlySummary {
-  month: string
+interface MonthlyCurrencyTotals {
   total: number
   pending: number
   paid: number
   count: number
 }
 
+interface MonthlySummary {
+  month: string
+  count: number
+  /** Separados por moneda: ARS y USD nunca se suman entre sí. */
+  ARS: MonthlyCurrencyTotals
+  USD: MonthlyCurrencyTotals
+}
+
+const CURRENCIES = ["ARS", "USD"] as const
+
+const fmtMoney = (value: number, currency: (typeof CURRENCIES)[number]) =>
+  new Intl.NumberFormat("es-AR", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 2,
+  }).format(value || 0)
+
 export function CommissionsPageClient({ sellerId }: CommissionsPageClientProps) {
   const [commissions, setCommissions] = useState<Commission[]>([])
   const [monthlySummary, setMonthlySummary] = useState<MonthlySummary[]>([])
+  // Lo decide el servidor: a un vendedor no le llega el margen de la operación.
+  const [canViewOperationEconomics, setCanViewOperationEconomics] = useState(false)
   const [loading, setLoading] = useState(false)
   const [statusFilter, setStatusFilter] = useState("ALL")
   const [monthFilter, setMonthFilter] = useState("ALL")
@@ -48,6 +66,7 @@ export function CommissionsPageClient({ sellerId }: CommissionsPageClientProps) 
       const data = await response.json()
       setCommissions(data.commissions || [])
       setMonthlySummary(data.monthlySummary || [])
+      setCanViewOperationEconomics(!!data.canViewOperationEconomics)
     } catch (error) {
       console.error("Error fetching commissions:", error)
     } finally {
@@ -147,9 +166,12 @@ export function CommissionsPageClient({ sellerId }: CommissionsPageClientProps) 
             </SelectContent>
           </Select>
 
+          {/* Mes de la VENTA. `/api/commissions` filtra por
+              `operations.operation_date`: `date_calculated` se reescribe en
+              cada recálculo de comisiones y el filtro devolvía cualquier cosa. */}
           <Select value={monthFilter} onValueChange={setMonthFilter}>
             <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
-              <SelectValue placeholder="Mes" />
+              <SelectValue placeholder="Mes de venta" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">Todos los meses</SelectItem>
@@ -184,13 +206,17 @@ export function CommissionsPageClient({ sellerId }: CommissionsPageClientProps) 
                     </p>
                     <p className="text-sm text-muted-foreground">{summary.count} comisiones</p>
                   </div>
-                  <div className="text-right">
-                    <p className="font-medium">
-                      ${summary.total.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      ${summary.paid.toLocaleString("es-AR", { minimumFractionDigits: 2 })} pagadas
-                    </p>
+                  <div className="text-right space-y-1">
+                    {CURRENCIES.filter((c) => summary[c]?.count > 0).map((currency) => (
+                      <div key={currency}>
+                        <p className="font-medium tabular-nums">
+                          {fmtMoney(summary[currency].total, currency)}
+                        </p>
+                        <p className="text-xs text-muted-foreground tabular-nums">
+                          {fmtMoney(summary[currency].paid, currency)} pagadas
+                        </p>
+                      </div>
+                    ))}
                   </div>
                 </div>
               ))}
@@ -204,6 +230,7 @@ export function CommissionsPageClient({ sellerId }: CommissionsPageClientProps) 
         commissions={commissions}
         isLoading={loading}
         emptyMessage="No hay comisiones con los filtros seleccionados"
+        showMargin={canViewOperationEconomics}
       />
     </div>
   )

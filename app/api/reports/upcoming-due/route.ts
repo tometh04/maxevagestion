@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
-import { getCurrentUser } from "@/lib/auth"
+import { getRequestPermissions } from "@/lib/permissions/request"
+import { isOwnDataOnlyResolved } from "@/lib/permissions-api"
 
 export const dynamic = "force-dynamic"
 
@@ -16,8 +16,7 @@ export const dynamic = "force-dynamic"
  * Para SELLER: solo sus propias operaciones.
  */
 export async function GET(request: Request) {
-  const { user } = await getCurrentUser()
-  const supabase = await createServerClient()
+  const { user, supabase, matrix } = await getRequestPermissions()
   const { searchParams } = new URL(request.url)
 
   // 🔴 Fix cross-tenant CRÍTICO (2026-05-18, Tomi reportó VICO viendo
@@ -39,61 +38,67 @@ export async function GET(request: Request) {
   const todayStr = today.toISOString().split("T")[0]
   const limitStr = limit.toISOString().split("T")[0]
 
-  // 1. Pagos de clientes pending (lo que nos deben)
-  // Incluimos también pagos con date_due = NULL (sin fecha asignada) porque
-  // son deuda real que no aparecería si solo filtráramos por rango de fecha.
-  // El filtro de rango se aplica solo a los que tienen fecha definida.
-  let customerQuery = supabase
-    .from("payments")
-    .select(
-      `id, amount, currency, date_due, status, payer_type, direction,
-       operation:operation_id (id, file_code, destination, agency_id, seller_id,
-         operation_customers(customer:customer_id(first_name, last_name)))`,
+  // VIB-61 (audit): antes cada lista traía .limit(500) con las deudas SIN fecha
+  // (date_due IS NULL) ordenadas al final → si había >500 vencimientos, las
+  // deudas sin fecha (deuda real) quedaban cortadas. Y los filtros de agencia/
+  // seller corrían en memoria sobre ese set truncado. Ahora:
+  //  - Los filtros de agencia/seller van en la query (inner join en operation).
+  //  - Traemos por separado las deudas CON fecha (en la ventana) y las SIN fecha,
+  //    cada una con su tope, así las sin fecha nunca se pierden por las con fecha.
+  //  - `truncated` avisa si algún bucket llegó al tope.
+  const CAP = 1000
+  const ownDataOnly = isOwnDataOnlyResolved(user, "reports", matrix ?? undefined)
+  const filterAgency = !!(agencyId && agencyId !== "all")
+  const needInner = filterAgency || ownDataOnly
+  const opEmbed = needInner ? "operation:operation_id!inner" : "operation:operation_id"
+
+  const applyOpFilters = (q: any) => {
+    if (filterAgency) q = q.eq("operation.agency_id", agencyId)
+    if (ownDataOnly) q = q.eq("operation.seller_id", user.id)
+    return q
+  }
+
+  const custSelect = `id, amount, currency, date_due, status, payer_type, direction,
+    ${opEmbed} (id, file_code, destination, agency_id, seller_id,
+      operation_customers(customer:customer_id(first_name, last_name)))`
+  const custBase = () =>
+    applyOpFilters(
+      (supabase.from("payments") as any)
+        .select(custSelect)
+        .eq("org_id", user.org_id)
+        .eq("payer_type", "CUSTOMER")
+        .in("status", ["PENDING", "OVERDUE"]),
     )
-    .eq("org_id", user.org_id) // 🔴 scope multi-tenant explícito
-    .eq("payer_type", "CUSTOMER")
-    .in("status", ["PENDING", "OVERDUE"])
-    .or(`date_due.lte.${limitStr},date_due.is.null`)
-    .order("date_due", { ascending: true, nullsFirst: false })
-    .limit(500)
 
-  // 2. Pagos a operadores pending (lo que tenemos que pagar)
-  // Igual: incluimos due_date = NULL para no perder deudas sin fecha.
-  let operatorQuery = supabase
-    .from("operator_payments")
-    .select(
-      `id, amount, currency, due_date, status,
-       operator:operator_id (id, name),
-       operation:operation_id (id, file_code, destination, agency_id, seller_id)`,
+  const opSelect = `id, amount, currency, due_date, status,
+    operator:operator_id (id, name),
+    ${opEmbed} (id, file_code, destination, agency_id, seller_id)`
+  const opBase = () =>
+    applyOpFilters(
+      (supabase.from("operator_payments") as any)
+        .select(opSelect)
+        .eq("org_id", user.org_id)
+        .in("status", ["PENDING", "OVERDUE"]),
     )
-    .eq("org_id", user.org_id) // 🔴 scope multi-tenant explícito
-    .in("status", ["PENDING", "OVERDUE"])
-    .or(`due_date.lte.${limitStr},due_date.is.null`)
-    .order("due_date", { ascending: true, nullsFirst: false })
-    .limit(500)
 
-  const [customerRes, operatorRes] = await Promise.all([customerQuery, operatorQuery])
+  const [custDated, custUndated, opDated, opUndated] = await Promise.all([
+    custBase().not("date_due", "is", null).lte("date_due", limitStr).order("date_due", { ascending: true }).limit(CAP),
+    custBase().is("date_due", null).limit(CAP),
+    opBase().not("due_date", "is", null).lte("due_date", limitStr).order("due_date", { ascending: true }).limit(CAP),
+    opBase().is("due_date", null).limit(CAP),
+  ])
 
-  if (customerRes.error) {
-    console.error("[upcoming-due] customer payments error:", customerRes.error.message)
-  }
-  if (operatorRes.error) {
-    console.error("[upcoming-due] operator payments error:", operatorRes.error.message)
+  for (const r of [custDated, custUndated, opDated, opUndated]) {
+    if (r.error) console.error("[upcoming-due] error:", r.error.message)
   }
 
-  let customerRows = (customerRes.data || []) as any[]
-  let operatorRows = (operatorRes.data || []) as any[]
-
-  // Filtros aplicables en memoria (joins)
-  if (agencyId && agencyId !== "all") {
-    customerRows = customerRows.filter((r) => r.operation?.agency_id === agencyId)
-    operatorRows = operatorRows.filter((r) => r.operation?.agency_id === agencyId)
-  }
-
-  if (user.role === "SELLER") {
-    customerRows = customerRows.filter((r) => r.operation?.seller_id === user.id)
-    operatorRows = operatorRows.filter((r) => r.operation?.seller_id === user.id)
-  }
+  const customerRows = [...(custDated.data || []), ...(custUndated.data || [])] as any[]
+  const operatorRows = [...(opDated.data || []), ...(opUndated.data || [])] as any[]
+  const truncated =
+    (custDated.data?.length ?? 0) >= CAP ||
+    (custUndated.data?.length ?? 0) >= CAP ||
+    (opDated.data?.length ?? 0) >= CAP ||
+    (opUndated.data?.length ?? 0) >= CAP
 
   // Marcar overdue dinámicamente (status DB puede estar desactualizado)
   function flagOverdue<T extends { status: string }>(rows: T[], dueField: keyof T): T[] {
@@ -107,6 +112,7 @@ export async function GET(request: Request) {
     days,
     today: todayStr,
     limit: limitStr,
+    truncated,
     customer_payments: flagOverdue(customerRows, "date_due"),
     operator_payments: flagOverdue(operatorRows, "due_date"),
   })

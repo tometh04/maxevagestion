@@ -35,6 +35,7 @@ import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
 import { Loader2, CreditCard, Landmark, StickyNote } from "lucide-react"
 import { toast } from "sonner"
 import { format } from "date-fns"
+import { PAYMENT_METHODS } from "@/lib/payments/payment-methods"
 
 const manualPaymentSchema = z.object({
   customer_id: z.string().optional(),
@@ -53,14 +54,8 @@ const manualPaymentSchema = z.object({
 
 type ManualPaymentFormValues = z.infer<typeof manualPaymentSchema>
 
-const paymentMethods = [
-  { value: "Transferencia", label: "Transferencia Bancaria" },
-  { value: "Efectivo", label: "Efectivo" },
-  { value: "Tarjeta Crédito", label: "Tarjeta de Crédito" },
-  { value: "Tarjeta Débito", label: "Tarjeta de Débito" },
-  { value: "Cheque", label: "Cheque" },
-  { value: "MercadoPago", label: "MercadoPago" },
-]
+// VIB-107: catálogo único en lib/payments/payment-methods.ts.
+const paymentMethods = PAYMENT_METHODS
 
 interface ManualPaymentDialogProps {
   open: boolean

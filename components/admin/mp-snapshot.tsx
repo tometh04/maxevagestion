@@ -15,6 +15,7 @@ export function MpSnapshot({ orgId }: { orgId: string }) {
 
   // Link de pago per-org: preapproval atado al email real de MP del cliente.
   const [payerEmail, setPayerEmail] = useState("")
+  const [genFreeTrialDays, setGenFreeTrialDays] = useState("")
   const [genLoading, setGenLoading] = useState(false)
   const [genResult, setGenResult] = useState<any>(null)
 
@@ -52,10 +53,15 @@ export function MpSnapshot({ orgId }: { orgId: string }) {
     setGenLoading(true)
     setGenResult(null)
     try {
+      const trialDays = Number(genFreeTrialDays)
       const res = await fetch(`/api/admin/orgs/${orgId}/mp-preapproval-link`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ payer_email: payerEmail.trim() }),
+        body: JSON.stringify({
+          payer_email: payerEmail.trim(),
+          free_trial_days:
+            Number.isFinite(trialDays) && trialDays > 0 ? Math.floor(trialDays) : undefined,
+        }),
       })
       const body = await res.json()
       setGenResult(body.ok ? body : { ok: false, message: body.error || "No se pudo generar" })
@@ -178,6 +184,16 @@ export function MpSnapshot({ orgId }: { orgId: string }) {
                 placeholder="email de la cuenta MP del cliente"
                 className="flex-1 border rounded px-2 py-1 bg-background"
               />
+              <input
+                type="number"
+                min={0}
+                max={365}
+                value={genFreeTrialDays}
+                onChange={(e) => setGenFreeTrialDays(e.target.value)}
+                placeholder="días 1er cobro"
+                title="Días hasta el primer cobro (difiere el débito si ya están cubiertos). Vacío = cobro al aceptar."
+                className="w-32 border rounded px-2 py-1 bg-background"
+              />
               <button
                 onClick={generateLink}
                 disabled={genLoading || !payerEmail.trim()}
@@ -186,6 +202,10 @@ export function MpSnapshot({ orgId }: { orgId: string }) {
                 {genLoading ? "Generando..." : "Generar link"}
               </button>
             </div>
+            <p className="text-[10px] text-muted-foreground mt-1">
+              "días 1er cobro": si ya están cubiertos hasta una fecha, poné los días
+              hasta esa fecha para diferir el primer débito. Vacío = cobra al aceptar.
+            </p>
             {genResult && (
               <div
                 className={`mt-2 rounded p-2 ${

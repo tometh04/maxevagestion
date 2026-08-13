@@ -24,6 +24,19 @@ export interface AfipConfig {
   point_of_sale: number
   environment: 'sandbox' | 'production'
   base_url?: string
+  /**
+   * Origen del certificado:
+   * - 'auto'   → generado por el flujo automático (afipsdk create-cert con Clave
+   *   Fiscal). Es el default cuando el campo está ausente (backward-compat).
+   * - 'manual' → certificado propio de la sociedad obtenido vía CSR (persona
+   *   jurídica). El guard anti-pisada protege estas configs de que el flujo
+   *   automático las sobreescriba.
+   */
+  cert_mode?: 'auto' | 'manual'
+  /** CSR pendiente (PEM). Se guarda entre que se genera y se sube el cert firmado. */
+  pending_csr?: string
+  /** Clave privada del CSR pendiente (PEM). Se mueve a `key` al activar. */
+  pending_csr_key?: string
   // Tokens y certificados (generados automáticamente)
   access_token?: string
   token_expires_at?: string
@@ -50,6 +63,34 @@ export function getEmisorCuit(
 ): string {
   const rep = (config.cuit_representada || '').trim()
   return rep || config.cuit
+}
+
+/**
+ * Tipos de comprobante clase A / M que exigen CUIT del receptor (DocTipo 80,
+ * DocNro > 0). Para estos NO se normaliza a Consumidor Final.
+ */
+const CBTE_REQUIERE_CUIT = new Set([1, 2, 3, 51, 52, 53])
+
+/**
+ * Normaliza el documento del receptor para cumplir la regla AFIP (error 10015):
+ * en Factura B/C, si el DocTipo es distinto de 99 el DocNro debe ser > 0. Para
+ * un consumidor final SIN identificar (DocNro 0 o vacío) el DocTipo correcto es
+ * 99 (Consumidor Final). Casos productivos VICO tenían DocTipo=96 (DNI) con
+ * DocNro=0 → AFIP rechazaba.
+ *
+ * No toca comprobantes clase A/M (requieren CUIT y se validan aparte).
+ */
+export function normalizeReceptorDoc(
+  cbteTipo: number,
+  docTipo: number,
+  docNro: string | number | null | undefined
+): { docTipo: number; docNro: string } {
+  const digits = String(docNro ?? '').replace(/\D/g, '')
+  const nro = digits === '' ? 0 : parseInt(digits, 10)
+  if (!CBTE_REQUIERE_CUIT.has(cbteTipo) && nro === 0 && docTipo !== 99) {
+    return { docTipo: 99, docNro: '0' }
+  }
+  return { docTipo, docNro: digits }
 }
 
 /**

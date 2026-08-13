@@ -26,6 +26,15 @@ export async function GET(request: Request) {
     const dateToFilter = searchParams.get("dateTo") // YYYY-MM-DD
     const dateType = (searchParams.get("dateType") || "SALIDA").toUpperCase() // SALIDA (departure_date) | CREACION (created_at)
     const agencyIdFilter = searchParams.get("agencyId") // ID de agencia/oficina | "ALL"
+    // "Saldo al" (fecha de corte, YYYY-MM-DD): si viene, reconstruimos el saldo
+    // COMO ESTABA a esa fecha (ej: cierre de Ganancias al 31/12). En ese modo:
+    //  - incluimos solo operaciones con operation_date <= corte (la venta ya
+    //    existía a esa fecha; operation_date es la fecha real, del Excel del import,
+    //    no created_at que es la fecha en que se corrió el import).
+    //  - restamos solo los cobros con date_paid <= corte (pagos ya realizados a
+    //    esa fecha). Comparación por string YYYY-MM-DD para evitar corrimientos
+    //    de timezone entre columnas DATE y timestamptz.
+    const asOfFilter = searchParams.get("asOf") // YYYY-MM-DD | null
 
     // Get user agencies + resolver permisos dinámicos
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
@@ -61,6 +70,7 @@ export async function GET(request: Request) {
             currency,
             status,
             departure_date,
+            operation_date,
             created_at,
             seller_id,
             agency_id
@@ -105,7 +115,7 @@ export async function GET(request: Request) {
     // en ARS (T/C "-") figuraban como deuda fantasma.
     // Deuda NETA: cobros INCOME (+) − devoluciones EXPENSE (-) del cliente. Por
     // eso ya NO filtramos direction=INCOME: traemos ambas y guardamos el signo.
-    type RawPayment = { amount: number; currency: string; exchange_rate: number | null; amount_usd: number | null; sign: number }
+    type RawPayment = { amount: number; currency: string; exchange_rate: number | null; amount_usd: number | null; sign: number; date_paid: string | null }
     let paymentsByOperation: Record<string, RawPayment[]> = {}
     if (allOperationIds.length > 0 && (user as any).org_id) {
       const userOrgId = (user as any).org_id as string
@@ -114,7 +124,7 @@ export async function GET(request: Request) {
         const chunk = allOperationIds.slice(i, i + chunkSize)
         const { data: payments } = await supabase
           .from("payments")
-          .select("operation_id, amount, amount_usd, currency, exchange_rate, status, direction")
+          .select("operation_id, amount, amount_usd, currency, exchange_rate, status, direction, date_paid")
           .in("operation_id", chunk)
           .eq("org_id", userOrgId)
           .eq("payer_type", "CUSTOMER")
@@ -130,6 +140,7 @@ export async function GET(request: Request) {
               exchange_rate: payment.exchange_rate != null ? Number(payment.exchange_rate) : null,
               amount_usd: payment.amount_usd != null ? Number(payment.amount_usd) : null,
               sign: payment.direction === "EXPENSE" ? -1 : 1,
+              date_paid: payment.date_paid ? String(payment.date_paid).slice(0, 10) : null,
             })
           })
         }
@@ -289,6 +300,14 @@ export async function GET(request: Request) {
           continue
         }
 
+        // Modo "saldo al" (fecha de corte): excluir operaciones cuya venta es
+        // posterior al corte. Usamos operation_date (fecha real) con fallback a
+        // created_at si faltara. Comparación por string YYYY-MM-DD.
+        if (asOfFilter) {
+          const opEffDate = String(operation.operation_date || operation.created_at || "").slice(0, 10)
+          if (opEffDate && opEffDate > asOfFilter) continue
+        }
+
         // Aplicar filtro de fechas según dateType:
         // - SALIDA (default): operations.departure_date con fallback a created_at
         //   si la operación no tiene fecha de salida (preserva comportamiento legacy).
@@ -333,6 +352,12 @@ export async function GET(request: Request) {
         const opPayments = paymentsByOperation[opId] || []
         let paidInSaleCurrency = 0
         for (const p of opPayments) {
+          // Modo "saldo al": contar solo cobros ya realizados a la fecha de corte.
+          // Un cobro sin date_paid no se puede ubicar en el tiempo, así que a esa
+          // fecha se considera NO realizado (queda como deuda pendiente al corte).
+          if (asOfFilter) {
+            if (!p.date_paid || p.date_paid > asOfFilter) continue
+          }
           let converted: number
           if (p.currency === saleCurrency) {
             converted = p.amount

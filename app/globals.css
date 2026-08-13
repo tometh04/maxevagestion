@@ -234,6 +234,15 @@
     text-wrap: balance;
   }
 
+  /* Guías in-app: el pulso del spotlight es puro adorno, y el desplazamiento
+     del hueco entre pasos puede marear. Con reduced-motion el recuadro salta
+     directo al elemento siguiente. */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-tour-pulse {
+      animation: none;
+    }
+  }
+
   .glass {
     backdrop-filter: blur(12px) saturate(160%);
     -webkit-backdrop-filter: blur(12px) saturate(160%);

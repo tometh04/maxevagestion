@@ -1,9 +1,16 @@
 import { getCurrentUser, getUserAgencies } from "@/lib/auth"
 import { createServerClient, createAdminClient } from "@/lib/supabase/server"
-import { getUserAgencyIds, resolveOperationAccessScope } from "@/lib/permissions-api"
+import { getUserAgencyIds, resolveOperationAccessScope, canRegisterPaymentsOnAgencyOperations, canPerformAction } from "@/lib/permissions-api"
+import { resolveUserPermissions } from "@/lib/permissions-agency"
 import { notFound } from "next/navigation"
 import { OperationDetailClient } from "@/components/operations/operation-detail-client"
 import { getOperationVisibleDocuments } from "@/lib/documents/operation-documents"
+import {
+  SELLER_OPTION_ROLES,
+  SELLER_OPTION_SELECT,
+  toSellerOptions,
+  type SellerOption,
+} from "@/lib/sellers/seller-option"
 
 export default async function OperationDetailPage({
   params,
@@ -132,7 +139,7 @@ export default async function OperationDetailPage({
   // operation_operators tiene org_id (migration 20260331000134).
   const { data: operationOperators } = await (supabase
     .from("operation_operators") as any)
-    .select("id, operator_id, cost, cost_currency, product_type, notes, sale_amount, passenger_detail, operators:operator_id(id, name)")
+    .select("id, operator_id, cost, cost_currency, product_type, notes, sale_amount, passenger_detail, file_code, payment_due_date, operators:operator_id(id, name)")
     .eq("operation_id", id)
     .eq("org_id", userOrgId)
     .order("created_at", { ascending: true })
@@ -147,11 +154,47 @@ export default async function OperationDetailPage({
     .order("order_index", { ascending: true })
 
   // Get commission records for this operation
-  const { data: commissionRecords } = await (supabase
+  const { data: commissionRecordsRaw } = await (supabase
     .from("commission_records") as any)
-    .select("percentage, seller_id, amount")
+    .select("percentage, seller_id, amount, kind")
     .eq("operation_id", id)
     .eq("org_id", userOrgId)
+
+  // La pantalla usa el PRIMER registro como "el porcentaje de comisión de la
+  // operación", así que el orden no puede quedar librado a la base: primero el
+  // vendedor principal, después el resto de los vendedores, y al final la
+  // comisión del administrador (VIB-102), que es un 5% sobre la venta ajena y
+  // no describe el trato de esta operación.
+  const commissionRank = (record: any): number => {
+    if (record?.kind === "ADVISOR_MANAGER") return 2
+    return record?.seller_id === op.seller_id ? 0 : 1
+  }
+  const commissionRecords = [...((commissionRecordsRaw as any[]) || [])].sort(
+    (a, b) => commissionRank(a) - commissionRank(b)
+  )
+
+  // Comisión al referidor (VIB-62): si el cliente MAIN vino referido, mostrar
+  // cuánto y a quién le corresponde por esta venta.
+  //
+  // VIB-86: el vendedor que carga la venta no tiene que ver cuánto se lleva el
+  // referidor. La interfaz ya no lo dibujaba, pero el dato viajaba igual en el
+  // payload de la página; ahora directamente no se consulta.
+  const permsMatrix = await resolveUserPermissions(
+    supabase as any,
+    user.id,
+    userOrgId,
+    (user as any).roles ?? [user.role],
+    agencyIds,
+  )
+  const puedeVerComisionReferido = canPerformAction(user, "referrals", "read", permsMatrix)
+
+  const { data: referralCommission } = puedeVerComisionReferido
+    ? await (supabase.from("referral_commissions") as any)
+        .select("amount, percentage, base_amount, currency, status, referral_partners:referral_partner_id(name)")
+        .eq("operation_id", id)
+        .eq("org_id", userOrgId)
+        .maybeSingle()
+    : { data: null }
 
   // Get agencies for edit dialog
   let agencies: Array<{ id: string; name: string }> = []
@@ -173,12 +216,12 @@ export default async function OperationDetailPage({
   // ver CLAUDE.md regla de oro multi-tenant.
   const { data: sellersData } = await supabase
     .from("users")
-    .select("id, name")
-    .in("role", ["SELLER", "ADMIN", "SUPER_ADMIN", "POST_VENTA"])
+    .select(SELLER_OPTION_SELECT)
+    .in("role", SELLER_OPTION_ROLES)
     .eq("is_active", true)
     .eq("org_id", (user as any).org_id)
     .order("name")
-  const sellers = (sellersData || []) as Array<{ id: string; name: string }>
+  const sellers: SellerOption[] = toSellerOptions(sellersData)
 
   // Get operators for edit dialog.
   // 🔴 CROSS-TENANT FIX (2026-05-21): filtro explícito por org_id.
@@ -202,7 +245,9 @@ export default async function OperationDetailPage({
       userRole={userRole}
       operationAccessScope={operationAccessScope}
       canAddServicesOnAgencyOperations={Boolean(user.can_add_services_on_agency_operations)}
+      canRegisterAgencyPayments={canRegisterPaymentsOnAgencyOperations(user)}
       commissionRecords={commissionRecords || []}
+      referralCommission={referralCommission || null}
       operationServices={operationServices || []}
       operatorPayments={operatorPayments || []}
       operationOperators={operationOperators || []}

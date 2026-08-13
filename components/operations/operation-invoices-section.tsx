@@ -156,10 +156,14 @@ export function OperationSaleInvoicesSection({ operationId }: Props) {
                     </TableCell>
                     <TableCell>{statusBadge(inv.status)}</TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="icon" className="h-7 w-7" asChild>
-                        <Link href={`/operations/billing/${inv.id}`}>
-                          <Eye className="h-3.5 w-3.5" />
-                        </Link>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        title="Ver / descargar PDF"
+                        onClick={() => window.open(`/api/invoices/${inv.id}/pdf`, "_blank")}
+                      >
+                        <Eye className="h-3.5 w-3.5" />
                       </Button>
                     </TableCell>
                   </TableRow>

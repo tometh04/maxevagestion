@@ -31,8 +31,11 @@ import {
   FormMessage,
 } from "@/components/ui/form"
 import { DatePicker } from "@/components/ui/date-picker"
+import { formatDateOnlyLocal } from "@/lib/utils/date-only"
 import { Loader2, CreditCard, DollarSign, Calendar } from "lucide-react"
 import { toast } from "sonner"
+import { PAYMENT_METHODS } from "@/lib/payments/payment-methods"
+import { trackEvent } from "@/lib/analytics/track"
 
 interface FinancialAccount {
   id: string
@@ -56,14 +59,8 @@ const paymentSchema = z.object({
 
 type PaymentFormValues = z.infer<typeof paymentSchema>
 
-const paymentMethods = [
-  { value: "Transferencia", label: "Transferencia Bancaria" },
-  { value: "Efectivo", label: "Efectivo" },
-  { value: "Tarjeta Crédito", label: "Tarjeta de Crédito" },
-  { value: "Tarjeta Débito", label: "Tarjeta de Débito" },
-  { value: "Cheque", label: "Cheque" },
-  { value: "MercadoPago", label: "MercadoPago" },
-]
+// VIB-107: catálogo único en lib/payments/payment-methods.ts.
+const paymentMethods = PAYMENT_METHODS
 
 interface NewPaymentDialogProps {
   operationId: string
@@ -92,7 +89,7 @@ export function NewPaymentDialog({
       amount: 0,
       currency: defaultCurrency as "ARS" | "USD",
       financial_account_id: "",
-      date_due: new Date().toISOString().split("T")[0],
+      date_due: formatDateOnlyLocal(new Date()) ?? "",
       reference: "",
     },
   })
@@ -155,6 +152,14 @@ export function NewPaymentDialog({
       }
 
       toast.success("Pago creado exitosamente")
+      // `surface` distingue este alta de la de /payments: son dos diálogos con
+      // flujos distintos y sin el discriminador las métricas quedan mezcladas.
+      trackEvent("payment_registered", {
+        payment_currency: values.currency,
+        payment_method: values.method,
+        requires_approval: false,
+        surface: "operation_detail",
+      })
       form.reset()
       onOpenChange(false)
       onSuccess()

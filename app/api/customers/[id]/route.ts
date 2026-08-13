@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { canAccessModule } from "@/lib/permissions"
-import { getUserAgencyIds } from "@/lib/permissions-api"
+import { canAccessModule, isIndependentAdvisor } from "@/lib/permissions"
+import { getUserAgencyIds, canPerformAction, isCustomerOwnedByAdvisor } from "@/lib/permissions-api"
+import { resolveUserPermissions } from "@/lib/permissions-agency"
 import { sendCustomerNotifications } from "@/lib/customers/customer-service"
 import { logAudit, getClientIP } from "@/lib/audit"
 
@@ -30,6 +31,15 @@ export async function GET(
       .single()
 
     if (customerError || !customer) {
+      return NextResponse.json({ error: "Cliente no encontrado" }, { status: 404 })
+    }
+
+    // VIB-69: para el asesor independiente el scope por org no alcanza — solo
+    // puede abrir sus propios clientes, no cualquiera de la agencia por id.
+    if (
+      isIndependentAdvisor(user) &&
+      !(await isCustomerOwnedByAdvisor(supabase, user.id, customerId))
+    ) {
       return NextResponse.json({ error: "Cliente no encontrado" }, { status: 404 })
     }
 
@@ -101,11 +111,28 @@ export async function PATCH(
     const { id: customerId } = await params
     const body = await request.json()
 
+    // VIB-69: el asesor independiente solo edita sus propios clientes.
+    if (
+      isIndependentAdvisor(user) &&
+      !(await isCustomerOwnedByAdvisor(supabase, user.id, customerId))
+    ) {
+      return NextResponse.json({ error: "Cliente no encontrado" }, { status: 404 })
+    }
+
     // Obtener configuración de clientes
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
     if (agencyIds.length === 0) {
       return NextResponse.json({ error: "No tiene agencias asignadas" }, { status: 403 })
     }
+
+    // Matriz resuelta por agencia: la necesita el gate de referidos (VIB-86).
+    const perms = await resolveUserPermissions(
+      supabase as any,
+      user.id,
+      (user as any).org_id,
+      (user as any).roles ?? [user.role],
+      agencyIds,
+    )
 
     const { data: settings } = await supabase
       .from("customer_settings")
@@ -146,12 +173,36 @@ export async function PATCH(
       'nationality', 'passport_number', 'passport_expiry', 'notes', 'instagram',
       'emergency_contact_name', 'emergency_contact_phone', 'tags', 'gender',
       'preferred_language', 'preferred_currency', 'procedure_number',
+      'referral_partner_id',
     ]
     const updateData: any = { updated_at: new Date().toISOString() }
     for (const field of allowedFields) {
       if (body[field] !== undefined) {
         updateData[field] = body[field]
       }
+    }
+
+    // Cliente referido (VIB-62): % de override, validado 0–100. "" / null limpian.
+    //
+    // VIB-86: solo lo puede tocar quien administra referidores. Para el resto el
+    // campo se ignora, así el porcentaje pactado no se puede editar desde el
+    // alta de una operación.
+    const puedeFijarComisionReferido = canPerformAction(user, "referrals", "write", perms)
+    if (puedeFijarComisionReferido && body.referral_commission_percentage !== undefined) {
+      const raw = body.referral_commission_percentage
+      if (raw === null || raw === "") {
+        updateData.referral_commission_percentage = null
+      } else {
+        const pct = Number(raw)
+        if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+          return NextResponse.json({ error: "El porcentaje de referido debe estar entre 0 y 100" }, { status: 400 })
+        }
+        updateData.referral_commission_percentage = pct
+      }
+    }
+    // Desmarcar referido con "" además de null.
+    if (updateData.referral_partner_id === "") {
+      updateData.referral_partner_id = null
     }
 
     const { data: customer, error: updateError } = await (supabase.from("customers") as any)
@@ -199,6 +250,12 @@ export async function DELETE(
 
     // Verificar permiso de escritura
     if (!canAccessModule(user.role as any, "customers")) {
+      return NextResponse.json({ error: "No tiene permiso para eliminar clientes" }, { status: 403 })
+    }
+
+    // VIB-69: el asesor independiente carga y edita sus clientes, pero no borra
+    // (su matriz tiene customers.delete = false, igual que la del vendedor).
+    if (isIndependentAdvisor(user)) {
       return NextResponse.json({ error: "No tiene permiso para eliminar clientes" }, { status: 403 })
     }
 

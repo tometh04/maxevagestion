@@ -40,6 +40,9 @@ describe("buildOperationPurchaseSummary", () => {
         amount: 1000,
         currency: "USD",
         secondaryText: null,
+        detailText: null,
+        fileCode: null,
+        dueDate: null,
       },
       {
         id: "base-hotel",
@@ -50,6 +53,9 @@ describe("buildOperationPurchaseSummary", () => {
         amount: 700,
         currency: "USD",
         secondaryText: "Tarifa mayorista",
+        detailText: null,
+        fileCode: null,
+        dueDate: null,
       },
     ])
 
@@ -79,6 +85,9 @@ describe("buildOperationPurchaseSummary", () => {
         amount: 950,
         currency: "USD",
         secondaryText: null,
+        detailText: null,
+        fileCode: null,
+        dueDate: null,
       },
     ])
 
@@ -125,6 +134,9 @@ describe("buildOperationPurchaseSummary", () => {
         amount: 1500,
         currency: "USD",
         secondaryText: null,
+        detailText: null,
+        fileCode: null,
+        dueDate: null,
       },
       {
         id: "svc-1",
@@ -135,6 +147,9 @@ describe("buildOperationPurchaseSummary", () => {
         amount: 55,
         currency: "USD",
         secondaryText: "Universal Assistance",
+        detailText: null,
+        fileCode: null,
+        dueDate: null,
       },
       {
         id: "svc-2",
@@ -145,6 +160,9 @@ describe("buildOperationPurchaseSummary", () => {
         amount: 35000,
         currency: "ARS",
         secondaryText: "In/Out aeropuerto",
+        detailText: null,
+        fileCode: null,
+        dueDate: null,
       },
     ])
 
@@ -152,6 +170,79 @@ describe("buildOperationPurchaseSummary", () => {
       { currency: "USD", amount: 1555 },
       { currency: "ARS", amount: 35000 },
     ])
+  })
+
+  it("expone el detalle cargado por servicio, el file y el vencimiento (VIB-111)", () => {
+    const summary = buildOperationPurchaseSummary({
+      operation: {
+        type: "PACKAGE",
+        operation_operators: [
+          {
+            id: "base-hotel",
+            operator_id: "loz",
+            cost: 700,
+            cost_currency: "USD",
+            product_type: "HOTEL",
+            operators: { id: "loz", name: "Lozada" },
+            passenger_detail: {
+              hotel_name: "NH Collection",
+              room_type: "Doble",
+              meal_plan: "Desayuno",
+              checkin: "2026-09-01",
+              checkout: "2026-09-08",
+            },
+            file_code: "LZ-9911",
+            payment_due_date: "2026-08-15",
+          },
+          {
+            id: "base-paquete",
+            operator_id: "fta",
+            cost: 1200,
+            cost_currency: "USD",
+            product_type: "PAQUETE",
+            operators: { id: "fta", name: "FTA" },
+            // Tipo sin campos estructurados → texto libre en `detail`.
+            passenger_detail: { detail: "Vuelo + hotel + traslados" },
+          },
+        ],
+      },
+      operationServices: [],
+    })
+
+    expect(summary.lines[0]).toMatchObject({
+      label: "Hotel",
+      detailText: "NH Collection · Doble · Desayuno · Del 01/09/2026 al 08/09/2026",
+      fileCode: "LZ-9911",
+      dueDate: "2026-08-15",
+    })
+    expect(summary.lines[1]).toMatchObject({
+      label: "Paquete",
+      detailText: "Vuelo + hotel + traslados",
+      fileCode: null,
+      dueDate: null,
+    })
+  })
+
+  it("deja detailText en null cuando no se cargo detalle", () => {
+    const summary = buildOperationPurchaseSummary({
+      operation: {
+        type: "PACKAGE",
+        operation_operators: [
+          {
+            id: "base-1",
+            operator_id: "op",
+            cost: 100,
+            cost_currency: "USD",
+            product_type: "HOTEL",
+            operators: { id: "op", name: "Op" },
+            passenger_detail: null,
+          },
+        ],
+      },
+      operationServices: [],
+    })
+
+    expect(summary.lines[0].detailText).toBeNull()
   })
 
   it("usa un rotulo generico cuando no puede inferir el tipo base", () => {
@@ -173,6 +264,9 @@ describe("buildOperationPurchaseSummary", () => {
         amount: 200,
         currency: "USD",
         secondaryText: null,
+        detailText: null,
+        fileCode: null,
+        dueDate: null,
       },
     ])
   })

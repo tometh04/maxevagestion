@@ -1,4 +1,5 @@
 import Link from "next/link"
+import { PAST_DUE_GRACE_DAYS } from "@/lib/billing/access"
 
 interface Props {
   subscription_status: string
@@ -26,10 +27,9 @@ function daysUntil(iso: string | null): number | null {
  */
 export function SubscriptionBanner({ subscription_status, current_period_ends_at, trial_ends_at }: Props) {
   if (subscription_status === "PAST_DUE") {
-    // Grace period: 3 días después de current_period_ends_at (alineado con guard.ts)
-    const GRACE_DAYS = 3
+    // Grace period: fuente única en lib/billing/access.ts (PAST_DUE_GRACE_DAYS).
     const graceDeadline = current_period_ends_at
-      ? new Date(new Date(current_period_ends_at).getTime() + GRACE_DAYS * 24 * 60 * 60 * 1000)
+      ? new Date(new Date(current_period_ends_at).getTime() + PAST_DUE_GRACE_DAYS * 24 * 60 * 60 * 1000)
       : null
     const graceDaysLeft = graceDeadline
       ? Math.max(0, Math.ceil((graceDeadline.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))

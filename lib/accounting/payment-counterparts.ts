@@ -123,6 +123,10 @@ export function mapPaymentMethodToLedgerMethod(method?: string | null): LedgerMe
     case "efectivo":
       return "CASH"
     case "transferencia":
+    // Un depósito bancario mueve plata por el banco igual que una
+    // transferencia (VIB-107); sin este case caería en OTHER.
+    case "depósito bancario":
+    case "deposito bancario":
       return "BANK"
     case "mercadopago":
     case "mercado pago":

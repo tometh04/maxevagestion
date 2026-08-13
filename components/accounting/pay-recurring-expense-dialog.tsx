@@ -34,6 +34,8 @@ import { DatePicker } from "@/components/ui/date-picker"
 import { Label } from "@/components/ui/label"
 import { Loader2, Upload, X, FileText } from "lucide-react"
 import { toast } from "sonner"
+// Fix UTC shift en fechas DATE (VICO 2026-05-22)
+import { formatDateOnlyLocal } from "@/lib/utils/date-only"
 
 type PayRecurringExpenseFormValues = {
   financial_account_id: string
@@ -87,7 +89,7 @@ export function PayRecurringExpenseDialog({
   const form = useForm<PayRecurringExpenseFormValues>({
     defaultValues: {
       financial_account_id: "",
-      payment_date: new Date().toISOString().split("T")[0],
+      payment_date: formatDateOnlyLocal(new Date()) ?? "",
       reference: "",
       exchange_rate: undefined,
     },

@@ -86,7 +86,7 @@ export async function PUT(
 
     // Verificar que la integración existe
     const { data: existing, error: fetchError } = await (supabase.from("integrations") as any)
-      .select("id, name, status")
+      .select("id, name, status, integration_type, config")
       .eq("id", id)
       .in("agency_id", agencyIds)
       .single()
@@ -100,6 +100,25 @@ export async function PUT(
 
     const body = await request.json()
     const validatedData = updateIntegrationSchema.parse(body)
+
+    // Guard anti-pisada: no dejar que un UPDATE genérico dropee el certificado
+    // propio de sociedad (cert_mode='manual' activo) de una integración AFIP.
+    if (
+      (existing as any).integration_type === "afip" &&
+      (existing as any).config?.cert_mode === "manual" &&
+      (existing as any).status === "active" &&
+      !!(existing as any).config?.cert &&
+      validatedData.config &&
+      !(validatedData.config as any).cert
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Esta integración usa un certificado propio de la sociedad. Actualizá su certificado desde Configuración → Facturación AFIP.",
+        },
+        { status: 409 }
+      )
+    }
 
     // Actualizar integración
     const { data: integration, error } = await (supabase.from("integrations") as any)

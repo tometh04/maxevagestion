@@ -1,18 +1,24 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
-import { getCurrentUser } from "@/lib/auth"
+import { canPerformAction } from "@/lib/permissions-api"
+import { getRequestPermissions } from "@/lib/permissions/request"
 
 // GET - Obtener todas las cuentas de socios
 export async function GET(request: Request) {
   try {
-    const { user } = await getCurrentUser()
-    
-    // Solo SUPER_ADMIN y CONTABLE pueden ver cuentas de socios
-    if (!["SUPER_ADMIN", "ADMIN", "CONTABLE"].includes(user.role)) {
+    // Gate por accounting.read (matriz dinámica por agencia). El set previo
+    // [SUPER_ADMIN, ADMIN, CONTABLE] hardcodeado ignoraba ORG_OWNER (el owner
+    // del tenant) y los roles adicionales del usuario.
+    const { user, supabase, matrix } = await getRequestPermissions()
+    if (!canPerformAction(user, "accounting", "read", matrix ?? undefined)) {
       return NextResponse.json({ error: "No autorizado" }, { status: 403 })
     }
 
-    const supabase = await createServerClient()
+    // Cross-tenant: exigir org_id y filtrar explícito, sin depender solo de RLS.
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+    const orgId = (user as any).org_id as string
+
     const { searchParams } = new URL(request.url)
     const agencyId = searchParams.get("agencyId")
 
@@ -33,6 +39,7 @@ export async function GET(request: Request) {
         )
       `)
       .eq("is_active", true)
+      .eq("org_id", orgId)
       .order("partner_name", { ascending: true })
 
     const { data: partners, error } = await query
@@ -45,7 +52,7 @@ export async function GET(request: Request) {
     // Calcular balances por socio
     let partnersWithBalance = (partners || []).map((partner: any) => {
       let withdrawals = partner.partner_withdrawals || []
-      
+
       // Filtrar retiros por agencia si se especifica
       if (agencyId && agencyId !== "ALL") {
         withdrawals = withdrawals.filter((w: any) => {
@@ -53,11 +60,11 @@ export async function GET(request: Request) {
           return account && account.agency_id === agencyId
         })
       }
-      
+
       const totalARS = withdrawals
         .filter((w: any) => w.currency === "ARS")
         .reduce((sum: number, w: any) => sum + Number(w.amount), 0)
-      
+
       const totalUSD = withdrawals
         .filter((w: any) => w.currency === "USD")
         .reduce((sum: number, w: any) => sum + Number(w.amount), 0)
@@ -85,14 +92,16 @@ export async function GET(request: Request) {
 // POST - Crear nuevo socio
 export async function POST(request: Request) {
   try {
-    const { user } = await getCurrentUser()
-    
-    // Solo SUPER_ADMIN puede crear socios
-    if (user.role !== "SUPER_ADMIN") {
-      return NextResponse.json({ error: "Solo el administrador puede crear socios" }, { status: 403 })
+    const { user, supabase, matrix } = await getRequestPermissions()
+    if (!canPerformAction(user, "accounting", "write", matrix ?? undefined)) {
+      return NextResponse.json({ error: "No autorizado para crear socios" }, { status: 403 })
     }
 
-    const supabase = await createServerClient()
+    if (!(user as any).org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+    const orgId = (user as any).org_id as string
+
     const body = await request.json()
 
     const { partner_name, user_id, notes, profit_percentage } = body
@@ -110,6 +119,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "El porcentaje debe estar entre 0 y 100" }, { status: 400 })
     }
 
+    // El socio puede vincularse a un usuario, que debe ser del mismo tenant.
+    if (user_id) {
+      const { data: linkedUser } = await (supabase.from("users") as any)
+        .select("id")
+        .eq("id", user_id)
+        .eq("org_id", orgId)
+        .maybeSingle()
+      if (!linkedUser) {
+        return NextResponse.json({ error: "Usuario no encontrado" }, { status: 404 })
+      }
+    }
+
     const { data: partner, error } = await (supabase
       .from("partner_accounts") as any)
       .insert({
@@ -118,6 +139,7 @@ export async function POST(request: Request) {
         notes: notes?.trim() || null,
         profit_percentage: profitPercentage,
         is_active: true,
+        org_id: orgId,
       })
       .select()
       .single()
@@ -125,7 +147,7 @@ export async function POST(request: Request) {
     if (error) {
       console.error("[PartnerAccounts API] Error creating partner account:", error)
       console.error("[PartnerAccounts API] Error details:", JSON.stringify(error, null, 2))
-      return NextResponse.json({ 
+      return NextResponse.json({
         error: `Error al crear cuenta de socio: ${error.message || "Error desconocido"}`,
         details: error.message
       }, { status: 500 })
@@ -135,10 +157,9 @@ export async function POST(request: Request) {
   } catch (error: any) {
     console.error("[PartnerAccounts API] Exception in POST /api/partner-accounts:", error)
     console.error("[PartnerAccounts API] Stack trace:", error.stack)
-    return NextResponse.json({ 
+    return NextResponse.json({
       error: `Error interno: ${error.message || "Error desconocido"}`,
       details: error.message
     }, { status: 500 })
   }
 }
-

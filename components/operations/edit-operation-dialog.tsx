@@ -1,10 +1,13 @@
 "use client"
 
+import { previewSharedSplit } from "@/lib/commissions/split-preview"
+import type { SellerOption } from "@/lib/sellers/seller-option"
 import { useState, useEffect, useMemo } from "react"
-import { useForm } from "react-hook-form"
+import { useForm, type DefaultValues } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { parseDateOnlyLocal } from "@/lib/utils/date-only"
+import { parseDateOnlyLocal, formatDateOnlyLocal } from "@/lib/utils/date-only"
 import { serviceKind, PASSENGER_DETAIL_FIELDS, sanitizePassengerDetail } from "@/lib/operations/service-kind"
+import { distributeSaleByCost } from "@/lib/operations/operator-sale-breakdown"
 import * as z from "zod"
 import {
   Dialog,
@@ -153,7 +156,7 @@ interface EditOperationDialogProps {
   onOpenChange: (open: boolean) => void
   onSuccess: () => void
   agencies: Array<{ id: string; name: string }>
-  sellers: Array<{ id: string; name: string; default_commission_percentage?: number | null }>
+  sellers: SellerOption[]
   operators: Array<{ id: string; name: string }>
   userRole?: string
   operationLegs?: Array<{
@@ -208,11 +211,15 @@ export function EditOperationDialog({
   const [customOperationTypes, setCustomOperationTypes] = useState<Array<{ value: string; label: string }>>([])
 
   // Estado para múltiples operadores
-  type OperatorEntry = { operator_id: string; cost: string | number; cost_currency: "ARS" | "USD"; product_type?: string; notes?: string; id?: string; passenger_detail?: Record<string, string> }
+  type OperatorEntry = { operator_id: string; cost: string | number; cost_currency: "ARS" | "USD"; product_type?: string; notes?: string; id?: string; passenger_detail?: Record<string, string>; file_code?: string; payment_due_date?: string; sale_amount?: string | number }
   const [useMultipleOperators, setUseMultipleOperators] = useState(false)
   const [operatorList, setOperatorList] = useState<OperatorEntry[]>([])
   const [operatorsLoaded, setOperatorsLoaded] = useState(false)
   const [legList, setLegList] = useState<LegEntry[]>([])
+  // Los tramos sólo se envían al backend si primero se cargaron los existentes.
+  // El PATCH hace delete-all + insert, así que enviar [] sin haber cargado borra
+  // los tramos guardados (bug reportado 2026-07-21 al editar desde el listado).
+  const [legsLoaded, setLegsLoaded] = useState(false)
   const operationCurrency = (operation.sale_currency || operation.currency || "USD") as "ARS" | "USD"
   const operationCostCurrency = (operation.operator_cost_currency || operationCurrency) as "ARS" | "USD"
 
@@ -273,15 +280,20 @@ export function EditOperationDialog({
     setLocalOperators(operators)
   }, [operators?.length, operators?.map((o) => o.id).join(",")])
 
-  // Inicializar tramos desde la prop al abrir el dialog.
-  // Bug fix 2026-05-21: idem arriba. `operationLegs` puede venir como nuevo
-  // array por render del parent. Sólo inicializar cuando el dialog se abre
-  // (open passa false→true), no cada vez que la referencia cambia.
+  // Inicializar tramos al abrir el dialog.
+  // Bug fix 2026-05-21: `operationLegs` puede venir como nuevo array por render
+  // del parent. Sólo inicializar cuando el dialog se abre (open pasa false→true),
+  // no cada vez que la referencia cambia.
+  // Bug fix 2026-07-21: los callers que no pasan la prop (tabla de operaciones)
+  // dejaban legList vacío y el submit borraba los tramos guardados. Ahora, igual
+  // que con operadores, hay fallback por fetch y no se envían tramos hasta
+  // haberlos cargado.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (!open) return
-    setLegList(
-      (operationLegs || []).map((l, i) => ({
+    if (!open || legsLoaded) return
+
+    const mapLegs = (rows: any[]): LegEntry[] =>
+      rows.map((l: any, i: number) => ({
         id: l.id,
         order_index: i,
         destination: l.destination || "",
@@ -294,8 +306,40 @@ export function EditOperationDialog({
         checkin_date: l.checkin_date || "",
         checkout_date: l.checkout_date || "",
       }))
-    )
-  }, [open, operationLegs?.length, operationLegs?.map((l) => l.id || "").join(",")])
+
+    // 1) Preferir lo que ya trajo el server (vista de detalle).
+    if (operationLegs && operationLegs.length > 0) {
+      setLegList(mapLegs(operationLegs))
+      setLegsLoaded(true)
+      return
+    }
+
+    // 2) Fallback: fetch propio (ej. tabla de operaciones, que no pasa la prop).
+    const loadLegs = async () => {
+      try {
+        const res = await fetch(`/api/operations/${operation.id}`)
+        if (res.ok) {
+          const data = await res.json()
+          const rows = data.operation?.operation_legs || []
+          setLegList(
+            mapLegs(
+              [...rows].sort(
+                (a: any, b: any) => (a.order_index ?? 0) - (b.order_index ?? 0)
+              )
+            )
+          )
+          setLegsLoaded(true)
+        } else {
+          // No pudimos leer los tramos: dejamos legsLoaded en false para que el
+          // submit NO mande `legs` y el backend los conserve.
+          console.error("No se pudieron cargar los tramos de la operación")
+        }
+      } catch (err) {
+        console.error("Error loading operation legs:", err)
+      }
+    }
+    loadLegs()
+  }, [open, legsLoaded, operation.id, operationLegs?.length, operationLegs?.map((l) => l.id || "").join(",")])
 
   // Cargar operation_operators existentes al abrir el dialog.
   useEffect(() => {
@@ -310,6 +354,9 @@ export function EditOperationDialog({
         product_type: oo.product_type || undefined,
         notes: oo.notes || undefined,
         passenger_detail: (oo.passenger_detail && typeof oo.passenger_detail === "object") ? oo.passenger_detail : undefined,
+        file_code: oo.file_code || undefined,
+        payment_due_date: oo.payment_due_date || undefined,
+        sale_amount: oo.sale_amount != null ? Number(oo.sale_amount) : undefined, // VIB-112
       }))
 
     // 1) Preferir los operadores que ya trajo el server (prop). Es confiable y
@@ -350,44 +397,55 @@ export function EditOperationDialog({
       setOperatorsLoaded(false)
       setOperatorList([])
       setUseMultipleOperators(false)
+      setLegsLoaded(false)
+      setLegList([])
     }
   }, [open])
 
+  // Valores del form derivados de la operación.
+  // IMPORTANTE: `defaultValues` y el `form.reset()` de abajo tienen que salir
+  // SIEMPRE de acá. RHF `reset(values)` reemplaza el set completo: un campo que
+  // esté en defaultValues pero falte en el reset queda `undefined`, y si el
+  // submit lo manda como null, borra la columna en la base.
+  // (Fix 2026-07-21: commission_pct_primary/secondary se nuleaban en cada
+  // edición porque estaban sólo en defaultValues.)
+  const buildFormValues = (): DefaultValues<OperationFormValues> => ({
+    agency_id: operation.agency_id || "",
+    seller_id: operation.seller_id || "",
+    seller_secondary_id: operation.seller_secondary_id || null,
+    commission_split: operation.commission_split ?? 50,
+    commission_pct_primary: operation.commission_pct_primary ?? null,
+    commission_pct_secondary: operation.commission_pct_secondary ?? null,
+    operator_id: operation.operator_id || null,
+    type: (operation.type as any) || "PACKAGE",
+    origin: operation.origin || "",
+    destination: operation.destination || "",
+    // Bug fix 2026-05-21 (VICO/Enzo): parseDateOnlyLocal evita el shift
+    // de timezone que hacía `new Date("YYYY-MM-DD")` (interpretado como
+    // UTC midnight → en Argentina renderea como día anterior).
+    // Ver lib/utils/date-only.ts.
+    departure_date: parseDateOnlyLocal(operation.departure_date),
+    return_date: parseDateOnlyLocal(operation.return_date) ?? null,
+    operation_date: parseDateOnlyLocal(operation.operation_date),
+    adults: operation.adults || 1,
+    children: operation.children || 0,
+    infants: operation.infants || 0,
+    status: (operation.status as any) || "RESERVED",
+    sale_amount_total: operation.sale_amount_total || 0,
+    operator_cost: operation.operator_cost || 0,
+    currency: operationCurrency,
+    reservation_code_air: operation.reservation_code_air || null,
+    reservation_code_hotel: operation.reservation_code_hotel || null,
+    itr_localizador: operation.itr_localizador || null,
+    airline_name: operation.airline_name || null,
+    hotel_name: operation.hotel_name || null,
+    customer_payment_deadline: parseDateOnlyLocal(operation.customer_payment_deadline) ?? null,
+    passenger_notes: operation.passenger_notes || "",
+  })
+
   const form = useForm<OperationFormValues>({
     resolver: zodResolver(operationSchema) as any,
-    defaultValues: {
-      agency_id: operation.agency_id || "",
-      seller_id: operation.seller_id || "",
-      seller_secondary_id: operation.seller_secondary_id || null,
-      commission_split: operation.commission_split ?? 50,
-      commission_pct_primary: operation.commission_pct_primary ?? null,
-      commission_pct_secondary: operation.commission_pct_secondary ?? null,
-      operator_id: operation.operator_id || null,
-      type: (operation.type as any) || "PACKAGE",
-      origin: operation.origin || "",
-      destination: operation.destination || "",
-      // Bug fix 2026-05-21 (VICO/Enzo): parseDateOnlyLocal evita el shift
-      // de timezone que hacía `new Date("YYYY-MM-DD")` (interpretado como
-      // UTC midnight → en Argentina renderea como día anterior).
-      // Ver lib/utils/date-only.ts.
-      departure_date: parseDateOnlyLocal(operation.departure_date),
-      return_date: parseDateOnlyLocal(operation.return_date) ?? null,
-      operation_date: parseDateOnlyLocal(operation.operation_date),
-      adults: operation.adults || 1,
-      children: operation.children || 0,
-      infants: operation.infants || 0,
-      status: (operation.status as any) || "RESERVED",
-      sale_amount_total: operation.sale_amount_total || 0,
-      operator_cost: operation.operator_cost || 0,
-      currency: operationCurrency,
-      reservation_code_air: operation.reservation_code_air || null,
-      reservation_code_hotel: operation.reservation_code_hotel || null,
-      itr_localizador: operation.itr_localizador || null,
-      airline_name: operation.airline_name || null,
-      hotel_name: operation.hotel_name || null,
-      customer_payment_deadline: parseDateOnlyLocal(operation.customer_payment_deadline) ?? null,
-      passenger_notes: operation.passenger_notes || "",
-    },
+    defaultValues: buildFormValues(),
   })
 
   // Reset form when operation changes.
@@ -404,31 +462,8 @@ export function EditOperationDialog({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (operation) {
-      form.reset({
-        agency_id: operation.agency_id || "",
-        seller_id: operation.seller_id || "",
-        seller_secondary_id: operation.seller_secondary_id || null,
-        commission_split: operation.commission_split ?? 50,
-        operator_id: operation.operator_id || null,
-        type: (operation.type as any) || "PACKAGE",
-        origin: operation.origin || "",
-        destination: operation.destination || "",
-        // Bug fix 2026-05-21 (VICO): parseDateOnlyLocal evita shift UTC.
-        departure_date: parseDateOnlyLocal(operation.departure_date),
-        return_date: parseDateOnlyLocal(operation.return_date) ?? null,
-        adults: operation.adults || 1,
-        children: operation.children || 0,
-        infants: operation.infants || 0,
-        status: (operation.status as any) || "RESERVED",
-        sale_amount_total: operation.sale_amount_total || 0,
-        operator_cost: operation.operator_cost || 0,
-        currency: operationCurrency,
-        reservation_code_air: operation.reservation_code_air || null,
-        reservation_code_hotel: operation.reservation_code_hotel || null,
-        itr_localizador: operation.itr_localizador || null,
-        customer_payment_deadline: parseDateOnlyLocal(operation.customer_payment_deadline) ?? null,
-        passenger_notes: operation.passenger_notes || "",
-      })
+      // Mismo set de campos que defaultValues (ver buildFormValues arriba).
+      form.reset(buildFormValues())
     }
   }, [operation?.id, operationCurrency])
 
@@ -561,13 +596,13 @@ export function EditOperationDialog({
           ? Number(values.commission_pct_secondary)
           : null,
         origin: values.origin || null,
-        return_date: values.return_date ? values.return_date.toISOString().split("T")[0] : null,
-        departure_date: values.departure_date.toISOString().split("T")[0],
+        return_date: values.return_date ? formatDateOnlyLocal(values.return_date) : null,
+        departure_date: formatDateOnlyLocal(values.departure_date),
         // 2026-05-19: fecha real de venta editable (para corregir files históricos)
-        operation_date: values.operation_date ? values.operation_date.toISOString().split("T")[0] : undefined,
+        operation_date: values.operation_date ? formatDateOnlyLocal(values.operation_date) : undefined,
         // Fecha máxima de pago del cliente (usada por el PDF de detalle).
         customer_payment_deadline: values.customer_payment_deadline
-          ? values.customer_payment_deadline.toISOString().split("T")[0]
+          ? formatDateOnlyLocal(values.customer_payment_deadline)
           : null,
         // Info adicional para el pasajero (usada por el PDF de detalle).
         passenger_notes: values.passenger_notes?.trim() || null,
@@ -584,27 +619,36 @@ export function EditOperationDialog({
           product_type: op.product_type || null,
           notes: op.notes || null,
           passenger_detail: sanitizePassengerDetail(op.passenger_detail),
+          file_code: (op.file_code || "").trim() || null,
+          payment_due_date: op.payment_due_date || null,
+          sale_amount: Number(op.sale_amount) || 0, // VIB-112
         }))
         // El operador principal es el primero de la lista
         payload.operator_id = operatorList[0].operator_id || null
         payload.operator_cost = totalOperatorCost
       }
 
-      // Siempre enviar legs (array vacío = sin tramos)
-      payload.legs = legList
-        .filter(l => l.destination.trim() !== "")
-        .map((l, i) => ({
-          order_index: i,
-          destination: l.destination.trim(),
-          departure_date: l.departure_date || null,
-          reservation_code_air: l.reservation_code_air || null,
-          airline_name: l.airline_name || null,
-          itr_localizador: l.itr_localizador || null,
-          hotel_name: l.hotel_name || null,
-          reservation_code_hotel: l.reservation_code_hotel || null,
-          checkin_date: l.checkin_date || null,
-          checkout_date: l.checkout_date || null,
-        }))
+      // Enviar legs SOLO si se cargaron los existentes. El backend hace
+      // delete-all + insert: mandar [] sin haber cargado borraría los tramos.
+      // `legs_replace` le confirma al backend que esta lista sale de los tramos
+      // reales, así que puede borrar los que falten (incluido dejarlo en cero).
+      if (legsLoaded) {
+        payload.legs_replace = true
+        payload.legs = legList
+          .filter((l) => l.destination.trim() !== "")
+          .map((l, i) => ({
+            order_index: i,
+            destination: l.destination.trim(),
+            departure_date: l.departure_date || null,
+            reservation_code_air: l.reservation_code_air || null,
+            airline_name: l.airline_name || null,
+            itr_localizador: l.itr_localizador || null,
+            hotel_name: l.hotel_name || null,
+            reservation_code_hotel: l.reservation_code_hotel || null,
+            checkin_date: l.checkin_date || null,
+            checkout_date: l.checkout_date || null,
+          }))
+      }
 
       const response = await fetch(`/api/operations/${operation.id}`, {
         method: "PATCH",
@@ -773,27 +817,29 @@ export function EditOperationDialog({
                   commission_split clásico para no migrarlas automáticamente. */}
               {form.watch("seller_secondary_id") && form.watch("seller_secondary_id") !== "none" && (() => {
                 const canEdit = ["SUPER_ADMIN", "ADMIN", "CONTABLE"].includes(userRole || "")
-                const principalSeller = sellers.find((seller) => seller.id === form.watch("seller_id"))
-                const principalPct = Number(principalSeller?.default_commission_percentage ?? 0)
-                const halfDefault = Math.round((principalPct / 2) * 100) / 100
-                const isLegacy =
-                  operation.commission_pct_primary == null &&
-                  operation.commission_pct_secondary == null
+                // Mismo cálculo que el servidor (VIB-63): antes el sugerido del
+                // secundario era la mitad del porcentaje del principal.
+                const sugerido = previewSharedSplit(
+                  sellers,
+                  form.watch("seller_id"),
+                  form.watch("seller_secondary_id")
+                )
                 const primaryVal = form.watch("commission_pct_primary")
                 const secondaryVal = form.watch("commission_pct_secondary")
-                const primaryNum = primaryVal != null ? Number(primaryVal) : halfDefault
-                const secondaryNum = secondaryVal != null ? Number(secondaryVal) : halfDefault
-                const sum = primaryNum + secondaryNum
-                const exceedsPrincipal = principalPct > 0 && sum > principalPct + 0.01
+                const reparto = previewSharedSplit(
+                  sellers,
+                  form.watch("seller_id"),
+                  form.watch("seller_secondary_id"),
+                  { primary: primaryVal, secondary: secondaryVal }
+                )
+                const sum = reparto.total
+                const exceedsCeiling = reparto.exceedsCeiling
 
                 return (
                   <div className="space-y-3 mt-4">
-                    {isLegacy && canEdit && primaryVal == null && secondaryVal == null && (
-                      <p className="text-xs text-accent-coral">
-                        Esta operación usa el sistema legacy de split. Editá los valores absolutos
-                        a continuación para migrarla al nuevo modelo (suma ≤ {principalPct}% del principal).
-                      </p>
-                    )}
+                    {/* Se quitó el aviso de "sistema legacy de split": ese camino
+                        de cálculo ya no existe (VIB-63). El reparto lo calcula el
+                        servidor salvo que se editen estos valores a mano. */}
                     <div className="grid gap-x-6 gap-y-3 md:grid-cols-2">
                       <FormField
                         control={form.control}
@@ -803,7 +849,7 @@ export function EditOperationDialog({
                             <FormLabel>Comisión vendedor principal (%)</FormLabel>
                             <FormControl>
                               <DecimalInput
-                                value={field.value ?? halfDefault}
+                                value={field.value ?? sugerido.primary}
                                 onChange={(v) => field.onChange(Number(v))}
                                 onBlur={field.onBlur}
                                 name={field.name}
@@ -824,7 +870,7 @@ export function EditOperationDialog({
                             <FormLabel>Comisión vendedor secundario (%)</FormLabel>
                             <FormControl>
                               <DecimalInput
-                                value={field.value ?? halfDefault}
+                                value={field.value ?? sugerido.secondary}
                                 onChange={(v) => field.onChange(Number(v))}
                                 onBlur={field.onBlur}
                                 name={field.name}
@@ -838,15 +884,13 @@ export function EditOperationDialog({
                         )}
                       />
                     </div>
-                    {/* Bug #12: idem new-operation-dialog — renombrado a "Cap del
-                        vendedor principal" y ocultado cuando = 0 para que no se vea
-                        un confuso "0.00%" cuando el seller no tiene default. */}
-                    <div className={`text-xs ${exceedsPrincipal ? "text-destructive font-medium" : "text-muted-foreground"}`}>
+                    {/* Tope simétrico (VIB-63): idem new-operation-dialog. */}
+                    <div className={`text-xs ${exceedsCeiling ? "text-destructive font-medium" : "text-muted-foreground"}`}>
                       Suma: {sum.toFixed(2)}%
-                      {principalPct > 0 && (
-                        <> · Cap del vendedor principal: {principalPct.toFixed(2)}%</>
-                      )}
-                      {exceedsPrincipal && " — la suma no puede superar el cap del principal"}
+                      {reparto.ceiling > 0 && <> · Tope: {reparto.ceiling.toFixed(2)}%</>}
+                      {exceedsCeiling && " — el reparto no puede superar la comisión más alta de los dos"}
+                      {reparto.primaryMax == null && " — falta cargar la comisión del vendedor principal"}
+                      {reparto.secondaryMax == null && " — falta cargar la comisión del vendedor secundario"}
                     </div>
                   </div>
                 )
@@ -999,6 +1043,66 @@ export function EditOperationDialog({
                         </div>
                       </div>
 
+                      {/* VIB-112: precio de venta de ESTE servicio (desglose del
+                          total; se usa al facturar por servicio). Sólo con 2+
+                          servicios: con uno solo, su precio es el total. */}
+                      {operatorList.length >= 2 && (() => {
+                        const saleCur = (form.watch("currency") || "USD") as string
+                        const saleVal = Number(op.sale_amount) || 0
+                        const costVal = Number(op.cost) || 0
+                        const sameCurrency = (op.cost_currency || "USD") === saleCur
+                        const margin = saleVal - costVal
+                        return (
+                          <div className="pt-3">
+                            <label className="text-xs font-medium mb-1.5 block">
+                              Precio de venta <span className="text-muted-foreground font-normal">({saleCur}, opcional)</span>
+                            </label>
+                            <DecimalInput
+                              value={op.sale_amount ?? ""}
+                              onChange={(v) => updateOperatorField(index, "sale_amount", v)}
+                              onFocus={(e) => e.target.select()}
+                              placeholder="0.00"
+                              className="h-9 text-sm"
+                            />
+                            {saleVal > 0 && sameCurrency && (
+                              <p className={`text-xs mt-1 ${margin >= 0 ? "text-muted-foreground" : "text-destructive"}`}>
+                                Margen de este servicio: {saleCur} {margin.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                              </p>
+                            )}
+                          </div>
+                        )
+                      })()}
+
+                      {/* Datos internos del servicio (opcional): NO se muestran al
+                          pasajero. file_code = referencia interna de la agencia;
+                          payment_due_date = fecha máxima de pago al operador (alimenta
+                          el vencimiento del pago a operador). */}
+                      <div className="pt-3 border-t border-border/40">
+                        <label className="text-xs font-medium text-muted-foreground mb-2 block">
+                          Datos internos (opcional)
+                        </label>
+                        <div className="grid gap-3 grid-cols-1 md:grid-cols-2">
+                          <div>
+                            <label className="text-xs font-medium mb-1.5 block">N° de File (interno)</label>
+                            <Input
+                              value={op.file_code || ""}
+                              onChange={(e) => updateOperatorField(index, "file_code", e.target.value)}
+                              placeholder="Código de referencia"
+                              className="h-9 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-medium mb-1.5 block">Fecha máx. de pago</label>
+                            <Input
+                              type="date"
+                              value={op.payment_due_date || ""}
+                              onChange={(e) => updateOperatorField(index, "payment_due_date", e.target.value)}
+                              className="h-9 text-sm"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
                       {/* Detalle para el pasajero (opcional), según el tipo de servicio.
                           Se exporta en el PDF "Detalle de la Operación". */}
                       <div className="pt-3 border-t border-border/40">
@@ -1034,6 +1138,71 @@ export function EditOperationDialog({
                       <span className="font-medium text-muted-foreground">Costo Total de Operadores:</span>
                       <span className="font-bold">{form.watch("currency")} {totalOperatorCost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span>
                     </div>
+
+                    {/* VIB-112: desglose del precio de venta por servicio. Sólo con
+                        2+ servicios y venta total cargada (con uno solo su precio
+                        es el total; sin total no hay nada que repartir). */}
+                    {operatorList.length >= 2 && (Number(form.watch("sale_amount_total")) || 0) > 0 && (() => {
+                      const saleCur = (form.watch("currency") || "USD") as string
+                      const saleTotal = Number(form.watch("sale_amount_total")) || 0
+                      const assigned = operatorList.reduce((s, op) => s + (Number(op.sale_amount) || 0), 0)
+                      const anyLoaded = operatorList.some((op) => (Number(op.sale_amount) || 0) > 0)
+                      const diff = Math.round((assigned - saleTotal) * 100) / 100
+                      const tolerance = Math.max(0.01, Math.abs(saleTotal) * 0.005)
+                      const mismatch = anyLoaded && Math.abs(diff) > tolerance
+                      return (
+                        <div className="mt-3 pt-3 border-t border-border/40">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Precio de venta por servicio</span>
+                            {anyLoaded && (
+                              <span className="text-xs font-medium">
+                                {saleCur} {assigned.toLocaleString("es-AR", { minimumFractionDigits: 2 })} / {saleTotal.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground mb-2">
+                            Opcional. Cuánto de la venta corresponde a cada servicio; se usa al facturar cada uno por separado.
+                          </p>
+                          {mismatch && (
+                            <p className="text-xs text-accent-amber mb-2">
+                              {diff > 0 ? "Asignaste" : "Falta asignar"} {saleCur} {Math.abs(diff).toLocaleString("es-AR", { minimumFractionDigits: 2 })} respecto del total de venta.
+                            </p>
+                          )}
+                          <div className="flex gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={() => {
+                                const cur = (form.watch("currency") || "USD") as "ARS" | "USD"
+                                const shares = distributeSaleByCost({
+                                  legs: operatorList.map((op) => ({ cost: op.cost, cost_currency: op.cost_currency })),
+                                  saleAmountTotal: saleTotal,
+                                  saleCurrency: cur === "ARS" ? "ARS" : "USD",
+                                })
+                                setOperatorList((prev) => prev.map((op, i) => ({ ...op, sale_amount: shares[i] ?? 0 })))
+                              }}
+                            >
+                              Repartir ∝ costo
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={() => {
+                                const others = operatorList.slice(0, -1).reduce((s, op) => s + (Number(op.sale_amount) || 0), 0)
+                                const last = Math.round((saleTotal - others) * 100) / 100
+                                setOperatorList((prev) => prev.map((op, i) => (i === prev.length - 1 ? { ...op, sale_amount: last } : op)))
+                              }}
+                            >
+                              Completar la última
+                            </Button>
+                          </div>
+                        </div>
+                      )
+                    })()}
                   </div>
                 )}
 

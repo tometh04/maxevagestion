@@ -54,16 +54,21 @@ export async function generateUpcomingTripAlerts(tripDays: number = 7): Promise<
   }
 
   for (const operation of (operations || []) as any[]) {
-    // Check if alert already exists
-    const { data: existingAlert } = await supabase
+    // Check if alert already exists.
+    // Importante: usar limit(1)+length, NO .single(). `.single()` devuelve error
+    // (data null) cuando hay 0 O 2+ filas; con 2+ duplicados previos, el chequeo
+    // fallaba, el código creía que no existía y creaba OTRA alerta cada corrida
+    // del cron → duplicación descontrolada (se veían ~2 "Viaje próximo" por día
+    // por operación). Tratar "1 o muchas" como "ya existe" corta el runaway.
+    const { data: existingAlerts } = await supabase
       .from("alerts")
       .select("id")
       .eq("operation_id", operation.id)
       .eq("type", "UPCOMING_TRIP")
       .eq("status", "PENDING")
-      .single()
+      .limit(1)
 
-    if (existingAlert) {
+    if (existingAlerts && existingAlerts.length > 0) {
       continue
     }
 
@@ -114,16 +119,17 @@ export async function generateMissingDocumentAlerts(): Promise<void> {
     // For international trips, check if passport is missing
     // This is a simplified check - you might want to check destination region
     if (!hasPassport && operation.destination) {
-      // Check if alert already exists
-      const { data: existingAlert } = await supabase
+      // Check if alert already exists. limit(1)+length, NO .single() (mismo bug
+      // de duplicación que UPCOMING_TRIP: .single() falla con 2+ filas).
+      const { data: existingAlerts } = await supabase
         .from("alerts")
         .select("id")
         .eq("operation_id", operation.id)
         .eq("type", "MISSING_DOC")
         .eq("status", "PENDING")
-        .single()
+        .limit(1)
 
-      if (existingAlert) {
+      if (existingAlerts && existingAlerts.length > 0) {
         continue
       }
 

@@ -201,12 +201,12 @@ export function PassengersSection({
               </Tooltip>
             </TooltipProvider>
           </CardTitle>
-          <CardDescription>
+          <CardDescription data-tour="op-pax.contador">
             {customers.length} pasajero{customers.length !== 1 ? "s" : ""} en esta operación
           </CardDescription>
         </div>
         {!readOnly && (
-          <Button onClick={() => setAddDialogOpen(true)} size="sm">
+          <Button onClick={() => setAddDialogOpen(true)} size="sm" data-tour="op-pax.agregar">
             <UserPlus className="h-4 w-4 mr-2" />
             Agregar
           </Button>
@@ -229,7 +229,7 @@ export function PassengersSection({
             size="sm"
           />
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-3" data-tour="op-pax.lista">
             {/* Pasajero principal */}
             {mainPassenger && (
               <div className="p-4 rounded-xl border border-border/40 bg-primary/5">
@@ -342,7 +342,7 @@ export function PassengersSection({
 
           <div className="py-5 space-y-5">
             {/* Búsqueda */}
-            <div className="space-y-2">
+            <div className="space-y-2" data-tour="op-pax.buscar">
               <Label>Buscar cliente</Label>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -356,7 +356,7 @@ export function PassengersSection({
             </div>
 
             {/* Botón crear cliente nuevo */}
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between" data-tour="op-pax.crear-cliente">
               <Label>Buscar cliente existente</Label>
               <Button
                 type="button"
@@ -375,7 +375,7 @@ export function PassengersSection({
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
             ) : searchResults.length > 0 ? (
-              <div className="max-h-48 overflow-y-auto space-y-2">
+              <div className="max-h-48 overflow-y-auto space-y-2" data-tour="op-pax.resultados">
                 {searchResults.map((customer) => (
                   <div
                     key={customer.id}
@@ -403,7 +403,7 @@ export function PassengersSection({
 
             {/* Rol */}
             {selectedCustomer && (
-              <div className="space-y-2">
+              <div className="space-y-2" data-tour="op-pax.rol">
                 <Label>Rol del pasajero</Label>
                 <Select value={selectedRole} onValueChange={(v: "MAIN" | "COMPANION") => setSelectedRole(v)}>
                   <SelectTrigger>
@@ -424,9 +424,10 @@ export function PassengersSection({
             <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
               Cancelar
             </Button>
-            <Button 
-              onClick={handleAddPassenger} 
+            <Button
+              onClick={handleAddPassenger}
               disabled={!selectedCustomer || adding}
+              data-tour="op-pax.guardar"
             >
               {adding ? (
                 <>

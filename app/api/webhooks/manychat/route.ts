@@ -64,10 +64,13 @@ export async function POST(request: Request) {
     // 2. Parsear body
     const body = await request.json()
     
-    // 3. Validar campos requeridos
-    if (!body.ig && !body.name) {
+    // 3. Validar campos requeridos.
+    //    Se acepta también 'whatsapp' porque algunos proveedores (ej. Agente
+    //    Blanco) mandan un primer POST temprano que solo captó el WhatsApp,
+    //    todavía sin ig/name.
+    if (!body.ig && !body.name && !body.whatsapp) {
       return NextResponse.json(
-        { error: "Faltan campos requeridos: 'ig' o 'name' es necesario" },
+        { error: "Faltan campos requeridos: 'ig', 'name' o 'whatsapp' es necesario" },
         { status: 400 }
       )
     }
@@ -88,6 +91,7 @@ export async function POST(request: Request) {
       evento: body.evento,
       phase: body.phase,
       agency: body.agency,
+      source: body.source, // origen real del lead (ej. "agenteblanco"); default → Manychat
       manychat_user_id: body.manychat_user_id,
       flow_id: body.flow_id,
       page_id: body.page_id,

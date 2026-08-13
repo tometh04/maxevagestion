@@ -17,6 +17,7 @@ import { es } from "date-fns/locale"
 import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
 import { CashMovementReverseButton } from "@/components/cash/cash-movement-reverse-button"
 import { Undo2 } from "lucide-react"
+import { useCan } from "@/components/permissions/permissions-provider"
 
 function formatCurrency(amount: number, currency: string): string {
   return new Intl.NumberFormat("es-AR", {
@@ -56,6 +57,8 @@ interface LedgerTableProps {
     dateType?: string
     type?: string
     currency?: string
+    agencyId?: string
+    accountId?: string
   }
   userRole?: string
 }
@@ -81,7 +84,9 @@ const typeColors: Record<string, string> = {
 export function LedgerTable({ filters, userRole }: LedgerTableProps) {
   const [movements, setMovements] = useState<LedgerMovement[]>([])
   const [loading, setLoading] = useState(true)
-  const canReverse = ["ADMIN", "SUPER_ADMIN", "CONTABLE"].includes(userRole || "")
+  // Reversar asiento = accounting.write (matrix por agencia). El servidor
+  // (/api/ledger-movements/[id]/reverse) valida el mismo permiso.
+  const canReverse = useCan("accounting", "write")
 
   const { sortedData, sortConfig, requestSort } = useSortableData(movements, {
     key: "created_at",
@@ -98,6 +103,8 @@ export function LedgerTable({ filters, userRole }: LedgerTableProps) {
         if (filters?.dateType) params.append("dateType", filters.dateType)
         if (filters?.type && filters.type !== "ALL") params.append("type", filters.type)
         if (filters?.currency && filters.currency !== "ALL") params.append("currency", filters.currency)
+        if (filters?.agencyId && filters.agencyId !== "ALL") params.append("agencyId", filters.agencyId)
+        if (filters?.accountId && filters.accountId !== "ALL") params.append("accountId", filters.accountId)
 
         const response = await fetch(`/api/accounting/ledger?${params.toString()}`)
         if (!response.ok) throw new Error("Error al obtener movimientos")

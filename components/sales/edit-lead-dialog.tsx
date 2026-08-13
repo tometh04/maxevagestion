@@ -38,7 +38,7 @@ import { useLeadRegions } from "@/lib/hooks/use-lead-regions"
 // Esquema base para leads normales
 const baseLeadSchema = z.object({
   agency_id: z.string().min(1, "La agencia es requerida"),
-  source: z.enum(["Instagram", "WhatsApp", "Meta Ads", "Referido", "Cliente", "Other", "Manychat"]),
+  source: z.enum(["Instagram", "WhatsApp", "Meta Ads", "Referido", "Cliente", "Other", "Manychat", "Agente Blanco"]),
   status: z.enum(["NEW", "IN_PROGRESS", "QUOTED", "WON", "LOST"]),
   region: z.string().min(1, "La región es requerida"),
   destination: z.string().min(1, "El destino es requerido"),
@@ -560,6 +560,7 @@ export function EditLeadDialog({
                       </FormControl>
                       <SelectContent>
                         <SelectItem value="Manychat">Manychat</SelectItem>
+                        <SelectItem value="Agente Blanco">Agente Blanco</SelectItem>
                         <SelectItem value="Instagram">Instagram</SelectItem>
                         <SelectItem value="WhatsApp">WhatsApp</SelectItem>
                         <SelectItem value="Meta Ads">Meta Ads</SelectItem>

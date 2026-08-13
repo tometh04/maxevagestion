@@ -19,6 +19,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { createServerClient, createAdminClient } from "@/lib/supabase/server"
 import { isPlatformAdmin } from "@/lib/auth/platform"
 import { createPreapproval, cancelPreapproval } from "@/lib/billing/mercadopago"
+import { PLANS } from "@/lib/billing/plans"
 
 const mockUser = getCurrentUser as jest.Mock
 const mockServer = createServerClient as jest.Mock
@@ -94,5 +95,62 @@ describe("POST /api/admin/orgs/[id]/mp-preapproval-link", () => {
 
     await POST(req({ payer_email: "jose@gmail.com" }), ctx)
     expect(mockCancelPreapproval).toHaveBeenCalledWith("pa-old")
+  })
+
+  /**
+   * Este link es el camino manual que usa el admin justo cuando el débito
+   * automático falla: cobrar acá el precio de lista le rompería el precio
+   * congelado a la org en el peor momento posible.
+   */
+  it("respeta el precio congelado de la org", async () => {
+    mockIsPlatformAdmin.mockResolvedValue(true)
+    mockAdmin.mockReturnValue(
+      makeAdmin({
+        id: "org-1",
+        plan: "PRO",
+        mp_preapproval_id: null,
+        agreed_plan_price_ars: 119000,
+        agreed_plan_id: "PRO",
+      })
+    )
+    mockCreatePreapproval.mockResolvedValue({ id: "pa-new", init_point: "https://mp/pa-new", status: "pending" })
+
+    const res = await POST(req({ payer_email: "jose@gmail.com" }), ctx)
+    const json = await res.json()
+
+    expect(mockCreatePreapproval).toHaveBeenCalledWith(
+      expect.objectContaining({ amountArs: 119000 })
+    )
+    expect(json.amount_ars).toBe(119000)
+  })
+
+  it("sin precio congelado usa el precio de lista", async () => {
+    mockIsPlatformAdmin.mockResolvedValue(true)
+    mockAdmin.mockReturnValue(makeAdmin({ id: "org-1", plan: "PRO", mp_preapproval_id: null }))
+    mockCreatePreapproval.mockResolvedValue({ id: "pa-new", init_point: "https://mp/pa-new", status: "pending" })
+
+    await POST(req({ payer_email: "jose@gmail.com" }), ctx)
+    expect(mockCreatePreapproval).toHaveBeenCalledWith(
+      expect.objectContaining({ amountArs: PLANS.PRO.priceArsMonthly })
+    )
+  })
+
+  it("ignora un precio congelado de OTRO plan", async () => {
+    mockIsPlatformAdmin.mockResolvedValue(true)
+    mockAdmin.mockReturnValue(
+      makeAdmin({
+        id: "org-1",
+        plan: "PRO",
+        mp_preapproval_id: null,
+        agreed_plan_price_ars: 450000,
+        agreed_plan_id: "ENTERPRISE",
+      })
+    )
+    mockCreatePreapproval.mockResolvedValue({ id: "pa-new", init_point: "https://mp/pa-new", status: "pending" })
+
+    await POST(req({ payer_email: "jose@gmail.com" }), ctx)
+    expect(mockCreatePreapproval).toHaveBeenCalledWith(
+      expect.objectContaining({ amountArs: PLANS.PRO.priceArsMonthly })
+    )
   })
 })

@@ -19,6 +19,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
+import { trackEvent } from "@/lib/analytics/track"
 
 interface Message {
   id: string
@@ -113,6 +114,13 @@ export function CerebroChat({ userId, userName }: CerebroChatProps) {
     setMessages((prev) => [...prev, userMessage])
     setInput("")
     setIsLoading(true)
+
+    // NUNCA el prompt: las consultas a Cerebro traen nombres de clientes,
+    // destinos y montos. Solo que hubo una consulta y si venía con historial.
+    trackEvent("ai_query_submitted", {
+      surface: "cerebro",
+      has_context: messages.length > 0,
+    })
 
     try {
       const response = await fetch("/api/ai", {

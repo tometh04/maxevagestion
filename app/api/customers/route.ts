@@ -214,11 +214,33 @@ export async function POST(request: Request) {
       procedure_number,
       date_of_birth,
       nationality,
+      referral_partner_id,
+      referral_commission_percentage,
     } = body
 
     // Validations básicas — teléfono es opcional
     if (!first_name || !last_name) {
       return NextResponse.json({ error: "Faltan campos requeridos" }, { status: 400 })
+    }
+
+    // Cliente referido (VIB-62): % opcional de override, 0–100.
+    //
+    // VIB-86: quien no administra referidores no puede fijar el porcentaje. Se
+    // ignora en silencio en vez de devolver 400 porque el vendedor no está
+    // haciendo nada indebido —simplemente no es un campo suyo— y el referidor
+    // sí se le deja asignar. Sin porcentaje propio, la comisión sale del que
+    // tiene configurado el referidor.
+    let referralPct: number | null = null
+    const puedeFijarComisionReferido = canPerformAction(user, "referrals", "write", perms)
+    if (
+      puedeFijarComisionReferido &&
+      referral_commission_percentage != null &&
+      referral_commission_percentage !== ""
+    ) {
+      referralPct = Number(referral_commission_percentage)
+      if (!Number.isFinite(referralPct) || referralPct < 0 || referralPct > 100) {
+        return NextResponse.json({ error: "El porcentaje de referido debe estar entre 0 y 100" }, { status: 400 })
+      }
     }
 
     // Obtener configuración de clientes
@@ -305,6 +327,8 @@ export async function POST(request: Request) {
         procedure_number: procedure_number || null,
         date_of_birth: date_of_birth || null,
         nationality: nationality || null,
+        referral_partner_id: referral_partner_id || null,
+        referral_commission_percentage: referralPct,
         created_by: user.id,
       })
       .select()

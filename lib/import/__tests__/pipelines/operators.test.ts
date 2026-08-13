@@ -2,10 +2,12 @@ import { operatorsPipeline } from "../../pipelines/operators"
 
 const AGENCY_ID = "rosario-uuid"
 
-const CSV_SAMPLE = `Nombre,Contacto,Email Contacto,Teléfono Contacto,Límite Crédito
-Despegar,Juan García,contacto@despegar.com,+54 11 1234-5678,1000000
-Booking,María Pérez,maria@booking.com,+54 11 8765-4321,
-,Operador Sin Nombre,test@test.com,11-9999,0`
+// La tercera fila solo trae "Límite Crédito" (no es identificador) → debe
+// contar como error "fila vacía", no insertarse.
+const CSV_SAMPLE = `Nombre,CUIT,Contacto,Email Contacto,Teléfono Contacto,Límite Crédito
+Despegar,30-70838507-3,Juan García,contacto@despegar.com,+54 11 1234-5678,1000000
+Booking,,María Pérez,maria@booking.com,+54 11 8765-4321,
+,,,,,0`
 
 function mockSupabase(opts: { existing?: any; insertResult?: any } = {}) {
   return {
@@ -52,6 +54,7 @@ describe("operatorsPipeline", () => {
       expect.objectContaining({
         agency_id: AGENCY_ID,
         name: "Despegar",
+        cuit: "30-70838507-3",
         credit_limit: 1000000,
       })
     )
@@ -59,6 +62,7 @@ describe("operatorsPipeline", () => {
       expect.objectContaining({
         agency_id: AGENCY_ID,
         name: "Booking",
+        cuit: null,
         credit_limit: null,
       })
     )

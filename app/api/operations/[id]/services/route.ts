@@ -6,6 +6,7 @@ import {
   canPerformAction,
   getUserAgencyIds,
   resolveOperationAccessScope,
+  isAgencyReadonlyScope,
 } from "@/lib/permissions-api"
 import { createLedgerMovement, calculateARSEquivalent } from "@/lib/accounting/ledger"
 import { createOperatorPayment } from "@/lib/accounting/operator-payments"
@@ -128,7 +129,10 @@ export async function POST(
       return NextResponse.json({ error: "No se pueden agregar servicios a una operación cancelada" }, { status: 400 })
     }
 
-    if (accessScope === "agency-support" && !canAddAgencyOperationServices(user)) {
+    // Scopes de agencia (no propietario): postventa puede agregar servicios sólo
+    // con el flag de alta; cobros (agency-payments) NUNCA agrega servicios (su
+    // permiso es sólo plata).
+    if (isAgencyReadonlyScope(accessScope) && (accessScope !== "agency-support" || !canAddAgencyOperationServices(user))) {
       return NextResponse.json({ error: "No tiene permiso para agregar servicios en esta operación" }, { status: 403 })
     }
 
@@ -403,14 +407,19 @@ export async function POST(
     }
 
     // ── 6. Comisión al vendedor ──
-    // Usa la jerarquía canónica de getSellerPercentage:
+    // Usa la jerarquía canónica de resolveSellerCommissionProfiles:
     //   1. commission_rules con seller_id específico
     //   2. users.default_commission_percentage  ← fuente canónica
-    //   3. commission_rules genérica
-    // Antes este bloque buscaba commission_rules por destination_region o
-    // genérica directamente, ignorando el % del vendedor. Si había una regla
-    // genérica del 50%, todos los servicios comisionaban al 50% sin importar
-    // el % real del vendedor (mientras la op base usaba bien el 15% u otro).
+    //   3. commission_rules genérica de la org
+    //
+    // ⚠️ Deuda conocida (VIB-63, etapa 2): este bloque le paga al vendedor
+    // principal su porcentaje completo e ignora al secundario, así que un
+    // servicio cargado sobre una venta compartida no respeta el reparto. Además
+    // acumula por suma y el siguiente recálculo de la operación pisa lo
+    // acumulado. Unificarlo con el modelo de la operación exige separar el
+    // margen comisionable del margen total, y va en el mismo deploy que ese
+    // cambio. Acá solo se corrige lo que no podía esperar: el guard de comisión
+    // ya pagada y el org_id de los registros nuevos.
     if (generatesCommission && operation.seller_id) {
       try {
         // Calcular margen del servicio (solo si misma moneda, sino usar sale_amount como base)
@@ -420,19 +429,35 @@ export async function POST(
             : saleAmount
 
         if (marginBase > 0) {
-          const sellerPct = await getSellerPercentage(operation.seller_id)
+          const sellerPct = await getSellerPercentage(
+            supabase,
+            (user as any).org_id,
+            operation.seller_id
+          )
 
           if (sellerPct > 0) {
             const commissionAmount = Math.round((marginBase * sellerPct) / 100 * 100) / 100
 
             if (commissionAmount > 0) {
               const { data: existingRecord } = await (supabase.from("commission_records") as any)
-                .select("id, amount")
+                .select("id, amount, status, amount_paid")
                 .eq("operation_id", operationId)
                 .eq("seller_id", operation.seller_id)
                 .maybeSingle()
 
-              if (existingRecord) {
+              // Una comisión ya pagada (total o parcialmente) no se toca: subirle
+              // el monto por un servicio nuevo dejaría el asiento contable sin
+              // respaldo y habilitaría un doble pago.
+              const yaTienePlataMovida =
+                existingRecord &&
+                ((existingRecord.status ?? "PENDING") !== "PENDING" ||
+                  Number(existingRecord.amount_paid ?? 0) > 0)
+
+              if (yaTienePlataMovida) {
+                console.warn(
+                  `[Services POST] La comisión de la operación ${operationId} ya tiene pagos: no se le suma el servicio. Requiere ajuste manual.`
+                )
+              } else if (existingRecord) {
                 // Sumar al registro existente, manteniendo el % del vendedor.
                 const { data: updated } = await (supabase.from("commission_records") as any)
                   .update({
@@ -451,6 +476,7 @@ export async function POST(
                   .insert({
                     operation_id: operationId,
                     seller_id: operation.seller_id,
+                    org_id: (user as any).org_id,
                     agency_id: operation.agency_id,
                     amount: commissionAmount,
                     percentage: sellerPct,

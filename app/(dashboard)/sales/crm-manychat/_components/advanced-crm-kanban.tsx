@@ -1,3 +1,8 @@
+import {
+  SELLER_OPTION_ROLES,
+  SELLER_OPTION_SELECT,
+  toSellerOptions,
+} from "@/lib/sellers/seller-option"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { AdvancedKanbanClient } from "./advanced-kanban-client"
@@ -10,22 +15,19 @@ export async function AdvancedCRMKanban({ orgId }: AdvancedCRMKanbanProps) {
   const supabase = await createServerClient()
   const { user } = await getCurrentUser()
 
-  // RBAC: roles operacionales (SELLER, POST_VENTA) ven solo sus propios leads.
-  // ADMIN/SUPER_ADMIN/CONTABLE/VIEWER ven todos. Patrón estándar Vibook.
-  const role = (user as { role?: string } | null)?.role
-  const userId = (user as { id?: string } | null)?.id
-  const restrictToOwnLeads =
-    (role === "SELLER" || role === "POST_VENTA") && !!userId
   // Solo ADMIN/SUPER_ADMIN ven el filtro de vendedor (CONTABLE/VIEWER no
-  // necesitan filtrar por seller; ya ven todo en read-only).
+  // necesitan filtrar por seller; ya ven todo en read-only). El RBAC de "SELLER
+  // solo ve los suyos" ahora vive en el endpoint /api/leads/advanced-kanban.
+  const role = (user as { role?: string } | null)?.role
   const canFilterBySeller = role === "ADMIN" || role === "SUPER_ADMIN"
 
-  // En modo advanced (VICO) cargamos todo lo que el LeadDetailDialog necesita
-  // para alcanzar paridad con Lozada legacy (cotizar, convertir a operación,
-  // editar, archivar, etc.), MÁS las tags/funnels custom propias del modo.
+  // VIB-61 (audit): los LEADS ya NO se cargan acá. Antes se traían con
+  // .limit(500) y el client contaba sobre eso → con 2.400+ leads en 7 funnels el
+  // header/badges mentían y los leads viejos desaparecían. Ahora el client los
+  // pide lazy por columna (funnel) con conteos exactos vía /api/leads/advanced-kanban.
+  // Acá solo cargamos la config del tablero (funnels, tags, agencias, etc.).
   const [
     funnelsResult,
-    leadsResult,
     categoriesResult,
     agenciesResult,
     sellersResult,
@@ -36,43 +38,6 @@ export async function AdvancedCRMKanban({ orgId }: AdvancedCRMKanbanProps) {
       .select("id, name, color, display_order")
       .eq("org_id", orgId)
       .order("display_order", { ascending: true }),
-
-    (async () => {
-      let q = supabase
-        .from("leads")
-        .select(
-          // Campos completos del lead + relaciones que el LeadDetailDialog
-          // necesita (operations, agency name, seller user info).
-          //
-          // OJO: NO incluyo `customers:operation_customers(...)` porque NO existe
-          // FK directa entre leads y operation_customers — operation_customers
-          // liga operations ↔ customers, no leads ↔ customers. PostgREST tira
-          // PGRST200 ("schema cache") y rompe toda la query → ningún lead se
-          // carga. El LeadDetailDialog acepta `customers?: ... | null`, así que
-          // omitirlo es válido. Si en algún momento queremos mostrar customers
-          // del lead, habría que ir vía operations.
-          `id, contact_name, contact_phone, contact_email, contact_instagram,
-           destination, region, status, source,
-           trello_url, trello_list_id, trello_full_data,
-           assigned_seller_id, agency_id,
-           created_at, updated_at, notes,
-           quoted_price, has_deposit, deposit_amount, deposit_currency,
-           deposit_method, deposit_date,
-           archived_at, funnel_id,
-           agencies(name),
-           users:assigned_seller_id(name, email),
-           assigned_seller:assigned_seller_id(name),
-           tag_assignments:lead_tag_assignments(tag:tag_id(id, label, category:category_id(name, color))),
-           operations(id, file_code, destination, status, created_at, departure_date, sale_amount_total)`
-        )
-        .eq("org_id", orgId)
-        .not("funnel_id", "is", null)
-      // RBAC: SELLER solo ve leads asignados a él.
-      if (restrictToOwnLeads) {
-        q = q.eq("assigned_seller_id", userId!)
-      }
-      return q.order("updated_at", { ascending: false }).limit(500)
-    })(),
 
     supabase
       .from("lead_tag_categories")
@@ -85,9 +50,9 @@ export async function AdvancedCRMKanban({ orgId }: AdvancedCRMKanbanProps) {
     // Sellers de la org (todos los users con rol vendedor/admin)
     supabase
       .from("users")
-      .select("id, name")
+      .select(SELLER_OPTION_SELECT)
       .eq("org_id", orgId)
-      .in("role", ["SELLER", "ADMIN", "SUPER_ADMIN", "POST_VENTA"])
+      .in("role", SELLER_OPTION_ROLES)
       .eq("is_active", true),
 
     // Operators (catálogo de la org para conversión a operación)
@@ -98,7 +63,6 @@ export async function AdvancedCRMKanban({ orgId }: AdvancedCRMKanbanProps) {
   ])
 
   const allFunnels = funnelsResult.data ?? []
-  const allLeads = leadsResult.data ?? []
   const rawCategories = categoriesResult.data ?? []
   const agencies = agenciesResult.data ?? []
   const sellers = sellersResult.data ?? []
@@ -115,10 +79,9 @@ export async function AdvancedCRMKanban({ orgId }: AdvancedCRMKanbanProps) {
     <AdvancedKanbanClient
       categories={categories}
       funnels={allFunnels}
-      leads={allLeads as any}
       orgId={orgId}
       agencies={agencies as Array<{ id: string; name: string }>}
-      sellers={sellers as Array<{ id: string; name: string }>}
+      sellers={toSellerOptions(sellers)}
       operators={
         operators as Array<{
           id: string

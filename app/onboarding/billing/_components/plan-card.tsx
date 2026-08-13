@@ -3,12 +3,26 @@
 import { useState } from "react"
 import { ArrowRight, Check, Sparkles, Zap } from "lucide-react"
 import { PLANS, SALES_CONTACT_URL, formatArs, type PlanId } from "@/lib/billing/plans"
+import { trackEvent } from "@/lib/analytics/track"
 
 /**
  * Plan card — styled to match landing (vibook.ai/#pricing).
  * Dark bg, blue/purple accents, glowing gradient effects.
  */
-export function PlanCard({ planId, trialAvailable = true }: { planId: PlanId; trialAvailable?: boolean }) {
+export function PlanCard({
+  planId,
+  priceArs,
+  trialAvailable = true,
+}: {
+  planId: PlanId
+  /**
+   * Precio efectivo del plan, resuelto server-side desde `plan_prices`. No se
+   * lee de la constante: el checkout cobra el precio de la tabla y mostrar otro
+   * sería cobrarle al cliente algo distinto de lo que vio.
+   */
+  priceArs: number | null
+  trialAvailable?: boolean
+}) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const plan = PLANS[planId]
@@ -16,6 +30,8 @@ export function PlanCard({ planId, trialAvailable = true }: { planId: PlanId; tr
   async function elegir() {
     setLoading(true)
     setError(null)
+    // Solo el id del plan: el precio efectivo (`priceArs`) no sale del navegador.
+    trackEvent("plan_selected", { plan_id: planId, surface: "onboarding" })
     try {
       const res = await fetch("/api/billing/checkout", {
         method: "POST",
@@ -28,6 +44,11 @@ export function PlanCard({ planId, trialAvailable = true }: { planId: PlanId; tr
         setLoading(false)
         return
       }
+      trackEvent("checkout_started", {
+        plan_id: planId,
+        regularize: false,
+        surface: "onboarding",
+      })
       window.location.href = body.init_point
     } catch (err: any) {
       setError(err.message || "Error inesperado")
@@ -105,7 +126,7 @@ export function PlanCard({ planId, trialAvailable = true }: { planId: PlanId; tr
         <div className="mb-8 min-h-[88px]">
           <div className="flex items-baseline gap-1">
             <span className="text-4xl font-bold text-white tracking-tighter-h2">
-              {plan.priceArsMonthly !== null ? formatArs(plan.priceArsMonthly) : "—"}
+              {priceArs !== null ? formatArs(priceArs) : plan.priceLabel || "—"}
             </span>
             <span className="text-muted-foreground">/mes</span>
           </div>

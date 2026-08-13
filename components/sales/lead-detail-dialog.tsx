@@ -1,12 +1,20 @@
 "use client"
 
+import type { SellerOption } from "@/lib/sellers/seller-option"
 import React, { useState, useEffect } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
-import { ExternalLink, MapPin, Users, Phone, Mail, Instagram, Calendar, FileText, Edit, Trash2, ArrowRight, AlertTriangle, UserPlus, Loader2, CheckCircle2, User, Briefcase, Save, X, MessageSquare, Send, Archive, ArchiveRestore, ClipboardList, Clock, DollarSign, Eye, Download } from "lucide-react"
+import { ExternalLink, MapPin, Users, Phone, Mail, Instagram, Calendar, FileText, Edit, Trash2, ArrowRight, AlertTriangle, UserPlus, Loader2, CheckCircle2, User, Briefcase, Save, X, MessageSquare, Send, Archive, ArchiveRestore, ClipboardList, Clock, DollarSign, Eye, Download, MoreHorizontal, Upload, Paperclip } from "lucide-react"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import Link from "next/link"
 import { format } from "date-fns"
 import dynamic from "next/dynamic"
@@ -38,6 +46,12 @@ import { getPublicQuotationPath } from "@/lib/quotations/public-links"
 import { downloadQuotationPdfFromPriceDialog } from "@/lib/pdf/quotation-pdf-html"
 import { QuotationPdfPriceDialog } from "@/components/sales/quotation-pdf-price-dialog"
 import { LeadEmiliaChat } from "@/components/sales/lead-emilia-chat"
+import { LeadOutcomeBadge } from "@/components/sales/lead-outcome-badge"
+
+// Las cotizaciones adjuntas (type QUOTATION) se muestran en la sección
+// Cotizaciones, no en el listado genérico de documentos. Referencia estable
+// para no re-disparar el fetch de LeadDocumentsSection en cada render.
+const DOCS_EXCLUDE_QUOTATION = ["QUOTATION"]
 
 const regionColors: Record<string, string> = {
   ARGENTINA: "bg-accent-coral/80",
@@ -154,6 +168,7 @@ interface Lead {
   destination: string
   region: string
   status: string
+  outcome?: string | null
   source: string
   trello_url: string | null
   trello_list_id: string | null
@@ -164,6 +179,8 @@ interface Lead {
   updated_at?: string
   notes: string | null
   quoted_price?: number | null
+  estimated_departure_date?: string | null
+  estimated_checkin_date?: string | null
   has_deposit?: boolean
   deposit_amount?: number | null
   deposit_currency?: string | null
@@ -190,7 +207,7 @@ interface LeadDetailDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   agencies?: Array<{ id: string; name: string }>
-  sellers?: Array<{ id: string; name: string }>
+  sellers?: SellerOption[]
   operators?: Array<{ id: string; name: string; admin_fee_percentage?: number | null }>
   onEdit?: (lead: Lead) => void
   onDelete?: () => void
@@ -242,6 +259,9 @@ export function LeadDetailDialog({
   const [archiving, setArchiving] = useState(false)
   const [claiming, setClaiming] = useState(false)
   const [openingQuotation, setOpeningQuotation] = useState(false)
+  // VIB-68: marcar resultado (venta / descarte) del lead.
+  const [markingOutcome, setMarkingOutcome] = useState(false)
+  const [discardDialogOpen, setDiscardDialogOpen] = useState(false)
   const [editingNotes, setEditingNotes] = useState(false)
   const [notesValue, setNotesValue] = useState(lead?.notes || "")
   const [savingNotes, setSavingNotes] = useState(false)
@@ -273,6 +293,14 @@ export function LeadDetailDialog({
     quotation_options?: Array<{ id: string; title: string; total_amount: number }>
   }>>([])
   const [loadingQuotations, setLoadingQuotations] = useState(false)
+  // Cotizaciones hechas con otra app: se suben como archivo adjunto (type QUOTATION).
+  const [quotationFiles, setQuotationFiles] = useState<Array<{
+    id: string
+    file_url: string
+    uploaded_at: string
+  }>>([])
+  const [uploadingQuotationFile, setUploadingQuotationFile] = useState(false)
+  const quotationFileInputRef = React.useRef<HTMLInputElement>(null)
 
   const getQuotationDisplayAmount = (quotation: {
     total_amount: number
@@ -314,6 +342,79 @@ export function LeadDetailDialog({
     }
   }
 
+  // Cargar cotizaciones subidas como archivo (hechas con otra app)
+  const loadQuotationFiles = async () => {
+    if (!lead) return
+    try {
+      const response = await fetch(`/api/leads/${lead.id}/documents`)
+      if (response.ok) {
+        const data = await response.json()
+        const files = (data.documents || []).filter((d: any) => d.type === "QUOTATION")
+        setQuotationFiles(files)
+      }
+    } catch (error) {
+      console.error("Error loading quotation files:", error)
+    }
+  }
+
+  // Subir una cotización externa como archivo adjunto al lead
+  const handleQuotationFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !lead) return
+
+    const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp", "application/pdf"]
+    if (!allowedTypes.includes(file.type)) {
+      toast.error("Tipo de archivo no permitido. Solo imágenes (JPEG, PNG, WebP) y PDF")
+      if (quotationFileInputRef.current) quotationFileInputRef.current.value = ""
+      return
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("El archivo es demasiado grande. Máximo 10MB")
+      if (quotationFileInputRef.current) quotationFileInputRef.current.value = ""
+      return
+    }
+
+    try {
+      setUploadingQuotationFile(true)
+      const formData = new FormData()
+      formData.append("file", file)
+      formData.append("type", "QUOTATION")
+
+      const response = await fetch(`/api/leads/${lead.id}/documents/upload`, {
+        method: "POST",
+        body: formData,
+      })
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}))
+        throw new Error(err.error || "Error al subir el archivo")
+      }
+      toast.success("Cotización subida")
+      await loadQuotationFiles()
+    } catch (error: any) {
+      console.error("Error uploading quotation file:", error)
+      toast.error(error.message || "Error al subir el archivo")
+    } finally {
+      setUploadingQuotationFile(false)
+      if (quotationFileInputRef.current) quotationFileInputRef.current.value = ""
+    }
+  }
+
+  const handleDeleteQuotationFile = async (documentId: string) => {
+    if (!lead) return
+    if (!confirm("¿Eliminar esta cotización?")) return
+    try {
+      const response = await fetch(`/api/leads/${lead.id}/documents/${documentId}`, {
+        method: "DELETE",
+      })
+      if (!response.ok) throw new Error("Error al eliminar")
+      toast.success("Cotización eliminada")
+      await loadQuotationFiles()
+    } catch (error: any) {
+      console.error("Error deleting quotation file:", error)
+      toast.error(error.message || "Error al eliminar")
+    }
+  }
+
   // Cargar comentarios cuando se abre el dialog
   const loadComments = async () => {
     if (!lead) return
@@ -345,6 +446,7 @@ export function LeadDetailDialog({
     if (open && lead) {
       loadComments()
       loadQuotations()
+      loadQuotationFiles()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, lead?.id])
@@ -436,6 +538,39 @@ export function LeadDetailDialog({
       toast.error(error instanceof Error ? error.message : "Error al agarrar el lead")
     } finally {
       setClaiming(false)
+    }
+  }
+
+  // VIB-68: marca el resultado del lead (SALE / DISCARDED) o lo reabre (null).
+  const handleSetOutcome = async (outcome: "SALE" | "DISCARDED" | null) => {
+    if (!lead) return
+    setMarkingOutcome(true)
+    try {
+      const response = await fetch(`/api/leads/${lead.id}/outcome`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ outcome }),
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data.error || "Error al actualizar el resultado")
+      }
+      toast.success(
+        outcome === "SALE"
+          ? "Lead marcado como venta"
+          : outcome === "DISCARDED"
+            ? "Lead descartado"
+            : "Lead reabierto"
+      )
+      setDiscardDialogOpen(false)
+      // Reutilizar onDelete como callback de refresh (mismo propósito que el resto del dialog)
+      onDelete?.()
+      onOpenChange(false)
+    } catch (error) {
+      console.error("Error setting lead outcome:", error)
+      toast.error(error instanceof Error ? error.message : "Error al actualizar el resultado")
+    } finally {
+      setMarkingOutcome(false)
     }
   }
 
@@ -585,6 +720,11 @@ export function LeadDetailDialog({
               {lead.region}
             </Badge>
             <Badge variant="outline">{statusLabels[lead.status] || lead.status}</Badge>
+            <LeadOutcomeBadge
+              outcome={lead.outcome}
+              status={lead.status}
+              hasOperation={!!(lead.operations && lead.operations.length > 0)}
+            />
             <Badge variant="secondary">{lead.source}</Badge>
             {lead.trello_url && (
               <a
@@ -747,28 +887,53 @@ export function LeadDetailDialog({
           ) : null}
 
           {/* Cotizaciones del Lead */}
-          {(quotations.length > 0 || loadingQuotations) && (
+          {(quotations.length > 0 || quotationFiles.length > 0 || loadingQuotations || (lead.status !== "WON" && lead.status !== "LOST")) && (
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <div className="flex items-center justify-center h-6 w-6 rounded-md bg-accent-coral/10">
                     <ClipboardList className="h-3.5 w-3.5 text-accent-coral" />
                   </div>
-                  <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Cotizaciones ({quotations.length})</h4>
+                  <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Cotizaciones ({quotations.length + quotationFiles.length})</h4>
                 </div>
                 {lead.status !== "WON" && lead.status !== "LOST" && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setEditingQuotationId(null)
-                      setQuotationDialogOpen(true)
-                    }}
-                    className="h-7 text-xs"
-                  >
-                    <FileText className="h-3 w-3 mr-1" />
-                    Nueva
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    {/* Subir cotización hecha con otra app como archivo adjunto */}
+                    <input
+                      ref={quotationFileInputRef}
+                      type="file"
+                      accept="image/*,.pdf"
+                      onChange={handleQuotationFileUpload}
+                      className="hidden"
+                    />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => quotationFileInputRef.current?.click()}
+                      disabled={uploadingQuotationFile}
+                      className="h-7 text-xs"
+                      title="Subir una cotización hecha con otra app"
+                    >
+                      {uploadingQuotationFile ? (
+                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                      ) : (
+                        <Upload className="h-3 w-3 mr-1" />
+                      )}
+                      Subir
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setEditingQuotationId(null)
+                        setQuotationDialogOpen(true)
+                      }}
+                      className="h-7 text-xs"
+                    >
+                      <FileText className="h-3 w-3 mr-1" />
+                      Nueva
+                    </Button>
+                  </div>
                 )}
               </div>
               {loadingQuotations ? (
@@ -776,6 +941,11 @@ export function LeadDetailDialog({
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   Cargando cotizaciones...
                 </div>
+              ) : quotations.length === 0 && quotationFiles.length === 0 ? (
+                <p className="text-xs text-muted-foreground py-1">
+                  Este lead no tiene cotizaciones.
+                  {lead.status !== "WON" && lead.status !== "LOST" && " Usá “Nueva” para armar una, o “Subir” para adjuntar la de otra app."}
+                </p>
               ) : (
                 <div className="space-y-2">
                   {quotations.map((q) => {
@@ -870,6 +1040,50 @@ export function LeadDetailDialog({
                       </div>
                     )
                   })}
+
+                  {/* Cotizaciones subidas como archivo (hechas con otra app) */}
+                  {quotationFiles.map((f) => (
+                    <div
+                      key={f.id}
+                      className="flex items-center justify-between p-3 rounded-lg bg-white/80 dark:bg-card/80 hover:bg-white dark:hover:bg-card transition-colors"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <Paperclip className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          <p className="text-sm font-medium truncate">Cotización adjunta</p>
+                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-muted text-muted-foreground">
+                            Archivo
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <Calendar className="h-3 w-3" />
+                            {format(new Date(f.uploaded_at), "dd/MM/yyyy")}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 ml-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0"
+                          onClick={() => window.open(f.file_url, "_blank")}
+                          title="Ver archivo"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+                          onClick={() => handleDeleteQuotationFile(f.id)}
+                          title="Eliminar"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -1030,116 +1244,121 @@ export function LeadDetailDialog({
               </div>
               <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Documentos</h4>
             </div>
-            <LeadDocumentsSection leadId={lead.id} />
+            <LeadDocumentsSection leadId={lead.id} excludeTypes={DOCS_EXCLUDE_QUOTATION} />
           </div>
         </div>
 
         {/* Acciones - Footer fijo */}
         <div className="flex-shrink-0 border-t bg-muted/30 px-6 py-3">
-          <div className="flex items-center gap-1.5 overflow-x-auto">
-            {/* Botón Agarrar Lead - solo si no tiene vendedor asignado Y no es WON */}
-            {!lead.assigned_seller_id && canClaimLeads && lead.status !== "WON" && (
-              <Button
-                size="sm"
-                onClick={handleClaimLead}
-                disabled={claiming}
-                className="shrink-0"
-              >
-                {claiming ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <UserPlus className="h-3.5 w-3.5" />
-                )}
-                <span className="ml-1.5">{claiming ? "Asignando..." : "Agarrar"}</span>
-              </Button>
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleEdit}
-              className="shrink-0"
-            >
-              <Edit className="h-3.5 w-3.5" />
-              <span className="ml-1.5">Editar</span>
-            </Button>
-            {/* Ver Operación - si ya tiene operación creada */}
-            {lead.operations && lead.operations.length > 0 ? (
-              <Button
-                size="sm"
-                asChild
-                className="shrink-0 bg-success hover:bg-success/90"
-              >
-                <Link href={`/operations/${lead.operations[0].id}`}>
-                  <Briefcase className="h-3.5 w-3.5" />
-                  <span className="ml-1.5">Ver Operación</span>
-                </Link>
-              </Button>
-            ) : (
-              /* Cotizar o Convertir a Operación - solo si NO tiene operación y no está LOST */
-              lead.status !== "LOST" && (
-                <>
+          {(() => {
+            const hasOp = !!(lead.operations && lead.operations.length > 0)
+            const resolved = hasOp || lead.outcome === "SALE" || lead.outcome === "DISCARDED" || lead.status === "LOST"
+            const canReopen = !hasOp && (lead.outcome === "SALE" || lead.outcome === "DISCARDED")
+            const canConvert = !hasOp && lead.status !== "LOST" && !!onConvert && agencies.length > 0 && sellers.length > 0
+            const canQuote = !hasOp && lead.status !== "LOST"
+            const canClaim = !lead.assigned_seller_id && canClaimLeads && lead.status !== "WON"
+            return (
+              <div className="flex items-center gap-1.5">
+                {/* Acción primaria contextual */}
+                {hasOp ? (
+                  <Button size="sm" asChild className="shrink-0 bg-success hover:bg-success/90">
+                    <Link href={`/operations/${lead.operations![0].id}`}>
+                      <Briefcase className="h-3.5 w-3.5" />
+                      <span className="ml-1.5">Ver Operación</span>
+                    </Link>
+                  </Button>
+                ) : canConvert ? (
                   <Button
-                    variant="outline"
                     size="sm"
-                    onClick={handleStartQuotation}
-                    disabled={openingQuotation}
+                    onClick={() => setConvertDialogOpen(true)}
                     className="shrink-0"
                   >
-                    {openingQuotation ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <FileText className="h-3.5 w-3.5" />
-                    )}
-                    <span className="ml-1.5">{openingQuotation ? "Abriendo..." : "Cotizar"}</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
+                    <span className="ml-1.5">Crear operación</span>
                   </Button>
-                  {onConvert && agencies.length > 0 && sellers.length > 0 && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setConvertDialogOpen(true)}
-                      className="shrink-0"
-                    >
-                      <ArrowRight className="h-3.5 w-3.5" />
-                      <span className="ml-1.5">Convertir</span>
+                ) : null}
+
+                <div className="flex-1" />
+
+                {/* Menú "Más" con el resto de las acciones */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" className="shrink-0">
+                      {(markingOutcome || archiving || claiming) ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <MoreHorizontal className="h-3.5 w-3.5" />
+                      )}
+                      <span className="ml-1.5">Más</span>
                     </Button>
-                  )}
-                </>
-              )
-            )}
-
-            {/* Separador visual */}
-            <div className="flex-1" />
-
-            {onArchive && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="shrink-0 text-accent-coral hover:text-accent-coral hover:bg-accent-coral/10"
-                onClick={handleArchive}
-                disabled={archiving}
-              >
-                {archiving ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : lead?.archived_at ? (
-                  <ArchiveRestore className="h-3.5 w-3.5" />
-                ) : (
-                  <Archive className="h-3.5 w-3.5" />
-                )}
-                <span className="ml-1.5">{archiving ? "..." : lead?.archived_at ? "Restaurar" : "Archivar"}</span>
-              </Button>
-            )}
-            {onDelete && !isFromTrello && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                onClick={() => setDeleteDialogOpen(true)}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                <span className="ml-1.5">Eliminar</span>
-              </Button>
-            )}
-          </div>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    {canQuote && (
+                      <DropdownMenuItem onClick={handleStartQuotation} disabled={openingQuotation}>
+                        <FileText className="h-4 w-4" />
+                        {openingQuotation ? "Abriendo..." : "Cotizar"}
+                      </DropdownMenuItem>
+                    )}
+                    {!resolved && (
+                      <DropdownMenuItem
+                        onClick={() => handleSetOutcome("SALE")}
+                        disabled={markingOutcome}
+                        className="text-success focus:text-success"
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                        Marcar vendido (sin operación)
+                      </DropdownMenuItem>
+                    )}
+                    {!resolved && (
+                      <DropdownMenuItem onClick={() => setDiscardDialogOpen(true)} disabled={markingOutcome}>
+                        <X className="h-4 w-4" />
+                        Marcar descarte
+                      </DropdownMenuItem>
+                    )}
+                    {canReopen && (
+                      <DropdownMenuItem onClick={() => handleSetOutcome(null)} disabled={markingOutcome}>
+                        <ArchiveRestore className="h-4 w-4" />
+                        Reabrir
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={handleEdit}>
+                      <Edit className="h-4 w-4" />
+                      Editar
+                    </DropdownMenuItem>
+                    {canClaim && (
+                      <DropdownMenuItem onClick={handleClaimLead} disabled={claiming}>
+                        <UserPlus className="h-4 w-4" />
+                        {claiming ? "Asignando..." : "Agarrar lead"}
+                      </DropdownMenuItem>
+                    )}
+                    {onArchive && (
+                      <DropdownMenuItem onClick={handleArchive} disabled={archiving}>
+                        {lead?.archived_at ? (
+                          <ArchiveRestore className="h-4 w-4" />
+                        ) : (
+                          <Archive className="h-4 w-4" />
+                        )}
+                        {lead?.archived_at ? "Restaurar" : "Archivar"}
+                      </DropdownMenuItem>
+                    )}
+                    {onDelete && !isFromTrello && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onClick={() => setDeleteDialogOpen(true)}
+                          className="text-destructive focus:text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Eliminar
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            )
+          })()}
           {isFromTrello && (
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-2">
               <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
@@ -1173,6 +1392,36 @@ export function LeadDetailDialog({
           }}
         />
       )}
+
+      {/* VIB-68: Confirmar descarte */}
+      <AlertDialog open={discardDialogOpen} onOpenChange={setDiscardDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Descartar lead</AlertDialogTitle>
+            <AlertDialogDescription>
+              El lead va a quedar marcado como descartado en las estadísticas de
+              conversión. Podés reabrirlo después si hace falta.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={markingOutcome}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={markingOutcome}
+              onClick={(e) => {
+                e.preventDefault()
+                handleSetOutcome("DISCARDED")
+              }}
+            >
+              {markingOutcome ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <X className="h-3.5 w-3.5" />
+              )}
+              <span className="ml-1.5">Descartar</span>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Dialog de convertir */}
       {agencies.length > 0 && sellers.length > 0 && (

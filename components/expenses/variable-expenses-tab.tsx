@@ -49,6 +49,8 @@ import { useSortableData, SortableTableHead } from "@/components/ui/sortable-hea
 import { NewVariableExpenseDialog } from "./new-variable-expense-dialog"
 import { ExpenseReceiptDialog } from "./expense-receipt-dialog"
 import { CCPaymentDialog } from "./cc-payment-dialog"
+// Fix UTC shift en fechas DATE (VICO 2026-05-22)
+import { formatDateOnlyLocal } from "@/lib/utils/date-only"
 
 const CLASSIFICATION_BADGES: Record<string, { label: string; className: string }> = {
   GASTOS_AGENCIA: { label: "Agencia", className: "border-primary/30 text-primary dark:text-primary" },
@@ -92,9 +94,9 @@ export function VariableExpensesTab({ agencies }: VariableExpensesTabProps) {
   const [dateFrom, setDateFrom] = useState(() => {
     const d = new Date()
     d.setDate(1) // First day of current month
-    return d.toISOString().split("T")[0]
+    return formatDateOnlyLocal(d) ?? ""
   })
-  const [dateTo, setDateTo] = useState(() => new Date().toISOString().split("T")[0])
+  const [dateTo, setDateTo] = useState(() => formatDateOnlyLocal(new Date()) ?? "")
   const [categoryFilter, setCategoryFilter] = useState("all")
   const [currencyFilter, setCurrencyFilter] = useState("ALL")
   const [agencyFilter, setAgencyFilter] = useState("ALL")
@@ -463,6 +465,7 @@ export function VariableExpensesTab({ agencies }: VariableExpensesTabProps) {
         open={ccPaymentOpen}
         onOpenChange={setCcPaymentOpen}
         onSuccess={fetchExpenses}
+        agencies={agencies}
       />
       <ExpenseReceiptDialog
         open={receiptDialog.open}

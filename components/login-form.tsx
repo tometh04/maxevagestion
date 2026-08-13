@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { supabase } from "@/lib/supabase/client"
+import { trackEvent } from "@/lib/analytics/track"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
@@ -99,6 +100,8 @@ export function LoginForm({
         if (!user.is_active) {
           throw new Error("Tu cuenta está desactivada. Contacta al administrador.")
         }
+
+        trackEvent("login", { method: "password" })
 
         // Refresh to ensure cookies are set. Redirect a /post-login que
         // decide server-side: platform admin → /admin/orgs, resto → /dashboard.

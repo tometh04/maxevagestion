@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
-import { getCurrentUser } from "@/lib/auth"
+import { getRequestPermissions } from "@/lib/permissions/request"
+import { isOwnDataOnlyResolved } from "@/lib/permissions-api"
 
 export async function GET(request: Request) {
   try {
-    const { user } = await getCurrentUser()
-    const supabase = await createServerClient()
+    const { user, supabase, matrix } = await getRequestPermissions()
     const { searchParams } = new URL(request.url)
 
     const type = searchParams.get("type")
@@ -55,8 +54,8 @@ export async function GET(request: Request) {
     }
     query = query.eq("org_id", userOrgId)
 
-    // Filter by role para SELLERs
-    if (user.role === "SELLER") {
+    // Restringido a alertas propias (alerts.ownDataOnly por agencia)
+    if (isOwnDataOnlyResolved(user, "alerts", matrix ?? undefined)) {
       query = query.eq("user_id", user.id)
     }
 

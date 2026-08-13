@@ -286,113 +286,22 @@ export async function getAccountBalance(
   accountId: string,
   supabase: SupabaseClient<Database>
 ): Promise<number> {
-  // Obtener cuenta (query separada para chart_of_accounts — el JOIN de Supabase falla silenciosamente)
-  const { data: account, error: accountError } = await (supabase
-    .from("financial_accounts") as any)
-    .select("initial_balance, currency, chart_account_id")
-    .eq("id", accountId)
-    .single()
-
-  if (accountError || !account) {
+  // Delega en getAccountBalancesBatch, que calcula el saldo por AGREGACIÓN SQL
+  // (RPC execute_readonly_query, SUM sobre TODOS los movimientos) en vez de
+  // traerlos a memoria.
+  //
+  // Por qué se consolidó: el path anterior hacía
+  //   .from("ledger_movements").select(...).eq("account_id").eq("affects_balance")
+  // SIN límite, y PostgREST corta en 1000 filas por request. En cuentas de alto
+  // volumen (>1000 movimientos) el saldo salía calculado sobre un subconjunto
+  // truncado → INCORRECTO (ej. una Caja USD con 1728 movs daba ~2x su saldo real).
+  // Además mantener dos implementaciones del mismo cálculo las hacía divergir.
+  // Una sola fuente de verdad = mismo número que muestra el listado de cuentas.
+  const balances = await getAccountBalancesBatch([accountId], supabase)
+  if (!(accountId in balances)) {
     throw new Error(`Cuenta financiera no encontrada: ${accountId}`)
   }
-
-  // Query separada para obtener categoría del plan de cuentas
-  let category: string | null = null
-  if (account.chart_account_id) {
-    const { data: chartAccount } = await (supabase
-      .from("chart_of_accounts") as any)
-      .select("category")
-      .eq("id", account.chart_account_id)
-      .maybeSingle()
-    category = chartAccount?.category || null
-  }
-
-  const initialBalance = parseFloat(account.initial_balance || "0")
-  const accountCurrency = account.currency as "ARS" | "USD"
-
-  // Obtener subcategoría para determinar naturaleza de la cuenta (Debe/Haber natural)
-  let subcategory: string | null = null
-  if (account.chart_account_id) {
-    const { data: chartAccountFull } = await (supabase
-      .from("chart_of_accounts") as any)
-      .select("subcategory")
-      .eq("id", account.chart_account_id)
-      .maybeSingle()
-    subcategory = chartAccountFull?.subcategory || null
-  }
-
-  // OPTIMIZACIÓN: Traer solo los campos necesarios y calcular suma en memoria.
-  // Usa el client que recibe: si es server client, RLS acota por org_id del user.
-  const { data: movements, error: movementsError } = await (supabase
-    .from("ledger_movements") as any)
-    .select("type, amount_original, amount_ars_equivalent, debit_amount, credit_amount")
-    .eq("account_id", accountId)
-    .eq("affects_balance", true)
-
-  if (movementsError) {
-    throw new Error(`Error obteniendo movimientos: ${movementsError.message}`)
-  }
-
-  // Calcular suma en memoria — DUAL PATH:
-  // Si debit_amount/credit_amount están presentes → usar partida doble
-  // Si ambos son NULL → usar lógica legacy (type-based)
-  const { isDebitNaturalAccount } = await import("./account-codes")
-  const isDebitNatural = isDebitNaturalAccount(category || "ACTIVO", subcategory)
-
-  const movementsSum = movements?.reduce((sum: number, m: any) => {
-    const hasDebitCredit = m.debit_amount !== null || m.credit_amount !== null
-
-    if (hasDebitCredit) {
-      // PATH NUEVO: Partida doble (Debe/Haber)
-      const debit = parseFloat(m.debit_amount || "0")
-      const credit = parseFloat(m.credit_amount || "0")
-      if (isDebitNatural) {
-        // ACTIVO, COSTOS, GASTOS: Debe aumenta, Haber disminuye
-        return sum + debit - credit
-      } else {
-        // PASIVO, PATRIMONIO, INGRESOS: Haber aumenta, Debe disminuye
-        return sum + credit - debit
-      }
-    }
-
-    // PATH LEGACY: type-based (movimientos sin debit/credit)
-    const amount = parseFloat(
-      accountCurrency === "USD"
-        ? (m.amount_original || "0")
-        : (m.amount_ars_equivalent || "0")
-    )
-
-    if (category === "PASIVO") {
-      if (m.type === "EXPENSE" || m.type === "OPERATOR_PAYMENT" || m.type === "FX_LOSS") {
-        return sum + amount
-      } else if (m.type === "INCOME" || m.type === "FX_GAIN") {
-        return sum - amount
-      }
-      return sum
-    }
-
-    if (m.type === "INCOME" || m.type === "FX_GAIN") {
-      return sum + amount
-    } else if (m.type === "EXPENSE" || m.type === "FX_LOSS" || m.type === "COMMISSION" || m.type === "OPERATOR_PAYMENT") {
-      return sum - amount
-    }
-    return sum
-  }, 0) || 0
-  const finalBalance = initialBalance + movementsSum
-
-  // Guardar en caché
-  balanceCache.set(accountId, {
-    balance: finalBalance,
-    timestamp: Date.now(),
-  })
-
-  // Limpiar caché expirado periódicamente (cada 100 llamadas aproximadamente)
-  if (Math.random() < 0.01) {
-    cleanExpiredCache()
-  }
-
-  return finalBalance
+  return balances[accountId]
 }
 
 /**

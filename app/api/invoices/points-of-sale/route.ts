@@ -69,8 +69,10 @@ export async function GET(request: Request) {
 
           if (result.success && result.data && result.data.length > 0) {
             // Filtrar solo los habilitados para web services (CAE, "CAE - Monotributo", CAEA)
+            // y que NO estén dados de baja (FchBaja) — un PV de baja rechaza con
+            // error 10005 "el punto de venta debe estar dado de alta y ser del tipo RECE".
             activePointsOfSale = result.data
-              .filter((pv: any) => !pv.bloqueado && isWebServiceTipo(pv.tipo || ''))
+              .filter((pv: any) => !pv.bloqueado && !pv.dadoDeBaja && isWebServiceTipo(pv.tipo || ''))
               .map((pv: any) => ({
                 numero: pv.numero,
                 tipo: (pv.tipo || '').toUpperCase().trim(),

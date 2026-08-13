@@ -119,6 +119,57 @@ describe("transitionFromMP", () => {
     expect(out.event_type).toBe("SUBSCRIPTION_AUTHORIZED")
   })
 
+  // --- Fix "mes gratis": cobro no ejecutado con MP todavía "authorized" ---
+
+  it("authorized sin pago, ciclo vigente NO cobrado (reintento futuro) → PAST_DUE + PAYMENT_MISSED", () => {
+    // MP sigue authorized y reprogramó el próximo cobro al futuro, pero el último
+    // cobro exitoso es de hace >1 ciclo → el cobro del ciclo vigente no entró.
+    const futureRetry = new Date(Date.now() + 30 * 86400_000).toISOString()
+    const lastCharged = new Date(Date.now() - 45 * 86400_000).toISOString()
+    const out = transitionFromMP(mp({
+      status: "authorized",
+      next_payment_date: futureRetry,
+      summarized: { last_charged_date: lastCharged },
+    }))
+    expect(out.subscription_status).toBe("PAST_DUE")
+    expect(out.event_type).toBe("PAYMENT_MISSED")
+    // NO estira al reintento futuro: paid-through = último cobro + 1 ciclo (pasado).
+    expect(new Date(out.current_period_ends_at!).getTime())
+      .toBeLessThan(new Date(futureRetry).getTime())
+  })
+
+  it("authorized sin pago pero último cobro cubre el ciclo → ACTIVE (no corta)", () => {
+    const futureNext = new Date(Date.now() + 30 * 86400_000).toISOString()
+    const lastCharged = new Date().toISOString() // cobro recién hecho
+    const out = transitionFromMP(mp({
+      status: "authorized",
+      next_payment_date: futureNext,
+      summarized: { last_charged_date: lastCharged },
+    }))
+    expect(out.subscription_status).toBe("ACTIVE")
+    expect(out.current_period_ends_at).toBe(futureNext)
+  })
+
+  it("authorized sin last_charged_date → ACTIVE (conservador, no corta sub nueva)", () => {
+    const futureNext = new Date(Date.now() + 30 * 86400_000).toISOString()
+    const out = transitionFromMP(mp({ status: "authorized", next_payment_date: futureNext }))
+    expect(out.subscription_status).toBe("ACTIVE")
+  })
+
+  it("ciclo impago con preserved corrompido al futuro → usa paidThrough, no el futuro", () => {
+    const futureRetry = new Date(Date.now() + 30 * 86400_000).toISOString()
+    const lastCharged = new Date(Date.now() - 45 * 86400_000).toISOString()
+    const corruptedFuture = new Date(Date.now() + 60 * 86400_000).toISOString()
+    const out = transitionFromMP(
+      mp({ status: "authorized", next_payment_date: futureRetry, summarized: { last_charged_date: lastCharged } }),
+      undefined,
+      { preserved_current_period_ends_at: corruptedFuture }
+    )
+    expect(out.subscription_status).toBe("PAST_DUE")
+    expect(new Date(out.current_period_ends_at!).getTime())
+      .toBeLessThan(new Date(corruptedFuture).getTime())
+  })
+
   // --- Trial extendido (DB trial_ends_at posterior a next_payment_date de MP) ---
 
   it("trial extendido: next_payment_date pasó pero trial_ends_at vigente → TRIALING (usa fecha extendida)", () => {

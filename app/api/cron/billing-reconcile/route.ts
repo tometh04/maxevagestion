@@ -57,8 +57,10 @@ export async function POST(request: Request) {
         transition.subscription_status === "PENDING_PAYMENT" && isAccessAllowed(org as any)
       const changed =
         transition.subscription_status !== org.subscription_status && !pendingWouldRevoke
+      // PAYMENT_MISSED = corte proactivo por cobro no ejecutado (fix "mes gratis").
+      const isMissed = transition.event_type === "PAYMENT_MISSED"
+      let applied = false
       if (changed) {
-        drifted += 1
         const updates: Record<string, any> = {
           subscription_status: transition.subscription_status,
           mp_last_synced_at: pa.last_modified,
@@ -67,20 +69,34 @@ export async function POST(request: Request) {
           updates.current_period_ends_at =
             transition.current_period_ends_at ?? org.current_period_ends_at
         }
-        await admin.from("organizations").update(updates).eq("id", org.id)
+        // CAS: aplicar solo si el status sigue siendo el que leímos. Si un webhook
+        // lo cambió en el medio (ej. el reintento se aprobó → ACTIVE), no lo pisamos.
+        const { data: updatedRows } = await admin
+          .from("organizations")
+          .update(updates)
+          .eq("id", org.id)
+          .eq("subscription_status", org.subscription_status)
+          .select("id")
 
-        await admin.from("billing_events").insert({
-          org_id: org.id,
-          event_type: "RECONCILED",
-          external_id: org.mp_preapproval_id,
-          status: pa.status,
-          payload: {
-            previous_status: org.subscription_status,
-            new_status: transition.subscription_status,
-            mp_status: pa.status,
-            preapproval: pa,
-          },
-        })
+        if (updatedRows && updatedRows.length > 0) {
+          applied = true
+          drifted += 1
+          await admin.from("billing_events").insert({
+            org_id: org.id,
+            event_type: isMissed ? "PAYMENT_MISSED" : "RECONCILED",
+            external_id: org.mp_preapproval_id,
+            status: pa.status,
+            payload: {
+              previous_status: org.subscription_status,
+              new_status: transition.subscription_status,
+              mp_status: pa.status,
+              ...(isMissed
+                ? { reason: "payment_missed", paid_through: updates.current_period_ends_at ?? null }
+                : {}),
+              preapproval: pa,
+            },
+          })
+        }
       } else if (pa.last_modified && pa.last_modified !== org.mp_last_synced_at) {
         // Mismo estado pero MP fue modificado desde nuestro último sync.
         // Actualizamos el timestamp para que próximos webhooks no queden stale.
@@ -89,20 +105,21 @@ export async function POST(request: Request) {
           .eq("id", org.id)
       }
 
-      if (changed) {
+      if (applied) {
         notifyBillingSlack({
-          event: "RECONCILED",
+          event: isMissed ? "BILLING_ALERT" : "RECONCILED",
           orgName: org.name || org.id,
           orgId: org.id,
-          details: `Drift detectado: DB tenía ${org.subscription_status}, MP dice ${pa.status} → corregido a ${transition.subscription_status}.`,
+          details: isMissed
+            ? `Cobro de renovación NO ejecutado: MP dice ${pa.status} pero el ciclo vigente no se cobró → bajada a PAST_DUE (paid-through ${transition.current_period_ends_at ?? "—"}).`
+            : `Drift detectado: DB tenía ${org.subscription_status}, MP dice ${pa.status} → corregido a ${transition.subscription_status}.`,
           severity: "warning",
         })
       }
 
-      // Hardening: cobro de renovación fallido "en silencio". MP puede seguir
-      // diciendo authorized aunque un cobro no haya entrado (reintenta días antes
-      // de pausar). Alertamos (NO auto-transicionamos) para revisión manual.
-      const effectiveStatus = changed ? transition.subscription_status : org.subscription_status
+      // Hardening: cobro fallido "en silencio" que el corte proactivo NO tocó
+      // (sin last_charged_date conocido). Alertamos (NO auto-transicionamos).
+      const effectiveStatus = applied ? transition.subscription_status : org.subscription_status
       let silentFailure = false
       if (
         isSilentChargeFailure({
@@ -137,10 +154,11 @@ export async function POST(request: Request) {
 
       results.push({
         orgId: org.id,
-        drifted: changed,
+        drifted: applied,
         from: org.subscription_status,
         to: transition.subscription_status,
         mpStatus: pa.status,
+        payment_missed: applied && isMissed,
         silent_charge_failure: silentFailure,
       })
     } catch (err: any) {

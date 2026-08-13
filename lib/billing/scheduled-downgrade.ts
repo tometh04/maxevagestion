@@ -11,6 +11,7 @@
  */
 
 import { PLANS } from "./plans"
+import { clearAgreedPriceUpdate } from "./agreed-price"
 
 /** Único plan destino soportado hoy en el downgrade self-serve. */
 export const DOWNGRADE_TARGET_PLAN = "PRO" as const
@@ -105,6 +106,9 @@ export interface DowngradeUpdate {
   current_period_ends_at: string | null
   scheduled_plan: null
   scheduled_plan_effective_at: null
+  agreed_plan_price_ars: null
+  agreed_plan_id: null
+  agreed_plan_price_source: null
 }
 
 /**
@@ -118,6 +122,9 @@ export interface DowngradeUpdate {
  *   current_period_ends_at = scheduled_plan_effective_at como inicio de la
  *   gracia de 3 días del guard.
  * - Limpia las columnas de scheduling.
+ * - Limpia el precio pactado: era el de Enterprise y la org queda en PAST_DUE,
+ *   o sea a un click de "Regularizar pago". Si sobreviviera, ese botón le
+ *   cobraría el monto de Enterprise por un plan PRO.
  */
 export function buildDowngradeUpdate(org: {
   scheduled_plan_effective_at: string | null
@@ -134,5 +141,10 @@ export function buildDowngradeUpdate(org: {
     current_period_ends_at: org.scheduled_plan_effective_at,
     scheduled_plan: null,
     scheduled_plan_effective_at: null,
+    ...(clearAgreedPriceUpdate() as {
+      agreed_plan_price_ars: null
+      agreed_plan_id: null
+      agreed_plan_price_source: null
+    }),
   }
 }

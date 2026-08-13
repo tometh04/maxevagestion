@@ -52,6 +52,8 @@ export async function getAfipConfigForAgency(
       // Certificado PEM inline (permite autenticación sin cert almacenado en afipsdk.com)
       cert: config.cert || undefined,
       key: config.key || undefined,
+      // Origen del certificado (auto / manual-sociedad). Ausente ⇒ 'auto'.
+      cert_mode: config.cert_mode || undefined,
     }
 
     // Validar que la configuración esté completa
@@ -74,20 +76,40 @@ export async function saveAfipConfigForAgency(
   supabase: SupabaseClient<Database>,
   agencyId: string,
   config: Partial<AfipConfig>,
-  userId: string
+  userId: string,
+  opts?: { force?: boolean }
 ): Promise<{
   success: boolean
   integrationId?: string
   error?: string
 }> {
   try {
-    // Buscar integración existente
+    // Buscar integración existente (con su config/status para el guard anti-pisada)
     const { data: existingIntegration } = await (supabase
       .from('integrations') as any)
-      .select('id')
+      .select('id, config, status')
       .eq('agency_id', agencyId)
       .eq('integration_type', 'afip')
       .maybeSingle()
+
+    // Guard anti-pisada: no dejar que el flujo automático sobreescriba un
+    // certificado propio de sociedad (cert_mode='manual' activo) sin confirmación
+    // explícita (force). Fue el incidente VICO: "Reconfigurar" pisó el cert manual.
+    if (existingIntegration && !opts?.force) {
+      const prev = (existingIntegration as any).config || {}
+      const prevIsManualActive =
+        prev.cert_mode === 'manual' &&
+        (existingIntegration as any).status === 'active' &&
+        !!prev.cert
+      const incomingIsManual = config.cert_mode === 'manual'
+      if (prevIsManualActive && !incomingIsManual) {
+        return {
+          success: false,
+          error:
+            'MANUAL_CERT_GUARD: esta agencia tiene un certificado propio de la sociedad. Para reemplazarlo por el flujo automático confirmá explícitamente (force).',
+        }
+      }
+    }
 
     const configData = {
       api_key: config.api_key,
@@ -103,7 +125,20 @@ export async function saveAfipConfigForAgency(
       // Certificado PEM inline (para autenticación directa con afipsdk.com)
       cert: config.cert || undefined,
       key: config.key || undefined,
+      // Modo del certificado + estado pendiente del CSR (modo manual/sociedad)
+      cert_mode: config.cert_mode || undefined,
+      pending_csr: config.pending_csr || undefined,
+      pending_csr_key: config.pending_csr_key || undefined,
     }
+
+    // Estado: un manual sin cert todavía (CSR generado) queda 'pending'; con
+    // config válida → 'active'; si no → 'inactive'.
+    const computedStatus =
+      config.cert_mode === 'manual' && !config.cert
+        ? 'pending'
+        : isAfipConfigValid(config)
+          ? 'active'
+          : 'inactive'
 
     if (existingIntegration) {
       // Actualizar integración existente
@@ -111,7 +146,7 @@ export async function saveAfipConfigForAgency(
         .from('integrations') as any)
         .update({
           config: configData,
-          status: isAfipConfigValid(config) ? 'active' : 'inactive',
+          status: computedStatus,
           updated_at: new Date().toISOString(),
         })
         .eq('id', existingIntegration.id)
@@ -139,7 +174,7 @@ export async function saveAfipConfigForAgency(
           name: 'AFIP - Facturación Electrónica',
           description: `Configuración AFIP para CUIT ${config.cuit}`,
           config: configData,
-          status: isAfipConfigValid(config) ? 'active' : 'inactive',
+          status: computedStatus,
           sync_enabled: false,
           created_by: userId,
         })

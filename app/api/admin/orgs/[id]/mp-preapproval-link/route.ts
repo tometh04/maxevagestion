@@ -5,15 +5,21 @@ import { isPlatformAdmin } from "@/lib/auth/platform"
 import { createPreapproval, cancelPreapproval } from "@/lib/billing/mercadopago"
 import { mpErrorToUserMessage } from "@/lib/billing/mp-error-mapper"
 import { logSecurityEvent } from "@/lib/security/audit"
-import { PLANS, type PlanId } from "@/lib/billing/plans"
+import { PLANS, formatArs, type PlanId } from "@/lib/billing/plans"
+import { resolvePlanPrice } from "@/lib/billing/plan-pricing"
+import { agreedPriceFor } from "@/lib/billing/agreed-price"
 
 /**
  * POST /api/admin/orgs/[id]/mp-preapproval-link
- * Body: { payer_email: string, include_free_trial?: boolean }
+ * Body: { payer_email: string, include_free_trial?: boolean, free_trial_days?: number }
  *
  * Genera un preapproval PER-ORG (no el preapproval_plan compartido) atado al
  * email real de la cuenta de Mercado Pago del cliente. Devuelve el init_point
  * para mandárselo.
+ *
+ * free_trial_days difiere el primer cobro N días (para clientes ya cubiertos
+ * hasta cierta fecha): tiene prioridad sobre include_free_trial. Ej: cliente
+ * cubierto hasta el 1/08 → free_trial_days = días hasta esa fecha.
  *
  * Por qué existe: el flujo self-serve usa un preapproval_plan COMPARTIDO y
  * anónimo (sin payer_email). El antifraude de MP desconfía más de un débito
@@ -43,6 +49,11 @@ export async function POST(
   const body = await request.json().catch(() => ({}))
   const payerEmail = (body?.payer_email as string | undefined)?.trim() || ""
   const includeFreeTrial = body?.include_free_trial === true
+  // Días hasta el primer cobro (difiere el débito para clientes ya cubiertos).
+  const freeTrialDays =
+    typeof body?.free_trial_days === "number" && body.free_trial_days > 0
+      ? Math.floor(body.free_trial_days)
+      : undefined
 
   // Validación de email (el payer_email restringe QUIÉN puede pagar; formato correcto).
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payerEmail)) {
@@ -51,11 +62,20 @@ export async function POST(
       { status: 400 }
     )
   }
+  if (freeTrialDays !== undefined && (freeTrialDays < 1 || freeTrialDays > 365)) {
+    return NextResponse.json(
+      { error: "free_trial_days debe estar entre 1 y 365." },
+      { status: 400 }
+    )
+  }
 
   const admin = createAdminClient() as any
   const { data: org } = await admin
     .from("organizations")
-    .select("id, name, plan, subscription_status, mp_preapproval_id")
+    .select(
+      "id, name, plan, subscription_status, mp_preapproval_id, " +
+      "custom_plan_id, agreed_plan_price_ars, agreed_plan_id"
+    )
     .eq("id", orgId)
     .maybeSingle()
 
@@ -66,6 +86,17 @@ export async function POST(
   if (!planDef || planDef.contactSalesOnly || planDef.priceArsMonthly === null) {
     return NextResponse.json(
       { error: `El plan de la org (${org.plan}) no es cobrable self-serve.` },
+      { status: 400 }
+    )
+  }
+
+  // Este link es el camino manual que se usa justo cuando el débito automático
+  // de una org falla. Si acá cobráramos el precio de lista, una org que venía
+  // pagando el precio viejo perdería su precio congelado en el peor momento.
+  const amountArs = agreedPriceFor(org, plan) ?? (await resolvePlanPrice(admin, plan))
+  if (amountArs === null || amountArs <= 0) {
+    return NextResponse.json(
+      { error: `No se pudo resolver el precio del plan ${org.plan}.` },
       { status: 400 }
     )
   }
@@ -91,7 +122,9 @@ export async function POST(
       plan,
       payerEmail,
       backUrl,
+      amountArs,
       includeFreeTrial, // default false: cobro al aceptar
+      freeTrialDays, // si viene, difiere el primer cobro N días (prioridad sobre includeFreeTrial)
     })
   } catch (err: any) {
     const raw = err?.message || String(err)
@@ -105,7 +138,7 @@ export async function POST(
     org_id: orgId,
     event_type: "CHECKOUT_INITIATED",
     external_id: null,
-    amount_cents: (planDef.priceArsMonthly ?? 0) * 100,
+    amount_cents: Math.round(amountArs * 100),
     currency: "ARS",
     status: "pending",
     payload: {
@@ -114,6 +147,7 @@ export async function POST(
       payer_email: payerEmail,
       preapproval_id: preapproval.id,
       included_free_trial: includeFreeTrial,
+      free_trial_days: freeTrialDays ?? null,
       generated_by_user_id: user.id,
     },
   })
@@ -138,6 +172,9 @@ export async function POST(
     init_point: preapproval.init_point,
     preapproval_id: preapproval.id,
     payer_email: payerEmail,
-    note: "Mandale este link al cliente. Debe pagarlo con la cuenta de MP de ese email. El estado se activa solo cuando el pago se aprueba.",
+    amount_ars: amountArs,
+    note:
+      `Mandale este link al cliente. Se le va a cobrar ${formatArs(amountArs)}/mes. ` +
+      "Debe pagarlo con la cuenta de MP de ese email. El estado se activa solo cuando el pago se aprueba.",
   })
 }

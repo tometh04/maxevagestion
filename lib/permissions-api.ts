@@ -6,7 +6,15 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/lib/supabase/types"
-import { isOwnDataOnly, hasPermission, type UserRole, type Module, type Permission } from "./permissions"
+import {
+  isOwnDataOnly,
+  hasPermission,
+  isIndependentAdvisor,
+  INDEPENDENT_ADVISOR_PERMS,
+  type UserRole,
+  type Module,
+  type Permission,
+} from "./permissions"
 import { checkResolvedPermission, checkOwnDataOnly, type ResolvedPermissionsMatrix } from "./permissions-agency"
 
 type SupportOperationsUser = {
@@ -14,6 +22,10 @@ type SupportOperationsUser = {
   id: string
   can_view_agency_operations_support?: boolean | null
   can_add_services_on_agency_operations?: boolean | null
+  can_create_operations_for_other_sellers?: boolean | null
+  can_register_payments_on_agency_operations?: boolean | null
+  /** VIB-69: asesor de viajes independiente (SELLER endurecido). */
+  is_independent_advisor?: boolean | null
 }
 
 type ScopedOperationResource = {
@@ -21,7 +33,38 @@ type ScopedOperationResource = {
   seller_id: string | null
 }
 
-export type OperationAccessScope = "full" | "own" | "agency-support"
+// "agency-payments": SELLER con can_register_payments_on_agency_operations. Ve y
+// abre operaciones de sus agencias en modo SOLO cobros/pagos: puede imputar
+// pagos (el gate real vive en /api/payments), pero NO editar la operación,
+// pasajeros, documentos ni servicios. Es más acotado que "full" y distinto de
+// "agency-support" (postventa), que en cambio oculta el tab de pagos.
+export type OperationAccessScope = "full" | "own" | "agency-support" | "agency-payments"
+
+/**
+ * UUID que no puede existir como PK. Se usa para construir un filtro que no
+ * matchea nada.
+ */
+export const NO_MATCH_UUID = "00000000-0000-0000-0000-000000000000"
+
+/**
+ * Devuelve la query acotada a CERO filas, de forma que el caller no pueda
+ * deshacerlo sin querer.
+ *
+ * 🔴 Fix (VIB-69): acá antes se usaba `.limit(0)`. Es una trampa: `.limit()` y
+ * `.range()` escriben el MISMO parámetro `limit` de PostgREST, y `.set()` pisa
+ * el valor anterior. Todo endpoint que después pagina —
+ * `query.order(...).range(offset, offset + limit - 1)`, que es el patrón normal
+ * del repo — convertía el `limit=0` en `limit=2000` y devolvía TODO lo que
+ * quedaba después de los filtros que sí sobrevivían (típicamente solo `org_id`).
+ *
+ * Se veía como un vendedor sin clientes propios mirando la base entera de la
+ * agencia: el caso "no tiene nada" era justamente el que abría todo.
+ *
+ * Un `.eq()` sobre un UUID imposible sí sobrevive a la paginación.
+ */
+function emptyResult(query: any): any {
+  return query.eq("id", NO_MATCH_UUID)
+}
 
 /**
  * Aplica filtros de permisos a una query de Supabase según el rol del usuario
@@ -75,11 +118,17 @@ export function applyRoleFilters<T>(
  * SUPER_ADMIN y ORG_OWNER siempre retornan true sin importar la matrix.
  */
 export function canPerformAction(
-  user: { role: string; id: string },
+  user: { role: string; id: string; is_independent_advisor?: boolean | null },
   module: Module,
   permission: Permission,
   resolvedMatrix?: ResolvedPermissionsMatrix
 ): boolean {
+  // VIB-69: el techo del asesor independiente se aplica acá, no en cada route,
+  // porque muchos gates llaman a canPerformAction() sin matrix resuelta (fallback
+  // estático de SELLER) y esa rama le habilitaría leads.
+  if (isIndependentAdvisor(user) && INDEPENDENT_ADVISOR_PERMS[module]?.[permission] !== true) {
+    return false
+  }
   if (user.role === "SUPER_ADMIN" || user.role === "ORG_OWNER") return true
   if (resolvedMatrix) return checkResolvedPermission(resolvedMatrix, module, permission)
   return hasPermission(user.role as UserRole, module, permission)
@@ -90,21 +139,99 @@ export function canPerformAction(
  * Acepta matrix dinámica opcional; sin ella usa el static default.
  */
 export function isOwnDataOnlyResolved(
-  user: { role: string },
+  user: { role: string; is_independent_advisor?: boolean | null },
   module: Module,
   resolvedMatrix?: ResolvedPermissionsMatrix
 ): boolean {
+  // VIB-69: para un asesor independiente alcanza con que el techo lo restrinja,
+  // aunque la agencia le haya apagado ownDataOnly al rol SELLER.
+  if (isIndependentAdvisor(user) && INDEPENDENT_ADVISOR_PERMS[module]?.ownDataOnly === true) {
+    return true
+  }
   if (user.role === "SUPER_ADMIN" || user.role === "ORG_OWNER") return false
   if (resolvedMatrix) return checkOwnDataOnly(resolvedMatrix, module)
   return isOwnDataOnly(user.role as UserRole, module)
 }
 
+/**
+ * Los permisos especiales de agencia (postventa, cargar a nombre de otro,
+ * registrar cobros de terceros) son ampliaciones sobre el vendedor de la
+ * agencia. Un asesor independiente es externo: nunca los recibe, aunque el flag
+ * quede prendido en su fila por un cambio de rol previo.
+ */
+function canReceiveAgencyOperationPerms(user: SupportOperationsUser): boolean {
+  return user.role === "SELLER" && !isIndependentAdvisor(user)
+}
+
 export function hasAgencyOperationsSupportView(user: SupportOperationsUser): boolean {
-  return user.role === "SELLER" && user.can_view_agency_operations_support === true
+  return canReceiveAgencyOperationPerms(user) && user.can_view_agency_operations_support === true
 }
 
 export function canAddAgencyOperationServices(user: SupportOperationsUser): boolean {
   return hasAgencyOperationsSupportView(user) && user.can_add_services_on_agency_operations === true
+}
+
+/**
+ * ¿El vendedor puede cargar operaciones a nombre de OTRO vendedor?
+ * Sólo aplica a SELLER: los demás roles (ADMIN, SUPER_ADMIN, etc.) ya pueden
+ * asignar cualquier vendedor sin necesidad de este flag. Opt-in por usuario,
+ * lo habilita el admin desde "Permisos especiales".
+ */
+export function canCreateOperationsForOtherSellers(user: SupportOperationsUser): boolean {
+  return canReceiveAgencyOperationPerms(user) && user.can_create_operations_for_other_sellers === true
+}
+
+/**
+ * ¿El usuario puede elegir un VENDEDOR SECUNDARIO al cargar una operación?
+ *
+ * Es distinto de `canCreateOperationsForOtherSellers` (VIB-105): ese permiso
+ * decide de quién ES la operación (cargarla a nombre de otro). El secundario no
+ * cambia la propiedad: es una venta compartida donde el principal parte su
+ * comisión con un compañero de sus mismas agencias. Eso lo hace cualquier
+ * vendedor sin permiso especial, así que gatear el secundario con ese flag
+ * dejaba a los SELLER comunes sin poder cargar ventas compartidas.
+ *
+ * La única excepción es el asesor independiente (VIB-69): es externo a la
+ * agencia, no ve al equipo y no comparte comisiones con él.
+ *
+ * El vendedor concreto igual se valida contra las agencias del usuario con
+ * `isSellerWithinUserAgencies`.
+ */
+export function canAssignSecondarySeller(user: SupportOperationsUser): boolean {
+  return !isIndependentAdvisor(user)
+}
+
+/**
+ * ¿El vendedor puede registrar cobros/pagos en operaciones de OTRO vendedor de
+ * sus mismas agencias? Sólo aplica a SELLER (los demás roles con acceso a caja
+ * ya operan sobre toda su agencia). Opt-in por usuario, lo habilita el admin
+ * desde "Permisos especiales". El alcance es SOLO plata: no habilita editar la
+ * operación ni sus datos. La pertenencia a la agencia se valida en el gate de
+ * /api/payments; acá sólo resolvemos el flag.
+ */
+export function canRegisterPaymentsOnAgencyOperations(user: SupportOperationsUser): boolean {
+  return canReceiveAgencyOperationPerms(user) && user.can_register_payments_on_agency_operations === true
+}
+
+/**
+ * Valida que un vendedor destino pertenezca a alguna de las agencias del usuario
+ * actual (acotado a su org: agencyIds ya viene filtrado por org, ver getUserAgencyIds).
+ * Se usa para restringir "cargar a nombre de otro" a vendedores de las mismas
+ * agencias, no de toda la organización.
+ */
+export async function isSellerWithinUserAgencies(
+  supabase: SupabaseClient<Database>,
+  targetSellerId: string,
+  agencyIds: string[]
+): Promise<boolean> {
+  if (!targetSellerId || agencyIds.length === 0) return false
+  const { data } = await supabase
+    .from("user_agencies")
+    .select("agency_id")
+    .eq("user_id", targetSellerId)
+    .in("agency_id", agencyIds)
+    .limit(1)
+  return (data?.length ?? 0) > 0
 }
 
 export function resolveOperationAccessScope(
@@ -130,14 +257,38 @@ export function resolveOperationAccessScope(
       return "own"
     }
 
+    // VIB-69: el asesor independiente no accede a operaciones ajenas ni siquiera
+    // en modo postventa o cobros — es externo a la agencia.
+    if (isIndependentAdvisor(user)) {
+      return null
+    }
+
+    // Postventa (ver pasajeros/documentos/servicios) tiene prioridad como scope
+    // "primario". El permiso de cobros se expone además por prop
+    // (canRegisterPaymentsOnAgencyOperations) para que un vendedor con AMBOS
+    // flags pueda operar pagos aunque el scope resuelto sea postventa.
     if (hasAgencyOperationsSupportView(user)) {
       return "agency-support"
+    }
+
+    if (canRegisterPaymentsOnAgencyOperations(user)) {
+      return "agency-payments"
     }
 
     return null
   }
 
   return "full"
+}
+
+/**
+ * Scopes de acceso "de agencia" (no propietario) que son de SOLO LECTURA para
+ * datos de la operación (documentos, servicios): postventa y cobros. Un vendedor
+ * con estos scopes puede ver/operar lo que su flag habilita, pero NO editar los
+ * datos de una operación ajena. "own"/"full" sí pueden escribir.
+ */
+export function isAgencyReadonlyScope(scope: OperationAccessScope): boolean {
+  return scope === "agency-support" || scope === "agency-payments"
 }
 
 /**
@@ -150,11 +301,18 @@ export function resolveOperationAccessScope(
  */
 export function applyLeadsFilters(
   query: any,
-  user: { role: string; id: string },
+  user: { role: string; id: string; is_independent_advisor?: boolean | null },
   agencyIds: string[],
   resolvedMatrix?: ResolvedPermissionsMatrix
 ): any {
   const userRole = user.role as UserRole
+
+  // VIB-69: el asesor independiente trae su propia cartera y no ve el CRM de la
+  // agencia. Se corta acá — y no solo en el gate del route — porque el vendedor
+  // ve TODOS los leads de sus agencias y este helper es el que aplica ese filtro.
+  if (isIndependentAdvisor(user)) {
+    throw new Error("No tiene permiso para ver leads")
+  }
 
   // SELLER ve todos los leads de sus agencias (para poder ver listas compartidas en el CRM y arrastrar leads)
   if (userRole === "SELLER") {
@@ -197,9 +355,17 @@ export function applyOperationsFilters(
 ): any {
   const userRole = user.role as UserRole
 
-  // SELLER con permiso especial puede ver todas las operaciones de sus agencias
+  // VIB-69: asesor independiente → siempre solo sus operaciones.
+  if (isIndependentAdvisor(user)) {
+    return query.eq("seller_id", user.id)
+  }
+
+  // SELLER con permiso especial puede ver todas las operaciones de sus agencias:
+  // ya sea para postventa (can_view_agency_operations_support) o para registrar
+  // cobros/pagos (can_register_payments_on_agency_operations). Necesita verlas en
+  // el listado para poder abrirlas e imputar el pago.
   if (userRole === "SELLER") {
-    if (hasAgencyOperationsSupportView(user)) {
+    if (hasAgencyOperationsSupportView(user) || canRegisterPaymentsOnAgencyOperations(user)) {
       if (agencyIds.length > 0) {
         return query.in("agency_id", agencyIds)
       }
@@ -212,12 +378,12 @@ export function applyOperationsFilters(
 
   // ADMIN / SUPER_ADMIN / VIEWER / CONTABLE: filtrar por agencias de su org.
   // 🔴 Fix cross-tenant (2026-05-18): si no tiene agency_ids, ANTES devolvía
-  // query sin filtro → leak cross-tenant. Ahora limit(0) para que no
-  // devuelva nada (el endpoint que llame esto deberá lidiar con 0 resultados).
+  // query sin filtro → leak cross-tenant. Ahora no devuelve nada (el endpoint
+  // que llame esto deberá lidiar con 0 resultados).
   if (agencyIds.length > 0) {
     return query.in("agency_id", agencyIds)
   }
-  return query.limit(0)
+  return emptyResult(query)
 }
 
 /**
@@ -232,7 +398,7 @@ export function applyOperationsFilters(
  */
 export async function applyCustomersFilters(
   query: any,
-  user: { role: string; id: string },
+  user: { role: string; id: string; is_independent_advisor?: boolean | null },
   agencyIds: string[],
   supabase: SupabaseClient<Database>,
   context?: string
@@ -266,8 +432,11 @@ export async function applyCustomersFilters(
   }
 
   // SELLER: en contexto de selector (crear operación), ver todos los clientes
-  // para poder asignar cualquier cliente existente a una nueva operación
-  if (userRole === "SELLER" && context === "selector") {
+  // para poder asignar cualquier cliente existente a una nueva operación.
+  // VIB-69: el asesor independiente queda afuera de esta apertura — la cartera de
+  // clientes de la agencia no es información suya. Carga la venta con sus propios
+  // clientes (los que él creó o ya tienen operación con él).
+  if (userRole === "SELLER" && context === "selector" && !isIndependentAdvisor(user)) {
     return { query }
   }
 
@@ -317,14 +486,44 @@ export async function applyCustomersFilters(
 
     if (customerIds.size === 0) {
       // No tiene clientes asociados ni creados, retornar query vacía
-      return { query: query.limit(0) }
+      return { query: emptyResult(query) }
     }
 
     return { query: query.in("id", Array.from(customerIds)) }
   }
 
   // Para otros roles no contemplados, retornar query vacío por seguridad
-  return { query: query.limit(0) }
+  return { query: emptyResult(query) }
+}
+
+/**
+ * VIB-69: ¿este cliente es "suyo" para un asesor independiente?
+ *
+ * Mismo criterio que la rama de SELLER en applyCustomersFilters: clientes de sus
+ * operaciones + los que él dio de alta. Se usa en los endpoints que resuelven un
+ * cliente por id, donde el scope por org alcanzaba para un vendedor de la
+ * agencia pero no para un freelancer externo.
+ */
+export async function isCustomerOwnedByAdvisor(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+  customerId: string
+): Promise<boolean> {
+  const { data: created } = await (supabase.from("customers") as any)
+    .select("id")
+    .eq("id", customerId)
+    .eq("created_by", userId)
+    .maybeSingle()
+
+  if (created) return true
+
+  const { data: linked } = await (supabase.from("operation_customers") as any)
+    .select("customer_id, operations!inner(seller_id)")
+    .eq("customer_id", customerId)
+    .eq("operations.seller_id", userId)
+    .limit(1)
+
+  return (linked?.length ?? 0) > 0
 }
 
 /**
@@ -388,11 +587,18 @@ export async function canAccessDocumentResource(
   },
   options?: {
     write?: boolean
+    /**
+     * Matriz de permisos resuelta por agencia. Si se pasa, el gate del módulo
+     * `documents` y el scope de `customers` respetan los overrides por agencia
+     * en vez de los defaults estáticos del rol.
+     */
+    matrix?: ResolvedPermissionsMatrix | null
   }
 ): Promise<boolean> {
   const write = options?.write === true
+  const matrix = options?.matrix ?? undefined
 
-  if (write && !canPerformAction(user, "documents", "write")) {
+  if (write && !canPerformAction(user, "documents", "write", matrix)) {
     return false
   }
 
@@ -412,25 +618,29 @@ export async function canAccessDocumentResource(
       return false
     }
 
-    return !write || scope !== "agency-support"
+    return !write || !isAgencyReadonlyScope(scope)
   }
 
   if (resource.customerId) {
     const scopes = await getCustomerOperationAccessScopes(supabase, user, resource.customerId)
     if (scopes.length === 0) {
-      return user.role !== "SELLER" && (
-        write
-          ? canPerformAction(user, "documents", "write")
-          : canPerformAction(user, "documents", "read")
-      )
+      // Cliente sin operaciones vinculadas al usuario. Antes esto bloqueaba a
+      // SELLER de forma fija; ahora se permite salvo que esté restringido a sus
+      // propios clientes (customers.ownDataOnly) según el matrix por agencia.
+      if (isOwnDataOnlyResolved(user, "customers", matrix)) {
+        return false
+      }
+      return write
+        ? canPerformAction(user, "documents", "write", matrix)
+        : canPerformAction(user, "documents", "read", matrix)
     }
 
-    return !write || scopes.some((scope) => scope !== "agency-support")
+    return !write || scopes.some((scope) => !isAgencyReadonlyScope(scope))
   }
 
   return write
-    ? canPerformAction(user, "documents", "write")
-    : canPerformAction(user, "documents", "read")
+    ? canPerformAction(user, "documents", "write", matrix)
+    : canPerformAction(user, "documents", "read", matrix)
 }
 
 /**

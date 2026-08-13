@@ -2,8 +2,9 @@ import { NextResponse } from "next/server"
 import { createAdminClient, createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
-import { getUserAgencyIds } from "@/lib/permissions-api"
-import { resolveUserPermissions, checkResolvedPermission } from "@/lib/permissions-agency"
+import { getUserAgencyIds, isOwnDataOnlyResolved, canPerformAction, canRegisterPaymentsOnAgencyOperations } from "@/lib/permissions-api"
+import { getRequestPermissions } from "@/lib/permissions/request"
+import { resolveUserPermissions, checkResolvedPermission, type ResolvedPermissionsMatrix } from "@/lib/permissions-agency"
 import {
   createLedgerMovement,
   calculateARSEquivalent,
@@ -18,17 +19,20 @@ import {
   applyOperatorPaymentSettlement,
   findMatchingOperatorPayment,
   revertOperatorPaymentSettlement,
+  AmbiguousOperatorPaymentError,
 } from "@/lib/accounting/operator-payment-settlement"
 import {
   createPaymentCounterpartMovement,
   mapPaymentMethodToLedgerMethod,
   removePaymentCounterpartMovement,
 } from "@/lib/accounting/payment-counterparts"
+import { todayInArgentina } from "@/lib/utils/date-only"
 import { revalidateTag, CACHE_TAGS } from "@/lib/cache"
 import { logAudit, getClientIP } from "@/lib/audit"
 import {
   coercePositiveNumber,
   getCustomerIncomeReferenceCurrency,
+  isExchangeRatePlausibleVsMarket,
   requiresCustomerIncomeExchangeRate,
 } from "@/lib/payments/customer-income-fx"
 import { resolveServicePaymentLink } from "@/lib/payments/service-payment-link"
@@ -117,11 +121,15 @@ export async function POST(request: Request) {
     const supabase = await createServerClient()
 
     // Verificar acceso al módulo de caja (con permisos dinámicos por agencia)
+    let matrix: ResolvedPermissionsMatrix | null = null
     let hasCashAccess = canAccessModule(user.role as any, "cash")
+    // agencyIds se hoistea acá porque también lo usa el gate de "operación propia
+    // vs. de la agencia" más abajo (SELLER con can_register_payments_on_agency_operations).
+    let userAgencyIds: string[] = []
     if ((user as any).org_id) {
-      const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
-      const perms = await resolveUserPermissions(supabase as any, user.id, (user as any).org_id, user.role, agencyIds)
-      hasCashAccess = checkResolvedPermission(perms, "cash", "write")
+      userAgencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
+      matrix = await resolveUserPermissions(supabase as any, user.id, (user as any).org_id, user.role, userAgencyIds)
+      hasCashAccess = checkResolvedPermission(matrix, "cash", "write")
     }
     if (!hasCashAccess) {
       return NextResponse.json({ error: "No tiene permisos para acceder a este módulo" }, { status: 403 })
@@ -292,16 +300,32 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
     }
 
-    // SELLER: verificar que la operación le pertenece
-    if (user.role === "SELLER" && operation_id) {
-      const { data: operationOwnership } = await (supabase.from("operations") as any)
-        .select("id")
+    // Si el usuario está restringido a sus propios datos en operaciones
+    // (operations.ownDataOnly resuelto por agencia), verificar que la operación
+    // le pertenece. Antes era `role === "SELLER"` fijo, así que apagar
+    // ownDataOnly no habilitaba imputar pagos en operaciones de la agencia.
+    //
+    // Excepción: un SELLER con can_register_payments_on_agency_operations puede
+    // registrar pagos en operaciones de OTRO vendedor siempre que la operación
+    // esté en alguna de SUS agencias (mismo criterio de acotamiento que
+    // can_create_operations_for_other_sellers). El org scope ya está garantizado
+    // por el fetch org-scoped de más abajo.
+    if (isOwnDataOnlyResolved(user, "operations", matrix ?? undefined) && operation_id) {
+      const { data: gatedOp } = await (supabase.from("operations") as any)
+        .select("id, seller_id, agency_id")
         .eq("id", operation_id)
-        .eq("seller_id", user.id)
-        .eq("org_id", user.org_id) // defensive: scope por org también para SELLER
+        .eq("org_id", user.org_id) // defensive: scope por org también
         .maybeSingle()
 
-      if (!operationOwnership) {
+      const ownsOperation = !!gatedOp && gatedOp.seller_id === user.id
+      const canRegisterOnAgencyOp =
+        !!gatedOp &&
+        !ownsOperation &&
+        canRegisterPaymentsOnAgencyOperations(user) &&
+        !!gatedOp.agency_id &&
+        userAgencyIds.includes(gatedOp.agency_id)
+
+      if (!ownsOperation && !canRegisterOnAgencyOp) {
         return NextResponse.json({ error: "No tiene permiso para registrar pagos en esta operación" }, { status: 403 })
       }
     }
@@ -374,6 +398,24 @@ export async function POST(request: Request) {
       )
     }
 
+    // Sanidad del TC: un cobro ARS↔USD con un TC absurdo (ej. 1) hacía
+    // amount_usd = monto en ARS y destruía la deuda del cliente (op #17955bf1:
+    // USD 1.270 → USD -1.948.180). Bloqueamos valores off por orden de magnitud
+    // vs el TC de referencia del mercado. Banda amplia (factor 10): no molesta
+    // cotizaciones razonables.
+    if (requiresCustomerIncomeManualExchangeRate && providedExchangeRateNumber) {
+      const marketRate = await getCurrentArsPerUsd(supabase)
+      if (!isExchangeRatePlausibleVsMarket(providedExchangeRateNumber, marketRate)) {
+        return NextResponse.json(
+          {
+            error: `El tipo de cambio ingresado (${providedExchangeRateNumber}) parece incorrecto. El de referencia es ~${Math.round(marketRate)} ARS por USD. Revisalo.`,
+            code: "IMPLAUSIBLE_EXCHANGE_RATE",
+          },
+          { status: 400 }
+        )
+      }
+    }
+
     // Validaciones de fechas
     const today = new Date()
     today.setHours(0, 0, 0, 0) // Resetear a medianoche para comparación
@@ -436,6 +478,7 @@ export async function POST(request: Request) {
       if (operation_id) {
         let matchedOperatorPayment = null
 
+        const hasExplicitDebt = Boolean(resolvedOperatorPaymentId || operator_payment_id)
         try {
           matchedOperatorPayment = await findMatchingOperatorPayment(supabase, {
             operationId: operation_id,
@@ -444,8 +487,28 @@ export async function POST(request: Request) {
             // Desambigua patas del mismo operador por monto cuando no hay
             // operator_payment_id explícito (ver pickExactPendingMatch).
             amount: amount != null ? parseFloat(String(amount)) : null,
+            // Sin deuda explícita y varias patas del mismo operador sin match
+            // exacto → no adivinar por FIFO; pedirle al usuario que elija.
+            rejectAmbiguous: !hasExplicitDebt,
           })
         } catch (error) {
+          if (error instanceof AmbiguousOperatorPaymentError) {
+            return NextResponse.json(
+              {
+                error: error.message,
+                code: "AMBIGUOUS_OPERATOR_PAYMENT",
+                candidates: error.candidates.map((c) => ({
+                  id: c.id,
+                  operator_id: c.operator_id,
+                  amount: Number(c.amount),
+                  paid_amount: Number(c.paid_amount ?? 0),
+                  pending: Number(c.amount) - Number(c.paid_amount ?? 0),
+                  due_date: c.due_date,
+                })),
+              },
+              { status: 409 }
+            )
+          }
           const message = error instanceof Error ? error.message : "Error al identificar la deuda del operador"
           const status = message.startsWith("Error obteniendo deuda de operador") ? 500 : 400
           return NextResponse.json({ error: message }, { status })
@@ -889,8 +952,8 @@ export async function POST(request: Request) {
             console.error("⚠️ CRITICAL: link retry failed — rolling back payment + ledger:", {
               paymentId: payment.id, ledgerMovementId, error: retryError,
             })
-            await (supabase.from("ledger_movements") as any).delete().eq("id", ledgerMovementId)
-            await (supabase.from("payments") as any).delete().eq("id", payment.id)
+            await (supabase.from("ledger_movements") as any).delete().eq("id", ledgerMovementId).eq("org_id", user.org_id)
+            await (supabase.from("payments") as any).delete().eq("id", payment.id).eq("org_id", user.org_id)
             return NextResponse.json(
               {
                 error: "No se pudo vincular el pago al libro mayor. La operación se revirtió por completo, reintentá. Si vuelve a fallar avisá a soporte.",
@@ -940,8 +1003,8 @@ export async function POST(request: Request) {
           console.error("⚠️ CRITICAL: cash_movement insert failed — rolling back:", {
             paymentId: payment.id, ledgerMovementId, error: cashMovementError,
           })
-          await (supabase.from("ledger_movements") as any).delete().eq("id", ledgerMovementId)
-          await (supabase.from("payments") as any).delete().eq("id", payment.id)
+          await (supabase.from("ledger_movements") as any).delete().eq("id", ledgerMovementId).eq("org_id", user.org_id)
+          await (supabase.from("payments") as any).delete().eq("id", payment.id).eq("org_id", user.org_id)
           return NextResponse.json(
             {
               error: `No se pudo crear el movimiento de caja: ${cashMovementError.message}. La operación se revirtió, reintentá.`,
@@ -1400,6 +1463,13 @@ export async function GET(request: Request) {
       }
     }
 
+    // VIB-61 (audit): el filtro de agencia y la búsqueda por contactName se
+    // aplicaban en memoria DESPUÉS del range → paginación inconsistente y la
+    // búsqueda solo miraba la página cargada (un pago viejo no aparecía ni
+    // buscándolo). Ahora ambos van server-side.
+    const filterAgency = !!(agencyId && agencyId !== "ALL")
+    const opEmbed = filterAgency ? "operations:operation_id!inner" : "operations:operation_id"
+
     // Query base con relación a operations y clientes
     let query = (supabase.from("payments") as any).select(`
       *,
@@ -1408,7 +1478,7 @@ export async function GET(request: Request) {
         name,
         contact_email
       ),
-      operations:operation_id(
+      ${opEmbed}(
         id,
         destination,
         file_code,
@@ -1516,6 +1586,49 @@ export async function GET(request: Request) {
       query = query.eq("currency", currency)
     }
 
+    // Filtro de agencia server-side (inner join en operations). Excluye los
+    // pagos sin operación, igual que hacía el filtro en memoria previo.
+    if (filterAgency) {
+      query = query.eq("operations.agency_id", agencyId)
+    }
+
+    // Búsqueda por contactName server-side: pre-resolvemos las operaciones cuyo
+    // destino o cliente matchean, y matcheamos también contra la referencia del
+    // pago. Corre solo cuando hay término de búsqueda (on-demand, sin peso en el
+    // listado normal).
+    if (contactName && contactName.trim()) {
+      const term = contactName.trim()
+      // Sanitizado para el DSL de .or() (coma/paréntesis/asterisco rompen el parser).
+      const safeTerm = term.replace(/[,()*]/g, " ").trim()
+
+      const { data: opsByDest } = await (supabase.from("operations") as any)
+        .select("id").eq("org_id", user.org_id).ilike("destination", `%${term}%`).limit(5000)
+
+      let opsByCustomer: string[] = []
+      if (safeTerm) {
+        const { data: custs } = await (supabase.from("customers") as any)
+          .select("id").eq("org_id", user.org_id)
+          .or(`first_name.ilike.*${safeTerm}*,last_name.ilike.*${safeTerm}*`).limit(5000)
+        if (custs && custs.length > 0) {
+          const { data: ocs } = await (supabase.from("operation_customers") as any)
+            .select("operation_id").in("customer_id", custs.map((c: any) => c.id))
+          opsByCustomer = (ocs || []).map((o: any) => o.operation_id).filter(Boolean)
+        }
+      }
+
+      const opIds = Array.from(new Set([...(opsByDest || []).map((o: any) => o.id), ...opsByCustomer]))
+      const orParts: string[] = []
+      if (opIds.length > 0) orParts.push(`operation_id.in.(${opIds.join(",")})`)
+      if (safeTerm) orParts.push(`reference.ilike.*${safeTerm}*`)
+      if (orParts.length === 0) {
+        return NextResponse.json({
+          payments: [],
+          pagination: { total: 0, page, limit, totalPages: 0, hasMore: false },
+        })
+      }
+      query = query.or(orParts.join(","))
+    }
+
     // Paginación y ordenamiento
     const { data: payments, error, count } = await query
       .order("date_due", { ascending: false, nullsFirst: false })
@@ -1527,37 +1640,11 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Error al obtener pagos" }, { status: 500 })
     }
 
-    // Filtrar en memoria por agencia y nombre de cliente (nested join fields)
-    let filteredPayments = payments || []
-    if (agencyId && agencyId !== "ALL") {
-      filteredPayments = filteredPayments.filter((p: any) =>
-        p.operations?.agency_id === agencyId
-      )
-    }
-    if (contactName && contactName.trim()) {
-      const search = contactName.trim().toLowerCase()
-      filteredPayments = filteredPayments.filter((p: any) => {
-        // Buscar en destino de la operación
-        if (p.operations?.destination?.toLowerCase().includes(search)) return true
-        // Buscar en nombre de clientes vinculados a la operación
-        const customers = p.operations?.operation_customers || []
-        for (const oc of customers) {
-          const c = oc.customers
-          if (c) {
-            const fullName = `${c.first_name || ""} ${c.last_name || ""}`.toLowerCase()
-            if (fullName.includes(search)) return true
-          }
-        }
-        // Buscar en referencia del pago
-        if (p.reference?.toLowerCase().includes(search)) return true
-        return false
-      })
-    }
-
+    // (Los filtros de agencia y contactName ahora van en la query — arriba.)
     const totalPages = count ? Math.ceil(count / limit) : 0
 
     return NextResponse.json({
-      payments: filteredPayments,
+      payments: payments || [],
       pagination: {
         total: count || 0,
         page,
@@ -1845,12 +1932,12 @@ export async function DELETE(request: Request) {
  */
 export async function PATCH(request: Request) {
   try {
-    const { user } = await getCurrentUser()
-    const supabase = await createServerClient()
+    const { user, supabase, matrix } = await getRequestPermissions()
 
-    // Validar rol
-    const allowedRoles = ["ADMIN", "SUPER_ADMIN", "CONTABLE"]
-    if (!allowedRoles.includes(user.role)) {
+    // Gate por cash.write (matrix por agencia). El set previo
+    // [ADMIN,SUPER_ADMIN,CONTABLE] coincide con el default de cash.write;
+    // además ahora ORG_OWNER queda habilitado, como en el resto del sistema.
+    if (!canPerformAction(user, "cash", "write", matrix ?? undefined)) {
       return NextResponse.json({ error: "No tienes permisos para editar pagos" }, { status: 403 })
     }
 
@@ -1867,6 +1954,8 @@ export async function PATCH(request: Request) {
       markAsPaid,
       apply_rg5617: patchApplyRg5617,
       apply_rg3819: patchApplyRg3819,
+      bank_tax_rate: patchBankTaxRate,
+      bank_tax_amount: patchBankTaxAmount,
     } = body
 
     if (!paymentId) {
@@ -1987,6 +2076,21 @@ export async function PATCH(request: Request) {
         { error: CUSTOMER_INCOME_EXCHANGE_RATE_ERROR },
         { status: 400 }
       )
+    }
+
+    // Sanidad del TC (mismo criterio que el POST): bloquea TC absurdo (ej. 1) en
+    // cobros ARS↔USD que destruía la deuda del cliente.
+    if (requiresCustomerIncomeManualExchangeRate && finalExchangeRate) {
+      const marketRate = await getCurrentArsPerUsd(supabase)
+      if (!isExchangeRatePlausibleVsMarket(finalExchangeRate, marketRate)) {
+        return NextResponse.json(
+          {
+            error: `El tipo de cambio ingresado (${finalExchangeRate}) parece incorrecto. El de referencia es ~${Math.round(marketRate)} ARS por USD. Revisalo.`,
+            code: "IMPLAUSIBLE_EXCHANGE_RATE",
+          },
+          { status: 400 }
+        )
+      }
     }
 
     if (finalDatePaid) {
@@ -2363,6 +2467,87 @@ export async function PATCH(request: Request) {
           operatorId: existingPayment.payer_type === "OPERATOR" ? operatorId : null,
           userId: user.id,
         })
+
+        // ============================================
+        // LEY 25413: Impuesto déb/créd bancarios (edición)
+        // Paridad con el POST (creación): si el user tildó el impuesto en el
+        // diálogo de editar, recreamos el EXPENSE del impuesto (ledger +
+        // cash_movement) en la misma cuenta. El movimiento viejo del impuesto (si
+        // existía) ya se borró en el bloque de reversión 2c-bis, así que esto no
+        // duplica. Si el user NO lo tildó, no se recrea → queda removido.
+        // ============================================
+        if (
+          patchBankTaxRate != null &&
+          patchBankTaxAmount != null &&
+          Number(patchBankTaxAmount) > 0
+        ) {
+          try {
+            const taxAmount = Number(patchBankTaxAmount)
+            const taxRate = Number(patchBankTaxRate)
+            const taxConcept = `Imp. Ley 25413 (${taxRate}%) — Pago Op. ${existingPayment.operation_id ? existingPayment.operation_id.slice(0, 8) : "N/A"}`
+
+            // Cleanup previo: borrar cualquier impuesto Ley 25413 anterior de este
+            // pago antes de recrearlo, para no duplicar si el pago ya tenía uno.
+            // El impuesto NO tiene FK al payment: se identifica por el marcador en
+            // las notas ("vinculado a payment <id>"). Solo corre en esta rama —si
+            // el user NO tildó el impuesto, el impuesto previo queda intacto.
+            await (supabase.from("ledger_movements") as any)
+              .delete()
+              .eq("org_id", user.org_id)
+              .eq("type", "EXPENSE")
+              .ilike("notes", `%vinculado a payment ${paymentId}%`)
+
+            let taxAmountARS = taxAmount
+            if (finalCurrency === "USD" && exchangeRate) {
+              taxAmountARS = calculateARSEquivalent(taxAmount, "USD", exchangeRate)
+            }
+
+            // 1. ledger_movement EXPENSE del impuesto. Las notas llevan el
+            //    marcador "vinculado a payment <id>" que usa el cleanup 2c-bis.
+            await createLedgerMovement(
+              {
+                operation_id: existingPayment.operation_id || null,
+                lead_id: null,
+                type: "EXPENSE",
+                concept: taxConcept,
+                currency: finalCurrency as "ARS" | "USD",
+                amount_original: taxAmount,
+                exchange_rate: finalCurrency === "USD" ? exchangeRate : null,
+                amount_ars_equivalent: taxAmountARS,
+                method: ledgerMethod,
+                account_id: finalAccountId,
+                seller_id: sellerId,
+                notes: `Impuesto bancario automático vinculado a payment ${paymentId}. Tasa: ${taxRate}%.`,
+                created_by: user.id,
+              },
+              supabase
+            )
+
+            // 2. cash_movement para que aparezca en Caja (mismo comportamiento
+            //    que el POST). Nota: comparte payment_id con el pago principal.
+            await (supabase.from("cash_movements") as any)
+              .insert({
+                operation_id: existingPayment.operation_id || null,
+                payment_id: paymentId,
+                cash_box_id: null,
+                financial_account_id: finalAccountId,
+                user_id: user.id,
+                type: "EXPENSE",
+                category: "BANK_TAX",
+                amount: taxAmount,
+                currency: finalCurrency,
+                movement_date: finalDatePaid || todayInArgentina(),
+                notes: taxConcept,
+                is_touristic: false,
+                agency_id: agencyId,
+              })
+
+            console.log(`✅ Bank tax Ley 25413 (edición): ${taxAmount} ${finalCurrency} (${taxRate}%) para payment ${paymentId}`)
+          } catch (bankTaxError) {
+            // No romper la edición — el pago principal ya quedó actualizado.
+            console.error("Error recreando movimiento de impuesto bancario Ley 25413 (edición):", bankTaxError)
+          }
+        }
 
       } catch (accountingError) {
         console.error("Error recreating accounting movements:", accountingError)
