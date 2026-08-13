@@ -56,7 +56,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { NewCustomerDialog } from "@/components/customers/new-customer-dialog"
 import { SearchableCombobox, type ComboboxOption } from "@/components/ui/searchable-combobox"
-import { trackEvent } from "@/lib/analytics/ga/track"
+import { trackEvent } from "@/lib/analytics/track"
 import { bucketCount } from "@/lib/analytics/ga/scrub"
 
 // Configuración de operaciones

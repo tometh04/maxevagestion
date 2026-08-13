@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 
-import { trackEvent } from "@/lib/analytics/ga/track"
+import { trackEvent } from "@/lib/analytics/track"
 
 const POLL_INTERVAL_MS = 2000
 const MAX_POLL_MS = 30_000

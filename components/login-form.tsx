@@ -6,7 +6,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { supabase } from "@/lib/supabase/client"
-import { trackEvent } from "@/lib/analytics/ga/track"
+import { trackEvent } from "@/lib/analytics/track"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {

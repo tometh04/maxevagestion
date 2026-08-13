@@ -28,7 +28,7 @@ import {
   roundQuotationMoney,
 } from "@/lib/quotations/totals"
 import { useLeadRegions } from "@/lib/hooks/use-lead-regions"
-import { trackEvent } from "@/lib/analytics/ga/track"
+import { trackEvent } from "@/lib/analytics/track"
 import { bucketCount } from "@/lib/analytics/ga/scrub"
 
 interface QuotationBuilderProps {

@@ -52,17 +52,48 @@ app/layout.tsx
 app/(dashboard)/layout.tsx     <AnalyticsIdentity identity={buildAnalyticsIdentity(...)} />
 app/admin/layout.tsx           idem, con role: "platform_admin"
 
-lib/analytics/ga/
-  config.ts     isGaEnabled() — única puerta de entrada
-  paths.ts      isAnalyticsEnabledPath / normalizePath / normalizeQuery (puro)
-  scrub.ts      scrubParams / bucketCount (puro)
-  identity.ts   buildAnalyticsIdentity (puro, server-safe)
-  events.ts     catálogo tipado de eventos
-  track.ts      transporte — ÚNICO módulo que habla con gtag
+lib/analytics/
+  events.ts     catálogo tipado + EVENT_SINKS — FUENTE DE VERDAD, común a ambos sinks
+  modules.ts    vocabulario de módulos + moduleFromPath (puro)
+  track.ts      DISPATCHER — la única puerta de entrada para los call sites
+  ga/
+    config.ts     isGaEnabled() — puerta de entrada del sink GA
+    paths.ts      isAnalyticsEnabledPath / normalizePath / normalizeQuery (puro)
+    scrub.ts      scrubParams / bucketCount (puro) — corre para los DOS sinks
+    identity.ts   buildAnalyticsIdentity (puro, server-safe)
+    track.ts      transporte — ÚNICO módulo que habla con gtag
+  telemetry/
+    config.ts     isTelemetryEnabled() — puerta de entrada del sink propio
+    emit.ts       transporte browser — batch + sendBeacon a /api/telemetry
+    server.ts     escritura de usage_events + trackServerEvent()
 ```
 
 Ojo: `lib/analytics/date-filter.ts` es otro bounded context (reporting de negocio
-del tenant). Todo lo de GA vive bajo `lib/analytics/ga/`.
+del tenant).
+
+## Dos sinks, un catálogo
+
+Desde 2026-08-13 GA4 no es el único destino. Cada evento declara en
+`EVENT_SINKS` a dónde va:
+
+- **`ga`** — comportamiento agregado, funnels, adquisición. Lo comen los ad
+  blockers en un 20-40% y no se puede cruzar contra billing.
+- **`db`** — `usage_events` en Postgres. Exacto, por tenant, cruzable contra
+  `subscription_status`. Ver `usage-heatmap.md`.
+
+Es el patrón "un tracking plan, muchos destinos" de Segment/PostHog, sin vendor.
+El `Record` de `EVENT_SINKS` es exhaustivo: un evento nuevo sin sink declarado
+rompe el build en vez de perderse en silencio.
+
+**La regla que evita el doble conteo**: si la acción ya deja una fila en una
+tabla de dominio, NO va al sink `db` — el mapa de calor deriva esas escrituras
+directamente de las tablas. El sink `db` es para lecturas (`module_viewed`,
+`record_opened`, `report_exported`) y para `ai_query_submitted`, que no deja
+fila propia. Hay un test que lo fija.
+
+Los call sites importan `trackEvent` de `lib/analytics/track` y nunca de
+`ga/track` ni de `telemetry/emit`: importar el transporte directo manda el
+evento a un solo sink ignorando lo declarado. El lint lo hace cumplir.
 
 ### Por qué la exclusión de `/cotizacion` es client-side
 
@@ -104,15 +135,20 @@ tecla.
 
 ## Cómo agregar un evento
 
-1. Declararlo en `lib/analytics/ga/events.ts` con su shape de params.
-2. Agregar una muestra en `lib/analytics/ga/__tests__/events.test.ts`. **El tipo
-   de `SAMPLES` es exhaustivo: si no lo agregás, no compila.** Ese test verifica
-   que ningún parámetro declarado se pierda al pasar por el scrubber.
-3. Llamar a `trackEvent(...)` en el success path del componente, después del
-   `toast` existente y nunca dentro de un `try` que pueda alterar el control flow.
-4. Registrar los params nuevos como custom definitions en la consola de GA4. Los
-   no registrados se recolectan pero no aparecen en reportes, y **no es
-   retroactivo**.
+1. Declararlo en `lib/analytics/events.ts` con su shape de params.
+2. Declarar sus sinks en `EVENT_SINKS`, en el mismo archivo. **El `Record` es
+   exhaustivo: si no lo agregás, no compila.** Si la acción ya deja fila en una
+   tabla de dominio, va solo a `ga`.
+3. Agregar una muestra en `lib/analytics/__tests__/events.test.ts`. **El tipo de
+   `SAMPLES` también es exhaustivo.** Ese test verifica que ningún parámetro
+   declarado se pierda al pasar por el scrubber.
+4. Llamar a `trackEvent(...)` — importado de `@/lib/analytics/track`, nunca del
+   transporte — en el success path del componente, después del `toast` existente
+   y nunca dentro de un `try` que pueda alterar el control flow. Desde el server
+   (API routes, webhooks, crons) va `trackServerEvent()`.
+5. Si el evento tiene sink `ga`: registrar los params nuevos como custom
+   definitions en la consola de GA4. Los no registrados se recolectan pero no
+   aparecen en reportes, y **no es retroactivo**.
 
 ### Nombres reservados por GA4
 
@@ -139,12 +175,25 @@ funciona sin abrir la puerta a texto libre.
 
 ## Enforcement
 
-- `scripts/check-analytics.sh` (corre en `npm run lint`) falla si algo fuera de
-  `lib/analytics/ga/track.ts` y `components/analytics/google-analytics.tsx` toca
-  gtag o el dataLayer. Convierte "todo pasa por el scrubber" en un check.
-- Dos capas independientes contra PII: el tipado de `events.ts` en compile time,
-  y `scrubParams` en runtime para lo que se cuele por un cast.
-- Tests: `npm test -- lib/analytics/ga` (112 casos).
+`scripts/check-analytics.sh` (corre en `npm run lint`) tiene tres guards, y los
+tres convierten una convención en un check:
+
+1. **gtag/dataLayer** solo en `lib/analytics/ga/track.ts` y
+   `components/analytics/google-analytics.tsx`. Sostiene "todo pasa por el
+   scrubber".
+2. **`/api/telemetry`** solo desde `lib/analytics/telemetry/emit.ts`. Un `fetch`
+   suelto se saltea el scrubber, el batching y el gate — y dispara un insert por
+   evento contra la tabla de mayor volumen del schema.
+3. **`ga/track` y `telemetry/emit`** solo se importan desde el dispatcher. Sin
+   esto, un call site manda el evento a un solo sink ignorando `EVENT_SINKS`, y
+   el síntoma (una métrica que está en GA y no en la DB) aparece meses después.
+
+Además, dos capas independientes contra PII: el tipado de `events.ts` en compile
+time, y `scrubParams` en runtime para lo que se cuele por un cast. Corre para
+los dos sinks: el propio también es un stream que lee el platform admin de todos
+los tenants.
+
+Tests: `npm test -- lib/analytics` (158 casos).
 
 ## Configuración en la consola de GA4
 

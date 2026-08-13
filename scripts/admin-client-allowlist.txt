@@ -51,6 +51,7 @@ app/api/admin/billing/plan-prices/route.ts                               # PLATF
 app/admin/orgs/page.tsx                                                  # PLATFORM_ADMIN — listar todas las orgs.
 app/admin/orgs/[id]/page.tsx                                             # PLATFORM_ADMIN — detalle de org cualquiera.
 app/admin/metrics/page.tsx                                               # PLATFORM_ADMIN — métricas globales.
+app/admin/usage/page.tsx                                                 # PLATFORM_ADMIN — mapa de calor de uso; RPCs admin_usage_* cross-org (EXECUTE solo service_role).
 app/admin/audit/page.tsx                                                 # PLATFORM_ADMIN — security_audit_log reader.
 app/api/admin/orgs/route.ts                                              # PLATFORM_ADMIN — crear org nueva.
 app/api/admin/orgs/[id]/cancel-subscription/route.ts                     # PLATFORM_ADMIN — cancelar suscripción de un tenant.
@@ -83,6 +84,7 @@ app/api/admin/billing/plan-prices/route.test.ts                          # TEST 
 app/api/admin/orgs/[id]/change-plan/route.test.ts                        # TEST — mock de createAdminClient para tests de cambio de plan.
 app/api/reports/societario/__tests__/authorization.test.ts               # TEST — mock de createAdminClient para el test de permisos del reporte societario.
 app/api/cron/billing-reconcile/route.ts                                  # CRON — reconciliación de suscripciones MP.
+app/api/cron/usage-retention/route.ts                                    # CRON — purga usage_events > 90 días, cross-tenant por diseño.
 app/api/cron/billing-reconcile/route.test.ts                             # TEST — mock de createAdminClient para el test del reconcile.
 app/api/cron/callbell-reconcile/route.ts                                 # CRON — reconciliación Callbell.
 app/api/cron/classify-quotation-pdfs/route.ts                            # CRON — clasificación de PDFs de cotización.

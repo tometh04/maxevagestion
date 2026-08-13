@@ -34,7 +34,7 @@ import {
 } from "@/lib/invoices/calculation"
 import type { ItemTaxTreatment } from "@/lib/invoices/calculation"
 import { deriveCreditNoteType, type CreditNoteKind } from "@/lib/invoices/credit-note"
-import { trackEvent } from "@/lib/analytics/ga/track"
+import { trackEvent } from "@/lib/analytics/track"
 import {
   AlertDialog,
   AlertDialogAction,

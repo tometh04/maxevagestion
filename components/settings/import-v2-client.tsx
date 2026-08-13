@@ -40,7 +40,7 @@ import {
   Play,
 } from "lucide-react"
 import { toast } from "sonner"
-import { trackEvent } from "@/lib/analytics/ga/track"
+import { trackEvent } from "@/lib/analytics/track"
 import { bucketCount } from "@/lib/analytics/ga/scrub"
 
 type Pipeline =

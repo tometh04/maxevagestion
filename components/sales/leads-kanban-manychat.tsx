@@ -45,7 +45,7 @@ import {
   useSortable,
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
-import { trackEvent } from "@/lib/analytics/ga/track"
+import { trackEvent } from "@/lib/analytics/track"
 
 function formatLeadDate(iso: string): string {
   return new Date(iso).toLocaleDateString("es-AR", { day: "2-digit", month: "short" }).replace(".", "")

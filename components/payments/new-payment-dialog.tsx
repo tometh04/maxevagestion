@@ -39,7 +39,7 @@ import {
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { DollarSign, CalendarIcon, FileText, Loader2, Wallet, CheckCircle, Receipt, Plus, ExternalLink } from "lucide-react"
 import { toast } from "sonner"
-import { trackEvent } from "@/lib/analytics/ga/track"
+import { trackEvent } from "@/lib/analytics/track"
 import {
   buildOpenOperationBasePayableOperators,
   type OperationOperatorPaymentLike,

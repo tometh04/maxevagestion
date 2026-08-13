@@ -3,8 +3,8 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { PLANS, SALES_CONTACT_URL, type PlanId } from "@/lib/billing/plans"
-import { trackEvent } from "@/lib/analytics/ga/track"
-import type { AnalyticsSurface } from "@/lib/analytics/ga/events"
+import { trackEvent } from "@/lib/analytics/track"
+import type { AnalyticsSurface } from "@/lib/analytics/events"
 
 export function CheckoutButton({
   plan,

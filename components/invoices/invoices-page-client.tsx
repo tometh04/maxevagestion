@@ -72,7 +72,7 @@ import {
   shouldHideInvoiceTaxBreakdown,
 } from "@/lib/invoices/calculation"
 import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
-import { trackEvent } from "@/lib/analytics/ga/track"
+import { trackEvent } from "@/lib/analytics/track"
 
 interface Invoice {
   id: string

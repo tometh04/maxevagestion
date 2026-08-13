@@ -1,7 +1,7 @@
 // Red de seguridad en runtime: ningun parametro que salga hacia Google pasa sin
 // atravesar `scrubParams`.
 //
-// El tipado de `lib/analytics/ga/events.ts` ya impide en compile time mandar un
+// El tipado de `lib/analytics/events.ts` ya impide en compile time mandar un
 // monto o un email. Esto es la segunda capa, para el `as any`, el spread de un
 // objeto de dominio entero, o el evento nuevo que alguien agrega apurado.
 //

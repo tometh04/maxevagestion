@@ -3,8 +3,11 @@
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts"
 
+// `hsl(...)` explicito: los tokens del repo son tripletes sueltos
+// (`--chart-1: 232 76% 58%`), asi que `var(--chart-1)` a secas no es un color
+// valido y recharts cae a negro sin avisar.
 const chartConfig = {
-  mrr: { label: "MRR", color: "var(--chart-1)" },
+  mrr: { label: "MRR", color: "hsl(var(--chart-1))" },
 } satisfies Record<string, { label: string; color: string }>
 
 type Props = {

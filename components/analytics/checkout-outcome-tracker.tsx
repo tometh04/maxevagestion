@@ -9,7 +9,7 @@
 
 import { useEffect, useRef } from "react"
 
-import { trackEvent } from "@/lib/analytics/ga/track"
+import { trackEvent } from "@/lib/analytics/track"
 
 export function CheckoutOutcomeTracker({
   result,

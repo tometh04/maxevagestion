@@ -37,7 +37,7 @@ import { cn } from "@/lib/utils"
 import { formatDateOnlyLocal } from "@/lib/utils/date-only"
 import { toast } from "sonner"
 import { useLeadRegions } from "@/lib/hooks/use-lead-regions"
-import { trackEvent } from "@/lib/analytics/ga/track"
+import { trackEvent } from "@/lib/analytics/track"
 
 const REGION_TO_LIST: Record<string, string> = {
   ARGENTINA: "Leads - Argentina",

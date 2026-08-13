@@ -1,5 +1,6 @@
 import type { AnalyticsEventName, AnalyticsEventParams } from "../events"
-import { scrubParams } from "../scrub"
+import { DB_EVENT_NAMES, EVENT_SINKS, isDbEventName, sinksFor } from "../events"
+import { scrubParams } from "../ga/scrub"
 
 /**
  * Muestra representativa de CADA evento del catalogo.
@@ -44,7 +45,63 @@ const SAMPLES: { [K in AnalyticsEventName]: AnalyticsEventParams[K] } = {
   quotation_created: { mode: "create", sent: true, items_bucket: "2-5" },
   import_run: { entity: "operations", rows_bucket: "25+", result: "partial" },
   ai_query_submitted: { surface: "cerebro", has_context: true },
+  module_viewed: { module: "operations" },
+  record_opened: { module: "crm", entity: "lead" },
+  report_exported: { module: "reports", format: "pdf" },
 }
+
+describe("ruteo por sink", () => {
+  const names = Object.keys(SAMPLES) as AnalyticsEventName[]
+
+  it("todo evento declara al menos un destino", () => {
+    // Un evento sin sink se instrumenta, se llama en 4 componentes y no llega a
+    // ningun lado. El Record exhaustivo obliga a declararlo; esto obliga a que
+    // la declaracion no sea un array vacio.
+    for (const name of names) {
+      expect(sinksFor(name).length).toBeGreaterThan(0)
+    }
+  })
+
+  it("solo declara sinks conocidos", () => {
+    for (const name of names) {
+      for (const sink of EVENT_SINKS[name]) {
+        expect(["ga", "db"]).toContain(sink)
+      }
+    }
+  })
+
+  it("DB_EVENT_NAMES es exactamente el subconjunto con sink db", () => {
+    const expected = names.filter((n) => EVENT_SINKS[n].includes("db"))
+    expect([...DB_EVENT_NAMES].sort()).toEqual(expected.sort())
+    for (const name of expected) expect(isDbEventName(name)).toBe(true)
+  })
+
+  it("isDbEventName rechaza nombres que no estan en el catalogo", () => {
+    // Es el gate del endpoint publico de telemetria.
+    expect(isDbEventName("evento_inventado")).toBe(false)
+    expect(isDbEventName("")).toBe(false)
+  })
+
+  it("ningun evento que ya deja fila en una tabla va tambien a la DB", () => {
+    // La regla que evita el doble conteo en el mapa de calor: las escrituras se
+    // derivan de las tablas de dominio, el event stream solo cubre lecturas.
+    const WRITE_EVENTS: AnalyticsEventName[] = [
+      "lead_created",
+      "lead_stage_changed",
+      "lead_converted",
+      "operation_created",
+      "payment_registered",
+      "payment_marked_paid",
+      "invoice_authorized",
+      "quotation_created",
+      "import_run",
+      "onboarding_org_created",
+    ]
+    for (const name of WRITE_EVENTS) {
+      expect(EVENT_SINKS[name]).not.toContain("db")
+    }
+  })
+})
 
 describe("catalogo de eventos", () => {
   const entries = Object.entries(SAMPLES) as Array<

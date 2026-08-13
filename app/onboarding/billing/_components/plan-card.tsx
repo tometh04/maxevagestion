@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { ArrowRight, Check, Sparkles, Zap } from "lucide-react"
 import { PLANS, SALES_CONTACT_URL, formatArs, type PlanId } from "@/lib/billing/plans"
-import { trackEvent } from "@/lib/analytics/ga/track"
+import { trackEvent } from "@/lib/analytics/track"
 
 /**
  * Plan card — styled to match landing (vibook.ai/#pricing).

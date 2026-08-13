@@ -34,7 +34,7 @@ import { DatePicker } from "@/components/ui/date-picker"
 import { formatDateOnlyLocal } from "@/lib/utils/date-only"
 import { Loader2, CreditCard, DollarSign, Calendar } from "lucide-react"
 import { toast } from "sonner"
-import { trackEvent } from "@/lib/analytics/ga/track"
+import { trackEvent } from "@/lib/analytics/track"
 
 interface FinancialAccount {
   id: string

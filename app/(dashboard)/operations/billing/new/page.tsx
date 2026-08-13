@@ -41,7 +41,7 @@ import {
   distributeSaleByCost,
 } from "@/lib/operations/operator-sale-breakdown"
 import { NewCustomerDialog } from "@/components/customers/new-customer-dialog"
-import { trackEvent } from "@/lib/analytics/ga/track"
+import { trackEvent } from "@/lib/analytics/track"
 import {
   AlertDialog,
   AlertDialogAction,

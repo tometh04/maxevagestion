@@ -13,7 +13,7 @@
 //    envuelto en try/catch y las funciones son no-op fuera del browser.
 
 import { GA_DEBUG, GA_MEASUREMENT_ID, isGaEnabled } from "./config"
-import type { AnalyticsEventName, AnalyticsEventParams } from "./events"
+import type { AnalyticsEventName, AnalyticsEventParams } from "../events"
 import type { AnalyticsIdentity } from "./identity"
 import {
   buildPageLocation,

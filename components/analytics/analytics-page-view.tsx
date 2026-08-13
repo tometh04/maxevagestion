@@ -15,6 +15,8 @@ import { usePathname, useSearchParams } from "next/navigation"
 
 import { normalizePath, normalizeQuery } from "@/lib/analytics/ga/paths"
 import { setPageContext, trackPageView } from "@/lib/analytics/ga/track"
+import { moduleFromPath } from "@/lib/analytics/modules"
+import { trackEvent } from "@/lib/analytics/track"
 
 export function AnalyticsPageView() {
   const pathname = usePathname()
@@ -33,6 +35,14 @@ export function AnalyticsPageView() {
     lastSent.current = key
     setPageContext()
     trackPageView(pathname ?? "/", search)
+
+    // Mismo hit de navegacion, otro sink. GA recibe el page_view con la ruta
+    // normalizada; la DB recibe el modulo, que es la unidad con la que se lee el
+    // mapa de calor. Es el unico emisor de `module_viewed`: sin esto, el mapa
+    // solo ve escrituras y quien entra todos los dias a mirar reportes figura
+    // como inactivo.
+    const productModule = moduleFromPath(pathname)
+    if (productModule) trackEvent("module_viewed", { module: productModule })
     // `pathname`/`search` se leen para armar el hit, pero la identidad del efecto
     // es la clave normalizada.
     // eslint-disable-next-line react-hooks/exhaustive-deps
