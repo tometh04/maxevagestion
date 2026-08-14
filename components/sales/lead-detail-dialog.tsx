@@ -47,6 +47,7 @@ import { downloadQuotationPdfFromPriceDialog } from "@/lib/pdf/quotation-pdf-htm
 import { QuotationPdfPriceDialog } from "@/components/sales/quotation-pdf-price-dialog"
 import { LeadEmiliaChat } from "@/components/sales/lead-emilia-chat"
 import { LeadOutcomeBadge } from "@/components/sales/lead-outcome-badge"
+import { useScreenView } from "@/hooks/use-screen-view"
 
 // Las cotizaciones adjuntas (type QUOTATION) se muestran en la sección
 // Cotizaciones, no en el listado genérico de documentos. Referencia estable
@@ -242,6 +243,7 @@ export function LeadDetailDialog({
   onClaim,
   tagsSection,
 }: LeadDetailDialogProps) {
+  useScreenView("lead-detail", open)
   const [convertDialogOpen, setConvertDialogOpen] = useState(false)
   const [quotationDialogOpen, setQuotationDialogOpen] = useState(false)
   const [editingQuotationId, setEditingQuotationId] = useState<string | null>(null)

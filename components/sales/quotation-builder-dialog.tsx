@@ -30,6 +30,7 @@ import {
 import { useLeadRegions } from "@/lib/hooks/use-lead-regions"
 import { trackEvent } from "@/lib/analytics/track"
 import { bucketCount } from "@/lib/analytics/ga/scrub"
+import { useScreenView } from "@/hooks/use-screen-view"
 
 interface QuotationBuilderProps {
   open: boolean
@@ -288,6 +289,7 @@ async function searchAirports(query: string): Promise<ComboboxOption[]> {
 }
 
 export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [], onSuccess, existingQuotationId }: QuotationBuilderProps) {
+  useScreenView("quotation-builder", open)
   const initialDraft = createNewQuotationDraft(lead)
   const [saving, setSaving] = useState(false)
   const [sending, setSending] = useState(false)

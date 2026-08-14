@@ -41,6 +41,7 @@ import { SearchableCombobox, type ComboboxOption } from "@/components/ui/searcha
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
+import { useScreenView } from "@/hooks/use-screen-view"
 
 const operationSchema = z.object({
   agency_id: z.string().min(1, "La agencia es requerida"),
@@ -198,6 +199,7 @@ export function EditOperationDialog({
   operationLegs = [],
   operationOperators = [],
 }: EditOperationDialogProps) {
+  useScreenView("edit-operation", open)
   const [isLoading, setIsLoading] = useState(false)
 
   // Estado para crear nuevo operador

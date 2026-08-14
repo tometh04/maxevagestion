@@ -58,6 +58,7 @@ import { NewCustomerDialog } from "@/components/customers/new-customer-dialog"
 import { SearchableCombobox, type ComboboxOption } from "@/components/ui/searchable-combobox"
 import { trackEvent } from "@/lib/analytics/track"
 import { bucketCount } from "@/lib/analytics/ga/scrub"
+import { useScreenView } from "@/hooks/use-screen-view"
 
 // Configuración de operaciones
 interface OperationSettings {
@@ -250,6 +251,7 @@ export function NewOperationDialog({
   canPickOtherSeller = true,
   canPickSecondarySeller = true,
 }: NewOperationDialogProps) {
+  useScreenView("new-operation", open)
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
   const [useMultipleOperators, setUseMultipleOperators] = useState(false)
