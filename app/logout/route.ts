@@ -18,11 +18,17 @@ import { createServerClient } from "@/lib/supabase/server"
  */
 export const dynamic = "force-dynamic"
 
-export async function GET(request: Request) {
+export async function GET() {
   const supabase = await createServerClient()
   await supabase.auth.signOut()
 
-  // El origin del request y no `NEXT_PUBLIC_APP_URL`: así funciona igual en
-  // local, en preview y en producción sin depender de que la env esté bien.
-  return NextResponse.redirect(new URL("/login", new URL(request.url).origin))
+  // `NEXT_PUBLIC_APP_URL` y NO el origin del request.
+  //
+  // La primera versión usaba `new URL(request.url).origin` con el argumento de
+  // que así funcionaba igual en local y en producción sin depender de la env.
+  // Es al revés: en Railway la app corre `next start -p 3005`, así que dentro
+  // del contenedor ese origin es `localhost:3005` — y el logout mandaba a la
+  // gente a una URL rota. Misma fuente que la ruta hermana, que está probada.
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://app.vibook.ai"
+  return NextResponse.redirect(new URL("/login", appUrl))
 }

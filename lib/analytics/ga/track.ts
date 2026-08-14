@@ -15,6 +15,7 @@
 import { GA_DEBUG, GA_MEASUREMENT_ID, isGaEnabled } from "./config"
 import type { AnalyticsEventName, AnalyticsEventParams } from "../events"
 import type { AnalyticsIdentity } from "./identity"
+import { PRODUCT_MODULES, moduleFromPath } from "../modules"
 import {
   buildPageLocation,
   isAnalyticsEnabledPath,
@@ -89,6 +90,27 @@ function canSend(): boolean {
 }
 
 /**
+ * Titulo seguro para el hit.
+ *
+ * ESTO NO ES COSMETICO. `app/layout.tsx` arma el `<title>` de la app como
+ * "<nombre de la agencia> - Gestion de Agencia" (white-label), y gtag recolecta
+ * `page_title` desde `document.title` SOLO en cada hit. O sea que sin pisarlo, el
+ * nombre comercial de cada tenant viaja a Google en cada page_view y en cada
+ * evento — justo lo que el contrato de privacidad dice que no se manda nunca, y
+ * ademas convierte la re-identificacion del tenant frente a Google de inferencia
+ * en dato directo.
+ *
+ * Se usa la etiqueta del modulo y no un literal fijo porque es un vocabulario
+ * cerrado, escrito por nosotros, y hace utiles los reportes que agrupan por
+ * titulo. Fuera del producto (auth, onboarding, paywall) cae a la marca.
+ */
+function safePageTitle(pathname: string): string {
+  const productModule = moduleFromPath(pathname)
+  if (!productModule) return "Vibook"
+  return PRODUCT_MODULES.find((m) => m.key === productModule)?.label ?? "Vibook"
+}
+
+/**
  * Params de pagina ya normalizados. Se mergean en TODOS los hits para que gtag
  * no los reconstruya solo desde la URL real.
  */
@@ -100,6 +122,7 @@ export function currentPageParams(): GaParams {
     page_location: buildPageLocation(origin, pathname, search),
     page_path: `${normalizePath(pathname)}${normalizeQuery(search)}`,
     page_referrer: sanitizeReferrer(document.referrer),
+    page_title: safePageTitle(pathname),
   }
 }
 
@@ -168,6 +191,13 @@ export function trackPageView(
       page_location: buildPageLocation(origin, pathname, search),
       page_path: `${normalizePath(pathname)}${normalizeQuery(search)}`,
       page_referrer: sanitizeReferrer(document.referrer),
+      // Igual que en `currentPageParams`: sin esto el `<title>` con el nombre de
+      // la agencia se va a Google. Este emisor arma sus params a mano, asi que
+      // hay que pisarlo aca tambien.
+      page_title: safePageTitle(pathname),
+      // El modulo como dimension propia: hace agrupables los page_view sin
+      // depender de parsear el path en la consola.
+      module: moduleFromPath(pathname) ?? "otro",
     })
   } catch {
     // no-op
