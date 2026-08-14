@@ -106,10 +106,12 @@ export function shouldEmitScreen(key: string, now: number = Date.now()): boolean
   lastSeen.set(key, now)
 
   // La cola no puede crecer sin techo en una sesion larga.
+  // `forEach` y no `for...of`: el target de TS del proyecto no permite iterar un
+  // Map sin `downlevelIteration`.
   if (lastSeen.size > 200) {
-    for (const [k, t] of lastSeen) {
-      if (now - t >= DEDUPE_WINDOW_MS) lastSeen.delete(k)
-    }
+    lastSeen.forEach((seenAt, seenKey) => {
+      if (now - seenAt >= DEDUPE_WINDOW_MS) lastSeen.delete(seenKey)
+    })
   }
   return true
 }
