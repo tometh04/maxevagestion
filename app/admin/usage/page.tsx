@@ -29,7 +29,7 @@ import { UsageFilters } from "@/components/admin/usage-filters"
 import { UsageScreensTable } from "@/components/admin/usage-screens-table"
 import { UsagePeopleTable } from "@/components/admin/usage-people-table"
 import { UsageActivationTable } from "@/components/admin/usage-activation-table"
-import { isUsageRole } from "@/lib/analytics/roles"
+import { USAGE_ROLE_LABELS, isUsageRole } from "@/lib/analytics/roles"
 import { cn } from "@/lib/utils"
 import {
   INGESTION_MODULE,
@@ -48,6 +48,7 @@ import {
   type UsageLoginsRow,
   type UsageScreenRow,
   type UsageSessionsRow,
+  type UsageStickinessRow,
 } from "@/lib/admin/usage"
 
 export const dynamic = "force-dynamic"
@@ -84,11 +85,26 @@ export default async function AdminUsagePage({
   // no pueden salir crudos de la query string.
   const orgId = sp.org && UUID_RE.test(sp.org) ? sp.org : null
   const roleFilter = sp.role && isUsageRole(sp.role) ? sp.role : null
-  // "none" = sin agencia asignada, que no es lo mismo que "todas".
-  const agencyParam = sp.agency === "none" ? "none" : sp.agency && UUID_RE.test(sp.agency) ? sp.agency : null
+  // "none" = sin agencia asignada, que NO es lo mismo que "todas". Antes ambas
+  // se expresaban con `null` y por eso "Sin agencia" era un filtro fantasma:
+  // mostraba exactamente lo mismo que sin filtrar, con el select diciendo que
+  // había algo aplicado.
+  const agencyParam =
+    sp.agency === "none" ? "none" : sp.agency && UUID_RE.test(sp.agency) ? sp.agency : null
   const agencyId = agencyParam && agencyParam !== "none" ? agencyParam : null
+  const agencyUnassigned = agencyParam === "none"
 
   const admin = createAdminClient() as any
+
+  // El mismo alcance para todas las RPC. Que un solo bloque quede sin filtrar es
+  // peor que no tener filtro: la pantalla mezcla denominadores sin avisar.
+  const scope = {
+    p_days: days,
+    p_org_id: orgId,
+    p_agency_id: agencyId,
+    p_agency_unassigned: agencyUnassigned,
+    p_role: roleFilter,
+  }
 
   const [
     { data: orgRows },
@@ -102,29 +118,35 @@ export default async function AdminUsagePage({
     { data: loginRows },
     { data: activationRows },
     { data: agencyRows },
+    { data: stickyRows },
     { data: orgListRows },
+    { data: agencyListRows },
   ] = await Promise.all([
-    admin.rpc("admin_usage_by_org", { p_days: days }),
-    admin.rpc("admin_usage_by_org_module", { p_days: days }),
-    admin.rpc("admin_usage_reads_by_org_module", { p_days: days }),
-    admin.rpc("admin_usage_by_hour", { p_days: days }),
-    admin.rpc("admin_usage_daily", { p_days: days }),
-    admin.rpc("admin_usage_screens", {
+    admin.rpc("admin_usage_by_org", scope),
+    admin.rpc("admin_usage_by_org_module", scope),
+    admin.rpc("admin_usage_reads_by_org_module", scope),
+    admin.rpc("admin_usage_by_hour", scope),
+    admin.rpc("admin_usage_daily", scope),
+    admin.rpc("admin_usage_screens", scope),
+    admin.rpc("admin_usage_active_users", scope),
+    admin.rpc("admin_usage_sessions", scope),
+    // Sin agencia: `login_sessions` no tiene esa columna. La sesión de auth es
+    // de la persona, no de la sucursal.
+    admin.rpc("admin_usage_logins_daily", {
       p_days: days,
       p_org_id: orgId,
-      p_agency_id: agencyId,
       p_role: roleFilter,
     }),
-    admin.rpc("admin_usage_active_users", {
-      p_days: days,
-      p_org_id: orgId,
-      p_agency_id: agencyId,
-    }),
-    admin.rpc("admin_usage_sessions", { p_days: days, p_org_id: orgId }),
-    admin.rpc("admin_usage_logins_daily", { p_days: days, p_org_id: orgId }),
-    admin.rpc("admin_usage_activation"),
-    admin.rpc("admin_usage_by_agency", { p_days: days, p_org_id: orgId }),
+    admin.rpc("admin_usage_activation", { p_org_id: orgId }),
+    admin.rpc("admin_usage_by_agency", scope),
+    admin.rpc("admin_usage_stickiness_by_org", scope),
     admin.from("organizations").select("id, name").order("name"),
+    // Del catálogo, no de la actividad: una agencia sin eventos en la ventana
+    // igual tiene que poder elegirse, y la lista no puede cambiar al mover el
+    // rango de días.
+    orgId
+      ? admin.from("agencies").select("id, name").eq("org_id", orgId).order("name")
+      : Promise.resolve({ data: [] }),
   ])
 
   const orgs: UsageByOrgRow[] = orgRows ?? []
@@ -138,17 +160,14 @@ export default async function AdminUsagePage({
   const logins: UsageLoginsRow[] = loginRows ?? []
   const activation: UsageActivationRow[] = activationRows ?? []
   const agencyUsage: UsageByAgencyRow[] = agencyRows ?? []
+  const sticky: UsageStickinessRow[] = stickyRows ?? []
   const orgOptions = (orgListRows ?? []) as { id: string; name: string }[]
+  const agencyOptions = (agencyListRows ?? []) as { id: string; name: string }[]
 
   const selectedOrg = orgId ? orgs.find((o) => o.org_id === orgId) ?? null : null
-
-  // Agencias de la org elegida, para el filtro. Sin org elegida no se piden:
-  // una agencia no significa nada fuera de su organizacion.
-  const agencyOptions = orgId
-    ? agencyUsage
-        .filter((a) => a.agency_id)
-        .map((a) => ({ id: a.agency_id as string, name: a.agency_name }))
-    : []
+  const selectedAgencyName = agencyUnassigned
+    ? "Sin agencia"
+    : agencyOptions.find((a) => a.id === agencyId)?.name ?? null
 
   // El drill-down por persona es la unica consulta con PII, asi que solo se
   // ejecuta cuando hay una org elegida (la RPC ademas exige el parametro).
@@ -157,27 +176,32 @@ export default async function AdminUsagePage({
     const { data } = await admin.rpc("admin_usage_by_user", {
       p_org_id: orgId,
       p_days: days,
+      p_agency_id: agencyId,
+      p_agency_unassigned: agencyUnassigned,
+      p_role: roleFilter,
     })
     people = data ?? []
   }
 
-  const sessionStats = orgId
-    ? sessions.find((s) => s.org_id === orgId) ?? null
-    : sessions.reduce<UsageSessionsRow | null>((acc, s) => {
-        if (!acc) return { ...s }
-        return {
-          ...acc,
-          sessions: acc.sessions + s.sessions,
-          actors: acc.actors + s.actors,
-        }
-      }, null)
+  // La RPC ahora devuelve UNA fila ya agregada al alcance elegido. Antes venia
+  // una por org y la pagina las "sumaba" con un reduce que arrastraba la mediana
+  // de una org arbitraria: medio numero filtrado y medio no.
+  const sessionStats: UsageSessionsRow | null = sessions[0] ?? null
 
   const loginsInRange = logins.reduce((sum, l) => sum + l.logins, 0)
-  const lastActives = actives[actives.length - 1] ?? null
+  // La RPC ahora ordena por dia; antes esto tomaba una fila cualquiera.
+  const lastActives = actives.length > 0 ? actives[actives.length - 1] : null
+
+  // Con una org elegida se usa el promedio de la ventana (`stickiness_by_org`) y
+  // no el DAU/MAU del ultimo dia: en una agencia de 7 personas, que hoy hayan
+  // entrado 2 o 5 mueve el numero 40 puntos y no dice nada.
+  const orgSticky = orgId ? sticky.find((s) => s.org_id === orgId) ?? null : null
   const stickiness =
-    lastActives && lastActives.mau > 0
-      ? Math.round((lastActives.dau / lastActives.mau) * 100)
-      : null
+    orgSticky?.stickiness != null
+      ? Math.round(Number(orgSticky.stickiness) * 100)
+      : lastActives && lastActives.mau > 0
+        ? Math.round((lastActives.dau / lastActives.mau) * 100)
+        : null
 
   const readsByOrg = new Map<string, number>()
   for (const row of reads) {
@@ -237,37 +261,72 @@ export default async function AdminUsagePage({
 
       <UsageFilters orgs={orgOptions} agencies={agencyOptions} />
 
-      {selectedOrg && (
-        <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/40 px-4 py-2.5">
-          <span className="text-sm font-medium text-foreground">
-            {selectedOrg.org_name}
+      {/* Barra de alcance. Es lo que evita el problema de fondo: cuatro cards
+          contiguas con denominadores distintos y nada que lo diga. Si TODO
+          obedece al filtro y el filtro está escrito, no hay ambigüedad. */}
+      {(selectedOrg || selectedAgencyName || roleFilter) && (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-border bg-muted/40 px-4 py-2.5 text-sm">
+          <span className="text-xs uppercase tracking-wide text-muted-foreground">
+            Mostrando
           </span>
-          <span className="text-xs text-muted-foreground">
-            {selectedOrg.subscription_status} · {selectedOrg.actors} usuarios activos ·{" "}
-            {selectedOrg.active_days} días con actividad
-          </span>
+          {selectedOrg && (
+            <span className="font-medium text-foreground">{selectedOrg.org_name}</span>
+          )}
+          {selectedOrg && (
+            <span className="text-xs text-muted-foreground">
+              ({selectedOrg.subscription_status})
+            </span>
+          )}
+          {selectedAgencyName && (
+            <>
+              <span className="text-muted-foreground">·</span>
+              <span className="text-foreground">agencia {selectedAgencyName}</span>
+            </>
+          )}
+          {roleFilter && (
+            <>
+              <span className="text-muted-foreground">·</span>
+              <span className="text-foreground">rol {USAGE_ROLE_LABELS[roleFilter]}</span>
+            </>
+          )}
+          {selectedOrg && (
+            <Link
+              href={`/admin/orgs/${selectedOrg.org_id}`}
+              className="ml-auto text-xs text-primary hover:underline"
+            >
+              Ver ficha de billing
+            </Link>
+          )}
           <Link
-            href={`/admin/orgs/${selectedOrg.org_id}`}
-            className="ml-auto text-xs text-primary hover:underline"
+            href={buildHref({ days, org: null, agency: null, role: null })}
+            className={cn(
+              "text-xs text-muted-foreground hover:text-foreground",
+              !selectedOrg && "ml-auto"
+            )}
           >
-            Ver ficha de billing
-          </Link>
-          <Link
-            href={buildHref({ days, org: null, agency: null, role: roleFilter })}
-            className="text-xs text-muted-foreground hover:text-foreground"
-          >
-            Quitar filtro
+            Quitar filtros
           </Link>
         </div>
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          label="Orgs activas (7 d)"
-          value={activeLast7}
-          icon={Activity}
-          hint={`de ${orgs.length} organizaciones`}
-        />
+        {/* Con una org elegida, "orgs activas" no significa nada: lo que
+            interesa es cuánta de SU gente está trabajando. */}
+        {selectedOrg ? (
+          <StatCard
+            label="Personas activas (7 d)"
+            value={lastActives?.wau ?? 0}
+            icon={Activity}
+            hint={`de ${people.length} usuarios de la agencia`}
+          />
+        ) : (
+          <StatCard
+            label="Orgs activas (7 d)"
+            value={activeLast7}
+            icon={Activity}
+            hint={`de ${orgs.length} organizaciones`}
+          />
+        )}
         <StatCard
           label="Usuarios que trabajaron"
           value={totalActors}
@@ -280,19 +339,28 @@ export default async function AdminUsagePage({
           icon={MousePointerClick}
           hint="excluye ingesta automatica de leads"
         />
-        <StatCard
-          label="Pagan y no usan"
-          value={payingDormant.length}
-          icon={CalendarClock}
-          hint={
-            payingDormant.length > 0
-              ? payingDormant
-                  .slice(0, 2)
-                  .map((o) => o.org_name)
-                  .join(", ")
-              : "ninguna org paga esta dormida"
-          }
-        />
+        {selectedOrg ? (
+          <StatCard
+            label="Estado de uso"
+            value={classifyUsage(selectedOrg.last_event_at).label}
+            icon={CalendarClock}
+            hint={`${formatLastSeen(selectedOrg.last_event_at)} · ${selectedOrg.active_days} días con actividad`}
+          />
+        ) : (
+          <StatCard
+            label="Pagan y no usan"
+            value={payingDormant.length}
+            icon={CalendarClock}
+            hint={
+              payingDormant.length > 0
+                ? payingDormant
+                    .slice(0, 2)
+                    .map((o) => o.org_name)
+                    .join(", ")
+                : "ninguna org paga esta dormida"
+            }
+          />
+        )}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -317,9 +385,11 @@ export default async function AdminUsagePage({
           value={stickiness === null ? "—" : `${stickiness}%`}
           icon={Repeat}
           hint={
-            lastActives
-              ? `${lastActives.dau} de ${lastActives.mau} usuarios del mes`
-              : "sin datos"
+            orgSticky
+              ? `${orgSticky.dau_avg} de ${orgSticky.mau} usuarios, promedio del periodo`
+              : lastActives
+                ? `${lastActives.dau} de ${lastActives.mau} usuarios del mes`
+                : "sin datos"
           }
         />
         <StatCard
@@ -363,12 +433,17 @@ export default async function AdminUsagePage({
 
         <div className="space-y-3">
           <div>
-            <h2 className="text-sm font-semibold text-foreground">Agencias activas por dia</h2>
+            <h2 className="text-sm font-semibold text-foreground">
+              {selectedOrg ? "Personas activas por día" : "Agencias activas por día"}
+            </h2>
             <p className="text-xs text-muted-foreground">
-              Cuantas organizaciones distintas escribieron algo cada dia.
+              {selectedOrg
+                ? "Cuánta gente de esta organización trabajó cada día."
+                : "Cuántas organizaciones distintas escribieron algo cada día."}
             </p>
           </div>
-          <UsageDailyChart rows={daily} days={days} />
+          {/* Con una org fija, contar orgs distintas sería una línea plana en 1. */}
+          <UsageDailyChart rows={daily} days={days} metric={selectedOrg ? "users" : "orgs"} />
         </div>
       </section>
 
@@ -481,7 +556,10 @@ export default async function AdminUsagePage({
         <UsageActivationTable rows={activation} />
       </section>
 
-      <section className="space-y-3">
+      {/* Con una org elegida esta tabla es la lista de la que venís: una fila
+          sola, o peor, todas las demás organizaciones al lado de números que ya
+          son de una. */}
+      <section className={cn("space-y-3", selectedOrg && "hidden")}>
         <div>
           <h2 className="text-sm font-semibold text-foreground">Engagement por organizacion</h2>
           <p className="text-xs text-muted-foreground">

@@ -47,7 +47,12 @@ export type UsageByOrgRow = {
 }
 
 export type UsageByHourRow = { dow: number; hour: number; events: number }
-export type UsageDailyRow = { day: string; events: number; active_orgs: number }
+export type UsageDailyRow = {
+  day: string
+  events: number
+  active_orgs: number
+  active_users: number
+}
 
 export type UsageScreenRow = {
   screen: string
@@ -58,8 +63,8 @@ export type UsageScreenRow = {
   last_event_at: string | null
 }
 
+/** Una sola fila, ya agregada al alcance elegido (org / agencia / rol). */
 export type UsageSessionsRow = {
-  org_id: string
   sessions: number
   actors: number
   avg_screens: number | null
