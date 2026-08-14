@@ -103,8 +103,10 @@ export async function POST(request: Request) {
       commission_pct_secondary, // Override absoluto del % del vendedor secundario; suma ≤ principal pct
       reservation_code_air,
       reservation_code_hotel,
+      reservation_code_other, // VIB-115: código de reserva de servicios no aéreo/hotel
       airline_name,
       hotel_name,
+      other_provider_name, // VIB-115: proveedor/servicio asociado al código "otros"
       // Pedido VICO 2026-05-22: el campo itr_localizador ya existe en BD
       // (migration 128) pero el endpoint POST no lo aceptaba en create.
       // Solo se podía setear vía PATCH (edit). Ahora aceptamos en ambos.
@@ -409,8 +411,10 @@ export async function POST(request: Request) {
       billing_margin_percentage: billingMarginPercentage,
       reservation_code_air: reservation_code_air || null,
       reservation_code_hotel: reservation_code_hotel || null,
+      reservation_code_other: reservation_code_other || null,
       airline_name: airline_name || null,
       hotel_name: hotel_name || null,
+      other_provider_name: other_provider_name || null,
       itr_localizador: itr_localizador || null,
       customer_payment_deadline: customer_payment_deadline || null,
       passenger_notes: passenger_notes || null,

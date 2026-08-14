@@ -6626,8 +6626,10 @@ export type Database = {
           passenger_notes: string | null
           passengers: Json | null
           product_type: string | null
+          other_provider_name: string | null
           reservation_code_air: string | null
           reservation_code_hotel: string | null
+          reservation_code_other: string | null
           return_date: string | null
           sale_amount_total: number
           sale_currency: string | null
@@ -6673,8 +6675,10 @@ export type Database = {
           passenger_notes?: string | null
           passengers?: Json | null
           product_type?: string | null
+          other_provider_name?: string | null
           reservation_code_air?: string | null
           reservation_code_hotel?: string | null
+          reservation_code_other?: string | null
           return_date?: string | null
           sale_amount_total: number
           sale_currency?: string | null
@@ -6720,8 +6724,10 @@ export type Database = {
           passenger_notes?: string | null
           passengers?: Json | null
           product_type?: string | null
+          other_provider_name?: string | null
           reservation_code_air?: string | null
           reservation_code_hotel?: string | null
+          reservation_code_other?: string | null
           return_date?: string | null
           sale_amount_total?: number
           sale_currency?: string | null

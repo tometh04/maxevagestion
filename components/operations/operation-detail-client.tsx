@@ -512,6 +512,17 @@ export function OperationDetailClient({
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">ITR Localizador</p>
                     <p className="text-sm font-medium mt-0.5">{(operation as any).itr_localizador || "-"}</p>
                   </div>
+                  {((operation as any).reservation_code_other || (operation as any).other_provider_name) && (
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Reserva Otros</p>
+                      <p className="text-sm font-medium mt-0.5">
+                        {(operation as any).reservation_code_other || "-"}
+                        {(operation as any).other_provider_name && (
+                          <span className="text-muted-foreground"> · {(operation as any).other_provider_name}</span>
+                        )}
+                      </p>
+                    </div>
+                  )}
                   {operationLegs.length > 0 && (
                     <div className="col-span-full mt-2">
                       <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Tramos del viaje</p>

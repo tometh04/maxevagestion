@@ -34,7 +34,8 @@ import {
 } from "@/components/ui/select"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { CalendarIcon, Plus, Trash2, AlertCircle, Loader2, Building2, User, Plane, DollarSign, Ticket, MapPin, Users, Package } from "lucide-react"
+import { CalendarIcon, Plus, Trash2, AlertCircle, Loader2, Building2, User, Plane, DollarSign, Ticket, MapPin, Users, Package, HelpCircle } from "lucide-react"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
 import { Label } from "@/components/ui/label"
 import { format } from "date-fns"
@@ -76,6 +77,25 @@ interface OperationSettings {
  *  real cargado en producción es 16 pasajeros por operación. */
 const MAX_COMPANIONS = 24
 
+/** VIB-115: ícono de ayuda con tooltip para clarificar campos poco obvios del
+ *  alta. Se coloca junto al label del campo. */
+function FieldHelp({ text }: { text: string }) {
+  return (
+    <TooltipProvider delayDuration={150}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex items-center text-muted-foreground/70 hover:text-muted-foreground cursor-help align-middle">
+            <HelpCircle className="h-3.5 w-3.5" />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-xs">
+          <p className="text-xs leading-relaxed">{text}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
+
 const operatorSchema = z.object({
   operator_id: z.string().min(1, "El operador es requerido"),
   cost: z.coerce.number().min(0, "El costo debe ser mayor o igual a 0"),
@@ -112,8 +132,11 @@ const operationSchema = z.object({
   operator_cost_currency: z.enum(["ARS", "USD"]).default("USD").optional(),
   reservation_code_air: z.string().optional().nullable(),
   reservation_code_hotel: z.string().optional().nullable(),
+  // VIB-115: código de reserva para servicios que no son aéreo ni hotel.
+  reservation_code_other: z.string().optional().nullable(),
   airline_name: z.string().optional().nullable(),
   hotel_name: z.string().optional().nullable(),
+  other_provider_name: z.string().optional().nullable(),
   // Pedido VICO 2026-05-22 (Andrés): el edit dialog tiene estos dos
   // campos pero el create no — había que crear+editar para setearlos.
   // operation_date = fecha de la venta (cuándo se cerró la op); puede
@@ -507,8 +530,10 @@ export function NewOperationDialog({
       operator_cost_currency: leadCurrency,
       reservation_code_air: null,
       reservation_code_hotel: null,
+      reservation_code_other: null,
       airline_name: null,
       hotel_name: null,
+      other_provider_name: null,
       operation_date: null,
       itr_localizador: null,
       customer_payment_deadline: null,
@@ -543,6 +568,8 @@ export function NewOperationDialog({
         operator_cost_currency: leadCurrency,
         reservation_code_air: null,
         reservation_code_hotel: null,
+        reservation_code_other: null,
+        other_provider_name: null,
         operation_date: null,
         itr_localizador: null,
         customer_payment_deadline: null,
@@ -628,6 +655,52 @@ export function NewOperationDialog({
     setCompanionList((prev) => prev.filter((_, i) => i !== index))
   const updateCompanion = (index: number, customerId: string) =>
     setCompanionList((prev) => prev.map((id, i) => (i === index ? customerId : id)))
+
+  // VIB-115: alternar entre "un operador" y "múltiples operadores" SIN perder lo
+  // ya cargado. Antes marcar no migraba el operador simple y desmarcar hacía
+  // setOperatorList([]) → en ambos sentidos se borraba el trabajo del usuario.
+  const handleToggleMultipleOperators = (checked: boolean) => {
+    if (checked) {
+      // simple → múltiple: sembrar la primera fila con el operador/costo actual.
+      setUseMultipleOperators(true)
+      setOperatorList((prev) => {
+        if (prev.length > 0) return prev
+        const operatorId = form.getValues("operator_id")
+        const cost = form.getValues("operator_cost")
+        const hasData = (operatorId && operatorId !== "none") || (cost != null && Number(cost) > 0)
+        if (!hasData) return prev
+        const currency = (form.getValues("operator_cost_currency") ||
+          form.getValues("sale_currency") ||
+          form.getValues("currency") ||
+          "USD") as "ARS" | "USD"
+        return [{
+          operator_id: operatorId && operatorId !== "none" ? operatorId : "",
+          cost: cost ?? 0,
+          cost_currency: currency,
+          product_type: undefined,
+        }]
+      })
+    } else {
+      // múltiple → simple: conservar el primer operador en vez de borrar todo.
+      if (operatorList.length > 1) {
+        toast({
+          title: "Se conservó el primer operador",
+          description: `Al volver a un solo operador se descartaron ${operatorList.length - 1} operador(es) adicional(es).`,
+        })
+      }
+      const first = operatorList[0]
+      if (first) {
+        form.setValue("operator_id", first.operator_id || null)
+        form.setValue("operator_cost", Number(first.cost) || 0)
+        if (first.cost_currency) {
+          form.setValue("operator_cost_currency", first.cost_currency)
+        }
+      }
+      setUseMultipleOperators(false)
+      setOperatorList([])
+      form.setValue("operators", undefined)
+    }
+  }
 
   // Función para crear nuevo operador
   const handleCreateOperator = async () => {
@@ -1278,22 +1351,19 @@ export function NewOperationDialog({
                     <Package className="h-4 w-4 text-muted-foreground" />
                     <span className="text-xs font-medium text-muted-foreground">Operador & Tipo de Producto</span>
                   </div>
-                  <label htmlFor="useMultipleOperators" className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      id="useMultipleOperators"
-                      checked={useMultipleOperators}
-                      onChange={(e) => {
-                        setUseMultipleOperators(e.target.checked)
-                        if (!e.target.checked) {
-                          setOperatorList([])
-                          form.setValue("operators", undefined)
-                        }
-                      }}
-                      className="rounded h-3.5 w-3.5"
-                    />
-                    <span className="text-xs text-muted-foreground">Múltiples operadores</span>
-                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <label htmlFor="useMultipleOperators" className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        id="useMultipleOperators"
+                        checked={useMultipleOperators}
+                        onChange={(e) => handleToggleMultipleOperators(e.target.checked)}
+                        className="rounded h-3.5 w-3.5"
+                      />
+                      <span className="text-xs text-muted-foreground">Múltiples operadores</span>
+                    </label>
+                    <FieldHelp text="Actívalo cuando la operación tiene varios proveedores (ej: aéreo + hotel + traslado), cada uno con su costo y tipo. El costo total se suma solo. Podés alternar sin perder lo cargado." />
+                  </div>
                 </div>
 
             {useMultipleOperators ? (
@@ -1461,8 +1531,9 @@ export function NewOperationDialog({
                           payment_due_date = fecha máxima de pago al operador (alimenta
                           el vencimiento del pago a operador). */}
                       <div className="pt-3 border-t border-border/40">
-                        <label className="text-xs font-medium text-muted-foreground mb-2 block">
+                        <label className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
                           Datos internos (opcional)
+                          <FieldHelp text="Uso interno de la agencia: NO se muestran al pasajero. El N° de File es tu referencia; la fecha máx. de pago alimenta el vencimiento del pago al operador." />
                         </label>
                         <div className="grid gap-3 grid-cols-1 md:grid-cols-2">
                           <div>
@@ -1489,8 +1560,9 @@ export function NewOperationDialog({
                       {/* Detalle para el pasajero (opcional), según el tipo de servicio.
                           Se exporta en el PDF "Detalle de la Operación". */}
                       <div className="pt-3 border-t border-border/40">
-                        <label className="text-xs font-medium text-muted-foreground mb-2 block">
+                        <label className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
                           Detalle para el pasajero (opcional)
+                          <FieldHelp text="Datos que SÍ ve el pasajero en el PDF 'Detalle de la Operación'. Los campos cambian según el tipo de producto (hotel, aéreo, etc.)." />
                         </label>
                         <div className="grid gap-3 grid-cols-1 md:grid-cols-2">
                           {PASSENGER_DETAIL_FIELDS[serviceKind(op.product_type)].map((f) => (
@@ -1799,7 +1871,10 @@ export function NewOperationDialog({
                 name="itr_localizador"
                 render={({ field }) => (
                   <FormItem className="flex flex-col">
-                    <FormLabel>Otro Localizador (ITR)</FormLabel>
+                    <FormLabel className="flex items-center gap-1.5">
+                      Otro Localizador (ITR)
+                      <FieldHelp text="Localizador propio del operador (distinto del código de reserva de aéreo/hotel). Sirve para identificar la reserva ante el operador." />
+                    </FormLabel>
                     <FormControl>
                       <Input
                         placeholder="Localizador del operador"
@@ -2016,7 +2091,10 @@ export function NewOperationDialog({
                     name="currency"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Moneda (Compatibilidad)</FormLabel>
+                        <FormLabel className="flex items-center gap-1.5">
+                          Moneda (Compatibilidad)
+                          <FieldHelp text="Campo heredado que sincroniza las tres monedas. Normalmente no hace falta tocarlo: se ajusta solo con la Moneda de Venta." />
+                        </FormLabel>
                         <Select onValueChange={(value: string) => {
                           field.onChange(value)
                           // Sincronizar todas las monedas
@@ -2046,7 +2124,10 @@ export function NewOperationDialog({
                       name="sale_currency"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Moneda Venta</FormLabel>
+                          <FormLabel className="flex items-center gap-1.5">
+                            Moneda Venta
+                            <FieldHelp text="Moneda en la que le cobrás al cliente." />
+                          </FormLabel>
                           <Select onValueChange={(value: string) => {
                             field.onChange(value)
                             // Sincronizar moneda de costo de operador con moneda de venta
@@ -2076,7 +2157,10 @@ export function NewOperationDialog({
                       name="operator_cost_currency"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Moneda Costo</FormLabel>
+                          <FormLabel className="flex items-center gap-1.5">
+                            Moneda Costo
+                            <FieldHelp text="Moneda en la que le pagás al operador. Puede diferir de la de venta." />
+                          </FormLabel>
                           <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl>
                               <SelectTrigger>
@@ -2166,8 +2250,9 @@ export function NewOperationDialog({
                   <Ticket className="h-3.5 w-3.5 text-accent-violet" />
                 </div>
                 <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Códigos de reserva</h4>
+                <FieldHelp text="Localizadores que devuelve cada proveedor. Cargá el del aéreo, el del hotel y, para transfer/asistencia/otros servicios, usá 'Otros servicios'. Son opcionales y ayudan a rastrear la reserva." />
               </div>
-              <div className="grid md:grid-cols-2 gap-4">
+              <div className="grid md:grid-cols-3 gap-4">
                 <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-3">
                   <div className="flex items-center gap-1.5 mb-1">
                     <Plane className="h-3.5 w-3.5 text-accent-teal" />
@@ -2240,6 +2325,49 @@ export function NewOperationDialog({
                         <FormControl>
                           <Input
                             placeholder="Ej: Sheraton Miami"
+                            {...field}
+                            value={field.value || ""}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                {/* VIB-115: código de reserva para servicios que no son aéreo ni
+                    hotel (transfer, asistencia, excursiones, etc.). */}
+                <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-3">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <Package className="h-3.5 w-3.5 text-accent-coral" />
+                    <span className="text-xs font-medium text-foreground/70">Otros servicios</span>
+                  </div>
+                  <FormField
+                    control={form.control}
+                    name="reservation_code_other"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Código de Reserva</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Ej: TRF-4567"
+                            {...field}
+                            value={field.value || ""}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="other_provider_name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Proveedor / Servicio</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Ej: Traslado, Asistencia..."
                             {...field}
                             value={field.value || ""}
                           />

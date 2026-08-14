@@ -71,9 +71,12 @@ const operationSchema = z.object({
   currency: z.enum(["ARS", "USD"]),
   reservation_code_air: z.string().optional().nullable(),
   reservation_code_hotel: z.string().optional().nullable(),
+  // VIB-115: código de reserva para servicios que no son aéreo ni hotel.
+  reservation_code_other: z.string().optional().nullable(),
   itr_localizador: z.string().optional().nullable(),
   airline_name: z.string().optional().nullable(),
   hotel_name: z.string().optional().nullable(),
+  other_provider_name: z.string().optional().nullable(),
   // Fecha máxima para que el cliente complete el pago (la usa el PDF de detalle).
   customer_payment_deadline: z.date().optional().nullable(),
   // Info adicional libre para el pasajero (la usa el PDF de detalle).
@@ -132,9 +135,11 @@ interface Operation {
   margin_percentage?: number
   reservation_code_air?: string | null
   reservation_code_hotel?: string | null
+  reservation_code_other?: string | null
   itr_localizador?: string | null
   airline_name?: string | null
   hotel_name?: string | null
+  other_provider_name?: string | null
 }
 
 type LegEntry = {
@@ -438,9 +443,11 @@ export function EditOperationDialog({
     currency: operationCurrency,
     reservation_code_air: operation.reservation_code_air || null,
     reservation_code_hotel: operation.reservation_code_hotel || null,
+    reservation_code_other: operation.reservation_code_other || null,
     itr_localizador: operation.itr_localizador || null,
     airline_name: operation.airline_name || null,
     hotel_name: operation.hotel_name || null,
+    other_provider_name: operation.other_provider_name || null,
     customer_payment_deadline: parseDateOnlyLocal(operation.customer_payment_deadline) ?? null,
     passenger_notes: operation.passenger_notes || "",
   })
@@ -1755,6 +1762,43 @@ export function EditOperationDialog({
                       <FormControl>
                         <Input
                           placeholder="Ej: Sheraton Miami"
+                          {...field}
+                          value={field.value || ""}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* VIB-115: código de reserva para servicios que no son aéreo ni hotel */}
+                <FormField
+                  control={form.control}
+                  name="reservation_code_other"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Código de Reserva Otros</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Ej: TRF-4567"
+                          {...field}
+                          value={field.value || ""}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="other_provider_name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Proveedor / Servicio (Otros)</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Ej: Traslado, Asistencia..."
                           {...field}
                           value={field.value || ""}
                         />
