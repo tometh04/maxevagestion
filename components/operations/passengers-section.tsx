@@ -21,16 +21,17 @@ import {
 } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { 
-  Users, 
-  UserPlus, 
-  Trash2, 
-  Search, 
+import {
+  Users,
+  UserPlus,
+  Trash2,
+  Search,
   Loader2,
   User,
   Mail,
   Phone,
-  HelpCircle
+  HelpCircle,
+  Pencil
 } from "lucide-react"
 import {
   Tooltip,
@@ -41,6 +42,7 @@ import {
 import { toast } from "sonner"
 import { EmptyState } from "@/components/ui/empty-state"
 import { NewCustomerDialog } from "@/components/customers/new-customer-dialog"
+import { EditCustomerDialog } from "@/components/customers/edit-customer-dialog"
 
 interface Customer {
   id: string
@@ -48,6 +50,23 @@ interface Customer {
   last_name: string
   email: string
   phone: string
+}
+
+// Cliente completo para el diálogo de edición (VIB-116). Coincide con el tipo
+// que espera EditCustomerDialog; se trae con GET /api/customers/[id].
+interface EditableCustomer {
+  id: string
+  first_name: string
+  last_name: string
+  phone: string
+  email: string
+  instagram_handle?: string | null
+  document_type?: string | null
+  document_number?: string | null
+  date_of_birth?: string | null
+  nationality?: string | null
+  referral_partner_id?: string | null
+  referral_commission_percentage?: number | null
 }
 
 interface OperationCustomer {
@@ -81,6 +100,10 @@ export function PassengersSection({
   const [selectedRole, setSelectedRole] = useState<"MAIN" | "COMPANION">("COMPANION")
   const [adding, setAdding] = useState(false)
   const [showNewCustomerDialog, setShowNewCustomerDialog] = useState(false)
+  // VIB-116: edición de datos del cliente desde el listado de pasajeros
+  const [editingCustomer, setEditingCustomer] = useState<EditableCustomer | null>(null)
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [loadingEditId, setLoadingEditId] = useState<string | null>(null)
 
   // Buscar clientes
   const searchCustomers = useCallback(async (query: string) => {
@@ -180,6 +203,65 @@ export function PassengersSection({
     }
   }
 
+  // VIB-116: abrir edición del cliente. La prop `customers` llega aplanada
+  // (solo nombre/email/teléfono), así que traemos el row completo del cliente
+  // antes de abrir el diálogo para precargar documento/nacionalidad/etc.
+  const handleEditPassenger = async (customerId: string) => {
+    setLoadingEditId(customerId)
+    try {
+      const response = await fetch(`/api/customers/${customerId}`)
+      if (!response.ok) {
+        throw new Error("Error al cargar cliente")
+      }
+      const data = await response.json()
+      if (!data.customer) {
+        throw new Error("Cliente no encontrado")
+      }
+      setEditingCustomer(data.customer as EditableCustomer)
+      setEditDialogOpen(true)
+    } catch (error) {
+      console.error("Error loading customer:", error)
+      toast.error("No se pudo abrir la edición del cliente")
+    } finally {
+      setLoadingEditId(null)
+    }
+  }
+
+  // Tras editar, refrescamos el estado local con los datos actualizados para
+  // reflejar el cambio sin F5 (el mismo cliente puede estar en varias filas).
+  const handleEditSuccess = async () => {
+    const customerId = editingCustomer?.id
+    setEditDialogOpen(false)
+    setEditingCustomer(null)
+    onUpdate?.()
+    if (!customerId) return
+    try {
+      const response = await fetch(`/api/customers/${customerId}`)
+      if (!response.ok) return
+      const data = await response.json()
+      const updated = data.customer as Customer | undefined
+      if (!updated) return
+      setCustomers(prev =>
+        prev.map(c =>
+          c.customer_id === customerId
+            ? {
+                ...c,
+                customers: {
+                  ...c.customers,
+                  first_name: updated.first_name,
+                  last_name: updated.last_name,
+                  email: updated.email ?? "",
+                  phone: updated.phone ?? "",
+                },
+              }
+            : c
+        )
+      )
+    } catch (error) {
+      console.error("Error refreshing customer:", error)
+    }
+  }
+
   const mainPassenger = customers.find(c => c.role === "MAIN")
   const companions = customers.filter(c => c.role === "COMPANION")
 
@@ -262,17 +344,33 @@ export function PassengersSection({
                     </div>
                   </div>
                   {!readOnly && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="text-destructive hover:text-destructive"
-                      onClick={() => handleRemovePassenger(
-                        mainPassenger.id, 
-                        `${mainPassenger.customers.first_name} ${mainPassenger.customers.last_name}`
-                      )}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="Editar datos del cliente"
+                        disabled={loadingEditId === mainPassenger.customer_id}
+                        onClick={() => handleEditPassenger(mainPassenger.customer_id)}
+                      >
+                        {loadingEditId === mainPassenger.customer_id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Pencil className="h-4 w-4" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="Quitar de la operación"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => handleRemovePassenger(
+                          mainPassenger.id,
+                          `${mainPassenger.customers.first_name} ${mainPassenger.customers.last_name}`
+                        )}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -310,17 +408,33 @@ export function PassengersSection({
                     </div>
                   </div>
                   {!readOnly && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="text-destructive hover:text-destructive"
-                      onClick={() => handleRemovePassenger(
-                        companion.id, 
-                        `${companion.customers.first_name} ${companion.customers.last_name}`
-                      )}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="Editar datos del cliente"
+                        disabled={loadingEditId === companion.customer_id}
+                        onClick={() => handleEditPassenger(companion.customer_id)}
+                      >
+                        {loadingEditId === companion.customer_id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Pencil className="h-4 w-4" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="Quitar de la operación"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => handleRemovePassenger(
+                          companion.id,
+                          `${companion.customers.first_name} ${companion.customers.last_name}`
+                        )}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -497,6 +611,19 @@ export function PassengersSection({
               setShowNewCustomerDialog(false)
             }
           }}
+        />
+      )}
+
+      {/* Dialog para editar datos del cliente (VIB-116) */}
+      {!readOnly && editingCustomer && (
+        <EditCustomerDialog
+          customer={editingCustomer}
+          open={editDialogOpen}
+          onOpenChange={(open) => {
+            setEditDialogOpen(open)
+            if (!open) setEditingCustomer(null)
+          }}
+          onSuccess={handleEditSuccess}
         />
       )}
     </Card>
