@@ -1,5 +1,14 @@
 import Link from "next/link"
-import { Activity, CalendarClock, MousePointerClick, Users } from "lucide-react"
+import {
+  Activity,
+  CalendarClock,
+  LayoutGrid,
+  LogIn,
+  MousePointerClick,
+  Repeat,
+  Timer,
+  Users,
+} from "lucide-react"
 import { createAdminClient } from "@/lib/supabase/server"
 import { PageHeader } from "@/components/admin/page-header"
 import { StatCard } from "@/components/admin/stat-card"
@@ -15,16 +24,30 @@ import {
 import { UsageHeatmap } from "@/components/admin/usage-heatmap"
 import { UsageHoursHeatmap } from "@/components/admin/usage-hours-heatmap"
 import { UsageDailyChart } from "@/components/admin/usage-daily-chart"
+import { UsageActivesChart } from "@/components/admin/usage-actives-chart"
+import { UsageFilters } from "@/components/admin/usage-filters"
+import { UsageScreensTable } from "@/components/admin/usage-screens-table"
+import { UsagePeopleTable } from "@/components/admin/usage-people-table"
+import { UsageActivationTable } from "@/components/admin/usage-activation-table"
+import { isUsageRole } from "@/lib/analytics/roles"
 import { cn } from "@/lib/utils"
 import {
   INGESTION_MODULE,
   classifyUsage,
   daysSince,
+  formatDuration,
   formatLastSeen,
+  type UsageActivationRow,
+  type UsageActiveUsersRow,
+  type UsageByAgencyRow,
   type UsageByHourRow,
   type UsageByOrgModuleRow,
   type UsageByOrgRow,
+  type UsageByUserRow,
   type UsageDailyRow,
+  type UsageLoginsRow,
+  type UsageScreenRow,
+  type UsageSessionsRow,
 } from "@/lib/admin/usage"
 
 export const dynamic = "force-dynamic"
@@ -44,14 +67,26 @@ const STATUS_COLOR: Record<string, string> = {
   SUSPENDED: "bg-destructive/15 text-destructive border border-destructive/30",
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+type Search = { days?: string; org?: string; agency?: string; role?: string }
+
 export default async function AdminUsagePage({
   searchParams,
 }: {
-  searchParams: Promise<{ days?: string }>
+  searchParams: Promise<Search>
 }) {
   const sp = await searchParams
   const parsed = parseInt(sp.days ?? "30", 10)
   const days = RANGES.includes(parsed) ? parsed : 30
+
+  // Whitelist en los tres filtros: van directo como parametros de RPC, así que
+  // no pueden salir crudos de la query string.
+  const orgId = sp.org && UUID_RE.test(sp.org) ? sp.org : null
+  const roleFilter = sp.role && isUsageRole(sp.role) ? sp.role : null
+  // "none" = sin agencia asignada, que no es lo mismo que "todas".
+  const agencyParam = sp.agency === "none" ? "none" : sp.agency && UUID_RE.test(sp.agency) ? sp.agency : null
+  const agencyId = agencyParam && agencyParam !== "none" ? agencyParam : null
 
   const admin = createAdminClient() as any
 
@@ -61,12 +96,35 @@ export default async function AdminUsagePage({
     { data: readRows },
     { data: hourRows },
     { data: dailyRows },
+    { data: screenRows },
+    { data: activesRows },
+    { data: sessionRows },
+    { data: loginRows },
+    { data: activationRows },
+    { data: agencyRows },
+    { data: orgListRows },
   ] = await Promise.all([
     admin.rpc("admin_usage_by_org", { p_days: days }),
     admin.rpc("admin_usage_by_org_module", { p_days: days }),
     admin.rpc("admin_usage_reads_by_org_module", { p_days: days }),
     admin.rpc("admin_usage_by_hour", { p_days: days }),
     admin.rpc("admin_usage_daily", { p_days: days }),
+    admin.rpc("admin_usage_screens", {
+      p_days: days,
+      p_org_id: orgId,
+      p_agency_id: agencyId,
+      p_role: roleFilter,
+    }),
+    admin.rpc("admin_usage_active_users", {
+      p_days: days,
+      p_org_id: orgId,
+      p_agency_id: agencyId,
+    }),
+    admin.rpc("admin_usage_sessions", { p_days: days, p_org_id: orgId }),
+    admin.rpc("admin_usage_logins_daily", { p_days: days, p_org_id: orgId }),
+    admin.rpc("admin_usage_activation"),
+    admin.rpc("admin_usage_by_agency", { p_days: days, p_org_id: orgId }),
+    admin.from("organizations").select("id, name").order("name"),
   ])
 
   const orgs: UsageByOrgRow[] = orgRows ?? []
@@ -74,6 +132,52 @@ export default async function AdminUsagePage({
   const reads: UsageByOrgModuleRow[] = readRows ?? []
   const hours: UsageByHourRow[] = hourRows ?? []
   const daily: UsageDailyRow[] = dailyRows ?? []
+  const screens: UsageScreenRow[] = screenRows ?? []
+  const actives: UsageActiveUsersRow[] = activesRows ?? []
+  const sessions: UsageSessionsRow[] = sessionRows ?? []
+  const logins: UsageLoginsRow[] = loginRows ?? []
+  const activation: UsageActivationRow[] = activationRows ?? []
+  const agencyUsage: UsageByAgencyRow[] = agencyRows ?? []
+  const orgOptions = (orgListRows ?? []) as { id: string; name: string }[]
+
+  const selectedOrg = orgId ? orgs.find((o) => o.org_id === orgId) ?? null : null
+
+  // Agencias de la org elegida, para el filtro. Sin org elegida no se piden:
+  // una agencia no significa nada fuera de su organizacion.
+  const agencyOptions = orgId
+    ? agencyUsage
+        .filter((a) => a.agency_id)
+        .map((a) => ({ id: a.agency_id as string, name: a.agency_name }))
+    : []
+
+  // El drill-down por persona es la unica consulta con PII, asi que solo se
+  // ejecuta cuando hay una org elegida (la RPC ademas exige el parametro).
+  let people: UsageByUserRow[] = []
+  if (orgId) {
+    const { data } = await admin.rpc("admin_usage_by_user", {
+      p_org_id: orgId,
+      p_days: days,
+    })
+    people = data ?? []
+  }
+
+  const sessionStats = orgId
+    ? sessions.find((s) => s.org_id === orgId) ?? null
+    : sessions.reduce<UsageSessionsRow | null>((acc, s) => {
+        if (!acc) return { ...s }
+        return {
+          ...acc,
+          sessions: acc.sessions + s.sessions,
+          actors: acc.actors + s.actors,
+        }
+      }, null)
+
+  const loginsInRange = logins.reduce((sum, l) => sum + l.logins, 0)
+  const lastActives = actives[actives.length - 1] ?? null
+  const stickiness =
+    lastActives && lastActives.mau > 0
+      ? Math.round((lastActives.dau / lastActives.mau) * 100)
+      : null
 
   const readsByOrg = new Map<string, number>()
   for (const row of reads) {
@@ -114,7 +218,9 @@ export default async function AdminUsagePage({
             {RANGES.map((r) => (
               <Link
                 key={r}
-                href={`/admin/usage?days=${r}`}
+                // Preserva los filtros: cambiar el rango no puede resetear la
+                // org que venías mirando.
+                href={buildHref({ days: r, org: orgId, agency: agencyParam, role: roleFilter })}
                 className={cn(
                   "rounded px-2.5 py-1 font-medium transition",
                   r === days
@@ -128,6 +234,32 @@ export default async function AdminUsagePage({
           </div>
         }
       />
+
+      <UsageFilters orgs={orgOptions} agencies={agencyOptions} />
+
+      {selectedOrg && (
+        <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/40 px-4 py-2.5">
+          <span className="text-sm font-medium text-foreground">
+            {selectedOrg.org_name}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            {selectedOrg.subscription_status} · {selectedOrg.actors} usuarios activos ·{" "}
+            {selectedOrg.active_days} días con actividad
+          </span>
+          <Link
+            href={`/admin/orgs/${selectedOrg.org_id}`}
+            className="ml-auto text-xs text-primary hover:underline"
+          >
+            Ver ficha de billing
+          </Link>
+          <Link
+            href={buildHref({ days, org: null, agency: null, role: roleFilter })}
+            className="text-xs text-muted-foreground hover:text-foreground"
+          >
+            Quitar filtro
+          </Link>
+        </div>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
@@ -160,6 +292,41 @@ export default async function AdminUsagePage({
                   .join(", ")
               : "ninguna org paga esta dormida"
           }
+        />
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          label="Logins"
+          value={loginsInRange.toLocaleString("es-AR")}
+          icon={LogIn}
+          hint={`en los ultimos ${days} dias`}
+        />
+        <StatCard
+          label="Sesiones de trabajo"
+          value={(sessionStats?.sessions ?? 0).toLocaleString("es-AR")}
+          icon={Timer}
+          hint={
+            sessionStats?.median_duration_sec
+              ? `mediana ${formatDuration(sessionStats.median_duration_sec)}`
+              : "sin datos todavia"
+          }
+        />
+        <StatCard
+          label="Stickiness (DAU/MAU)"
+          value={stickiness === null ? "—" : `${stickiness}%`}
+          icon={Repeat}
+          hint={
+            lastActives
+              ? `${lastActives.dau} de ${lastActives.mau} usuarios del mes`
+              : "sin datos"
+          }
+        />
+        <StatCard
+          label="Pantallas distintas"
+          value={screens.length}
+          icon={LayoutGrid}
+          hint={screens.length === 0 ? "esperando telemetria de pantalla" : "con al menos una visita"}
         />
       </div>
 
@@ -203,6 +370,115 @@ export default async function AdminUsagePage({
           </div>
           <UsageDailyChart rows={daily} days={days} />
         </div>
+      </section>
+
+      <section className="grid gap-6 lg:grid-cols-2">
+        <div className="space-y-3">
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">Usuarios activos</h2>
+            <p className="text-xs text-muted-foreground">
+              Diarios, semanales y mensuales. La distancia entre las tres líneas es el
+              hábito: si la diaria se acerca a la mensual, la gente abre la app todos los
+              días.
+            </p>
+          </div>
+          <UsageActivesChart rows={actives} days={days} />
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">Pantallas más usadas</h2>
+            <p className="text-xs text-muted-foreground">
+              Incluye tabs y diálogos, que no tienen URL propia. Un módulo puede tener
+              mucha actividad y una sola de sus pantallas ser la que la genera.
+            </p>
+          </div>
+          <UsageScreensTable rows={screens} days={days} limit={12} />
+        </div>
+      </section>
+
+      {orgId && (
+        <section className="space-y-3">
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">Personas</h2>
+            <p className="text-xs text-muted-foreground">
+              Quién usa el producto dentro de esta organización. Las escrituras salen de
+              las tablas de dominio; las lecturas, del event stream.
+            </p>
+          </div>
+          <UsagePeopleTable rows={people} days={days} />
+        </section>
+      )}
+
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-sm font-semibold text-foreground">
+            Actividad por agencia
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            En las escrituras la agencia es la del registro, no la de quien lo cargó.
+            Contabilidad, comisiones y pagos a operadores se manejan a nivel organización,
+            así que caen en &quot;Sin agencia&quot; — no es un error.
+          </p>
+        </div>
+        {agencyUsage.length === 0 ? (
+          <EmptyState title="Sin actividad por agencia en el periodo" />
+        ) : (
+          <DataTableShell>
+            <DataTableHead>
+              <DataTableRow>
+                <DataTableTh>Agencia</DataTableTh>
+                <DataTableTh className="text-right">Usuarios</DataTableTh>
+                <DataTableTh className="text-right">Escrituras</DataTableTh>
+                <DataTableTh className="text-right">Lecturas</DataTableTh>
+                <DataTableTh className="text-right">
+                  Días activos <span className="normal-case">/ {days}</span>
+                </DataTableTh>
+                <DataTableTh className="text-right">Últ. actividad</DataTableTh>
+              </DataTableRow>
+            </DataTableHead>
+            <DataTableBody>
+              {[...agencyUsage]
+                .sort((a, b) => b.writes + b.reads - (a.writes + a.reads))
+                .map((row) => (
+                  <DataTableRow key={`${row.org_id}:${row.agency_id ?? "none"}`}>
+                    <DataTableTd>
+                      <div className="font-medium text-foreground">{row.agency_name}</div>
+                      {!orgId && (
+                        <div className="text-xs text-muted-foreground">
+                          {orgs.find((o) => o.org_id === row.org_id)?.org_name ?? ""}
+                        </div>
+                      )}
+                    </DataTableTd>
+                    <DataTableTd className="text-right tabular-nums">{row.users}</DataTableTd>
+                    <DataTableTd className="text-right tabular-nums">
+                      {row.writes.toLocaleString("es-AR")}
+                    </DataTableTd>
+                    <DataTableTd className="text-right tabular-nums">
+                      {row.reads.toLocaleString("es-AR")}
+                    </DataTableTd>
+                    <DataTableTd className="text-right tabular-nums">
+                      {row.active_days}
+                    </DataTableTd>
+                    <DataTableTd className="whitespace-nowrap text-right text-xs text-muted-foreground">
+                      {formatLastSeen(row.last_event_at)}
+                    </DataTableTd>
+                  </DataTableRow>
+                ))}
+            </DataTableBody>
+          </DataTableShell>
+        )}
+      </section>
+
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-sm font-semibold text-foreground">Activación</h2>
+          <p className="text-xs text-muted-foreground">
+            Cuánto tarda una agencia nueva desde que se da de alta hasta que carga su
+            primera operación y cobra su primer pago.
+          </p>
+        </div>
+        <UsageActivationTable rows={activation} />
       </section>
 
       <section className="space-y-3">
@@ -284,11 +560,28 @@ export default async function AdminUsagePage({
       </section>
 
       <p className="text-xs text-muted-foreground">
-        Que mide: filas creadas por personas usando la app. Quedan afuera los derivados automaticos
-        (ledger, comisiones calculadas), los crons y el trafico de integraciones — este ultimo se
-        muestra aparte en la columna &quot;Ingesta&quot;. No es una metrica financiera: para plata,
-        Postgres directo.
+        Que mide: filas creadas por personas usando la app, mas las pantallas que se abren.
+        Quedan afuera los derivados automaticos (ledger, comisiones calculadas), los crons y el
+        trafico de integraciones — este ultimo se muestra aparte en la columna &quot;Ingesta&quot;.
+        La duracion de sesion es una cota inferior: quien deja una pantalla abierta sin tocar nada
+        no suma tiempo. No es una metrica financiera: para plata, Postgres directo.
       </p>
     </div>
   )
+}
+
+/** Arma un href preservando los filtros que no se están cambiando. */
+function buildHref(params: {
+  days: number
+  org: string | null
+  agency: string | null
+  role: string | null
+}): string {
+  const query = new URLSearchParams()
+  if (params.days !== 30) query.set("days", String(params.days))
+  if (params.org) query.set("org", params.org)
+  if (params.agency) query.set("agency", params.agency)
+  if (params.role) query.set("role", params.role)
+  const qs = query.toString()
+  return qs ? `/admin/usage?${qs}` : "/admin/usage"
 }
