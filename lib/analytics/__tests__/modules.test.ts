@@ -56,6 +56,34 @@ describe("moduleFromPath", () => {
     expect(moduleFromPath("/operations-legacy")).toBeNull()
   })
 
+  it("cubre las rutas que antes caian en null", () => {
+    // Estas ocho existen en el sidebar o son pantallas reales y no emitian
+    // NINGUN evento porque no tenian regla.
+    expect(moduleFromPath("/emilia")).toBe("messages")
+    expect(moduleFromPath("/operators")).toBe("settings")
+    expect(moduleFromPath("/operators/abc-123")).toBe("settings")
+    expect(moduleFromPath("/tools/settings")).toBe("settings")
+    expect(moduleFromPath("/notifications")).toBe("alerts")
+    expect(moduleFromPath("/my/balance")).toBe("commissions")
+    expect(moduleFromPath("/my/commissions")).toBe("commissions")
+    expect(moduleFromPath("/my/commissions-monthly")).toBe("commissions")
+  })
+
+  it("distingue /commissions-monthly de /commissions", () => {
+    // El match es por limite de segmento: `/commissions-monthly` NO matchea la
+    // regla `/commissions`, asi que necesita la suya propia.
+    expect(moduleFromPath("/commissions-monthly")).toBe("commissions")
+    expect(moduleFromPath("/commissions")).toBe("commissions")
+    expect(moduleFromPath("/commissions/objectives")).toBe("commissions")
+  })
+
+  it("no deja que /tools/settings caiga en las otras reglas de /tools", () => {
+    expect(moduleFromPath("/tools/settings")).toBe("settings")
+    expect(moduleFromPath("/tools/tasks")).toBe("tasks")
+    expect(moduleFromPath("/tools/cerebro")).toBe("ai")
+    expect(moduleFromPath("/tools/wha-control")).toBe("messages")
+  })
+
   it("tolera trailing slash, vacio y rutas desconocidas", () => {
     expect(moduleFromPath("/reports/")).toBe("reports")
     expect(moduleFromPath("/")).toBe("dashboard")
