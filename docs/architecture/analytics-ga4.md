@@ -88,8 +88,20 @@ rompe el build en vez de perderse en silencio.
 **La regla que evita el doble conteo**: si la acción ya deja una fila en una
 tabla de dominio, NO va al sink `db` — el mapa de calor deriva esas escrituras
 directamente de las tablas. El sink `db` es para lecturas (`module_viewed`,
-`record_opened`, `report_exported`) y para `ai_query_submitted`, que no deja
-fila propia. Hay un test que lo fija.
+`view_opened`, `record_opened`, `report_exported`) y para los eventos que no
+dejan fila propia: `ai_query_submitted` y `login`. Hay un test que lo fija.
+
+**`screen` es contexto de transporte, no un parámetro.** Lo adjunta `emit.ts`
+desde el pathname, así que todo evento con sink `db` trae su pantalla sin que el
+call site haga nada. Un evento nuevo la hereda gratis.
+
+**`SERVER_ONLY_DB_EVENTS`** lista los eventos con sink `db` que el browser no
+debe emitir. Hoy solo `login`: su call site vive en `/login`, que está excluida
+de la telemetría de tenant, así que el emisor ya lo descartaría — pero *por
+accidente*. El día que alguien saque `/login` de `NON_TENANT_PREFIXES`
+empezarían a entrar logins duplicados sin que nadie lo note. El login real se
+registra desde `app/(auth)/post-login/page.tsx`, con `await` (un `void` flotante
+antes de un `redirect()` se cancela).
 
 Los call sites importan `trackEvent` de `lib/analytics/track` y nunca de
 `ga/track` ni de `telemetry/emit`: importar el transporte directo manda el

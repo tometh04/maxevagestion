@@ -36,6 +36,31 @@ Las dos señales se miran por separado en la UI, con un selector. **No se
 suman**: una operacion creada y una pantalla mirada no son la misma unidad, y
 promediarlas daria un numero que no significa nada.
 
+Excepcion deliberada: **DAU/WAU/MAU si usan las dos** (`_admin_usage_actors`).
+Ahi la pregunta es binaria — "¿esta persona trabajo hoy?" — y alguien que entra
+todos los dias a mirar reportes esta activo aunque no escriba nada.
+
+### Dimensiones del stream
+
+| Columna | De donde sale | Cuidado |
+|---|---|---|
+| `screen` | cliente, validado en el server | Formato `path[#tab:x\|#dlg:x]` |
+| `session_id` | cliente (`sessionStorage`) | UUID validado en JS: uno invalido tumbaria el INSERT del batch entero |
+| `role` | server, congelado | `getEffectiveAgencyScopeRole` + `SELLER_AVI` |
+| `agency_id` | server, solo si es inequivoco | `NULL` = sin agencia o multi-agencia |
+
+El cliente propone `screen` y `session_id` porque son hechos del browser que el
+server no puede conocer; los dos pasan por un sanitizador estricto. `role`,
+`agency_id` y `org_id` **nunca** vienen del cliente.
+
+**La agencia no se infiere.** Se guarda solo si el usuario pertenece a
+exactamente una (`user_agencies` crudo, no `getUserAgencyIds()`, que responde
+"que puede ver" y para un SUPER_ADMIN devuelve todas las de la org). Entre un
+tercio y la mitad de los eventos quedan en `NULL`, y eso es informacion, no un
+hueco: los roles de alcance org no estan asignados a ninguna sucursal, y
+contabilidad, comisiones y pagos a operadores se manejan a nivel organizacion.
+La UI muestra "Sin agencia" como fila explicita.
+
 Excluido a proposito (documentado en la migracion):
 
 | Fuente | Por que no cuenta |
@@ -154,7 +179,42 @@ Cuatro decisiones que sostienen el diseño:
 **Un tenant no ve su propio stream crudo.** Cada fila dice que miro cada usuario
 y a que hora: expuesto dentro de la agencia es una herramienta de vigilancia
 sobre los empleados. Si algun dia se expone por tenant, va agregado y nunca por
-persona.
+persona. Esto vale mas ahora que existe `admin_usage_by_user`, que muestra
+nombre y email: es la unica RPC con PII, exige `p_org_id` sin default (si no,
+una sola llamada devolveria el padron de toda la plataforma) y solo se invoca
+desde una pagina detras de `isPlatformAdmin()`.
+
+### Vistas sin URL: tabs y dialogs
+
+El pathname no alcanza. `/reports` es UNA ruta con doce vistas atras,
+`/operations/[id]` tiene nueve, y el builder de cotizaciones vive **dos modales
+por debajo** de `/sales/leads` — o sea que cotizar se contabilizaba como CRM.
+
+Los **tabs** se instrumentan en `components/ui/tabs.tsx`, no en las pantallas.
+Radix acepta `defaultValue` y `onValueChange` juntos, asi que el wrapper cubre
+los 126 `TabsTrigger` del repo y los futuros sin una linea en los componentes.
+Emite tambien en mount: el 95% de los `<Tabs>` son no controlados y para esos el
+handler nunca dispara para la vista inicial, que es la mas vista de todas.
+`shouldEmitScreen()` dedupea 2 s para que el remonte de tabs anidados no cuente
+doble.
+
+Los **dialogs** son opt-in explicito con `useScreenView(nombre, open)`, solo en
+los siete mas pesados. No tienen un identificador propio equivalente al `value`
+de un tab, y hay decenas de dialogs chicos que no son pantallas.
+
+### Sesiones y logins
+
+`session_id` es del browser (`sessionStorage`, muere al cerrar la pestaña) y no
+tiene nada que ver con la sesion de auth: mide "una sentada de trabajo", no "un
+login". Los logins salen de `login_sessions` (ver la migracion
+`20260814000001`), que tiene historia retroactiva desde febrero.
+
+**La duracion de sesion es una cota inferior**: se calcula como
+`max(occurred_at) - min(occurred_at)` por sesion, asi que quien lee una pantalla
+cuarenta minutos y se va mide cero. Se descarto agregar pings de engagement —
+multiplicarian el volumen de la tabla mas grande del schema para afinar la
+metrica menos accionable del set. Por eso ademas del promedio va la mediana:
+dos sesiones abandonadas con la pestaña abierta lo arruinan.
 
 ### Retencion
 
