@@ -967,7 +967,7 @@ export function NewOperationDialog({
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col flex-1 overflow-hidden min-h-0">
-        <div className="flex-1 overflow-y-auto min-h-0 py-6 space-y-7">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 py-6 space-y-7">
 
         {/* Mostrar error del API */}
         {apiError && (
@@ -1336,8 +1336,8 @@ export function NewOperationDialog({
             <div className="border-t border-border/40 -mx-6" />
 
             {/* Section: Datos del viaje */}
-            <div>
-              <div className="flex items-center gap-2 mb-4">
+            <div className="space-y-5">
+              <div className="flex items-center gap-2">
                 <div className="flex items-center justify-center h-6 w-6 rounded-md bg-success/10">
                   <Plane className="h-3.5 w-3.5 text-success" />
                 </div>
@@ -1469,7 +1469,10 @@ export function NewOperationDialog({
 
                         {/* Fila 2: Costo + Moneda - más espacio */}
                         <div>
-                            <label className="text-xs font-medium mb-1.5 block">Costo *</label>
+                            <label className="text-xs font-medium mb-1.5 flex items-center gap-1.5">
+                              Costo *
+                              <FieldHelp text="Lo que te cobra este operador (proveedor) a la agencia por el servicio. No es lo que le cobrás al cliente." />
+                            </label>
                       <DecimalInput
                         value={op.cost || ""}
                         onChange={(v) => updateOperator(index, "cost", v)}
@@ -2209,7 +2212,10 @@ export function NewOperationDialog({
                       name="operator_cost"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Costo de Operador *</FormLabel>
+                          <FormLabel className="flex items-center gap-1.5">
+                            Costo de Operador *
+                            <FieldHelp text="Lo que te cobra el operador (proveedor) a la agencia por el servicio. No es lo que le cobrás al cliente (eso es el Monto de Venta)." />
+                          </FormLabel>
                           <FormControl>
                             <DecimalInput
                               {...field}
