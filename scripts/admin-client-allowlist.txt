@@ -85,6 +85,7 @@ app/api/admin/orgs/[id]/change-plan/route.test.ts                        # TEST 
 app/api/reports/societario/__tests__/authorization.test.ts               # TEST — mock de createAdminClient para el test de permisos del reporte societario.
 app/api/cron/billing-reconcile/route.ts                                  # CRON — reconciliación de suscripciones MP.
 app/api/cron/usage-retention/route.ts                                    # CRON — purga usage_events > 90 días, cross-tenant por diseño.
+app/api/cron/sync-login-sessions/route.ts                                # CRON — snapshot de auth.sessions a login_sessions, cross-tenant por diseño.
 app/api/cron/billing-reconcile/route.test.ts                             # TEST — mock de createAdminClient para el test del reconcile.
 app/api/cron/callbell-reconcile/route.ts                                 # CRON — reconciliación Callbell.
 app/api/cron/classify-quotation-pdfs/route.ts                            # CRON — clasificación de PDFs de cotización.

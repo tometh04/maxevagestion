@@ -6,6 +6,33 @@ import { PAST_DUE_GRACE_DAYS } from '@/lib/billing/access'
 // ============================================
 // RATE LIMITING (en memoria, por usuario autenticado o IP como fallback)
 // ============================================
+/**
+ * Redirect que se lleva las cookies de auth refrescadas.
+ *
+ * El `setAll` del client de Supabase (más abajo) escribe los tokens rotados en
+ * `response`. Un `NextResponse.redirect(url)` es un objeto NUEVO: no las lleva.
+ * Con `refresh_token_rotation_enabled` (está activada en el proyecto), eso
+ * significa que el server consumió el refresh token viejo y el browser nunca
+ * recibió el nuevo — el próximo request llega con un token ya usado y, pasado el
+ * intervalo de reuso de 10s, la sesión se cae sola.
+ *
+ * El síntoma es un deslogueo aleatorio que solo aparece cuando el refresh cae
+ * justo en un request que redirige (onboarding, paywall, gate de platform
+ * admin), o sea imposible de reproducir a mano.
+ */
+function redirectKeepingSession(
+  url: URL | string,
+  response: NextResponse,
+  status?: number
+): NextResponse {
+  const redirect =
+    status === undefined ? NextResponse.redirect(url) : NextResponse.redirect(url, status)
+  for (const cookie of response.cookies.getAll()) {
+    redirect.cookies.set(cookie)
+  }
+  return redirect
+}
+
 const RATE_LIMIT_WINDOW_MS = 60_000 // 1 minuto
 const RATE_LIMIT_MAX_REQUESTS = 300 // máx requests por ventana y por usuario
 const RATE_LIMIT_MAX_REQUESTS_ANON = 60  // límite más estricto para IPs sin sesión
@@ -206,7 +233,7 @@ export async function middleware(req: NextRequest) {
         if (!adminRow) {
           const url = req.nextUrl.clone()
           url.pathname = "/dashboard"
-          return NextResponse.redirect(url)
+          return redirectKeepingSession(url, response)
         }
       }
     }
@@ -293,7 +320,7 @@ export async function middleware(req: NextRequest) {
     if (userRow && !orgId) {
       const url = req.nextUrl.clone()
       url.pathname = "/onboarding"
-      return NextResponse.redirect(url)
+      return redirectKeepingSession(url, response)
     }
 
     // Paywall gate — lógica debe mantenerse alineada con lib/billing/guard.ts.
@@ -348,7 +375,7 @@ export async function middleware(req: NextRequest) {
         } else {
           url.pathname = "/onboarding/billing"
         }
-        return NextResponse.redirect(url)
+        return redirectKeepingSession(url, response)
       }
     }
   }
