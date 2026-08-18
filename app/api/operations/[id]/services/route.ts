@@ -7,14 +7,18 @@ import {
   getUserAgencyIds,
   resolveOperationAccessScope,
   isAgencyReadonlyScope,
+  isSellerWithinUserAgencies,
 } from "@/lib/permissions-api"
+import { isIndependentAdvisor } from "@/lib/permissions"
+import { SELLER_OPTION_ROLES } from "@/lib/sellers/seller-option"
 import { createLedgerMovement, calculateARSEquivalent } from "@/lib/accounting/ledger"
 import { createOperatorPayment } from "@/lib/accounting/operator-payments"
 import { getExchangeRate, getLatestExchangeRate, getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
 import { getSellerPercentage } from "@/lib/commissions/calculate"
-
-// Tipos de servicios que generan comisión al vendedor
-const COMMISSION_SERVICE_TYPES = new Set(["TRANSFER", "ASSISTANCE", "HOTEL", "FLIGHT", "EXCURSION"])
+import {
+  serviceCommissionAmount,
+  serviceGeneratesCommission,
+} from "@/lib/commissions/service-commission"
 
 // Labels para conceptos contables
 const SERVICE_TYPE_LABELS: Record<string, string> = {
@@ -145,6 +149,7 @@ export async function POST(
       cost_amount,
       cost_currency,
       description,
+      seller_id: rawSellerId,
     } = body
 
     // Validaciones básicas
@@ -173,9 +178,62 @@ export async function POST(
       return NextResponse.json({ error: "La moneda de costo es inválida" }, { status: 400 })
     }
 
+    // ── Vendedor del servicio ────────────────────────────────
+    // Quien vende el servicio es quien cobra su comisión, y no es
+    // necesariamente el vendedor de la operación: cualquiera puede cargar un
+    // servicio sobre una venta ajena (una asistencia, una reprogramación). Por
+    // defecto comisiona quien lo carga, y se puede elegir a otro.
+    let serviceSellerId: string = user.id
+    const requestedSellerId = typeof rawSellerId === "string" ? rawSellerId.trim() : ""
+
+    if (requestedSellerId && requestedSellerId !== user.id) {
+      // El asesor independiente sólo ve y cobra lo suyo: no puede desviarle la
+      // comisión a otra persona.
+      if (isIndependentAdvisor(user as any)) {
+        return NextResponse.json(
+          { error: "No puede asignar el servicio a otro vendedor" },
+          { status: 403 }
+        )
+      }
+
+      // Filtro por org: sin esto se podría imputar la comisión a un usuario de
+      // otro tenant.
+      const { data: targetSeller } = await (supabase.from("users") as any)
+        .select("id, role, is_active")
+        .eq("id", requestedSellerId)
+        .eq("org_id", (user as any).org_id)
+        .maybeSingle()
+
+      if (
+        !targetSeller ||
+        targetSeller.is_active === false ||
+        !SELLER_OPTION_ROLES.includes(targetSeller.role)
+      ) {
+        return NextResponse.json({ error: "Vendedor inválido" }, { status: 400 })
+      }
+
+      // Un SELLER sólo puede asignarle el servicio a alguien de sus mismas
+      // agencias. Mismo criterio que el alta de operaciones.
+      if (user.role === "SELLER") {
+        const withinAgency = await isSellerWithinUserAgencies(
+          supabase,
+          requestedSellerId,
+          agencyIds
+        )
+        if (!withinAgency) {
+          return NextResponse.json(
+            { error: "El vendedor no pertenece a sus agencias" },
+            { status: 403 }
+          )
+        }
+      }
+
+      serviceSellerId = requestedSellerId
+    }
+
     const saleAmount = Number(sale_amount)
     const costAmount = Number(cost_amount)
-    const generatesCommission = COMMISSION_SERVICE_TYPES.has(service_type)
+    const generatesCommission = serviceGeneratesCommission(service_type)
     const serviceLabel = SERVICE_TYPE_LABELS[service_type] || service_type
     const fileCode = operation.file_code || operationId.slice(0, 8)
     const departureDate = operation.departure_date
@@ -187,6 +245,7 @@ export async function POST(
       service_type,
       description: description || null,
       operator_id: operator_id || null,
+      seller_id: serviceSellerId,
       sale_amount: saleAmount,
       sale_currency,
       cost_amount: costAmount,
@@ -406,89 +465,68 @@ export async function POST(
       }
     }
 
-    // ── 6. Comisión al vendedor ──
-    // Usa la jerarquía canónica de resolveSellerCommissionProfiles:
+    // ── 6. Comisión del servicio ──
+    // La comisión de un servicio es una fila propia (`kind = 'SERVICE'`), del
+    // vendedor que lo vendió y con su propia fecha de imputación. No se suma a
+    // la comisión de la venta base, y eso es justamente lo que resuelve:
+    //
+    //   - Antes le pagaba siempre al vendedor de la OPERACIÓN. Un servicio que
+    //     vende otra persona sobre una venta ajena le acreditaba la comisión al
+    //     vendedor original.
+    //   - Antes acumulaba sobre la fila de la venta, así que caía en el mes de
+    //     la venta original en vez del mes en que se vendió el servicio.
+    //   - Antes, si esa comisión ya estaba pagada, el servicio no comisionaba
+    //     nada y sólo quedaba un warning en los logs. Al ser una fila nueva, la
+    //     comisión ya pagada ni se toca y deja de hacer falta el ajuste manual.
+    //
+    // El porcentaje sale del vendedor del servicio, vía la jerarquía canónica de
+    // resolveSellerCommissionProfiles:
     //   1. commission_rules con seller_id específico
     //   2. users.default_commission_percentage  ← fuente canónica
     //   3. commission_rules genérica de la org
-    //
-    // ⚠️ Deuda conocida (VIB-63, etapa 2): este bloque le paga al vendedor
-    // principal su porcentaje completo e ignora al secundario, así que un
-    // servicio cargado sobre una venta compartida no respeta el reparto. Además
-    // acumula por suma y el siguiente recálculo de la operación pisa lo
-    // acumulado. Unificarlo con el modelo de la operación exige separar el
-    // margen comisionable del margen total, y va en el mismo deploy que ese
-    // cambio. Acá solo se corrige lo que no podía esperar: el guard de comisión
-    // ya pagada y el org_id de los registros nuevos.
-    if (generatesCommission && operation.seller_id) {
+    if (generatesCommission && serviceSellerId) {
       try {
-        // Calcular margen del servicio (solo si misma moneda, sino usar sale_amount como base)
-        const marginBase =
-          sale_currency === cost_currency
-            ? saleAmount - costAmount
-            : saleAmount
+        const sellerPct = await getSellerPercentage(
+          supabase,
+          (user as any).org_id,
+          serviceSellerId
+        )
 
-        if (marginBase > 0) {
-          const sellerPct = await getSellerPercentage(
-            supabase,
-            (user as any).org_id,
-            operation.seller_id
+        const commissionAmount = serviceCommissionAmount({
+          saleAmount,
+          costAmount,
+          saleCurrency: sale_currency,
+          costCurrency: cost_currency,
+          sellerPercentage: sellerPct,
+        })
+
+        if (commissionAmount > 0) {
+          const nowIso = new Date().toISOString()
+          const { data: newRecord, error: commissionError } = await (
+            supabase.from("commission_records") as any
           )
+            .insert({
+              operation_id: operationId,
+              operation_service_id: serviceId,
+              seller_id: serviceSellerId,
+              org_id: (user as any).org_id,
+              agency_id: operation.agency_id,
+              kind: "SERVICE",
+              amount: commissionAmount,
+              percentage: sellerPct,
+              status: "PENDING",
+              date_calculated: nowIso,
+              // Se imputa al mes en que se vendió el servicio, no al de la
+              // venta original: es el mes por el que cobra el vendedor.
+              accrual_date: nowIso.slice(0, 10),
+            })
+            .select("id")
+            .single()
 
-          if (sellerPct > 0) {
-            const commissionAmount = Math.round((marginBase * sellerPct) / 100 * 100) / 100
-
-            if (commissionAmount > 0) {
-              const { data: existingRecord } = await (supabase.from("commission_records") as any)
-                .select("id, amount, status, amount_paid")
-                .eq("operation_id", operationId)
-                .eq("seller_id", operation.seller_id)
-                .maybeSingle()
-
-              // Una comisión ya pagada (total o parcialmente) no se toca: subirle
-              // el monto por un servicio nuevo dejaría el asiento contable sin
-              // respaldo y habilitaría un doble pago.
-              const yaTienePlataMovida =
-                existingRecord &&
-                ((existingRecord.status ?? "PENDING") !== "PENDING" ||
-                  Number(existingRecord.amount_paid ?? 0) > 0)
-
-              if (yaTienePlataMovida) {
-                console.warn(
-                  `[Services POST] La comisión de la operación ${operationId} ya tiene pagos: no se le suma el servicio. Requiere ajuste manual.`
-                )
-              } else if (existingRecord) {
-                // Sumar al registro existente, manteniendo el % del vendedor.
-                const { data: updated } = await (supabase.from("commission_records") as any)
-                  .update({
-                    amount: Number(existingRecord.amount) + commissionAmount,
-                    percentage: sellerPct,
-                    updated_at: new Date().toISOString(),
-                  })
-                  .eq("id", existingRecord.id)
-                  .select("id")
-                  .single()
-
-                if (updated?.id) updates.commission_record_id = updated.id
-              } else {
-                // Crear nuevo registro
-                const { data: newRecord } = await (supabase.from("commission_records") as any)
-                  .insert({
-                    operation_id: operationId,
-                    seller_id: operation.seller_id,
-                    org_id: (user as any).org_id,
-                    agency_id: operation.agency_id,
-                    amount: commissionAmount,
-                    percentage: sellerPct,
-                    status: "PENDING",
-                    date_calculated: new Date().toISOString(),
-                  })
-                  .select("id")
-                  .single()
-
-                if (newRecord?.id) updates.commission_record_id = newRecord.id
-              }
-            }
+          if (commissionError) {
+            console.error("[Services POST] Error creando la comisión del servicio:", commissionError)
+          } else if (newRecord?.id) {
+            updates.commission_record_id = newRecord.id
           }
         }
       } catch (error) {

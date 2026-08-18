@@ -9,11 +9,18 @@
  *  - ARS y USD NUNCA se mezclan. El reporte se arma para UNA moneda (la de la
  *    venta de cada operación); el total de la otra se informa aparte. La pantalla
  *    de Comisiones actual sí las suma en un mismo total: eso no se replica.
- *  - El mes de una comisión lo define `operations.operation_date`, no
- *    `date_calculated`: un recálculo masivo no debe reescribir la historia.
- *  - Operaciones compartidas: el constraint (operation_id, seller_id) hace que
- *    una venta compartida tenga dos filas, una por vendedor. El rol se deriva
- *    comparando contra `operations.seller_id` / `seller_secondary_id`.
+ *  - El mes de una comisión lo define `accrual_date`, no `date_calculated`: un
+ *    recálculo masivo no debe reescribir la historia. Para la venta base
+ *    `accrual_date` vale `operations.operation_date` (el criterio anterior, que
+ *    salía del join); una comisión de servicio lleva la fecha en que se vendió
+ *    el servicio, que puede caer meses después de la venta original.
+ *  - Operaciones compartidas: una venta compartida tiene una fila por vendedor.
+ *    El rol se deriva comparando contra `operations.seller_id` /
+ *    `seller_secondary_id`.
+ *  - Una operación puede tener MÁS de una fila por vendedor: la de la venta y
+ *    una por cada servicio que esa persona vendió (`kind = 'SERVICE'`), cada una
+ *    con su propio mes. El unique (operation_id, seller_id) sólo rige para las
+ *    filas que no son de servicio.
  *
  * El reporte NO expone la economía del paquete (VIB-94). Antes publicaba la
  * venta base del período y un "% efectivo" = comisiones / venta base, y ese
@@ -206,6 +213,18 @@ function currencyOf(record: CommissionRecordRow): string {
   return record.operations?.sale_currency || record.operations?.currency || "USD"
 }
 
+/**
+ * Mes (YYYY-MM) al que se imputa una comisión.
+ *
+ * El fallback a `operation_date` no es decorativo: sostiene los tests que arman
+ * filas a mano y cualquier lectura anterior al backfill de `accrual_date`. Como
+ * el backfill dejó `accrual_date = operation_date` en todo lo existente, los
+ * períodos ya cerrados siguen dando exactamente lo mismo que antes.
+ */
+function monthKeyOf(record: CommissionRecordRow): string {
+  return (record.accrual_date || record.operations?.operation_date || "").slice(0, 7)
+}
+
 function roleOf(record: CommissionRecordRow): CommissionSellerRole {
   const op = record.operations
   if (!op) return "unknown"
@@ -345,13 +364,13 @@ export function buildCommissionsReport({
       share: roundMoney(safeDiv(row.total, total) * 100, 1),
     }))
 
-  // ---- Por mes (de operation_date), con los meses vacíos en cero ----
+  // ---- Por mes (de accrual_date), con los meses vacíos en cero ----
   const monthAcc = new Map<
     string,
     { total: number; pending: number; paid: number; count: number; operations: Set<string> }
   >()
   for (const r of inCurrency) {
-    const key = (r.operations?.operation_date || "").slice(0, 7)
+    const key = monthKeyOf(r)
     if (!key) continue
     const acc =
       monthAcc.get(key) ??
@@ -383,7 +402,7 @@ export function buildCommissionsReport({
   // ---- Matriz vendedor × mes ----
   const cellAcc = new Map<string, Map<string, number>>()
   for (const r of inCurrency) {
-    const key = (r.operations?.operation_date || "").slice(0, 7)
+    const key = monthKeyOf(r)
     if (!key) continue
     const row = cellAcc.get(r.seller_id) ?? new Map<string, number>()
     row.set(key, (row.get(key) || 0) + Number(r.amount || 0))

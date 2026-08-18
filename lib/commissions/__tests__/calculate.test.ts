@@ -359,6 +359,8 @@ interface FakeRecord {
   amount?: number | null
   amount_paid?: number | null
   settled_at?: string | null
+  /** 'SERVICE' = comisión de un servicio; no la produce este plan. */
+  kind?: string | null
 }
 
 function createSupabase(existing: FakeRecord[]) {
@@ -367,7 +369,10 @@ function createSupabase(existing: FakeRecord[]) {
   const deletes: string[] = []
 
   const from = () => {
-    const state: any = { filters: {}, op: "select", values: null }
+    // `notFilters` modela `.neq()`. Sin esto el fake devolvía TODA la tabla y
+    // un test sobre el filtrado de filas pasaría aunque el código de producción
+    // no filtrara nada.
+    const state: any = { filters: {}, notFilters: {}, op: "select", values: null }
 
     const builder: any = new Proxy(
       {},
@@ -385,7 +390,12 @@ function createSupabase(existing: FakeRecord[]) {
                 deletes.push(state.filters.id)
                 resolve({ data: null, error: null })
               } else {
-                resolve({ data: existing, error: null })
+                const rows = existing.filter((row) =>
+                  Object.entries(state.notFilters).every(
+                    ([column, value]) => (row as any)[column] !== value
+                  )
+                )
+                resolve({ data: rows, error: null })
               }
             }
           }
@@ -396,6 +406,7 @@ function createSupabase(existing: FakeRecord[]) {
               state.values = args[0] ?? null
             }
             if (name === "eq") state.filters[args[0]] = args[1]
+            if (name === "neq") state.notFilters[args[0]] = args[1]
             return builder
           }
         },
@@ -427,6 +438,45 @@ const planOf = (entries: Array<[string, PlanRole, number, number, string?]>) => 
 })
 
 describe("applyCommissionPlan", () => {
+  it("no toca las comisiones de servicio: ni las pisa ni las borra", async () => {
+    // Las filas kind='SERVICE' son las únicas de la tabla que este plan NO
+    // produce: llevan su propio vendedor, su propio porcentaje y su propio mes,
+    // y no se derivan del margen de la operación.
+    //
+    // Sin aislarlas pasaban dos cosas, las dos silenciosas: el Map por seller_id
+    // las hacía desaparecer, y el barrido de huérfanas las borraba, porque el
+    // vendedor del servicio no figura en el plan de la operación. Y el recálculo
+    // corre con casi cualquier edición de la operación o de sus servicios, así
+    // que la comisión de quien vendió el servicio se evaporaba sola.
+    const { client, updates, inserts, deletes } = createSupabase([
+      { id: "cr-venta", seller_id: "jose", status: "PENDING", amount: 100 },
+      { id: "cr-servicio", seller_id: "melani", status: "PENDING", amount: 40, kind: "SERVICE" },
+    ])
+
+    await applyCommissionPlan(client, baseOp(), planOf([["jose", "PRIMARY", 10, 120]]))
+
+    expect(deletes).toEqual([])
+    expect(updates.map((u) => u.id)).toEqual(["cr-venta"])
+    expect(inserts).toEqual([])
+  })
+
+  it("imputa la comisión de la venta al mes de la operación", async () => {
+    // `accrual_date` es lo que define el mes en el Reporte de Comisiones. Para
+    // las filas del plan tiene que seguir siendo la fecha de la operación: es el
+    // criterio que el reporte ya usaba (vía el join con `operations`), y lo que
+    // mantiene idénticos los períodos ya cerrados.
+    const { client, inserts } = createSupabase([])
+
+    await applyCommissionPlan(
+      client,
+      baseOp({ operation_date: "2026-03-11" }),
+      planOf([["jose", "PRIMARY", 10, 100]])
+    )
+
+    expect(inserts).toHaveLength(1)
+    expect(inserts[0].accrual_date).toBe("2026-03-11")
+  })
+
   it("no revive una comisión saldada: ni la recalcula ni la borra (VIB-94)", async () => {
     // Deuda vieja cerrada sin pago. Si el recálculo la pisara, la agencia
     // volvería a deberla apenas alguien edite la operación.

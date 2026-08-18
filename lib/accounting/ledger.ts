@@ -131,6 +131,14 @@ export interface CreateLedgerMovementParams {
    * `org_id IN user_org_ids()` rechaza NULL).
    */
   org_id?: string | null
+  /**
+   * Comisión que este movimiento salda. NO se persiste en `ledger_movements`:
+   * sirve únicamente para acotar el marcado automático a esa fila, ahora que una
+   * operación puede tener varias comisiones del mismo vendedor (la de la venta
+   * base y una por cada servicio, cada una con su propio mes). Sin esto, pagar
+   * una marcaría pagadas las otras.
+   */
+  commission_record_id?: string | null
 }
 
 /**
@@ -261,7 +269,9 @@ export async function createLedgerMovement(
   if (params.type === "COMMISSION" && params.operation_id) {
     try {
       const { markCommissionsAsPaidIfLedgerExists } = await import("./mark-commission-paid")
-      await markCommissionsAsPaidIfLedgerExists(supabase, params.operation_id)
+      await markCommissionsAsPaidIfLedgerExists(supabase, params.operation_id, {
+        commissionRecordId: params.commission_record_id ?? null,
+      })
     } catch (error) {
       // No fallar si hay error al marcar comisiones, solo loguear
       console.error("Error marking commissions as paid:", error)

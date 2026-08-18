@@ -199,6 +199,10 @@ export async function POST(request: Request) {
         receipt_number: null,
         notes: notes || null,
         created_by: user.id,
+        // Acota el marcado automático a la comisión que realmente se está
+        // pagando. Sin esto, una operación con comisión de venta y comisiones de
+        // servicios del mismo vendedor daría por saldadas todas al cobrar una.
+        commission_record_id: commission.id,
       },
       supabase
     )
