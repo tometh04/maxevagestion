@@ -1252,10 +1252,18 @@ export async function POST(request: Request) {
             )
 
             // 2. Crear cash_movement EXPENSE para que aparezca en vista de caja
-            await (supabase.from("cash_movements") as any)
+            //
+            // VIB-131: este insert fallaba SIEMPRE en silencio. El movimiento
+            // principal del pago ya ocupa el payment_id y el índice único de la
+            // migración 110 permitía uno solo, así que el impuesto pegaba en el
+            // ledger pero nunca en caja (153 casos entre 2026-06-02 y 2026-08-14).
+            // La migración 20260818000002 pasa el índice a (payment_id, category)
+            // y el error ya no se traga: si falla, queda alerta para revisión.
+            const { error: taxCashError } = await (supabase.from("cash_movements") as any)
               .insert({
                 operation_id: operation_id || null,
                 payment_id: payment.id, // Vincular al mismo payment para trazabilidad
+                ledger_movement_id: taxLedgerMovementId,
                 cash_box_id: null,
                 financial_account_id: accountId,
                 user_id: user.id,
@@ -1269,10 +1277,32 @@ export async function POST(request: Request) {
                 agency_id: agencyId,
               })
 
+            if (taxCashError) throw new Error(`cash_movement del impuesto: ${taxCashError.message}`)
+
             console.log(`✅ Bank tax Ley 25413: ${taxAmount} ${currency} (${taxRate}%) deducido para payment ${payment.id}`)
           } catch (bankTaxError) {
-            // No romper el flujo principal — el pago ya fue registrado
-            console.error("Error creando movimiento de impuesto bancario Ley 25413:", bankTaxError)
+            // No romper el flujo principal — el pago ya fue registrado — pero
+            // tampoco dejarlo pasar en silencio: el impuesto afecta el saldo y
+            // su ausencia en caja descuadra la vista contra el ledger.
+            console.error("❌ Error creando movimiento de impuesto bancario Ley 25413:", {
+              paymentId: payment.id,
+              operationId: operation_id,
+              error: bankTaxError instanceof Error ? bankTaxError.message : String(bankTaxError),
+            })
+            try {
+              await (supabase.from("alerts") as any).insert({
+                org_id: (user as any).org_id || null,
+                agency_id: agencyId || null,
+                user_id: user.id,
+                operation_id: operation_id || null,
+                type: "SYSTEM",
+                description: `Impuesto Ley 25413 no registrado en caja para el pago ${payment.id}. Revisar manualmente.`,
+                date_due: new Date().toISOString(),
+                status: "PENDING",
+              })
+            } catch (alertError) {
+              console.error("Error generando alerta de impuesto bancario:", alertError)
+            }
           }
         }
 
@@ -2497,6 +2527,17 @@ export async function PATCH(request: Request) {
               .eq("type", "EXPENSE")
               .ilike("notes", `%vinculado a payment ${paymentId}%`)
 
+            // VIB-131: el cleanup anterior solo borraba el lado del ledger. El
+            // movimiento de caja del impuesto nunca llegaba a crearse (fallaba
+            // por el índice único), así que no molestaba. Ahora que sí se crea,
+            // hay que borrarlo también o la reinserción choca contra el índice
+            // (payment_id, category).
+            await (supabase.from("cash_movements") as any)
+              .delete()
+              .eq("org_id", user.org_id)
+              .eq("payment_id", paymentId)
+              .eq("category", "BANK_TAX")
+
             let taxAmountARS = taxAmount
             if (finalCurrency === "USD" && exchangeRate) {
               taxAmountARS = calculateARSEquivalent(taxAmount, "USD", exchangeRate)
@@ -2504,7 +2545,7 @@ export async function PATCH(request: Request) {
 
             // 1. ledger_movement EXPENSE del impuesto. Las notas llevan el
             //    marcador "vinculado a payment <id>" que usa el cleanup 2c-bis.
-            await createLedgerMovement(
+            const { id: taxLedgerMovementId } = await createLedgerMovement(
               {
                 operation_id: existingPayment.operation_id || null,
                 lead_id: null,
@@ -2524,11 +2565,14 @@ export async function PATCH(request: Request) {
             )
 
             // 2. cash_movement para que aparezca en Caja (mismo comportamiento
-            //    que el POST). Nota: comparte payment_id con el pago principal.
-            await (supabase.from("cash_movements") as any)
+            //    que el POST). Comparte payment_id con el pago principal, pero
+            //    con category distinta: el índice (payment_id, category) los
+            //    deja convivir (VIB-131).
+            const { error: taxCashError } = await (supabase.from("cash_movements") as any)
               .insert({
                 operation_id: existingPayment.operation_id || null,
                 payment_id: paymentId,
+                ledger_movement_id: taxLedgerMovementId,
                 cash_box_id: null,
                 financial_account_id: finalAccountId,
                 user_id: user.id,
@@ -2542,10 +2586,31 @@ export async function PATCH(request: Request) {
                 agency_id: agencyId,
               })
 
+            if (taxCashError) throw new Error(`cash_movement del impuesto: ${taxCashError.message}`)
+
             console.log(`✅ Bank tax Ley 25413 (edición): ${taxAmount} ${finalCurrency} (${taxRate}%) para payment ${paymentId}`)
           } catch (bankTaxError) {
-            // No romper la edición — el pago principal ya quedó actualizado.
-            console.error("Error recreando movimiento de impuesto bancario Ley 25413 (edición):", bankTaxError)
+            // No romper la edición — el pago principal ya quedó actualizado —
+            // pero dejar rastro: sin el movimiento en caja, la vista descuadra
+            // contra el ledger.
+            console.error("❌ Error recreando movimiento de impuesto bancario Ley 25413 (edición):", {
+              paymentId,
+              error: bankTaxError instanceof Error ? bankTaxError.message : String(bankTaxError),
+            })
+            try {
+              await (supabase.from("alerts") as any).insert({
+                org_id: user.org_id || null,
+                agency_id: agencyId || null,
+                user_id: user.id,
+                operation_id: existingPayment.operation_id || null,
+                type: "SYSTEM",
+                description: `Impuesto Ley 25413 no registrado en caja al editar el pago ${paymentId}. Revisar manualmente.`,
+                date_due: new Date().toISOString(),
+                status: "PENDING",
+              })
+            } catch (alertError) {
+              console.error("Error generando alerta de impuesto bancario:", alertError)
+            }
           }
         }
 
