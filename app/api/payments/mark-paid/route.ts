@@ -22,6 +22,13 @@ import { createPaymentReceivedMessage } from "@/lib/whatsapp/whatsapp-service"
 import { upsertSellerReceiptMessage } from "@/lib/whatsapp/seller-receipt-message"
 import { autoCreateWithholdings, type WithholdingType } from "@/lib/accounting/withholding-rules"
 import { enforceUserRateLimit } from "@/lib/rate-limit"
+import {
+  requiresCustomerIncomeExchangeRate,
+  getCustomerIncomeReferenceCurrency,
+  isExchangeRatePlausibleVsMarket,
+  coercePositiveNumber,
+} from "@/lib/payments/customer-income-fx"
+import { getCurrentArsPerUsd } from "@/lib/payments/load-rules"
 
 export async function POST(request: Request) {
   try {
@@ -150,6 +157,40 @@ export async function POST(request: Request) {
         error: "Este pago ya fue marcado como pagado anteriormente",
         already_paid: true
       }, { status: 409 }) // 409 Conflict
+    }
+
+    // ============================================
+    // GUARD DE SANIDAD DEL TIPO DE CAMBIO (VIB-132)
+    // ============================================
+    // El mismo guard que ya corre en POST y PATCH de /api/payments: un cobro
+    // ARS↔USD con un TC absurdo (ej. 1) hace amount_usd = monto en ARS y
+    // destruye la deuda del cliente (caso real op #17955bf1: USD 1.270 →
+    // USD -1.948.180). mark-paid era la única vía de cobro sin esta validación.
+    //
+    // Deliberadamente conservador para ser ADITIVO: solo valida cuando el
+    // request trae un exchange_rate. No exige el TC cuando antes no se exigía
+    // (a diferencia del POST), así que no rompe flujos que hoy funcionan.
+    const providedRate = coercePositiveNumber(exchange_rate)
+    if (providedRate) {
+      const needsRateCheck = requiresCustomerIncomeExchangeRate({
+        payerType: paymentData.payer_type,
+        direction: paymentData.direction,
+        paymentCurrency: paymentData.currency,
+        saleCurrency: getCustomerIncomeReferenceCurrency({ operation }),
+      })
+
+      if (needsRateCheck) {
+        const marketRate = await getCurrentArsPerUsd(supabase)
+        if (!isExchangeRatePlausibleVsMarket(providedRate, marketRate)) {
+          return NextResponse.json(
+            {
+              error: `El tipo de cambio ingresado (${providedRate}) parece incorrecto. El de referencia es ~${Math.round(marketRate)} ARS por USD. Revisalo.`,
+              code: "IMPLAUSIBLE_EXCHANGE_RATE",
+            },
+            { status: 400 }
+          )
+        }
+      }
     }
 
     // Calcular amount_usd si hay exchange_rate proporcionado
