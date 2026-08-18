@@ -99,16 +99,29 @@ COMMENT ON COLUMN public.commission_records.operation_service_id IS
 ALTER TABLE public.commission_records
   ADD COLUMN IF NOT EXISTS accrual_date DATE DEFAULT CURRENT_DATE;
 
+-- OJO con el filtro: NO se puede acotar el backfill con `accrual_date IS NULL`.
+-- El DEFAULT CURRENT_DATE de arriba hace que, al agregarse la columna, TODAS las
+-- filas existentes queden con la fecha de hoy y ninguna en NULL, asi que ese
+-- filtro no matchea nada y el historico entero termina imputado al dia en que se
+-- corrio la migracion. Paso en produccion el 2026-08-18: 1009 comisiones de 16
+-- meses distintos colapsaron en agosto. Se acota por diferencia real.
 UPDATE public.commission_records cr
 SET accrual_date = o.operation_date
 FROM public.operations o
 WHERE cr.operation_id = o.id
-  AND cr.accrual_date IS NULL
-  AND o.operation_date IS NOT NULL;
+  AND cr.kind <> 'SERVICE'
+  AND o.operation_date IS NOT NULL
+  AND cr.accrual_date IS DISTINCT FROM o.operation_date;
 
-UPDATE public.commission_records
-SET accrual_date = date_calculated::date
-WHERE accrual_date IS NULL;
+-- Respaldo para las comisiones cuya operacion no tiene fecha de venta.
+UPDATE public.commission_records cr
+SET accrual_date = cr.date_calculated::date
+WHERE cr.kind <> 'SERVICE'
+  AND NOT EXISTS (
+    SELECT 1 FROM public.operations o
+    WHERE o.id = cr.operation_id AND o.operation_date IS NOT NULL
+  )
+  AND cr.accrual_date IS DISTINCT FROM cr.date_calculated::date;
 
 ALTER TABLE public.commission_records
   ALTER COLUMN accrual_date SET NOT NULL;
