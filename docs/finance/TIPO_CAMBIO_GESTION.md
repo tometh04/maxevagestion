@@ -4,6 +4,11 @@
 
 Este documento explica cómo se gestionan los tipos de cambio en el sistema MAXEVA GESTIÓN, dónde se configuran y cómo se utilizan.
 
+> **¿Buscás qué fuente de TC manda en cada caso?** Este documento es el how-to de
+> configuración. El contrato técnico —qué tabla es autoritativa para valuar deuda, para
+> el cierre mensual y para el guard de plausibilidad— está en
+> [`TIPO-DE-CAMBIO-FUENTES.md`](./TIPO-DE-CAMBIO-FUENTES.md).
+
 ---
 
 ## 🎯 Configuración del Tipo de Cambio
