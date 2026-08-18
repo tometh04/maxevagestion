@@ -310,6 +310,7 @@ export async function GET(request: Request) {
         id, type, category, amount, currency, movement_date, notes, financial_account_id,
         is_agency_expense,
         reversed_at, reverses_movement_id, reversed_by_movement_id, reversal_reason,
+        reconciliation_status, reconciled_at,
         ledger_movements:ledger_movement_id (affects_balance),
         users:user_id (id, name),
         ${opEmbed} (
@@ -428,6 +429,9 @@ export async function GET(request: Request) {
         reverses_movement_id: m.reverses_movement_id ?? null,
         reversed_by_movement_id: m.reversed_by_movement_id ?? null,
         reversal_reason: m.reversal_reason ?? null,
+        // Conciliación bancaria (VIB-137). null = sin marcar.
+        reconciliation_status: m.reconciliation_status ?? null,
+        reconciled_at: m.reconciled_at ?? null,
         operations: m.operations
           ? {
               id: m.operations.id,
