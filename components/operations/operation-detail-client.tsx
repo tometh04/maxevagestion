@@ -1058,6 +1058,7 @@ export function OperationDetailClient({
             operationId={operation.id}
             operationStatus={operation.status}
             operators={operators}
+            sellers={sellers}
             userRole={userRole}
             canAddServices={canAddServices}
             canEditServices={canManageExistingServices}
