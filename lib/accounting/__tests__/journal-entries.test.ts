@@ -469,6 +469,24 @@ describe("asientos automáticos — idempotencia", () => {
     expect(updates[1].payload).toMatchObject({ chart_account_id: "ventas-id", credit_amount: 1000 })
   })
 
+  it("resuelve el plan de cuentas SCOPEADO por organización (VIB-145)", async () => {
+    const { client, calls } = createMockSupabase({
+      chartAccounts: [
+        { id: "cpc-id", account_code: ACCOUNT_CODES.CUENTAS_POR_COBRAR },
+        { id: "ventas-id", account_code: ACCOUNT_CODES.VENTAS },
+      ],
+    })
+
+    await createSaleJournalEntry({ ...operation, org_id: "org-123" } as any, client)
+
+    // El plan de cuentas es por org: sin este filtro, con los mismos códigos en
+    // todas las organizaciones la resolución sería ambigua y podría cruzar
+    // tenants si el caller usara un admin client.
+    const chartQuery = calls.find((c) => c.table === "chart_of_accounts")
+    expect(chartQuery).toBeDefined()
+    expect(chartQuery?.args).toContainEqual(["eq", "org_id", "org-123"])
+  })
+
   it("createSaleJournalEntry devuelve null (sin romper el flujo) si faltan las cuentas del plan", async () => {
     const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => {})
     const { client } = createMockSupabase({ chartAccounts: [] })

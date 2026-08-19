@@ -470,14 +470,26 @@ export async function annotatePaymentAsJournalEntry(
 
     const financialChartAccountId = finAccount?.chart_account_id || null
 
+    // VIB-145: el plan de cuentas es por organización, así que estas búsquedas
+    // por código tienen que acotarse. Sin el filtro, con los mismos códigos en
+    // varias orgs, `maybeSingle()` fallaría por múltiples filas (o cruzaría
+    // tenants si el caller usara un admin client).
+    const chartOrgId = await resolveChartOrgId(adminClient, {
+      operationId: params.operation_id,
+      movementId: params.mainMovementId,
+    })
+    const scopedChart = () => {
+      const q = (adminClient.from("chart_of_accounts") as any).select("id")
+      return chartOrgId ? q.eq("org_id", chartOrgId) : q
+    }
+
     // Buscar chart_account_id para la cuenta contraparte
     let counterpartChartAccountId: string | null = null
     if (params.counterpartMovementId) {
       const counterpartCode = params.direction === "INCOME"
         ? ACCOUNT_CODES.CUENTAS_POR_COBRAR
         : ACCOUNT_CODES.CUENTAS_POR_PAGAR
-      const { data: cpChart } = await (adminClient.from("chart_of_accounts") as any)
-        .select("id")
+      const { data: cpChart } = await scopedChart()
         .eq("account_code", counterpartCode)
         .maybeSingle()
       counterpartChartAccountId = cpChart?.id || null
@@ -490,8 +502,7 @@ export async function annotatePaymentAsJournalEntry(
     } else {
       resultadoCode = ACCOUNT_CODES.COSTO_OPERADORES // 4.2.01
     }
-    const { data: resultadoChart } = await (adminClient.from("chart_of_accounts") as any)
-      .select("id")
+    const { data: resultadoChart } = await scopedChart()
       .eq("account_code", resultadoCode)
       .maybeSingle()
 
@@ -578,8 +589,7 @@ export async function annotatePaymentAsJournalEntry(
 
     // Anotar percepciones si las hay
     if (params.perceptionMovementIds && params.perceptionMovementIds.length > 0) {
-      const { data: percChart } = await (adminClient.from("chart_of_accounts") as any)
-        .select("id")
+      const { data: percChart } = await scopedChart()
         .eq("account_code", ACCOUNT_CODES.PERCEPCIONES_AFIP)
         .maybeSingle()
 
@@ -626,18 +636,59 @@ export async function annotatePaymentAsJournalEntry(
  */
 async function resolveAccountIds(
   codes: string[],
-  adminClient: any
+  adminClient: any,
+  orgId: string | null
 ): Promise<Record<string, string>> {
-  const { data } = await (adminClient.from("chart_of_accounts") as any)
+  let query = (adminClient.from("chart_of_accounts") as any)
     .select("id, account_code")
     .in("account_code", codes)
     .eq("is_active", true)
+
+  // VIB-145: el plan de cuentas es por organización. Antes esta query no
+  // filtraba por org y se apoyaba solo en RLS; con un plan por org los mismos
+  // códigos existen en todas, así que sin el filtro la resolución es ambigua
+  // (y con un admin client, directamente cruzaría tenants).
+  if (orgId) query = query.eq("org_id", orgId)
+
+  const { data } = await query
 
   const map: Record<string, string> = {}
   for (const row of (data || [])) {
     map[row.account_code] = row.id
   }
   return map
+}
+
+/**
+ * Resolver la organización cuyo plan de cuentas hay que usar (VIB-145).
+ *
+ * Los asientos automáticos reciben objetos armados por el caller, que no
+ * siempre traen `org_id`. Se toma del objeto si está; si no, se deriva de la
+ * operación o del movimiento, que sí lo tienen en la base.
+ */
+async function resolveChartOrgId(
+  adminClient: any,
+  source: { orgId?: string | null; operationId?: string | null; movementId?: string | null }
+): Promise<string | null> {
+  if (source.orgId) return source.orgId
+
+  if (source.operationId) {
+    const { data } = await (adminClient.from("operations") as any)
+      .select("org_id")
+      .eq("id", source.operationId)
+      .maybeSingle()
+    if (data?.org_id) return data.org_id
+  }
+
+  if (source.movementId) {
+    const { data } = await (adminClient.from("ledger_movements") as any)
+      .select("org_id")
+      .eq("id", source.movementId)
+      .maybeSingle()
+    if (data?.org_id) return data.org_id
+  }
+
+  return null
 }
 
 /**
@@ -706,8 +757,12 @@ export async function createSaleJournalEntry(
     }
 
     const currency = (operation.sale_currency || operation.currency || "USD") as "ARS" | "USD"
+    const chartOrgId = await resolveChartOrgId(adminClient, {
+      orgId: (operation as any).org_id,
+      operationId: operation.id,
+    })
     const codes = [ACCOUNT_CODES.CUENTAS_POR_COBRAR, ACCOUNT_CODES.VENTAS]
-    const accountIds = await resolveAccountIds(codes, adminClient)
+    const accountIds = await resolveAccountIds(codes, adminClient, chartOrgId)
 
     const cpcId = accountIds[ACCOUNT_CODES.CUENTAS_POR_COBRAR]
     const ventasId = accountIds[ACCOUNT_CODES.VENTAS]
@@ -808,9 +863,13 @@ export async function createCostJournalEntry(
     const entryDate = operation.operation_date || operation.created_at?.split("T")[0] || new Date().toISOString().split("T")[0]
 
     // Resolver todos los códigos de cuenta que necesitamos
+    const chartOrgId = await resolveChartOrgId(adminClient, {
+      orgId: (operation as any).org_id,
+      operationId: operation.id,
+    })
     const costCodes = Array.from(new Set(effectiveOperators.map(op => getCostAccountCode(op.product_type))))
     const allCodes = [...costCodes, ACCOUNT_CODES.CUENTAS_POR_PAGAR]
-    const accountIds = await resolveAccountIds(allCodes, adminClient)
+    const accountIds = await resolveAccountIds(allCodes, adminClient, chartOrgId)
 
     const cppId = accountIds[ACCOUNT_CODES.CUENTAS_POR_PAGAR]
     if (!cppId) {
@@ -914,8 +973,12 @@ export async function createCommissionJournalEntry(
     const opCode = operation.file_code || operation.id.slice(0, 8)
     const entryDate = operation.operation_date || operation.created_at?.split("T")[0] || new Date().toISOString().split("T")[0]
 
+    const chartOrgId = await resolveChartOrgId(adminClient, {
+      orgId: (operation as any).org_id,
+      operationId: operation.id,
+    })
     const codes = [ACCOUNT_CODES.COMISIONES_VENDEDORES, ACCOUNT_CODES.CUENTAS_POR_PAGAR]
-    const accountIds = await resolveAccountIds(codes, adminClient)
+    const accountIds = await resolveAccountIds(codes, adminClient, chartOrgId)
 
     const comVentasId = accountIds[ACCOUNT_CODES.COMISIONES_VENDEDORES]
     const cppId = accountIds[ACCOUNT_CODES.CUENTAS_POR_PAGAR]
