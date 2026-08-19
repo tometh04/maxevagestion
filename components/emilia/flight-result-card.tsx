@@ -53,6 +53,7 @@ interface FlightData {
   price: {
     amount: number
     currency: string
+    basis?: "GROUP_TOTAL"
   }
   adults: number
   childrens?: number
@@ -166,7 +167,7 @@ export function FlightResultCard({
               {formatPrice(flight.price.amount, flight.price.currency)}
             </div>
             <div className="text-xs text-muted-foreground">
-              para {flight.adults} adulto{flight.adults > 1 ? "s" : ""}
+              Total para {flight.adults} adulto{flight.adults > 1 ? "s" : ""}
               {childrens > 0 && ` + ${childrens} niño${childrens > 1 ? "s" : ""}`}
             </div>
           </div>
@@ -340,4 +341,3 @@ function getBaggageText(leg: FlightLeg, airlineCode: string): string {
 
   return "(1 de mano)"
 }
-

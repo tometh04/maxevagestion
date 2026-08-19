@@ -2,7 +2,10 @@ import {
   isHtmlQuotePdfEligible,
   renderQuotationHtmlDocument,
 } from "@/lib/pdf/quotation-pdf-html"
-import type { QuotationPresentationData } from "@/lib/quotations/presentation"
+import {
+  getQuotationOptionPricing,
+  type QuotationPresentationData,
+} from "@/lib/quotations/presentation"
 
 function makeQuotation(
   overrides: Partial<QuotationPresentationData> = {}
@@ -38,7 +41,7 @@ function makeQuotation(
             id: "flight-1",
             item_type: "FLIGHT",
             description: "Vuelo a Madrid",
-            quantity: 2,
+            quantity: 1,
             airline: "Aerolíneas <Test>",
             flight_date: "2026-07-01",
             flight_return_date: "2026-07-10",
@@ -107,5 +110,56 @@ describe("quotation PDF HTML template selection", () => {
     expect(html).toContain("Agencia Nueva")
     expect(html).toContain("Aerolíneas &lt;Test&gt;")
     expect(html).not.toContain("Aerolíneas <Test>")
+  })
+
+  it("renders the group total without multiplying it by the passenger count", () => {
+    const quotation = makeQuotation({
+      options: [
+        {
+          id: "option-1",
+          option_number: 1,
+          title: "Opción 1",
+          total_amount: 1310.86,
+          is_selected: false,
+          items: [
+            {
+              item_type: "FLIGHT",
+              description: "LATAM Airlines · EZE - MIA · directo",
+              quantity: 1,
+              airline: "LATAM Airlines",
+              flight_date: "2026-10-18",
+              flight_return_date: "2026-10-28",
+            },
+          ],
+        },
+      ],
+    })
+
+    const html = renderQuotationHtmlDocument(quotation, {})
+
+    expect(html).toContain("$1.310,86 USD")
+    expect(html).not.toContain("$2.621,72 USD")
+  })
+
+  it("presents the provider amount as group total and only derives the per-person reference", () => {
+    const quotation = makeQuotation({
+      options: [
+        {
+          id: "option-1",
+          option_number: 1,
+          title: "Opción 1",
+          total_amount: 1310.86,
+          is_selected: false,
+          items: [],
+        },
+      ],
+    })
+
+    const pricing = getQuotationOptionPricing(quotation.options[0], quotation)
+
+    expect(pricing.primaryLabel).toBe("Precio total")
+    expect(pricing.primaryAmount).toBe(1310.86)
+    expect(pricing.secondaryLabel).toBe("Precio por persona")
+    expect(pricing.secondaryAmount).toBe(655.43)
   })
 })

@@ -230,14 +230,21 @@ describe("buildQuotationPayload", () => {
     expect(payload.options[0].items[0].item_type).toBe("FLIGHT")
   })
 
-  it("vuelo: quantity = adultos + niños (honra `childrens` del transformer)", () => {
+  it("vuelo: conserva como una unidad el total grupal aunque haya varios pasajeros", () => {
     const payload = buildQuotationPayload({
       lead,
-      selectedFlight: makeFlight({ adults: 2, children: undefined, childrens: 1 }),
+      selectedFlight: makeFlight({
+        price: { amount: 1310.86, currency: "USD", basis: "GROUP_TOTAL" },
+        adults: 2,
+        children: undefined,
+        childrens: 1,
+      }),
       selectedHotels: [],
-      generalData: general,
+      generalData: { ...general, children: 1 },
     })
-    expect(payload.options[0].items[0].quantity).toBe(3)
+    expect(payload.options[0].items[0].quantity).toBe(1)
+    expect(payload.options[0].items[0].unit_price).toBe(1310.86)
+    expect(payload.options[0].total_amount).toBe(1310.86)
   })
 
   it("vuelo: sin escalas → flight_stops = 0 y ruta desde el leg de ida", () => {
@@ -340,7 +347,7 @@ describe("buildQuotationPayload", () => {
     expect(payload.options[0].items[0].hotel_photo_url).toBeNull()
   })
 
-  it("defaults: currency USD, pricing_mode PER_PERSON, payment_methods []", () => {
+  it("defaults: currency USD, pricing_mode GROUP_TOTAL, payment_methods []", () => {
     const payload = buildQuotationPayload({
       lead,
       selectedFlight: makeFlight(),
@@ -348,7 +355,7 @@ describe("buildQuotationPayload", () => {
       generalData: general,
     })
     expect(payload.currency).toBe("USD")
-    expect(payload.pricing_mode).toBe("PER_PERSON")
+    expect(payload.pricing_mode).toBe("GROUP_TOTAL")
     expect(payload.payment_methods).toEqual([])
   })
 
@@ -480,15 +487,17 @@ describe("integración raw → transformers → buildQuotationPayload", () => {
       lead,
       selectedFlight: flight,
       selectedHotels: [],
-      generalData: general,
+      generalData: { ...general, children: 1 },
     })
     const item = payload.options[0].items[0]
     expect(item.airline).toBe("American Airlines")
     expect(item.flight_route).toBe("EZE - JFK")
     expect(item.flight_stops).toBe(1) // 2 segmentos → 1 escala (MIA)
     expect(item.flight_class).toBe("BUSINESS")
-    expect(item.quantity).toBe(3) // 2 adultos + 1 niño (childrens del transformer)
+    expect(flight.price.basis).toBe("GROUP_TOTAL")
+    expect(item.quantity).toBe(1) // price.amount ya incluye 2 adultos + 1 niño
     expect(item.unit_price).toBe(1320.5)
+    expect(payload.options[0].total_amount).toBe(1320.5)
     expect(item.description).toBe("American Airlines · EZE - JFK · 1 escala")
   })
 

@@ -37,7 +37,14 @@ export interface EmiliaFlightLeg {
 export interface EmiliaFlight {
   id: string
   airline: { code: string; name: string }
-  price: { amount: number; currency: string }
+  price: {
+    amount: number
+    currency: string
+    // Los proveedores canónicos de Emilia entregan el total de la búsqueda,
+    // no un precio unitario. Opcional para conversaciones históricas guardadas
+    // antes de explicitar el contrato.
+    basis?: "GROUP_TOTAL"
+  }
   adults: number
   // El transformer emite `childrens` (typo histórico) y ahora también `children`.
   children?: number
@@ -203,9 +210,6 @@ function buildFlightRoute(flight: EmiliaFlight): string | null {
 function mapFlightToItem(flight: EmiliaFlight) {
   // Acceso defensivo a campos opcionales — Emilia entrega shapes ligeramente
   // distintos según proveedor (TVC, etc.). Defaults razonables si falta algo.
-  const adults = flight.adults ?? 0
-  const children = flight.children ?? flight.childrens ?? 0
-  const quantity = adults + children || 1
   // Escalas: el shape transformado no trae `stops`; las contamos desde los
   // layovers del leg de ida.
   const stops = outboundLeg(flight)?.layovers?.length ?? 0
@@ -223,7 +227,10 @@ function mapFlightToItem(flight: EmiliaFlight) {
     item_type: "FLIGHT" as const,
     description,
     provider: flight.airline?.code ?? null,
-    quantity,
+    // `price.amount` ya es el total para todos los pasajeros de la búsqueda.
+    // Los pax viven en el header de la cotización; quantity=1 evita volver a
+    // multiplicar el total grupal en persistence/totals.
+    quantity: 1,
     unit_price: flight.price?.amount ?? 0,
     cost_amount: 0,
     cost_currency: flight.price?.currency ?? "USD",
@@ -326,7 +333,9 @@ export function buildQuotationPayload(input: BuildQuotationInput) {
     children: generalData.children,
     infants: generalData.infants,
     currency: "USD",
-    pricing_mode: "PER_PERSON",
+    // Tanto vuelos como habitaciones llegan con un total grupal/de estadía.
+    // La presentación puede derivar el valor por persona desde este total.
+    pricing_mode: "GROUP_TOTAL",
     payment_methods: [] as string[],
     options,
   }
