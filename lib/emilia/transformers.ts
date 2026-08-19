@@ -262,7 +262,13 @@ export function transformFlight(flight: ApiFlight): any {
   return {
     id: flight.id,
     airline: flight.airline,
-    price: flight.price,
+    // Starling `TotalAmount` y Delfos `price.total` ya incluyen a todos los
+    // pasajeros solicitados. Dejamos la base explícita para que ningún
+    // consumidor vuelva a tratar el monto como precio unitario por pasajero.
+    price: {
+      ...flight.price,
+      basis: "GROUP_TOTAL" as const,
+    },
     adults: flight.adults,
     childrens: flight.children,
     children: flight.children,

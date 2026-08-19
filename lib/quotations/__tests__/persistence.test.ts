@@ -1,8 +1,41 @@
 import {
   insertQuotationOptionsOrThrow,
+  prepareQuotationOptionsForPersistence,
   QuotationStructurePersistenceError,
   type PreparedQuotationOption,
 } from "../persistence"
+
+describe("prepareQuotationOptionsForPersistence", () => {
+  it("persiste sin multiplicar un vuelo cuyo precio ya es el total grupal", () => {
+    const [option] = prepareQuotationOptionsForPersistence([
+      {
+        title: "Opción 1",
+        total_amount: 1310.86,
+        manual_total_amount: null,
+        items: [
+          {
+            item_type: "FLIGHT",
+            description: "LATAM Airlines · EZE - MIA · directo",
+            quantity: 1,
+            unit_price: 1310.86,
+            cost_amount: 0,
+            cost_currency: "USD",
+          },
+        ],
+      },
+    ], "USD")
+
+    expect(option.items[0]).toMatchObject({
+      quantity: 1,
+      unit_price: 1310.86,
+      sale_amount: 1310.86,
+      subtotal: 1310.86,
+    })
+    expect(option.calculated_total_amount).toBe(1310.86)
+    expect(option.total_amount).toBe(1310.86)
+    expect(option.manual_total_amount).toBeNull()
+  })
+})
 
 interface SupabaseMockConfig {
   optionInsertErrors?: Record<number, string>

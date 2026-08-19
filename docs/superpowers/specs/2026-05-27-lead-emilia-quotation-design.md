@@ -172,9 +172,9 @@ Reusa `components/ui/` (shadcn/ui) y los colores del theme actual. No se crean n
 | `return_date` | `flight_return_date` | Nullable |
 | `stops.count` | `flight_stops` | Pre-calculado |
 | `cabin.class` | `flight_class` | Normalizar a enum builder (ECONOMY/PREMIUM_ECONOMY/BUSINESS/FIRST) |
-| `price.amount` | `unit_price` | **Verificar en QA** si es por pax o por grupo |
+| `price.amount` | `unit_price` | Total grupal de la búsqueda (`Starling TotalAmount` / `Delfos price.total`) |
 | `price.currency` | `cost_currency` | Usual USD |
-| `adults + children` | `quantity` | ⚠ `children` singular (server-side); el frontend legacy usa `childrens` |
+| `1` | `quantity` | Los pasajeros se guardan en el header; no volver a multiplicar el total grupal |
 | — | `cost_amount, operator_id, admin_fee_percentage` | 0 / null / 0; vendedor ajusta en builder |
 | — | `generates_commission` | `true` (FLIGHT está en `COMMISSION_TYPES`) |
 
@@ -252,7 +252,7 @@ function mapEmiliaSelectionToQuotationPayload(input: {
     return_date: input.generalData.returnDate,
     adults, children, infants,
     currency: "USD",
-    pricing_mode: "PER_PERSON",
+    pricing_mode: "GROUP_TOTAL",
     payment_methods: [],
     options,
   }
@@ -386,7 +386,7 @@ ON CONFLICT (org_id, key) DO UPDATE SET value = EXCLUDED.value;
 - **Costo OpenAI**: modelo `gpt-4o-mini` (consistente con otros usos del proyecto). Estimado ~$0.001 por apertura del chat parseando notes. Asumible.
 - **Costo Emilia**: ya pagado en el plan. El chat dispara cuando el vendedor envía, no en cada apertura.
 - **Shape Emilia puede seguir evolucionando**: el fix incluido cubre el shape actual. Si Emilia vuelve a cambiar, hay que hacer otro PR.
-- **Validación de precio por-pax vs por-grupo**: pendiente confirmación en QA. Si está mal en QA, ajustar el mapper antes de mergear.
+- **Contrato de precio de vuelos**: confirmado contra Starling multipasajero y Delfos. `price.amount` es el total grupal; el mapper usa `quantity=1` y `pricing_mode=GROUP_TOTAL`.
 - **`meal_plan` queda en null**: el vendedor debe completarlo manualmente en el QuotationBuilder. Aceptable por ahora; v2 podría parsear `rooms[].description` con regex/IA.
 - **3 gates de beta a remover al pasar a GA**: cuando se decida liberar la feature, hay 3 lugares en el código que cuestionan el flag (1 UI + 2 endpoints). Olvidar uno → comportamiento inconsistente. Mitigación: usar la misma constante (`FEATURE_FLAG_LEAD_EMILIA_CHAT`) en los 3 lugares para que un grep encuentre todo.
 
@@ -405,7 +405,7 @@ ON CONFLICT (org_id, key) DO UPDATE SET value = EXCLUDED.value;
 
 ## Open questions / pre-implementation checks
 
-1. **¿`price.amount` del vuelo es por pax o por grupo?** Confirmar con QA en la primera cotización generada. Si por grupo, dividir por `adults + children` al asignar a `unit_price` o ajustar `quantity=1` para vuelos.
+1. **Resuelto: `price.amount` del vuelo es por grupo.** Starling expone `TotalAmount` y Delfos `price.total`; el mapper conserva ese total con `quantity=1`.
 2. **¿El endpoint `/api/emilia/chat` actual está roto?** Verificar antes de empezar: si el módulo `/emilia` muestra resultados, el shape `data.results` sigue funcionando y el fix solo agrega soporte para `meta.combinedData`. Si ya no muestra, el fix también lo arregla.
 3. **¿`HotelResultCard` permite saber el `selectedRoomId` desde afuera del componente?** Verificar prop `onRoomSelect` y plumbing — necesario para que el mapper sepa qué room está seleccionado.
 
