@@ -163,7 +163,7 @@ export function SupportChat({ conversationId, onConversationCreated, onEscalate 
             ? {
                 ...m,
                 content:
-                  "Hubo un error al procesar tu consulta. Por favor intentá de nuevo.",
+                  "Se nos complicó responderte. Probá de nuevo en un momento.",
               }
             : m
         )
@@ -259,7 +259,7 @@ export function SupportChat({ conversationId, onConversationCreated, onEscalate 
             className="w-full flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground hover:text-orange-600 transition-colors py-1"
           >
             <LifeBuoy className="h-3 w-3" />
-            ¿No resolvimos tu duda? Creá un ticket de soporte
+            ¿No te resolvimos la duda? Escribile a una persona del equipo
           </button>
         )}
         <div className="flex gap-2">

@@ -24,12 +24,12 @@ export type WidgetView =
 
 const SCREEN_TITLES: Record<string, string> = {
   home: "Vibook",
-  chat: "Chat con IA",
+  chat: "Asistente",
   article: "Artículo",
-  conversations: "Historial",
-  ticket: "Nuevo ticket",
-  "my-tickets": "Mis tickets",
-  "ticket-detail": "Ticket",
+  conversations: "Charlas anteriores",
+  ticket: "Escribirle a soporte",
+  "my-tickets": "Mis mensajes",
+  "ticket-detail": "Mensaje",
 }
 
 interface SupportPanelProps {

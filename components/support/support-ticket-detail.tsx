@@ -26,8 +26,8 @@ interface Ticket {
 }
 
 const STATUS_LABELS: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
-  open: { label: "Abierto", variant: "destructive" },
-  in_progress: { label: "En progreso", variant: "default" },
+  open: { label: "Sin responder", variant: "outline" },
+  in_progress: { label: "Lo estamos viendo", variant: "default" },
   resolved: { label: "Resuelto", variant: "secondary" },
   closed: { label: "Cerrado", variant: "outline" },
 }
@@ -100,7 +100,7 @@ export function SupportTicketDetail({ ticketId, onBack }: SupportTicketDetailPro
   if (!ticket) {
     return (
       <div className="p-4 text-center text-sm text-muted-foreground">
-        Ticket no encontrado
+        No encontramos este mensaje
       </div>
     )
   }
@@ -116,7 +116,7 @@ export function SupportTicketDetail({ ticketId, onBack }: SupportTicketDetailPro
           className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
         >
           <ArrowLeft className="h-3 w-3" />
-          Volver a mis tickets
+          Volver a mis mensajes
         </button>
         <div className="flex items-center gap-2">
           <h4 className="text-sm font-semibold truncate flex-1">{ticket.subject}</h4>
@@ -134,7 +134,7 @@ export function SupportTicketDetail({ ticketId, onBack }: SupportTicketDetailPro
         <div className="py-3 space-y-3">
           {replies.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">
-              Nuestro equipo va a responder pronto.
+              Todavía no hay respuestas. Nuestro equipo te contesta acá.
             </p>
           ) : (
             replies.map((r) => (
