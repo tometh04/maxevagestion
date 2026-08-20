@@ -23,9 +23,14 @@ import {
 } from "../journal-entries"
 import { ACCOUNT_CODES } from "../account-codes"
 import * as ledger from "../ledger"
+import * as exchangeRates from "../exchange-rates"
 
 jest.mock("../ledger", () => ({
   createLedgerMovement: jest.fn(),
+}))
+
+jest.mock("../exchange-rates", () => ({
+  getExchangeRateWithFallback: jest.fn(),
 }))
 
 // ------------------------------------------------------------------
@@ -154,6 +159,10 @@ beforeEach(() => {
   ;(ledger.createLedgerMovement as jest.Mock).mockImplementation(async () => ({
     id: `mov-${++seq}`,
   }))
+  ;(exchangeRates.getExchangeRateWithFallback as jest.Mock).mockResolvedValue({
+    rate: 1300,
+    source: "exact",
+  })
 })
 
 // ==================================================================
@@ -542,5 +551,103 @@ describe("asientos automáticos — idempotencia", () => {
 
     expect(result).toBeNull()
     expect(calls).toHaveLength(0)
+  })
+})
+
+// ==================================================================
+// VIB-134/B0 — Tipo de cambio de las líneas en USD
+//
+// `createLedgerMovement` (el de verdad) rechaza todo movimiento USD sin
+// `exchange_rate`. Los asientos automáticos no lo pasaban, así que en una
+// operación vendida en dólares el asiento moría en su PRIMERA línea, el
+// rollback borraba el journal_entry y el caller se tragaba el error: cero
+// asientos y cero rastro.
+//
+// Estos tests no se cayeron antes porque `createLedgerMovement` está mockeado
+// y el mock no tiene esa precondición. Por eso acá se afirma explícitamente
+// sobre el `exchange_rate` que recibe: es el contrato que el mock no valida.
+// ==================================================================
+describe("createJournalEntry — tipo de cambio en asientos USD", () => {
+  const usdParams = (over: Record<string, any> = {}) => ({
+    ...baseParams([
+      line({ debit_amount: 100, credit_amount: null }),
+      line({ debit_amount: null, credit_amount: 100 }),
+    ]),
+    currency: "USD" as const,
+    ...over,
+  })
+
+  it("resuelve el TC de valuación cuando el caller no lo pasa", async () => {
+    const { client } = createMockSupabase()
+
+    await createJournalEntry(usdParams(), client)
+
+    expect(exchangeRates.getExchangeRateWithFallback).toHaveBeenCalledWith(
+      client,
+      "2026-01-15",
+      "journal-entry:MANUAL"
+    )
+    // Ninguna línea puede llegar sin TC: es lo que hacía fallar el asiento.
+    for (const call of (ledger.createLedgerMovement as jest.Mock).mock.calls) {
+      expect(call[0].exchange_rate).toBe(1300)
+      expect(call[0].amount_ars_equivalent).toBe(100 * 1300)
+    }
+  })
+
+  it("respeta el TC explícito del caller y no consulta la valuación", async () => {
+    const { client } = createMockSupabase()
+
+    await createJournalEntry(usdParams({ exchange_rate: 1500 }), client)
+
+    expect(exchangeRates.getExchangeRateWithFallback).not.toHaveBeenCalled()
+    for (const call of (ledger.createLedgerMovement as jest.Mock).mock.calls) {
+      expect(call[0].exchange_rate).toBe(1500)
+      expect(call[0].amount_ars_equivalent).toBe(100 * 1500)
+    }
+  })
+
+  it("no consulta el TC para asientos en ARS", async () => {
+    const { client } = createMockSupabase()
+
+    await createJournalEntry(
+      baseParams([
+        line({ debit_amount: 100, credit_amount: null }),
+        line({ debit_amount: null, credit_amount: 100 }),
+      ]),
+      client
+    )
+
+    expect(exchangeRates.getExchangeRateWithFallback).not.toHaveBeenCalled()
+    for (const call of (ledger.createLedgerMovement as jest.Mock).mock.calls) {
+      expect(call[0].exchange_rate).toBeNull()
+      expect(call[0].amount_ars_equivalent).toBe(100)
+    }
+  })
+
+  it("el asiento de venta de una operación en USD llega con TC en todas sus líneas", async () => {
+    const { client } = createMockSupabase({
+      chartAccounts: [
+        { id: "cpc-id", account_code: ACCOUNT_CODES.CUENTAS_POR_COBRAR },
+        { id: "ventas-id", account_code: ACCOUNT_CODES.VENTAS },
+      ],
+    })
+
+    const result = await createSaleJournalEntry(
+      {
+        id: "op-1234567890",
+        sale_amount_total: 1000,
+        sale_currency: "USD",
+        file_code: "OP-001",
+        operation_date: "2026-01-15",
+      },
+      client
+    )
+
+    expect(result).toBe("je-1")
+    expect(ledger.createLedgerMovement).toHaveBeenCalledTimes(2)
+    for (const call of (ledger.createLedgerMovement as jest.Mock).mock.calls) {
+      expect(call[0].currency).toBe("USD")
+      expect(call[0].exchange_rate).toBe(1300)
+    }
   })
 })

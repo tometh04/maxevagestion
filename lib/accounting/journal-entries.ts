@@ -151,6 +151,35 @@ export async function createJournalEntry(
   // SaaS Pilar 2c: usar el client que recibe — RLS tenant_isolation acota por org.
   const adminClient = supabase
 
+  // VIB-134/B0: tipo de cambio de las líneas en USD.
+  //
+  // `createLedgerMovement` rechaza cualquier movimiento USD sin `exchange_rate`
+  // (es su primera validación). Los asientos automáticos de venta, costo y
+  // comisión nunca lo pasaban, así que en toda operación en USD el asiento
+  // moría en su PRIMERA línea, el rollback borraba el journal_entry recién
+  // creado y el caller se tragaba el error: cero asientos y cero rastro. Como
+  // la mayoría de las operaciones se venden en dólares, en la práctica el
+  // motor solo podía asentar operaciones en pesos.
+  //
+  // Se resuelve acá y no en cada función para que valga también para los
+  // asientos manuales y para cualquier caller futuro. La fuente es
+  // `exchange_rates` vía `getExchangeRateWithFallback`, que es la que valúa
+  // (ver docs/finance/TIPO-DE-CAMBIO-FUENTES.md) y nunca devuelve null.
+  //
+  // Es aditivo: el único caso que cambia es el que hoy lanza excepción. Los
+  // callers que ya mandan `exchange_rate` (los asientos de pago) siguen usando
+  // el suyo, que es el TC real del movimiento y le gana a la valuación.
+  let entryExchangeRate = exchange_rate ?? null
+  if (currency === "USD" && !entryExchangeRate) {
+    const { getExchangeRateWithFallback } = await import("./exchange-rates")
+    const resolved = await getExchangeRateWithFallback(
+      adminClient,
+      entry_date,
+      `journal-entry:${source}`
+    )
+    entryExchangeRate = resolved.rate
+  }
+
   // 1. Crear el journal_entry
   const { data: journalEntry, error: jeError } = await (adminClient.from("journal_entries") as any)
     .insert({
@@ -190,8 +219,8 @@ export async function createJournalEntry(
       const legacyMethod = line.legacy_method || "OTHER"
 
       // Calcular ARS equivalent
-      const amountARS = currency === "USD" && exchange_rate
-        ? amount * exchange_rate
+      const amountARS = currency === "USD" && entryExchangeRate
+        ? amount * entryExchangeRate
         : amount
 
       // account_id: SOLO si el caller lo pasó explícitamente.
@@ -223,7 +252,7 @@ export async function createJournalEntry(
           concept: line.concept || description,
           currency,
           amount_original: amount,
-          exchange_rate: exchange_rate || null,
+          exchange_rate: entryExchangeRate,
           amount_ars_equivalent: amountARS,
           method: legacyMethod,
           account_id: accountId,
