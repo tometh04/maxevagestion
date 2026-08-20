@@ -40,6 +40,7 @@ const operatorSchema = z.object({
   admin_fee_percentage: z.coerce.number().min(0).max(100).optional(),
   cost_calculation_mode: z.enum(["SIMPLE", "COMMISSIONABLE"]).nullable().optional(),
   commission_percentage: z.coerce.number().min(0).max(100).optional(),
+  iva_condition: z.string().nullable().optional(),
 })
 
 type OperatorFormValues = z.infer<typeof operatorSchema>
@@ -54,6 +55,7 @@ interface Operator {
   admin_fee_percentage?: number | null
   cost_calculation_mode?: string | null
   commission_percentage?: number | null
+  iva_condition?: string | null
 }
 
 interface EditOperatorDialogProps {
@@ -82,6 +84,7 @@ export function EditOperatorDialog({
       admin_fee_percentage: operator.admin_fee_percentage ?? 0,
       cost_calculation_mode: (operator.cost_calculation_mode as "SIMPLE" | "COMMISSIONABLE" | null) ?? null,
       commission_percentage: operator.commission_percentage ?? 0,
+      iva_condition: operator.iva_condition ?? null,
     },
   })
 
@@ -99,6 +102,7 @@ export function EditOperatorDialog({
         admin_fee_percentage: operator.admin_fee_percentage ?? 0,
         cost_calculation_mode: (operator.cost_calculation_mode as "SIMPLE" | "COMMISSIONABLE" | null) ?? null,
         commission_percentage: operator.commission_percentage ?? 0,
+        iva_condition: operator.iva_condition ?? null,
       })
     }
   }, [operator, form])
@@ -312,6 +316,39 @@ export function EditOperatorDialog({
                     </Select>
                     <FormDescription>
                       Define cómo se calcula el costo real en cotizaciones. Configurable globalmente en Ajustes → Finanzas.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="iva_condition"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Condición frente al IVA</FormLabel>
+                    <Select
+                      value={field.value ?? AGENCY_DEFAULT}
+                      onValueChange={(v) => field.onChange(v === AGENCY_DEFAULT ? null : v)}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Sin definir" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value={AGENCY_DEFAULT}>Sin definir</SelectItem>
+                        <SelectItem value="RESPONSABLE_INSCRIPTO">Responsable Inscripto</SelectItem>
+                        <SelectItem value="MONOTRIBUTO">Monotributista</SelectItem>
+                        <SelectItem value="EXENTO">Exento</SelectItem>
+                        <SelectItem value="CONSUMIDOR_FINAL">Consumidor Final</SelectItem>
+                        <SelectItem value="EXTERIOR">Exterior</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      Solo un Responsable Inscripto discrimina IVA, así que es el único que genera crédito fiscal
+                      sobre su costo. Sin definir se computa la alícuota general (21%).
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

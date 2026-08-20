@@ -47,6 +47,81 @@ export function getIVARate(serviceType?: IVAServiceType | null): number {
   return IVA_RATES[serviceType]
 }
 
+// ============================================================
+// CRÉDITO FISCAL SEGÚN LA CONDICIÓN DEL OPERADOR (VIB-144)
+// ============================================================
+
+/** Condición del operador frente al IVA (columna `operators.iva_condition`). */
+export type OperatorIVACondition =
+  | "RESPONSABLE_INSCRIPTO"
+  | "MONOTRIBUTO"
+  | "EXENTO"
+  | "CONSUMIDOR_FINAL"
+  | "EXTERIOR"
+
+/**
+ * Alícuota de IVA a computar sobre el costo de un operador, según su condición.
+ *
+ * Solo un Responsable Inscripto discrimina IVA en su factura, así que es el
+ * único que genera crédito fiscal. Un monotributista, un exento o un proveedor
+ * del exterior no lo discriminan: computarles IVA infla el crédito fiscal y
+ * subestima el IVA a pagar.
+ *
+ * `null` / sin definir devuelve la alícuota general (21%), que es el
+ * comportamiento histórico: la condición es opt-in y mientras nadie la cargue
+ * el cálculo no cambia. Ver la migración 20260820000001.
+ */
+export function getPurchaseIVARateForOperator(
+  condition?: OperatorIVACondition | string | null
+): number {
+  switch (condition) {
+    case "MONOTRIBUTO":
+    case "EXENTO":
+    case "CONSUMIDOR_FINAL":
+    case "EXTERIOR":
+      return 0
+    case "RESPONSABLE_INSCRIPTO":
+      return DEFAULT_IVA_RATE
+    default:
+      // Sin condición cargada (o un valor desconocido): comportamiento actual.
+      return DEFAULT_IVA_RATE
+  }
+}
+
+/**
+ * Alícuota de crédito fiscal para un operador, leyendo su condición.
+ *
+ * Si no hay operador, no se puede leer, o no tiene condición cargada, devuelve
+ * la alícuota general: nunca cambia el comportamiento por un error de lectura.
+ */
+async function resolvePurchaseIVARate(
+  supabase: SupabaseClient<Database>,
+  operatorId: string | null
+): Promise<number> {
+  if (!operatorId) return DEFAULT_IVA_RATE
+
+  try {
+    const { data } = await (supabase.from("operators") as any)
+      .select("iva_condition")
+      .eq("id", operatorId)
+      .maybeSingle()
+
+    return getPurchaseIVARateForOperator(data?.iva_condition)
+  } catch (error) {
+    console.error("Error leyendo la condición de IVA del operador:", error)
+    return DEFAULT_IVA_RATE
+  }
+}
+
+/** Etiquetas para mostrar la condición en la ficha del operador. */
+export const OPERATOR_IVA_CONDITION_LABELS: Record<OperatorIVACondition, string> = {
+  RESPONSABLE_INSCRIPTO: "Responsable Inscripto",
+  MONOTRIBUTO: "Monotributista",
+  EXENTO: "Exento",
+  CONSUMIDOR_FINAL: "Consumidor Final",
+  EXTERIOR: "Exterior",
+}
+
 /**
  * Calcular IVA de una venta sobre la ganancia (margen)
  *
@@ -177,7 +252,16 @@ export async function createPurchaseIVA(
   purchaseDate: string,
   purchaseIVARate?: number | null
 ): Promise<{ id: string }> {
-  const { net_amount, iva_amount, iva_rate } = calculatePurchaseIVA(operatorCostTotal, purchaseIVARate)
+  // VIB-144: si el caller no fija la alícuota, se deriva de la condición del
+  // operador. Se resuelve acá y no en cada caller para que ningún camino de
+  // creación quede sin cubrir (hoy son tres: alta de operación, edición y la
+  // migración histórica).
+  //
+  // Sin condición cargada devuelve 21%, o sea el comportamiento de siempre.
+  const effectiveRate =
+    purchaseIVARate ?? (await resolvePurchaseIVARate(supabase, operatorId))
+
+  const { net_amount, iva_amount, iva_rate } = calculatePurchaseIVA(operatorCostTotal, effectiveRate)
 
   const { data, error } = await (supabase.from("iva_purchases") as any)
     .insert({
@@ -249,12 +333,17 @@ export async function updatePurchaseIVA(
   currency: "ARS" | "USD",
   purchaseIVARate?: number | null
 ): Promise<void> {
-  const { net_amount, iva_amount, iva_rate } = calculatePurchaseIVA(operatorCostTotal, purchaseIVARate)
-
+  // Se lee primero para poder derivar la alícuota del operador del registro
+  // existente: acá no llega el operator_id como parámetro (VIB-144).
   const { data: existing } = await (supabase.from("iva_purchases") as any)
-    .select("id")
+    .select("id, operator_id")
     .eq("operation_id", operationId)
     .maybeSingle()
+
+  const effectiveRate =
+    purchaseIVARate ?? (await resolvePurchaseIVARate(supabase, existing?.operator_id ?? null))
+
+  const { net_amount, iva_amount, iva_rate } = calculatePurchaseIVA(operatorCostTotal, effectiveRate)
 
   if (existing) {
     const { error } = await (supabase.from("iva_purchases") as any)

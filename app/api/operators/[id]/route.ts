@@ -106,7 +106,7 @@ export async function PATCH(
     const { id: operatorId } = await params
     const body = await request.json()
 
-    const { name, contact_name, contact_email, contact_phone, credit_limit, admin_fee_percentage, cost_calculation_mode, commission_percentage } = body
+    const { name, contact_name, contact_email, contact_phone, credit_limit, admin_fee_percentage, cost_calculation_mode, commission_percentage, iva_condition } = body
 
     // Validations
     const trimmedName = typeof name === "string" ? name.trim() : ""
@@ -137,6 +137,9 @@ export async function PATCH(
       updatePayload.admin_fee_percentage = admin_fee_percentage
     }
     updatePayload.cost_calculation_mode = cost_calculation_mode ?? null
+    // VIB-144: condición frente al IVA. null = sin definir, que mantiene el
+    // cálculo de crédito fiscal como estaba (alícuota general).
+    updatePayload.iva_condition = iva_condition ?? null
     if (typeof commission_percentage === "number") {
       updatePayload.commission_percentage = commission_percentage
     }
