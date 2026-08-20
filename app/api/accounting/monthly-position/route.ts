@@ -541,6 +541,15 @@ export async function GET(request: Request) {
       .from("ledger_movements")
       .select("amount_original, currency")
       .eq("type", "COMMISSION")
+      // VIB-134/B0: excluir las líneas de asiento contable. Los asientos de
+      // comisión también son type=COMMISSION; sin este filtro la comisión se
+      // contaría dos veces, una por el pago y otra por su asiento.
+      //
+      // El discriminador es la ausencia de cuenta financiera: un movimiento de
+      // plata siempre tiene una; una línea de asiento, nunca. Verificado contra
+      // la base al 2026-08-20: los 14.284 movimientos existentes tienen cuenta,
+      // así que este filtro NO cambia ningún número actual.
+      .not("account_id", "is", null)
       .gte("created_at", startOfDayAR(fechaInicioMes))
       .lte("created_at", endOfDayAR(fechaCorte))
 

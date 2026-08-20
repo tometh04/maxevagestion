@@ -97,6 +97,16 @@ export async function GET(request: Request) {
     const { data: expenses, error: expensesError } = await (supabase.from("ledger_movements") as any)
       .select("id, amount_original, currency, type, concept, movement_date")
       .eq("type", "EXPENSE")
+      // VIB-134/B0: excluir las líneas de asiento contable, que no son egresos
+      // de dinero. Los asientos de costo también son type=EXPENSE, así que sin
+      // este filtro el costo del operador se contaría dos veces: una por el
+      // pago real y otra por su asiento.
+      //
+      // El discriminador es la ausencia de cuenta financiera: un movimiento de
+      // plata siempre tiene una; una línea de asiento, nunca. Verificado contra
+      // la base al 2026-08-20: los 14.284 movimientos existentes tienen cuenta,
+      // así que este filtro NO cambia ningún número actual del reporte.
+      .not("account_id", "is", null)
       .gte("movement_date", startOfDayAR(startDate))
       .lte("movement_date", endOfDayAR(endDate))
 

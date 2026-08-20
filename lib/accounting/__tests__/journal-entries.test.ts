@@ -381,27 +381,42 @@ describe("createJournalEntry — rollback manual (lo que VIB-134 reemplaza)", ()
     consoleSpy.mockRestore()
   })
 
-  it("falla y revierte si la cuenta contable no tiene cuenta financiera vinculada", async () => {
-    const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => {})
-    const { client, calls } = createMockSupabase({ financialAccount: { data: null } })
+  it("NO falla si la cuenta contable no tiene cuenta financiera: deja account_id nulo (VIB-134/B0)", async () => {
+    const { client } = createMockSupabase({ financialAccount: { data: null } })
 
-    await expect(
-      createJournalEntry(
-        baseParams([
-          line({ financial_account_id: null, debit_amount: 1000, credit_amount: null }),
-          line({ financial_account_id: null, debit_amount: null, credit_amount: 1000 }),
-        ]),
-        client
-      )
-    ).rejects.toThrow(/No se encontró cuenta financiera/)
-
-    // Revierte el journal_entry aunque no se haya creado ningún movimiento.
-    const deletedEntry = calls.find(
-      (c) => c.table === "journal_entries" && c.ops.includes("delete")
+    // Antes esto lanzaba "No se encontró cuenta financiera" y mataba el asiento
+    // entero. Era la razón por la que nunca se generó un asiento de venta:
+    // "Ventas de Viajes" es una cuenta de resultado y no tiene caja detrás.
+    const entry = await createJournalEntry(
+      baseParams([
+        line({ financial_account_id: null, debit_amount: 1000, credit_amount: null }),
+        line({ financial_account_id: null, debit_amount: null, credit_amount: 1000 }),
+      ]),
+      client
     )
-    expect(deletedEntry).toBeDefined()
 
-    consoleSpy.mockRestore()
+    expect(entry.movement_ids).toHaveLength(2)
+    for (const call of (ledger.createLedgerMovement as jest.Mock).mock.calls) {
+      expect(call[0].account_id).toBeNull()
+    }
+  })
+
+  it("las líneas de asiento no impactan el saldo de cuentas financieras (VIB-134/B0)", async () => {
+    const { client } = createMockSupabase()
+
+    await createJournalEntry(
+      baseParams([
+        line({ debit_amount: 1000, credit_amount: null }),
+        line({ debit_amount: null, credit_amount: 1000 }),
+      ]),
+      client
+    )
+
+    // Un asiento es contabilidad, no movimiento de dinero: si afectara el saldo
+    // duplicaría la plata que ya movió el cobro o el pago correspondiente.
+    for (const call of (ledger.createLedgerMovement as jest.Mock).mock.calls) {
+      expect(call[0].affects_balance).toBe(false)
+    }
   })
 
   it("propaga el error del INSERT del asiento sin intentar crear movimientos", async () => {

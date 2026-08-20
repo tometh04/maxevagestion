@@ -110,7 +110,12 @@ export interface CreateLedgerMovementParams {
   exchange_rate?: number | null
   amount_ars_equivalent: number
   method: LedgerMovementMethod
-  account_id: string
+  /**
+   * Cuenta financiera del movimiento. Puede ser null: las líneas de asiento
+   * contable no tienen caja detrás (VIB-134/B0). La columna es nullable en la
+   * base; el tipo lo reflejaba mal.
+   */
+  account_id: string | null
   seller_id?: string | null
   operator_id?: string | null
   receipt_number?: string | null
@@ -263,7 +268,8 @@ export async function createLedgerMovement(
   }
 
   // Invalidar caché de balance para esta cuenta
-  invalidateBalanceCache(params.account_id)
+  // Sin cuenta financiera (línea de asiento contable) no hay saldo que invalidar.
+  if (params.account_id) invalidateBalanceCache(params.account_id)
 
   // Si el tipo es COMMISSION y hay operation_id, marcar comisiones como PAID automáticamente
   if (params.type === "COMMISSION" && params.operation_id) {

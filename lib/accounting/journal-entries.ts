@@ -26,6 +26,13 @@ export interface JournalEntryLine {
   chart_account_id: string
   /** ID de la cuenta financiera (puede ser null para cuentas sin financial_account vinculado) */
   financial_account_id?: string | null
+  /**
+   * Si esta línea debe impactar el saldo de la cuenta financiera.
+   * Default `false`: una línea de asiento es contabilidad, no movimiento de
+   * dinero. Solo tiene sentido en `true` si la línea representa además el
+   * movimiento real de una caja o banco (VIB-134/B0).
+   */
+  affects_balance?: boolean
   /** Monto en Debe */
   debit_amount?: number | null
   /** Monto en Haber */
@@ -187,25 +194,26 @@ export async function createJournalEntry(
         ? amount * exchange_rate
         : amount
 
-      // account_id: usar financial_account_id si existe, sino buscar por chart_account_id
-      let accountId = line.financial_account_id
-      if (!accountId && line.chart_account_id) {
-        // Buscar financial_account vinculado a esta chart_account
-        const { data: fa } = await (adminClient.from("financial_accounts") as any)
-          .select("id")
-          .eq("chart_account_id", line.chart_account_id)
-          .eq("is_active", true)
-          .limit(1)
-          .maybeSingle()
-        accountId = fa?.id || null
-      }
-
-      if (!accountId) {
-        throw new Error(
-          `No se encontró cuenta financiera para chart_account_id: ${line.chart_account_id}. ` +
-          `Asegúrate de que la cuenta contable tenga una cuenta financiera vinculada.`
-        )
-      }
+      // account_id: SOLO si el caller lo pasó explícitamente.
+      //
+      // VIB-134/B0: antes se buscaba una financial_account vinculada al plan de
+      // cuentas y, si no la había, se lanzaba excepción. Eso hacía imposible
+      // asentar contra cuentas que por naturaleza NO tienen caja detrás —
+      // "Ventas de Viajes" (4.1.01) es una cuenta de resultado, no un banco—,
+      // y por eso el motor nunca generó un asiento de venta, costo ni comisión:
+      // el asiento entero moría en su segunda línea y el caller se tragaba el
+      // error. En Lozada, 49 de 75 cuentas del plan están en esa situación.
+      //
+      // `ledger_movements.account_id` es NULLABLE: la exigencia era del código,
+      // no del esquema. Es una condición heredada de cuando esta tabla era solo
+      // el registro de caja, y quedó cuando se la reusó como línea de asiento.
+      //
+      // Tampoco se vincula automáticamente por chart_account_id: cuentas como
+      // "Cuentas por Cobrar" SÍ tienen financial_account, y colgarles las
+      // líneas del asiento les alteraría el SALDO (varias pantallas suman
+      // ledger_movements por account_id). Una línea de asiento es contabilidad,
+      // no un movimiento de dinero.
+      const accountId = line.financial_account_id ?? null
 
       const { id: movId } = await createLedgerMovement(
         {
@@ -225,6 +233,13 @@ export async function createJournalEntry(
           notes: line.notes || null,
           created_by: created_by || null,
           movement_date: entry_date,
+          // VIB-134/B0: una línea de asiento es contabilidad, no un movimiento
+          // de dinero. `affects_balance = false` la deja fuera del cálculo de
+          // saldos de cuentas financieras (getAccountBalancesBatch filtra por
+          // esta bandera) y de los reportes que la respetan. La contrapartida
+          // en efectivo de un cobro ya existe como su propio movimiento; el
+          // asiento no debe volver a moverla.
+          affects_balance: line.affects_balance ?? false,
         },
         supabase
       )
