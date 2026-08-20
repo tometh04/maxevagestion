@@ -1809,6 +1809,30 @@ export async function DELETE(request: Request) {
       }
     }
 
+    // 2-bis. Eliminar el ledger_movement del impuesto Ley 25413 (VIB-138)
+    //
+    // El impuesto bancario genera su propio ledger_movement, que NO se
+    // identifica por payment_id (`ledger_movements` no tiene esa columna): el
+    // único vínculo es el marcador en las notas, el mismo que usa el cleanup
+    // del PATCH. Sin este borrado, al eliminar un pago su impuesto quedaba
+    // huérfano en el mayor con affects_balance = true, o sea restando del saldo
+    // un egreso de un pago que ya no existe.
+    //
+    // El movimiento de CAJA del impuesto ya se borra arriba, porque comparte
+    // payment_id con el principal.
+    const { data: deletedTaxLedger, error: taxLedgerError } = await (supabase.from("ledger_movements") as any)
+      .delete()
+      .eq("org_id", user.org_id)
+      .eq("type", "EXPENSE")
+      .ilike("notes", `%vinculado a payment ${paymentId}%`)
+      .select("id")
+
+    if (taxLedgerError) {
+      console.warn("Warning: no se pudo borrar el impuesto Ley 25413 del mayor:", taxLedgerError)
+    } else if (deletedTaxLedger?.length) {
+      console.log(`Impuesto Ley 25413 eliminado del mayor para el pago ${paymentId}`)
+    }
+
     // 3. Si hay ledger_movement_id, eliminar el movimiento del libro mayor
     let ledgerMovementId = payment.ledger_movement_id
 
