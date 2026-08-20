@@ -59,12 +59,20 @@ export async function POST(request: Request) {
 
     // Buscar y eliminar el ledger_movement de tipo COMMISSION para esta operación/vendedor (scopeado por org)
     try {
+      // Solo los movimientos que MOVIERON PLATA (con cuenta financiera).
+      //
+      // VIB-134: desde que existen los asientos contables, la comisión también
+      // genera líneas type=COMMISSION con el mismo seller_id. Sin este filtro,
+      // revertir el pago de una comisión borraría además las líneas del asiento
+      // y dejaría el asiento mutilado y desbalanceado. Revertir un pago no debe
+      // deshacer el devengamiento: la comisión se sigue debiendo.
       const { data: ledgerMovements } = await (supabase.from("ledger_movements") as any)
         .select("id")
         .eq("operation_id", commission.operation_id)
         .eq("type", "COMMISSION")
         .eq("seller_id", commission.seller_id)
         .eq("org_id", (user as any).org_id)
+        .not("account_id", "is", null)
 
       if (ledgerMovements && ledgerMovements.length > 0) {
         // Eliminar todos los ledger_movements de comisión para esta comisión (scopeado por org)

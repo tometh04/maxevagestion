@@ -27,11 +27,19 @@ export async function markCommissionsAsPaidIfLedgerExists(
   operationId: string,
   options: MarkCommissionsOptions = {}
 ): Promise<{ marked: number }> {
-  // Buscar ledger_movements de tipo COMMISSION para esta operación
+  // Buscar ledger_movements de tipo COMMISSION para esta operación.
+  //
+  // Solo los que MOVIERON PLATA (con cuenta financiera). Desde VIB-134/B0 el
+  // asiento contable de comisión genera líneas type=COMMISSION con seller_id,
+  // pero son un devengamiento, no un pago. Sin este filtro el barrido de abajo
+  // —el que corre cuando no se sabe qué comisión concreta se pagó— tomaría los
+  // vendedores del asiento y marcaría como pagadas comisiones que nadie pagó,
+  // incluida la del vendedor secundario al pagar solo la del primario.
   const { data: commissionMovements } = await (supabase.from("ledger_movements") as any)
     .select("id, seller_id")
     .eq("operation_id", operationId)
     .eq("type", "COMMISSION")
+    .not("account_id", "is", null)
 
   if (!commissionMovements || commissionMovements.length === 0) {
     return { marked: 0 }
