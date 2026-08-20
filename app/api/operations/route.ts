@@ -510,15 +510,23 @@ export async function POST(request: Request) {
     op.file_code = fileCode
 
     // Calcular comisiones automáticamente al crear la operación
+    let commissionData: { totalCommission: number; primaryCommission: number; secondaryCommission: number | null } | null = null
     try {
       const { recalculateOperationCommissions } = await import("@/lib/commissions/calculate")
-      await recalculateOperationCommissions(supabase, {
+      const { plan } = await recalculateOperationCommissions(supabase, {
         ...op,
         org_id: op.org_id || (user as any).org_id,
         seller_id: op.seller_id || seller_id,
         seller_secondary_id: op.seller_secondary_id || normalizedSecondaryId || null,
         margin_amount: Number(op.margin_amount) || marginAmount || 0,
       })
+
+      // Forma que espera el asiento contable de comisiones (igual que el PATCH).
+      commissionData = {
+        totalCommission: plan.totalCommission,
+        primaryCommission: plan.entries.find((e: any) => e.role === "PRIMARY")?.amount ?? 0,
+        secondaryCommission: plan.entries.find((e: any) => e.role === "SECONDARY")?.amount ?? null,
+      }
     } catch (error) {
       console.error("Error calculating commission for new operation:", error)
     }
@@ -1074,6 +1082,44 @@ export async function POST(request: Request) {
     // índice único (operation_id, seller_id) y el error se tragaba en el catch,
     // así que el porcentaje del body no hacía nada salvo ensuciar los logs.
     // La comisión la calcula ahora recalculateOperationCommissions, más arriba.
+
+    // ============================================
+    // ASIENTOS CONTABLES DE UNA OPERACIÓN QUE NACE CONFIRMADA (VIB-134)
+    // ============================================
+    // El hook de asientos vivía solo en el PATCH, condicionado a una TRANSICIÓN
+    // de estado (`isNewConfirmation`). Pero la mayoría de las operaciones se
+    // crean ya confirmadas desde este endpoint y nunca transicionan: al
+    // 2026-08-20, 179 de 241 de los últimos 30 días. Para esas, no se generaba
+    // ningún asiento de venta, costo ni comisión.
+    //
+    // Mismo patrón que el PATCH: no rompe el alta si falla.
+    if (operation.status === "CONFIRMED" || operation.status === "CLOSED") {
+      try {
+        const {
+          createSaleJournalEntry,
+          createCostJournalEntry,
+          createCommissionJournalEntry,
+        } = await import("@/lib/accounting/journal-entries")
+
+        // Asiento 1: Venta (Ds x Ventas / Ventas)
+        await createSaleJournalEntry(operation, supabase)
+
+        // Asiento 2: Costo (Costo Venta / Operadores a pagar)
+        const { data: opOperators } = await (supabase.from("operation_operators") as any)
+          .select("operator_id, cost, cost_currency, product_type, operators:operator_id(id, name)")
+          .eq("operation_id", operation.id)
+
+        await createCostJournalEntry(operation, opOperators || [], supabase)
+
+        // Asiento 3: Comisiones (Com x Ventas / Com vendedores a pagar)
+        if (commissionData && commissionData.totalCommission > 0) {
+          await createCommissionJournalEntry(operation, commissionData, supabase)
+        }
+      } catch (error) {
+        console.error("Error creando asientos contables al crear la operación:", error)
+        // No romper el alta de la operación
+      }
+    }
 
     // Invalidar caché del dashboard (los KPIs cambian al crear una operación)
     revalidateTag(CACHE_TAGS.DASHBOARD)
