@@ -271,8 +271,18 @@ export async function createLedgerMovement(
   // Sin cuenta financiera (línea de asiento contable) no hay saldo que invalidar.
   if (params.account_id) invalidateBalanceCache(params.account_id)
 
-  // Si el tipo es COMMISSION y hay operation_id, marcar comisiones como PAID automáticamente
-  if (params.type === "COMMISSION" && params.operation_id) {
+  // Si el tipo es COMMISSION y hay operation_id, marcar comisiones como PAID automáticamente.
+  //
+  // Solo si el movimiento MOVIÓ PLATA (tiene cuenta financiera). Desde
+  // VIB-134/B0 los asientos contables también generan líneas type=COMMISSION
+  // —con seller_id y todo— pero son un DEVENGAMIENTO, no un pago: se crean al
+  // confirmar la operación. Sin este guard, confirmar una operación marcaría
+  // las comisiones del vendedor como pagadas sin que nadie las haya pagado.
+  //
+  // Una línea de asiento no tiene account_id (ver createJournalEntry); un pago
+  // real de comisión siempre lo tiene.
+  const movioPlata = Boolean(params.account_id)
+  if (params.type === "COMMISSION" && params.operation_id && movioPlata) {
     try {
       const { markCommissionsAsPaidIfLedgerExists } = await import("./mark-commission-paid")
       await markCommissionsAsPaidIfLedgerExists(supabase, params.operation_id, {
