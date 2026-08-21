@@ -70,6 +70,16 @@ export interface CreateJournalEntryParams {
   currency?: "ARS" | "USD"
   /** Exchange rate (para USD) */
   exchange_rate?: number | null
+  /**
+   * Organización dueña del asiento.
+   *
+   * Normalmente NO hace falta: el trigger `auto_set_org_id_from_auth` lo
+   * resuelve desde la sesión. Pero con service role no hay `auth.uid()`, así
+   * que el trigger lo deja en NULL y —como el service role no pasa por RLS— el
+   * asiento se insertaría igual, huérfano de tenant. Los procesos sin sesión
+   * (backfills, crons) TIENEN que pasarlo.
+   */
+  org_id?: string | null
   /** Usuario que crea */
   created_by?: string | null
   /** Notas del asiento */
@@ -120,7 +130,7 @@ export async function createJournalEntry(
   params: CreateJournalEntryParams,
   supabase: SupabaseClient<Database>
 ): Promise<JournalEntry> {
-  const { lines, entry_date, description, source, currency = "ARS", exchange_rate, created_by, operation_id, notes } = params
+  const { lines, entry_date, description, source, currency = "ARS", exchange_rate, created_by, operation_id, notes, org_id } = params
 
   // Validar mínimo 2 líneas
   if (lines.length < 2) {
@@ -192,6 +202,9 @@ export async function createJournalEntry(
       currency,
       notes: notes || null,
       created_by: created_by || null,
+      // null deja actuar al trigger (comportamiento de siempre para requests
+      // con sesión); con valor, gana el explícito.
+      org_id: org_id ?? null,
     })
     .select("id, entry_number, entry_date, description, source, total_amount, currency")
     .single()
@@ -246,6 +259,7 @@ export async function createJournalEntry(
 
       const { id: movId } = await createLedgerMovement(
         {
+          org_id: org_id ?? null,
           operation_id: line.operation_id || operation_id || null,
           lead_id: null,
           type: legacyType,
@@ -826,6 +840,8 @@ export async function createSaleJournalEntry(
       operation_id: operation.id,
       source: "AUTO_CONFIRMATION",
       currency,
+      org_id: chartOrgId,
+      exchange_rate: (operation as any).exchange_rate ?? undefined,
       lines: [
         {
           chart_account_id: cpcId,
@@ -965,6 +981,8 @@ export async function createCostJournalEntry(
       operation_id: operation.id,
       source: "AUTO_CONFIRMATION",
       currency,
+      org_id: chartOrgId,
+      exchange_rate: (operation as any).exchange_rate ?? undefined,
       lines,
     }, supabase)
 
@@ -1084,6 +1102,8 @@ export async function createCommissionJournalEntry(
       operation_id: operation.id,
       source: "AUTO_COMMISSION",
       currency,
+      org_id: chartOrgId,
+      exchange_rate: (operation as any).exchange_rate ?? undefined,
       lines,
     }, supabase)
 

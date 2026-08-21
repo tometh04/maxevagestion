@@ -651,3 +651,70 @@ describe("createJournalEntry — tipo de cambio en asientos USD", () => {
     }
   })
 })
+
+// ==================================================================
+// org_id explícito — procesos sin sesión (backfills, crons)
+//
+// El trigger `auto_set_org_id_from_auth` resuelve el org desde `auth.uid()`.
+// Con service role no hay sesión, así que lo dejaría en NULL — y como el
+// service role no pasa por RLS, el asiento entraría igual, huérfano de tenant.
+// ==================================================================
+describe("createJournalEntry — org_id explícito", () => {
+  const dosLineas = () => [
+    line({ debit_amount: 100, credit_amount: null }),
+    line({ debit_amount: null, credit_amount: 100 }),
+  ]
+
+  it("graba el org_id que le pasan, en el asiento y en sus líneas", async () => {
+    const { client, calls } = createMockSupabase()
+
+    await createJournalEntry({ ...baseParams(dosLineas()), org_id: "org-42" }, client)
+
+    const insert = calls.find((c) => c.table === "journal_entries" && c.ops.includes("insert"))
+    expect(insert?.payload).toMatchObject({ org_id: "org-42" })
+    for (const call of (ledger.createLedgerMovement as jest.Mock).mock.calls) {
+      expect(call[0].org_id).toBe("org-42")
+    }
+  })
+
+  it("sin org_id lo deja en null para que actúe el trigger de la sesión", async () => {
+    const { client, calls } = createMockSupabase()
+
+    await createJournalEntry(baseParams(dosLineas()), client)
+
+    const insert = calls.find((c) => c.table === "journal_entries" && c.ops.includes("insert"))
+    expect(insert?.payload.org_id).toBeNull()
+  })
+
+  it("el asiento de venta hereda el org de la operación y su TC explícito", async () => {
+    const { client, calls } = createMockSupabase({
+      chartAccounts: [
+        { id: "cpc-id", account_code: ACCOUNT_CODES.CUENTAS_POR_COBRAR },
+        { id: "ventas-id", account_code: ACCOUNT_CODES.VENTAS },
+      ],
+    })
+
+    await createSaleJournalEntry(
+      {
+        id: "op-1234567890",
+        org_id: "org-42",
+        sale_amount_total: 1000,
+        sale_currency: "USD",
+        file_code: "OP-001",
+        operation_date: "2024-03-25",
+        // TC real de la operación: sin esto se valuaría al dólar de hoy una
+        // operación de 2024.
+        exchange_rate: 900,
+      } as any,
+      client
+    )
+
+    const insert = calls.find((c) => c.table === "journal_entries" && c.ops.includes("insert"))
+    expect(insert?.payload).toMatchObject({ org_id: "org-42" })
+    expect(exchangeRates.getExchangeRateWithFallback).not.toHaveBeenCalled()
+    for (const call of (ledger.createLedgerMovement as jest.Mock).mock.calls) {
+      expect(call[0].exchange_rate).toBe(900)
+      expect(call[0].amount_ars_equivalent).toBe(1000 * 900)
+    }
+  })
+})
