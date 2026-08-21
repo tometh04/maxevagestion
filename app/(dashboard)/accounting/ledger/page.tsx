@@ -79,6 +79,16 @@ const JournalEntriesPageClient = dynamic(
   }
 )
 
+const GeneralLedgerPageClient = dynamic(
+  () =>
+    import("@/components/accounting/general-ledger-page-client").then((m) => ({
+      default: m.GeneralLedgerPageClient,
+    })),
+  {
+    loading: () => <Skeleton className="h-[400px] w-full" />,
+  }
+)
+
 const ChartOfAccountsTree = dynamic(
   () =>
     import("@/components/accounting/chart-of-accounts-tree").then((m) => ({
@@ -181,6 +191,9 @@ export default async function ContabilidadPage({
       initialTab={sp.tab}
       journalEntriesContent={
         <JournalEntriesPageClient />
+      }
+      generalLedgerContent={
+        <GeneralLedgerPageClient />
       }
       chartOfAccountsContent={
         <ChartOfAccountsTree />

@@ -26,7 +26,7 @@ const CONFIG: Record<
   PENDING: {
     label: "Pendiente",
     icon: Clock,
-    className: "bg-warning/10 text-warning border-warning/20",
+    className: "bg-accent-sand/10 text-accent-sand border-accent-sand/20",
   },
   UNIDENTIFIED: {
     label: "Sin identificar",
@@ -122,7 +122,7 @@ export function CashMovementReconciliation({ movementId, status, disabled, onCha
           Conciliado
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => setStatus("PENDING")}>
-          <Clock className="h-3.5 w-3.5 mr-2 text-warning" />
+          <Clock className="h-3.5 w-3.5 mr-2 text-accent-sand" />
           Pendiente
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => setStatus("UNIDENTIFIED")}>
