@@ -55,6 +55,8 @@ export interface JournalEntryLine {
   notes?: string | null
 }
 
+export type JournalEntryKind = "SALE" | "COST" | "COMMISSION"
+
 export interface CreateJournalEntryParams {
   /** Fecha del asiento */
   entry_date: string
@@ -80,6 +82,15 @@ export interface CreateJournalEntryParams {
    * (backfills, crons) TIENEN que pasarlo.
    */
   org_id?: string | null
+  /**
+   * Clase del asiento automático de una operación. Es la CLAVE DE IDEMPOTENCIA
+   * (VIB-134/B3): la base tiene un índice único parcial sobre
+   * (operation_id, entry_kind), así que una operación no puede tener dos
+   * asientos de la misma clase ni aunque dos requests corran a la vez.
+   *
+   * Va en NULL para los asientos de pago, que son varios por operación.
+   */
+  entry_kind?: JournalEntryKind | null
   /** Usuario que crea */
   created_by?: string | null
   /** Notas del asiento */
@@ -130,7 +141,7 @@ export async function createJournalEntry(
   params: CreateJournalEntryParams,
   supabase: SupabaseClient<Database>
 ): Promise<JournalEntry> {
-  const { lines, entry_date, description, source, currency = "ARS", exchange_rate, created_by, operation_id, notes, org_id } = params
+  const { lines, entry_date, description, source, currency = "ARS", exchange_rate, created_by, operation_id, notes, org_id, entry_kind } = params
 
   // Validar mínimo 2 líneas
   if (lines.length < 2) {
@@ -205,6 +216,7 @@ export async function createJournalEntry(
       // null deja actuar al trigger (comportamiento de siempre para requests
       // con sesión); con valor, gana el explícito.
       org_id: org_id ?? null,
+      entry_kind: entry_kind ?? null,
     })
     .select("id, entry_number, entry_date, description, source, total_amount, currency")
     .single()
@@ -767,15 +779,25 @@ function getCostAccountCode(productType?: string | null): string {
 /**
  * Verificar si ya existen asientos automáticos para una operación con un source dado
  */
-async function hasExistingJournalEntry(
+/**
+ * ¿La operación ya tiene su asiento de esta clase?
+ *
+ * VIB-134/B3: antes el asiento de costo se buscaba por `ILIKE 'Costo%'` sobre la
+ * descripción, porque venta y costo comparten `source = 'AUTO_CONFIRMATION'` y
+ * el origen no los distingue. Eso fallaba en las dos direcciones: un asiento
+ * manual que empezara con "Costo" bloqueaba al automático para siempre, y
+ * cambiar la redacción lo duplicaba. Ahora la clase es una columna, y la base
+ * la hace cumplir con un índice único parcial.
+ */
+async function hasExistingJournalEntryOfKind(
   operationId: string,
-  source: JournalEntrySource,
+  kind: JournalEntryKind,
   adminClient: any
 ): Promise<boolean> {
   const { data } = await (adminClient.from("journal_entries") as any)
     .select("id")
     .eq("operation_id", operationId)
-    .eq("source", source)
+    .eq("entry_kind", kind)
     .limit(1)
     .maybeSingle()
   return !!data
@@ -810,7 +832,7 @@ export async function createSaleJournalEntry(
     if (saleAmount <= 0) return null
 
     // Idempotencia: no crear si ya existe
-    if (await hasExistingJournalEntry(operation.id, "AUTO_CONFIRMATION", adminClient)) {
+    if (await hasExistingJournalEntryOfKind(operation.id, "SALE", adminClient)) {
       return null
     }
 
@@ -841,6 +863,7 @@ export async function createSaleJournalEntry(
       source: "AUTO_CONFIRMATION",
       currency,
       org_id: chartOrgId,
+      entry_kind: "SALE" as const,
       exchange_rate: (operation as any).exchange_rate ?? undefined,
       lines: [
         {
@@ -907,16 +930,9 @@ export async function createCostJournalEntry(
       effectiveOperators = [{ operator_id: "", cost: generalCost, product_type: null, operators: null }]
     }
 
-    // Idempotencia: verificar con un source distinto para no mezclar con el de venta
-    // Usamos el mismo AUTO_CONFIRMATION pero checkeamos la descripción
-    const { data: existingCost } = await (adminClient.from("journal_entries") as any)
-      .select("id")
-      .eq("operation_id", operation.id)
-      .eq("source", "AUTO_CONFIRMATION")
-      .ilike("description", "Costo%")
-      .limit(1)
-      .maybeSingle()
-    if (existingCost) return null
+    if (await hasExistingJournalEntryOfKind(operation.id, "COST", adminClient)) {
+      return null
+    }
 
     const currency = (operation.sale_currency || operation.currency || "USD") as "ARS" | "USD"
     const opCode = operation.file_code || operation.id.slice(0, 8)
@@ -982,6 +998,7 @@ export async function createCostJournalEntry(
       source: "AUTO_CONFIRMATION",
       currency,
       org_id: chartOrgId,
+      entry_kind: "COST" as const,
       exchange_rate: (operation as any).exchange_rate ?? undefined,
       lines,
     }, supabase)
@@ -1027,7 +1044,7 @@ export async function createCommissionJournalEntry(
     if (commissionData.totalCommission <= 0) return null
 
     // Idempotencia
-    if (await hasExistingJournalEntry(operation.id, "AUTO_COMMISSION", adminClient)) {
+    if (await hasExistingJournalEntryOfKind(operation.id, "COMMISSION", adminClient)) {
       return null
     }
 
@@ -1103,6 +1120,7 @@ export async function createCommissionJournalEntry(
       source: "AUTO_COMMISSION",
       currency,
       org_id: chartOrgId,
+      entry_kind: "COMMISSION" as const,
       exchange_rate: (operation as any).exchange_rate ?? undefined,
       lines,
     }, supabase)

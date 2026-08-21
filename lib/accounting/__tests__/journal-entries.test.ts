@@ -521,23 +521,32 @@ describe("asientos automáticos — idempotencia", () => {
     consoleSpy.mockRestore()
   })
 
-  it("createCostJournalEntry se apoya en un ILIKE 'Costo%' para no duplicar (chequeo frágil, ver VIB-134/B3)", async () => {
+  it("createCostJournalEntry se saltea por CLASE, no por la descripción (VIB-134/B3)", async () => {
+    // Antes esto se resolvía con `ILIKE 'Costo%'` sobre la descripción, porque
+    // venta y costo comparten source. Un asiento manual que empezara con
+    // "Costo" bloqueaba al automático, y cambiar la redacción lo duplicaba.
     const { client, calls } = createMockSupabase({
+      chartAccounts: [
+        { id: "costo-id", account_code: ACCOUNT_CODES.COSTO_OPERADORES },
+        { id: "cpp-id", account_code: ACCOUNT_CODES.CUENTAS_POR_PAGAR },
+      ],
       existingJournalEntry: { data: { id: "je-costo-previo" } },
     })
 
     const result = await createCostJournalEntry(
-      { id: "op-1234567890", operator_cost: 500, file_code: "OP-001" },
-      [{ operator_id: "operador-1", cost: 500, product_type: "HOTEL" }],
+      operation,
+      [{ operator_id: "op-1", cost: 700, operators: { id: "op-1", name: "Delfos" } }] as any,
       client
     )
 
     expect(result).toBeNull()
-    // La idempotencia del costo depende de la DESCRIPCIÓN, no de una clave:
-    // comparte `source` con el asiento de venta y por eso filtra por texto.
-    const check = calls.find((c) => c.table === "journal_entries" && c.ops.includes("ilike"))
-    expect(check).toBeDefined()
-    expect(check?.args.find(([op]) => op === "ilike")).toEqual(["ilike", "description", "Costo%"])
+    expect(ledger.createLedgerMovement).not.toHaveBeenCalled()
+
+    // El chequeo filtra por entry_kind y ya no mira la descripción.
+    const lookup = calls.find((c) => c.table === "journal_entries" && c.ops.includes("eq"))
+    const filtros = (lookup?.args ?? []).filter((a) => a[0] === "eq").map((a) => a[1])
+    expect(filtros).toContain("entry_kind")
+    expect(lookup?.ops).not.toContain("ilike")
   })
 
   it("createCostJournalEntry no hace nada si no hay costo de operador", async () => {
