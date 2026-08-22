@@ -10,11 +10,16 @@ import {
 } from "@/lib/emilia/access"
 import { enforceUserRateLimit } from "@/lib/rate-limit"
 import { z } from "zod"
+import { withDefaultOrigin } from "@/lib/emilia/origin-context"
 
 const chatRequestSchema = z.object({
   message: z.string().trim().min(1).max(4000),
   conversationId: z.string().uuid(),
   clientId: z.string().uuid().optional(),
+  defaultOrigin: z.object({
+    city: z.string().trim().min(1).max(100),
+    country: z.string().trim().min(1).max(100).optional(),
+  }).optional(),
 })
 
 function getAsyncEmiliaUrl() {
@@ -42,7 +47,7 @@ export async function POST(request: Request) {
         { status: 400 }
       )
     }
-    const { message, conversationId, clientId } = parsedBody.data
+    const { message, conversationId, clientId, defaultOrigin } = parsedBody.data
     const supabase = await createServerClient()
     const { data: conversation, error: convError } = await supabase
       .from("conversations")
@@ -116,7 +121,7 @@ export async function POST(request: Request) {
     const apiPayload = {
       request_id: requestId,
       external_conversation_ref: conversationId,
-      message,
+      message: withDefaultOrigin(message, defaultOrigin),
       mode: "agency",
       workspace_mode: "standard",
       language: "es",

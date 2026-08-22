@@ -48,6 +48,23 @@ export function buildFallbackPrompt(lead: LeadInput): string {
 }
 
 /**
+ * Evita que el prompt sugerido le pida presupuesto al vendedor. El modelo
+ * recibe la misma regla, pero esta normalización mantiene el contrato aunque
+ * devuelva la redacción anterior.
+ */
+export function sanitizeSuggestedPrompt(prompt: string): string {
+  return prompt
+    .replace(
+      /,\s*tipo de hospedaje\s+y\s+(?:el\s+)?presupuesto/gi,
+      " y tipo de hospedaje"
+    )
+    .replace(/\s+y\s+(?:el\s+)?presupuesto(?=\s*[.!?]|$)/gi, "")
+    .replace(/,\s*(?:el\s+)?presupuesto(?=\s*[.!?]|$)/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim()
+}
+
+/**
  * Arma el prompt-system para gpt-4o-mini que extrae datos estructurados
  * de las notas del lead y genera un prompt natural en español para Emilia.
  */
@@ -57,7 +74,8 @@ export function buildOpenAIInstructions(lead: LeadInput): { system: string; user
     "Recibís los datos de un lead (contacto + notas libres del CRM) y generás UN solo mensaje en español argentino, dirigido a Emilia, listo para enviar tal cual.",
     "Reglas del mensaje generado:",
     "- Empezá con 'Cotizar viaje a {destino}' (incluí región si se conoce).",
-    "- Inferí del texto libre: cantidad de adultos/niños, fechas o mes preferido, duración, tipo de hospedaje (all-inclusive, hostel, hotel), categoría preferida y presupuesto si aparece.",
+    "- Inferí del texto libre: cantidad de adultos/niños, fechas o mes preferido, duración, tipo de hospedaje (all-inclusive, hostel, hotel) y categoría preferida.",
+    "- No menciones ni solicites presupuesto, aunque aparezca en las notas.",
     "- Si las notas no aclaran algo, NO inventes valores: omití el dato.",
     "- Si no hay destino, pedí explícitamente el destino al vendedor.",
     "- Si `list_prompt` está presente, son instrucciones de la lista del CRM donde está el lead: incorporá esas preferencias al mensaje (origen, tipo de hospedaje, duración, etc.). Ante conflicto con las notas, priorizá `list_prompt`.",

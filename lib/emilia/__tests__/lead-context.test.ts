@@ -1,4 +1,8 @@
-import { buildFallbackPrompt, type LeadInput } from "../lead-context"
+import {
+  buildFallbackPrompt,
+  sanitizeSuggestedPrompt,
+  type LeadInput,
+} from "../lead-context"
 
 describe("buildFallbackPrompt", () => {
   it("usa destination + region cuando ambos están presentes", () => {
@@ -85,6 +89,18 @@ describe("buildFallbackPrompt", () => {
     }
     expect(buildFallbackPrompt(lead)).toBe(
       "Cotizar viaje para Juan Pérez. Necesito destino, fechas y cantidad de pasajeros. Preferencia hoteles 4 estrellas."
+    )
+  })
+})
+
+describe("sanitizeSuggestedPrompt", () => {
+  it("quita presupuesto y conserva una enumeración natural", () => {
+    expect(
+      sanitizeSuggestedPrompt(
+        "Cotizar viaje a Caribe. Por favor, especificar la cantidad de adultos y niños, fechas preferidas, duración, tipo de hospedaje y presupuesto."
+      )
+    ).toBe(
+      "Cotizar viaje a Caribe. Por favor, especificar la cantidad de adultos y niños, fechas preferidas, duración y tipo de hospedaje."
     )
   })
 })

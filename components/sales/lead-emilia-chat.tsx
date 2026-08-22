@@ -32,6 +32,15 @@ import {
 import { getPublicQuotationPath } from "@/lib/quotations/public-links"
 import { downloadQuotationPdfFromPriceDialog } from "@/lib/pdf/quotation-pdf-html"
 import { QuotationPdfPriceDialog } from "@/components/sales/quotation-pdf-price-dialog"
+import {
+  withDefaultOrigin,
+  type EmiliaDefaultOrigin,
+} from "@/lib/emilia/origin-context"
+import {
+  getActiveSearchContextId,
+  getMessageSearchContextId,
+  hasSearchCards,
+} from "@/lib/emilia/search-context"
 
 const MAX_HOTELS = 4
 const ALL_SELECT_VALUE = "__all__"
@@ -523,9 +532,17 @@ interface Props {
    * Perf: evita un GET duplicado en el init. `undefined` = no provista → fetch.
    */
   initialConversation?: { id: string } | null
+  /** Ciudad/país resueltos al presionar Cotizar; null = permiso rechazado/no disponible. */
+  defaultOrigin?: EmiliaDefaultOrigin | null
 }
 
-export function LeadEmiliaChat({ lead, onBack, onQuotationCreated, initialConversation }: Props) {
+export function LeadEmiliaChat({
+  lead,
+  onBack,
+  onQuotationCreated,
+  initialConversation,
+  defaultOrigin,
+}: Props) {
   const [loading, setLoading] = useState(true)
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
@@ -547,11 +564,73 @@ export function LeadEmiliaChat({ lead, onBack, onQuotationCreated, initialConver
   const [selectedHotels, setSelectedHotels] = useState<Map<string, string>>(new Map()) // hotelId → roomId
   const [flightFiltersByMessage, setFlightFiltersByMessage] = useState<Record<number, FlightFilters>>({})
   const [hotelFiltersByMessage, setHotelFiltersByMessage] = useState<Record<number, HotelFilters>>({})
+  const activeSearchContextId = useMemo(() => getActiveSearchContextId(messages), [messages])
+  const latestSearchMessageIndex = useMemo(() => {
+    if (!activeSearchContextId) return -1
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (
+        messages[index].role === "assistant"
+        && getMessageSearchContextId(messages[index]) === activeSearchContextId
+      ) {
+        return index
+      }
+    }
+    return -1
+  }, [messages, activeSearchContextId])
+  const activeResultMessageIndex = useMemo(() => {
+    if (activeSearchContextId) {
+      return latestSearchMessageIndex >= 0 && hasSearchCards(messages[latestSearchMessageIndex])
+        ? latestSearchMessageIndex
+        : -1
+    }
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (hasSearchCards(messages[index])) {
+        return index
+      }
+    }
+    return -1
+  }, [messages, activeSearchContextId, latestSearchMessageIndex])
+  const activeResultKey = activeSearchContextId && latestSearchMessageIndex >= 0
+    ? `${activeSearchContextId}:${latestSearchMessageIndex}`
+    : activeResultMessageIndex >= 0
+      ? `legacy:${activeResultMessageIndex}`
+    : null
+  const activeResultKeyRef = useRef<string | null>(null)
+  const activeSearchContextIdRef = useRef<string | null>(null)
 
   useEffect(() => {
+    activeResultKeyRef.current = null
+    activeSearchContextIdRef.current = null
+    setSelectedFlightId(null)
+    setSelectedHotels(new Map())
     setFlightFiltersByMessage({})
     setHotelFiltersByMessage({})
   }, [lead.id])
+
+  useEffect(() => {
+    if (!activeSearchContextId) return
+    if (
+      activeSearchContextIdRef.current
+      && activeSearchContextIdRef.current !== activeSearchContextId
+    ) {
+      setSelectedFlightId(null)
+      setSelectedHotels(new Map())
+      setFlightFiltersByMessage({})
+      setHotelFiltersByMessage({})
+    }
+    activeSearchContextIdRef.current = activeSearchContextId
+  }, [activeSearchContextId])
+
+  useEffect(() => {
+    if (!activeResultKey) return
+    if (activeResultKeyRef.current && activeResultKeyRef.current !== activeResultKey) {
+      setSelectedFlightId(null)
+      setSelectedHotels(new Map())
+      setFlightFiltersByMessage({})
+      setHotelFiltersByMessage({})
+    }
+    activeResultKeyRef.current = activeResultKey
+  }, [activeResultKey])
 
   // Inicialización del chat. Perf:
   //  - Reusamos la conversación que ya trajo el gate de "Cotizar"
@@ -630,7 +709,8 @@ export function LeadEmiliaChat({ lead, onBack, onQuotationCreated, initialConver
       const data = res.ok ? await res.json() : null
       const prompt = (data?.prompt || "").trim()
       if (prompt) {
-        setInput(prev => (force || prev.trim() === "" ? prompt : prev))
+        const promptWithOrigin = withDefaultOrigin(prompt, defaultOrigin)
+        setInput(prev => (force || prev.trim() === "" ? promptWithOrigin : prev))
       }
     } catch {
       // silencioso
@@ -705,7 +785,14 @@ export function LeadEmiliaChat({ lead, onBack, onQuotationCreated, initialConver
       const res = await fetch("/api/emilia/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, conversationId, clientId }),
+        body: JSON.stringify({
+          message: text,
+          conversationId,
+          clientId,
+          // Sólo la primera vuelta necesita el default. Después manda el
+          // contexto persistido por Emilia o un origen explícito del usuario.
+          defaultOrigin: messages.length === 0 ? defaultOrigin : undefined,
+        }),
         signal: controller.signal,
       })
       const initialData = await res.json()
@@ -752,13 +839,8 @@ export function LeadEmiliaChat({ lead, onBack, onQuotationCreated, initialConver
 
   // Última respuesta con cards para mostrar selección
   const lastResults = useMemo(() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].cards?.flights?.items?.length || messages[i].cards?.hotels?.items?.length) {
-        return messages[i]
-      }
-    }
-    return null
-  }, [messages])
+    return activeResultMessageIndex >= 0 ? messages[activeResultMessageIndex] : null
+  }, [messages, activeResultMessageIndex])
 
   function toggleFlight(id: string) {
     setSelectedFlightId(prev => (prev === id ? null : id))
@@ -839,12 +921,12 @@ export function LeadEmiliaChat({ lead, onBack, onQuotationCreated, initialConver
 
   async function handleGenerate() {
     if (generating) return
-    // Las cards ahora viven inline en cada mensaje. Aplanamos TODOS los
-    // resultados de la conversación (deduplicando por id, último gana) para
-    // resolver el vuelo/hotel seleccionado sin importar en qué mensaje esté.
+    // Una cotización sólo puede usar cards del último turno de resultados de
+    // la búsqueda activa. Nunca mezclamos opciones de destinos/iteraciones
+    // históricas aunque coincidan sus ids.
     const flightById = new Map<string, EmiliaFlight>()
     const hotelById = new Map<string, EurovipsHotel>()
-    for (const msg of messages) {
+    for (const msg of lastResults ? [lastResults] : []) {
       for (const f of msg.cards?.flights?.items || []) flightById.set(f.id, f)
       for (const h of msg.cards?.hotels?.items || []) hotelById.set(h.id, h)
     }
@@ -958,7 +1040,9 @@ export function LeadEmiliaChat({ lead, onBack, onQuotationCreated, initialConver
     return `Generar cotización · ${opts} opción${opts > 1 ? "es" : ""} (${fc} vuelo + ${hc} hotel${hc !== 1 ? "es" : ""})`
   }, [selectedFlightId, selectedHotels])
 
-  const canGenerate = (selectedFlightId !== null || selectedHotels.size > 0) && !generating
+  const canGenerate = (selectedFlightId !== null || selectedHotels.size > 0)
+    && !generating
+    && !sending
 
   if (loading) {
     return (
@@ -994,6 +1078,12 @@ export function LeadEmiliaChat({ lead, onBack, onQuotationCreated, initialConver
           const mHotels = m.cards?.hotels?.items || []
           const mConfidence = m.meta?.originalRequest?.confidence ?? 1
           const hasCards = mFlights.length > 0 || mHotels.length > 0
+          const messageSearchContextId = getMessageSearchContextId(m)
+          const isActiveResultTurn = !hasCards || i === activeResultMessageIndex
+          const isNewSearchBoundary = m.role === "assistant"
+            && m.meta?.turnSemantics?.relation === "new_search"
+            && messages.slice(0, i).some(previous => Boolean(getMessageSearchContextId(previous)))
+          const searchSummary = m.meta?.searchSummary?.text
           const flightFilters = flightFiltersByMessage[i] ?? DEFAULT_FLIGHT_FILTERS
           const hotelFilters = hotelFiltersByMessage[i] ?? DEFAULT_HOTEL_FILTERS
           const visibleFlights = filterFlights(mFlights, flightFilters, selectedFlightId)
@@ -1002,6 +1092,13 @@ export function LeadEmiliaChat({ lead, onBack, onQuotationCreated, initialConver
           const hotelFilterOptions = getHotelFilterOptions(mHotels)
           return (
             <div key={i} className="space-y-2">
+              {isNewSearchBoundary && (
+                <div className="flex items-center gap-2 py-1 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+                  <span className="h-px flex-1 bg-border" />
+                  <span>Nueva búsqueda</span>
+                  <span className="h-px flex-1 bg-border" />
+                </div>
+              )}
               {/* Burbuja del mensaje. Ancho acotado: con el modal ancho,
                   85% serían ~1080px — ilegible para una línea de texto. */}
               <div className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
@@ -1015,9 +1112,27 @@ export function LeadEmiliaChat({ lead, onBack, onQuotationCreated, initialConver
                 </div>
               </div>
 
+              {m.role === "assistant" && searchSummary && (
+                <div className="flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">Resumen</span>
+                  <span className="min-w-0 truncate">{searchSummary}</span>
+                  {messageSearchContextId && !isActiveResultTurn && (
+                    <Badge variant="outline" className="ml-auto shrink-0 text-[10px]">Histórico</Badge>
+                  )}
+                </div>
+              )}
+
               {/* Resultados de ESTE mensaje, inline debajo (flujo de chat real) */}
               {hasCards && (
-                <div className="space-y-2">
+                <div className={cn(
+                  "space-y-2",
+                  !isActiveResultTurn && "opacity-60 [&_button]:pointer-events-none [&_button]:cursor-not-allowed"
+                )}>
+                  {!isActiveResultTurn && (
+                    <div className="flex justify-end">
+                      <Badge variant="outline" className="text-[10px]">Resultados históricos</Badge>
+                    </div>
+                  )}
                   {mConfidence < 0.7 && (
                     <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 flex items-start gap-2">
                       <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" />
