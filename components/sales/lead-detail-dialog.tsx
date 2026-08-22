@@ -48,6 +48,8 @@ import { QuotationPdfPriceDialog } from "@/components/sales/quotation-pdf-price-
 import { LeadEmiliaChat } from "@/components/sales/lead-emilia-chat"
 import { LeadOutcomeBadge } from "@/components/sales/lead-outcome-badge"
 import { useScreenView } from "@/hooks/use-screen-view"
+import { detectBrowserOriginCity } from "@/lib/emilia/browser-geolocation"
+import type { EmiliaDefaultOrigin } from "@/lib/emilia/origin-context"
 
 // Las cotizaciones adjuntas (type QUOTATION) se muestran en la sección
 // Cotizaciones, no en el listado genérico de documentos. Referencia estable
@@ -255,6 +257,7 @@ export function LeadDetailDialog({
   const [mode, setMode] = useState<"detail" | "emilia">("detail")
   // Conversación que ya trajo el gate de "Cotizar" (perf: el chat evita re-fetchear).
   const [emiliaConversation, setEmiliaConversation] = useState<{ id: string } | null | undefined>(undefined)
+  const [emiliaDefaultOrigin, setEmiliaDefaultOrigin] = useState<EmiliaDefaultOrigin | null>(null)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -458,6 +461,7 @@ export function LeadDetailDialog({
     if (!open) {
       setMode("detail")
       setEmiliaConversation(undefined)
+      setEmiliaDefaultOrigin(null)
       setOpeningQuotation(false)
     }
   }, [open])
@@ -639,8 +643,12 @@ export function LeadDetailDialog({
       const json = await response.json().catch(() => ({}))
 
       if (response.ok) {
+        // El navegador muestra su permiso nativo. Si el usuario lo rechaza o
+        // no podemos resolver ciudad/país, null mantiene el flujo de pregunta.
+        const detectedOrigin = await detectBrowserOriginCity()
         // Reutilizamos la conversación del gate para evitar otro GET al montar.
         setEmiliaConversation(json?.data ?? null)
+        setEmiliaDefaultOrigin(detectedOrigin)
         setMode("emilia")
         return
       }
@@ -699,6 +707,7 @@ export function LeadDetailDialog({
               agency_id: lead.agency_id,
             }}
             initialConversation={emiliaConversation}
+            defaultOrigin={emiliaDefaultOrigin}
             onBack={() => setMode("detail")}
             onQuotationCreated={() => {
               // Recargar cotizaciones para que aparezcan al volver al mode="detail"

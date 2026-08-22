@@ -5,6 +5,7 @@ import { getCurrentUser } from "@/lib/auth"
 import {
   buildFallbackPrompt,
   buildOpenAIInstructions,
+  sanitizeSuggestedPrompt,
   type LeadInput,
 } from "@/lib/emilia/lead-context"
 import { fetchListPrompt } from "@/lib/emilia/list-prompt"
@@ -106,7 +107,7 @@ async function generateSuggestedPrompt(lead: LeadInput): Promise<string> {
     }
     const json = await res.json()
     const text = json?.choices?.[0]?.message?.content?.trim()
-    return text && text.length > 0 ? text : fallback
+    return text && text.length > 0 ? sanitizeSuggestedPrompt(text) : fallback
   } catch (err: any) {
     console.warn("OpenAI parser failed, using fallback:", err?.message || err)
     return fallback
