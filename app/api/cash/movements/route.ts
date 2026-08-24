@@ -221,8 +221,8 @@ export async function POST(request: Request) {
     // cancelan Cuentas por Pagar. Volver a tocar la cuenta de resultado
     // (Ventas, Costo, Comisiones) duplicaría el resultado del ejercicio.
     //
-    // Los gastos propiamente dichos no entran todavía: se imputan en la etapa
-    // siguiente, cuando se define contra qué cuenta de gasto van.
+    // El resto de las salidas son gastos: se devengan y se pagan en el mismo
+    // acto, así que el Debe va contra la cuenta de resultado.
     try {
       const { createMovementJournalEntry, COUNTERPART_CODES } = await import(
         "@/lib/accounting/movement-journal"
@@ -238,6 +238,8 @@ export async function POST(request: Request) {
         counterpartCode = COUNTERPART_CODES.OPERATOR_PAYMENT
       } else if (category === "COMMISSION") {
         counterpartCode = COUNTERPART_CODES.COMMISSION_PAYMENT
+      } else {
+        counterpartCode = COUNTERPART_CODES.EXPENSE
       }
 
       if (counterpartCode) {

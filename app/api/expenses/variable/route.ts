@@ -224,6 +224,31 @@ export async function POST(request: Request) {
       supabase
     )
 
+
+    // VIB-142: asiento del gasto (Debe Gastos Administrativos / Haber cuenta
+    // financiera). A diferencia de un cobro o un pago a operador, un gasto no
+    // cancela ninguna deuda devengada: se devenga y se paga en el mismo acto,
+    // así que el Debe va contra la cuenta de resultado.
+    //
+    // Todos los gastos van por ahora a 4.3.01. Las categorías son texto libre
+    // por agencia y no hay mapeo a las 14 cuentas de gasto del plan; afinar la
+    // imputación después cambia la cuenta, nunca los importes.
+    try {
+      const { createMovementJournalEntry, COUNTERPART_CODES } = await import(
+        "@/lib/accounting/movement-journal"
+      )
+      await createMovementJournalEntry(
+        {
+          movementId: ledgerMovementId,
+          counterpartCode: COUNTERPART_CODES.EXPENSE,
+          direction: "OUT",
+        },
+        supabase
+      )
+    } catch (journalError) {
+      console.error("Error asentando el gasto:", journalError)
+    }
+
     // Link ledger to cash_movement
     if (ledgerMovementId) {
       await adminDb.from("cash_movements")
