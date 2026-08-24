@@ -722,6 +722,40 @@ export function OperationDetailClient({
             </Card>
           )}
 
+          {/*
+            Info adicional para el pasajero (VIB-120).
+
+            `operations.passenger_notes` se carga al final del alta/edicion y
+            hasta aca solo se veia en el PDF del detalle de la operacion
+            (lib/operations/statement-data.ts). Milla Cero lo reporto justo
+            despues de VIB-111: ven el detalle de cada servicio en pantalla,
+            pero esta nota habia que ir a buscarla al PDF.
+
+            Solo se muestra si hay algo cargado: la mayoria de las operaciones
+            no la usan y una tarjeta vacia en todas seria ruido.
+          */}
+          {typeof operation.passenger_notes === "string" &&
+            operation.passenger_notes.trim().length > 0 && (
+            <Card className="rounded-xl border border-border/40">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  📝 Info adicional para el pasajero
+                </CardTitle>
+                <CardDescription>
+                  Se incluye en el PDF del detalle de la operación
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {/* whitespace-pre-line respeta los saltos de linea que cargo la
+                    agencia; break-words evita que un texto largo sin espacios
+                    desborde la tarjeta en mobile. */}
+                <p className="whitespace-pre-line break-words text-sm text-foreground/90">
+                  {operation.passenger_notes}
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
           {/* ── Row 2: Financiero (full width) ── */}
           {canViewFinancialTabs && (() => {
             const serviceSaleTotal = operationServices
