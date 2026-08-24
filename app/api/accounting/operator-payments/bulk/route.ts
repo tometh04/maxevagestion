@@ -464,6 +464,26 @@ export async function POST(request: Request) {
           supabase
         )
 
+        // VIB-142: asiento del pago (Debe Cuentas por Pagar / Haber cuenta
+        // financiera). Se asienta SOLO la salida real de plata: el movimiento
+        // de abajo es el contra-movimiento operativo contra la cuenta de
+        // Cuentas por Pagar, y asentarlo también duplicaría el asiento.
+        try {
+          const { createMovementJournalEntry, COUNTERPART_CODES } = await import(
+            "@/lib/accounting/movement-journal"
+          )
+          await createMovementJournalEntry(
+            {
+              movementId: ledgerMovementResult.id,
+              counterpartCode: COUNTERPART_CODES.OPERATOR_PAYMENT,
+              direction: "OUT",
+            },
+            supabase
+          )
+        } catch (journalError) {
+          console.error("Error asentando el pago a operador:", journalError)
+        }
+
         const costAmount = parseFloat(String(amount_to_pay))
         const costARS = operatorPaymentCurrency === "USD"
           ? roundMoney(costAmount * exchangeRateValue!)

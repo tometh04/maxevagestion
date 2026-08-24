@@ -148,6 +148,14 @@ describe("createMovementJournalEntry — sentido del asiento", () => {
   it("todos los gastos van por ahora a Gastos Administrativos", () => {
     expect(COUNTERPART_CODES.EXPENSE).toBe(ACCOUNT_CODES.GASTOS_ADMIN)
   })
+
+  it("pagar una comisión cancela la deuda, no vuelve a registrar el gasto", () => {
+    // El gasto ya se devengó al confirmar la operación (Debe 4.3.03 / Haber
+    // 2.1.01). Si el pago debitara 4.3.03 otra vez, la comisión aparecería dos
+    // veces en el Estado de Resultados.
+    expect(COUNTERPART_CODES.COMMISSION_PAYMENT).toBe(ACCOUNT_CODES.CUENTAS_POR_PAGAR)
+    expect(COUNTERPART_CODES.COMMISSION_PAYMENT).not.toBe(ACCOUNT_CODES.COMISIONES_VENDEDORES)
+  })
 })
 
 describe("createMovementJournalEntry — idempotencia y contexto", () => {

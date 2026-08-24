@@ -207,6 +207,26 @@ export async function POST(request: Request) {
       supabase
     )
 
+    // VIB-142: asiento del pago (Debe deuda con el vendedor / Haber cuenta
+    // financiera). No debita 4.3.03: ese gasto ya se devengó al confirmar la
+    // operación, y volver a debitarlo contaría la comisión dos veces.
+    // No bloquea el pago: la plata ya se movió.
+    try {
+      const { createMovementJournalEntry, COUNTERPART_CODES } = await import(
+        "@/lib/accounting/movement-journal"
+      )
+      await createMovementJournalEntry(
+        {
+          movementId: ledgerMovementId,
+          counterpartCode: COUNTERPART_CODES.COMMISSION_PAYMENT,
+          direction: "OUT",
+        },
+        supabase
+      )
+    } catch (journalError) {
+      console.error("Error asentando el pago de comisión:", journalError)
+    }
+
     // Actualizar commission_record con amount_paid y status
     const updateData: Record<string, any> = {
       amount_paid: totalPaid,

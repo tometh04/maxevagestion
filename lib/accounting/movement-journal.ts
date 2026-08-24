@@ -74,8 +74,16 @@ export const COUNTERPART_CODES = {
   CUSTOMER_COLLECTION: ACCOUNT_CODES.CUENTAS_POR_COBRAR,
   /** Pago a operador: cancela deuda con el proveedor. */
   OPERATOR_PAYMENT: ACCOUNT_CODES.CUENTAS_POR_PAGAR,
-  /** Comisión pagada al vendedor. */
-  COMMISSION_PAYMENT: ACCOUNT_CODES.COMISIONES_VENDEDORES,
+  /**
+   * Comisión pagada al vendedor: cancela la deuda con él, NO vuelve a
+   * registrar el gasto.
+   *
+   * El gasto ya se devengó al confirmar la operación
+   * (createCommissionJournalEntry: Debe 4.3.03 Comisiones / Haber 2.1.01 a
+   * pagar). Debitar 4.3.03 otra vez al pagar contaría la comisión dos veces en
+   * el Estado de Resultados.
+   */
+  COMMISSION_PAYMENT: ACCOUNT_CODES.CUENTAS_POR_PAGAR,
   /**
    * Gasto de la agencia.
    *
@@ -106,7 +114,7 @@ export async function createMovementJournalEntry(
   try {
     const { data: mov } = await (supabase.from("ledger_movements") as any)
       .select(
-        "id, org_id, operation_id, account_id, concept, currency, amount_original, exchange_rate, movement_date, created_by, journal_entry_id"
+        "id, org_id, operation_id, account_id, concept, currency, amount_original, exchange_rate, movement_date, created_by, journal_entry_id, affects_balance"
       )
       .eq("id", params.movementId)
       .maybeSingle()
@@ -119,6 +127,10 @@ export async function createMovementJournalEntry(
 
     const amount = Number(mov.amount_original) || 0
     if (amount <= 0) return null
+
+    // Un movimiento que no afecta saldo no es plata moviéndose (contra-asientos,
+    // salidas marcadas como no-gasto). Asentarlo inventaría un hecho económico.
+    if (mov.affects_balance === false) return null
 
     // Sin cuenta financiera no hay contra qué asentar: el movimiento no
     // representa plata entrando o saliendo de ningún lado.

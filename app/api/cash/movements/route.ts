@@ -213,6 +213,43 @@ export async function POST(request: Request) {
       supabase
     )
 
+    // VIB-142: asiento del movimiento de caja.
+    //
+    // La contrapartida sale del tipo y la categoría, y en los tres casos de
+    // acá cancela una deuda que YA se devengó al confirmar la operación: el
+    // cobro cancela Cuentas por Cobrar, el pago a operador y la comisión
+    // cancelan Cuentas por Pagar. Volver a tocar la cuenta de resultado
+    // (Ventas, Costo, Comisiones) duplicaría el resultado del ejercicio.
+    //
+    // Los gastos propiamente dichos no entran todavía: se imputan en la etapa
+    // siguiente, cuando se define contra qué cuenta de gasto van.
+    try {
+      const { createMovementJournalEntry, COUNTERPART_CODES } = await import(
+        "@/lib/accounting/movement-journal"
+      )
+
+      let counterpartCode: string | null = null
+      let direction: "IN" | "OUT" = "OUT"
+
+      if (ledgerType === "INCOME") {
+        counterpartCode = COUNTERPART_CODES.CUSTOMER_COLLECTION
+        direction = "IN"
+      } else if (category === "OPERATOR_PAYMENT") {
+        counterpartCode = COUNTERPART_CODES.OPERATOR_PAYMENT
+      } else if (category === "COMMISSION") {
+        counterpartCode = COUNTERPART_CODES.COMMISSION_PAYMENT
+      }
+
+      if (counterpartCode) {
+        await createMovementJournalEntry(
+          { movementId: ledgerMovementId, counterpartCode, direction },
+          supabase
+        )
+      }
+    } catch (journalError) {
+      console.error("Error asentando el movimiento de caja:", journalError)
+    }
+
     if (ledgerMovementId) {
       await (supabase.from("cash_movements") as any)
         .update({ ledger_movement_id: ledgerMovementId })
