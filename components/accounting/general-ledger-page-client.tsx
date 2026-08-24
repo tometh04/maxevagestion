@@ -203,11 +203,11 @@ export function GeneralLedgerPageClient() {
             <p className="font-medium">Vista contable parcial</p>
             <p className="text-muted-foreground">
               {coverage.classified.toLocaleString("es-AR")} de{" "}
-              {coverage.total.toLocaleString("es-AR")} movimientos del período tienen cuenta
-              contable ({coverage.pct}%). Los{" "}
-              {coverage.unclassified.toLocaleString("es-AR")} restantes son cobros, gastos y pagos
-              a operadores que todavía no generan asiento, así que el Debe y el Haber no cierran
-              entre sí.
+              {coverage.total.toLocaleString("es-AR")} movimientos de plata del período tienen su
+              asiento ({coverage.pct}%). Faltan{" "}
+              {coverage.unclassified.toLocaleString("es-AR")}: cuentas financieras todavía sin
+              vincular al plan de cuentas, transferencias entre cuentas propias y compras de
+              dólares. Mientras tanto el Debe y el Haber no cierran entre sí.
             </p>
           </div>
         </div>

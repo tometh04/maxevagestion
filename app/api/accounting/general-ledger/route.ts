@@ -247,16 +247,42 @@ export async function GET(request: Request) {
       t.credit = Math.round(t.credit * 100) / 100
     }
 
-    const total = conCuenta + sinCuenta
+    // COBERTURA: cuántos HECHOS ECONÓMICOS tienen asiento.
+    //
+    // Contar "movimientos con cuenta contable" sería engañoso: los asientos de
+    // los movimientos de plata se ESPEJAN (filas nuevas) en vez de anotarse
+    // sobre el movimiento original, así que ese original nunca recibe cuenta
+    // contable y la métrica jamás llegaría al 100% por diseño.
+    //
+    // Lo que importa es al revés: de los movimientos que mueven plata, cuántos
+    // tienen su asiento, sea porque son parte de uno (`journal_entry_id`) o
+    // porque uno los espeja (`source_movement_id`).
+    //
+    // Va por la RPC readonly, que es SECURITY INVOKER y respeta RLS, igual que
+    // getAccountBalancesBatch.
+    const filtroFecha = [
+      dateFrom ? `and movement_date >= '${dateFrom}'` : "",
+      dateTo ? `and movement_date <= '${dateTo}'` : "",
+    ].join(" ")
+    const { data: cov } = await (supabase as any).rpc("execute_readonly_query", {
+      query_text: `select count(*) as total, count(*) filter (where lm.journal_entry_id is not null or exists (select 1 from journal_entries je where je.source_movement_id = lm.id)) as con_asiento from ledger_movements lm where lm.affects_balance = true and lm.account_id is not null and lm.org_id = '${orgId}' ${filtroFecha}`,
+    })
+
+    const covRow = Array.isArray(cov) ? cov[0] : null
+    const totalPlata = Number(covRow?.total ?? 0)
+    const conAsiento = Number(covRow?.con_asiento ?? 0)
+
     return NextResponse.json({
       accounts: filas,
       totals: totales,
       coverage: {
-        classified: conCuenta,
-        unclassified: sinCuenta,
-        total,
-        pct: total > 0 ? Math.round((conCuenta / total) * 100) : 0,
+        classified: conAsiento,
+        unclassified: totalPlata - conAsiento,
+        total: totalPlata,
+        pct: totalPlata > 0 ? Math.round((conAsiento / totalPlata) * 100) : 0,
       },
+      // Diagnóstico: movimientos leídos para armar el mayor. No es la cobertura.
+      lines: { withAccount: conCuenta, withoutAccount: sinCuenta },
     })
   } catch (error: any) {
     console.error("Error en GET /api/accounting/general-ledger:", error)
