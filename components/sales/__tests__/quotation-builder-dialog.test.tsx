@@ -139,7 +139,7 @@ const baseLead = {
  * cola de `mockResolvedValueOnce` para POST/PATCH y para el GET de la
  * cotización, que es lo que los tests realmente asertan.
  */
-const INFRA_URLS = ["/api/finances/settings", "/api/settings/lead-regions"]
+const INFRA_URLS = ["/api/quotations/cost-settings", "/api/settings/lead-regions"]
 
 function businessCalls(fetchMock: jest.Mock) {
   return fetchMock.mock.calls.filter(
@@ -172,6 +172,50 @@ describe("QuotationBuilderDialog", () => {
     jest.clearAllMocks()
     setupFetchMock()
     window.open = jest.fn()
+  })
+
+  it("carga los defaults financieros de la agencia concreta del lead", async () => {
+    render(
+      <QuotationBuilderDialog
+        open
+        onOpenChange={jest.fn()}
+        lead={{
+          ...baseLead,
+          id: "lead-agency-b",
+          contact_name: "Cliente",
+          agency_id: "22222222-2222-4222-8222-222222222222",
+        }}
+        operators={[]}
+      />
+    )
+
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledWith(
+      "/api/quotations/cost-settings?agency_id=22222222-2222-4222-8222-222222222222"
+    ))
+  })
+
+  it("ofrece sólo operadores globales o de la agencia del lead", async () => {
+    render(
+      <QuotationBuilderDialog
+        open
+        onOpenChange={jest.fn()}
+        lead={{
+          ...baseLead,
+          id: "lead-agency-b",
+          contact_name: "Cliente",
+          agency_id: "agency-b",
+        }}
+        operators={[
+          { id: "operator-global", name: "Global", agency_id: null },
+          { id: "operator-a", name: "Sólo A", agency_id: "agency-a" },
+          { id: "operator-b", name: "Sólo B", agency_id: "agency-b" },
+        ]}
+      />
+    )
+
+    expect(await screen.findByText("Global")).toBeInTheDocument()
+    expect(screen.getByText("Sólo B")).toBeInTheDocument()
+    expect(screen.queryByText("Sólo A")).not.toBeInTheDocument()
   })
 
   it("resets the form between leads and keeps creating new quotations with POST", async () => {
@@ -216,12 +260,14 @@ describe("QuotationBuilderDialog", () => {
 
     const titleInput = screen.getByPlaceholderText("Nombre del cliente")
     const destinationInput = screen.getByPlaceholderText("Buscar destino...")
-    const descriptionInput = screen.getByPlaceholderText("Ej: Vuelo directo Buenos Aires - Miami")
+    const packageDescriptionInput = screen.getByPlaceholderText(
+      "Ej: Paquete familiar 7 noches all inclusive con vuelos directos desde EZE…"
+    )
 
     expect(titleInput).toHaveValue("Agustina")
     expect(destinationInput).toHaveValue("Miami")
 
-    await user.type(descriptionInput, "Vuelo Agustina")
+    await user.type(packageDescriptionInput, "Paquete Agustina")
     fireEvent.change(container.querySelectorAll('input[type="date"]')[0], {
       target: { value: "2026-06-10" },
     })
@@ -260,10 +306,19 @@ describe("QuotationBuilderDialog", () => {
     await waitFor(() => {
       expect(screen.getByPlaceholderText("Nombre del cliente")).toHaveValue("Sofia")
       expect(screen.getByPlaceholderText("Buscar destino...")).toHaveValue("Cancun")
-      expect(screen.getByPlaceholderText("Ej: Vuelo directo Buenos Aires - Miami")).toHaveValue("")
+      expect(
+        screen.getByPlaceholderText(
+          "Ej: Paquete familiar 7 noches all inclusive con vuelos directos desde EZE…"
+        )
+      ).toHaveValue("")
     })
 
-    await user.type(screen.getByPlaceholderText("Ej: Vuelo directo Buenos Aires - Miami"), "Vuelo Sofia")
+    await user.type(
+      screen.getByPlaceholderText(
+        "Ej: Paquete familiar 7 noches all inclusive con vuelos directos desde EZE…"
+      ),
+      "Paquete Sofia"
+    )
     fireEvent.change(container.querySelectorAll('input[type="date"]')[0], {
       target: { value: "2026-07-15" },
     })
@@ -290,6 +345,7 @@ describe("QuotationBuilderDialog", () => {
         json: async () => ({
           data: {
             id: "quote-existing",
+            updated_at: "2026-08-24T12:00:00.000Z",
             destination: "Punta Cana",
             origin: "Buenos Aires",
             region: "CARIBE",
@@ -300,6 +356,7 @@ describe("QuotationBuilderDialog", () => {
             infants: 0,
             currency: "USD",
             pricing_mode: "PER_PERSON",
+            package_description: "Paquete existente",
             notes: "nota",
             public_token: "existing-token",
             quotation_options: [
@@ -353,7 +410,11 @@ describe("QuotationBuilderDialog", () => {
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText("Buscar destino...")).toHaveValue("Punta Cana")
-      expect(screen.getByPlaceholderText("Ej: Vuelo directo Buenos Aires - Miami")).toHaveValue("Vuelo existente")
+      expect(
+        screen.getByPlaceholderText(
+          "Ej: Paquete familiar 7 noches all inclusive con vuelos directos desde EZE…"
+        )
+      ).toHaveValue("Paquete existente")
     })
 
     await user.click(screen.getByRole("button", { name: /actualizar borrador/i }))
@@ -379,6 +440,7 @@ describe("QuotationBuilderDialog", () => {
         json: async () => ({
           data: {
             id: "quote-existing",
+            updated_at: "2026-08-24T12:00:00.000Z",
             destination: "Punta Cana",
             origin: "Buenos Aires",
             region: "CARIBE",
@@ -445,10 +507,10 @@ describe("QuotationBuilderDialog", () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByPlaceholderText("Ej: Vuelo directo Buenos Aires - Miami")).toHaveValue("Vuelo existente")
+      expect(container.querySelector('[id^="flight-screenshot-option-1-"]')).toBeInTheDocument()
     })
 
-    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+    const fileInput = container.querySelector('[id^="flight-screenshot-option-1-"]') as HTMLInputElement
     const file = new File(["flight"], "flight.png", { type: "image/png" })
 
     fireEvent.change(fileInput, { target: { files: [file] } })
@@ -459,6 +521,9 @@ describe("QuotationBuilderDialog", () => {
         expect.objectContaining({ method: "POST" })
       ])
     })
+    const uploadBody = businessCalls(fetchMock)[1][1].body as FormData
+    expect(uploadBody.get("agencyId")).toBe("agency-1")
+    expect(uploadBody.get("quotationId")).toBe("quote-existing")
 
     await user.click(screen.getByRole("button", { name: /actualizar borrador/i }))
 
@@ -471,12 +536,17 @@ describe("QuotationBuilderDialog", () => {
     const fetchMock = global.fetch as any
     let resolveUpload: (value: any) => void = () => {}
 
+    const pendingUpload = new Promise((resolve) => {
+      resolveUpload = resolve
+    })
+
     fetchMock
       .queueResponse({
         ok: true,
         json: async () => ({
           data: {
             id: "quote-existing",
+            updated_at: "2026-08-24T12:00:00.000Z",
             destination: "Punta Cana",
             origin: "Buenos Aires",
             region: "CARIBE",
@@ -517,12 +587,7 @@ describe("QuotationBuilderDialog", () => {
           },
         }),
       })
-      .mockImplementationOnce(
-        () =>
-          new Promise((resolve) => {
-            resolveUpload = resolve
-          })
-      )
+      .queueResponse(pendingUpload)
 
     const { container } = render(
       <QuotationBuilderDialog
@@ -541,10 +606,10 @@ describe("QuotationBuilderDialog", () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByPlaceholderText("Ej: Vuelo directo Buenos Aires - Miami")).toHaveValue("Vuelo existente")
+      expect(container.querySelector('[id^="flight-screenshot-option-1-"]')).toBeInTheDocument()
     })
 
-    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+    const fileInput = container.querySelector('[id^="flight-screenshot-option-1-"]') as HTMLInputElement
     const file = new File(["flight"], "flight.png", { type: "image/png" })
 
     fireEvent.change(fileInput, { target: { files: [file] } })
@@ -609,5 +674,37 @@ describe("QuotationBuilderDialog", () => {
     // opciones guardadas.
     expect(businessCalls(fetchMock)).toHaveLength(1)
     expect(businessCalls(fetchMock)[0][0]).toBe("/api/quotations/quote-existing")
+  })
+
+  it("valida el teléfono antes de guardar o emitir para WhatsApp", async () => {
+    const user = userEvent.setup()
+    const fetchMock = global.fetch as jest.Mock
+    const { container } = render(
+      <QuotationBuilderDialog
+        open
+        onOpenChange={jest.fn()}
+        lead={{
+          ...baseLead,
+          id: "lead-without-phone",
+          contact_name: "Agustina",
+          contact_phone: "sin teléfono",
+          destination: "Punta Cana",
+          region: "CARIBE",
+        }}
+        operators={[]}
+        existingQuotationId={null}
+      />
+    )
+
+    fireEvent.change(container.querySelectorAll('input[type="date"]')[0], {
+      target: { value: "2026-08-01" },
+    })
+    await user.click(screen.getByRole("button", { name: /guardar y enviar por whatsapp/i }))
+
+    expect(toast.error).toHaveBeenCalledWith(
+      "Agregá un teléfono válido al lead antes de enviar por WhatsApp"
+    )
+    expect(window.open).not.toHaveBeenCalled()
+    expect(businessCalls(fetchMock)).toHaveLength(0)
   })
 })

@@ -2,6 +2,8 @@ import {
   insertQuotationOptionsOrThrow,
   prepareQuotationOptionsForPersistence,
   QuotationStructurePersistenceError,
+  replaceQuotationStructure,
+  updateQuotationWithStructure,
   type PreparedQuotationOption,
 } from "../persistence"
 
@@ -34,6 +36,48 @@ describe("prepareQuotationOptionsForPersistence", () => {
     expect(option.calculated_total_amount).toBe(1310.86)
     expect(option.total_amount).toBe(1310.86)
     expect(option.manual_total_amount).toBeNull()
+  })
+
+  it("rechaza un total manual menor al costo SIMPLE con fee administrativo", () => {
+    expect(() => prepareQuotationOptionsForPersistence([{
+      title: "Opción con fee",
+      manual_total_amount: 1_050,
+      items: [{
+        item_type: "HOTEL",
+        quantity: 1,
+        unit_price: 1_200,
+        cost_amount: 1_000,
+        admin_fee_percentage: 10,
+        cost_calculation_mode: "SIMPLE",
+      }],
+    }], "USD")).toThrow("no puede quedar por debajo del costo total")
+  })
+
+  it("rechaza snapshots comisionables incompletos", () => {
+    expect(() => prepareQuotationOptionsForPersistence([{
+      title: "Opción comisionable",
+      items: [{
+        item_type: "HOTEL",
+        quantity: 1,
+        unit_price: 1_200,
+        cost_amount: 800,
+        commission_percentage: 20,
+        cost_calculation_mode: "COMMISSIONABLE",
+      }],
+    }], "USD")).toThrow("necesitan un precio bruto mayor a cero")
+  })
+
+  it("rechaza porcentajes financieros fuera de rango", () => {
+    expect(() => prepareQuotationOptionsForPersistence([{
+      title: "Opción inválida",
+      items: [{
+        item_type: "HOTEL",
+        quantity: 1,
+        unit_price: 1_200,
+        cost_amount: 800,
+        admin_fee_percentage: 101,
+      }],
+    }], "USD")).toThrow("debe estar entre 0 y 100")
   })
 })
 
@@ -82,6 +126,7 @@ function createPreparedOptions(): PreparedQuotationOption[] {
           flight_stops: 0,
           flight_class: "ECONOMY",
           flight_screenshot_url: null,
+          flight_details: null,
           transfer_description: null,
           notes: null,
           admin_fee_percentage: 0,
@@ -182,6 +227,85 @@ function createSupabaseMock(config: SupabaseMockConfig = {}) {
 }
 
 describe("quotation persistence helpers", () => {
+  it("sends header, options and items through the single CAS RPC", async () => {
+    const supabase = {
+      rpc: jest.fn().mockResolvedValue({
+        data: { id: "quote-atomic", updated_at: "2026-08-24T12:01:00.000Z" },
+        error: null,
+      }),
+    }
+
+    const result = await updateQuotationWithStructure({
+      supabase,
+      quotationId: "quote-atomic",
+      orgId: "org-1",
+      agencyId: "agency-1",
+      actorId: "user-1",
+      expectedUpdatedAt: "2026-08-24T12:00:00.000Z",
+      currency: "USD",
+      header: { destination: "Aruba", total_amount: 2500 },
+      preparedOptions: createPreparedOptions(),
+    })
+
+    expect(result.quotation).toMatchObject({ id: "quote-atomic" })
+    expect(result.optionIds).toHaveLength(2)
+    expect(supabase.rpc).toHaveBeenCalledWith("update_quotation_with_structure", expect.objectContaining({
+      p_quotation_id: "quote-atomic",
+      p_org_id: "org-1",
+      p_agency_id: "agency-1",
+      p_actor_id: "user-1",
+      p_expected_updated_at: "2026-08-24T12:00:00.000Z",
+      p_header: { destination: "Aruba", total_amount: 2500 },
+      p_options: expect.arrayContaining([expect.objectContaining({ quotation_id: "quote-atomic" })]),
+      p_items: expect.arrayContaining([expect.objectContaining({ org_id: "org-1" })]),
+    }))
+  })
+
+  it("maps a CAS conflict without degrading to separate writes", async () => {
+    const supabase = {
+      rpc: jest.fn().mockResolvedValue({
+        data: null,
+        error: { code: "40001", message: "quotation changed during atomic update" },
+      }),
+      from: jest.fn(),
+    }
+
+    await expect(updateQuotationWithStructure({
+      supabase,
+      quotationId: "quote-stale",
+      orgId: "org-1",
+      agencyId: "agency-1",
+      actorId: "user-1",
+      expectedUpdatedAt: "2026-08-24T12:00:00.000Z",
+      currency: "USD",
+      header: {},
+      preparedOptions: createPreparedOptions(),
+    })).rejects.toMatchObject({ code: "quotation_changed" })
+    expect(supabase.from).not.toHaveBeenCalled()
+  })
+
+  it("never degrades a business RPC failure to destructive legacy writes", async () => {
+    const from = jest.fn()
+    const supabase = {
+      rpc: jest.fn().mockResolvedValue({
+        error: { code: "55000", message: "quotation status does not allow structure changes" },
+      }),
+      from,
+    }
+
+    await expect(replaceQuotationStructure({
+      supabase,
+      quotationId: "quote-locked",
+      currency: "USD",
+      preparedOptions: createPreparedOptions(),
+      snapshot: { options: [], items: [] },
+    })).rejects.toMatchObject({
+      code: "atomic_replace_failed",
+      context: expect.objectContaining({ quotationId: "quote-locked", code: "55000" }),
+    })
+    expect(from).not.toHaveBeenCalled()
+  })
+
   it("persists quotation options and items successfully", async () => {
     const supabase = createSupabaseMock()
     const preparedOptions = createPreparedOptions()

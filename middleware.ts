@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { createClient as createAdminSupabaseClient } from '@supabase/supabase-js'
 import { NextResponse, type NextRequest } from 'next/server'
 import { PAST_DUE_GRACE_DAYS } from '@/lib/billing/access'
+import { redactSensitivePath } from '@/lib/security/redact-sensitive-path'
 
 // ============================================
 // RATE LIMITING (en memoria, por usuario autenticado o IP como fallback)
@@ -42,7 +43,7 @@ export async function middleware(req: NextRequest) {
   // termine el diagnóstico de navegación lenta.
   const __perfStart = Date.now()
   const __perfReqId = Math.random().toString(36).slice(2, 8)
-  const __perfPath = req.nextUrl.pathname
+  const __perfPath = redactSensitivePath(req.nextUrl.pathname)
   const __perfLog = process.env.PERF_LOG !== '0'
   if (__perfLog) console.log(`[perf:${__perfReqId}] mw START ${req.method} ${__perfPath}`)
 
@@ -60,7 +61,29 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next()
   }
 
-  // Permitir rutas públicas sin autenticación (cotizaciones, API pública)
+  // Los endpoints públicos no resuelven sesión, pero sí deben tener un techo
+  // por IP: sirven snapshots HTML grandes y el POST de aceptación toma locks.
+  if (req.nextUrl.pathname.startsWith('/api/public/')) {
+    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+      || req.headers.get('x-real-ip')
+      || 'unknown'
+    const { allowed } = checkRateLimit(`public-ip:${ip}`, RATE_LIMIT_MAX_REQUESTS_ANON)
+    if (!allowed) {
+      return NextResponse.json(
+        { error: 'Demasiadas solicitudes. Intente nuevamente en un momento.' },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': '60',
+            'X-RateLimit-Limit': String(RATE_LIMIT_MAX_REQUESTS_ANON),
+            'X-RateLimit-Remaining': '0',
+          },
+        }
+      )
+    }
+  }
+
+  // Permitir rutas públicas sin autenticación (cotizaciones, API pública).
   if (req.nextUrl.pathname.startsWith('/cotizacion/') || req.nextUrl.pathname.startsWith('/api/public/')) {
     return NextResponse.next()
   }

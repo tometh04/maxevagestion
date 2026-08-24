@@ -1,6 +1,7 @@
 "use client"
 
 import type { SellerOption } from "@/lib/sellers/seller-option"
+import type { QuotationOperatorOption } from "@/lib/operators/quotation-option"
 import { useRouter } from "next/navigation"
 import dynamic from "next/dynamic"
 
@@ -35,7 +36,7 @@ interface ConvertLeadDialogProps {
   lead: LeadData
   agencies: Array<{ id: string; name: string }>
   sellers: SellerOption[]
-  operators: Array<{ id: string; name: string }>
+  operators: QuotationOperatorOption[]
   open: boolean
   onOpenChange: (open: boolean) => void
   onSuccess: () => void

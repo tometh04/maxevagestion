@@ -1,0 +1,5 @@
+Open Sans variable, normal style, Latin subset
+CSS weight range used by quotation documents: 400-800
+Upstream version: Google Fonts Open Sans v44
+Source: https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTS-muw.woff2
+SHA-256: D8E4FE0452AA2076429A9BB5D8757D00A994DD95986CF950E9A1A371B9A072A0

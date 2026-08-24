@@ -1,6 +1,7 @@
 "use client"
 
 import type { SellerOption } from "@/lib/sellers/seller-option"
+import type { QuotationOperatorOption } from "@/lib/operators/quotation-option"
 import React, { useState, useEffect } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
@@ -44,6 +45,7 @@ import { toast } from "sonner"
 import { getQuotationOptionPricing } from "@/lib/quotations/presentation"
 import { getPublicQuotationPath } from "@/lib/quotations/public-links"
 import { downloadQuotationPdfFromPriceDialog } from "@/lib/pdf/quotation-pdf-html"
+import { fetchQuotationDocumentForUser } from "@/lib/quotation-documents/client"
 import { QuotationPdfPriceDialog } from "@/components/sales/quotation-pdf-price-dialog"
 import { LeadEmiliaChat } from "@/components/sales/lead-emilia-chat"
 import { LeadOutcomeBadge } from "@/components/sales/lead-outcome-badge"
@@ -210,7 +212,7 @@ interface LeadDetailDialogProps {
   onOpenChange: (open: boolean) => void
   agencies?: Array<{ id: string; name: string }>
   sellers?: SellerOption[]
-  operators?: Array<{ id: string; name: string; admin_fee_percentage?: number | null }>
+  operators?: QuotationOperatorOption[]
   onEdit?: (lead: Lead) => void
   onDelete?: () => void
   onArchive?: () => void
@@ -251,6 +253,8 @@ export function LeadDetailDialog({
   const [pdfPriceQuotation, setPdfPriceQuotation] = useState<{
     id: string
     public_token: string | null
+    active_document_id?: string | null
+    status: string
   } | null>(null)
   const [mode, setMode] = useState<"detail" | "emilia">("detail")
   // Conversación que ya trajo el gate de "Cotizar" (perf: el chat evita re-fetchear).
@@ -293,6 +297,7 @@ export function LeadDetailDialog({
     created_at: string
     valid_until: string | null
     public_token: string | null
+    active_document_id?: string | null
     quotation_options?: Array<{ id: string; title: string; total_amount: number }>
   }>>([])
   const [loadingQuotations, setLoadingQuotations] = useState(false)
@@ -998,7 +1003,7 @@ export function LeadDetailDialog({
                           </div>
                         </div>
                         <div className="flex items-center gap-1 ml-2">
-                          {/* Mismo modal que "Generar PDF" post-Emilia: precio + adicionales + PDF */}
+                          {/* El lápiz vuelve a abrir la estructura completa del borrador. */}
                           {q.status === "DRAFT" && (
                             <Button
                               variant="ghost"
@@ -1006,17 +1011,15 @@ export function LeadDetailDialog({
                               className="h-7 w-7 p-0"
                               onClick={(e) => {
                                 e.stopPropagation()
-                                setPdfPriceQuotation({
-                                  id: q.id,
-                                  public_token: q.public_token,
-                                })
+                                setEditingQuotationId(q.id)
+                                setQuotationDialogOpen(true)
                               }}
-                              title="Editar borrador"
+                              title="Editar servicios y opciones"
                             >
                               <Edit className="h-3.5 w-3.5" />
                             </Button>
                           )}
-                          {q.public_token && (
+                          {q.public_token && q.active_document_id && (
                             <Button
                               variant="ghost"
                               size="sm"
@@ -1036,10 +1039,18 @@ export function LeadDetailDialog({
                             className="h-7 w-7 p-0"
                             onClick={(e) => {
                               e.stopPropagation()
-                              setPdfPriceQuotation({
-                                id: q.id,
-                                public_token: q.public_token,
-                              })
+                              if (["DRAFT", "SENT", "PENDING_APPROVAL"].includes(q.status)) {
+                                setPdfPriceQuotation({
+                                  id: q.id,
+                                  public_token: q.public_token,
+                                  status: q.status,
+                                })
+                              } else {
+                                void downloadQuotationPdfFromPriceDialog({
+                                  quotationId: q.id,
+                                  publicToken: q.public_token,
+                                }).catch(() => toast.error("No se pudo descargar el documento emitido"))
+                              }
                             }}
                             title="Generar PDF"
                           >
@@ -1478,17 +1489,40 @@ export function LeadDetailDialog({
       <QuotationPdfPriceDialog
         quotationId={pdfPriceQuotation?.id ?? null}
         onClose={() => setPdfPriceQuotation(null)}
-        onGenerate={async () => {
+        onGenerate={async (_quotationId, expectedUpdatedAt) => {
           if (!pdfPriceQuotation) return
           loadQuotations() // refrescar totales mostrados en la lista
           const result = await downloadQuotationPdfFromPriceDialog({
             quotationId: pdfPriceQuotation.id,
             publicToken: pdfPriceQuotation.public_token,
+            expectedUpdatedAt,
           })
           if (result === "none") {
             toast.error("No se pudo generar el PDF de esta cotización")
           }
         }}
+        sendValidationError={!pdfPriceQuotation?.public_token
+          ? "La cotización no tiene enlace público"
+          : !(lead.contact_phone?.replace(/[^0-9+]/g, "") || "")
+            ? "El lead no tiene un teléfono para WhatsApp"
+            : undefined}
+        onSend={pdfPriceQuotation && ["DRAFT", "SENT", "PENDING_APPROVAL"].includes(pdfPriceQuotation.status) ? async (_quotationId, sendWindow, expectedUpdatedAt) => {
+          if (!pdfPriceQuotation?.public_token) throw new Error("La cotización no tiene enlace público")
+          const phone = lead.contact_phone?.replace(/[^0-9+]/g, "") || ""
+          if (!phone) throw new Error("El lead no tiene un teléfono para WhatsApp")
+          await fetchQuotationDocumentForUser(pdfPriceQuotation.id, {
+            issue: true,
+            markSent: true,
+            expectedUpdatedAt,
+          })
+          const publicUrl = `${window.location.origin}${getPublicQuotationPath(pdfPriceQuotation.public_token)}`
+          const cleanPhone = phone.startsWith("+") ? phone.slice(1) : phone
+          const message = encodeURIComponent(`Hola ${lead.contact_name}! Te paso tu cotización:\n\n${publicUrl}\n\nQuedo a disposición por cualquier consulta.`)
+          loadQuotations()
+          const whatsappUrl = `https://wa.me/${cleanPhone}?text=${message}`
+          sendWindow.location.href = whatsappUrl
+          toast.success("Cotización preparada para enviar")
+        } : undefined}
       />
 
       {/* Dialog de confirmación de eliminación */}

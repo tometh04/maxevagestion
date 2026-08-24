@@ -3,14 +3,13 @@
 import { useEffect, useRef, useState } from "react"
 import { useParams } from "next/navigation"
 import { type QuotationPresentationData } from "@/lib/quotations/presentation"
-import { getPublicQuotationPdfPath } from "@/lib/quotations/public-links"
 import {
-  downloadQuotationHtmlPDF,
-  isHtmlQuotePdfEligible,
-  type OrganizationBrandingSettings,
-} from "@/lib/pdf/quotation-pdf-html"
+  downloadQuotationDocumentHtml,
+  fetchQuotationDocumentForPublic,
+  type QuotationDocumentPayload,
+} from "@/lib/quotation-documents/client"
+import { waitForQuotationDocumentFonts } from "@/lib/quotation-documents/fonts-client"
 import {
-  PublicQuotationDocument,
   PublicQuotationError,
   PublicQuotationLoading,
   type PublicQuotationBranding,
@@ -30,6 +29,7 @@ export function PublicQuotationView({
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<QuotationPresentationData | null>(null)
   const [branding, setBranding] = useState<PublicQuotationBranding>({})
+  const [documentData, setDocumentData] = useState<QuotationDocumentPayload | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [accepting, setAccepting] = useState(false)
   const [downloading, setDownloading] = useState(false)
@@ -38,23 +38,12 @@ export function PublicQuotationView({
   useEffect(() => {
     async function load() {
       try {
-        const [quotRes, brandRes] = await Promise.all([
-          fetch(`/api/public/quotations/${token}`, { cache: "no-store" }),
-          fetch(`/api/public/branding?token=${token}`, { cache: "no-store" }),
-        ])
+        const document = await fetchQuotationDocumentForPublic(token)
 
-        if (!quotRes.ok) {
-          setError("Cotizacion no encontrada")
-          return
-        }
-
-        const quotationJson = await quotRes.json()
-        setData(quotationJson.data)
-
-        if (brandRes.ok) {
-          const brandJson = await brandRes.json()
-          setBranding(brandJson.data || {})
-        }
+        if (!document.presentation) throw new Error("El documento no contiene su presentación pública")
+        setData(document.presentation)
+        setDocumentData(document)
+        setBranding(document.branding || {})
       } catch {
         setError("Error al cargar la cotizacion")
       } finally {
@@ -66,17 +55,17 @@ export function PublicQuotationView({
   }, [token])
 
   useEffect(() => {
-    if (!data || typeof document === "undefined") {
+    if (!data || !documentData || typeof document === "undefined") {
       return
     }
 
     document.title = mode === "print"
-      ? `${data.quotation_number}.pdf`
+      ? documentData.filename
       : `${data.quotation_number} - Cotizacion`
-  }, [data, mode])
+  }, [data, documentData, mode])
 
   useEffect(() => {
-    if (mode !== "print" || !data || error || didTriggerPrintRef.current) {
+    if (mode !== "print" || !data || !documentData || error || didTriggerPrintRef.current) {
       return
     }
 
@@ -95,6 +84,13 @@ export function PublicQuotationView({
           img.addEventListener("error", done, { once: true })
         })
       }))
+      await waitForQuotationDocumentFonts(
+        document,
+        document.querySelector(".quote-doc-print") || document.documentElement
+      )
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      })
 
       if (cancelled) {
         return
@@ -112,7 +108,7 @@ export function PublicQuotationView({
       cancelled = true
       window.clearTimeout(timeoutId)
     }
-  }, [data, error, mode])
+  }, [data, documentData, error, mode])
 
   async function handleAccept(optionId: string) {
     setAccepting(true)
@@ -120,7 +116,11 @@ export function PublicQuotationView({
       const res = await fetch(`/api/public/quotations/${token}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ option_id: optionId }),
+        body: JSON.stringify({
+          option_id: optionId,
+          issued_document_id: documentData?.issuedDocumentId,
+          content_hash: documentData?.contentHash,
+        }),
       })
 
       if (!res.ok) {
@@ -157,19 +157,8 @@ export function PublicQuotationView({
 
     setDownloading(true)
     try {
-      // Vuelos/hoteles: PDF con el diseño nuevo y el branding de la agencia
-      // (el branding ya viene de /api/public/branding, sin auth).
-      if (data && isHtmlQuotePdfEligible(data)) {
-        await downloadQuotationHtmlPDF(data, branding as OrganizationBrandingSettings)
-        return
-      }
-
-      // Resto de cotizaciones: vista print preexistente.
-      const pdfPath = getPublicQuotationPdfPath(token)
-      const openedWindow = window.open(pdfPath, "_blank", "noopener,noreferrer")
-      if (!openedWindow) {
-        window.location.assign(pdfPath)
-      }
+      if (!documentData) throw new Error("Documento no disponible")
+      await downloadQuotationDocumentHtml(documentData)
     } catch (err) {
       console.error("Error descargando PDF:", err)
       toast.error("Error al descargar PDF")
@@ -182,31 +171,17 @@ export function PublicQuotationView({
     return <PublicQuotationLoading mode={mode} />
   }
 
-  if (error || !data) {
+  if (error || !data || !documentData) {
     return <PublicQuotationError mode={mode} message={error || "No se encontro la cotizacion solicitada."} />
   }
 
-  // Vuelos/hoteles: mismo diseño que el PDF nuevo, embebido en la página.
-  // El resto (paquetes, excursiones, etc.) sigue con el documento clásico.
-  if (isHtmlQuotePdfEligible(data)) {
-    return (
-      <PublicQuotationHtmlDocument
-        mode={mode}
-        data={data}
-        branding={branding}
-        accepting={accepting}
-        downloading={downloading}
-        onAccept={handleAccept}
-        onDownload={handleDownload}
-      />
-    )
-  }
-
   return (
-    <PublicQuotationDocument
+    <PublicQuotationHtmlDocument
       mode={mode}
       data={data}
       branding={branding}
+      html={documentData.html}
+      acceptanceEnabled={documentData.acceptanceEnabled !== false && Boolean(documentData.issuedDocumentId)}
       accepting={accepting}
       downloading={downloading}
       onAccept={handleAccept}

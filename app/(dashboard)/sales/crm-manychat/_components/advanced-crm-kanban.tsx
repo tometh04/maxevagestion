@@ -5,7 +5,12 @@ import {
 } from "@/lib/sellers/seller-option"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { getScopedAgenciesForUser } from "@/lib/permissions-api"
 import { AdvancedKanbanClient } from "./advanced-kanban-client"
+import {
+  QUOTATION_OPERATOR_SELECT,
+  type QuotationOperatorOption,
+} from "@/lib/operators/quotation-option"
 
 interface AdvancedCRMKanbanProps {
   orgId: string
@@ -14,6 +19,8 @@ interface AdvancedCRMKanbanProps {
 export async function AdvancedCRMKanban({ orgId }: AdvancedCRMKanbanProps) {
   const supabase = await createServerClient()
   const { user } = await getCurrentUser()
+  const scopedAgencies = await getScopedAgenciesForUser(supabase, user)
+  const scopedAgencyIds = scopedAgencies.map((agency) => agency.id)
 
   // Solo ADMIN/SUPER_ADMIN ven el filtro de vendedor (CONTABLE/VIEWER no
   // necesitan filtrar por seller; ya ven todo en read-only). El RBAC de "SELLER
@@ -29,7 +36,6 @@ export async function AdvancedCRMKanban({ orgId }: AdvancedCRMKanbanProps) {
   const [
     funnelsResult,
     categoriesResult,
-    agenciesResult,
     sellersResult,
     operatorsResult,
   ] = await Promise.all([
@@ -45,8 +51,6 @@ export async function AdvancedCRMKanban({ orgId }: AdvancedCRMKanbanProps) {
       .eq("org_id", orgId)
       .order("display_order", { ascending: true }),
 
-    supabase.from("agencies").select("id, name").eq("org_id", orgId),
-
     // Sellers de la org (todos los users con rol vendedor/admin)
     supabase
       .from("users")
@@ -57,14 +61,17 @@ export async function AdvancedCRMKanban({ orgId }: AdvancedCRMKanbanProps) {
 
     // Operators (catálogo de la org para conversión a operación)
     (supabase.from("operators") as any)
-      .select("id, name, admin_fee_percentage")
+      .select(QUOTATION_OPERATOR_SELECT)
       .eq("org_id", orgId)
+      .or(scopedAgencyIds.length > 0
+        ? `agency_id.is.null,agency_id.in.(${scopedAgencyIds.join(",")})`
+        : "agency_id.is.null")
       .order("name"),
   ])
 
   const allFunnels = funnelsResult.data ?? []
   const rawCategories = categoriesResult.data ?? []
-  const agencies = agenciesResult.data ?? []
+  const agencies = scopedAgencies
   const sellers = sellersResult.data ?? []
   const operators = operatorsResult.data ?? []
 
@@ -83,11 +90,7 @@ export async function AdvancedCRMKanban({ orgId }: AdvancedCRMKanbanProps) {
       agencies={agencies as Array<{ id: string; name: string }>}
       sellers={toSellerOptions(sellers)}
       operators={
-        operators as Array<{
-          id: string
-          name: string
-          admin_fee_percentage?: number | null
-        }>
+        operators as QuotationOperatorOption[]
       }
       canFilterBySeller={canFilterBySeller}
     />

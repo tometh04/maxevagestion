@@ -158,7 +158,7 @@ const allNavigation: NavItem[] = [
       { title: "Calendario", url: "/calendar" },
       { title: "Alertas", url: "/alerts", module: "alerts" as const },
       { title: "Mensajes", url: "/messages" },
-      { title: "Templates", url: "/resources/templates" },
+      { title: "Templates", url: "/resources/templates", module: "settings" as const },
       { title: "Tareas", url: "/tools/tasks" },
       { title: "WHA Control", url: "/tools/wha-control" },
       // Pendientes 3.2: el v2 import vivía sólo via URL directa. Lo colgamos
@@ -367,6 +367,12 @@ export function AppSidebar({
               if (!canShowModule(moduleToCheck)) {
                 return null
               }
+            }
+            if (subItem.url === "/resources/templates") {
+              const canManageTemplates = resolvedPermissions
+                ? checkResolvedPermission(resolvedPermissions, "settings", "write")
+                : ["SUPER_ADMIN", "ORG_OWNER", "ADMIN"].includes(userRole)
+              if (!canManageTemplates) return null
             }
 
             // Ocultar Cerebro para SELLER

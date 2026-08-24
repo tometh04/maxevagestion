@@ -32,6 +32,7 @@ import {
 import { getPublicQuotationPath } from "@/lib/quotations/public-links"
 import { downloadQuotationPdfFromPriceDialog } from "@/lib/pdf/quotation-pdf-html"
 import { QuotationPdfPriceDialog } from "@/components/sales/quotation-pdf-price-dialog"
+import { fetchQuotationDocumentForUser } from "@/lib/quotation-documents/client"
 import {
   withDefaultOrigin,
   type EmiliaDefaultOrigin,
@@ -550,6 +551,7 @@ export function LeadEmiliaChat({
   const [sending, setSending] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [createdQuotation, setCreatedQuotation] = useState<any | null>(null)
+  const [createdQuotationDocumentReady, setCreatedQuotationDocumentReady] = useState(false)
   // Cotización con el dialog "Cambiar precio" abierto antes de generar el PDF
   const [pdfPriceQuotation, setPdfPriceQuotation] = useState<{
     id: string
@@ -1023,6 +1025,7 @@ export function LeadEmiliaChat({
         return
       }
       setCreatedQuotation(json.data)
+      setCreatedQuotationDocumentReady(false)
       toast.success(`Cotización ${json.data?.quotation_number} creada`)
       onQuotationCreated?.(json.data)
     } catch (err: any) {
@@ -1232,7 +1235,7 @@ export function LeadEmiliaChat({
               <div className="font-semibold">Cotización {createdQuotation.quotation_number} creada</div>
               <div className="text-xs opacity-80">{(createdQuotation.quotation_options?.length || 1)} opción(es) · vinculada al lead</div>
             </div>
-            {createdQuotation.public_token && (
+            {createdQuotation.public_token && createdQuotationDocumentReady && (
               <Button
                 size="sm"
                 variant="outline"
@@ -1264,12 +1267,38 @@ export function LeadEmiliaChat({
       <QuotationPdfPriceDialog
         quotationId={pdfPriceQuotation?.id ?? null}
         onClose={() => setPdfPriceQuotation(null)}
-        onGenerate={async () => {
+        onGenerate={async (_quotationId, expectedUpdatedAt) => {
           if (!pdfPriceQuotation) return
           await downloadQuotationPdfFromPriceDialog({
             quotationId: pdfPriceQuotation.id,
             publicToken: pdfPriceQuotation.public_token,
+            expectedUpdatedAt,
           })
+          setCreatedQuotationDocumentReady(true)
+        }}
+        sendValidationError={!pdfPriceQuotation?.public_token
+          ? "La cotización no tiene enlace público"
+          : !(lead.contact_phone?.replace(/[^0-9+]/g, "") || "")
+            ? "El lead no tiene un teléfono para WhatsApp"
+            : undefined}
+        onSend={async (_quotationId, sendWindow, expectedUpdatedAt) => {
+          if (!pdfPriceQuotation?.public_token) throw new Error("La cotización no tiene enlace público")
+          const phone = lead.contact_phone?.replace(/[^0-9+]/g, "") || ""
+          if (!phone) throw new Error("El lead no tiene un teléfono para WhatsApp")
+          await fetchQuotationDocumentForUser(pdfPriceQuotation.id, {
+            issue: true,
+            markSent: true,
+            expectedUpdatedAt,
+          })
+          const publicUrl = `${window.location.origin}${getPublicQuotationPath(pdfPriceQuotation.public_token)}`
+          const cleanPhone = phone.startsWith("+") ? phone.slice(1) : phone
+          const message = encodeURIComponent(`Hola ${lead.contact_name}! Te paso tu cotización${lead.destination ? ` para ${lead.destination}` : ""}:\n\n${publicUrl}\n\nQuedo a disposición por cualquier consulta.`)
+          setCreatedQuotation((current: any | null) => current ? { ...current, status: "SENT" } : current)
+          setCreatedQuotationDocumentReady(true)
+          if (createdQuotation) onQuotationCreated?.({ ...createdQuotation, status: "SENT" })
+          const whatsappUrl = `https://wa.me/${cleanPhone}?text=${message}`
+          sendWindow.location.href = whatsappUrl
+          toast.success("Cotización preparada para enviar")
         }}
       />
 

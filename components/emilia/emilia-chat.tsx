@@ -690,7 +690,6 @@ interface SearchResultsDisplayProps {
 function SearchResultsDisplay({ flights, hotels, requestType }: SearchResultsDisplayProps) {
     const [selectedFlights, setSelectedFlights] = useState<Set<string>>(new Set())
     const [selectedHotels, setSelectedHotels] = useState<Set<string>>(new Set())
-    const [isGeneratingPdf, setIsGeneratingPdf] = useState(false)
 
     const hasFlights = flights && flights.items && flights.items.length > 0
     const hasHotels = hotels && hotels.items && hotels.items.length > 0
@@ -731,19 +730,10 @@ function SearchResultsDisplay({ flights, hotels, requestType }: SearchResultsDis
         })
     }
 
-    const handleGeneratePdf = async () => {
+    const handleContinueInCrm = () => {
         if (selectedFlights.size === 0 && selectedHotels.size === 0) return
-
-        setIsGeneratingPdf(true)
-        try {
-            // TODO: Implementar generación de PDF
-            toast.success("Generando PDF...")
-            await new Promise(resolve => setTimeout(resolve, 2000))
-        } catch (error) {
-            toast.error("Error al generar PDF")
-        } finally {
-            setIsGeneratingPdf(false)
-        }
+        toast.info("Las cotizaciones se emiten desde el chat del lead para conservar cliente, agencia y permisos.")
+        window.location.assign("/sales/crm-manychat")
     }
 
     const hasAnyResults = hasFlights || hasHotels
@@ -824,21 +814,12 @@ function SearchResultsDisplay({ flights, hotels, requestType }: SearchResultsDis
                                 )}
                             </div>
                             <Button
-                                onClick={handleGeneratePdf}
-                                disabled={!hasSelection || isGeneratingPdf}
+                                onClick={handleContinueInCrm}
+                                disabled={!hasSelection}
                                 className="gap-2"
                             >
-                                {isGeneratingPdf ? (
-                                    <>
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                        Generando...
-                                    </>
-                                ) : (
-                                    <>
-                                        <FileText className="h-4 w-4" />
-                                        Generar PDF
-                                    </>
-                                )}
+                                <FileText className="h-4 w-4" />
+                                Cotizar desde CRM
                             </Button>
                         </div>
                     </div>
@@ -909,21 +890,12 @@ function SearchResultsDisplay({ flights, hotels, requestType }: SearchResultsDis
                             )}
                         </div>
                         <Button
-                            onClick={handleGeneratePdf}
-                            disabled={!hasSelection || isGeneratingPdf}
+                            onClick={handleContinueInCrm}
+                            disabled={!hasSelection}
                             className="gap-2"
                         >
-                            {isGeneratingPdf ? (
-                                <>
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                    Generando...
-                                </>
-                            ) : (
-                                <>
-                                    <FileText className="h-4 w-4" />
-                                    Generar PDF
-                                </>
-                            )}
+                            <FileText className="h-4 w-4" />
+                            Cotizar desde CRM
                         </Button>
                     </div>
                 </div>

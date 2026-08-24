@@ -37,12 +37,16 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   const { data: lead } = await supabase
     .from("leads")
-    .select("id, agency_id")
+    .select("id, agency_id, assigned_seller_id")
     .eq("id", leadId)
     .eq("org_id", user.org_id)
     .maybeSingle()
 
-  if (!lead || !canAccessEmiliaLeadAgency(access, (lead as any).agency_id)) {
+  if (!lead || !canAccessEmiliaLeadAgency(
+    access,
+    (lead as any).agency_id,
+    (lead as any).assigned_seller_id
+  )) {
     return NextResponse.json({ error: "Lead no encontrado" }, { status: 404 })
   }
 
@@ -86,12 +90,16 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
 
   const { data: lead } = await supabase
     .from("leads")
-    .select("id, contact_name, destination, region, notes, list_name, agency_id")
+    .select("id, contact_name, destination, region, notes, list_name, agency_id, assigned_seller_id")
     .eq("id", leadId)
     .eq("org_id", user.org_id)
     .maybeSingle()
 
-  if (!lead || !canAccessEmiliaLeadAgency(access, (lead as any).agency_id)) {
+  if (!lead || !canAccessEmiliaLeadAgency(
+    access,
+    (lead as any).agency_id,
+    (lead as any).assigned_seller_id
+  )) {
     return NextResponse.json({ error: "Lead no encontrado" }, { status: 404 })
   }
 

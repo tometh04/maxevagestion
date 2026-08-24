@@ -24,12 +24,18 @@ import {
 import {
   getQuotationOptionCalculatedTotal,
   getQuotationOptionCostTotal,
+  getQuotationItemEffectiveUnitCost,
   normalizeManualQuotationTotal,
   roundQuotationMoney,
 } from "@/lib/quotations/totals"
 import { useLeadRegions } from "@/lib/hooks/use-lead-regions"
 import { trackEvent } from "@/lib/analytics/track"
 import { bucketCount } from "@/lib/analytics/ga/scrub"
+import {
+  parseQuotationPresentationContent,
+  type QuotationPresentationContent,
+} from "@/lib/quotation-documents/schemas"
+import type { QuotationOperatorOption } from "@/lib/operators/quotation-option"
 
 interface QuotationBuilderProps {
   open: boolean
@@ -43,7 +49,7 @@ interface QuotationBuilderProps {
     region?: string | null
     agency_id?: string | null
   }
-  operators?: Array<{ id: string; name: string; admin_fee_percentage?: number | null; cost_calculation_mode?: string | null; commission_percentage?: number | null }>
+  operators?: QuotationOperatorOption[]
   onSuccess?: (quotation: any) => void
   /** If set, loads and edits an existing quotation instead of creating new */
   existingQuotationId?: string | null
@@ -287,11 +293,16 @@ async function searchAirports(query: string): Promise<ComboboxOption[]> {
   return options
 }
 
-export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [], onSuccess, existingQuotationId }: QuotationBuilderProps) {
+export function QuotationBuilderDialog({ open, onOpenChange, lead, operators: allOperators = [], onSuccess, existingQuotationId }: QuotationBuilderProps) {
+  const operators = useMemo(
+    () => allOperators.filter(operator => !operator.agency_id || operator.agency_id === lead.agency_id),
+    [allOperators, lead.agency_id]
+  )
   const initialDraft = createNewQuotationDraft(lead)
   const [saving, setSaving] = useState(false)
   const [sending, setSending] = useState(false)
   const [activeQuotationId, setActiveQuotationId] = useState<string | null>(existingQuotationId ?? null)
+  const [activeQuotationUpdatedAt, setActiveQuotationUpdatedAt] = useState<string | null>(null)
   const [savedQuotation, setSavedQuotation] = useState<any>(null)
   const [loadingExisting, setLoadingExisting] = useState(false)
   // El PATCH reemplaza opciones e items: sólo podemos mandarlos si los tenemos
@@ -309,14 +320,20 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
   // para evitar N fetches simultáneos si hay N instancias del builder en la página.
   useEffect(() => {
     if (!open) return
-    fetch('/api/finances/settings')
+    setAgencyDefaultMode("SIMPLE")
+    setAgencyDefaultCommission(0)
+    const financeSettingsUrl = lead.agency_id
+      ? `/api/quotations/cost-settings?agency_id=${encodeURIComponent(lead.agency_id)}`
+      : null
+    if (!financeSettingsUrl) return
+    fetch(financeSettingsUrl)
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (data?.default_cost_calculation_mode) setAgencyDefaultMode(data.default_cost_calculation_mode)
         if (data?.default_commission_percentage) setAgencyDefaultCommission(Number(data.default_commission_percentage) || 0)
       })
       .catch(() => {})
-  }, [open])
+  }, [open, lead.agency_id])
 
   const { regions: leadRegions } = useLeadRegions()
 
@@ -339,6 +356,12 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
   // Notas internas del vendedor — NO se exponen en la vista pública.
   const [internalNotes, setInternalNotes] = useState("")
   const [paymentMethods, setPaymentMethods] = useState<string[]>([])
+  const [presentationContent, setPresentationContent] = useState<QuotationPresentationContent>(() => (
+    parseQuotationPresentationContent({
+      title: initialDraft.destination || undefined,
+      customer: { displayName: lead.contact_name, email: lead.contact_email || undefined, phone: lead.contact_phone || undefined },
+    })
+  ))
 
   // Options
   const [options, setOptions] = useState<QuotationOption[]>(initialDraft.options)
@@ -386,6 +409,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
   const resetFormForNewQuotation = useCallback((nextLead: QuotationBuilderProps["lead"]) => {
     const draft = createNewQuotationDraft(nextLead)
     setActiveQuotationId(null)
+    setActiveQuotationUpdatedAt(null)
     setSavedQuotation(null)
     setLoadingExisting(false)
     // Borrador nuevo: las opciones son las que arma el usuario, no hay nada
@@ -407,6 +431,14 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
     setNotes(draft.notes)
     setInternalNotes(draft.internalNotes)
     setPaymentMethods(draft.paymentMethods)
+    setPresentationContent(parseQuotationPresentationContent({
+      title: draft.destination || undefined,
+      customer: {
+        displayName: nextLead.contact_name,
+        email: nextLead.contact_email || undefined,
+        phone: nextLead.contact_phone || undefined,
+      },
+    }))
     setOptions(draft.options)
   }, [])
 
@@ -442,6 +474,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
       .then(({ data }) => {
         if (cancelled || !data) return
         setActiveQuotationId(data.id || existingQuotationId)
+        setActiveQuotationUpdatedAt(data.updated_at || null)
         setSavedQuotation(data)
         setQuotationTitle(lead.contact_name)
         setDestination(data.destination || "")
@@ -458,6 +491,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
         setNotes(data.notes || "")
         setInternalNotes(data.internal_notes || "")
         setPaymentMethods(Array.isArray(data.payment_methods) ? data.payment_methods : [])
+        setPresentationContent(parseQuotationPresentationContent(data.presentation_content))
         // Reconstruct options from quotation_options + quotation_items
         const opts = (data.quotation_options || [])
           .sort((a: any, b: any) => a.option_number - b.option_number)
@@ -924,8 +958,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
     for (const item of allItems) {
       const t = item.item_type
       if (!byType[t]) byType[t] = { sale: 0, cost: 0, count: 0 }
-      const adminFeePct = Number(item.admin_fee_percentage) || 0
-      const itemTotalCost = (item.cost_amount || 0) * (1 + adminFeePct / 100)
+      const itemTotalCost = getQuotationItemEffectiveUnitCost(item)
       byType[t].sale += (item.unit_price || 0) * (item.quantity || 1)
       byType[t].cost += itemTotalCost * (item.quantity || 1)
       byType[t].count++
@@ -973,6 +1006,11 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
     try {
       const formData = new FormData()
       formData.append("file", file)
+
+      if (!lead.agency_id) {
+        throw new Error("quotation_screenshot_missing_agency")
+      }
+      formData.append("agencyId", lead.agency_id)
 
       if (activeQuotationId) {
         formData.append("quotationId", activeQuotationId)
@@ -1116,6 +1154,22 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
       }
     }
 
+    let sendWindow: Window | null = null
+    let whatsappPhone = ""
+    if (andSend) {
+      whatsappPhone = (lead.contact_phone || "").replace(/\D/g, "").replace(/^00/, "")
+      if (whatsappPhone.length < 8 || whatsappPhone.length > 15) {
+        toast.error("Agregá un teléfono válido al lead antes de enviar por WhatsApp")
+        return
+      }
+      sendWindow = window.open("about:blank", "_blank")
+      if (!sendWindow) {
+        toast.error("Habilitá las ventanas emergentes para abrir WhatsApp antes de enviar")
+        return
+      }
+      sendWindow.opener = null
+    }
+
     setSaving(true)
     if (andSend) setSending(true)
 
@@ -1134,6 +1188,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
       })
 
       const payload = {
+        expected_updated_at: activeQuotationUpdatedAt,
         lead_id: lead.id,
         agency_id: lead.agency_id,
         destination,
@@ -1150,6 +1205,17 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
         notes: notes || null,
         internal_notes: internalNotes || null,
         payment_methods: paymentMethods,
+        presentation_content: {
+          ...presentationContent,
+          title: presentationContent.title || destination || undefined,
+          overview: presentationContent.overview || packageDescription || undefined,
+          customer: {
+            ...presentationContent.customer,
+            displayName: presentationContent.customer.displayName || lead.contact_name,
+            email: presentationContent.customer.email || lead.contact_email || undefined,
+            phone: presentationContent.customer.phone || lead.contact_phone || undefined,
+          },
+        },
         // Le confirma al PATCH que estas opciones salen de la estructura
         // completa (recién hidratada o armada en esta sesión), así que puede
         // aceptar que sean menos que las guardadas. Ver el guard 409 en
@@ -1216,6 +1282,10 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
       const isEditing = !!activeQuotationId
       const quotationId = activeQuotationId
 
+      if (isEditing && !activeQuotationUpdatedAt) {
+        throw new Error("La cotización no tiene una versión de edición. Cerrala y volvé a abrirla.")
+      }
+
       let res: Response
       if (isEditing && quotationId) {
         res = await fetch(`/api/quotations/${quotationId}`, {
@@ -1238,28 +1308,46 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
 
       const { data: quotation } = await res.json()
       setActiveQuotationId(quotation.id)
+      setActiveQuotationUpdatedAt(quotation.updated_at || null)
       setSavedQuotation(quotation)
 
       if (andSend && quotation) {
-        if (quotation.status !== "SENT") {
-          await fetch(`/api/quotations/${quotation.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ status: "SENT" }),
-          })
+        if (!sendWindow || sendWindow.closed) {
+          throw new Error("La ventana de WhatsApp se cerró antes de emitir la cotización")
+        }
+        if (typeof quotation.updated_at !== "string" || !quotation.updated_at) {
+          throw new Error("El servidor no devolvió la versión emitible de la cotización")
+        }
+        // Congela datos + revisión publicada y recién entonces cambia DRAFT a
+        // SENT dentro de la misma transacción. Nunca queda como enviada sin el
+        // documento que recibirá el cliente.
+        const documentResponse = await fetch(`/api/quotations/${quotation.id}/document`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            expected_updated_at: quotation.updated_at,
+            mark_sent: true,
+          }),
+        })
+        if (!documentResponse.ok) {
+          const error = await documentResponse.json().catch(() => ({}))
+          throw new Error(error?.error || "No se pudo preparar el documento para enviar")
         }
 
         const publicUrl = `${window.location.origin}/cotizacion/${quotation.public_token}`
-        const phone = lead.contact_phone?.replace(/[\s\-\(\)]/g, "") || ""
-        const cleanPhone = phone.startsWith("+") ? phone.substring(1) : phone
         const message = encodeURIComponent(
           `Hola ${lead.contact_name}! Te paso tu cotizacion para ${destination}:\n\n${publicUrl}\n\nQuedo a disposicion por cualquier consulta.`
         )
-        window.open(`https://wa.me/${cleanPhone}?text=${message}`, "_blank")
+        const whatsappUrl = `https://wa.me/${whatsappPhone}?text=${message}`
+        try {
+          sendWindow.location.href = whatsappUrl
+        } catch {
+          throw new Error("El documento quedó emitido, pero no se pudo abrir WhatsApp")
+        }
 
         toast.success(isEditing ? "Cotizacion actualizada y enviada" : "Cotizacion creada y enviada")
         trackQuotation(isEditing, true)
-        onSuccess?.(quotation)
+        onSuccess?.({ ...quotation, status: "SENT" })
         onOpenChange(false)
       } else {
         toast.success(isEditing ? "Cotizacion actualizada" : "Cotizacion guardada como borrador")
@@ -1267,6 +1355,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
         onSuccess?.(quotation)
       }
     } catch (error: any) {
+      if (sendWindow && !sendWindow.closed) sendWindow.close()
       toast.error(error.message || "Error al guardar cotizacion")
     } finally {
       setSaving(false)
@@ -1275,7 +1364,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
   }
 
   function handleViewQuotation() {
-    if (savedQuotation?.public_token) {
+    if (savedQuotation?.public_token && savedQuotation?.active_document_id) {
       window.open(`/cotizacion/${savedQuotation.public_token}`, "_blank")
     }
   }
@@ -2257,7 +2346,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
               {saving && !sending ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : null}
               {loadingExisting ? "Cargando…" : hasActiveQuotation ? "Actualizar borrador" : "Guardar borrador"}
             </Button>
-            {savedQuotation?.public_token && (
+            {savedQuotation?.public_token && savedQuotation?.active_document_id && (
               <Button variant="secondary" size="sm" onClick={handleViewQuotation}>
                 <Eye className="h-3.5 w-3.5 mr-1.5" />
                 Ver cotizacion

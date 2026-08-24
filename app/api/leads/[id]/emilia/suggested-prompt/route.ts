@@ -46,11 +46,15 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   // Multi-tenant defense: el lead debe pertenecer a la org del user.
   const { data: lead } = await supabase
     .from("leads")
-    .select("contact_name, destination, region, notes, list_name, agency_id")
+    .select("contact_name, destination, region, notes, list_name, agency_id, assigned_seller_id")
     .eq("id", leadId)
     .eq("org_id", user.org_id)
     .maybeSingle()
-  if (!lead || !canAccessEmiliaLeadAgency(access, (lead as any).agency_id)) {
+  if (!lead || !canAccessEmiliaLeadAgency(
+    access,
+    (lead as any).agency_id,
+    (lead as any).assigned_seller_id
+  )) {
     return NextResponse.json({ error: "Lead no encontrado" }, { status: 404 })
   }
 

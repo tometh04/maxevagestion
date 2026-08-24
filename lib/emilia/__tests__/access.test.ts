@@ -1,6 +1,7 @@
 const mockIsAccessAllowed = jest.fn()
 const mockCanPerformAction = jest.fn()
 const mockGetUserAgencyIds = jest.fn()
+const mockIsOwnDataOnlyResolved = jest.fn()
 const mockResolveUserPermissions = jest.fn()
 
 jest.mock("@/lib/billing/guard", () => ({
@@ -9,6 +10,7 @@ jest.mock("@/lib/billing/guard", () => ({
 jest.mock("@/lib/permissions-api", () => ({
   canPerformAction: (...args: unknown[]) => mockCanPerformAction(...args),
   getUserAgencyIds: (...args: unknown[]) => mockGetUserAgencyIds(...args),
+  isOwnDataOnlyResolved: (...args: unknown[]) => mockIsOwnDataOnlyResolved(...args),
 }))
 jest.mock("@/lib/permissions-agency", () => ({
   resolveUserPermissions: (...args: unknown[]) => mockResolveUserPermissions(...args),
@@ -22,6 +24,7 @@ import {
   isEnterpriseEmiliaPlan,
   resolveEmiliaOrganizationAccess,
   resolveLeadEmiliaAccess,
+  canAccessEmiliaLeadAgency,
 } from "@/lib/emilia/access"
 
 describe("Emilia access rollout", () => {
@@ -47,6 +50,7 @@ describe("Emilia access rollout", () => {
     mockIsAccessAllowed.mockReturnValue(true)
     mockCanPerformAction.mockReturnValue(true)
     mockGetUserAgencyIds.mockResolvedValue(["agency-1"])
+    mockIsOwnDataOnlyResolved.mockReturnValue(false)
     mockResolveUserPermissions.mockResolvedValue({})
     process.env.EMILIA_PROMOTION_END_AT = DEFAULT_EMILIA_PROMOTION_END_AT
   })
@@ -124,5 +128,24 @@ describe("Emilia access rollout", () => {
 
     expect(result).toMatchObject({ allowed: false, code: "permission_denied" })
     expect(supabase.from).not.toHaveBeenCalled()
+  })
+
+  it("propaga y aplica own-data al lead además del scope de agencia", async () => {
+    mockIsOwnDataOnlyResolved.mockReturnValue(true)
+    const supabase = organizationClient({
+      plan: "ENTERPRISE",
+      custom_plan_id: null,
+      subscription_status: "active",
+      current_period_ends_at: null,
+      trial_ends_at: null,
+    })
+
+    const result = await resolveLeadEmiliaAccess(supabase, user)
+
+    expect(result).toMatchObject({ allowed: true, ownSellerId: "user-1" })
+    if (!result.allowed) throw new Error("expected allowed access")
+    expect(canAccessEmiliaLeadAgency(result, "agency-1", "user-1")).toBe(true)
+    expect(canAccessEmiliaLeadAgency(result, "agency-1", "user-2")).toBe(false)
+    expect(canAccessEmiliaLeadAgency(result, "agency-2", "user-1")).toBe(false)
   })
 })

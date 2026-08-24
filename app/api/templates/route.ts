@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
+import { createAdminClient, createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { getUserAgencyIds } from "@/lib/permissions-api"
+import { resolveAgencyPermissionScope } from "@/lib/permissions/agency-scope-server"
 import { z } from "zod"
 
 export const dynamic = 'force-dynamic'
 
 // Schema de validación
 const createTemplateSchema = z.object({
+  agency_id: z.string().uuid(),
   name: z.string().min(1, "El nombre es requerido"),
   description: z.string().optional(),
   template_type: z.enum(['invoice', 'budget', 'voucher', 'itinerary', 'receipt', 'contract', 'general']),
@@ -35,22 +36,31 @@ const createTemplateSchema = z.object({
   secondary_color: z.string().optional(),
 })
 
+async function templateAccess(permission: "read" | "write") {
+  const { user } = await getCurrentUser()
+  if (!user.org_id) return null
+  const supabase = await createServerClient()
+  const scope = await resolveAgencyPermissionScope(supabase, user, "settings", permission)
+  if (scope.agencyIds.length === 0) return null
+  return { user, supabase, scope }
+}
+
 // GET - Obtener templates
 export async function GET(request: Request) {
   try {
-    const { user } = await getCurrentUser()
-    const supabase = await createServerClient()
+    const access = await templateAccess("read")
+    if (!access) return NextResponse.json({ error: "No tiene permiso para ver templates" }, { status: 403 })
+    const { user, scope } = access
+    const admin = createAdminClient()
     const { searchParams } = new URL(request.url)
 
     // Obtener agencias del usuario
-    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
-
     // Parámetros de filtro
     const templateType = searchParams.get("type")
 
     // Query base - scope por org_id (NOT NULL post-migration 133).
     // Si agencyIds tiene data, tambien por ahi (preserva comportamiento anterior).
-    let query = (supabase.from("pdf_templates") as any)
+    let query = (admin.from("pdf_templates") as any)
       .select(`*`)
       .eq("is_active", true)
       .order("is_default", { ascending: false })
@@ -59,9 +69,7 @@ export async function GET(request: Request) {
     if (user.org_id) {
       query = query.eq("org_id", user.org_id)
     }
-    if (agencyIds.length > 0) {
-      query = query.in("agency_id", agencyIds)
-    }
+    query = query.in("agency_id", scope.agencyIds)
 
     // Filtros
     if (templateType) {
@@ -91,35 +99,29 @@ export async function GET(request: Request) {
 // POST - Crear template
 export async function POST(request: Request) {
   try {
-    const { user } = await getCurrentUser()
-    const supabase = await createServerClient()
-
-    // Verificar permisos (solo admins)
-    if (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
+    const access = await templateAccess("write")
+    if (!access) {
       return NextResponse.json(
         { error: "No tiene permiso para crear templates" },
         { status: 403 }
       )
     }
-
-    // Obtener agencias del usuario
-    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
-    
-    if (agencyIds.length === 0) {
-      return NextResponse.json(
-        { error: "No tiene agencias asignadas" },
-        { status: 403 }
-      )
-    }
+    const { user, scope } = access
+    const admin = createAdminClient()
 
     const body = await request.json()
     const validatedData = createTemplateSchema.parse(body)
+    if (!scope.agencyIds.includes(validatedData.agency_id)) {
+      return NextResponse.json({ error: "Agencia no encontrada" }, { status: 404 })
+    }
+    const { agency_id: agencyId, ...templateData } = validatedData
 
     // Si es template por defecto, quitar default de otros del mismo tipo
     if (validatedData.is_default) {
-      await (supabase.from("pdf_templates") as any)
+      await (admin.from("pdf_templates") as any)
         .update({ is_default: false })
-        .eq("agency_id", agencyIds[0])
+        .eq("org_id", user.org_id)
+        .eq("agency_id", agencyId)
         .eq("template_type", validatedData.template_type)
     }
 
@@ -132,11 +134,11 @@ export async function POST(request: Request) {
     }
 
     // Crear template
-    const { data: template, error } = await (supabase.from("pdf_templates") as any)
+    const { data: template, error } = await (admin.from("pdf_templates") as any)
       .insert({
-        agency_id: agencyIds[0],
+        agency_id: agencyId,
         org_id: user.org_id,
-        ...validatedData,
+        ...templateData,
         created_by: user.id,
       })
       .select()

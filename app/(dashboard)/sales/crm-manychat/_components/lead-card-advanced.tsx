@@ -1,6 +1,7 @@
 "use client"
 
 import type { SellerOption } from "@/lib/sellers/seller-option"
+import type { QuotationOperatorOption } from "@/lib/operators/quotation-option"
 import { useRef, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -90,11 +91,7 @@ interface LeadCardAdvancedProps {
   orgId: string
   agencies: Array<{ id: string; name: string }>
   sellers: SellerOption[]
-  operators: Array<{
-    id: string
-    name: string
-    admin_fee_percentage?: number | null
-  }>
+  operators: QuotationOperatorOption[]
   /** Callback cuando el user arranca a arrastrar esta card. */
   onDragStart?: () => void
   /** Callback cuando suelta (drop o cancel). */

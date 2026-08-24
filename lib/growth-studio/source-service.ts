@@ -1,11 +1,18 @@
+import "server-only"
+
 import type { GrowthStudioApplicationContext } from "@/lib/growth-studio/application-context"
 import { hasAgencyAccess } from "@/lib/growth-studio/application-context"
+import { createAdminClient } from "@/lib/supabase/server"
 import type { CampaignBrief } from "@/lib/growth-studio/campaign-schema"
 import {
   operationToCommercialSnapshot,
   quotationToCommercialSnapshot,
   type GrowthCommercialSnapshot,
 } from "@/lib/growth-studio/source-snapshot"
+import {
+  agencyPermissionMode,
+  applyAgencyPermissionScope,
+} from "@/lib/permissions/agency-scope-server"
 
 const OPERATION_SOURCE_COLUMNS =
   "id, destination, origin, departure_date, return_date, checkin_date, checkout_date, product_type, hotel_name, airline_name, adults, children, infants, sale_amount_total, sale_currency, currency" as const
@@ -44,28 +51,49 @@ export async function listCommercialSources(
   if (!hasAgencyAccess(context, agencyId)) {
     throw new GrowthStudioSourceNotFoundError()
   }
+  const operationAllowed = Boolean(
+    context.operationSourceScope
+    && agencyPermissionMode(context.operationSourceScope, agencyId)
+  )
+  const quotationAllowed = Boolean(
+    context.quotationSourceScope
+    && agencyPermissionMode(context.quotationSourceScope, agencyId)
+  )
+  if (!operationAllowed && !quotationAllowed) throw new GrowthStudioSourceNotFoundError()
 
-  const [operationsResult, quotationsResult] = await Promise.all([
-    context.supabase
-      .from("operations")
-      .select(
-        "id, file_code, destination, departure_date, return_date, status"
+  const operationsPromise = operationAllowed
+    ? applyAgencyPermissionScope(
+        context.supabase
+          .from("operations")
+          .select("id, file_code, destination, departure_date, return_date, status")
+          .eq("org_id", context.orgId)
+          .eq("agency_id", agencyId)
+          .neq("status", "CANCELLED")
+          .order("updated_at", { ascending: false })
+          .limit(100),
+        context.operationSourceScope!
       )
-      .eq("org_id", context.orgId)
-      .eq("agency_id", agencyId)
-      .neq("status", "CANCELLED")
-      .order("updated_at", { ascending: false })
-      .limit(100),
-    context.supabase
-      .from("quotations")
-      .select(
-        "id, quotation_number, destination, departure_date, return_date, status"
+    : Promise.resolve({ data: [], error: null })
+
+  // quotations/options/items no tienen acceso directo para authenticated. El
+  // entitlement y la agencia ya se validaron y el scope se repite en admin.
+  const quotationsPromise = quotationAllowed
+    ? applyAgencyPermissionScope(
+        createAdminClient()
+          .from("quotations")
+          .select("id, quotation_number, destination, departure_date, return_date, status")
+          .eq("org_id", context.orgId)
+          .eq("agency_id", agencyId)
+          .not("status", "in", "(REJECTED,EXPIRED)")
+          .order("updated_at", { ascending: false })
+          .limit(100),
+        context.quotationSourceScope!
       )
-      .eq("org_id", context.orgId)
-      .eq("agency_id", agencyId)
-      .not("status", "in", "(REJECTED,EXPIRED)")
-      .order("updated_at", { ascending: false })
-      .limit(100),
+    : Promise.resolve({ data: [], error: null })
+
+  const [operationsResult, quotationsResult]: any[] = await Promise.all([
+    operationsPromise,
+    quotationsPromise,
   ])
 
   if (operationsResult.error || quotationsResult.error) {
@@ -79,7 +107,7 @@ export async function listCommercialSources(
   }
 
   return [
-    ...(operationsResult.data ?? []).map((row) => ({
+    ...(operationsResult.data ?? []).map((row: any) => ({
       id: row.id,
       kind: "operation" as const,
       reference: row.file_code || "Operación",
@@ -88,7 +116,7 @@ export async function listCommercialSources(
       returnDate: row.return_date,
       status: row.status,
     })),
-    ...(quotationsResult.data ?? []).map((row) => ({
+    ...(quotationsResult.data ?? []).map((row: any) => ({
       id: row.id,
       kind: "quotation" as const,
       reference: row.quotation_number,
@@ -105,16 +133,26 @@ export async function resolveCommercialSourceSnapshot(
   brief: CampaignBrief
 ): Promise<GrowthCommercialSnapshot> {
   if (brief.source.type === "manual") return null
+  if (!hasAgencyAccess(context, brief.agencyId)) {
+    throw new GrowthStudioSourceNotFoundError()
+  }
 
   if (brief.source.type === "operation") {
-    const { data, error } = await context.supabase
+    if (
+      !context.operationSourceScope
+      || !agencyPermissionMode(context.operationSourceScope, brief.agencyId)
+    ) {
+      throw new GrowthStudioSourceNotFoundError()
+    }
+    let operationQuery = context.supabase
       .from("operations")
       .select(OPERATION_SOURCE_COLUMNS)
       .eq("org_id", context.orgId)
       .eq("agency_id", brief.agencyId)
       .eq("id", brief.source.id)
       .neq("status", "CANCELLED")
-      .maybeSingle()
+    operationQuery = applyAgencyPermissionScope(operationQuery, context.operationSourceScope)
+    const { data, error } = await operationQuery.maybeSingle()
 
     if (error) {
       console.error("[growth-studio] Error leyendo operación comercial", {
@@ -129,14 +167,21 @@ export async function resolveCommercialSourceSnapshot(
     return operationToCommercialSnapshot({ ...data }, brief.includePrice)
   }
 
-  const { data, error } = await context.supabase
+  if (
+    !context.quotationSourceScope
+    || !agencyPermissionMode(context.quotationSourceScope, brief.agencyId)
+  ) {
+    throw new GrowthStudioSourceNotFoundError()
+  }
+  let quotationQuery = createAdminClient()
     .from("quotations")
     .select(QUOTATION_SOURCE_COLUMNS)
     .eq("org_id", context.orgId)
     .eq("agency_id", brief.agencyId)
     .eq("id", brief.source.id)
     .not("status", "in", "(REJECTED,EXPIRED)")
-    .maybeSingle()
+  quotationQuery = applyAgencyPermissionScope(quotationQuery, context.quotationSourceScope)
+  const { data, error } = await quotationQuery.maybeSingle()
 
   if (error) {
     console.error("[growth-studio] Error leyendo cotización comercial", {

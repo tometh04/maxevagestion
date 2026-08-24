@@ -1,14 +1,10 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import Image from "next/image"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { CheckCircle2, Download, Loader2 } from "lucide-react"
-import {
-  renderQuotationHtmlDocument,
-  type OrganizationBrandingSettings,
-} from "@/lib/pdf/quotation-pdf-html"
 import { getQuotationStatusColors } from "@/lib/vibook-status-colors"
 import {
   QUOTATION_STATUS_LABELS,
@@ -26,6 +22,8 @@ interface Props {
   mode: PublicQuotationViewMode
   data: QuotationPresentationData
   branding: PublicQuotationBranding
+  html: string
+  acceptanceEnabled: boolean
   accepting: boolean
   downloading: boolean
   onAccept: (optionId: string) => void
@@ -112,27 +110,26 @@ export function PublicQuotationHtmlDocument({
   mode,
   data,
   branding,
+  html,
+  acceptanceEnabled,
   accepting,
   downloading,
   onAccept,
   onDownload,
 }: Props) {
-  const html = useMemo(
-    () => renderQuotationHtmlDocument(data, branding as unknown as OrganizationBrandingSettings),
-    [data, branding]
-  )
-
   const brandColor = branding.brand_color || "#f97316"
   const companyName = branding.company_name || data.agency_name
   const logoUrl = branding.brand_logo || null
 
   const statusColors = getQuotationStatusColors(data.status)
   const statusLabel = QUOTATION_STATUS_LABELS[data.status] || QUOTATION_STATUS_LABELS.DRAFT
-  const canAccept = mode === "interactive" && ["SENT", "PENDING_APPROVAL"].includes(data.status)
+  const awaitingAcceptance = ["SENT", "PENDING_APPROVAL"].includes(data.status)
+  const canAccept = mode === "interactive" && acceptanceEnabled && awaitingAcceptance
   const accepted = ["APPROVED", "CONVERTED"].includes(data.status)
 
   const options = data.options.slice().sort((a, b) => a.option_number - b.option_number)
   const singleOption = options.length === 1
+  const selectedOption = options.find(option => option.is_selected)
 
   // Modo print: documento a tamaño real, sin chrome, con saltos de página.
   // La vista dispara window.print() automáticamente cuando mode === "print".
@@ -209,9 +206,22 @@ export function PublicQuotationHtmlDocument({
           <div className="rounded-xl border border-success/15 bg-success/5 p-5 text-center">
             <CheckCircle2 className="h-10 w-10 text-success mx-auto mb-2" />
             <h3 className="text-lg font-bold text-success">Cotización aceptada</h3>
+            {selectedOption && (
+              <p className="mt-1 text-sm font-semibold text-success">
+                Opción aceptada: {selectedOption.title}
+              </p>
+            )}
             <p className="text-sm text-success mt-1 max-w-md mx-auto">
               Tu asesor <span className="font-semibold">{data.seller_name}</span> se pondrá en contacto para continuar con la reserva.
             </p>
+          </div>
+        </div>
+      )}
+
+      {mode === "interactive" && !acceptanceEnabled && awaitingAcceptance && (
+        <div className="max-w-4xl mx-auto px-4 pb-6">
+          <div className="rounded-xl border bg-white p-4 text-center text-sm text-muted-foreground">
+            Para confirmar esta propuesta, contactá a tu asesor.
           </div>
         </div>
       )}

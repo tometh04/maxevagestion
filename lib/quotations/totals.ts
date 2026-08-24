@@ -3,6 +3,10 @@ export interface QuotationTotalsItemLike {
   unit_price?: number | string | null
   sale_amount?: number | string | null
   cost_amount?: number | string | null
+  admin_fee_percentage?: number | string | null
+  cost_calculation_mode?: string | null
+  gross_price?: number | string | null
+  commission_percentage?: number | string | null
 }
 
 export interface QuotationOptionTotalsLike {
@@ -48,12 +52,30 @@ function getItemSaleUnitAmount(item: QuotationTotalsItemLike) {
   return 0
 }
 
-function getItemCostUnitAmount(item: QuotationTotalsItemLike) {
-  if (item.cost_amount != null && Number.isFinite(Number(item.cost_amount))) {
-    return Number(item.cost_amount)
+function finiteNonNegative(value: unknown) {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0
+}
+
+/**
+ * Costo real unitario congelado en el item de cotización.
+ * Debe mantenerse alineado con el contrato financiero de
+ * `20260529000001_operator_cost_calculation_mode.sql` y con la RPC de conversión.
+ */
+export function getQuotationItemEffectiveUnitCost(item: QuotationTotalsItemLike) {
+  const adminFeeRate = finiteNonNegative(item.admin_fee_percentage) / 100
+  const commissionRate = finiteNonNegative(item.commission_percentage) / 100
+  const grossPrice = finiteNonNegative(item.gross_price)
+
+  if (item.cost_calculation_mode === "COMMISSIONABLE" && grossPrice > 0) {
+    return roundQuotationMoney(
+      Math.max(0, grossPrice * (1 - commissionRate + adminFeeRate))
+    )
   }
 
-  return 0
+  return roundQuotationMoney(
+    finiteNonNegative(item.cost_amount) * (1 + adminFeeRate)
+  )
 }
 
 export function getQuotationOptionCalculatedTotal(items: QuotationTotalsItemLike[]) {
@@ -64,7 +86,7 @@ export function getQuotationOptionCalculatedTotal(items: QuotationTotalsItemLike
 
 export function getQuotationOptionCostTotal(items: QuotationTotalsItemLike[]) {
   return roundQuotationMoney(
-    items.reduce((sum, item) => sum + getItemCostUnitAmount(item) * getItemQuantity(item), 0)
+    items.reduce((sum, item) => sum + getQuotationItemEffectiveUnitCost(item) * getItemQuantity(item), 0)
   )
 }
 
@@ -81,4 +103,16 @@ export function getEffectiveQuotationOptionTotal(option: QuotationOptionTotalsLi
   }
 
   return calculatedTotal
+}
+
+/** Customer-visible amount accepted and later carried into the operation. */
+export function getQuotationCustomerTotal(
+  option: QuotationOptionTotalsLike,
+  addons: { insuranceAmount?: number | string | null; transferAmount?: number | string | null }
+) {
+  return roundQuotationMoney(
+    getEffectiveQuotationOptionTotal(option)
+    + Math.max(0, Number(addons.insuranceAmount || 0))
+    + Math.max(0, Number(addons.transferAmount || 0))
+  )
 }

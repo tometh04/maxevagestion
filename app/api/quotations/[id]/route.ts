@@ -1,44 +1,25 @@
 import { NextResponse } from "next/server"
 import { randomUUID } from "node:crypto"
-import { createServerClient } from "@/lib/supabase/server"
+import { createAdminClient, createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { normalizeQuotationPricingMode } from "@/lib/quotations/presentation"
 import { normalizeRegion } from "@/lib/manychat/sync"
 import {
   prepareQuotationOptionsForPersistence,
   QuotationStructurePersistenceError,
-  replaceQuotationStructure,
   snapshotQuotationStructure,
+  updateQuotationHeader,
+  updateQuotationWithStructure,
 } from "@/lib/quotations/persistence"
 import { logAudit, getClientIP } from "@/lib/audit"
+import { quotationPresentationContentSchema } from "@/lib/quotation-documents/schemas"
+import {
+  applyAgencyPermissionScope,
+  resolveAgencyPermissionScope,
+} from "@/lib/permissions/agency-scope-server"
+import { isQuotationContentEditable } from "@/lib/quotations/lifecycle"
 
 export const dynamic = "force-dynamic"
-
-function buildQuotationRestorePayload(quotation: any) {
-  return {
-    destination: quotation.destination,
-    origin: quotation.origin,
-    region: quotation.region,
-    departure_date: quotation.departure_date,
-    return_date: quotation.return_date,
-    valid_until: quotation.valid_until,
-    adults: quotation.adults,
-    children: quotation.children,
-    infants: quotation.infants,
-    currency: quotation.currency,
-    package_description: quotation.package_description,
-    notes: quotation.notes,
-    internal_notes: quotation.internal_notes,
-    terms_and_conditions: quotation.terms_and_conditions,
-    status: quotation.status,
-    subtotal: quotation.subtotal,
-    total_amount: quotation.total_amount,
-    pricing_mode: quotation.pricing_mode,
-    approved_by: quotation.approved_by,
-    approved_at: quotation.approved_at,
-    rejection_reason: quotation.rejection_reason,
-  }
-}
 
 function getQuotationPersistenceLogContext(error: unknown) {
   if (error instanceof QuotationStructurePersistenceError) {
@@ -59,10 +40,14 @@ export async function GET(
 ) {
   try {
     const { user } = await getCurrentUser()
+    if (!user.org_id) return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
     const { id } = await params
     const supabase: any = await createServerClient()
+    const scope = await resolveAgencyPermissionScope(supabase, user, "leads", "read")
+    if (scope.memberAgencyIds.length === 0) return NextResponse.json({ error: "Cotización no encontrada" }, { status: 404 })
+    const dataSupabase: any = createAdminClient()
 
-    const { data, error } = await supabase
+    let detailQuery = dataSupabase
       .from("quotations")
       .select(`
         *,
@@ -73,18 +58,34 @@ export async function GET(
         quotation_items(*)
       `)
       .eq("id", id)
-      .single()
+      .eq("org_id", user.org_id)
+    detailQuery = applyAgencyPermissionScope(detailQuery, scope)
+    const { data, error } = await detailQuery.maybeSingle()
 
     if (error || !data) {
       return NextResponse.json({ error: "Cotización no encontrada" }, { status: 404 })
     }
 
-    // SELLER solo ve las suyas
-    if (user.role === "SELLER" && data.seller_id !== user.id) {
-      return NextResponse.json({ error: "No tiene acceso" }, { status: 403 })
+    let operatorsQuery = dataSupabase
+      .from("operators")
+      .select("id, name")
+      .eq("org_id", user.org_id)
+      .order("name")
+    operatorsQuery = data.agency_id
+      ? operatorsQuery.or(`agency_id.is.null,agency_id.eq.${data.agency_id}`)
+      : operatorsQuery.is("agency_id", null)
+    const { data: availableOperators, error: operatorsError } = await operatorsQuery
+    if (operatorsError) {
+      console.error("Error loading quotation operators:", operatorsError)
+      return NextResponse.json({ error: "No se pudieron cargar los operadores" }, { status: 500 })
     }
 
-    return NextResponse.json({ data })
+    return NextResponse.json({
+      data: {
+        ...data,
+        available_operators: availableOperators || [],
+      },
+    })
   } catch (error: any) {
     if (error?.digest === "NEXT_REDIRECT") throw error
     console.error("Error in quotation GET:", error)
@@ -99,23 +100,51 @@ export async function PATCH(
 ) {
   try {
     const { user } = await getCurrentUser()
+    if (!user.org_id) return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
     const { id } = await params
     const supabase: any = await createServerClient()
     const body = await request.json()
+    const scope = await resolveAgencyPermissionScope(supabase, user, "leads", "write")
+    if (scope.memberAgencyIds.length === 0) return NextResponse.json({ error: "Cotización no encontrada" }, { status: 404 })
+    const admin = createAdminClient() as any
 
     // Verificar que existe y que el usuario tiene acceso
-    const { data: existing } = await supabase
+    let existingQuery = admin
       .from("quotations")
       .select("*")
       .eq("id", id)
-      .single()
+      .eq("org_id", user.org_id)
+    existingQuery = applyAgencyPermissionScope(existingQuery, scope)
+    const { data: existing } = await existingQuery.maybeSingle()
 
     if (!existing) {
       return NextResponse.json({ error: "Cotización no encontrada" }, { status: 404 })
     }
 
-    if (user.role === "SELLER" && existing.seller_id !== user.id) {
-      return NextResponse.json({ error: "No tiene acceso" }, { status: 403 })
+    if (typeof body.expected_updated_at !== "string" || !body.expected_updated_at) {
+      return NextResponse.json(
+        { error: "expected_updated_at es requerido para editar la cotización" },
+        { status: 400 }
+      )
+    }
+    if (existing.updated_at !== body.expected_updated_at) {
+      return NextResponse.json(
+        { error: "La cotización cambió mientras la editabas. Recargala antes de volver a guardar." },
+        { status: 409 }
+      )
+    }
+
+    if (!isQuotationContentEditable(existing.status)) {
+      return NextResponse.json(
+        { error: "La cotización está cerrada y ya no admite edición" },
+        { status: 409 }
+      )
+    }
+    if (body.status !== undefined && body.status !== existing.status) {
+      return NextResponse.json(
+        { error: "Los cambios de estado deben realizarse desde la acción correspondiente" },
+        { status: 400 }
+      )
     }
 
     if (body.lead_id !== undefined && body.lead_id !== existing.lead_id) {
@@ -131,8 +160,8 @@ export async function PATCH(
       "destination", "origin", "region", "departure_date", "return_date",
       "valid_until", "adults", "children", "infants", "currency",
       "package_description", "notes", "internal_notes",
-      "terms_and_conditions", "status",
-      "subtotal", "total_amount", "pricing_mode",
+      "terms_and_conditions",
+      "pricing_mode",
       // El POST de creación lo persiste; faltaba acá, así que cada edición lo
       // descartaba en silencio.
       "payment_methods",
@@ -146,6 +175,18 @@ export async function PATCH(
 
     if (body.pricing_mode !== undefined) {
       updateData.pricing_mode = normalizeQuotationPricingMode(body.pricing_mode)
+    }
+
+    if (body.presentation_content !== undefined) {
+      const presentationContent = quotationPresentationContentSchema.safeParse(body.presentation_content)
+      if (!presentationContent.success) {
+        return NextResponse.json(
+          { error: "El contenido comercial de la cotización no es válido", issues: presentationContent.error.issues },
+          { status: 400 }
+        )
+      }
+      updateData.presentation_content = presentationContent.data
+      updateData.presentation_schema_version = presentationContent.data.schemaVersion
     }
 
     // quotations.region tiene CHECK legacy de 7 valores pero las regiones de
@@ -172,7 +213,7 @@ export async function PATCH(
       updateData.total_amount = preparedOptions[0].total_amount
 
       try {
-        structureSnapshot = await snapshotQuotationStructure(supabase, id)
+        structureSnapshot = await snapshotQuotationStructure(admin, id)
       } catch (error) {
         console.error("Error loading existing quotation structure before PATCH:", {
           quotationId: id,
@@ -200,75 +241,33 @@ export async function PATCH(
       }
     }
 
-    // Lógica de cambio de estado
-    if (body.status === "SENT" && existing.status === "DRAFT") {
-      updateData.status = "SENT"
-    }
-
-    if (body.status === "APPROVED") {
-      updateData.status = "APPROVED"
-      updateData.approved_by = user.id
-      updateData.approved_at = new Date().toISOString()
-    }
-
-    if (body.status === "REJECTED") {
-      updateData.status = "REJECTED"
-      updateData.rejection_reason = body.rejection_reason || null
-    }
-
-    if (!existing.public_token && (preparedOptions || Object.keys(updateData).length > 0)) {
+    const hasRequestedChanges = Boolean(preparedOptions) || Object.keys(updateData).length > 0
+    if (!existing.public_token && hasRequestedChanges) {
       updateData.public_token = randomUUID()
     }
 
-    // Actualizar cotización
-    const { data: updated, error } = await supabase
-      .from("quotations")
-      .update(updateData)
-      .eq("id", id)
-      .select()
-      .single()
-
-    if (error) {
-      console.error("Error updating quotation:", error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
-
-    // Reemplazo de la estructura (opciones + items).
-    //
-    // Historia: hasta 2026-05-26 se insertaba antes de borrar, y el unique de
-    // (quotation_id, option_number) hacía fallar el insert. Se invirtió a
-    // delete → insert, lo que dejó una ventana en la que un insert fallido
-    // destruía la estructura para siempre (el rollback sólo reponía el header).
-    // Hoy replaceQuotationStructure() lo hace en una sola transacción vía RPC,
-    // con el camino legacy + restore del snapshot como fallback.
+    // Encabezado, opciones e ítems se confirman en la misma transacción. El CAS
+    // impide que dos editores mezclen el encabezado de una versión con la
+    // estructura de otra; cualquier error deja intacta la cotización anterior.
     if (preparedOptions) {
       try {
-        await replaceQuotationStructure({
-          supabase,
+        await updateQuotationWithStructure({
+          supabase: admin,
           quotationId: id,
-          currency: updated.currency || "USD",
+          currency: updateData.currency || existing.currency || "USD",
           preparedOptions,
-          orgId: existing.org_id ?? user.org_id ?? null,
-          snapshot: structureSnapshot,
+          orgId: user.org_id,
+          expectedUpdatedAt: body.expected_updated_at,
+          actorId: user.id,
+          agencyId: existing.agency_id,
+          header: updateData,
         })
       } catch (error) {
-        console.error("Error persisting quotation structure during PATCH:", {
+        console.error("Error persisting quotation atomically during PATCH:", {
           quotationId: id,
           quotationNumber: existing.quotation_number,
           ...getQuotationPersistenceLogContext(error),
         })
-
-        const { error: restoreError } = await supabase
-          .from("quotations")
-          .update(buildQuotationRestorePayload(existing))
-          .eq("id", id)
-
-        if (restoreError) {
-          console.error("Error restoring quotation header after PATCH failure:", {
-            quotationId: id,
-            cause: restoreError.message,
-          })
-        }
 
         logAudit(supabase, {
           user_id: user.id,
@@ -284,9 +283,25 @@ export async function PATCH(
           ip_address: getClientIP(request) || undefined,
         })
 
+        const persistenceCode = error instanceof QuotationStructurePersistenceError
+          ? error.code
+          : "atomic_update_failed"
+        const status = persistenceCode === "quotation_changed" || persistenceCode === "invalid_state"
+          ? 409
+          : persistenceCode === "invalid_payload"
+            ? 400
+            : 500
         return NextResponse.json(
-          { error: "No se pudo guardar la estructura completa de la cotización. Se conservaron los datos anteriores." },
-          { status: 500 }
+          {
+            error: persistenceCode === "quotation_changed"
+              ? "La cotización cambió mientras la editabas. Recargala antes de volver a guardar."
+              : persistenceCode === "invalid_state"
+                ? "La cotización ya no admite cambios."
+                : persistenceCode === "invalid_payload"
+                  ? "Los datos de la cotización no son válidos."
+                  : "No se pudo guardar la cotización. Los datos anteriores se conservaron.",
+          },
+          { status }
         )
       }
 
@@ -306,10 +321,40 @@ export async function PATCH(
         },
         ip_address: getClientIP(request) || undefined,
       })
+    } else if (Object.keys(updateData).length > 0) {
+      try {
+        await updateQuotationHeader({
+          supabase: admin,
+          quotationId: id,
+          orgId: user.org_id,
+          agencyId: existing.agency_id,
+          actorId: user.id,
+          expectedUpdatedAt: body.expected_updated_at,
+          header: updateData,
+        })
+      } catch (error) {
+        const persistenceCode = error instanceof QuotationStructurePersistenceError
+          ? error.code
+          : "atomic_update_failed"
+        const status = persistenceCode === "quotation_changed" || persistenceCode === "invalid_state"
+          ? 409
+          : persistenceCode === "invalid_payload"
+            ? 400
+            : 500
+        return NextResponse.json({
+          error: persistenceCode === "quotation_changed"
+            ? "La cotización cambió mientras la editabas. Recargala antes de volver a guardar."
+            : persistenceCode === "invalid_state"
+              ? "La cotización ya no admite cambios."
+              : persistenceCode === "invalid_payload"
+                ? "Los datos de la cotización no son válidos."
+                : "No se pudo guardar la cotización. Los datos anteriores se conservaron.",
+        }, { status })
+      }
     }
 
     // Devolver cotización actualizada completa
-    const { data: fullQuotation } = await supabase
+    const { data: fullQuotation } = await admin
       .from("quotations")
       .select(`
         *,
@@ -317,6 +362,8 @@ export async function PATCH(
         quotation_items(*)
       `)
       .eq("id", id)
+      .eq("org_id", user.org_id)
+      .eq("agency_id", existing.agency_id)
       .single()
 
     return NextResponse.json({ data: fullQuotation })
@@ -334,21 +381,23 @@ export async function DELETE(
 ) {
   try {
     const { user } = await getCurrentUser()
+    if (!user.org_id) return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
     const { id } = await params
     const supabase: any = await createServerClient()
+    const scope = await resolveAgencyPermissionScope(supabase, user, "leads", "delete")
+    if (scope.memberAgencyIds.length === 0) return NextResponse.json({ error: "Cotización no encontrada" }, { status: 404 })
+    const admin = createAdminClient() as any
 
-    const { data: existing } = await supabase
+    let deleteQuery = admin
       .from("quotations")
-      .select("id, seller_id, status")
+      .select("id, seller_id, status, agency_id")
       .eq("id", id)
-      .single()
+      .eq("org_id", user.org_id)
+    deleteQuery = applyAgencyPermissionScope(deleteQuery, scope)
+    const { data: existing } = await deleteQuery.maybeSingle()
 
     if (!existing) {
       return NextResponse.json({ error: "Cotización no encontrada" }, { status: 404 })
-    }
-
-    if (user.role === "SELLER" && existing.seller_id !== user.id) {
-      return NextResponse.json({ error: "No tiene acceso" }, { status: 403 })
     }
 
     // Solo se pueden eliminar borradores
@@ -359,10 +408,55 @@ export async function DELETE(
       )
     }
 
-    const { error } = await supabase.from("quotations").delete().eq("id", id)
+    // Un PDF emitido es evidencia comercial inmutable, aun cuando la
+    // cotización siga en DRAFT. No intentamos borrarlo en cascada: conservamos
+    // el historial y devolvemos un conflicto de negocio explícito.
+    const { data: issuedDocument, error: issuedDocumentError } = await admin
+      .from("issued_quotation_documents")
+      .select("id")
+      .eq("quotation_id", id)
+      .eq("org_id", user.org_id)
+      .eq("agency_id", existing.agency_id)
+      .limit(1)
+      .maybeSingle()
+
+    if (issuedDocumentError) {
+      console.error("Error checking issued quotation documents before delete:", issuedDocumentError)
+      return NextResponse.json({ error: "No se pudo verificar el historial documental" }, { status: 500 })
+    }
+
+    if (issuedDocument) {
+      return NextResponse.json(
+        { error: "La cotización ya tiene un documento emitido y debe conservarse como historial" },
+        { status: 409 }
+      )
+    }
+
+    const { data: deleted, error } = await admin
+      .from("quotations")
+      .delete()
+      .eq("id", id)
+      .eq("org_id", user.org_id)
+      .eq("agency_id", existing.agency_id)
+      .eq("status", "DRAFT")
+      .select("id")
+      .maybeSingle()
+
+    if (error?.code === "23503") {
+      return NextResponse.json(
+        { error: "La cotización ya tiene un documento emitido y debe conservarse como historial" },
+        { status: 409 }
+      )
+    }
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+    if (!deleted) {
+      return NextResponse.json(
+        { error: "La cotización cambió y ya no se puede eliminar" },
+        { status: 409 }
+      )
     }
 
     return NextResponse.json({ success: true })
