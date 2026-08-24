@@ -91,6 +91,12 @@ export interface CreateJournalEntryParams {
    * Va en NULL para los asientos de pago, que son varios por operación.
    */
   entry_kind?: JournalEntryKind | null
+  /**
+   * Movimiento de plata que originó el asiento (VIB-142). Clave de idempotencia
+   * para los asientos que nacen de un cobro, un pago o un gasto: la base tiene
+   * un índice único parcial sobre esta columna.
+   */
+  source_movement_id?: string | null
   /** Usuario que crea */
   created_by?: string | null
   /** Notas del asiento */
@@ -141,7 +147,7 @@ export async function createJournalEntry(
   params: CreateJournalEntryParams,
   supabase: SupabaseClient<Database>
 ): Promise<JournalEntry> {
-  const { lines, entry_date, description, source, currency = "ARS", exchange_rate, created_by, operation_id, notes, org_id, entry_kind } = params
+  const { lines, entry_date, description, source, currency = "ARS", exchange_rate, created_by, operation_id, notes, org_id, entry_kind, source_movement_id } = params
 
   // Validar mínimo 2 líneas
   if (lines.length < 2) {
@@ -217,6 +223,7 @@ export async function createJournalEntry(
       // con sesión); con valor, gana el explícito.
       org_id: org_id ?? null,
       entry_kind: entry_kind ?? null,
+      source_movement_id: source_movement_id ?? null,
     })
     .select("id, entry_number, entry_date, description, source, total_amount, currency")
     .single()
@@ -704,7 +711,7 @@ export async function annotatePaymentAsJournalEntry(
 /**
  * Resolver códigos de cuenta a IDs (batch)
  */
-async function resolveAccountIds(
+export async function resolveAccountIds(
   codes: string[],
   adminClient: any,
   orgId: string | null
