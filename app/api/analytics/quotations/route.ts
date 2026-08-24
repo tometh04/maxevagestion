@@ -1,27 +1,43 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
+import { createAdminClient, createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import {
+  agencyPermissionMode,
+  applyAgencyPermissionScope,
+  resolveAgencyPermissionScope,
+} from "@/lib/permissions/agency-scope-server"
+import { getQuotationCustomerTotal } from "@/lib/quotations/totals"
 
 export const dynamic = "force-dynamic"
 
 export async function GET(request: Request) {
   try {
     const { user } = await getCurrentUser()
+    if (!user.org_id) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
     const supabase: any = await createServerClient()
+    const scope = await resolveAgencyPermissionScope(supabase, user, "leads", "read")
+    if (scope.memberAgencyIds.length > 0 && scope.agencyIds.length === 0) {
+      return NextResponse.json({ error: "No tiene permiso para ver cotizaciones" }, { status: 403 })
+    }
     const { searchParams } = new URL(request.url)
 
     const dateFrom = searchParams.get("dateFrom")
     const dateTo = searchParams.get("dateTo")
     const sellerId = searchParams.get("sellerId")
     const agencyId = searchParams.get("agencyId")
+    const dataSupabase: any = createAdminClient()
 
     // ── Base query con filtros ──
-    let query = supabase
+    let query = dataSupabase
       .from("quotations")
       .select(`
         id,
         status,
         total_amount,
+        insurance_amount,
+        transfer_amount,
         currency,
         destination,
         region,
@@ -33,15 +49,17 @@ export async function GET(request: Request) {
         seller:seller_id(id, name),
         quotation_options(id, total_amount, is_selected)
       `)
+      .eq("org_id", user.org_id)
+    query = applyAgencyPermissionScope(query, scope)
 
-    // Filtro de rol
-    if (user.role === "SELLER") {
-      query = query.eq("seller_id", user.id)
-    } else if (sellerId && sellerId !== "ALL") {
+    if (sellerId && sellerId !== "ALL") {
       query = query.eq("seller_id", sellerId)
     }
 
     if (agencyId && agencyId !== "ALL") {
+      if (!agencyPermissionMode(scope, agencyId)) {
+        return NextResponse.json({ error: "Agencia no encontrada" }, { status: 404 })
+      }
       query = query.eq("agency_id", agencyId)
     }
 
@@ -109,16 +127,27 @@ export async function GET(request: Request) {
         byMonth[month].approved++
       }
 
+      // Monto contractual visible para el cliente: opción elegida (o la primera
+      // mientras sigue en borrador) más los adicionales de la cotización.
+      const options = Array.isArray(q.quotation_options) ? q.quotation_options : []
+      const pricedOption = options.find((option: any) => option.is_selected) ?? options[0] ?? {
+        total_amount: q.total_amount,
+      }
+      const customerTotal = getQuotationCustomerTotal(pricedOption, {
+        insuranceAmount: q.insurance_amount,
+        transferAmount: q.transfer_amount,
+      })
+
       // Montos totales
       if (q.currency === "USD") {
-        totalAmountUSD += Number(q.total_amount) || 0
+        totalAmountUSD += customerTotal
         if (q.status === "APPROVED" || q.status === "CONVERTED") {
-          approvedAmountUSD += Number(q.total_amount) || 0
+          approvedAmountUSD += customerTotal
         }
       } else {
-        totalAmountARS += Number(q.total_amount) || 0
+        totalAmountARS += customerTotal
         if (q.status === "APPROVED" || q.status === "CONVERTED") {
-          approvedAmountARS += Number(q.total_amount) || 0
+          approvedAmountARS += customerTotal
         }
       }
     }

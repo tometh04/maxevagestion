@@ -68,6 +68,31 @@ export interface PersistQuotationOptionsResult {
   optionIds: string[]
 }
 
+export interface UpdateQuotationWithStructureArgs extends PersistQuotationOptionsArgs {
+  orgId: string
+  expectedUpdatedAt: string | null
+  actorId: string
+  agencyId: string
+  header: Record<string, unknown>
+}
+
+export interface CreateQuotationWithStructureArgs extends PersistQuotationOptionsArgs {
+  orgId: string
+  actorId: string
+  agencyId: string
+  header: Record<string, unknown>
+}
+
+export interface UpdateQuotationHeaderArgs {
+  supabase: any
+  quotationId: string
+  orgId: string
+  agencyId: string
+  actorId: string
+  expectedUpdatedAt: string
+  header: Record<string, unknown>
+}
+
 export class QuotationStructurePersistenceError extends Error {
   code: string
   context: Record<string, unknown>
@@ -89,10 +114,47 @@ function toOptionalNumber(value: unknown) {
   return Number.isFinite(parsed) ? parsed : null
 }
 
+function quotationPercentage(value: unknown, label: string) {
+  const parsed = value === null || value === undefined || value === "" ? 0 : Number(value)
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) {
+    throw new Error(`${label} debe estar entre 0 y 100.`)
+  }
+  return parsed
+}
+
 function prepareQuotationItem(rawItem: any, fallbackCurrency: string): PreparedQuotationItem {
-  const quantity = Math.max(1, Number(rawItem?.quantity || 1))
+  const rawQuantity = Number(rawItem?.quantity ?? 1)
+  if (!Number.isFinite(rawQuantity) || rawQuantity <= 0) {
+    throw new Error("La cantidad del servicio debe ser mayor a cero.")
+  }
+  const quantity = Math.max(1, rawQuantity)
   const saleAmount = roundQuotationMoney(Number(rawItem?.sale_amount ?? rawItem?.unit_price ?? 0))
-  const costAmount = roundQuotationMoney(Number(rawItem?.cost_amount || 0))
+  const rawCostAmount = Number(rawItem?.cost_amount ?? 0)
+  if (!Number.isFinite(rawCostAmount) || rawCostAmount < 0) {
+    throw new Error("El costo del servicio no puede ser negativo.")
+  }
+  const costAmount = roundQuotationMoney(rawCostAmount)
+  const costCalculationMode = rawItem?.cost_calculation_mode || "SIMPLE"
+  const adminFeePercentage = quotationPercentage(
+    rawItem?.admin_fee_percentage,
+    "El porcentaje administrativo"
+  )
+  const commissionPercentage = quotationPercentage(
+    rawItem?.commission_percentage,
+    "El porcentaje de comisión"
+  )
+  const rawGrossPrice = rawItem?.gross_price != null ? Number(rawItem.gross_price) : null
+  if (rawGrossPrice != null && (!Number.isFinite(rawGrossPrice) || rawGrossPrice < 0)) {
+    throw new Error("El precio bruto del servicio no puede ser negativo.")
+  }
+  const grossPrice = rawGrossPrice != null ? roundQuotationMoney(rawGrossPrice) : null
+
+  if (costCalculationMode !== "SIMPLE" && costCalculationMode !== "COMMISSIONABLE") {
+    throw new Error("El modo de cálculo de costo no es válido.")
+  }
+  if (costCalculationMode === "COMMISSIONABLE" && !(grossPrice && grossPrice > 0)) {
+    throw new Error("Los servicios comisionables necesitan un precio bruto mayor a cero.")
+  }
 
   return {
     item_type: rawItem?.item_type || "OTHER",
@@ -128,10 +190,10 @@ function prepareQuotationItem(rawItem: any, fallbackCurrency: string): PreparedQ
     flight_screenshot_url: rawItem?.flight_screenshot_url || null,
     transfer_description: rawItem?.transfer_description || null,
     notes: rawItem?.notes || null,
-    admin_fee_percentage: Number(rawItem?.admin_fee_percentage) || 0,
-    cost_calculation_mode: rawItem?.cost_calculation_mode || 'SIMPLE',
-    gross_price: rawItem?.gross_price != null ? roundQuotationMoney(Number(rawItem.gross_price)) : null,
-    commission_percentage: Number(rawItem?.commission_percentage) || 0,
+    admin_fee_percentage: adminFeePercentage,
+    cost_calculation_mode: costCalculationMode,
+    gross_price: grossPrice,
+    commission_percentage: commissionPercentage,
   }
 }
 
@@ -152,8 +214,16 @@ export function prepareQuotationOptionsForPersistence(rawOptions: any[], fallbac
         : null
     )
 
-    if (manualTotal != null && manualTotal < costTotal) {
-      throw new Error(`El precio final manual de "${title}" no puede quedar por debajo del costo total de la opción.`)
+    if (items.length === 0) {
+      throw new Error(`La opción "${title}" necesita al menos un servicio.`)
+    }
+
+    const effectiveTotal = manualTotal ?? calculatedTotal
+    if (effectiveTotal <= 0) {
+      throw new Error(`El precio final de "${title}" debe ser mayor a cero.`)
+    }
+    if (effectiveTotal < costTotal) {
+      throw new Error(`El precio final de "${title}" no puede quedar por debajo del costo total de la opción.`)
     }
 
     return {
@@ -190,6 +260,7 @@ function buildQuotationItemsInsertPayload(
     generates_commission: item.generates_commission || false,
     order_index: idx,
     notes: item.notes || null,
+    provider: item.provider || null,
     destination_city: item.destination_city || null,
     hotel_name: item.hotel_name || null,
     hotel_stars: item.hotel_stars || null,
@@ -250,9 +321,9 @@ export async function snapshotQuotationStructure(supabase: any, quotationId: str
  * Reemplaza opciones + items de una cotización.
  *
  * Camino preferido: RPC `replace_quotation_structure` (una sola transacción,
- * preserva is_selected). Si el RPC falla por lo que sea — típicamente que la
- * migración 20260721000001 todavía no se aplicó — caemos al camino legacy de
- * delete + insert, que ahora restaura el snapshot si el insert se rompe.
+ * preserva is_selected). El camino legacy se usa únicamente si PostgREST
+ * confirma que la función todavía no existe; errores de estado, permisos o
+ * concurrencia nunca deben degradar a escrituras separadas.
  *
  * El fallback es seguro: cuando el RPC falla, la transacción entera hizo
  * rollback, así que la estructura vieja sigue intacta.
@@ -270,40 +341,12 @@ export async function replaceQuotationStructure({
   const selectedOptionNumber =
     snapshot.options.find((option) => option.is_selected)?.option_number ?? null
 
-  const now = new Date().toISOString()
-  const optionRows = preparedOptions.map((opt, index) => ({
-    id: randomUUID(),
-    quotation_id: quotationId,
-    option_number: index + 1,
-    title: opt.title || `Opción ${index + 1}`,
-    total_amount: opt.total_amount,
-    calculated_total_amount: opt.calculated_total_amount,
-    manual_total_amount: opt.manual_total_amount,
-    is_selected: false,
-    created_at: now,
-  }))
-
-  const itemRows = preparedOptions.flatMap((opt, index) =>
-    Array.isArray(opt.items) && opt.items.length > 0
-      ? buildQuotationItemsInsertPayload(
-          quotationId,
-          optionRows[index].id,
-          opt.items,
-          currency,
-          orgId
-        ).map((item) => ({
-          // El RPC hace INSERT ... SELECT * sobre jsonb_populate_recordset, así
-          // que toda columna ausente entra como NULL: hay que mandarlas todas.
-          id: randomUUID(),
-          tariff_id: null,
-          discount_percentage: 0,
-          discount_amount: 0,
-          created_at: now,
-          updated_at: now,
-          ...item,
-        }))
-      : []
-  )
+  const { optionRows, itemRows } = buildQuotationStructureRows({
+    quotationId,
+    currency,
+    preparedOptions,
+    orgId,
+  })
 
   const { error: rpcError } = await supabase.rpc("replace_quotation_structure", {
     p_quotation_id: quotationId,
@@ -313,6 +356,16 @@ export async function replaceQuotationStructure({
 
   if (!rpcError) {
     return { optionIds: optionRows.map((option) => option.id), usedRpc: true }
+  }
+
+  const rpcMissing = ["PGRST202", "42883"].includes(String(rpcError.code || ""))
+    || /replace_quotation_structure.*(schema cache|does not exist|not found)/i.test(rpcError.message || "")
+  if (!rpcMissing) {
+    throw new QuotationStructurePersistenceError(
+      "No se pudo reemplazar atómicamente la estructura de la cotización.",
+      "atomic_replace_failed",
+      { quotationId, cause: rpcError.message, code: rpcError.code }
+    )
   }
 
   console.warn(
@@ -385,6 +438,171 @@ export async function replaceQuotationStructure({
   } catch (error) {
     await restoreQuotationStructureSnapshot(supabase, quotationId, snapshot, insertedOptionIds)
     throw error
+  }
+}
+
+function buildQuotationStructureRows({
+  quotationId,
+  currency,
+  preparedOptions,
+  orgId,
+}: Omit<PersistQuotationOptionsArgs, "supabase">) {
+  const now = new Date().toISOString()
+  const optionRows = preparedOptions.map((opt, index) => ({
+    id: randomUUID(),
+    quotation_id: quotationId,
+    option_number: index + 1,
+    title: opt.title || `Opción ${index + 1}`,
+    total_amount: opt.total_amount,
+    calculated_total_amount: opt.calculated_total_amount,
+    manual_total_amount: opt.manual_total_amount,
+    is_selected: false,
+    created_at: now,
+  }))
+
+  const itemRows = preparedOptions.flatMap((opt, index) =>
+    Array.isArray(opt.items) && opt.items.length > 0
+      ? buildQuotationItemsInsertPayload(
+          quotationId,
+          optionRows[index].id,
+          opt.items,
+          currency,
+          orgId
+        ).map((item) => ({
+          // El RPC hace INSERT ... SELECT * sobre jsonb_populate_recordset, así
+          // que toda columna ausente entra como NULL: hay que mandarlas todas.
+          id: randomUUID(),
+          tariff_id: null,
+          discount_percentage: 0,
+          discount_amount: 0,
+          created_at: now,
+          updated_at: now,
+          ...item,
+        }))
+      : []
+  )
+
+  return { optionRows, itemRows }
+}
+
+function mapAtomicQuotationError(
+  error: { code?: string; message?: string } | null | undefined,
+  quotationId: string,
+  fallbackCode: string
+) {
+  const rpcCode = String(error?.code || "")
+  const code = rpcCode === "40001"
+    ? "quotation_changed"
+    : rpcCode === "55000"
+      ? "invalid_state"
+      : rpcCode === "22023" || rpcCode === "23514" || rpcCode === "23503"
+        ? "invalid_payload"
+        : fallbackCode
+  return new QuotationStructurePersistenceError(
+    code === "quotation_changed"
+      ? "La cotización cambió mientras se editaba."
+      : "No se pudo guardar atómicamente la cotización.",
+    code,
+    { quotationId, cause: error?.message, code: rpcCode }
+  )
+}
+
+/** Alta completa server-only: encabezado, opciones e ítems comparten commit. */
+export async function createQuotationWithStructure({
+  supabase,
+  quotationId,
+  currency,
+  preparedOptions,
+  orgId,
+  actorId,
+  agencyId,
+  header,
+}: CreateQuotationWithStructureArgs) {
+  const { optionRows, itemRows } = buildQuotationStructureRows({
+    quotationId,
+    currency,
+    preparedOptions,
+    orgId,
+  })
+  const { data, error } = await supabase.rpc("create_quotation_with_structure", {
+    p_quotation_id: quotationId,
+    p_org_id: orgId,
+    p_agency_id: agencyId,
+    p_actor_id: actorId,
+    p_header: header,
+    p_options: optionRows,
+    p_items: itemRows,
+  })
+  if (error || !data) {
+    throw mapAtomicQuotationError(error, quotationId, "atomic_create_failed")
+  }
+  return Array.isArray(data) ? data[0] : data
+}
+
+/** Edición de encabezado con el mismo CAS server-only que la edición completa. */
+export async function updateQuotationHeader({
+  supabase,
+  quotationId,
+  orgId,
+  agencyId,
+  actorId,
+  expectedUpdatedAt,
+  header,
+}: UpdateQuotationHeaderArgs) {
+  const { data, error } = await supabase.rpc("update_quotation_header", {
+    p_quotation_id: quotationId,
+    p_org_id: orgId,
+    p_agency_id: agencyId,
+    p_expected_updated_at: expectedUpdatedAt,
+    p_header: header,
+    p_actor_id: actorId,
+  })
+  if (error || !data) {
+    throw mapAtomicQuotationError(error, quotationId, "atomic_update_failed")
+  }
+  return Array.isArray(data) ? data[0] : data
+}
+
+/**
+ * Confirma encabezado + opciones + ítems en una única transacción con CAS.
+ * No tiene fallback legacy: degradar acá volvería a abrir una ventana donde
+ * el header y la estructura podrían pertenecer a ediciones distintas.
+ */
+export async function updateQuotationWithStructure({
+  supabase,
+  quotationId,
+  currency,
+  preparedOptions,
+  orgId,
+  expectedUpdatedAt,
+  actorId,
+  agencyId,
+  header,
+}: UpdateQuotationWithStructureArgs) {
+  const { optionRows, itemRows } = buildQuotationStructureRows({
+    quotationId,
+    currency,
+    preparedOptions,
+    orgId,
+  })
+  const { data, error } = await supabase.rpc("update_quotation_with_structure", {
+    p_quotation_id: quotationId,
+    p_org_id: orgId,
+    p_agency_id: agencyId,
+    p_expected_updated_at: expectedUpdatedAt,
+    p_header: header,
+    p_options: optionRows,
+    p_items: itemRows,
+    p_actor_id: actorId,
+  })
+
+  if (error || !data) {
+    throw mapAtomicQuotationError(error, quotationId, "atomic_update_failed")
+  }
+
+  return {
+    quotation: Array.isArray(data) ? data[0] : data,
+    optionIds: optionRows.map(option => option.id),
   }
 }
 

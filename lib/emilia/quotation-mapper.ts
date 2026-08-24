@@ -232,7 +232,11 @@ function mapFlightToItem(flight: EmiliaFlight) {
     // multiplicar el total grupal en persistence/totals.
     quantity: 1,
     unit_price: flight.price?.amount ?? 0,
-    cost_amount: 0,
+    // El importe del proveedor es simultáneamente el precio inicial sugerido y
+    // la base de costo. El asesor puede aumentar `unit_price`, pero la deuda al
+    // operador nunca debe degradarse a cero por venir desde Emilia.
+    cost_amount: flight.price?.amount ?? 0,
+    gross_price: flight.price?.amount ?? 0,
     cost_currency: flight.price?.currency ?? "USD",
     admin_fee_percentage: 0,
     operator_id: null,
@@ -263,7 +267,8 @@ function mapHotelToItem(sel: SelectedHotel) {
     quantity: 1,
     rooms: 1,
     unit_price: room?.total_price ?? 0,
-    cost_amount: 0,
+    cost_amount: room?.total_price ?? 0,
+    gross_price: room?.total_price ?? 0,
     cost_currency: room?.currency ?? "USD",
     admin_fee_percentage: 0,
     operator_id: null,
@@ -337,6 +342,17 @@ export function buildQuotationPayload(input: BuildQuotationInput) {
     // La presentación puede derivar el valor por persona desde este total.
     pricing_mode: "GROUP_TOTAL",
     payment_methods: [] as string[],
+    presentation_content: {
+      schemaVersion: 1 as const,
+      title: lead.destination || undefined,
+      customer: { displayName: lead.contact_name },
+      inclusions: [] as string[],
+      exclusions: [] as string[],
+      itinerary: [] as Array<{ day: number; title: string; description: string }>,
+      recommendations: [] as string[],
+      restrictions: [] as string[],
+      paymentSchedule: [] as Array<{ label: string; amount?: number; dueDate?: string; notes?: string }>,
+    },
     options,
   }
 }

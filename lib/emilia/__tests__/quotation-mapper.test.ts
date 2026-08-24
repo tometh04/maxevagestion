@@ -11,6 +11,7 @@ import {
 } from "../quotation-mapper"
 import { EUROVIPS_POLICY_MAX_LENGTH } from "../display-text"
 import { sanitizeEmiliaMetaForStorage, transformFlights, transformHotels } from "../transformers"
+import { getQuotationItemEffectiveUnitCost } from "@/lib/quotations/totals"
 
 describe("parseStars", () => {
   it.each([
@@ -194,13 +195,15 @@ describe("buildQuotationPayload", () => {
       expect(flightItem!.flight_stops).toBe(1)
       expect(flightItem!.flight_class).toBe("ECONOMY")
       expect(flightItem!.generates_commission).toBe(true)
-      expect(flightItem!.cost_amount).toBe(0)
+      expect(flightItem!.cost_amount).toBe(850)
+      expect(flightItem!.gross_price).toBe(850)
       expect(flightItem!.operator_id).toBeNull()
       expect(flightItem!.admin_fee_percentage).toBe(0)
     }
     expect(payload.options[0].items.find(i => i.item_type === "HOTEL")!.hotel_name).toBe("Riu")
     expect(payload.options[1].items.find(i => i.item_type === "HOTEL")!.hotel_name).toBe("Iberostar")
     expect(payload.options[2].items.find(i => i.item_type === "HOTEL")!.hotel_name).toBe("Hilton")
+    expect(payload.options[0].items.find(i => i.item_type === "HOTEL")!.cost_amount).toBe(1200)
   })
 
   it("0 vuelos + 2 hoteles → 2 opciones sin vuelo", () => {
@@ -246,6 +249,28 @@ describe("buildQuotationPayload", () => {
     expect(payload.options[0].items[0].quantity).toBe(1)
     expect(payload.options[0].items[0].unit_price).toBe(1310.86)
     expect(payload.options[0].total_amount).toBe(1310.86)
+  })
+
+  it("conserva costo proveedor para que fee y margen no se calculen desde cero", () => {
+    const payload = buildQuotationPayload({
+      lead,
+      selectedFlight: makeFlight({
+        price: { amount: 1000, currency: "USD", basis: "GROUP_TOTAL" },
+      }),
+      selectedHotels: [],
+      generalData: general,
+    })
+    const item = {
+      ...payload.options[0].items[0],
+      cost_calculation_mode: "SIMPLE",
+      admin_fee_percentage: 10,
+    }
+
+    const operatorDebt = getQuotationItemEffectiveUnitCost(item)
+    const manualSale = 1300
+
+    expect(operatorDebt).toBe(1100)
+    expect(manualSale - operatorDebt).toBe(200)
   })
 
   it("vuelo: sin escalas → flight_stops = 0 y ruta desde el leg de ida", () => {

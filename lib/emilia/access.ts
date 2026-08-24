@@ -1,7 +1,9 @@
 import { isAccessAllowed, type BillingOrg } from "@/lib/billing/guard"
-import { canPerformAction, getUserAgencyIds } from "@/lib/permissions-api"
-import { resolveUserPermissions } from "@/lib/permissions-agency"
-import type { UserRole } from "@/lib/permissions"
+import {
+  canAccessAgencyResource,
+  resolveAgencyPermissionScope,
+  type AgencyPermissionScope,
+} from "@/lib/permissions/agency-scope-server"
 
 /**
  * Acceso promocional para todos los tenants con suscripción vigente, extendido
@@ -48,6 +50,8 @@ export type EmiliaOrganizationAccessResult =
 export type LeadEmiliaAccessResult =
   | (Extract<EmiliaOrganizationAccessResult, { allowed: true }> & {
       agencyIds: string[]
+      agencyScope: AgencyPermissionScope
+      ownSellerId: string | null
     })
   | Extract<EmiliaOrganizationAccessResult, { allowed: false }>
 
@@ -174,20 +178,14 @@ export async function resolveLeadEmiliaAccess(
     }
   }
 
-  const agencyIds = await getUserAgencyIds(
+  const agencyScope = await resolveAgencyPermissionScope(
     supabase,
-    user.id,
-    user.role as UserRole
-  )
-  const permissions = await resolveUserPermissions(
-    supabase,
-    user.id,
-    user.org_id as string,
-    user.roles ?? [user.role],
-    agencyIds
+    user,
+    "leads",
+    "write"
   )
 
-  if (!canPerformAction(user, "leads", "write", permissions)) {
+  if (agencyScope.agencyIds.length === 0) {
     return {
       allowed: false,
       status: 403,
@@ -201,13 +199,23 @@ export async function resolveLeadEmiliaAccess(
 
   return {
     ...organizationAccess,
-    agencyIds,
+    agencyIds: agencyScope.agencyIds,
+    agencyScope,
+    ownSellerId: agencyScope.fullAgencyIds.length === 0
+      && agencyScope.ownAgencyIds.length > 0
+      ? user.id
+      : null,
   }
 }
 
 export function canAccessEmiliaLeadAgency(
   access: Extract<LeadEmiliaAccessResult, { allowed: true }>,
-  agencyId: string | null | undefined
+  agencyId: string | null | undefined,
+  assignedSellerId?: string | null
 ): boolean {
-  return Boolean(agencyId && access.agencyIds.includes(agencyId))
+  if (!agencyId) return false
+  return canAccessAgencyResource(access.agencyScope, {
+    agency_id: agencyId,
+    seller_id: assignedSellerId,
+  })
 }

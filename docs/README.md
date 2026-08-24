@@ -33,6 +33,7 @@ en esa ubicacion:
 ## Documentos clave
 
 - Arquitectura viva: `architecture/AUDITORIA_ARQUITECTURA_AGENTS.md`
+- Modelos PDF por agencia: `architecture/quotation-document-models.md`
 - Handover operativo: `runbooks/HANDOVER.md`
 - Bugs y riesgos conocidos: `runbooks/BUGS-TRIAGE.md`
 - Testing manual: `testing/GUIA_TESTING.md`

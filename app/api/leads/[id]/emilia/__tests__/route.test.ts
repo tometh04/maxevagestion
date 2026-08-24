@@ -17,8 +17,15 @@ jest.mock("@/lib/auth", () => ({ getCurrentUser: jest.fn() }))
 jest.mock("@/lib/supabase/server", () => ({ createServerClient: jest.fn() }))
 jest.mock("@/lib/emilia/access", () => ({
   resolveLeadEmiliaAccess: jest.fn(),
-  canAccessEmiliaLeadAgency: (access: { agencyIds: string[] }, agencyId: string | null) =>
-    Boolean(agencyId && access.agencyIds.includes(agencyId)),
+  canAccessEmiliaLeadAgency: (
+    access: { agencyIds: string[]; ownSellerId?: string | null },
+    agencyId: string | null,
+    assignedSellerId?: string | null
+  ) => Boolean(
+    agencyId
+    && access.agencyIds.includes(agencyId)
+    && (!access.ownSellerId || assignedSellerId === access.ownSellerId)
+  ),
 }))
 
 import { GET, POST } from "../route"
@@ -57,6 +64,7 @@ function leadData(overrides: Record<string, unknown> = {}) {
     notes: null,
     list_name: null,
     agency_id: "a1",
+    assigned_seller_id: "u1",
     ...overrides,
   }
 }
@@ -71,6 +79,7 @@ describe("/api/leads/[id]/emilia", () => {
     resolveLeadEmiliaAccess.mockResolvedValue({
       allowed: true,
       agencyIds: ["a1"],
+      ownSellerId: "u1",
       promotionActive: true,
       promotionEndsAt: "2026-11-11T19:32:31.000Z",
       organization: {},
@@ -100,6 +109,15 @@ describe("/api/leads/[id]/emilia", () => {
   it("GET devuelve 404 si el lead no pertenece al scope de org/agencia", async () => {
     createServerClient.mockResolvedValue(mockSupabase({
       leads: queryResult({ data: leadData({ agency_id: "a2" }) }),
+    }))
+
+    const res = await GET(REQ_STUB, { params: Promise.resolve({ id: LEAD_ID }) })
+    expect(res.status).toBe(404)
+  })
+
+  it("GET devuelve 404 si el lead pertenece a otro vendedor bajo own-data", async () => {
+    createServerClient.mockResolvedValue(mockSupabase({
+      leads: queryResult({ data: leadData({ assigned_seller_id: "u2" }) }),
     }))
 
     const res = await GET(REQ_STUB, { params: Promise.resolve({ id: LEAD_ID }) })

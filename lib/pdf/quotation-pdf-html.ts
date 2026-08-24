@@ -32,7 +32,7 @@ import {
   formatQuotationDateShort,
   normalizeQuotationForPresentation,
 } from "@/lib/quotations/presentation"
-import { getPublicQuotationPdfPath } from "@/lib/quotations/public-links"
+import { downloadQuotationDocumentById } from "@/lib/quotation-documents/client"
 
 export type OrganizationBrandingSettings = Record<string, string>
 
@@ -527,8 +527,8 @@ export async function tryDownloadQuotationHtmlPDFById(quotationId: string): Prom
 
 /**
  * Flujo canónico post-"Generar PDF" / "Editar borrador":
- * 1) PDF HTML nuevo (vuelos/hoteles + branding de org)
- * 2) Fallback a vista print pública si hay public_token
+ * Emite y descarga el documento canónico. Los errores se propagan para no
+ * ocultar permisos, concurrencia o persistencia abriendo un snapshot anterior.
  *
  * Usado por Emilia, card CRM (Cotizaciones) y cualquier caller del
  * QuotationPdfPriceDialog. No toca permisos ni DB: solo descarga client-side.
@@ -536,19 +536,8 @@ export async function tryDownloadQuotationHtmlPDFById(quotationId: string): Prom
 export async function downloadQuotationPdfFromPriceDialog(options: {
   quotationId: string
   publicToken?: string | null
+  expectedUpdatedAt?: string
 }): Promise<"html" | "public" | "none"> {
-  try {
-    const handled = await tryDownloadQuotationHtmlPDFById(options.quotationId)
-    if (handled) return "html"
-  } catch (err) {
-    console.error("Error generando PDF HTML, fallback a vista print:", err)
-  }
-
-  const token = options.publicToken?.trim()
-  if (token) {
-    window.open(getPublicQuotationPdfPath(token), "_blank", "noopener,noreferrer")
-    return "public"
-  }
-
-  return "none"
+  await downloadQuotationDocumentById(options.quotationId, options.expectedUpdatedAt)
+  return "html"
 }

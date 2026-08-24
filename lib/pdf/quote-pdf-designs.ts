@@ -27,6 +27,8 @@
  * a multi-page jsPDF document.
  */
 
+import { waitForQuotationDocumentFonts } from '@/lib/quotation-documents/fonts-client';
+
 export interface BrandingData {
   agency_name: string;
   agency_logo_url: string;
@@ -641,6 +643,7 @@ export async function renderHtmlToPdfBlob(html: string): Promise<Blob> {
 
   try {
     await waitForImages(container);
+    await waitForQuotationDocumentFonts(document, container);
     await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
 
     const pageDivs = Array.from(container.querySelectorAll('[data-pdf-page]')) as HTMLElement[];

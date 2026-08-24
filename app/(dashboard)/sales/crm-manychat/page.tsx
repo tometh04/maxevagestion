@@ -10,6 +10,10 @@ import {
   SELLER_OPTION_SELECT,
   toSellerOptions,
 } from "@/lib/sellers/seller-option"
+import {
+  QUOTATION_OPERATOR_SELECT,
+  type QuotationOperatorOption,
+} from "@/lib/operators/quotation-option"
 
 export const dynamic = "force-dynamic"
 
@@ -81,8 +85,11 @@ export default async function CRMManychatPage() {
   // explícito por org_id, un tenant nuevo veía operadores de otros tenants
   // por RLS rota. Defense-in-depth obligatorio (regla de oro CLAUDE.md).
   const { data: operators } = await (supabase.from("operators") as any)
-    .select("id, name, admin_fee_percentage")
+    .select(QUOTATION_OPERATOR_SELECT)
     .eq("org_id", (user as any).org_id)
+    .or(agencyIds.length > 0
+      ? `agency_id.is.null,agency_id.in.(${agencyIds.join(",")})`
+      : "agency_id.is.null")
     .order("name")
 
   // VIB-61: el kanban ya NO carga todo el pipeline. Es lazy por columna: pide
@@ -105,7 +112,7 @@ export default async function CRMManychatPage() {
     <CRMManychatPageClient
       agencies={(agencies || []) as Array<{ id: string; name: string }>}
       sellers={toSellerOptions(sellers)}
-      operators={(operators || []) as Array<{ id: string; name: string }>}
+      operators={(operators || []) as QuotationOperatorOption[]}
       defaultAgencyId={agencyIds[0] || undefined}
       defaultSellerId={user.role === "SELLER" ? user.id : undefined}
       currentUserId={user.id}

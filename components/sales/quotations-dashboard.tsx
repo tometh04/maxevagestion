@@ -19,19 +19,14 @@ import {
   RefreshCw, BarChart3, MapPin, Users, DollarSign, Percent, AlertTriangle,
   Eye, Loader2, Briefcase, Download
 } from "lucide-react"
-import { downloadQuotationPDF } from "@/lib/pdf/quotation-pdf"
-import {
-  downloadQuotationHtmlPDF,
-  fetchOrganizationBrandingSettings,
-  isHtmlQuotePdfEligible,
-} from "@/lib/pdf/quotation-pdf-html"
+import { downloadQuotationPdfFromPriceDialog } from "@/lib/pdf/quotation-pdf-html"
 import {
   formatQuotationCurrency,
   getQuotationOptionPricing,
-  normalizeQuotationForPresentation,
 } from "@/lib/quotations/presentation"
-import { getPublicQuotationPdfPath } from "@/lib/quotations/public-links"
 import { QuotationPdfPriceDialog } from "@/components/sales/quotation-pdf-price-dialog"
+import { fetchQuotationDocumentForUser } from "@/lib/quotation-documents/client"
+import { getQuotationCustomerTotal } from "@/lib/quotations/totals"
 
 interface QuotationsDashboardProps {
   sellers: Array<{ id: string; name: string }>
@@ -85,8 +80,18 @@ function formatCurrency(amount: number, currency: string) {
 }
 
 function getQuotationDisplayAmount(quotation: any) {
+  const options = Array.isArray(quotation.quotation_options)
+    ? quotation.quotation_options
+    : []
+  const acceptedOption = options.find((option: any) => option.is_selected)
+    || options.find((option: any) => Number(option.option_number) === 1)
+    || { total_amount: quotation.total_amount || 0 }
+  const customerTotal = getQuotationCustomerTotal(acceptedOption, {
+    insuranceAmount: quotation.insurance_amount,
+    transferAmount: quotation.transfer_amount,
+  })
   const pricing = getQuotationOptionPricing(
-    { total_amount: quotation.total_amount || 0 },
+    { total_amount: customerTotal },
     {
       adults: Number(quotation.adults || 0),
       children: Number(quotation.children || 0),
@@ -168,7 +173,10 @@ export function QuotationsDashboard({ sellers, agencies, currentUserRole, curren
         toast.error(json.error || "Error al convertir")
         return
       }
-      toast.success(`Operacion ${json.data.file_code} creada con ${json.data.services_created} servicios`)
+      toast.success(`Operación ${json.data.file_code} creada`)
+      for (const warning of Array.isArray(json.warnings) ? json.warnings : []) {
+        toast.warning(warning)
+      }
       fetchData()
       fetchQuotationsList()
     } catch (err) {
@@ -180,41 +188,23 @@ export function QuotationsDashboard({ sellers, agencies, currentUserRole, curren
     }
   }
 
-  const handleDownloadPDF = async (quotation: any) => {
+  const handleDownloadPDF = async (
+    quotation: any,
+    propagateError = false,
+    expectedUpdatedAt?: string
+  ) => {
     setDownloadingId(quotation.id)
     try {
-      // Fetch full quotation data para decidir el template
-      const res = await fetch(`/api/quotations/${quotation.id}`)
-      if (!res.ok) throw new Error("Error fetching quotation")
-      const json = await res.json()
-      const q = json.data
-
-      const pdfData = normalizeQuotationForPresentation(q)
-
-      // Cotizaciones de vuelos/hoteles usan el diseño HTML nuevo con el
-      // logo y branding de la organización loggeada
-      if (isHtmlQuotePdfEligible(pdfData)) {
-        const settings = await fetchOrganizationBrandingSettings()
-        await downloadQuotationHtmlPDF(pdfData, settings)
-        return
-      }
-
-      if (quotation.public_token) {
-        const pdfPath = getPublicQuotationPdfPath(quotation.public_token)
-        const openedWindow = window.open(pdfPath, "_blank", "noopener,noreferrer")
-        if (!openedWindow) {
-          window.location.assign(pdfPath)
-        }
-        return
-      }
-
-      // Branding desde organization_settings (autenticado). Antes se usaba
-      // /api/public/branding sin token, que devuelve {} — PDF sin branding.
-      const settings = await fetchOrganizationBrandingSettings()
-      await downloadQuotationPDF(pdfData, settings)
+      const result = await downloadQuotationPdfFromPriceDialog({
+        quotationId: quotation.id,
+        publicToken: quotation.public_token,
+        expectedUpdatedAt,
+      })
+      if (result === "none") throw new Error("No hay un documento disponible")
     } catch (err) {
       console.error("Error downloading PDF:", err)
       toast.error("Error al descargar PDF")
+      if (propagateError) throw err
     } finally {
       setDownloadingId(null)
     }
@@ -632,7 +622,7 @@ export function QuotationsDashboard({ sellers, agencies, currentUserRole, curren
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center justify-end gap-1">
-                            {q.public_token && (
+                            {q.public_token && q.active_document_id && (
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -647,7 +637,13 @@ export function QuotationsDashboard({ sellers, agencies, currentUserRole, curren
                               variant="ghost"
                               size="sm"
                               className="h-7 w-7 p-0"
-                              onClick={() => setPdfPriceQuotation(q)}
+                              onClick={() => {
+                                if (["DRAFT", "SENT", "PENDING_APPROVAL"].includes(q.status)) {
+                                  setPdfPriceQuotation(q)
+                                } else {
+                                  void handleDownloadPDF(q)
+                                }
+                              }}
                               disabled={downloadingId === q.id}
                               title="Descargar PDF"
                             >
@@ -705,9 +701,33 @@ export function QuotationsDashboard({ sellers, agencies, currentUserRole, curren
       <QuotationPdfPriceDialog
         quotationId={pdfPriceQuotation?.id ?? null}
         onClose={() => setPdfPriceQuotation(null)}
-        onGenerate={() => {
-          if (pdfPriceQuotation) handleDownloadPDF(pdfPriceQuotation)
+        onGenerate={async (_quotationId, expectedUpdatedAt) => {
+          if (pdfPriceQuotation) await handleDownloadPDF(pdfPriceQuotation, true, expectedUpdatedAt)
         }}
+        sendValidationError={!pdfPriceQuotation?.public_token
+          ? "La cotización no tiene enlace público"
+          : !(pdfPriceQuotation.lead?.contact_phone || "").replace(/[^0-9+]/g, "")
+            ? "El lead no tiene un teléfono para WhatsApp"
+            : undefined}
+        onSend={pdfPriceQuotation && ["DRAFT", "SENT", "PENDING_APPROVAL"].includes(pdfPriceQuotation.status) ? async (_quotationId, sendWindow, expectedUpdatedAt) => {
+          const token = pdfPriceQuotation.public_token
+          const rawPhone = pdfPriceQuotation.lead?.contact_phone || ""
+          const phone = rawPhone.replace(/[^0-9+]/g, "")
+          if (!token) throw new Error("La cotización no tiene enlace público")
+          if (!phone) throw new Error("El lead no tiene un teléfono para WhatsApp")
+          await fetchQuotationDocumentForUser(pdfPriceQuotation.id, {
+            issue: true,
+            markSent: true,
+            expectedUpdatedAt,
+          })
+          const publicUrl = `${window.location.origin}/cotizacion/${token}`
+          const cleanPhone = phone.startsWith("+") ? phone.slice(1) : phone
+          const message = encodeURIComponent(`Hola ${pdfPriceQuotation.lead?.contact_name || ""}! Te paso tu cotización:\n\n${publicUrl}\n\nQuedo a disposición por cualquier consulta.`)
+          await fetchQuotationsList()
+          const whatsappUrl = `https://wa.me/${cleanPhone}?text=${message}`
+          sendWindow.location.href = whatsappUrl
+          toast.success("Cotización preparada para enviar")
+        } : undefined}
       />
 
       {/* Convert confirmation dialog */}
@@ -726,7 +746,18 @@ export function QuotationsDashboard({ sellers, agencies, currentUserRole, curren
                   <strong>{selectedQuotation.quotation_number}</strong> por{" "}
                   <strong>{displayAmount.amount}</strong>
                   {displayAmount.label === "Precio por persona" && (
-                    <> (total {formatCurrency(selectedQuotation.total_amount, selectedQuotation.currency)})</>
+                    <> (total {formatCurrency(
+                      getQuotationCustomerTotal(
+                        (selectedQuotation.quotation_options || []).find((option: any) => option.is_selected)
+                          || (selectedQuotation.quotation_options || [])[0]
+                          || { total_amount: selectedQuotation.total_amount },
+                        {
+                          insuranceAmount: selectedQuotation.insurance_amount,
+                          transferAmount: selectedQuotation.transfer_amount,
+                        }
+                      ),
+                      selectedQuotation.currency
+                    )})</>
                   )}
                   .
                   <br /><br />

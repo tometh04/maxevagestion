@@ -98,11 +98,15 @@ export async function GET(
       }
       const { data: lead } = await supabase
         .from("leads")
-        .select("id, agency_id")
+        .select("id, agency_id, assigned_seller_id")
         .eq("id", leadId)
         .eq("org_id", user.org_id)
         .maybeSingle()
-      if (!lead || !canAccessEmiliaLeadAgency(leadAccess, (lead as any).agency_id)) {
+      if (!lead || !canAccessEmiliaLeadAgency(
+        leadAccess,
+        (lead as any).agency_id,
+        (lead as any).assigned_seller_id
+      )) {
         return NextResponse.json({ error: "Lead no encontrado" }, { status: 404 })
       }
     } else {

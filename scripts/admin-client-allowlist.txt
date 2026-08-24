@@ -113,6 +113,7 @@ app/api/integrations/callbell-in/[token]/webhook/route.ts                # WEBHO
 app/api/webhooks/manychat/route.ts                                       # WEBHOOK_S2S — legacy Manychat webhook (API key auth).
 app/api/webhooks/linear/route.ts                                         # WEBHOOK_S2S — Linear pega al cambiar estado de issue (firma HMAC), sin session; update por linear_issue_id.
 app/api/public/quotations/[token]/route.ts                               # WEBHOOK_S2S — aceptación de cotización pública; org_id del token.
+app/api/public/quotations/[token]/document/route.ts                      # WEBHOOK_S2S — documento público readonly; tenant y agencia se resuelven por public_token.
 
 # ─── WHA_CONTROL ───────────────────────────────────────────────────────────────
 # Tablas wha_control no existen en prod; cuando se materialicen, agregar org_id + RLS.
@@ -136,10 +137,11 @@ app/api/cash/daily-balance/route.ts                                      # RPC_B
 
 # ─── STORAGE ───────────────────────────────────────────────────────────────────
 app/api/operations/[id]/itinerary/upload-image/route.ts                  # STORAGE — solo sube archivos al bucket.
-app/api/quotations/upload-flight-screenshot/route.ts                     # STORAGE — solo sube archivos al bucket.
+app/api/quotations/upload-flight-screenshot/route.ts                     # WRITE_VALIDATED/STORAGE — lectura org/agencia/seller y upload tenant-scoped tras permisos.
 
 # ─── WRITE_VALIDATED ───────────────────────────────────────────────────────────
 # Reads via serverClient (RLS), luego adminClient para writes con org_id validado.
+app/api/cron/quotation-conversion-effects/route.ts                       # CRON — procesa outbox financiero cross-tenant tras checkCronAuth; cada job conserva org_id.
 app/api/operations/[id]/itinerary/route.ts                               # WRITE_VALIDATED — validación parent-op via RLS.
 app/api/operations/[id]/itinerary/[itemId]/route.ts                      # WRITE_VALIDATED — validación parent-op via RLS.
 app/api/expenses/variable/route.ts                                       # WRITE_VALIDATED — inyecta org_id al insert.
@@ -147,6 +149,15 @@ app/api/expenses/variable/[id]/route.ts                                  # WRITE
 app/api/expenses/cc-payment/route.ts                                     # WRITE_VALIDATED — inyecta org_id en group + items.
 app/api/expenses/cc-payment/[id]/route.ts                                # WRITE_VALIDATED — acotado por group.org_id.
 app/api/leads/[id]/route.ts                                              # WRITE_VALIDATED — acotado por lead.org_id.
+app/api/quotations/[id]/document/route.ts                                # WRITE_VALIDATED — emisión tras permisos dinámicos, org, agencia y seller scope.
+app/api/quotations/[id]/route.ts                                         # WRITE_VALIDATED — reemplazo atómico de estructura tras permisos, org, agencia y seller scope.
+app/api/quotations/[id]/convert/route.ts                                 # WRITE_VALIDATED — conversión RPC atómica tras validar org, agencia, seller y permisos de operación.
+app/api/quotations/route.ts                                              # WRITE_VALIDATED — alta atómica tras permisos, org, agencia, seller y lead scope.
+app/api/quotations/cost-settings/route.ts                                # WRITE_VALIDATED — proyección mínima de costos tras leads.write per-agency; query exacta por agencia.
+app/api/analytics/quotations/route.ts                                    # WRITE_VALIDATED — analytics readonly tras permisos y scope org/agencia/seller.
+app/api/quotation-document-models/route.ts                               # WRITE_VALIDATED — modelos tras settings.write y agencia explícita dentro de la org.
+app/api/templates/route.ts                                               # WRITE_VALIDATED — legacy documents tras settings.write; org y agencia validados antes del admin write.
+app/api/templates/[id]/route.ts                                          # WRITE_VALIDATED — legacy documents por id, org y agencia autorizada antes del admin write.
 app/api/payments/[id]/approve/route.ts                                   # WRITE_VALIDATED — org_id via payment ya RLS-validado.
 app/api/payments/allocations/route.ts                                    # WRITE_VALIDATED — org_id via operationId RLS-validado.
 app/api/accounting/operator-payments/[id]/approve/route.ts               # WRITE_VALIDATED — org_id via operator_payment RLS-validado.
@@ -159,3 +170,11 @@ lib/accounting/audit.ts                                                  # LIB �
 lib/accounting/seed-chart-of-accounts.ts                                 # LIB — seedear plan de cuentas; recibe orgId como parámetro.
 lib/security/audit.ts                                                    # LIB — security_audit_log fire-and-forget (Pilar 8). Legítimo.
 lib/auth/platform.ts                                                     # LIB — verifica platform_admins; no requiere org context.
+lib/growth-studio/source-service.ts                                      # LIB/WRITE_VALIDATED — cotizaciones readonly tras entitlement y scope org/agencia/seller.
+
+# ─── TESTS DE REGRESIÓN ───────────────────────────────────────────────────────
+app/api/public/quotations/[token]/__tests__/route.test.ts                 # TEST — verifica que GET público no emita con service role y que POST use el RPC acotado por token.
+app/api/quotations/__tests__/id-route.test.ts                             # TEST — simula reemplazo/rollback service-role después de validar org, agencia y seller.
+app/api/quotations/[id]/convert/__tests__/route.test.ts                   # TEST — mock de conversión transaccional y alerta de revisión de comisiones.
+app/api/quotations/__tests__/route.test.ts                                # TEST — mock del alta atómica y su reload service-role post-gate.
+app/api/quotations/upload-flight-screenshot/__tests__/route.test.ts       # TEST — mock de lectura scoped y Storage service-role.

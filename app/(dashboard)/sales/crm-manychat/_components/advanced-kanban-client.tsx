@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select"
 import { TagFilter } from "./tag-filter"
 import { LeadCardAdvanced, type LeadAdvancedFull } from "./lead-card-advanced"
+import type { QuotationOperatorOption } from "@/lib/operators/quotation-option"
 
 type Funnel = {
   id: string
@@ -35,11 +36,7 @@ type Props = {
   orgId: string
   agencies: Array<{ id: string; name: string }>
   sellers: SellerOption[]
-  operators: Array<{
-    id: string
-    name: string
-    admin_fee_percentage?: number | null
-  }>
+  operators: QuotationOperatorOption[]
   /** True solo si el usuario es ADMIN/SUPER_ADMIN. Renderiza el filtro
    *  de vendedor para que pueda inspeccionar el pipeline de cada seller.
    *  SELLERs nunca lo ven — ya tienen los leads filtrados a sus propios. */

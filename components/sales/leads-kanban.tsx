@@ -1,6 +1,7 @@
 "use client"
 
 import type { SellerOption } from "@/lib/sellers/seller-option"
+import type { QuotationOperatorOption } from "@/lib/operators/quotation-option"
 import { useState, useEffect, useRef } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -65,7 +66,7 @@ interface LeadsKanbanProps {
   leads: Lead[]
   agencies?: Array<{ id: string; name: string }>
   sellers?: SellerOption[]
-  operators?: Array<{ id: string; name: string }>
+  operators?: QuotationOperatorOption[]
   onRefresh?: () => void
   currentUserId?: string
   currentUserRole?: string

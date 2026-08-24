@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { createServerClient } from "@/lib/supabase/server"
 import { resolveGrowthStudioAccess } from "@/lib/growth-studio/access"
 import type { GrowthStudioApplicationContext } from "@/lib/growth-studio/application-context"
+import { resolveAgencyPermissionScope } from "@/lib/permissions/agency-scope-server"
 import {
   GrowthStudioCampaignNotFoundError,
   GrowthStudioCampaignPersistenceError,
@@ -54,12 +55,19 @@ export async function getGrowthStudioApiContext(): Promise<ApiContextResult> {
     }
   }
 
+  const [quotationSourceScope, operationSourceScope] = await Promise.all([
+    resolveAgencyPermissionScope(supabase, user, "leads", "read"),
+    resolveAgencyPermissionScope(supabase, user, "operations", "read"),
+  ])
+
   return {
     context: {
       supabase,
       userId: user.id,
       orgId: user.org_id,
       access,
+      quotationSourceScope,
+      operationSourceScope,
     },
   }
 }

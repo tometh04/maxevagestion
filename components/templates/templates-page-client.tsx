@@ -104,7 +104,7 @@ const templateTypeDescriptions: Record<string, string> = {
   general: 'Template de propósito general',
 }
 
-export function TemplatesPageClient() {
+export function TemplatesPageClient({ agencies }: { agencies: Array<{ id: string; name: string }> }) {
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
   const [templates, setTemplates] = useState<Template[]>([])
@@ -119,6 +119,7 @@ export function TemplatesPageClient() {
 
   // Form state
   const [formData, setFormData] = useState({
+    agency_id: agencies[0]?.id ?? '',
     name: '',
     description: '',
     template_type: 'invoice' as string,
@@ -250,6 +251,7 @@ export function TemplatesPageClient() {
 
   const resetForm = () => {
     setFormData({
+      agency_id: agencies[0]?.id ?? '',
       name: '',
       description: '',
       template_type: 'invoice',
@@ -578,6 +580,23 @@ export function TemplatesPageClient() {
               </div>
 
               <div>
+                <Label>Agencia *</Label>
+                <Select
+                  value={formData.agency_id}
+                  onValueChange={(agency_id) => setFormData({ ...formData, agency_id })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccioná una agencia" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {agencies.map((agency) => (
+                      <SelectItem key={agency.id} value={agency.id}>{agency.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
                 <Label>Descripción</Label>
                 <Textarea
                   value={formData.description}
@@ -726,7 +745,7 @@ export function TemplatesPageClient() {
             <Button variant="outline" onClick={() => setIsCreateOpen(false)}>
               Cancelar
             </Button>
-            <Button onClick={createTemplate} disabled={saving || !formData.name || !formData.html_content}>
+            <Button onClick={createTemplate} disabled={saving || !formData.agency_id || !formData.name || !formData.html_content}>
               {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               Crear Template
             </Button>

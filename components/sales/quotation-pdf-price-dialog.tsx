@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Loader2, FileText, RotateCcw, Shield, Bus } from "lucide-react"
+import { Loader2, FileText, RotateCcw, Shield, Bus, Plus, Trash2 } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -13,9 +13,22 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { toast } from "sonner"
 import { formatQuotationCurrency } from "@/lib/quotations/presentation"
 import { normalizeManualQuotationTotal } from "@/lib/quotations/totals"
+import {
+  parseQuotationPresentationContent,
+  type QuotationPresentationContent,
+} from "@/lib/quotation-documents/schemas"
 
 interface OptionEntry {
   id: string
@@ -26,6 +39,18 @@ interface OptionEntry {
   manual: number | null
   /** Valor actual del input (string para edición libre) */
   input: string
+  items: ItemOperatorEntry[]
+}
+
+interface ItemOperatorEntry {
+  id: string
+  label: string
+  operatorId: string | null
+}
+
+interface AvailableOperator {
+  id: string
+  name: string
 }
 
 interface Props {
@@ -33,28 +58,72 @@ interface Props {
   quotationId: string | null
   onClose: () => void
   /** Se llama después de guardar los precios, para abrir/descargar el PDF. */
-  onGenerate: (quotationId: string) => void
+  onGenerate: (quotationId: string, expectedUpdatedAt: string) => void | Promise<void>
+  /** Si se informa, el mismo guardado puede emitir + marcar SENT de forma atómica. */
+  onSend?: (
+    quotationId: string,
+    sendWindow: Window,
+    expectedUpdatedAt: string
+  ) => void | Promise<void>
+  /** Preflight conocido por el caller (token/teléfono) que debe fallar antes de persistir. */
+  sendValidationError?: string
+}
+
+function ListEditor({
+  id,
+  label,
+  values,
+  onChange,
+  disabled,
+}: {
+  id: string
+  label: string
+  values: string[]
+  onChange: (values: string[]) => void
+  disabled: boolean
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      <Textarea
+        id={id}
+        rows={5}
+        value={values.join("\n")}
+        onChange={event => onChange(event.target.value.split("\n").map(value => value.trim()).filter(Boolean))}
+        placeholder="Un punto por línea"
+        disabled={disabled}
+      />
+    </div>
+  )
 }
 
 /**
  * Dialog "Cambiar precio" del flujo Generar PDF.
  *
  * Muestra el total calculado de cada opción de la cotización y un input con
- * el precio final que va a ver el cliente. Si la agencia lo cambia (ej. para
- * sumar su comisión), se persiste como manual_total_amount de la opción vía
- * PATCH /api/quotations/[id]/price — la página pública y el PDF resuelven el
- * total con ese override, así ambos muestran el mismo precio.
+ * el precio final que va a ver el cliente. Precio, adicionales y contenido se
+ * preparan juntos mediante PUT /api/quotations/[id]/document; esa operación
+ * invalida el snapshot anterior antes de emitir el nuevo.
  */
-export function QuotationPdfPriceDialog({ quotationId, onClose, onGenerate }: Props) {
+export function QuotationPdfPriceDialog({
+  quotationId,
+  onClose,
+  onGenerate,
+  onSend,
+  sendValidationError,
+}: Props) {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [currency, setCurrency] = useState("USD")
   const [quotationNumber, setQuotationNumber] = useState<string | null>(null)
+  const [expectedUpdatedAt, setExpectedUpdatedAt] = useState<string | null>(null)
   const [entries, setEntries] = useState<OptionEntry[]>([])
+  const [availableOperators, setAvailableOperators] = useState<AvailableOperator[]>([])
   // Adicionales globales de la cotización (seguro / traslado). String para
   // edición libre; "" = sin adicional (0).
   const [insurance, setInsurance] = useState("")
   const [transfer, setTransfer] = useState("")
+  const [presentation, setPresentation] = useState<QuotationPresentationContent>(() => parseQuotationPresentationContent({}))
 
   useEffect(() => {
     if (!quotationId) return
@@ -62,8 +131,11 @@ export function QuotationPdfPriceDialog({ quotationId, onClose, onGenerate }: Pr
     async function load() {
       setLoading(true)
       setEntries([])
+      setAvailableOperators([])
       setInsurance("")
       setTransfer("")
+      setPresentation(parseQuotationPresentationContent({}))
+      setExpectedUpdatedAt(null)
       try {
         const res = await fetch(`/api/quotations/${quotationId}`)
         if (!res.ok) throw new Error("No se pudo cargar la cotización")
@@ -72,9 +144,17 @@ export function QuotationPdfPriceDialog({ quotationId, onClose, onGenerate }: Pr
         const q = json.data
         setCurrency(q?.currency || "USD")
         setQuotationNumber(q?.quotation_number || null)
+        setExpectedUpdatedAt(q?.updated_at || null)
         setInsurance(Number(q?.insurance_amount) > 0 ? String(q.insurance_amount) : "")
         setTransfer(Number(q?.transfer_amount) > 0 ? String(q.transfer_amount) : "")
+        setPresentation(parseQuotationPresentationContent(q?.presentation_content))
         const options = Array.isArray(q?.quotation_options) ? q.quotation_options : []
+        const operators = Array.isArray(q?.available_operators)
+          ? q.available_operators.filter((operator: any) => operator?.id && operator?.name)
+          : []
+        const allowedOperatorIds = new Set(operators.map((operator: any) => String(operator.id)))
+        const items = Array.isArray(q?.quotation_items) ? q.quotation_items : []
+        setAvailableOperators(operators)
         const mapped: OptionEntry[] = options
           .slice()
           .sort((a: any, b: any) => Number(a.option_number || 0) - Number(b.option_number || 0))
@@ -90,6 +170,22 @@ export function QuotationPdfPriceDialog({ quotationId, onClose, onGenerate }: Pr
               calculated,
               manual,
               input: effective > 0 ? String(effective) : "",
+              items: items
+                .filter((item: any) => item.option_id === opt.id)
+                .map((item: any, itemIndex: number) => ({
+                  id: String(item.id),
+                  label: String(
+                    item.description
+                    || item.hotel_name
+                    || item.airline
+                    || item.provider
+                    || item.item_type
+                    || `Servicio ${itemIndex + 1}`
+                  ),
+                  operatorId: item.operator_id && allowedOperatorIds.has(String(item.operator_id))
+                    ? String(item.operator_id)
+                    : null,
+                })),
             }
           })
         setEntries(mapped)
@@ -117,6 +213,17 @@ export function QuotationPdfPriceDialog({ quotationId, onClose, onGenerate }: Pr
     ))
   }
 
+  const setItemOperator = (optionId: string, itemId: string, operatorId: string) => {
+    setEntries(prev => prev.map(entry => entry.id === optionId
+      ? {
+          ...entry,
+          items: entry.items.map(item => item.id === itemId
+            ? { ...item, operatorId: operatorId || null }
+            : item),
+        }
+      : entry))
+  }
+
   // Comisión implícita: diferencia entre el precio del input y el calculado
   const renderDiff = (entry: OptionEntry) => {
     const value = Number(entry.input)
@@ -131,8 +238,12 @@ export function QuotationPdfPriceDialog({ quotationId, onClose, onGenerate }: Pr
     )
   }
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (action: "download" | "send" = "download") => {
     if (!quotationId) return
+    if (action === "send" && sendValidationError) {
+      toast.error(sendValidationError)
+      return
+    }
 
     // Validar inputs antes de guardar
     for (const entry of entries) {
@@ -141,6 +252,13 @@ export function QuotationPdfPriceDialog({ quotationId, onClose, onGenerate }: Pr
         toast.error(`Ingresá un precio válido para "${entry.title}"`)
         return
       }
+    }
+    const itemWithoutOperator = entries
+      .flatMap(entry => entry.items)
+      .find(item => !item.operatorId)
+    if (itemWithoutOperator) {
+      toast.error(`Seleccioná un operador para "${itemWithoutOperator.label}"`)
+      return
     }
 
     // Adicionales: vacío = 0. Solo rechazamos valores inválidos/negativos.
@@ -155,43 +273,66 @@ export function QuotationPdfPriceDialog({ quotationId, onClose, onGenerate }: Pr
       return
     }
 
+    // Reservar la ventana dentro del gesto del usuario evita que el navegador
+    // bloquee WhatsApp después de los awaits de preparación/emisión.
+    const sendWindow = action === "send" && typeof window !== "undefined"
+      ? window.open("about:blank", "_blank")
+      : null
+    if (action === "send" && !sendWindow) {
+      toast.error("Habilitá las ventanas emergentes para abrir WhatsApp antes de enviar")
+      return
+    }
+    if (sendWindow) sendWindow.opener = null
+
     setSaving(true)
     try {
-      for (const entry of entries) {
-        const value = Number(entry.input)
-        // Si coincide con el calculado → guardar null (sin override). Si no,
-        // es un precio manual. Solo llamamos a la API cuando cambió algo.
-        const desiredManual = Math.abs(value - entry.calculated) < 0.005 ? null : value
-        if (desiredManual === entry.manual) continue
-
-        const res = await fetch(`/api/quotations/${quotationId}/price`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ option_id: entry.id, manual_total_amount: desiredManual }),
-        })
-        if (!res.ok) {
-          const json = await res.json().catch(() => ({}))
-          toast.error(json?.error || `No se pudo guardar el precio de "${entry.title}"`)
-          return
-        }
-      }
-
-      // Adicionales globales (seguro / traslado) → header de la cotización.
-      const addonsRes = await fetch(`/api/quotations/${quotationId}/addons`, {
-        method: "PATCH",
+      if (!expectedUpdatedAt) throw new Error("La cotización no tiene versión de edición")
+      const prepareRes = await fetch(`/api/quotations/${quotationId}/document`, {
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ insurance_amount: insuranceValue, transfer_amount: transferValue }),
+        body: JSON.stringify({
+          expected_updated_at: expectedUpdatedAt,
+          prices: entries.map(entry => {
+            const value = Number(entry.input)
+            return {
+              option_id: entry.id,
+              manual_total_amount: Math.abs(value - entry.calculated) < 0.005 ? null : value,
+            }
+          }),
+          insurance_amount: insuranceValue,
+          transfer_amount: transferValue,
+          presentation_content: presentation,
+          item_operators: entries.flatMap(entry => entry.items.map(item => ({
+            item_id: item.id,
+            operator_id: item.operatorId,
+          }))),
+        }),
       })
-      if (!addonsRes.ok) {
-        const json = await addonsRes.json().catch(() => ({}))
-        toast.error(json?.error || "No se pudieron guardar el seguro y traslado")
-        return
+      const preparedJson = await prepareRes.json().catch(() => ({}))
+      if (!prepareRes.ok) {
+        throw new Error(preparedJson?.error || "No se pudieron guardar los precios y el contenido")
       }
+      const preparedUpdatedAt = preparedJson?.data?.updated_at
+      if (typeof preparedUpdatedAt !== "string" || !preparedUpdatedAt) {
+        throw new Error("El servidor no devolvió la nueva versión de la cotización")
+      }
+      // Preparar el documento avanza el CAS de la cotización. Si la descarga o
+      // el envío posterior falla, el mismo modal debe poder reintentar sin
+      // exigir una recarga y sin sobrescribir cambios concurrentes.
+      setExpectedUpdatedAt(preparedUpdatedAt)
 
-      onGenerate(quotationId)
+      if (action === "send" && onSend) {
+        if (!sendWindow || sendWindow.closed) {
+          throw new Error("La ventana de WhatsApp se cerró antes de emitir la cotización")
+        }
+        await onSend(quotationId, sendWindow, preparedUpdatedAt)
+      } else {
+        await onGenerate(quotationId, preparedUpdatedAt)
+      }
       onClose()
     } catch (err: any) {
-      toast.error("Error al guardar precios: " + (err?.message || ""))
+      if (sendWindow && !sendWindow.closed) sendWindow.close()
+      toast.error("No se pudo preparar el documento: " + (err?.message || ""))
     } finally {
       setSaving(false)
     }
@@ -199,7 +340,7 @@ export function QuotationPdfPriceDialog({ quotationId, onClose, onGenerate }: Pr
 
   return (
     <Dialog open={quotationId !== null} onOpenChange={(open) => { if (!open && !saving) onClose() }}>
-      <DialogContent className="sm:max-w-[480px]">
+      <DialogContent className="sm:max-w-[760px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileText className="h-4 w-4 text-primary" />
@@ -215,7 +356,12 @@ export function QuotationPdfPriceDialog({ quotationId, onClose, onGenerate }: Pr
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <div className="space-y-4 py-1 max-h-[50vh] overflow-y-auto">
+          <Tabs defaultValue="prices" className="min-w-0">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="prices">Precios</TabsTrigger>
+              <TabsTrigger value="content">Contenido del PDF</TabsTrigger>
+            </TabsList>
+            <TabsContent value="prices" className="space-y-4 py-1 max-h-[54vh] overflow-y-auto pr-1">
             {entries.map((entry) => {
               const hasOverride = Math.abs(Number(entry.input) - entry.calculated) >= 0.005
               return (
@@ -256,6 +402,39 @@ export function QuotationPdfPriceDialog({ quotationId, onClose, onGenerate }: Pr
                     </div>
                     {renderDiff(entry)}
                   </div>
+                  {entry.items.length > 0 && (
+                    <div className="space-y-2 border-t border-border/50 pt-2">
+                      <p className="text-xs font-medium text-muted-foreground">Operadores de esta opción</p>
+                      {entry.items.map((item) => (
+                        <div key={item.id} className="grid gap-1.5 sm:grid-cols-[minmax(0,1fr)_240px] sm:items-center">
+                          <Label htmlFor={`operator-${item.id}`} className="truncate text-xs">
+                            {item.label}
+                          </Label>
+                          <Select
+                            value={item.operatorId || ""}
+                            onValueChange={(value) => setItemOperator(entry.id, item.id, value)}
+                            disabled={saving || availableOperators.length === 0}
+                          >
+                            <SelectTrigger id={`operator-${item.id}`} aria-label={`Operador para ${item.label}`}>
+                              <SelectValue placeholder="Seleccionar operador" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availableOperators.map((operator) => (
+                                <SelectItem key={operator.id} value={operator.id}>
+                                  {operator.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      ))}
+                      {availableOperators.length === 0 && (
+                        <p className="text-xs text-destructive">
+                          No hay operadores disponibles para esta agencia.
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               )
             })}
@@ -305,17 +484,60 @@ export function QuotationPdfPriceDialog({ quotationId, onClose, onGenerate }: Pr
                 Se suman al total y se muestran desglosados en el PDF.
               </p>
             </div>
-          </div>
+            </TabsContent>
+            <TabsContent value="content" className="max-h-[54vh] space-y-5 overflow-y-auto py-2 pr-1">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label htmlFor="pdf-title">Título del viaje</Label>
+                  <Input id="pdf-title" value={presentation.title || ""} placeholder="Ej. San Pedro de Atacama + Salar de Uyuni" onChange={event => setPresentation(current => ({ ...current, title: event.target.value || undefined }))} disabled={saving} />
+                </div>
+                <div className="space-y-1.5"><Label htmlFor="pdf-customer">Pasajero / cliente</Label><Input id="pdf-customer" value={presentation.customer.displayName || ""} onChange={event => setPresentation(current => ({ ...current, customer: { ...current.customer, displayName: event.target.value || undefined } }))} disabled={saving} /></div>
+                <div className="space-y-1.5"><Label htmlFor="pdf-advisor-phone">Teléfono del asesor</Label><Input id="pdf-advisor-phone" value={presentation.advisorPhone || ""} onChange={event => setPresentation(current => ({ ...current, advisorPhone: event.target.value || undefined }))} disabled={saving} /></div>
+                <div className="space-y-1.5"><Label htmlFor="pdf-customer-email">Email del cliente</Label><Input id="pdf-customer-email" type="email" value={presentation.customer.email || ""} onChange={event => setPresentation(current => ({ ...current, customer: { ...current.customer, email: event.target.value } }))} disabled={saving} /></div>
+                <div className="space-y-1.5"><Label htmlFor="pdf-customer-phone">Teléfono del cliente</Label><Input id="pdf-customer-phone" value={presentation.customer.phone || ""} onChange={event => setPresentation(current => ({ ...current, customer: { ...current.customer, phone: event.target.value || undefined } }))} disabled={saving} /></div>
+              </div>
+
+              <div className="space-y-1.5"><Label htmlFor="pdf-overview">Presentación del programa</Label><Textarea id="pdf-overview" rows={4} value={presentation.overview || ""} onChange={event => setPresentation(current => ({ ...current, overview: event.target.value || undefined }))} placeholder="Resumen comercial que verá el cliente." disabled={saving} /></div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <ListEditor id="pdf-inclusions" label="Incluye" values={presentation.inclusions} onChange={values => setPresentation(current => ({ ...current, inclusions: values }))} disabled={saving} />
+                <ListEditor id="pdf-exclusions" label="No incluye" values={presentation.exclusions} onChange={values => setPresentation(current => ({ ...current, exclusions: values }))} disabled={saving} />
+                <ListEditor id="pdf-recommendations" label="Recomendaciones" values={presentation.recommendations} onChange={values => setPresentation(current => ({ ...current, recommendations: values }))} disabled={saving} />
+                <ListEditor id="pdf-restrictions" label="Restricciones" values={presentation.restrictions} onChange={values => setPresentation(current => ({ ...current, restrictions: values }))} disabled={saving} />
+              </div>
+
+              <div className="space-y-3 rounded-lg border p-3">
+                <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-medium">Itinerario día por día</p><p className="text-xs text-muted-foreground">Se pagina automáticamente si el programa es largo.</p></div><Button type="button" variant="outline" size="sm" onClick={() => setPresentation(current => ({ ...current, itinerary: [...current.itinerary, { day: current.itinerary.length + 1, title: "", description: "" }] }))} disabled={saving}><Plus className="mr-1 h-3.5 w-3.5" />Día</Button></div>
+                {presentation.itinerary.map((day, index) => (
+                  <div key={`${day.day}-${index}`} className="space-y-2 rounded-md bg-muted/40 p-3">
+                    <div className="grid grid-cols-[72px_1fr_auto] gap-2"><Input type="number" min={1} aria-label="Día" value={day.day} onChange={event => setPresentation(current => ({ ...current, itinerary: current.itinerary.map((item, itemIndex) => itemIndex === index ? { ...item, day: Number(event.target.value) } : item) }))} disabled={saving} /><Input aria-label="Título del día" placeholder="Título del día" value={day.title} onChange={event => setPresentation(current => ({ ...current, itinerary: current.itinerary.map((item, itemIndex) => itemIndex === index ? { ...item, title: event.target.value } : item) }))} disabled={saving} /><Button type="button" variant="ghost" size="icon" aria-label="Eliminar día" onClick={() => setPresentation(current => ({ ...current, itinerary: current.itinerary.filter((_, itemIndex) => itemIndex !== index) }))} disabled={saving}><Trash2 className="h-4 w-4" /></Button></div>
+                    <Textarea rows={3} aria-label="Descripción del día" placeholder="Actividades, traslados y observaciones" value={day.description} onChange={event => setPresentation(current => ({ ...current, itinerary: current.itinerary.map((item, itemIndex) => itemIndex === index ? { ...item, description: event.target.value } : item) }))} disabled={saving} />
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5"><Label htmlFor="pdf-deposit">Seña ({currency})</Label><Input id="pdf-deposit" type="number" min={0} step="0.01" value={presentation.depositAmount ?? ""} onChange={event => setPresentation(current => ({ ...current, depositAmount: event.target.value ? Number(event.target.value) : undefined }))} disabled={saving} /></div>
+                <div className="space-y-1.5"><Label htmlFor="pdf-balance">Fecha límite del saldo</Label><Input id="pdf-balance" type="date" value={presentation.balanceDueDate || ""} onChange={event => setPresentation(current => ({ ...current, balanceDueDate: event.target.value || undefined }))} disabled={saving} /></div>
+              </div>
+            </TabsContent>
+          </Tabs>
         )}
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={saving}>
             Cancelar
           </Button>
-          <Button onClick={handleGenerate} disabled={loading || saving || entries.length === 0}>
+          <Button onClick={() => void handleGenerate("download")} disabled={loading || saving || entries.length === 0}>
             {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FileText className="h-4 w-4 mr-2" />}
             Generar PDF
           </Button>
+          {onSend && (
+            <Button onClick={() => void handleGenerate("send")} disabled={loading || saving || entries.length === 0}>
+              {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FileText className="h-4 w-4 mr-2" />}
+              Guardar y enviar
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

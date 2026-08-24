@@ -1,166 +1,110 @@
 import { NextResponse } from "next/server"
+import { z } from "zod"
 import { createAdminClient } from "@/lib/supabase/server"
-import { normalizeQuotationForPresentation } from "@/lib/quotations/presentation"
+import { quotationDocumentToPresentation } from "@/lib/quotation-documents/presentation"
+import {
+  QuotationDocumentServerError,
+  renderQuotationDocumentForPublic,
+} from "@/lib/quotation-documents/server"
 
 export const dynamic = "force-dynamic"
 
-// GET — Vista pública de cotización (sin auth)
+const acceptSchema = z.object({
+  option_id: z.string().uuid(),
+  issued_document_id: z.string().uuid(),
+  content_hash: z.string().regex(/^[a-f0-9]{64}$/),
+}).strict()
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ token: string }> }
 ) {
   try {
     const { token } = await params
-    // Admin client requerido: endpoint público sin sesión de usuario, RLS bloquearía la query
-    const supabase = createAdminClient()
-
-    const { data: rawData, error } = await (supabase
-      .from("quotations") as any)
-      .select(`
-        id, quotation_number, destination, origin, region,
-        departure_date, return_date, valid_until,
-        adults, children, infants,
-        total_amount, currency, pricing_mode, status,
-        insurance_amount, transfer_amount,
-        package_description,
-        notes, terms_and_conditions, payment_methods,
-        created_at,
-        seller:seller_id(name, email),
-        agency:agency_id(name),
-        quotation_options(*),
-        quotation_items(
-          id, item_type, description, quantity, subtotal, currency,
-          order_index, notes, provider, option_id,
-          checkin_date, checkout_date, nights, destination_city,
-          hotel_name, hotel_stars, room_type, meal_plan, hotel_address, hotel_photo_url, rooms,
-          airline, flight_route, flight_class, flight_stops, flight_date, flight_return_date, flight_screenshot_url,
-          flight_details,
-          transfer_description,
-          unit_price
-        )
-      `)
-      .eq("public_token", token)
-      .single()
-
-    const data = rawData as any
-
-    if (error || !data) {
-      return NextResponse.json({ error: "Cotización no encontrada" }, { status: 404 })
-    }
-
-    // Verificar si está vencida
-    if (data.status === "SENT" || data.status === "PENDING_APPROVAL") {
-      const validUntil = new Date(data.valid_until + "T23:59:59")
-      if (validUntil < new Date()) {
-        // Marcar como expirada
-        await ((supabase as any)
-          .from("quotations"))
-          .update({ status: "EXPIRED" })
-          .eq("id", data.id)
-        data.status = "EXPIRED"
-      }
-    }
-
-    const publicData = normalizeQuotationForPresentation({
-      ...data,
-      seller_name: (data.seller as any)?.name || "",
-      agency_name: (data.agency as any)?.name || "",
+    const document = await renderQuotationDocumentForPublic({
+      supabase: createAdminClient(),
+      token,
     })
-
-    return NextResponse.json({ data: publicData })
-  } catch (error: any) {
-    console.error("Error in public quotation GET:", error)
+    return NextResponse.json({
+      data: quotationDocumentToPresentation(document.model, document.quotationStatus),
+      document: {
+        issued_document_id: document.issuedDocumentId,
+        content_hash: document.contentHash,
+        acceptance_enabled: Boolean(document.issuedDocumentId),
+      },
+    }, { headers: { "Cache-Control": "no-store" } })
+  } catch (error) {
+    if (error instanceof QuotationDocumentServerError) {
+      const status = error.code === "NOT_FOUND" ? 404 : error.code === "NOT_ISSUED" ? 409 : 500
+      return NextResponse.json({ error: error.message, code: error.code }, { status })
+    }
+    console.error("[public-quotations] read failed", error)
     return NextResponse.json({ error: "Error interno" }, { status: 500 })
   }
 }
 
-// POST — Cliente acepta una opción (sin auth)
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ token: string }> }
 ) {
   try {
     const { token } = await params
-    // Admin client requerido: endpoint público sin sesión de usuario, RLS bloquearía las queries
-    const supabase = createAdminClient()
-    const body = await request.json()
-
-    const { option_id } = body
-
-    if (!option_id) {
-      return NextResponse.json({ error: "option_id es requerido" }, { status: 400 })
+    const parsed = acceptSchema.safeParse(await request.json().catch(() => ({})))
+    if (!parsed.success) {
+      return NextResponse.json({ error: "Solicitud de aceptación inválida" }, { status: 400 })
     }
 
-    // Buscar cotización por token
-    const { data: quotation } = await (supabase
-      .from("quotations") as any)
-      .select("id, status, valid_until, seller_id, lead_id, destination, quotation_number, org_id")
-      .eq("public_token", token)
-      .single()
-
-    if (!quotation) {
-      return NextResponse.json({ error: "Cotización no encontrada" }, { status: 404 })
+    const admin = createAdminClient()
+    const { data, error } = await admin.rpc("accept_issued_quotation_option", {
+      p_public_token: token,
+      p_document_id: parsed.data.issued_document_id,
+      p_content_hash: parsed.data.content_hash,
+      p_option_id: parsed.data.option_id,
+    })
+    if (error) {
+      console.error("[public-quotations] atomic acceptance failed", error)
+      return NextResponse.json({ error: "No se pudo aceptar la cotización" }, { status: 500 })
     }
 
-    // Verificar que esté en estado aceptable
-    if (!["SENT", "PENDING_APPROVAL"].includes(quotation.status)) {
-      return NextResponse.json(
-        { error: "Esta cotización ya no puede ser aceptada" },
-        { status: 400 }
-      )
+    const result = data && typeof data === "object" && !Array.isArray(data)
+      ? data as Record<string, unknown>
+      : {}
+    if (result.accepted !== true) {
+      const code = String(result.code || "INVALID_STATE")
+      const response = code === "NOT_FOUND"
+        ? { status: 404, error: "Cotización no encontrada" }
+        : code === "EXPIRED"
+          ? { status: 400, error: "La cotización ha vencido" }
+          : code === "DOCUMENT_CHANGED"
+            ? { status: 409, error: "La propuesta cambió. Actualizá la página antes de aceptar." }
+            : code === "OPTION_NOT_FOUND"
+              ? { status: 400, error: "La opción elegida no pertenece al documento" }
+              : { status: 409, error: "Esta cotización ya no puede ser aceptada" }
+      return NextResponse.json({ error: response.error, code }, { status: response.status })
     }
 
-    // Verificar vencimiento
-    const validUntil = new Date(quotation.valid_until + "T23:59:59")
-    if (validUntil < new Date()) {
-      await (supabase.from("quotations") as any)
-        .update({ status: "EXPIRED" })
-        .eq("id", quotation.id)
-      return NextResponse.json({ error: "La cotización ha vencido" }, { status: 400 })
-    }
-
-    // Marcar opción como seleccionada
-    // Primero deseleccionar todas
-    await (supabase.from("quotation_options") as any)
-      .update({ is_selected: false })
-      .eq("quotation_id", quotation.id)
-
-    // Seleccionar la elegida
-    await (supabase.from("quotation_options") as any)
-      .update({ is_selected: true })
-      .eq("id", option_id)
-      .eq("quotation_id", quotation.id)
-
-    // Marcar cotización como aprobada
-    await (supabase.from("quotations") as any)
-      .update({
-        status: "APPROVED",
-        approved_at: new Date().toISOString(),
+    const sellerId = typeof result.seller_id === "string" ? result.seller_id : null
+    const orgId = typeof result.org_id === "string" ? result.org_id : null
+    if (sellerId && orgId) {
+      const quotationNumber = typeof result.quotation_number === "string" ? result.quotation_number : ""
+      const destination = typeof result.destination === "string" ? result.destination : ""
+      const description = `Cliente aceptó cotización ${quotationNumber}${destination ? ` a ${destination}` : ""}`.trim()
+      const { error: alertError } = await admin.from("alerts").insert({
+        user_id: sellerId,
+        org_id: orgId,
+        type: "QUOTATION_ACCEPTED",
+        description,
+        date_due: new Date().toISOString().split("T")[0],
+        status: "PENDING",
       })
-      .eq("id", quotation.id)
-
-    // Crear alerta para el seller — usa admin client porque el endpoint es público
-    // (sin auth) y RLS bloquearía el insert. Fire-and-forget.
-    if (quotation.seller_id) {
-      try {
-        const admin = createAdminClient() as any
-        const description = `Cliente aceptó cotización ${quotation.quotation_number || ""} ${quotation.destination ? `a ${quotation.destination}` : ""}`.trim()
-        await admin.from("alerts").insert({
-          user_id: quotation.seller_id,
-          org_id: quotation.org_id,
-          type: "QUOTATION_ACCEPTED",
-          description,
-          date_due: new Date().toISOString().split("T")[0],
-          status: "PENDING",
-        })
-      } catch (alertErr: any) {
-        console.warn("[public/quotations] Alert insert failed:", alertErr?.message)
+      if (alertError) {
+        console.warn("[public-quotations] acceptance alert failed", alertError.message)
       }
     }
 
     return NextResponse.json({ success: true, message: "Cotización aceptada" })
-  } catch (error: any) {
-    console.error("Error in public quotation POST:", error)
+  } catch (error) {
+    console.error("[public-quotations] unexpected acceptance error", error)
     return NextResponse.json({ error: "Error interno" }, { status: 500 })
   }
 }

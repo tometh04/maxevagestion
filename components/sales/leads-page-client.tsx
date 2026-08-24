@@ -1,6 +1,7 @@
 "use client"
 
 import type { SellerOption } from "@/lib/sellers/seller-option"
+import type { QuotationOperatorOption } from "@/lib/operators/quotation-option"
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { LeadsKanban } from "@/components/sales/leads-kanban"
@@ -58,7 +59,7 @@ interface LeadsPageClientProps {
   initialLeads: Lead[]
   agencies: Array<{ id: string; name: string }>
   sellers: SellerOption[]
-  operators: Array<{ id: string; name: string; admin_fee_percentage?: number | null }>
+  operators: QuotationOperatorOption[]
   defaultAgencyId?: string
   defaultSellerId?: string
   hasTrelloLeads?: boolean

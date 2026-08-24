@@ -3069,6 +3069,7 @@ export type Database = {
           file_url: string
           generated_by: string | null
           id: string
+          org_id: string
           pdf_type: string
           reference_id: string | null
           reference_type: string | null
@@ -3083,6 +3084,7 @@ export type Database = {
           file_url: string
           generated_by?: string | null
           id?: string
+          org_id: string
           pdf_type: string
           reference_id?: string | null
           reference_type?: string | null
@@ -3097,12 +3099,20 @@ export type Database = {
           file_url?: string
           generated_by?: string | null
           id?: string
+          org_id?: string
           pdf_type?: string
           reference_id?: string | null
           reference_type?: string | null
           template_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "generated_pdfs_agency_org_fkey"
+            columns: ["agency_id", "org_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id", "org_id"]
+          },
           {
             foreignKeyName: "generated_pdfs_agency_id_fkey"
             columns: ["agency_id"]
@@ -3115,6 +3125,13 @@ export type Database = {
             columns: ["generated_by"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "generated_pdfs_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
           {
@@ -8833,6 +8850,392 @@ export type Database = {
           },
         ]
       }
+      quotation_document_models: {
+        Row: {
+          agency_id: string | null
+          created_at: string
+          created_by: string | null
+          document_kind: string
+          id: string
+          key: string
+          name: string
+          org_id: string
+          updated_at: string
+        }
+        Insert: {
+          agency_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          document_kind?: string
+          id?: string
+          key: string
+          name: string
+          org_id: string
+          updated_at?: string
+        }
+        Update: {
+          agency_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          document_kind?: string
+          id?: string
+          key?: string
+          name?: string
+          org_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quotation_document_models_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotation_document_models_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotation_document_models_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quotation_document_revisions: {
+        Row: {
+          agency_id: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          layout_key: string
+          layout_version: number
+          manifest: Json
+          manifest_checksum: string
+          model_id: string
+          org_id: string
+          published_at: string | null
+          published_by: string | null
+          revision_number: number
+          schema_version: number
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          agency_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          layout_key: string
+          layout_version?: number
+          manifest: Json
+          manifest_checksum: string
+          model_id: string
+          org_id: string
+          published_at?: string | null
+          published_by?: string | null
+          revision_number: number
+          schema_version?: number
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          agency_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          layout_key?: string
+          layout_version?: number
+          manifest?: Json
+          manifest_checksum?: string
+          model_id?: string
+          org_id?: string
+          published_at?: string | null
+          published_by?: string | null
+          revision_number?: number
+          schema_version?: number
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quotation_document_revisions_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotation_document_revisions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotation_document_revisions_model_id_fkey"
+            columns: ["model_id"]
+            isOneToOne: false
+            referencedRelation: "quotation_document_models"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotation_document_revisions_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotation_document_revisions_published_by_fkey"
+            columns: ["published_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quotation_document_bindings: {
+        Row: {
+          agency_id: string | null
+          created_at: string
+          created_by: string | null
+          document_kind: string
+          id: string
+          org_id: string
+          revision_id: string
+          updated_at: string
+        }
+        Insert: {
+          agency_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          document_kind?: string
+          id?: string
+          org_id: string
+          revision_id: string
+          updated_at?: string
+        }
+        Update: {
+          agency_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          document_kind?: string
+          id?: string
+          org_id?: string
+          revision_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quotation_document_bindings_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotation_document_bindings_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotation_document_bindings_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotation_document_bindings_revision_id_fkey"
+            columns: ["revision_id"]
+            isOneToOne: false
+            referencedRelation: "quotation_document_revisions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      issued_quotation_documents: {
+        Row: {
+          agency_id: string
+          content_hash: string
+          created_at: string
+          data_snapshot: Json
+          file_name: string
+          generated_by: string | null
+          html_snapshot: string
+          id: string
+          manifest_snapshot: Json
+          org_id: string
+          pdf_storage_path: string | null
+          quotation_id: string
+          revision_id: string | null
+          sequence: number
+          status: string
+        }
+        Insert: {
+          agency_id: string
+          content_hash: string
+          created_at?: string
+          data_snapshot: Json
+          file_name: string
+          generated_by?: string | null
+          html_snapshot: string
+          id?: string
+          manifest_snapshot: Json
+          org_id: string
+          pdf_storage_path?: string | null
+          quotation_id: string
+          revision_id?: string | null
+          sequence: number
+          status?: string
+        }
+        Update: {
+          agency_id?: string
+          content_hash?: string
+          created_at?: string
+          data_snapshot?: Json
+          file_name?: string
+          generated_by?: string | null
+          html_snapshot?: string
+          id?: string
+          manifest_snapshot?: Json
+          org_id?: string
+          pdf_storage_path?: string | null
+          quotation_id?: string
+          revision_id?: string | null
+          sequence?: number
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "issued_quotation_documents_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "issued_quotation_documents_generated_by_fkey"
+            columns: ["generated_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "issued_quotation_documents_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "issued_quotation_documents_quotation_id_fkey"
+            columns: ["quotation_id"]
+            isOneToOne: false
+            referencedRelation: "quotations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "issued_quotation_documents_revision_id_fkey"
+            columns: ["revision_id"]
+            isOneToOne: false
+            referencedRelation: "quotation_document_revisions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quotation_conversion_effects: {
+        Row: {
+          agency_id: string
+          attempts: number
+          commission_snapshot: Json
+          completed_at: string | null
+          created_at: string
+          id: string
+          last_error: string | null
+          lease_until: string | null
+          operation_id: string
+          operation_snapshot: Json
+          org_id: string
+          output_snapshot: Json | null
+          quotation_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          agency_id: string
+          attempts?: number
+          commission_snapshot: Json
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          lease_until?: string | null
+          operation_id: string
+          operation_snapshot: Json
+          org_id: string
+          output_snapshot?: Json | null
+          quotation_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          agency_id?: string
+          attempts?: number
+          commission_snapshot?: Json
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          lease_until?: string | null
+          operation_id?: string
+          operation_snapshot?: Json
+          org_id?: string
+          output_snapshot?: Json | null
+          quotation_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quotation_conversion_effects_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotation_conversion_effects_operation_id_fkey"
+            columns: ["operation_id"]
+            isOneToOne: true
+            referencedRelation: "operations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotation_conversion_effects_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotation_conversion_effects_quotation_id_fkey"
+            columns: ["quotation_id"]
+            isOneToOne: true
+            referencedRelation: "quotations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       quotation_items: {
         Row: {
           admin_fee_percentage: number
@@ -9000,6 +9403,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "quotation_items_option_quotation_fkey"
+            columns: ["option_id", "quotation_id"]
+            isOneToOne: false
+            referencedRelation: "quotation_options"
+            referencedColumns: ["id", "quotation_id"]
+          },
+          {
             foreignKeyName: "quotation_items_org_id_fkey"
             columns: ["org_id"]
             isOneToOne: false
@@ -9068,6 +9478,7 @@ export type Database = {
       }
       quotations: {
         Row: {
+          active_document_id: string | null
           adults: number | null
           agency_id: string
           approved_at: string | null
@@ -9093,6 +9504,8 @@ export type Database = {
           origin: string | null
           package_description: string | null
           payment_methods: string[]
+          presentation_content: Json
+          presentation_schema_version: number
           pricing_mode: string
           public_token: string | null
           quotation_number: string
@@ -9110,6 +9523,7 @@ export type Database = {
           valid_until: string
         }
         Insert: {
+          active_document_id?: string | null
           adults?: number | null
           agency_id: string
           approved_at?: string | null
@@ -9135,6 +9549,8 @@ export type Database = {
           origin?: string | null
           package_description?: string | null
           payment_methods?: string[]
+          presentation_content?: Json
+          presentation_schema_version?: number
           pricing_mode?: string
           public_token?: string | null
           quotation_number: string
@@ -9152,6 +9568,7 @@ export type Database = {
           valid_until: string
         }
         Update: {
+          active_document_id?: string | null
           adults?: number | null
           agency_id?: string
           approved_at?: string | null
@@ -9177,6 +9594,8 @@ export type Database = {
           origin?: string | null
           package_description?: string | null
           payment_methods?: string[]
+          presentation_content?: Json
+          presentation_schema_version?: number
           pricing_mode?: string
           public_token?: string | null
           quotation_number?: string
@@ -9194,6 +9613,13 @@ export type Database = {
           valid_until?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "quotations_active_document_id_fkey"
+            columns: ["active_document_id"]
+            isOneToOne: false
+            referencedRelation: "issued_quotation_documents"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "quotations_agency_id_fkey"
             columns: ["agency_id"]
@@ -12667,6 +13093,57 @@ export type Database = {
         Args: { p_org_id: string; p_user_auth_id: string }
         Returns: boolean
       }
+      accept_issued_quotation_option: {
+        Args: {
+          p_content_hash: string
+          p_document_id: string
+          p_option_id: string
+          p_public_token: string
+        }
+        Returns: Json
+      }
+      assert_quotation_structure_valid: {
+        Args: { p_currency: string; p_org_id: string; p_quotation_id: string }
+        Returns: undefined
+      }
+      create_quotation_with_structure: {
+        Args: {
+          p_actor_id: string
+          p_agency_id: string
+          p_header: Json
+          p_items: Json
+          p_options: Json
+          p_org_id: string
+          p_quotation_id: string
+        }
+        Returns: Database["public"]["Tables"]["quotations"]["Row"]
+      }
+      convert_quotation_to_operation: {
+        Args: {
+          p_actor_id: string
+          p_agency_id: string
+          p_commission_snapshot?: Json
+          p_file_code: string
+          p_org_id: string
+          p_quotation_id: string
+        }
+        Returns: Json
+      }
+      issue_quotation_document: {
+        Args: {
+          p_content_hash: string
+          p_data_snapshot: Json
+          p_expected_updated_at: string | null
+          p_file_name: string
+          p_generated_by: string | null
+          p_html_snapshot: string
+          p_manifest_snapshot: Json
+          p_mark_sent: boolean
+          p_quotation_id: string
+          p_revision_id: string | null
+        }
+        Returns: Database["public"]["Tables"]["issued_quotation_documents"]["Row"]
+      }
       log_audit_action: {
         Args: {
           p_action: string
@@ -12677,6 +13154,67 @@ export type Database = {
         }
         Returns: string
       }
+      publish_quotation_document_revision: {
+        Args: {
+          p_expected_revision_updated_at: string
+          p_published_by: string
+          p_revision_id: string
+        }
+        Returns: Database["public"]["Tables"]["quotation_document_revisions"]["Row"]
+      }
+      save_quotation_document_model_draft: {
+        Args: {
+          p_agency_id: string
+          p_created_by: string
+          p_expected_revision_id: string | null
+          p_expected_revision_updated_at: string | null
+          p_layout_key: string
+          p_layout_version: number
+          p_manifest: Json
+          p_model_id: string | null
+          p_name: string
+          p_org_id: string
+          p_schema_version: number
+        }
+        Returns: Json
+      }
+      prepare_quotation_document_content: {
+        Args: {
+          p_actor_id: string
+          p_expected_updated_at: string | null
+          p_insurance_amount: number
+          p_item_operators?: Json
+          p_presentation_content: Json
+          p_presentation_schema_version: number
+          p_prices: Json
+          p_quotation_id: string
+          p_transfer_amount: number
+        }
+        Returns: Database["public"]["Tables"]["quotations"]["Row"]
+      }
+      claim_quotation_conversion_effects: {
+        Args: {
+          p_lease_seconds?: number
+          p_operation_id: string
+          p_org_id: string
+        }
+        Returns: Json
+      }
+      claim_next_quotation_conversion_effects: {
+        Args: { p_lease_seconds?: number; p_limit?: number }
+        Returns: Json
+      }
+      finish_quotation_conversion_effects: {
+        Args: {
+          p_commission_plan?: Json
+          p_error?: string
+          p_expected_attempt: number
+          p_operation_id: string
+          p_org_id: string
+          p_outcome: string
+        }
+        Returns: Json
+      }
       replace_operation_operators: {
         Args: { p_operation_id: string; p_operators: Json }
         Returns: undefined
@@ -12684,6 +13222,30 @@ export type Database = {
       replace_quotation_structure: {
         Args: { p_items: Json; p_options: Json; p_quotation_id: string }
         Returns: undefined
+      }
+      update_quotation_with_structure: {
+        Args: {
+          p_actor_id: string
+          p_agency_id: string
+          p_expected_updated_at: string | null
+          p_header: Json
+          p_items: Json
+          p_options: Json
+          p_org_id: string
+          p_quotation_id: string
+        }
+        Returns: Database["public"]["Tables"]["quotations"]["Row"]
+      }
+      update_quotation_header: {
+        Args: {
+          p_actor_id: string
+          p_agency_id: string
+          p_expected_updated_at: string
+          p_header: Json
+          p_org_id: string
+          p_quotation_id: string
+        }
+        Returns: Database["public"]["Tables"]["quotations"]["Row"]
       }
       reserve_growth_studio_generation: {
         Args: {

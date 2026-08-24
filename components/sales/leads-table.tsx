@@ -1,6 +1,7 @@
 "use client"
 
 import type { SellerOption } from "@/lib/sellers/seller-option"
+import type { QuotationOperatorOption } from "@/lib/operators/quotation-option"
 import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
 import {
@@ -58,7 +59,7 @@ interface LeadsTableProps {
   leads?: Lead[]
   agencies: Array<{ id: string; name: string }>
   sellers: SellerOption[]
-  operators: Array<{ id: string; name: string }>
+  operators: QuotationOperatorOption[]
   onRefresh?: () => void
   agencyId?: string
   sellerId?: string

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
+import { createAdminClient, createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { getUserAgencyIds } from "@/lib/permissions-api"
+import { resolveAgencyPermissionScope } from "@/lib/permissions/agency-scope-server"
 import { z } from "zod"
 
 export const dynamic = 'force-dynamic'
@@ -31,6 +31,15 @@ const updateTemplateSchema = z.object({
   secondary_color: z.string().optional(),
 })
 
+async function templateAccess(permission: "read" | "write") {
+  const { user } = await getCurrentUser()
+  if (!user.org_id) return null
+  const supabase = await createServerClient()
+  const scope = await resolveAgencyPermissionScope(supabase, user, "settings", permission)
+  if (scope.agencyIds.length === 0) return null
+  return { user, supabase, scope }
+}
+
 // GET - Obtener template por ID
 export async function GET(
   request: Request,
@@ -38,17 +47,18 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const { user } = await getCurrentUser()
-    const supabase = await createServerClient()
+    const access = await templateAccess("read")
+    if (!access) return NextResponse.json({ error: "No tiene permiso para ver templates" }, { status: 403 })
+    const { scope, user } = access
+    const admin = createAdminClient()
 
     // Obtener agencias del usuario
-    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
-
     // Obtener template - simplificada
-    const { data: template, error } = await (supabase.from("pdf_templates") as any)
+    const { data: template, error } = await (admin.from("pdf_templates") as any)
       .select(`*`)
       .eq("id", id)
-      .in("agency_id", agencyIds)
+      .eq("org_id", user.org_id)
+      .in("agency_id", scope.agencyIds)
       .single()
 
     if (error || !template) {
@@ -75,25 +85,23 @@ export async function PUT(
 ) {
   try {
     const { id } = await params
-    const { user } = await getCurrentUser()
-    const supabase = await createServerClient()
-
-    // Verificar permisos (solo admins)
-    if (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
+    const access = await templateAccess("write")
+    if (!access) {
       return NextResponse.json(
         { error: "No tiene permiso para editar templates" },
         { status: 403 }
       )
     }
+    const { user, scope } = access
+    const admin = createAdminClient()
 
     // Obtener agencias del usuario
-    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
-
     // Verificar que el template existe
-    const { data: existing, error: fetchError } = await (supabase.from("pdf_templates") as any)
+    const { data: existing, error: fetchError } = await (admin.from("pdf_templates") as any)
       .select("id, agency_id, template_type")
       .eq("id", id)
-      .in("agency_id", agencyIds)
+      .eq("org_id", user.org_id)
+      .in("agency_id", scope.agencyIds)
       .single()
 
     if (fetchError || !existing) {
@@ -108,17 +116,20 @@ export async function PUT(
 
     // Si se establece como default, quitar default de otros
     if (validatedData.is_default) {
-      await (supabase.from("pdf_templates") as any)
+      await (admin.from("pdf_templates") as any)
         .update({ is_default: false })
+        .eq("org_id", user.org_id)
         .eq("agency_id", existing.agency_id)
         .eq("template_type", existing.template_type)
         .neq("id", id)
     }
 
     // Actualizar template
-    const { data: template, error } = await (supabase.from("pdf_templates") as any)
+    const { data: template, error } = await (admin.from("pdf_templates") as any)
       .update(validatedData)
       .eq("id", id)
+      .eq("org_id", user.org_id)
+      .eq("agency_id", existing.agency_id)
       .select()
       .single()
 
@@ -155,25 +166,23 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-    const { user } = await getCurrentUser()
-    const supabase = await createServerClient()
-
-    // Verificar permisos (solo admins)
-    if (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
+    const access = await templateAccess("write")
+    if (!access) {
       return NextResponse.json(
         { error: "No tiene permiso para eliminar templates" },
         { status: 403 }
       )
     }
+    const { user, scope } = access
+    const admin = createAdminClient()
 
     // Obtener agencias del usuario
-    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
-
     // Soft delete
-    const { error } = await (supabase.from("pdf_templates") as any)
+    const { error } = await (admin.from("pdf_templates") as any)
       .update({ is_active: false })
       .eq("id", id)
-      .in("agency_id", agencyIds)
+      .eq("org_id", user.org_id)
+      .in("agency_id", scope.agencyIds)
 
     if (error) {
       console.error("Error deleting template:", error)
