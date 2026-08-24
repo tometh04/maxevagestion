@@ -95,6 +95,15 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
   const [payingExpense, setPayingExpense] = useState<any | null>(null)
   const [payDialogOpen, setPayDialogOpen] = useState(false)
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; payment: any | null }>({ open: false, payment: null })
+  // El botón "Generar Pagos Hoy" corre el vencimiento de todos los gastos
+  // vencidos de la org de una sola pasada. Sin confirmación previa es un click
+  // irreversible: no hay historial de `last_generated_date` para volver atrás.
+  const [generateDialog, setGenerateDialog] = useState<{ open: boolean; loading: boolean; due: any[] }>({
+    open: false,
+    loading: false,
+    due: [],
+  })
+  const [generating, setGenerating] = useState(false)
   const [tableError, setTableError] = useState<string | null>(null)
   const [categories, setCategories] = useState<Array<{ id: string; name: string; color: string }>>([])
 
@@ -160,7 +169,31 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
     fetchData()
   }, [fetchData])
 
+  // El preview sale del mismo endpoint que ejecuta la acción (`dryRun`), no de
+  // la tabla filtrada en pantalla: así el número que el usuario confirma es
+  // exactamente el que se va a modificar.
+  async function openGenerateDialog() {
+    setGenerateDialog({ open: true, loading: true, due: [] })
+    try {
+      const response = await fetch("/api/recurring-payments/generate?dryRun=1", { method: "POST" })
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Error al consultar los gastos vencidos")
+      }
+      const data = await response.json()
+      const due = (data.due || []).sort((a: any, b: any) =>
+        String(a.next_due_date).localeCompare(String(b.next_due_date))
+      )
+      setGenerateDialog({ open: true, loading: false, due })
+    } catch (error: any) {
+      console.error("Error loading due recurring payments:", error)
+      toast.error(error.message || "No se pudieron consultar los gastos vencidos")
+      setGenerateDialog({ open: false, loading: false, due: [] })
+    }
+  }
+
   async function handleGeneratePayments() {
+    setGenerating(true)
     try {
       const response = await fetch("/api/recurring-payments/generate", {
         method: "POST",
@@ -173,14 +206,21 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
 
       const result = await response.json()
       if (result.generated > 0) {
-        toast.success(`Se procesaron ${result.generated} pagos recurrentes. ${result.alertsCreated || 0} alertas creadas.`)
+        // El texto anterior ("Se procesaron N pagos") se leía como que la plata
+        // ya había salido. Este botón no paga: sólo corre el vencimiento.
+        toast.success(
+          `${result.generated} gasto(s) marcados como generados. Vencimiento corrido al próximo período, no se pagó nada.`
+        )
       } else {
-        toast.info("No hay pagos recurrentes vencidos para procesar")
+        toast.info("No hay gastos recurrentes vencidos para procesar")
       }
+      setGenerateDialog({ open: false, loading: false, due: [] })
       fetchData()
     } catch (error: any) {
       console.error("Error generating payments:", error)
-      toast.error(error.message || "Error al generar pagos recurrentes")
+      toast.error(error.message || "Error al generar gastos recurrentes")
+    } finally {
+      setGenerating(false)
     }
   }
 
@@ -530,10 +570,13 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
             <CardTitle className="text-sm font-medium">Acciones</CardTitle>
           </CardHeader>
           <CardContent className="p-0 pt-2">
-            <Button onClick={handleGeneratePayments} size="sm" variant="outline" className="w-full">
+            <Button onClick={openGenerateDialog} size="sm" variant="outline" className="w-full">
               <RefreshCw className="mr-2 h-4 w-4" />
               Generar Pagos Hoy
             </Button>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Corre el vencimiento de los gastos vencidos. No paga ni descuenta de caja.
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -983,6 +1026,91 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={handleDeleteRecurring} className="bg-destructive hover:bg-destructive">
               Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={generateDialog.open}
+        onOpenChange={(open) => {
+          if (generating) return
+          setGenerateDialog((prev) => ({ ...prev, open, due: open ? prev.due : [] }))
+        }}
+      >
+        <AlertDialogContent className="max-w-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Generar gastos de hoy</AlertDialogTitle>
+            <AlertDialogDescription>
+              Marca como generados los gastos recurrentes vencidos y corre el vencimiento al próximo
+              período. No registra pagos ni descuenta de ninguna cuenta.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          {generateDialog.loading ? (
+            <div className="space-y-2" aria-busy="true">
+              <Skeleton className="h-4 w-40" />
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+            </div>
+          ) : generateDialog.due.length === 0 ? (
+            <div className="rounded-lg border border-border/60 bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">
+              No hay gastos recurrentes vencidos. No se va a modificar nada.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Se van a modificar{" "}
+                <strong className="text-foreground">{generateDialog.due.length} gasto(s)</strong>. La
+                acción no se puede deshacer desde la interfaz.
+              </p>
+              <div className="max-h-64 overflow-y-auto rounded-lg border border-border/60">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-muted/50 text-xs text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-medium">Gasto</th>
+                      <th className="px-3 py-2 text-right font-medium">Importe</th>
+                      <th className="px-3 py-2 text-right font-medium">Vence</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {generateDialog.due.map((p: any) => (
+                      <tr key={p.id} className="border-t border-border/40">
+                        <td className="px-3 py-2">
+                          <span className="font-medium">{p.provider_name || p.description}</span>
+                          <span className="ml-2 text-xs text-muted-foreground">
+                            {frequencyLabels[p.frequency] || p.frequency}
+                          </span>
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">
+                          {formatCurrency(parseFloat(p.amount || "0"), p.currency)}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2 text-right text-muted-foreground tabular-nums">
+                          {format(
+                            parseDateOnlyLocal(p.next_due_date) ?? new Date(p.next_due_date),
+                            "dd/MM/yy",
+                            { locale: es }
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={generating}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault()
+                handleGeneratePayments()
+              }}
+              disabled={generating || generateDialog.loading || generateDialog.due.length === 0}
+            >
+              {generating ? "Generando..." : `Generar ${generateDialog.due.length} gasto(s)`}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

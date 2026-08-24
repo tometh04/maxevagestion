@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
-import { getCurrentUser } from "@/lib/auth"
+import { canPerformAction } from "@/lib/permissions-api"
+import { getRequestPermissions } from "@/lib/permissions/request"
 import { addDays, addWeeks, addMonths, addYears } from "date-fns"
 
 // Calcular la siguiente fecha de vencimiento según frecuencia
@@ -24,32 +25,70 @@ function calculateNextDueDate(currentDate: string, frequency: string): string {
 }
 
 // POST - Generar pagos recurrentes vencidos
+//
+// `?dryRun=1` devuelve exactamente el set que se tocaría sin escribir nada. La
+// confirmación de la UI lo usa para no pedirle al usuario que confirme un
+// número calculado con otro criterio de scoping que el de la mutación.
 export async function POST(request: Request) {
   try {
-    const { user } = await getCurrentUser()
-    const supabase = await createServerClient()
+    const { user, supabase, matrix } = await getRequestPermissions()
 
+    if (!canPerformAction(user, "accounting", "write", matrix ?? undefined)) {
+      return NextResponse.json(
+        { error: "No tiene permiso para generar gastos recurrentes" },
+        { status: 403 }
+      )
+    }
+
+    if (!user.org_id) {
+      return NextResponse.json(
+        { error: "Usuario sin organización asociada" },
+        { status: 400 }
+      )
+    }
+
+    const dryRun = new URL(request.url).searchParams.get("dryRun") === "1"
     const today = new Date().toISOString().split("T")[0]
-    
-    // 1. Buscar pagos recurrentes activos donde next_due_date <= hoy
+
+    // 1. Buscar pagos recurrentes activos donde next_due_date <= hoy.
+    // El filtro por org_id es explícito: RLS es defensa en profundidad, no la
+    // única capa (AGENTS.md, regla 1).
     const { data: duePayments, error: fetchError } = await (supabase
       .from("recurring_payments") as any)
       .select("*")
+      .eq("org_id", user.org_id)
       .eq("is_active", true)
       .lte("next_due_date", today)
 
     if (fetchError) {
       console.error("Error fetching due payments:", fetchError)
-      return NextResponse.json({ 
+      return NextResponse.json({
         error: "Error al buscar pagos vencidos",
-        details: fetchError.message 
+        details: fetchError.message
       }, { status: 500 })
     }
 
     if (!duePayments || duePayments.length === 0) {
-      return NextResponse.json({ 
+      return NextResponse.json({
         message: "No hay pagos recurrentes vencidos",
-        generated: 0 
+        generated: 0,
+        due: [],
+      })
+    }
+
+    if (dryRun) {
+      return NextResponse.json({
+        dryRun: true,
+        generated: 0,
+        due: duePayments.map((p: any) => ({
+          id: p.id,
+          provider_name: p.provider_name,
+          description: p.description,
+          amount: p.amount,
+          currency: p.currency,
+          frequency: p.frequency,
+          next_due_date: p.next_due_date,
+        })),
       })
     }
 
@@ -66,16 +105,21 @@ export async function POST(request: Request) {
         const { data: existingAlert } = await (supabase
           .from("alerts") as any)
           .select("id")
+          .eq("org_id", user.org_id)
           .eq("type", "RECURRING_PAYMENT")
           .eq("description", alertDescription)
           .eq("status", "PENDING")
           .maybeSingle()
 
         if (!existingAlert) {
-          // Crear nueva alerta
+          // Crear nueva alerta.
+          // El `org_id` es obligatorio desde que se cerró la policy de alerts:
+          // sin él el insert fallaba y la rama de error sólo loguea, así que la
+          // acción reportaba "0 alertas creadas" en todas las corridas.
           const { error: alertError } = await (supabase
             .from("alerts") as any)
             .insert({
+              org_id: payment.org_id || user.org_id,
               type: "RECURRING_PAYMENT",
               description: alertDescription,
               date_due: payment.next_due_date,
@@ -122,6 +166,7 @@ export async function POST(request: Request) {
           .from("recurring_payments") as any)
           .update(updateData)
           .eq("id", payment.id)
+          .eq("org_id", user.org_id)
 
         if (updateError) {
           errors.push(`Error actualizando ${payment.provider_name}: ${updateError.message}`)
