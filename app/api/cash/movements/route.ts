@@ -238,6 +238,14 @@ export async function POST(request: Request) {
         counterpartCode = COUNTERPART_CODES.OPERATOR_PAYMENT
       } else if (category === "COMMISSION") {
         counterpartCode = COUNTERPART_CODES.COMMISSION_PAYMENT
+      } else if (category === "CUSTOMER_REFUND") {
+        // Devolver plata al cliente no es un gasto: revierte un cobro, así que
+        // vuelve a cargar su cuenta corriente.
+        counterpartCode = COUNTERPART_CODES.CUSTOMER_COLLECTION
+      } else if (category === "Contra-movimiento") {
+        // La contrapartida de otro movimiento ya asentado. Asentarla de nuevo
+        // duplicaría el hecho económico.
+        counterpartCode = null
       } else {
         counterpartCode = COUNTERPART_CODES.EXPENSE
       }
