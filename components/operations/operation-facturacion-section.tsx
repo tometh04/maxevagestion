@@ -21,6 +21,8 @@ interface MarginSummaryResponse {
     file_code: string
     destination: string
     margin_amount: number
+    /** Moneda de la venta: el margen y lo facturado se expresan en ella. */
+    sale_currency?: string | null
     customer: { id: string; name: string } | null
     customers?: CustomerBreakdown[]
     has_afip_emisor: boolean
@@ -38,6 +40,8 @@ interface MarginSummaryResponse {
     pto_vta: number
     cbte_tipo: number
     imp_total: number
+    /** Moneda del comprobante (PES/DOL): puede diferir de la de la venta. */
+    moneda?: string | null
     fecha_emision: string | null
     status: string
     verification_status: string | null
@@ -52,8 +56,13 @@ const REASON_TEXT: Record<string, string> = {
   already_fully_invoiced: "Ya facturada completa",
 }
 
-const fmtARS = (n: number) =>
-  new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 2 }).format(n)
+// VIB-151: una venta puede estar en USD y facturarse en pesos. Mostrar todo con
+// "$" hacía leer un margen de USD 8.050 como si fueran pesos.
+const fmtMoney = (n: number, currency: "ARS" | "USD" = "ARS") =>
+  new Intl.NumberFormat("es-AR", { style: "currency", currency, maximumFractionDigits: 2 }).format(n)
+
+const invoiceCurrency = (moneda?: string | null): "ARS" | "USD" =>
+  String(moneda ?? "PES").toUpperCase() === "DOL" ? "USD" : "ARS"
 
 const fmtDate = (s: string | null) => {
   if (!s) return "-"
@@ -120,6 +129,7 @@ export function OperationFacturacionSection({ operationId }: { operationId: stri
   if (!data) return null
 
   const { summary, invoices } = data
+  const saleCurrency: "ARS" | "USD" = data.operation.sale_currency === "USD" ? "USD" : "ARS"
   const pct = summary.margin_total > 0
     ? Math.min(100, (summary.already_invoiced / summary.margin_total) * 100)
     : 0
@@ -141,15 +151,15 @@ export function OperationFacturacionSection({ operationId }: { operationId: stri
         <div className="grid grid-cols-3 gap-4 text-sm">
           <div>
             <div className="text-muted-foreground text-xs">Margen total</div>
-            <div className="font-semibold">{fmtARS(summary.margin_total)}</div>
+            <div className="font-semibold">{fmtMoney(summary.margin_total, saleCurrency)}</div>
           </div>
           <div>
             <div className="text-muted-foreground text-xs">Ya facturado</div>
-            <div className="font-semibold">{fmtARS(summary.already_invoiced)}</div>
+            <div className="font-semibold">{fmtMoney(summary.already_invoiced, saleCurrency)}</div>
           </div>
           <div>
             <div className="text-muted-foreground text-xs">Restante</div>
-            <div className="font-semibold text-success">{fmtARS(summary.remaining)}</div>
+            <div className="font-semibold text-success">{fmtMoney(summary.remaining, saleCurrency)}</div>
           </div>
         </div>
 
@@ -175,7 +185,7 @@ export function OperationFacturacionSection({ operationId }: { operationId: stri
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-muted-foreground">
-                    Facturado: <span className="font-mono text-foreground">{fmtARS(c.invoiced)}</span>
+                    Facturado: <span className="font-mono text-foreground">{fmtMoney(c.invoiced, saleCurrency)}</span>
                   </span>
                   <Button
                     size="sm"
@@ -231,7 +241,7 @@ export function OperationFacturacionSection({ operationId }: { operationId: stri
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-xs">{tipoLabel} {nroStr}</span>
                     <span className="text-muted-foreground text-xs">•</span>
-                    <span>{fmtARS(inv.imp_total)}</span>
+                    <span>{fmtMoney(inv.imp_total, invoiceCurrency(inv.moneda))}</span>
                     <span className="text-muted-foreground text-xs">•</span>
                     <span className="text-xs text-muted-foreground">{fmtDate(inv.fecha_emision)}</span>
                   </div>

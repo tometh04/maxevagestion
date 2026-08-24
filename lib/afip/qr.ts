@@ -8,6 +8,8 @@
  * Spec: https://www.afip.gob.ar/fe/qr/especificaciones.asp (RG 4291)
  */
 
+import { afipMonCotiz } from "@/lib/invoices/currency"
+
 export interface AfipQrPayload {
   ver: 1
   fecha: string      // YYYY-MM-DD
@@ -54,7 +56,8 @@ export function buildAfipQrPayload(
     nroCmp: invoice.cbte_nro,
     importe: Number(invoice.imp_total),
     moneda: invoice.moneda,
-    ctz: Number(invoice.cotizacion),
+    // VIB-151: para un comprobante en PES la cotización es 1 (ver afipMonCotiz).
+    ctz: afipMonCotiz(invoice.moneda, invoice.cotizacion),
     tipoDocRec: invoice.receptor_doc_tipo,
     nroDocRec: Number(invoice.receptor_doc_nro) || 0,
     tipoCodAut: "E",

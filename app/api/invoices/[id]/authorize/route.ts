@@ -5,7 +5,17 @@ import { canAccessModule } from "@/lib/permissions"
 import { getAfipServiceForOrg } from "@/lib/afip/afip-service"
 import { normalizeReceptorDoc } from "@/lib/afip/afip-config"
 import { logSecurityEvent } from "@/lib/security/audit"
-import { isCreditNote, ledgerSign } from "@/lib/invoices/credit-note"
+import { isCreditNote } from "@/lib/invoices/credit-note"
+import {
+  buildExchangeRateMap,
+  getExchangeRateWithFallback,
+} from "@/lib/accounting/exchange-rates"
+import {
+  getInvoiceSaleCurrency,
+  needsMarketRate,
+  sumInvoicedInSaleCurrency,
+  type InvoicedRow,
+} from "@/lib/invoices/currency"
 import { createOrgAdminScope } from "@/lib/supabase/admin-scope"
 
 export const dynamic = "force-dynamic"
@@ -75,37 +85,88 @@ export async function POST(
     // mientras esta factura estaba en draft/pending). La facturación de
     // operaciones debe cubrir el total vendido, no solo el margen.
     // Las NC reducen lo facturado → se saltean el cap.
+    //
+    // VIB-151: igual que en POST /api/invoices, todo se compara en la moneda de
+    // la VENTA. Con la comparación cruda, una factura en pesos sobre una venta
+    // en dólares quedaba autorizada solo si el importe en ARS era menor al total
+    // en USD, o sea nunca.
     if (invoice.operation_id && !isCreditNote(invoice.cbte_tipo)) {
       const { data: operation } = await (supabase.from("operations") as any)
-        .select("sale_amount_total")
+        .select("sale_amount_total, sale_currency, currency")
         .eq("id", invoice.operation_id)
         .eq("org_id", orgId)
         .single()
 
       if (operation) {
         const { data: peers } = await (supabase.from("invoices") as any)
-          .select("imp_total, cbte_tipo")
+          .select("imp_total, cbte_tipo, moneda, cotizacion, fecha_emision")
           .eq("operation_id", invoice.operation_id)
           .eq("org_id", orgId)
           .eq("status", "authorized")
           .neq("id", invoice.id)
 
-        const already = (peers ?? []).reduce(
-          (acc: number, i: any) => acc + ledgerSign(i.cbte_tipo) * Number(i.imp_total),
-          0
-        )
+        const saleCurrency = getInvoiceSaleCurrency(operation)
+        const peerRows = (peers ?? []) as InvoicedRow[]
+        const selfRow: InvoicedRow = {
+          imp_total: invoice.imp_total,
+          cbte_tipo: invoice.cbte_tipo,
+          moneda: invoice.moneda,
+          cotizacion: invoice.cotizacion,
+          fecha_emision: invoice.fecha_emision,
+        }
+
+        let rateFor: (date: string | null | undefined) => number | null = () => null
+        if ([...peerRows, selfRow].some((row) => needsMarketRate(row, saleCurrency))) {
+          const [rateMap, market] = await Promise.all([
+            buildExchangeRateMap(
+              supabase,
+              [...peerRows.map((row) => row.fecha_emision), selfRow.fecha_emision]
+            ),
+            getExchangeRateWithFallback(supabase, invoice.fecha_emision || formatLocalDate(), "invoices:authorize"),
+          ])
+          rateFor = (date) => rateMap(date) ?? market.rate
+        }
+
+        const peersTotal = sumInvoicedInSaleCurrency({
+          invoices: peerRows,
+          saleCurrency,
+          rateFor,
+        })
+        const selfTotal = sumInvoicedInSaleCurrency({
+          invoices: [selfRow],
+          saleCurrency,
+          rateFor,
+        })
+
+        // No silenciar: sin TC no se puede saber si el tope se pasa.
+        if (peersTotal.unconverted.length > 0 || selfTotal.unconverted.length > 0) {
+          console.error(
+            `[invoices:authorize] Sin tipo de cambio para valuar la factura ${invoice.id} contra la operación ${invoice.operation_id}`
+          )
+          return NextResponse.json(
+            {
+              error:
+                "No se puede autorizar: falta el tipo de cambio para comparar la factura con el total vendido. Cargá el TC del día en Contabilidad y reintentá.",
+            },
+            { status: 400 }
+          )
+        }
+
+        const already = peersTotal.total
         const saleTotal = Number(operation.sale_amount_total)
-        const projected = already + Number(invoice.imp_total)
+        const projected = already + selfTotal.total
 
         if (projected > saleTotal + 0.01) {
           await (supabase.from("invoices") as any)
             .update({ status: "draft" })
             .eq("id", invoice.id)
             .eq("org_id", orgId)
+          const remaining = Math.round((saleTotal - already) * 100) / 100
           return NextResponse.json(
             {
-              error: `No se puede autorizar: otra factura completó el total vendido mientras este draft esperaba. Restante actual: $${(saleTotal - already).toFixed(2)}`,
-              max_remaining: saleTotal - already,
+              error: `No se puede autorizar: otra factura completó el total vendido mientras este draft esperaba. Restante actual: ${saleCurrency === "USD" ? "USD " : "$"}${remaining.toFixed(2)}`,
+              max_remaining: remaining,
+              max_remaining_currency: saleCurrency,
             },
             { status: 400 }
           )

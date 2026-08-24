@@ -19,6 +19,11 @@ jest.mock("@/lib/afip/afip-service", () => ({
 jest.mock("@/lib/permissions", () => ({
   canAccessModule: () => true,
 }))
+// VIB-151: el resumen valúa las facturas en otra moneda con el TC del día.
+jest.mock("@/lib/accounting/exchange-rates", () => ({
+  getExchangeRateWithFallback: jest.fn(async () => ({ rate: 1350, source: "exact" })),
+  buildExchangeRateMap: jest.fn(async () => () => 1350),
+}))
 
 function makeMockSupabase(opts: {
   operation?: any
@@ -28,16 +33,15 @@ function makeMockSupabase(opts: {
   return {
     from: (table: string) => {
       if (table === "operations") {
-        return {
-          select: () => ({
-            eq: () => ({
-              single: async () => ({
-                data: opts.operation ?? null,
-                error: opts.operation ? null : { message: "not found" },
-              }),
-            }),
-          }),
-        }
+        // El fetch está scopeado por id Y por org (defense-in-depth), así que el
+        // mock tiene que aceptar .eq() encadenado.
+        const single = async () => ({
+          data: opts.operation ?? null,
+          error: opts.operation ? null : { message: "not found" },
+        })
+        const chain: any = { single }
+        chain.eq = () => chain
+        return { select: () => chain }
       }
       if (table === "invoices") {
         return {
@@ -74,7 +78,7 @@ function makeMockSupabase(opts: {
 describe("GET /api/operations/[id]/margin-summary", () => {
   beforeEach(() => {
     jest.clearAllMocks()
-    mockGetCurrentUser.mockResolvedValue({ user: { id: "u1", role: "ADMIN" } })
+    mockGetCurrentUser.mockResolvedValue({ user: { id: "u1", role: "ADMIN", org_id: "org-aaa" } })
     mockGetAfipServiceForOrg.mockResolvedValue({ config: { cuit: "20123456789" } })
   })
 
@@ -86,6 +90,7 @@ describe("GET /api/operations/[id]/margin-summary", () => {
           file_code: "OP-001",
           destination: "Cancún",
           sale_amount_total: 100000,
+          sale_currency: "ARS",
           operator_cost: 80000,
           margin_amount: 20000,
           customer_id: "cus-1",
@@ -98,6 +103,8 @@ describe("GET /api/operations/[id]/margin-summary", () => {
             pto_vta: 5,
             cbte_tipo: 6,
             imp_total: 5000,
+            moneda: "PES",
+            cotizacion: 1,
             fecha_emision: "2026-04-20",
             status: "authorized",
             verification_status: "verified",
@@ -136,6 +143,7 @@ describe("GET /api/operations/[id]/margin-summary", () => {
         operation: {
           id: "op-1",
           margin_amount: 20000,
+          sale_currency: "ARS",
           customer_id: "cus-1",
           org_id: "org-aaa",
         },
@@ -150,5 +158,52 @@ describe("GET /api/operations/[id]/margin-summary", () => {
     const body = await res.json()
     expect(body.summary.can_invoice).toBe(false)
     expect(body.summary.reason_disabled).toBe("no_afip")
+  })
+
+  // VIB-151: antes se sumaba imp_total crudo, así que una factura en pesos sobre
+  // una venta en dólares consumía todo el margen y la UI bloqueaba la siguiente.
+  it("valúa en la moneda de la venta una factura en pesos sobre una operación en USD", async () => {
+    mockCreateServerClient.mockResolvedValue(
+      makeMockSupabase({
+        operation: {
+          id: "op-usd",
+          file_code: "OP-USD",
+          destination: "Miami",
+          sale_amount_total: 8050,
+          sale_currency: "USD",
+          operator_cost: 6050,
+          margin_amount: 2000,
+          org_id: "org-aaa",
+        },
+        invoices: [
+          {
+            id: "inv-pes",
+            cbte_nro: 1,
+            pto_vta: 5,
+            cbte_tipo: 6,
+            imp_total: 1_350_000, // ARS = USD 1000 al TC 1350
+            moneda: "PES",
+            cotizacion: 1,
+            fecha_emision: "2026-08-20",
+            status: "authorized",
+            verification_status: "verified",
+            cae: "123",
+          },
+        ],
+        customer: { id: "cus-1", first_name: "Juan", last_name: "Pérez" },
+      })
+    )
+    const { GET } = await import("@/app/api/operations/[id]/margin-summary/route")
+    const req = new NextRequest("http://localhost/api/operations/op-usd/margin-summary")
+    const res = await GET(req, { params: Promise.resolve({ id: "op-usd" }) })
+    const body = await res.json()
+
+    expect(body.operation.sale_currency).toBe("USD")
+    expect(body.summary.already_invoiced).toBe(1000)
+    expect(body.summary.remaining).toBe(1000)
+    expect(body.summary.can_invoice).toBe(true)
+    // El front usa este campo para calcular el restante sin mezclar monedas.
+    expect(body.invoices[0].imp_total_sale_currency).toBe(1000)
+    expect(body.invoices[0].imp_total).toBe(1_350_000)
   })
 })

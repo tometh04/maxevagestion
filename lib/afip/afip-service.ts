@@ -12,6 +12,7 @@ import { afipRateCache } from "./rate-cache"
 import { diffVoucher, type VoucherFields, type VoucherDiff } from "./diff"
 import { getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
 import { isCreditOrDebitNote } from "@/lib/invoices/credit-note"
+import { afipMonCotiz } from "@/lib/invoices/currency"
 
 type AfipSdkInstance = {
   ElectronicBilling: {
@@ -472,7 +473,11 @@ export class AfipService {
       ImpIVA: isFacturaC ? 0 : draft.imp_iva,
       ImpTrib: draft.imp_trib || 0,
       MonId: draft.moneda || "PES",
-      MonCotiz: draft.cotizacion || 1,
+      // VIB-151: MonCotiz es la cotización de MonId contra el peso, así que
+      // para PES va 1. El alta de facturas guarda en `cotizacion` el TC con el
+      // que se convirtió una venta en USD a pesos (otra cosa distinta);
+      // mandarlo tal cual haría que el comprobante declare "1 peso = 1367".
+      MonCotiz: afipMonCotiz(draft.moneda, draft.cotizacion),
       CondicionIVAReceptorId: draft.receptor_condicion_iva || 5,
     }
     if (ivaArray.length > 0) payload.Iva = ivaArray

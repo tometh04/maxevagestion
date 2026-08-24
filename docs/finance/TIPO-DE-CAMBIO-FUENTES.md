@@ -30,7 +30,8 @@ distintos para la misma operación sin que ninguna esté "mal".
   - `getExchangeRateWithFallback(...)` — con logging/diagnóstico del origen.
 - **Quién la usa:** deuda de clientes (`debts-sales`), antigüedad de saldos (`aging`),
   semáforo de pagos (`payments-semaphore`), conversión por operación en la posición mensual,
-  cuentas financieras (transferencias, ajustes, cierre) y pagos masivos a operadores.
+  cuentas financieras (transferencias, ajustes, cierre), pagos masivos a operadores y
+  **el tope de facturación** de una operación (VIB-151, ver §6).
 - **Fallback:** `DEFAULT_USD_ARS_FALLBACK_RATE` = env `USD_ARS_EMERGENCY_RATE` ?? **1500**.
 
 ### 2.2 `monthly_exchange_rates` — TC mensual (migración 087)
@@ -59,6 +60,7 @@ distintos para la misma operación sin que ninguna esté "mal".
 | **Foto contable de cierre**: posición mensual, y a futuro el revalúo de la mejora D | **`monthly_exchange_rates`** del mes; si falta, el más reciente de `exchange_rates` | El cierre necesita un TC único y estable por período, decidido por administración |
 | **Guard de plausibilidad** (solo detectar errores de orden de magnitud) | Referencia de mercado; **debería ser la misma que la de valuación** (ver §4) | Es un chequeo de sanidad, no una valuación: solo necesita un orden de magnitud correcto |
 | **Ingesta automática** | Feed BCRA → escribe **solo** en `exchange_rates` | Una sola puerta de entrada para el TC diario |
+| **Tope de facturación** (factura en otra moneda que la venta) | El TC informado en la factura si es verosímil; si no, `exchange_rates` por la fecha de emisión | Los ítems de la factura se armaron con ese TC; `exchange_rates` es la referencia que detecta disparates |
 
 **Regla corta:** `exchange_rates` valúa; `monthly_exchange_rates` cierra.
 
@@ -100,11 +102,40 @@ Antes de implementar diferencia de cambio y pesificación hay que confirmar:
 
 ---
 
+## 6. Facturación en otra moneda que la venta (VIB-151)
+
+Una operación se vende en ARS o USD (`operations.sale_currency`) y la factura se emite en
+la moneda AFIP que pida el cliente (`invoices.moneda`: `PES`/`DOL`). No tienen por qué
+coincidir: es válido vender en USD y facturar en pesos.
+
+Reglas:
+
+- **Todo lo que compara "vendido vs facturado" se lleva a la moneda de la VENTA.** Vale para
+  el alta (`POST /api/invoices`), el re-check al autorizar
+  (`POST /api/invoices/[id]/authorize`) y el resumen de `margin-summary`. Antes se
+  comparaban importes crudos y una venta de USD 8.050 topeaba la factura en $8.050.
+- **`invoices.cotizacion` es MonCotiz de AFIP**: la cotización de la moneda DEL
+  COMPROBANTE contra el peso. Para un comprobante en `PES` vale **1** cuando se emite y se
+  arma el QR (`afipMonCotiz` en `lib/invoices/currency.ts`). El alta guarda ahí el TC con el
+  que convirtió una venta en USD a pesos, así que ese campo **no** es TC salvo en
+  comprobantes en `DOL`.
+- **TC del tope**: se usa el informado en el alta si pasa el guard de verosimilitud
+  (`isExchangeRatePlausibleVsMarket`, banda factor 10) contra `exchange_rates`; si no viene,
+  el de referencia. Para facturas ya emitidas en pesos sobre ventas en USD se valúa con el TC
+  de su fecha de emisión.
+- Si no hay TC para valuar, los endpoints **cortan con 400** en lugar de comparar mal: un
+  restante inflado dejaría facturar de más.
+
+Código: `lib/invoices/currency.ts` (conversiones puras + tests).
+
+---
+
 ## Referencias
 
 - `lib/accounting/exchange-rates.ts` — lectura del TC diario y fallbacks.
 - `lib/accounting/bcra-exchange-rates.ts` — ingesta automática.
 - `lib/payments/load-rules.ts` — `getCurrentArsPerUsd()`, referencia del guard.
 - `lib/payments/customer-income-fx.ts` — `isExchangeRatePlausibleVsMarket()`.
+- `lib/invoices/currency.ts` — moneda del comprobante vs moneda de la venta (§6).
 - `supabase/migrations/013_create_exchange_rates.sql`
 - `supabase/migrations/087_create_monthly_exchange_rates.sql`
