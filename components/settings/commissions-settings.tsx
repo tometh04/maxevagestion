@@ -64,6 +64,7 @@ const commissionRuleSchema = z.object({
   value: z.number().min(0),
   destination_region: z.string().optional().nullable(),
   agency_id: z.string().optional().nullable(),
+  seller_id: z.string().optional().nullable(),
   valid_from: z.string().min(1, "La fecha de inicio es requerida"),
   valid_to: z.string().optional().nullable(),
 })
@@ -77,10 +78,56 @@ interface CommissionRule {
   value: number
   destination_region: string | null
   agency_id: string | null
+  /**
+   * VIB-124: una regla puede apuntar a un vendedor concreto. Existía en la base
+   * y la usaba el motor de cálculo, pero esta pantalla la ignoraba: por eso el
+   * admin veía N filas iguales salvo el número, sin saber de quién era cada una.
+   */
+  seller_id: string | null
+  /** Nombre resuelto por la API (join a users). null si la regla es genérica. */
+  seller_name: string | null
   valid_from: string
   valid_to: string | null
   created_at: string
   updated_at: string
+}
+
+/** Vendedor elegible para una regla propia. */
+interface SellerOption {
+  id: string
+  name: string | null
+  email: string | null
+  default_commission_percentage: number | null
+}
+
+/** "Vendedor · 15%" para el desplegable, sin romper si falta el nombre. */
+function sellerOptionLabel(seller: SellerOption): string {
+  const name = seller.name || seller.email || "Sin nombre"
+  const pct = seller.default_commission_percentage
+  return pct == null ? name : `${name} · ${pct}% hoy`
+}
+
+/**
+ * A quién se le aplica la regla, en una celda (VIB-124).
+ *
+ * El caso que motivó el ticket: Lozada tiene 13 reglas de vendedor y todas se
+ * veían idénticas salvo el porcentaje, así que no había forma de saber cuál
+ * tocar. "Todos" es literal: una regla sin vendedor ni agencia es el default de
+ * la organización.
+ */
+function describeRuleScope(
+  rule: Pick<CommissionRule, "type" | "seller_id" | "seller_name" | "agency_id">,
+  agencies: Array<{ id: string; name: string }>
+): string {
+  if (rule.type === "SELLER" && rule.seller_id) {
+    // El nombre puede faltar si el usuario fue dado de baja: mejor decirlo que
+    // mostrar la celda vacía y volver al problema original.
+    return rule.seller_name || "Vendedor dado de baja"
+  }
+  if (rule.agency_id) {
+    return agencies.find((a) => a.id === rule.agency_id)?.name || "Agencia"
+  }
+  return "Todos"
 }
 
 export function CommissionsSettings() {
@@ -90,6 +137,7 @@ export function CommissionsSettings() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingRule, setEditingRule] = useState<CommissionRule | null>(null)
   const [agencies, setAgencies] = useState<Array<{ id: string; name: string }>>([])
+  const [sellers, setSellers] = useState<SellerOption[]>([])
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [ruleToDelete, setRuleToDelete] = useState<string | null>(null)
   // Umbral de cobranza para habilitar el pago de comisión (% de la venta cobrado).
@@ -104,6 +152,7 @@ export function CommissionsSettings() {
       value: 0,
       destination_region: null,
       agency_id: null,
+      seller_id: null,
       valid_from: formatDateOnlyLocal(new Date()) ?? "",
       valid_to: null,
     },
@@ -112,6 +161,7 @@ export function CommissionsSettings() {
   useEffect(() => {
     fetchRules()
     fetchAgencies()
+    fetchSellers()
     fetchThreshold()
   }, [])
 
@@ -171,6 +221,18 @@ export function CommissionsSettings() {
     }
   }
 
+  // Vendedores elegibles para una regla propia. Se incluyen ADMIN/SUPER_ADMIN
+  // porque en las agencias chicas el dueño también vende y cobra comisión.
+  const fetchSellers = async () => {
+    try {
+      const response = await fetch("/api/users?role=SELLER,ADMIN,SUPER_ADMIN")
+      const data = await response.json()
+      setSellers(data.users || [])
+    } catch (error) {
+      console.error("Error fetching sellers:", error)
+    }
+  }
+
   const handleOpenDialog = (rule?: CommissionRule) => {
     if (rule) {
       setEditingRule(rule)
@@ -180,6 +242,7 @@ export function CommissionsSettings() {
         value: rule.value,
         destination_region: rule.destination_region || null,
         agency_id: rule.agency_id || null,
+        seller_id: rule.seller_id || null,
         valid_from: rule.valid_from.split("T")[0],
         valid_to: rule.valid_to ? rule.valid_to.split("T")[0] : null,
       })
@@ -191,6 +254,7 @@ export function CommissionsSettings() {
         value: 0,
         destination_region: null,
         agency_id: null,
+        seller_id: null,
         valid_from: formatDateOnlyLocal(new Date()) ?? "",
         valid_to: null,
       })
@@ -353,6 +417,7 @@ export function CommissionsSettings() {
               <TableHeader className="sticky top-0 bg-muted/50">
                 <TableRow>
                   <TableHead>Tipo</TableHead>
+                  <TableHead>Aplica a</TableHead>
                   <TableHead>Base</TableHead>
                   <TableHead>Valor</TableHead>
                   <TableHead>Región</TableHead>
@@ -367,6 +432,7 @@ export function CommissionsSettings() {
                     <TableCell>
                       <Badge variant="outline">{rule.type === "SELLER" ? "Vendedor" : "Agencia"}</Badge>
                     </TableCell>
+                    <TableCell className="text-sm">{describeRuleScope(rule, agencies)}</TableCell>
                     <TableCell className="text-sm">
                       {rule.basis === "FIXED_PERCENTAGE" ? "Porcentaje Fijo" : "Monto Fijo"}
                     </TableCell>
@@ -438,6 +504,37 @@ export function CommissionsSettings() {
                     )}
                   />
 
+                  {form.watch("type") === "SELLER" && (
+                    <FormField
+                      control={form.control}
+                      name="seller_id"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Vendedor</FormLabel>
+                          <Select
+                            onValueChange={(v) => field.onChange(v === "__ALL__" ? null : v)}
+                            value={field.value || "__ALL__"}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="__ALL__">Todos los vendedores</SelectItem>
+                              {sellers.map((seller) => (
+                                <SelectItem key={seller.id} value={seller.id}>
+                                  {sellerOptionLabel(seller)}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
+
                   <FormField
                     control={form.control}
                     name="basis"
@@ -460,6 +557,28 @@ export function CommissionsSettings() {
                     )}
                   />
                 </div>
+
+                {/*
+                  Precedencia real del cálculo (lib/commissions/seller-commission-profile.ts):
+                  una regla con seller_id le gana al % cargado al dar de alta al
+                  usuario. Y como ese campo hoy no se puede editar después, esta
+                  pantalla es el único lugar donde se le cambia el porcentaje a un
+                  vendedor. Vale decirlo para que nadie lo busque en otro lado.
+                */}
+                {form.watch("type") === "SELLER" && form.watch("seller_id") && (
+                  <Alert>
+                    <Info className="h-4 w-4" />
+                    <AlertDescription className="text-sm">
+                      Este es el porcentaje que va a cobrar{" "}
+                      <strong>
+                        {sellers.find((s) => s.id === form.watch("seller_id"))?.name ||
+                          "el vendedor"}
+                      </strong>
+                      . Tiene prioridad sobre el que se le cargó al darlo de alta, así que las
+                      comisiones nuevas se calculan con este valor.
+                    </AlertDescription>
+                  </Alert>
+                )}
 
                 <FormField
                   control={form.control}

@@ -88,6 +88,10 @@ export async function GET(request: Request) {
         role: u.role,
         is_active: u.is_active,
         created_at: u.created_at,
+        // Ya venía en el select pero se perdía en el mapeo. Lo necesita la
+        // pantalla de Reglas de Comisiones para mostrar, al elegir un vendedor,
+        // qué porcentaje tiene hoy y qué le va a quedar tapado (VIB-124).
+        default_commission_percentage: u.default_commission_percentage ?? null,
         // Campos derivados para compatibilidad
         first_name: nameParts[0] || '',
         last_name: nameParts.slice(1).join(' ') || '',
