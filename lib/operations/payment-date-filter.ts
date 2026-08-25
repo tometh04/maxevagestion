@@ -29,17 +29,16 @@ export interface PaymentDateFilter {
  *    debe devolver un resultado vacío, **no** ignorar el filtro.
  *  - la lista de ids en cualquier otro caso.
  *
- * NO se filtra por `org_id` a propósito, aunque la columna exista: hay 98
- * pagos en producción con `org_id` en NULL (medido 2026-08-25), y filtrarlos
- * haría desaparecer del export operaciones que sí están en pantalla — el mismo
- * patrón de VIB-139. No hay fuga entre tenants: la query de operaciones que
- * consume estos ids ya va scopeada por org. Cuando esos 98 se completen,
- * agregar el filtro acá es defensa en profundidad barata.
+ * Va scopeado por `org_id` como defensa en profundidad. Cuando se escribió este
+ * helper NO se podía: había 98 pagos en producción con `org_id` en NULL y el
+ * filtro los habría hecho desaparecer del export en silencio, el mismo patrón
+ * de VIB-139. Se hizo el backfill el 2026-08-25
+ * (`scripts/backfill-payments-org-id.sql`, 0 pagos sin org sobre 6838) y recién
+ * ahí se activó el filtro.
  */
 export async function resolveOperationIdsByPaymentDate(
   supabase: any,
-  /** Sin uso hoy — ver la nota de arriba sobre los pagos sin org_id. */
-  _orgId: string | null | undefined,
+  orgId: string | null | undefined,
   { paymentDateType, paymentDateFrom, paymentDateTo }: PaymentDateFilter
 ): Promise<string[] | null> {
   const type = (paymentDateType ?? "").toUpperCase() as PaymentDateType
@@ -48,6 +47,8 @@ export async function resolveOperationIdsByPaymentDate(
   if (!paymentDateFrom && !paymentDateTo) return null
 
   let query = supabase.from("payments").select("operation_id")
+
+  if (orgId) query = query.eq("org_id", orgId)
 
   // COBRO y PAGO miran cuándo se pagó de verdad; VENCIMIENTO, cuándo vencía.
   const column = type === "VENCIMIENTO" ? "date_due" : "date_paid"
