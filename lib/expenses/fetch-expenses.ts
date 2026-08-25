@@ -180,6 +180,11 @@ export async function fetchExpenses(
       .eq("type", "EXPENSE")
       .eq("org_id", orgId)
       .like("concept", "Gasto recurrente:%")
+      // Una línea de asiento NO es un gasto: es la contabilidad del gasto. Sin
+      // este filtro cada gasto se cuenta de más, porque su asiento aporta dos
+      // líneas con el mismo concepto y el mismo type. Un movimiento de dinero
+      // siempre tiene cuenta financiera; una línea de asiento nunca.
+      .not("account_id", "is", null)
       .order("movement_date", { ascending: false })
 
     if (dateFrom) recQuery = recQuery.gte("movement_date", startOfDayAR(dateFrom))

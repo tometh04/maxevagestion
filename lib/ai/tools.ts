@@ -529,6 +529,9 @@ export async function getOperationMargin(
     const { data: movements } = await (supabase.from("ledger_movements") as any)
       .select("type, amount_ars_equivalent")
       .eq("operation_id", operationId)
+      // Sin esto el asistente reporta el doble: las líneas del asiento de la
+      // operación tienen el mismo type que el movimiento que las originó.
+      .not("account_id", "is", null)
 
     const totalIncome = (movements || [])
       .filter((m: any) => m.type === "INCOME")
