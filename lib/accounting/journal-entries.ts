@@ -1005,6 +1005,35 @@ export async function createCostJournalEntry(
     const allCodes = [...costCodes, ACCOUNT_CODES.CUENTAS_POR_PAGAR]
     const accountIds = await resolveAccountIds(allCodes, adminClient, chartOrgId)
 
+    // VIB-144/I2: un operador puede tener su propia cuenta de costo. Si no la
+    // tiene —que es el caso de todos hasta que alguien la configure— se sigue
+    // derivando del tipo de producto, exactamente como antes.
+    //
+    // El override se valida contra el plan de la MISMA organización: una cuenta
+    // de otra org no se usa, se ignora y se cae al default. Sin eso, un dato mal
+    // cargado imputaría el costo al plan de otra agencia.
+    const operatorIds = Array.from(
+      new Set(effectiveOperators.map((op) => op.operator_id).filter(Boolean))
+    )
+    const overridePorOperador = new Map<string, string>()
+    if (operatorIds.length > 0) {
+      const { data: opsConCuenta } = await (adminClient.from("operators") as any)
+        .select("id, cost_chart_account_id, chart_of_accounts:cost_chart_account_id(id, org_id)")
+        .in("id", operatorIds)
+        .not("cost_chart_account_id", "is", null)
+
+      for (const o of (opsConCuenta ?? []) as any[]) {
+        const cuenta = o.chart_of_accounts
+        if (cuenta?.id && (!chartOrgId || cuenta.org_id === chartOrgId)) {
+          overridePorOperador.set(o.id, cuenta.id)
+        }
+      }
+    }
+
+    /** Cuenta contable donde cae el costo de esta pata. */
+    const cuentaDeCosto = (op: any): string | null =>
+      overridePorOperador.get(op.operator_id) ?? accountIds[getCostAccountCode(op.product_type)] ?? null
+
     const cppId = accountIds[ACCOUNT_CODES.CUENTAS_POR_PAGAR]
     if (!cppId) {
       console.error("Asiento Costo: cuenta 2.1.01 no encontrada")
@@ -1014,19 +1043,20 @@ export async function createCostJournalEntry(
     // Construir líneas: una de Debe por cada tipo de costo, una de Haber por operador
     const totalCost = effectiveOperators.reduce((sum, op) => sum + Number(op.cost), 0)
 
-    // Agrupar costos por cuenta contable (por product_type)
+    // Agrupar por cuenta contable resuelta (override del operador o default por
+    // tipo de producto). Se agrupa por ID y no por código porque el override es
+    // una cuenta concreta, no un código canónico.
     const costByAccount: Record<string, number> = {}
     for (const op of effectiveOperators) {
-      const code = getCostAccountCode(op.product_type)
-      costByAccount[code] = (costByAccount[code] || 0) + Number(op.cost)
+      const chartId = cuentaDeCosto(op)
+      if (!chartId) continue
+      costByAccount[chartId] = (costByAccount[chartId] || 0) + Number(op.cost)
     }
 
     const lines: JournalEntryLine[] = []
 
-    // Líneas de Debe (costos agrupados por tipo)
-    for (const [code, amount] of Object.entries(costByAccount)) {
-      const chartId = accountIds[code]
-      if (!chartId) continue
+    // Líneas de Debe (costos agrupados por cuenta)
+    for (const [chartId, amount] of Object.entries(costByAccount)) {
       lines.push({
         chart_account_id: chartId,
         debit_amount: Math.round(amount * 100) / 100,

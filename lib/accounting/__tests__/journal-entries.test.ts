@@ -47,6 +47,8 @@ interface MockConfig {
   existingJournalEntry?: QueryResult
   /** Filas devueltas por chart_of_accounts */
   chartAccounts?: any[]
+  /** Filas de operators con cuenta de costo propia (VIB-144/I2) */
+  operatorsWithOverride?: any[]
   /** Resultado de la búsqueda de financial_account (.maybeSingle()) */
   financialAccount?: QueryResult
   /** Resultados del UPDATE de partida doble, consumidos en orden */
@@ -83,7 +85,7 @@ function createMockSupabase(cfg: MockConfig = {}) {
       return chain
     }
 
-    for (const m of ["select", "eq", "in", "ilike", "limit", "order", "neq", "is"]) {
+    for (const m of ["select", "eq", "in", "ilike", "limit", "order", "neq", "is", "not", "gte", "lte"]) {
       chain[m] = jest.fn(record(m))
     }
     chain.insert = jest.fn((payload: any) => {
@@ -101,6 +103,9 @@ function createMockSupabase(cfg: MockConfig = {}) {
     const resolve = (): QueryResult => {
       if (state.table === "chart_of_accounts") {
         return { data: cfg.chartAccounts ?? [], error: null }
+      }
+      if (state.table === "operators") {
+        return { data: cfg.operatorsWithOverride ?? [], error: null }
       }
       if (state.ops.includes("update")) {
         const r = cfg.updateResults?.[updateCount] ?? { error: null }
@@ -827,3 +832,90 @@ describe("createJournalEntry — transacción en la base", () => {
     expect(ledger.createLedgerMovement).not.toHaveBeenCalled()
   })
 })
+
+// ==================================================================
+// VIB-144/I2 — Cuenta de costo propia por operador
+//
+// El criterio que manda es el del documento: un operador SIN la config nueva
+// se tiene que comportar idéntico. El override solo cambia asientos futuros de
+// los operadores que alguien configure a mano.
+// ==================================================================
+describe("createCostJournalEntry — cuenta de costo por operador", () => {
+  const operation = {
+    id: "op-1234567890",
+    org_id: "org-1",
+    sale_amount_total: 1000,
+    sale_currency: "USD",
+    file_code: "OP-001",
+    operation_date: "2026-08-25",
+    exchange_rate: 1500,
+  }
+
+  const patas = [
+    { operator_id: "op-hotel", cost: 700, product_type: "HOTEL", operators: { id: "op-hotel", name: "Delfos" } },
+  ]
+
+  const plan = [
+    { id: "cpp-id", account_code: ACCOUNT_CODES.CUENTAS_POR_PAGAR },
+    { id: "costo-hoteleria", account_code: ACCOUNT_CODES.COSTO_HOTELERIA },
+  ]
+
+  it("sin config, imputa por tipo de producto igual que siempre", async () => {
+    const { client, calls } = createMockSupabase({ chartAccounts: plan })
+
+    await createCostJournalEntry(operation as any, patas as any, client)
+
+    expect(cuentasDeLasLineas(calls)).toContain("costo-hoteleria")
+  })
+
+  it("con cuenta propia, imputa el costo ahí", async () => {
+    const { client, calls } = createMockSupabase({
+      chartAccounts: plan,
+      operatorsWithOverride: [
+        {
+          id: "op-hotel",
+          cost_chart_account_id: "cuenta-asistencia",
+          chart_of_accounts: { id: "cuenta-asistencia", org_id: "org-1" },
+        },
+      ],
+    })
+
+    await createCostJournalEntry(operation as any, patas as any, client)
+
+    const cuentas = cuentasDeLasLineas(calls)
+    expect(cuentas).toContain("cuenta-asistencia")
+    expect(cuentas).not.toContain("costo-hoteleria")
+  })
+
+  it("ignora una cuenta de OTRA organización y cae al default", async () => {
+    // Un dato mal cargado no puede imputar el costo al plan de otra agencia.
+    const { client, calls } = createMockSupabase({
+      chartAccounts: plan,
+      operatorsWithOverride: [
+        {
+          id: "op-hotel",
+          cost_chart_account_id: "cuenta-ajena",
+          chart_of_accounts: { id: "cuenta-ajena", org_id: "OTRA-ORG" },
+        },
+      ],
+    })
+
+    await createCostJournalEntry(operation as any, patas as any, client)
+
+    const cuentas = cuentasDeLasLineas(calls)
+    expect(cuentas).toContain("costo-hoteleria")
+    expect(cuentas).not.toContain("cuenta-ajena")
+  })
+})
+
+/**
+ * Cuentas contables que quedaron en las líneas del asiento.
+ *
+ * La cuenta NO viaja en createLedgerMovement: se escribe en el UPDATE de
+ * partida doble que viene después, así que hay que leerla de ahí.
+ */
+function cuentasDeLasLineas(calls: any[]): string[] {
+  return calls
+    .filter((c) => c.table === "ledger_movements" && c.ops.includes("update"))
+    .map((c) => c.payload?.chart_account_id)
+}
