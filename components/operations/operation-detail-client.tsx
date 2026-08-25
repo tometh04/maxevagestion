@@ -31,6 +31,7 @@ import { PurchaseInvoicesSection } from "@/components/operations/purchase-invoic
 import { OperationSaleInvoicesSection } from "@/components/operations/operation-invoices-section"
 import { OperationFacturacionSection } from "@/components/operations/operation-facturacion-section"
 import { OperationPaymentsSection } from "@/components/operations/operation-payments-section"
+import { OperationReceiptsSection } from "@/components/operations/operation-receipts-section"
 import { SendStatementButton } from "@/components/operations/send-statement-button"
 import { PassengerBalancesSection } from "@/components/operations/passenger-balances-section"
 import {
@@ -241,6 +242,19 @@ export function OperationDetailClient({
   // igual validan cash.write, así que esto solo destapa el acceso legítimo.
   const canViewOperationPayments =
     canViewFinancialTabs || (paymentsAllowedHere && (canReadCash || canWriteCashForServices))
+  // VIB-129: el vendedor no ve el tab de Pagos (no tiene cash.read) pero SI
+  // tiene que poder bajar el recibo de sus propias ventas, para controlar que
+  // el cobro se haya aplicado. Es una vista aparte, de solo lectura: el pedido
+  // fue explicito en que no pueda generar pagos ni cobros.
+  //
+  // Solo sobre operaciones propias. El servidor ya lo valida por su cuenta
+  // (buildReceiptPdfData corta con 403 si el SELLER no es el vendedor), asi que
+  // esto no puede filtrar recibos ajenos aunque el gate de UI se equivoque.
+  // `operationAccessScope === "own"` lo calcula el servidor en
+  // resolveOperationAccessScope y significa exactamente "este SELLER es el
+  // vendedor de esta operacion". Es el mismo criterio que usa el endpoint del
+  // recibo para autorizar, asi que la UI y el server no pueden desalinearse.
+  const canViewOwnReceipts = !canViewOperationPayments && operationAccessScope === "own"
   const canManageAlerts = !isAgencyScopedReadonly && userRole !== "VIEWER"
   const operatorNameMap = useMemo(
     () => new Map(operators.map((operator) => [operator.id, operator.name])),
@@ -428,6 +442,12 @@ export function OperationDetailClient({
             <TabsTrigger value="payments" className="gap-1.5" data-tour="operation.tab-payments">
               <CreditCard className="h-3.5 w-3.5" />
               Pagos Operación ({operationBasePayments.length})
+            </TabsTrigger>
+          )}
+          {canViewOwnReceipts && (
+            <TabsTrigger value="receipts" className="gap-1.5">
+              <Receipt className="h-3.5 w-3.5" />
+              Recibos
             </TabsTrigger>
           )}
           <TabsTrigger value="services" className="gap-1.5" data-tour="operation.tab-services">
@@ -947,6 +967,12 @@ export function OperationDetailClient({
             allowDelete={canManageDocuments}
           />
         </TabsContent>
+
+        {canViewOwnReceipts && (
+          <TabsContent value="receipts" className="space-y-4">
+            <OperationReceiptsSection payments={operationBasePayments} />
+          </TabsContent>
+        )}
 
         <TabsContent value="payments" className="space-y-4">
           <OperationPaymentsSection
