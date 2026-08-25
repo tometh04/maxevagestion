@@ -119,6 +119,25 @@ export async function POST(request: Request) {
     console.warn("onboarding: seed lead_regions failed", { orgId: org.id, error: e?.message })
   }
 
+  // Plan de cuentas. Sin esto la org arranca con 0 filas en `chart_of_accounts`
+  // y la cadena se corta en silencio: al crear su primera caja o banco, el alta
+  // busca la cuenta contable que corresponde al tipo, no encuentra nada, y la
+  // cuenta financiera queda sin vincular. Sin esa vinculación el motor saltea
+  // todos sus movimientos y la agencia nunca genera un asiento.
+  //
+  // Se sembraba SOLO desde el alta por platform admin, así que ninguna agencia
+  // que se registró sola tenía contabilidad: las 8 creadas entre el 11 y el 21
+  // de agosto quedaron con el plan vacío.
+  //
+  // No bloqueante, igual que las regiones: si falla, el alta sigue y se puede
+  // sembrar después desde /admin/orgs.
+  try {
+    const { seedChartOfAccountsForOrg } = await import("@/lib/accounting/seed-chart-of-accounts")
+    await seedChartOfAccountsForOrg(org.id, admin)
+  } catch (e: any) {
+    console.warn("onboarding: seed chart_of_accounts failed", { orgId: org.id, error: e?.message })
+  }
+
   // Nota: NO seedeamos commission_rules default acá. Si lo hiciéramos,
   // cualquier tenant nuevo empezaría a generar comisiones automáticas
   // con un valor arbitrario (ej. 10%), lo que mezcla la contabilidad

@@ -3,6 +3,12 @@
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -34,7 +40,7 @@ import { Input } from "@/components/ui/input"
 import { DecimalInput } from "@/components/ui/decimal-input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Plus, Trash2, AlertTriangle, Building2, ArrowRightLeft, Pencil, ListFilter } from "lucide-react"
+import { Plus, Trash2, AlertTriangle, Building2, ArrowRightLeft, Pencil, ListFilter, Unlink } from "lucide-react"
 import Link from "next/link"
 import { TransferAccountDialog } from "./transfer-account-dialog"
 import { toast } from "sonner"
@@ -1030,7 +1036,44 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
                     <TableBody>
                       {data.accounts.map((account: any) => (
                         <TableRow key={account.id}>
-                          <TableCell className="font-medium">{getDisplayName(account)}</TableCell>
+                          <TableCell className="font-medium">
+                            <span className="inline-flex items-center gap-1.5">
+                              {getDisplayName(account)}
+                              {/*
+                                Sin vínculo al plan de cuentas los movimientos de
+                                esta cuenta no generan asiento. Antes esto no se
+                                veía en ningún lado: la contabilidad simplemente
+                                no aparecía y no había forma de saber por qué.
+                              */}
+                              {!account.chart_account_id && (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <button
+                                        type="button"
+                                        aria-label="Sin cuenta contable asociada"
+                                        className="text-muted-foreground hover:text-foreground"
+                                      >
+                                        <Unlink className="h-3.5 w-3.5" aria-hidden />
+                                      </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="max-w-xs">
+                                      <p className="font-medium">Sin cuenta contable asociada</p>
+                                      <p className="mt-1 text-muted-foreground">
+                                        Los movimientos de esta cuenta no generan asiento, así que
+                                        no aparecen en el Mayor por Cuenta. Suele pasar cuando la
+                                        cuenta se creó antes de que la agencia tuviera plan de
+                                        cuentas. Las que se crean ahora se asocian solas.
+                                      </p>
+                                      <p className="mt-1 text-muted-foreground">
+                                        Escribinos desde Soporte para vincularla.
+                                      </p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              )}
+                            </span>
+                          </TableCell>
                           <TableCell>
                             <Badge variant="outline">
                               {accountTypeLabels[account.type] || account.type}
