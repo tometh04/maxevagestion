@@ -51,6 +51,14 @@ interface MockConfig {
   financialAccount?: QueryResult
   /** Resultados del UPDATE de partida doble, consumidos en orden */
   updateResults?: QueryResult[]
+  /**
+   * Respuesta de la RPC create_journal_entry_atomic (VIB-134/B1-B2).
+   *
+   * Por defecto simula que la función NO existe (PGRST202), que es la ventana
+   * de deploy: así los tests de más abajo siguen ejercitando el camino JS con
+   * su rollback manual, que es justamente lo que fijan.
+   */
+  atomicRpc?: QueryResult
 }
 
 interface RecordedCall {
@@ -136,7 +144,11 @@ function createMockSupabase(cfg: MockConfig = {}) {
     return chain
   })
 
-  return { client: { from } as any, calls, from }
+  const rpc = jest.fn(async (_fn: string, _args: any) =>
+    cfg.atomicRpc ?? { data: null, error: { code: "PGRST202", message: "function not found" } }
+  )
+
+  return { client: { from, rpc } as any, calls, from, rpc }
 }
 
 const line = (over: Partial<JournalEntryLine> = {}): JournalEntryLine => ({
@@ -725,5 +737,93 @@ describe("createJournalEntry — org_id explícito", () => {
       expect(call[0].exchange_rate).toBe(900)
       expect(call[0].amount_ars_equivalent).toBe(1000 * 900)
     }
+  })
+})
+
+// ==================================================================
+// VIB-134/B1-B2 — Asiento atómico
+//
+// El camino viejo hace N+1 escrituras sueltas y compensa con un rollback
+// manual en JS. Si ese rollback falla, queda un asiento DESBALANCEADO: peor
+// que ninguno, porque descuadra el mayor en silencio. Ahora la base lo hace
+// todo en una transacción.
+// ==================================================================
+describe("createJournalEntry — transacción en la base", () => {
+  const dosLineas = () => [
+    line({ debit_amount: 100, credit_amount: null }),
+    line({ debit_amount: null, credit_amount: 100 }),
+  ]
+
+  const respuestaOk = {
+    data: {
+      id: "je-atomic",
+      entry_number: 77,
+      entry_date: "2026-01-15",
+      description: "Asiento de prueba",
+      source: "MANUAL",
+      total_amount: 100,
+      currency: "ARS",
+      movement_ids: ["mov-a", "mov-b"],
+    },
+    error: null,
+  }
+
+  it("usa la RPC y no escribe nada suelto", async () => {
+    const { client, calls, rpc } = createMockSupabase({ atomicRpc: respuestaOk })
+
+    const entry = await createJournalEntry(baseParams(dosLineas()), client)
+
+    expect(rpc).toHaveBeenCalledWith("create_journal_entry_atomic", expect.anything())
+    expect(entry.id).toBe("je-atomic")
+    expect(entry.movement_ids).toEqual(["mov-a", "mov-b"])
+    // Nada de INSERT/UPDATE por fuera de la transacción.
+    expect(calls).toHaveLength(0)
+    expect(ledger.createLedgerMovement).not.toHaveBeenCalled()
+  })
+
+  it("le pasa a la base el contexto completo del asiento", async () => {
+    const { client, rpc } = createMockSupabase({ atomicRpc: respuestaOk })
+
+    await createJournalEntry(
+      {
+        ...baseParams(dosLineas()),
+        org_id: "org-1",
+        entry_kind: "SALE",
+        source_movement_id: "mov-origen",
+        operation_id: "op-1",
+      },
+      client
+    )
+
+    expect(rpc.mock.calls[0][1]).toMatchObject({
+      p_org_id: "org-1",
+      p_entry_kind: "SALE",
+      p_source_movement_id: "mov-origen",
+      p_operation_id: "op-1",
+      p_total_amount: 100,
+    })
+  })
+
+  it("cae al camino viejo SOLO si la función todavía no existe", async () => {
+    // Ventana de deploy: el código sale antes que la migración.
+    const { client } = createMockSupabase()
+
+    const entry = await createJournalEntry(baseParams(dosLineas()), client)
+
+    expect(entry.id).toBe("je-1")
+    expect(ledger.createLedgerMovement).toHaveBeenCalledTimes(2)
+  })
+
+  it("propaga cualquier otro error en vez de taparlo con el fallback", async () => {
+    // Un error real no debe disfrazarse de "función no disponible": si la base
+    // rechaza el asiento, hay que enterarse.
+    const { client } = createMockSupabase({
+      atomicRpc: { data: null, error: { code: "23505", message: "duplicate key" } },
+    })
+
+    await expect(createJournalEntry(baseParams(dosLineas()), client)).rejects.toThrow(
+      /duplicate key/
+    )
+    expect(ledger.createLedgerMovement).not.toHaveBeenCalled()
   })
 })

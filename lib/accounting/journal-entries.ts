@@ -207,6 +207,57 @@ export async function createJournalEntry(
     entryExchangeRate = resolved.rate
   }
 
+  // VIB-134/B1-B2: el camino normal es una sola transacción en la base.
+  //
+  // Abajo sigue el camino viejo (N+1 escrituras sueltas con rollback manual en
+  // JS) porque el cliente de Supabase no tiene transacciones: si falla la
+  // tercera línea de un asiento de cuatro, lo anterior ya está escrito, y el
+  // rollback que lo compensa también puede fallar. Ahí queda un asiento
+  // DESBALANCEADO, que es peor que ninguno: descuadra el mayor en silencio.
+  //
+  // El fallback existe SOLO para la ventana de deploy —si el código sale antes
+  // que la migración, la función todavía no existe y PostgREST responde
+  // PGRST202—. Una vez aplicada en todos los ambientes se puede borrar junto
+  // con el bloque de abajo.
+  const rpcResult = await (adminClient.rpc as any)("create_journal_entry_atomic", {
+    p_entry_date: entry_date,
+    p_description: description,
+    p_source: source,
+    p_currency: currency,
+    p_lines: lines,
+    p_total_amount: balance.totalDebit,
+    p_exchange_rate: entryExchangeRate,
+    p_operation_id: operation_id || null,
+    p_org_id: org_id ?? null,
+    p_entry_kind: entry_kind ?? null,
+    p_source_movement_id: source_movement_id ?? null,
+    p_created_by: created_by || null,
+    p_notes: notes || null,
+  })
+
+  if (!rpcResult.error) {
+    const r = rpcResult.data as any
+    return {
+      id: r.id,
+      entry_number: r.entry_number,
+      entry_date: r.entry_date,
+      description: r.description,
+      source: r.source as JournalEntrySource,
+      total_amount: r.total_amount,
+      currency: r.currency,
+      movement_ids: r.movement_ids ?? [],
+    }
+  }
+
+  // La función no existe todavía: seguimos por el camino viejo. Cualquier otro
+  // error SÍ se propaga — no queremos tapar un fallo real con el fallback.
+  if (rpcResult.error.code !== "PGRST202") {
+    throw new Error(`Error creando asiento contable: ${rpcResult.error.message}`)
+  }
+  console.warn(
+    "[createJournalEntry] create_journal_entry_atomic no está disponible; usando el camino no atómico. Aplicar la migración 20260825000001."
+  )
+
   // 1. Crear el journal_entry
   const { data: journalEntry, error: jeError } = await (adminClient.from("journal_entries") as any)
     .insert({

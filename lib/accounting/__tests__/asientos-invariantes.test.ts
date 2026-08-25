@@ -87,7 +87,15 @@ function createMockSupabase(chartAccounts: any[] = []) {
     return chain
   })
 
-  return { client: { from } as any, calls }
+  // La RPC atómica (VIB-134/B1-B2) se simula ausente a propósito: estos tests
+  // fijan los invariantes del camino JS, que sigue vivo como fallback de la
+  // ventana de deploy. La transacción tiene su propio suite.
+  const rpc = jest.fn(async () => ({
+    data: null,
+    error: { code: "PGRST202", message: "function not found" },
+  }))
+
+  return { client: { from, rpc } as any, calls }
 }
 
 const line = (over: Partial<JournalEntryLine> = {}): JournalEntryLine => ({
