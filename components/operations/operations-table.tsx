@@ -107,6 +107,14 @@ interface OperationsTableProps {
   userId: string
   canViewAgencyOperationsSupport: boolean
   userAgencyIds: string[]
+  /**
+   * Avisa al padre la busqueda vigente (ya con el debounce aplicado).
+   *
+   * VIB-152: el buscador es estado interno de esta tabla, pero el boton de
+   * exportar vive en el page-client. Sin esto el padre no sabe que se busco
+   * y el CSV sale con TODAS las operaciones, que es lo que reporto Lozada.
+   */
+  onSearchChange?: (search: string) => void
 }
 
 export function OperationsTable({
@@ -115,6 +123,7 @@ export function OperationsTable({
   userId,
   canViewAgencyOperationsSupport,
   userAgencyIds,
+  onSearchChange,
 }: OperationsTableProps) {
   const [operations, setOperations] = useState<Operation[]>([])
   const [loading, setLoading] = useState(true)
@@ -329,6 +338,13 @@ export function OperationsTable({
     }
     setPage(1)
   }, [debouncedSearch])
+
+  // VIB-152: el padre necesita la busqueda para que el export baje lo mismo
+  // que se ve en pantalla. Se emite el valor ya debounceado, no el tipeo.
+  useEffect(() => {
+    onSearchChange?.(debouncedSearch)
+  }, [debouncedSearch, onSearchChange])
+
 
   // Escuchar eventos de refresh desde el componente padre
   useEffect(() => {

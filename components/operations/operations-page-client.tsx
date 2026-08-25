@@ -90,6 +90,9 @@ export function OperationsPageClient({
   })
   const [newOperationDialogOpen, setNewOperationDialogOpen] = useState(false)
   const [customStatuses, setCustomStatuses] = useState<CustomStatus[]>([])
+  // VIB-152: la busqueda vive dentro de OperationsTable. La espejamos aca para
+  // que el export mande exactamente los mismos filtros que el listado.
+  const [tableSearch, setTableSearch] = useState("")
   const [exportingCsv, setExportingCsv] = useState(false)
 
   // 2026-05-19 (Tomi): exportar operaciones filtradas a CSV con todas las columnas.
@@ -102,6 +105,14 @@ export function OperationsPageClient({
       if (filters.agencyId && filters.agencyId !== "ALL") params.set("agencyId", filters.agencyId)
       if (filters.dateFrom) params.set("dateFrom", filters.dateFrom)
       if (filters.dateTo) params.set("dateTo", filters.dateTo)
+      // Fechas de cobro/pago/vencimiento: las aplica el listado y hasta VIB-152
+      // el export las ignoraba.
+      if (filters.paymentDateFrom) params.set("paymentDateFrom", filters.paymentDateFrom)
+      if (filters.paymentDateTo) params.set("paymentDateTo", filters.paymentDateTo)
+      if (filters.paymentDateType) params.set("paymentDateType", filters.paymentDateType)
+      // Mismo umbral que usa la tabla para buscar server-side: por debajo de 2
+      // caracteres no filtra, asi que mandarlo haria que el CSV no coincida.
+      if (tableSearch && tableSearch.length >= 2) params.set("search", tableSearch)
       // dateType "OPERATION" es el default del endpoint
       const url = `/api/operations/export-csv${params.toString() ? `?${params.toString()}` : ""}`
 
@@ -236,6 +247,7 @@ export function OperationsPageClient({
         userId={userId}
         canViewAgencyOperationsSupport={canViewAgencyOperationsSupport}
         userAgencyIds={userAgencyIds}
+        onSearchChange={setTableSearch}
       />
 
       <NewOperationDialog
