@@ -50,6 +50,33 @@ const ORG_FILTER = (() => {
 })()
 
 /**
+ * Nombres a excluir, repetible: --skip-name "EFECTIVO" --skip-name "Mercado Pago"
+ *
+ * Para cuentas cuyo NOMBRE no se condice con su tipo cargado. Ejemplos reales:
+ * una cuenta llamada "EFECTIVO" cargada como caja de ahorro iría a Bancos
+ * cuando debería ir a Caja, y una llamada "Mercado Pago" cargada igual iría a
+ * Bancos en vez de a su propia cuenta. El mapeo por tipo sería seguro pero
+ * quedaría mal, y arreglar el tipo es una corrección de dato, no de código.
+ */
+const SKIP_NAMES: string[] = args.reduce<string[]>((acc, a, i) => {
+  if (a === "--skip-name" && args[i + 1]) acc.push(args[i + 1].toLowerCase())
+  return acc
+}, [])
+
+/**
+ * Acota a ciertos tipos: --only-types CASH_USD,CASH_ARS
+ *
+ * Sirve cuando dos cuentas comparten nombre pero solo una tiene el tipo bien
+ * cargado. Caso real: en Gualeguaychú hay dos cuentas llamadas "EFECTIVO", una
+ * como CASH_USD (correcta, va a Caja) y otra como caja de ahorro (mal cargada,
+ * iría a Bancos). Filtrar por nombre las sacaba a las dos.
+ */
+const ONLY_TYPES: string[] | null = (() => {
+  const i = args.indexOf("--only-types")
+  return i >= 0 && args[i + 1] ? args[i + 1].split(",").map((t) => t.trim()) : null
+})()
+
+/**
  * Mismo mapeo que usa el alta de cuentas (`app/api/accounting/financial-accounts`),
  * para que una cuenta vieja quede igual que una que se creara hoy.
  */
@@ -60,7 +87,14 @@ const TIPO_A_CODIGO: Record<string, string> = {
   CHECKING_USD: "1.1.02",
   SAVINGS_ARS: "1.1.02",
   SAVINGS_USD: "1.1.02",
-  CREDIT_CARD: "1.1.04",
+  // CREDIT_CARD queda FUERA a propósito, aunque el alta de cuentas lo mapee a
+  // 1.1.04. Dos motivos:
+  //
+  //   1. En el plan sembrado, 1.1.04 se llama "Mercado Pago". Meter ahí una
+  //      "VISA GALICIA" queda visiblemente mal en el Mayor.
+  //   2. Contablemente una tarjeta de crédito suele ser un PASIVO (lo que se le
+  //      debe a la tarjeta), no un activo. Cambiarla de categoría invertiría el
+  //      signo de su saldo, así que es una decisión del contador.
   ASSETS: "1.1.05",
   // PARTNER va a 3.1.01 (Patrimonio Neto) en el alta. Acá NO se toca: cambiar
   // una cuenta de socio de Activo a PN le invierte el signo al saldo.
@@ -109,6 +143,14 @@ async function main() {
   const salteadas: Array<{ cuenta: any; motivo: string }> = []
 
   for (const cuenta of sinVincular) {
+    if (ONLY_TYPES && !ONLY_TYPES.includes(cuenta.type)) {
+      salteadas.push({ cuenta, motivo: "fuera de --only-types" })
+      continue
+    }
+    if (SKIP_NAMES.some((n) => String(cuenta.name).toLowerCase().includes(n))) {
+      salteadas.push({ cuenta, motivo: "excluida por nombre (--skip-name)" })
+      continue
+    }
     const codigo = TIPO_A_CODIGO[cuenta.type]
     if (!codigo) {
       salteadas.push({
