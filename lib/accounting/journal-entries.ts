@@ -646,6 +646,54 @@ export async function annotatePaymentAsJournalEntry(
       ? parseFloat(mainMovement.amount_original || params.amount)
       : params.amount
 
+    // Un asiento necesita sus DOS lados.
+    //
+    // Si falta la contrapartida —porque el movimiento no existe o porque su
+    // cuenta del plan no se resuelve— antes se grababa igual y quedaba un
+    // asiento de UNA sola línea, encima marcado `is_balanced: true`, que es
+    // mentira. Medio asiento descuadra el mayor y nadie se entera: hay 928 así
+    // en producción, del 7/5 al 20/8, casi todos de las agencias que no tenían
+    // plan de cuentas hasta que se sembró.
+    //
+    // Ahora no se crea nada y el movimiento de plata queda sin anotar, que es
+    // exactamente el estado en el que quedaría si esta función no hubiera
+    // corrido. NO cambia ningún saldo: verificado sobre los 928 existentes, su
+    // debit/credit es idéntico a `amount_original` (y en pesos también a
+    // `amount_ars_equivalent`), así que la rama legacy de
+    // getAccountBalancesBatch calcula exactamente el mismo número que la de
+    // partida doble.
+    //
+    // El pago en sí no se toca: la plata ya se movió y el asiento es una capa
+    // paralela.
+    if (!financialChartAccountId || !params.counterpartMovementId || !counterpartChartAccountId) {
+      const faltante = !financialChartAccountId
+        ? "la cuenta financiera no está vinculada al plan de cuentas"
+        : !params.counterpartMovementId
+          ? "el movimiento de contrapartida no existe"
+          : "la cuenta de contrapartida no está en el plan de la organización"
+
+      console.error(
+        `[annotatePaymentAsJournalEntry] Sin asiento para el movimiento ${params.mainMovementId}: ${faltante}.`
+      )
+
+      // Regla del módulo: una falla contable no se silencia. El pago siguió su
+      // curso, pero queda una revisión manual pendiente.
+      try {
+        await (adminClient.from("alerts") as any).insert({
+          org_id: chartOrgId,
+          operation_id: params.operation_id || null,
+          type: "SYSTEM",
+          description: `Pago sin asiento contable: ${faltante}. Movimiento ${params.mainMovementId}. Revisar manualmente.`,
+          date_due: new Date().toISOString(),
+          status: "PENDING",
+        })
+      } catch {
+        // La alerta es best-effort: no puede romper el pago.
+      }
+
+      return null
+    }
+
     // Crear el journal_entry
     const { data: journalEntry, error: jeError } = await (adminClient.from("journal_entries") as any)
       .insert({

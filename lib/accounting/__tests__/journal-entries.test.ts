@@ -19,6 +19,7 @@ import {
   createJournalEntry,
   createSaleJournalEntry,
   createCostJournalEntry,
+  annotatePaymentAsJournalEntry,
   type JournalEntryLine,
 } from "../journal-entries"
 import { ACCOUNT_CODES } from "../account-codes"
@@ -919,3 +920,112 @@ function cuentasDeLasLineas(calls: any[]): string[] {
     .filter((c) => c.table === "ledger_movements" && c.ops.includes("update"))
     .map((c) => c.payload?.chart_account_id)
 }
+
+// ==================================================================
+// annotatePaymentAsJournalEntry — nunca medio asiento
+//
+// Es el camino por donde pasan TODOS los pagos, y el que dejó 928 asientos de
+// una sola línea en producción, marcados is_balanced = true. Medio asiento
+// descuadra el mayor en silencio.
+//
+// Lo que estos tests protegen es que el PAGO no cambie: si falta un lado no se
+// anota nada y el movimiento de plata queda intacto, que es como quedaría si
+// esta función no hubiera corrido.
+// ==================================================================
+describe("annotatePaymentAsJournalEntry — no deja asientos de una línea", () => {
+  const base = {
+    mainMovementId: "mov-principal",
+    counterpartMovementId: "mov-contrapartida",
+    description: "Cobro - Cliente",
+    date: "2026-08-25",
+    amount: 1000,
+    currency: "ARS" as const,
+    direction: "INCOME" as const,
+    financialAccountId: "fa-1",
+    operation_id: "op-1",
+  }
+
+  /** Mock mínimo: registra los inserts y updates que se intentan. */
+  function mock(cfg: { finChart?: any; cpChart?: any } = {}) {
+    const escrituras: Array<{ table: string; op: string }> = []
+    const from = jest.fn((table: string) => {
+      const chain: any = {}
+      for (const m of ["select", "eq", "in", "not", "order", "limit"]) chain[m] = jest.fn(() => chain)
+      chain.insert = jest.fn(() => {
+        escrituras.push({ table, op: "insert" })
+        return chain
+      })
+      chain.update = jest.fn(() => {
+        escrituras.push({ table, op: "update" })
+        return chain
+      })
+      chain.single = jest.fn(async () => ({ data: { id: "je-x", entry_number: 1 }, error: null }))
+      chain.maybeSingle = jest.fn(async () => {
+        if (table === "financial_accounts") {
+          return { data: cfg.finChart === undefined ? { chart_account_id: "chart-banco" } : cfg.finChart }
+        }
+        if (table === "chart_of_accounts") {
+          return { data: cfg.cpChart === undefined ? { id: "chart-cxc" } : cfg.cpChart }
+        }
+        if (table === "operations") return { data: { org_id: "org-1" } }
+        if (table === "ledger_movements") return { data: { amount_original: 1000 } }
+        return { data: null }
+      })
+      chain.then = (ok: any) => Promise.resolve({ data: null, error: null }).then(ok)
+      return chain
+    })
+    return { client: { from } as any, escrituras }
+  }
+
+  it("no crea el asiento si la cuenta de contrapartida no se resuelve", async () => {
+    const { client, escrituras } = mock({ cpChart: null })
+
+    const r = await annotatePaymentAsJournalEntry(base, client)
+
+    expect(r).toBeNull()
+    expect(escrituras.some((e) => e.table === "journal_entries")).toBe(false)
+    // El movimiento de plata NO se toca: su saldo se sigue calculando igual.
+    expect(escrituras.some((e) => e.table === "ledger_movements" && e.op === "update")).toBe(false)
+  })
+
+  it("no crea el asiento si no hay movimiento de contrapartida", async () => {
+    const { client, escrituras } = mock()
+
+    const r = await annotatePaymentAsJournalEntry(
+      { ...base, counterpartMovementId: null },
+      client
+    )
+
+    expect(r).toBeNull()
+    expect(escrituras.some((e) => e.table === "journal_entries")).toBe(false)
+  })
+
+  it("no crea el asiento si la cuenta financiera no está vinculada al plan", async () => {
+    const { client, escrituras } = mock({ finChart: { chart_account_id: null } })
+
+    const r = await annotatePaymentAsJournalEntry(base, client)
+
+    expect(r).toBeNull()
+    expect(escrituras.some((e) => e.table === "journal_entries")).toBe(false)
+  })
+
+  it("deja una alerta para que la falla no pase inadvertida", async () => {
+    const { client, escrituras } = mock({ cpChart: null })
+
+    await annotatePaymentAsJournalEntry(base, client)
+
+    expect(escrituras).toContainEqual({ table: "alerts", op: "insert" })
+  })
+
+  it("con los dos lados resueltos, anota como siempre", async () => {
+    const { client, escrituras } = mock()
+
+    const r = await annotatePaymentAsJournalEntry(base, client)
+
+    expect(r).toBe("je-x")
+    expect(escrituras.some((e) => e.table === "journal_entries" && e.op === "insert")).toBe(true)
+    // Las dos patas anotadas: la principal y la contrapartida.
+    const updates = escrituras.filter((e) => e.table === "ledger_movements" && e.op === "update")
+    expect(updates.length).toBeGreaterThanOrEqual(2)
+  })
+})
