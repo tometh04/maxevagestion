@@ -65,6 +65,7 @@ function makeSupabase(cashMovements: any[], extraTables: Record<string, any[]> =
   const eqCalls: Array<[string, any]> = []
   const likeCalls: Array<[string, any]> = []
   const notCalls: Array<[string, string, any]> = []
+  const ledgerNotCalls: Array<[string, string, any]> = []
   const selectedColumns: string[] = []
   const client = {
     from: jest.fn((table: string) => {
@@ -82,6 +83,7 @@ function makeSupabase(cashMovements: any[], extraTables: Record<string, any[]> =
         neq: jest.fn(() => builder),
         not: jest.fn((col: string, op: string, val: any) => {
           if (table === "cash_movements") notCalls.push([col, op, val])
+          if (table === "ledger_movements") ledgerNotCalls.push([col, op, val])
           return builder
         }),
         like: jest.fn((col: string, val: any) => {
@@ -101,7 +103,7 @@ function makeSupabase(cashMovements: any[], extraTables: Record<string, any[]> =
       return builder
     }),
   }
-  return { client, isCalls, eqCalls, likeCalls, notCalls, selectedColumns }
+  return { client, isCalls, eqCalls, likeCalls, notCalls, ledgerNotCalls, selectedColumns }
 }
 
 async function gastosVariables(
@@ -317,5 +319,44 @@ describe("fetchExpenses — retiros de socios", () => {
     })
     await fetchExpenses({ supabase: client, orgId: "org-1", type: "recurring" })
     expect(likeCalls).toContainEqual(["concept", "Gasto recurrente:%"])
+  })
+})
+
+// ==================================================================
+// VIB-142 — Las líneas de asiento no son gastos
+//
+// Reportado por Lozada: "tiré el reporte de gastos y hay muchísimos gastos
+// duplicados, vi 58 millones y dije qué pasó".
+//
+// Los gastos fijos se buscan en ledger_movements por type EXPENSE y concepto
+// "Gasto recurrente:%". Las líneas de asiento copian el concepto del
+// movimiento que las origina y llevan el mismo type, así que cada gasto real
+// sumaba además sus DOS líneas contables (el Debe del gasto y el Haber del
+// banco) y el reporte mostraba el triple: ARS 59.174.119 donde iban 20.250.040.
+//
+// El discriminador es el invariante del módulo: un movimiento de dinero
+// siempre tiene cuenta financiera, una línea de asiento nunca.
+// ==================================================================
+describe("fetchExpenses — gastos fijos vs líneas de asiento", () => {
+  it("le pide a la base excluir las líneas de asiento", async () => {
+    const { client, ledgerNotCalls } = makeSupabase([], {
+      ledger_movements: [recurrente()],
+    })
+
+    await fetchExpenses({ supabase: client, orgId: "org-1", type: "recurring" })
+
+    expect(ledgerNotCalls).toContainEqual(["account_id", "is", null])
+  })
+
+  it("el filtro va sobre la misma query que busca el concepto del gasto fijo", async () => {
+    // Si el filtro quedara en otra query, el duplicado vuelve.
+    const { client, likeCalls, ledgerNotCalls } = makeSupabase([], {
+      ledger_movements: [recurrente()],
+    })
+
+    await fetchExpenses({ supabase: client, orgId: "org-1", type: "recurring" })
+
+    expect(likeCalls).toContainEqual(["concept", "Gasto recurrente:%"])
+    expect(ledgerNotCalls.length).toBeGreaterThan(0)
   })
 })
