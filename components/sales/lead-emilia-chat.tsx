@@ -1214,7 +1214,8 @@ export function LeadEmiliaChat({
 
               {/* Turno de búsqueda SIN resultados: en vez de dejar solo el texto
                   de Emilia, mostramos qué entendió + cómo reintentar. */}
-              {!hasCards && m.role === "assistant" && m.meta?.messageType === "search_results" && (
+              {!hasCards && m.role === "assistant" && m.meta?.messageType
+                && ["search_results", "no_results"].includes(m.meta.messageType) && (
                 <EmptySearchNotice meta={m.meta} />
               )}
             </div>
