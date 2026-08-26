@@ -65,6 +65,21 @@ const argValue = (name: string): string | null => {
 const ORG_FILTER = argValue("--org")
 const LIMIT = Number(argValue("--limit") ?? 0) || null
 
+/**
+ * Donde vive la plata de verdad: Caja, Bancos, Mercado Pago.
+ *
+ * LA LECCIÓN MÁS CARA DE ESTE SCRIPT. La capa operativa registra cada hecho
+ * económico DE A PARES: el movimiento real de plata y su contrapartida en una
+ * cuenta técnica (Cuentas por Cobrar, Cuentas por Pagar, Costo de Operadores).
+ * La primera versión trató cada movimiento como un hecho independiente, así que
+ * donde había UN hecho generó DOS asientos: 4.242 duplicados sobre 8.093, que
+ * hubo que borrar.
+ *
+ * Un movimiento cuya cuenta financiera no es de plata es una contrapartida, y
+ * su hecho económico ya está asentado del otro lado.
+ */
+const CUENTAS_DE_PLATA = ["1.1.01", "1.1.02", "1.1.04"]
+
 /** Conceptos que NO son un hecho económico de resultado. */
 const EXCLUIDOS: { test: RegExp; motivo: string }[] = [
   { test: /^transferencia/i, motivo: "transferencia entre cuentas propias" },
@@ -160,10 +175,30 @@ async function main() {
     if (data.length < PAGE) break
   }
 
-  const pendientes = movimientos.filter((m) => !yaAsentados.has(m.id))
+  let contrapartidas = 0
+  // Cuáles de las cuentas financieras son de plata de verdad.
+  const cuentasDePlata = new Set<string>()
+  {
+    const { data: fas } = await admin
+      .from("financial_accounts")
+      .select("id, chart_account_id, chart_of_accounts:chart_account_id(account_code)")
+      .not("chart_account_id", "is", null)
+    for (const fa of (fas ?? []) as any[]) {
+      if (CUENTAS_DE_PLATA.includes(fa.chart_of_accounts?.account_code)) cuentasDePlata.add(fa.id)
+    }
+  }
+
+  const pendientes = movimientos
+    .filter((m) => !yaAsentados.has(m.id))
+    .filter((m) => {
+      if (cuentasDePlata.has(m.account_id)) return true
+      contrapartidas++
+      return false
+    })
 
   console.log(`\nMovimientos de plata sin asiento: ${movimientos.length}`)
-  console.log(`Ya asentados por una corrida previa: ${movimientos.length - pendientes.length}`)
+  console.log(`Contrapartidas técnicas (su hecho ya se asienta del otro lado): ${contrapartidas}`)
+  console.log(`Ya asentados o contrapartida: ${movimientos.length - pendientes.length}`)
 
   const aProcesar: any[] = []
   const salteados = new Map<string, { movimientos: number; ars: number }>()
