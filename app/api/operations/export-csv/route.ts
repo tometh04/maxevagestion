@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { getUserAgencyIds, applyOperationsFilters, NO_MATCH_UUID } from "@/lib/permissions-api"
+import { getInvoicingStatusByOperation } from "@/lib/operations/invoiced-by-operation"
 import { buildOperationSearchConditions } from "@/lib/operations/search-conditions"
 import { resolveOperationIdsByPaymentDate } from "@/lib/operations/payment-date-filter"
 
@@ -43,6 +44,7 @@ export async function GET(request: Request) {
     const status = searchParams.get("status")
     const agencyIdParam = searchParams.get("agencyId")
     const sellerIdParam = searchParams.get("sellerId")
+    const invoiceStatusParam = searchParams.get("invoiceStatus")
     const operatorIdParam = searchParams.get("operatorId")
     const typeParam = searchParams.get("type")
     const dateFrom = searchParams.get("dateFrom")
@@ -94,6 +96,32 @@ export async function GET(request: Request) {
     if (agencyIdParam && agencyIdParam !== "ALL") query = query.eq("agency_id", agencyIdParam)
     if (sellerIdParam && sellerIdParam !== "ALL") query = query.eq("seller_id", sellerIdParam)
     if (operatorIdParam && operatorIdParam !== "ALL") query = query.eq("operator_id", operatorIdParam)
+
+    // VIB-157: mismo filtro por estado de facturación que el listado. Sin esto
+    // el CSV salía con TODAS las operaciones aunque en pantalla se estuvieran
+    // viendo solo las parciales (la divergencia que arregló VIB-152 para el
+    // buscador).
+    if (
+      invoiceStatusParam &&
+      invoiceStatusParam !== "ALL" &&
+      ["INVOICED", "PARTIAL", "NOT_INVOICED"].includes(invoiceStatusParam)
+    ) {
+      const statuses = await getInvoicingStatusByOperation(supabase, userOrgId)
+      const entries = Object.entries(statuses)
+      if (invoiceStatusParam === "NOT_INVOICED") {
+        const excluded = entries
+          .filter(([, info]) => info.status !== "NOT_INVOICED")
+          .map(([id]) => id)
+        if (excluded.length > 0) query = query.not("id", "in", `(${excluded.join(",")})`)
+      } else {
+        const matching = entries
+          .filter(([, info]) => info.status === invoiceStatusParam)
+          .map(([id]) => id)
+        query = matching.length > 0
+          ? query.in("id", matching)
+          : query.eq("id", NO_MATCH_UUID)
+      }
+    }
 
     if (dateFrom || dateTo) {
       const column =

@@ -76,6 +76,7 @@ export function OperationsPageClient({
     status: string
     sellerId: string
     agencyId: string
+    invoiceStatus: string
     dateFrom: string
     dateTo: string
     paymentDateFrom?: string
@@ -85,6 +86,7 @@ export function OperationsPageClient({
     status: "ALL",
     sellerId: "ALL",
     agencyId: "ALL",
+    invoiceStatus: "ALL",
     dateFrom: "",
     dateTo: "",
   })
@@ -103,6 +105,11 @@ export function OperationsPageClient({
       if (filters.status && filters.status !== "ALL") params.set("status", filters.status)
       if (filters.sellerId && filters.sellerId !== "ALL") params.set("sellerId", filters.sellerId)
       if (filters.agencyId && filters.agencyId !== "ALL") params.set("agencyId", filters.agencyId)
+      // VIB-157: el CSV tiene que salir con los mismos filtros que la pantalla
+      // (la divergencia del buscador ya nos pasó en VIB-152).
+      if (filters.invoiceStatus && filters.invoiceStatus !== "ALL") {
+        params.set("invoiceStatus", filters.invoiceStatus)
+      }
       if (filters.dateFrom) params.set("dateFrom", filters.dateFrom)
       if (filters.dateTo) params.set("dateTo", filters.dateTo)
       // Fechas de cobro/pago/vencimiento: las aplica el listado y hasta VIB-152

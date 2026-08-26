@@ -3,7 +3,7 @@ import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
 import { getAfipServiceForOrg } from "@/lib/afip/afip-service"
-import { calculateMarginSummary } from "@/lib/accounting/margin-summary"
+import { calculateInvoicingSummary } from "@/lib/accounting/invoicing-summary"
 import {
   buildExchangeRateMap,
   getExchangeRateWithFallback,
@@ -12,6 +12,7 @@ import {
   getInvoiceSaleCurrency,
   invoiceTotalInSaleCurrency,
   needsMarketRate,
+  sumInvoicedInSaleCurrency,
 } from "@/lib/invoices/currency"
 
 export const dynamic = "force-dynamic"
@@ -20,7 +21,7 @@ export const dynamic = "force-dynamic"
  * GET /api/operations/:id/margin-summary
  *
  * Devuelve el estado de facturación de una operación:
- *   - margen total, ya facturado, restante
+ *   - venta total, ya facturado, restante y % de avance (VIB-157)
  *   - si se puede facturar y por qué no si bloqueado
  *   - lista de facturas emitidas (con CAE, status, verification_status)
  *
@@ -83,7 +84,10 @@ export async function GET(
       rateFor = (date) => rateMap(date) ?? market.rate
     }
 
-    /** Importe de una factura llevado a la moneda de la venta. */
+    /**
+     * Importe de UNA factura llevado a la moneda de la venta, sin signo.
+     * Para totales usar `sumInvoiced`, que además netea las notas de crédito.
+     */
     const invoicedInSaleCurrency = (inv: any): number => {
       const impTotal = Number(inv.imp_total || 0)
       const stored = Number(inv.cotizacion)
@@ -96,6 +100,15 @@ export async function GET(
       })
       return converted ?? impTotal
     }
+
+    /**
+     * Total facturado de un conjunto de comprobantes, en la moneda de la venta y
+     * neto de notas de crédito. Es el mismo helper que usa el tope del servidor
+     * (VIB-157), así que el resumen que ve el usuario no puede divergir del
+     * guard que autoriza.
+     */
+    const sumInvoiced = (rows: any[]): number =>
+      sumInvoicedInSaleCurrency({ invoices: rows, saleCurrency, rateFor }).total
 
     // Fetch ALL customers via M:N operation_customers (ordenados MAIN primero)
     let customer: { id: string; name: string } | null = null
@@ -115,9 +128,9 @@ export async function GET(
     for (const oc of (opCustomers ?? []) as any[]) {
       if (!oc.customers) continue
       const cid = oc.customer_id as string
-      const invoicedToCustomer = invoicesList
-        .filter((inv) => inv.customer_id === cid && inv.status === "authorized")
-        .reduce((sum, inv) => sum + invoicedInSaleCurrency(inv), 0)
+      const invoicedToCustomer = sumInvoiced(
+        invoicesList.filter((inv) => inv.customer_id === cid && inv.status === "authorized")
+      )
       customersBreakdown.push({
         id: oc.customers.id,
         name: `${oc.customers.first_name || ""} ${oc.customers.last_name || ""}`.trim(),
@@ -141,9 +154,9 @@ export async function GET(
     const hasAfipConfig = !!afipSvc
 
     // Pasamos el customer_id resuelto (direct o M:N) a la pure function
-    const summary = calculateMarginSummary(
+    const summary = calculateInvoicingSummary(
       {
-        margin_amount: operation.margin_amount,
+        sale_amount_total: operation.sale_amount_total,
         customer_id: resolvedCustomerId,
         sale_currency: saleCurrency,
       },

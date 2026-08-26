@@ -674,19 +674,11 @@ export default function NewInvoicePage() {
             return
           }
 
-          // VIB-151: el restante va en la moneda de la VENTA. El endpoint devuelve
-          // cada factura ya convertida (imp_total_sale_currency); sumar imp_total
-          // crudo mezclaba pesos con dólares y dejaba una operación en USD con una
-          // factura parcial en pesos como "ya facturada completa".
-          const authorizedTotal = (summary.invoices || [])
-            .filter((invoice: any) => invoice.status === 'authorized')
-            .reduce(
-              (sum: number, invoice: any) =>
-                sum + Number(invoice.imp_total_sale_currency ?? invoice.imp_total ?? 0),
-              0
-            )
-          const operationSaleTotal = Number(summary.operation?.sale_amount_total || 0)
-          const remainingToInvoice = roundMoney(Math.max(0, operationSaleTotal - authorizedTotal))
+          // VIB-157: el restante lo calcula el endpoint con el mismo helper que el
+          // tope del servidor (venta total, neto de notas de crédito y valuado en la
+          // moneda de la VENTA, VIB-151). Recalcularlo acá sumando las autorizadas
+          // contaba las NC como facturado y achicaba el restante de más.
+          const remainingToInvoice = roundMoney(Number(summary.summary?.remaining ?? 0))
 
           if (remainingToInvoice <= 0) {
             toast({

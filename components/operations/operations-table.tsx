@@ -90,6 +90,8 @@ interface Operation {
   type?: string | null
   invoice_status?: "INVOICED" | "PARTIAL" | "NOT_INVOICED"
   invoiced_amount?: number
+  /** % de la venta ya facturado (VIB-157). */
+  invoiced_pct?: number
 }
 
 interface OperationsTableProps {
@@ -97,6 +99,7 @@ interface OperationsTableProps {
     status: string
     sellerId: string
     agencyId: string
+    invoiceStatus?: string
     dateFrom: string
     dateTo: string
     paymentDateFrom?: string
@@ -231,6 +234,9 @@ export function OperationsTable({
       if (filters.status !== "ALL") params.append("status", filters.status)
       if (filters.sellerId !== "ALL") params.append("sellerId", filters.sellerId)
       if (filters.agencyId !== "ALL") params.append("agencyId", filters.agencyId)
+      if (filters.invoiceStatus && filters.invoiceStatus !== "ALL") {
+        params.append("invoiceStatus", filters.invoiceStatus)
+      }
       if (filters.dateFrom) params.append("dateFrom", filters.dateFrom)
       if (filters.dateTo) params.append("dateTo", filters.dateTo)
       if (filters.paymentDateFrom) params.append("paymentDateFrom", filters.paymentDateFrom)
@@ -716,6 +722,15 @@ export function OperationsTable({
       ),
       cell: ({ row }) => {
         const st = row.original.invoice_status || "NOT_INVOICED"
+        const amount = row.original.invoiced_amount
+        const pct = row.original.invoiced_pct
+        // VIB-157: el monto facturado estaba solo en el tooltip. Cuando se
+        // factura en dos veces (seña y saldo) lo que hace falta ver de un
+        // vistazo es cuánto del paquete ya salió.
+        const amountLine =
+          amount != null
+            ? `${row.original.currency} ${amount.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+            : null
         if (st === "INVOICED") {
           return (
             <Badge variant="success" className="text-[10px] px-1.5 py-0">
@@ -724,19 +739,15 @@ export function OperationsTable({
           )
         }
         if (st === "PARTIAL") {
-          const amount = row.original.invoiced_amount
           return (
-            <Badge
-              variant="coral"
-              className="text-[10px] px-1.5 py-0"
-              title={
-                amount != null
-                  ? `Facturado ${row.original.currency} ${amount.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                  : undefined
-              }
-            >
-              Parcial
-            </Badge>
+            <div className="flex items-center gap-1.5 whitespace-nowrap">
+              <Badge variant="coral" className="text-[10px] px-1.5 py-0">
+                Parcial{pct != null ? ` ${pct}%` : ""}
+              </Badge>
+              {amountLine && (
+                <span className="text-[10px] text-muted-foreground">{amountLine}</span>
+              )}
+            </div>
           )
         }
         return (

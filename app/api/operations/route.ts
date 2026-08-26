@@ -21,12 +21,22 @@ import { calculateOperationBalances, roundMoney } from "@/lib/operations/operati
 import { getOrgFeatureFlag } from "@/lib/settings/org-features"
 import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
 import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
-import { ledgerSign } from "@/lib/invoices/credit-note"
+import {
+  getInvoicedByOperation,
+  getInvoicingStatusByOperation,
+  invoiceStatusFor,
+  invoicedPctFor,
+} from "@/lib/operations/invoiced-by-operation"
 import { buildOperationSearchConditions } from "@/lib/operations/search-conditions"
 import {
   normalizeOperationPassengers,
   findCustomersOutsideOrg,
 } from "@/lib/operations/operation-passengers"
+
+// VIB-157: tope de ids para el filtro por estado de facturación. Existe para no
+// armar una URL de PostgREST gigante con `id.in.(...)`; hoy la agencia con más
+// facturas está dos órdenes de magnitud por debajo.
+const MAX_INVOICE_STATUS_IDS = 2000
 
 // VIB-102: topes de la búsqueda por nombre de pasajero en GET /api/operations.
 // Existen para no armar una URL de PostgREST gigante con `id.in.(...)`; con el
@@ -1317,6 +1327,65 @@ export async function GET(request: Request) {
       }
     }
 
+    // VIB-157: filtro por estado de facturación (Facturado / Parcial / No
+    // facturado). El estado no es una columna: sale de comparar los comprobantes
+    // autorizados contra la venta total, así que hay que resolver los ids ANTES
+    // de paginar — si no, filtraríamos solo la página actual.
+    const invoiceStatusFilter = searchParams.get("invoiceStatus")
+    if (
+      invoiceStatusFilter &&
+      invoiceStatusFilter !== "ALL" &&
+      ["INVOICED", "PARTIAL", "NOT_INVOICED"].includes(invoiceStatusFilter)
+    ) {
+      const statuses = await getInvoicingStatusByOperation(supabase, (user as any).org_id)
+      const withInvoices = Object.entries(statuses)
+
+      if (invoiceStatusFilter === "NOT_INVOICED") {
+        // Las que NO tienen nada facturado son "todas menos estas". La lista de
+        // ops con comprobantes es chica (una agencia real ronda las centenas),
+        // pero si crece hay que mover el filtro a SQL: una URL de PostgREST con
+        // miles de UUIDs se rompe en silencio.
+        const excluded = withInvoices
+          .filter(([, info]) => info.status !== "NOT_INVOICED")
+          .map(([id]) => id)
+        if (excluded.length > MAX_INVOICE_STATUS_IDS) {
+          return NextResponse.json(
+            {
+              error:
+                "Demasiadas operaciones facturadas para filtrar por estado de facturación. Acotá con otros filtros (agencia, fechas) e intentá de nuevo.",
+            },
+            { status: 400 }
+          )
+        }
+        if (excluded.length > 0) {
+          const list = `(${excluded.join(",")})`
+          query = query.not("id", "in", list)
+          countQuery = countQuery.not("id", "in", list)
+        }
+      } else {
+        const matching = withInvoices
+          .filter(([, info]) => info.status === invoiceStatusFilter)
+          .map(([id]) => id)
+        if (matching.length === 0) {
+          return NextResponse.json({
+            operations: [],
+            pagination: { total: 0, page: 1, limit: 50, totalPages: 0, hasMore: false },
+          })
+        }
+        if (matching.length > MAX_INVOICE_STATUS_IDS) {
+          return NextResponse.json(
+            {
+              error:
+                "Demasiadas operaciones para filtrar por estado de facturación. Acotá con otros filtros (agencia, fechas) e intentá de nuevo.",
+            },
+            { status: 400 }
+          )
+        }
+        query = query.in("id", matching)
+        countQuery = countQuery.in("id", matching)
+      }
+    }
+
     // Add pagination: usar page en vez de offset para mejor UX
     const page = Math.max(1, parseInt(searchParams.get("page") || "1"))
     const requestedLimit = parseInt(searchParams.get("limit") || "50")
@@ -1556,26 +1625,16 @@ export async function GET(request: Request) {
     }
 
     // Facturación (2026-07-16): estado de facturado por operación para mostrar
-    // una columna en el listado sin tener que abrir op x op. Una operación está
-    // facturada si tiene facturas AFIP con status="authorized" asociadas. Sumamos
-    // con signo contable (NC restan, ND/facturas suman) igual que el guard de
-    // POST /api/invoices, para reflejar cancelaciones por nota de crédito.
+    // una columna en el listado sin tener que abrir op x op.
+    // VIB-157: la suma vive en lib/operations/invoiced-by-operation, el mismo
+    // helper que usan el detalle y el tope del servidor — netea notas de crédito
+    // y valúa cada comprobante en la moneda de la VENTA.
     // Cross-tenant: filtro explícito por org_id (no confiar en RLS).
-    const invoicedByOp: Record<string, number> = {}
-    if (operationIds.length > 0) {
-      const { data: authInvoices } = await supabase
-        .from("invoices")
-        .select("operation_id, imp_total, cbte_tipo")
-        .eq("org_id", (user as any).org_id)
-        .eq("status", "authorized")
-        .in("operation_id", operationIds)
-      for (const inv of (authInvoices || []) as any[]) {
-        const opId = inv.operation_id
-        if (!opId) continue
-        invoicedByOp[opId] =
-          (invoicedByOp[opId] || 0) + ledgerSign(inv.cbte_tipo) * (Number(inv.imp_total) || 0)
-      }
-    }
+    const invoicedByOp = await getInvoicedByOperation(
+      supabase,
+      (user as any).org_id,
+      (operations || []) as any[]
+    )
 
     // Servicios adicionales: si la flag está ON, sumar su venta a sale_amount_total
     // para que "A cobrar" (pending_amount) refleje servicios impagos del cliente.
@@ -1615,22 +1674,19 @@ export async function GET(request: Request) {
       })
       
       // Estado de facturación: comparamos lo facturado (neto de NC) contra la
-      // venta total. Total vs Parcial vs No facturado. Mismo criterio de
-      // comparación que el guard de creación de facturas (imp_total comparable
-      // a sale_amount_total).
+      // venta total. Total vs Parcial vs No facturado. Mismo criterio que el
+      // guard de creación de facturas y que el detalle de la operación.
       const invoicedAmount = invoicedByOp[op.id] || 0
       const saleTotalForInvoice = Number(op.sale_amount_total) || 0
-      let invoice_status: "INVOICED" | "PARTIAL" | "NOT_INVOICED" = "NOT_INVOICED"
-      if (invoicedAmount > 0.01) {
-        invoice_status =
-          invoicedAmount >= saleTotalForInvoice - 0.01 ? "INVOICED" : "PARTIAL"
-      }
+      const invoice_status = invoiceStatusFor(invoicedAmount, saleTotalForInvoice)
 
       return {
         ...op,
         customer_name: customerName,
         invoice_status,
         invoiced_amount: roundMoney(invoicedAmount),
+        // VIB-157: % del paquete ya facturado, para leerlo sin abrir la operación.
+        invoiced_pct: invoicedPctFor(invoicedAmount, saleTotalForInvoice),
         paid_amount: paymentData.customer_paid, // Monto Cobrado
         scheduled_pending_amount: paymentData.customer_pending,
         pending_amount: balances.customerPending, // A cobrar
