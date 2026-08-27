@@ -36,7 +36,9 @@ function apiKeyMatches(received: string, expected: string): boolean {
  *   "servicio": "Paquete",
  *   "evento": "",
  *   "phase": "initial",
- *   "agency": "rosario"
+ *   "agency": "rosario",
+ *   "vendedor": "Juana Perez",
+ *   "vendedor_email": "juana@agencia.com"
  * }
  */
 export async function POST(request: Request) {
@@ -91,6 +93,10 @@ export async function POST(request: Request) {
       evento: body.evento,
       phase: body.phase,
       agency: body.agency,
+      // Vendedor ya decidido por el integrador (se guarda crudo en
+      // manychat_full_data; vendedor_email resuelve assigned_seller_id al crear)
+      vendedor: body.vendedor,
+      vendedor_email: body.vendedor_email,
       source: body.source, // origen real del lead (ej. "agenteblanco"); default → Manychat
       manychat_user_id: body.manychat_user_id,
       flow_id: body.flow_id,

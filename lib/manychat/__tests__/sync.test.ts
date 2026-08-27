@@ -3,6 +3,7 @@ import {
   shouldAdvanceStatus,
   buildLeadPatch,
   determineAgencyId,
+  resolveSellerIdByEmail,
   type ExistingLeadRow,
   type ManychatLeadData,
 } from "../sync"
@@ -251,5 +252,154 @@ describe("determineAgencyId (scope por org — VIB-61)", () => {
     const res = await determineAgencyId("madero", makeSupabase(AGENCIES), null)
     expect(res.agency_id).toBe("ag-a-madero")
     expect(res.org_id).toBe("org-A")
+  })
+})
+
+describe("vendedor / vendedor_email en manychat_full_data", () => {
+  const existing: ExistingLeadRow = {
+    id: "lead-1",
+    status: "NEW",
+    list_name: "Campaña - Juana Perez",
+    manychat_full_data: { whatsapp: "+5491123456789", vendedor: "Juana Perez" },
+    contact_phone: "+5491123456789",
+  }
+
+  it("guarda el vendedor que manda el integrador (red de seguridad del rollout)", () => {
+    const patch = buildLeadPatch(existing, {
+      whatsapp: "+5491123456789",
+      destino: "Bayahibe",
+      vendedor: "Juana Perez",
+      vendedor_email: "juana@agencia.com",
+    })
+
+    expect(patch.manychat_full_data.vendedor).toBe("Juana Perez")
+    expect(patch.manychat_full_data.vendedor_email).toBe("juana@agencia.com")
+  })
+
+  it("un segundo POST sin vendedor NO borra el que ya estaba", () => {
+    const patch = buildLeadPatch(existing, {
+      whatsapp: "+5491123456789",
+      destino: "Bayahibe",
+    })
+
+    expect(patch.manychat_full_data.vendedor).toBe("Juana Perez")
+  })
+
+  it("sigue sin tocar assigned_seller_id en el update (respeta al asesor)", () => {
+    const patch = buildLeadPatch(existing, {
+      vendedor_email: "otro@agencia.com",
+    })
+
+    expect(patch).not.toHaveProperty("assigned_seller_id")
+    expect(patch).not.toHaveProperty("list_name")
+  })
+})
+
+describe("resolveSellerIdByEmail (asignación al crear)", () => {
+  type Membership = { agency_id: string; user_id: string }
+  type User = { id: string; email: string; is_active: boolean }
+
+  const MEMBERSHIPS: Membership[] = [
+    { agency_id: "ag-1", user_id: "u-juana" },
+    { agency_id: "ag-1", user_id: "u-guido" },
+    { agency_id: "ag-1", user_id: "u-baja" },
+    { agency_id: "ag-2", user_id: "u-otra-agencia" },
+  ]
+
+  const USERS: User[] = [
+    { id: "u-juana", email: "Juana@Agencia.com", is_active: true },
+    { id: "u-guido", email: "guido_perez@agencia.com", is_active: true },
+    { id: "u-baja", email: "exvendedor@agencia.com", is_active: false },
+    { id: "u-otra-agencia", email: "otra@agencia.com", is_active: true },
+  ]
+
+  // Fake mínimo: honra .eq("agency_id"), .in("id") y .eq("is_active").
+  function makeSupabase(opts: { throwOn?: string } = {}) {
+    return {
+      from(table: string) {
+        if (opts.throwOn === table) throw new Error("supabase caido")
+        const state: any = {}
+        const rows = () => {
+          if (table === "user_agencies") {
+            return MEMBERSHIPS.filter((m) => m.agency_id === state.agency_id).map(
+              (m) => ({ user_id: m.user_id })
+            )
+          }
+          return USERS.filter(
+            (u) =>
+              (state.in || []).includes(u.id) &&
+              (state.is_active === undefined || u.is_active === state.is_active)
+          ).map((u) => ({ id: u.id, email: u.email }))
+        }
+        const builder: any = {
+          select: () => builder,
+          eq: (col: string, val: unknown) => {
+            state[col] = val
+            return builder
+          },
+          in: (_col: string, vals: string[]) => {
+            state.in = vals
+            return builder
+          },
+          then: (resolve: (v: any) => void) =>
+            Promise.resolve({ data: rows(), error: null }).then(resolve),
+        }
+        return builder
+      },
+    } as any
+  }
+
+  it("matchea ignorando mayúsculas y espacios", async () => {
+    const res = await resolveSellerIdByEmail("  JUANA@agencia.com ", "ag-1", makeSupabase())
+    expect(res).toEqual({ sellerId: "u-juana", resolution: "matched" })
+  })
+
+  it("un guion bajo en el email no actúa como comodín (match exacto, no LIKE)", async () => {
+    const exacto = await resolveSellerIdByEmail("guido_perez@agencia.com", "ag-1", makeSupabase())
+    expect(exacto.sellerId).toBe("u-guido")
+
+    // Con ILIKE, "guido_perez" matchearía también "guidoXperez".
+    const comodin = await resolveSellerIdByEmail("guidoXperez@agencia.com", "ag-1", makeSupabase())
+    expect(comodin.sellerId).toBeNull()
+  })
+
+  it("sin vendedor_email no asigna nada (comportamiento de siempre)", async () => {
+    expect(await resolveSellerIdByEmail(undefined, "ag-1", makeSupabase())).toEqual({
+      sellerId: null,
+      resolution: "absent",
+    })
+    expect(await resolveSellerIdByEmail("   ", "ag-1", makeSupabase())).toEqual({
+      sellerId: null,
+      resolution: "absent",
+    })
+  })
+
+  it("no asigna un usuario de OTRA agencia", async () => {
+    const res = await resolveSellerIdByEmail("otra@agencia.com", "ag-1", makeSupabase())
+    expect(res).toEqual({ sellerId: null, resolution: "not_found" })
+  })
+
+  it("no asigna un usuario dado de baja", async () => {
+    const res = await resolveSellerIdByEmail("exvendedor@agencia.com", "ag-1", makeSupabase())
+    expect(res).toEqual({ sellerId: null, resolution: "not_found" })
+  })
+
+  it("un email que no existe deja rastro pero no rompe", async () => {
+    const res = await resolveSellerIdByEmail("fantasma@agencia.com", "ag-1", makeSupabase())
+    expect(res).toEqual({ sellerId: null, resolution: "not_found" })
+  })
+
+  it("agencia sin usuarios", async () => {
+    const res = await resolveSellerIdByEmail("juana@agencia.com", "ag-vacia", makeSupabase())
+    expect(res).toEqual({ sellerId: null, resolution: "no_agency_users" })
+  })
+
+  it("si la query falla, el lead se crea igual (sellerId null, no throw)", async () => {
+    const res = await resolveSellerIdByEmail(
+      "juana@agencia.com",
+      "ag-1",
+      makeSupabase({ throwOn: "user_agencies" })
+    )
+    expect(res).toEqual({ sellerId: null, resolution: "error" })
   })
 })

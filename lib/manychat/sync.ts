@@ -16,6 +16,12 @@ export interface ManychatLeadData {
   evento?: string
   phase?: string
   agency?: string // "rosario" | "madero"
+  // Vendedor decidido por el integrador ANTES del primer POST (Agente Blanco
+  // sortea el asesor al capturar el WhatsApp y manda el mismo en ambos POST).
+  // Se guardan crudos en `manychat_full_data` para auditar el rollout;
+  // `vendedor_email` es además la clave que resuelve `assigned_seller_id`.
+  vendedor?: string
+  vendedor_email?: string
   source?: string // "agenteblanco" | "manychat" | ...  (default: Manychat)
   manychat_user_id?: string
   flow_id?: string
@@ -101,6 +107,11 @@ export function buildStructuredDescription(data: ManychatLeadData): string {
   // 🧭 Región (igual que Zapier)
   if (data.region) desc += `🧭 Región: ${data.region}\n`
   
+  // Vendedor elegido por el integrador. Se muestra en las notas del lead para
+  // que la agencia compare a ojo lo que mando el bot contra el vendedor
+  // realmente asignado, sin tener que mirar el JSONB.
+  if (data.vendedor) desc += `🧑 Vendedor: ${data.vendedor}\n`
+
   // Instagram siempre se agrega (normalizado, sin @)
   const instagram = (data.ig || "").replace(/^@/, "").trim().toLowerCase()
   if (instagram) desc += `Instagram: ${instagram}\n`
@@ -420,7 +431,8 @@ export function determineListName(manychatData: ManychatLeadData): string {
 const FULL_DATA_KEYS: (keyof ManychatLeadData)[] = [
   "ig", "name", "bucket", "region", "whatsapp", "destino", "fechas",
   "personas", "menores", "presupuesto", "servicio", "evento", "phase",
-  "agency", "manychat_user_id", "flow_id", "page_id", "timestamp",
+  "agency", "vendedor", "vendedor_email",
+  "manychat_user_id", "flow_id", "page_id", "timestamp",
 ]
 
 function isNonEmpty(v: unknown): boolean {
@@ -568,6 +580,79 @@ async function registerListOrder(
 }
 
 /**
+ * Resolver `vendedor_email` -> `users.id` para asignar el lead al CREARLO.
+ *
+ * Contexto (pedido de Agente Blanco): el integrador sortea el asesor antes del
+ * primer POST y manda el mismo vendedor en ambos. Sin esto el lead cae en la
+ * columna del vendedor pero queda `assigned_seller_id = null`, o sea que la
+ * columna y la asignacion dicen cosas distintas y el vendedor no lo ve como suyo.
+ *
+ * Reglas:
+ * - Solo se usa al crear. En update NO se toca `assigned_seller_id` (el asesor
+ *   pudo reasignar el lead a mano; ver `buildLeadPatch`).
+ * - El match es dentro de la AGENCIA del lead (`user_agencies`), no global: dos
+ *   tenants pueden tener el mismo email de dominio compartido y no queremos
+ *   asignar cross-agencia.
+ * - Comparacion exacta case-insensitive hecha en JS, no con `ilike`: en LIKE el
+ *   `_` es un comodin y los emails lo usan seguido (juan_perez@...).
+ * - Nunca rompe la creacion del lead: si no resuelve, el lead entra igual con
+ *   `assigned_seller_id = null` y el motivo queda en `manychat_full_data`.
+ */
+export type SellerResolution =
+  | "matched"
+  | "absent"
+  | "no_agency_users"
+  | "not_found"
+  | "error"
+
+export async function resolveSellerIdByEmail(
+  email: string | undefined,
+  agencyId: string,
+  supabase: Awaited<ReturnType<typeof createServerClient>>
+): Promise<{ sellerId: string | null; resolution: SellerResolution }> {
+  const normalized = (email || "").trim().toLowerCase()
+  if (!normalized) return { sellerId: null, resolution: "absent" }
+
+  try {
+    const { data: memberships } = await (supabase.from("user_agencies") as any)
+      .select("user_id")
+      .eq("agency_id", agencyId)
+
+    const userIds = Array.from(
+      new Set(((memberships || []) as any[]).map((m) => m.user_id).filter(Boolean))
+    )
+    if (userIds.length === 0) {
+      console.warn(
+        `[manychat/sync] vendedor_email "${normalized}": la agencia ${agencyId} no tiene usuarios`
+      )
+      return { sellerId: null, resolution: "no_agency_users" }
+    }
+
+    const { data: users } = await (supabase.from("users") as any)
+      .select("id, email")
+      .in("id", userIds)
+      .eq("is_active", true)
+
+    const hit = ((users || []) as any[]).find(
+      (u) => (u.email || "").trim().toLowerCase() === normalized
+    )
+
+    if (!hit) {
+      console.warn(
+        `[manychat/sync] vendedor_email "${normalized}" no matchea ningun usuario activo de la agencia ${agencyId}; el lead entra sin asignar`
+      )
+      return { sellerId: null, resolution: "not_found" }
+    }
+
+    return { sellerId: hit.id as string, resolution: "matched" }
+  } catch (e: any) {
+    // Un fallo resolviendo el vendedor no puede tumbar la creacion del lead.
+    console.error("[manychat/sync] error resolviendo vendedor_email:", e?.message)
+    return { sellerId: null, resolution: "error" }
+  }
+}
+
+/**
  * Sync Manychat lead data to a lead in the database.
  */
 export async function syncManychatLeadToLead(
@@ -687,6 +772,11 @@ export async function syncManychatLeadToLead(
   const region = normalizeRegion(manychatData.region, manychatData.destino)
   const status = mapPhaseToStatus(manychatData.phase)
   const notes = buildStructuredDescription(manychatData)
+  const { sellerId, resolution: sellerResolution } = await resolveSellerIdByEmail(
+    manychatData.vendedor_email,
+    agency_id,
+    supabase
+  )
 
   const manychatFullData = {
     // Datos del lead
@@ -704,6 +794,13 @@ export async function syncManychatLeadToLead(
     evento: manychatData.evento,
     phase: manychatData.phase,
     agency: manychatData.agency,
+    vendedor: manychatData.vendedor,
+    vendedor_email: manychatData.vendedor_email,
+    // Rastro del intento de asignacion (solo cuando el payload trae vendedor).
+    // Sobrevive a los updates porque el merge parte del full_data existente.
+    ...(manychatData.vendedor_email
+      ? { assigned_seller_resolution: sellerResolution }
+      : {}),
 
     // Metadata de Manychat
     manychat_user_id: manychatData.manychat_user_id,
@@ -726,7 +823,9 @@ export async function syncManychatLeadToLead(
     contact_phone: contact_phone || "",
     contact_email: null, // el payload no envía email por ahora
     contact_instagram,
-    assigned_seller_id: null, // No se asigna automáticamente
+    // Se asigna solo si el payload trae `vendedor_email` y resuelve a un
+    // usuario activo de la agencia; si no, queda null como siempre.
+    assigned_seller_id: sellerId,
     notes: notes || null,
     manychat_full_data: manychatFullData,
     list_name: listName, // Nombre de la lista para el kanban
