@@ -163,38 +163,29 @@ describe("determineAgencyId (scope por org — VIB-61)", () => {
     { id: "ag-a-madero", name: "Madero", org_id: "org-A", created_at: "2020-02-01" },
     { id: "ag-b-rosario", name: "Rosario", org_id: "org-B", created_at: "2021-01-01" },
     { id: "ag-b-central", name: "Central", org_id: "org-B", created_at: "2019-06-01" },
+    // Nombre con separador: el integrador manda "kyo-viajes" / "KyoViajes".
+    { id: "ag-c-kyo", name: "Kyo Viajes", org_id: "org-C", created_at: "2022-03-01" },
   ]
 
-  // Fake mínimo de Supabase: honra .ilike("name"), .eq("org_id") y .order() antes
-  // de resolver en .limit(n).
+  // Fake mínimo: una sola query, .eq("org_id") opcional + .order("created_at").
   function makeSupabase(rows: Ag[]) {
     return {
       from() {
-        const state: { name?: string; org?: string; orderCol?: string; asc?: boolean } = {}
+        const state: { org?: string; asc?: boolean } = {}
         const builder: any = {
           select: () => builder,
-          ilike: (col: string, pattern: string) => {
-            if (col === "name") state.name = pattern.replace(/%/g, "").toLowerCase()
-            return builder
-          },
           eq: (col: string, val: string) => {
             if (col === "org_id") state.org = val
             return builder
           },
-          order: (col: string, opts?: { ascending?: boolean }) => {
-            state.orderCol = col
+          order: (_col: string, opts?: { ascending?: boolean }) => {
             state.asc = opts?.ascending !== false
-            return builder
-          },
-          limit: (n: number) => {
             let out = rows.slice()
             if (state.org) out = out.filter((a) => a.org_id === state.org)
-            if (state.name) out = out.filter((a) => a.name.toLowerCase().includes(state.name!))
-            if (state.orderCol) {
-              const c = state.orderCol as keyof Ag
-              out.sort((a, b) => String(a[c]).localeCompare(String(b[c])) * (state.asc ? 1 : -1))
-            }
-            return Promise.resolve({ data: out.slice(0, n), error: null })
+            out.sort(
+              (a, b) => a.created_at.localeCompare(b.created_at) * (state.asc ? 1 : -1)
+            )
+            return Promise.resolve({ data: out, error: null })
           },
         }
         return builder
@@ -203,38 +194,62 @@ describe("determineAgencyId (scope por org — VIB-61)", () => {
   }
 
   it("con orgId, matchea la agencia de ESA org (no la homónima de otro tenant)", async () => {
-    const supabase = makeSupabase(AGENCIES)
-    const res = await determineAgencyId("rosario", supabase, "org-B")
+    const res = await determineAgencyId("rosario", makeSupabase(AGENCIES), "org-B")
     expect(res.agency_id).toBe("ag-b-rosario")
     expect(res.org_id).toBe("org-B")
   })
 
   it("el org_id devuelto es SIEMPRE el del token", async () => {
-    const supabase = makeSupabase(AGENCIES)
-    const res = await determineAgencyId("madero", supabase, "org-A")
+    const res = await determineAgencyId("madero", makeSupabase(AGENCIES), "org-A")
     expect(res.agency_id).toBe("ag-a-madero")
     expect(res.org_id).toBe("org-A")
   })
 
   it("sin match de nombre, fallback = agencia más antigua de la org del token", async () => {
-    const supabase = makeSupabase(AGENCIES)
-    const res = await determineAgencyId("no-existe", supabase, "org-B")
+    const res = await determineAgencyId("no-existe", makeSupabase(AGENCIES), "org-B")
     // La más antigua de org-B es "Central" (2019), no la homónima "Rosario".
     expect(res.agency_id).toBe("ag-b-central")
     expect(res.org_id).toBe("org-B")
   })
 
   it("sin tag, cae al fallback de la org del token (no a un 'rosario' global)", async () => {
-    const supabase = makeSupabase(AGENCIES)
-    const res = await determineAgencyId(undefined, supabase, "org-A")
+    const res = await determineAgencyId(undefined, makeSupabase(AGENCIES), "org-A")
     expect(res.org_id).toBe("org-A")
     expect(res.agency_id).toBe("ag-a-rosario") // más antigua de org-A (2020-01)
   })
 
   it("orgId sin agencias devuelve vacío (no cruza a otro tenant)", async () => {
-    const supabase = makeSupabase(AGENCIES)
-    const res = await determineAgencyId("rosario", supabase, "org-SIN-AGENCIAS")
+    const res = await determineAgencyId("rosario", makeSupabase(AGENCIES), "org-SIN-AGENCIAS")
     expect(res.agency_id).toBe("")
     expect(res.org_id).toBe("")
+  })
+
+  // Regresión real: el lead 8f5ace24 (2026-08-21) se mandó con "kyo-viajes",
+  // el ilike '%kyo-viajes%' no matcheó "Kyo Viajes" y el fallback global lo
+  // escribió en el tablero de OTRO tenant.
+  it("el separador no importa: kyo-viajes / KyoViajes / Kyo Viajes son la misma agencia", async () => {
+    for (const tag of ["kyo-viajes", "KyoViajes", "Kyo Viajes", "KYO  VIAJES"]) {
+      const res = await determineAgencyId(tag, makeSupabase(AGENCIES), null)
+      expect(res.agency_id).toBe("ag-c-kyo")
+      expect(res.org_id).toBe("org-C")
+    }
+  })
+
+  it("sin orgId y sin match NO cae a un 'rosario' global: devuelve vacío", async () => {
+    const res = await determineAgencyId("agencia-que-no-existe", makeSupabase(AGENCIES), null)
+    expect(res.agency_id).toBe("")
+    expect(res.org_id).toBe("")
+  })
+
+  it("sin orgId, un tag ambiguo entre tenants no se adivina", async () => {
+    // "Rosario" existe en org-A y org-B: sin token no hay forma de desempatar.
+    const res = await determineAgencyId("rosario", makeSupabase(AGENCIES), null)
+    expect(res.agency_id).toBe("")
+  })
+
+  it("sin orgId y con un solo match, resuelve y toma el org de la agencia", async () => {
+    const res = await determineAgencyId("madero", makeSupabase(AGENCIES), null)
+    expect(res.agency_id).toBe("ag-a-madero")
+    expect(res.org_id).toBe("org-A")
   })
 })
