@@ -27,6 +27,7 @@ import {
   invoiceStatusFor,
   invoicedPctFor,
 } from "@/lib/operations/invoiced-by-operation"
+import { convertPaymentAmount } from "@/lib/operations/payment-conversion"
 import { buildOperationSearchConditions } from "@/lib/operations/search-conditions"
 import {
   normalizeOperationPassengers,
@@ -1514,36 +1515,9 @@ export async function GET(request: Request) {
       }
     }
 
-    // Función para convertir monto de pago a la moneda de la operación
-    const convertPaymentAmount = (payment: any, targetCurrency: string): number => {
-      const paymentAmount = Number(payment.amount) || 0
-      const paymentCurrency = payment.currency || "ARS"
-
-      // Si coinciden las monedas, devolver directo
-      if (paymentCurrency === targetCurrency) return paymentAmount
-
-      // Si la operación es USD y el pago es ARS → convertir ARS a USD
-      if (targetCurrency === "USD" && paymentCurrency === "ARS") {
-        // Usar amount_usd si está disponible
-        if (payment.amount_usd && Number(payment.amount_usd) > 0) {
-          return Number(payment.amount_usd)
-        }
-        // Si no, usar exchange_rate del pago
-        const rate = Number(payment.exchange_rate) || 0
-        if (rate > 0) return paymentAmount / rate
-        // Fallback: no podemos convertir sin TC, devolver 0 para no inflar
-        return 0
-      }
-
-      // Si la operación es ARS y el pago es USD → convertir USD a ARS
-      if (targetCurrency === "ARS" && paymentCurrency === "USD") {
-        const rate = Number(payment.exchange_rate) || 0
-        if (rate > 0) return paymentAmount * rate
-        return 0
-      }
-
-      return paymentAmount
-    }
+    // La conversión vive en lib/operations/payment-conversion.ts: el cierre
+    // contable usa la MISMA función, para que no pueda calcular lo cobrado
+    // con un criterio distinto al que el cliente ve en este listado.
 
     // Agrupar pagos por operación y calcular montos (convertidos a moneda de la operación)
     const paymentsByOperation: Record<string, {
