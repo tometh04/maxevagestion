@@ -68,7 +68,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { toast } from "sonner"
-import { INDEPENDENT_ADVISOR_ROLE_VALUE } from "@/lib/permissions"
+import {
+  INDEPENDENT_ADVISOR_ROLE_VALUE,
+  getEffectiveAgencyScopeRole,
+  type UserRole,
+} from "@/lib/permissions"
 
 interface User {
   id: string
@@ -151,6 +155,28 @@ function roleValueToPayload(value: string): { role: string; is_independent_advis
     : { role: value, is_independent_advisor: false }
 }
 
+/**
+ * Roles cuyo alcance es toda la organizacion: `getUserAgencyIds()` les devuelve
+ * las agencias de la org sin mirar `user_agencies`. Se les puede guardar la
+ * pertenencia igual (queda registrada, y algunas policies la miran), pero no
+ * les limita lo que ven; decirlo evita que un admin crea que asi los acota.
+ */
+const ORG_WIDE_AGENCY_ROLES: readonly string[] = [
+  "SUPER_ADMIN",
+  "ORG_OWNER",
+  "CONTABLE",
+  "POST_VENTA",
+]
+
+function seesEveryAgency(
+  user: Pick<User, "role" | "additional_roles" | "is_independent_advisor">
+): boolean {
+  // El asesor independiente queda acotado a sus agencias aunque acumule roles.
+  if (user.is_independent_advisor && user.role === "SELLER") return false
+  const roles = [user.role, ...(user.additional_roles ?? [])] as UserRole[]
+  return ORG_WIDE_AGENCY_ROLES.includes(getEffectiveAgencyScopeRole(roles))
+}
+
 export function UsersSettings() {
   const [users, setUsers] = useState<User[]>([])
   const [agencies, setAgencies] = useState<Agency[]>([])
@@ -163,6 +189,8 @@ export function UsersSettings() {
   const [advisorManagerDialogOpen, setAdvisorManagerDialogOpen] = useState(false)
   const [advisorManagerId, setAdvisorManagerId] = useState(NO_MANAGER)
   const [advisorManagerPct, setAdvisorManagerPct] = useState("")
+  const [agenciesDialogOpen, setAgenciesDialogOpen] = useState(false)
+  const [selectedAgencyIds, setSelectedAgencyIds] = useState<string[]>([])
   const [selectedRole, setSelectedRole] = useState("")
   const [selectedAdditionalRoles, setSelectedAdditionalRoles] = useState<string[]>([])
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
@@ -365,6 +393,65 @@ export function UsersSettings() {
     } catch (error) {
       console.error("Error saving special permissions:", error)
       toast.error("Error al guardar permisos especiales")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // ── Agencias del usuario ─────────────────────────────────────
+
+  const handleOpenAgencies = (user: User) => {
+    // GET /api/settings/users tiene un fallback que devuelve los usuarios SIN
+    // `user_agencies` si falla el join. Abrir el diálogo con esa lista vacía
+    // mostraría todos los switches apagados como si el usuario no perteneciera
+    // a ninguna agencia, y guardar reemplazaría la membresía real por lo que
+    // quedó marcado. Sin el dato, no se edita.
+    if (!user.user_agencies) {
+      toast.error("No se pudieron cargar las agencias del usuario. Actualizá la lista.")
+      return
+    }
+
+    setSelectedUser(user)
+    setSelectedAgencyIds(user.user_agencies.map((ua) => ua.agency_id))
+    setAgenciesDialogOpen(true)
+  }
+
+  const toggleSelectedAgency = (agencyId: string) => {
+    setSelectedAgencyIds((prev) =>
+      prev.includes(agencyId) ? prev.filter((id) => id !== agencyId) : [...prev, agencyId]
+    )
+  }
+
+  const handleSaveAgencies = async () => {
+    if (!selectedUser) return
+
+    if (selectedAgencyIds.length === 0) {
+      toast.error("Selecciona al menos una agencia")
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      const response = await fetch(`/api/settings/users/${selectedUser.id}/agencies`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agencies: selectedAgencyIds }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        toast.error(data.error || "Error al guardar las agencias")
+        return
+      }
+
+      toast.success("Agencias actualizadas")
+      setAgenciesDialogOpen(false)
+      setSelectedUser(null)
+      loadData()
+    } catch (error) {
+      console.error("Error saving user agencies:", error)
+      toast.error("Error al guardar las agencias")
     } finally {
       setSubmitting(false)
     }
@@ -885,6 +972,15 @@ export function UsersSettings() {
                           <Mail className="mr-2 h-4 w-4" />
                           Reenviar invitación
                         </DropdownMenuItem>
+                        {/* Igual que "Cambiar rol" y "Eliminar": el SUPER_ADMIN
+                            no se edita desde acá, y además su alcance es toda
+                            la org, así que la membresía no le cambiaría nada. */}
+                        {user.role !== "SUPER_ADMIN" && (
+                          <DropdownMenuItem onClick={() => handleOpenAgencies(user)}>
+                            <Building2 className="mr-2 h-4 w-4" />
+                            Agencias
+                          </DropdownMenuItem>
+                        )}
                         {/* VIB-69: los permisos especiales amplían el alcance a
                             operaciones de la agencia — no aplican a un asesor
                             independiente, que solo trabaja sobre lo suyo. */}
@@ -1234,6 +1330,85 @@ export function UsersSettings() {
                 </>
               ) : (
                 "Guardar permisos"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog de agencias del usuario */}
+      <Dialog open={agenciesDialogOpen} onOpenChange={setAgenciesDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Agencias</DialogTitle>
+            <DialogDescription>
+              Elegí a qué agencias pertenece <strong>{selectedUser?.name}</strong>. Puede
+              pertenecer a más de una.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {selectedUser && seesEveryAgency(selectedUser) && (
+              <div className="rounded-lg border border-amber-400/40 bg-amber-500/10 p-3">
+                <p className="text-xs text-muted-foreground">
+                  Por su rol ({roleLabels[displayRoleValue(selectedUser)] || selectedUser.role}),
+                  este usuario accede a todas las agencias de la organización. La asignación se
+                  guarda igual, pero no limita lo que ve.
+                </p>
+              </div>
+            )}
+
+            {agencies.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Todavía no hay agencias cargadas en la organización.
+              </p>
+            ) : (
+              <div className="rounded-lg border border-border/30 bg-background p-3 space-y-2 max-h-60 overflow-y-auto">
+                {agencies.map((agency) => (
+                  <div key={agency.id} className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Building2 className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm">{agency.name}</span>
+                    </div>
+                    <Switch
+                      checked={selectedAgencyIds.includes(agency.id)}
+                      onCheckedChange={() => toggleSelectedAgency(agency.id)}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {agencies.length > 0 && selectedAgencyIds.length === 0 && (
+              <p className="text-xs text-destructive">
+                Tiene que pertenecer al menos a una agencia.
+              </p>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setAgenciesDialogOpen(false)
+                setSelectedUser(null)
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleSaveAgencies}
+              disabled={submitting || selectedAgencyIds.length === 0}
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Guardando...
+                </>
+              ) : (
+                "Guardar agencias"
               )}
             </Button>
           </DialogFooter>
