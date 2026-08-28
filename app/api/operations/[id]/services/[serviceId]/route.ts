@@ -11,6 +11,7 @@ import { getOpenOperatorPaymentStatus } from "@/lib/accounting/operator-payment-
 import { getOrgFeatureFlag } from "@/lib/settings/org-features"
 import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
 import { shouldSkipOperatorModelRecalc } from "@/lib/operations/recalc-guard"
+import { getExchangeRate } from "@/lib/accounting/exchange-rates"
 
 // Epsilon monetario para comparar montos (evita falsos negativos por float).
 const MONEY_EPSILON = 0.005
@@ -173,7 +174,9 @@ export async function PATCH(
 
     // Verificar operación
     const { data: operation, error: opError } = await (supabase.from("operations") as any)
-      .select("id, seller_id, status, agency_id, file_code, destination, departure_date")
+      // `sale_currency`/`currency`: la comision del servicio se guarda en la
+      // moneda de la OPERACION (ver service-commission.ts).
+      .select("id, seller_id, status, agency_id, file_code, destination, departure_date, sale_currency, currency")
       .eq("id", operationId)
       .eq("org_id", (user as any).org_id)
       .single()
@@ -388,15 +391,34 @@ export async function PATCH(
               (await getSellerPercentage(supabase, (user as any).org_id, sellerId))
           )
 
+          // La comisión se expresa en la moneda de la OPERACIÓN. Si el servicio
+          // está cargado en otra, hay que convertir: `commission_records` no
+          // guarda moneda y el importe se lee asumiendo la de la operación.
+          const svcSaleCurrency = String(updatedService.sale_currency ?? "ARS")
+          const operationCurrency = String(operation.sale_currency || operation.currency || "USD")
+          let serviceRate: number | null = null
+          if (svcSaleCurrency !== operationCurrency) {
+            serviceRate = await getExchangeRate(supabase, new Date())
+          }
+
           const commissionAmount = serviceCommissionAmount({
             saleAmount: Number(updatedService.sale_amount ?? 0),
             costAmount: Number(updatedService.cost_amount ?? 0),
-            saleCurrency: String(updatedService.sale_currency ?? "ARS"),
+            saleCurrency: svcSaleCurrency,
             costCurrency: String(updatedService.cost_currency ?? "ARS"),
             sellerPercentage: sellerPct,
+            operationCurrency,
+            exchangeRate: serviceRate,
           })
 
-          if (!stillCommissions || commissionAmount <= 0) {
+          if (commissionAmount === null) {
+            // Hacía falta convertir y no hay tipo de cambio. Se avisa y NO se
+            // toca la comisión existente: dejarla como está es mejor que
+            // pisarla con un importe que no se pudo valuar.
+            warnings.push(
+              "No se pudo actualizar la comisión del servicio: falta el tipo de cambio para convertirla a la moneda de la operación."
+            )
+          } else if (!stillCommissions || commissionAmount <= 0) {
             // Dejó de comisionar (cambió a un tipo sin comisión, o el margen se
             // fue a cero o a pérdida): la fila no debe quedar viva.
             if (existingCommission) {

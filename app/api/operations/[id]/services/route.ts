@@ -113,7 +113,10 @@ export async function POST(
 
     // Verificar que la operación existe y el usuario tiene acceso
     const { data: operation, error: opError } = await (supabase.from("operations") as any)
-      .select("id, agency_id, seller_id, file_code, departure_date, destination, status")
+      // `sale_currency`/`currency`: la comisión del servicio se guarda en la
+      // moneda de la OPERACIÓN, porque `commission_records` no tiene columna de
+      // moneda y así la leen todos los reportes.
+      .select("id, agency_id, seller_id, file_code, departure_date, destination, status, sale_currency, currency")
       .eq("id", operationId)
       .eq("org_id", (user as any).org_id)
       .single()
@@ -492,15 +495,36 @@ export async function POST(
           serviceSellerId
         )
 
+        // La comisión se expresa en la moneda de la OPERACIÓN. Si el servicio
+        // se cargó en otra, hay que convertir: `commission_records` no guarda
+        // moneda y el importe se lee asumiendo la de la operación.
+        const operationCurrency = (operation.sale_currency || operation.currency || "USD") as string
+        let serviceRate: number | null = null
+        if (sale_currency !== operationCurrency) {
+          serviceRate = await getExchangeRate(supabase, new Date())
+        }
+
         const commissionAmount = serviceCommissionAmount({
           saleAmount,
           costAmount,
           saleCurrency: sale_currency,
           costCurrency: cost_currency,
           sellerPercentage: sellerPct,
+          operationCurrency,
+          exchangeRate: serviceRate,
         })
 
-        if (commissionAmount > 0) {
+        // null = hacía falta convertir y no había tipo de cambio. No se crea la
+        // comisión: guardarla sin convertir la haría leerse como si estuviera
+        // en la moneda de la operación, que es el bug que esto viene a cerrar.
+        if (commissionAmount === null) {
+          console.error(
+            "[services] no se pudo valuar la comisión del servicio: falta tipo de cambio",
+            { operationId, sale_currency, operationCurrency }
+          )
+        }
+
+        if (commissionAmount !== null && commissionAmount > 0) {
           const nowIso = new Date().toISOString()
           const { data: newRecord, error: commissionError } = await (
             supabase.from("commission_records") as any

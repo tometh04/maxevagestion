@@ -40,14 +40,29 @@ export interface ServiceCommissionInput {
   costCurrency: string
   /** Porcentaje del vendedor DEL SERVICIO, no el de la operación. */
   sellerPercentage: number
+  /**
+   * Moneda en la que se expresa la comisión: la de la OPERACIÓN.
+   *
+   * `commission_records` no tiene columna de moneda — el `amount` se lee
+   * asumiendo la moneda de la operación, en unos treinta lugares. Un servicio
+   * cargado en otra moneda producía un importe en pesos que después se leía
+   * como dólares: reportado por Lozada sobre un transfer con $159.000 de margen
+   * que figuraba como una deuda de USD 20.670 con la vendedora.
+   *
+   * Si se omite, no se convierte nada: es el comportamiento viejo.
+   */
+  operationCurrency?: string
+  /** Pesos por dólar de la fecha del servicio. Sólo hace falta si hay que convertir. */
+  exchangeRate?: number | null
 }
 
 /**
- * Base comisionable del servicio.
+ * Base comisionable del servicio, en la moneda de VENTA del servicio.
  *
- * Con monedas distintas no hay tipo de cambio confiable en este punto, así que
- * se comisiona sobre la venta en lugar de restar un costo en otra moneda, que
- * daría un margen inventado. Es el criterio que ya venía aplicando el alta.
+ * Cuando venta y costo están en monedas distintas entre sí se comisiona sobre
+ * la venta en lugar de restar un costo en otra moneda, que daría un margen
+ * inventado. Es el criterio que ya venía aplicando el alta y no se toca acá:
+ * son cuatro servicios en toda la base y no es lo que se vino a arreglar.
  */
 export function serviceCommissionBase(
   input: Pick<ServiceCommissionInput, "saleAmount" | "costAmount" | "saleCurrency" | "costCurrency">
@@ -57,15 +72,44 @@ export function serviceCommissionBase(
     : input.saleAmount
 }
 
+/** ARS ⇄ USD con el tipo de cambio dado. `null` = no se puede valuar. */
+function convertir(
+  monto: number,
+  desde: string,
+  hacia: string,
+  exchangeRate: number | null | undefined
+): number | null {
+  if (desde === hacia) return monto
+  if (!exchangeRate || !(exchangeRate > 0)) return null
+  // El tipo de cambio siempre es pesos por dólar, en cualquier dirección.
+  return hacia === "USD" ? monto / exchangeRate : monto * exchangeRate
+}
+
 /**
- * Monto de comisión del servicio, redondeado a centavos.
+ * Monto de comisión del servicio, en la moneda de la operación y redondeado a
+ * centavos.
  *
  * Devuelve 0 —y no un negativo— cuando el servicio se vendió a pérdida: una
  * comisión negativa le descontaría plata al vendedor por una decisión comercial
  * de la agencia.
+ *
+ * Devuelve **null** cuando hace falta convertir y no hay tipo de cambio. Es
+ * distinto de 0 a propósito: 0 es "no corresponde comisión" y null es "no se
+ * pudo calcular". Guardar el importe sin convertir sería peor que las dos
+ * cosas, porque se leería como si estuviera en la moneda de la operación.
  */
-export function serviceCommissionAmount(input: ServiceCommissionInput): number {
+export function serviceCommissionAmount(input: ServiceCommissionInput): number | null {
   const base = serviceCommissionBase(input)
   if (base <= 0 || input.sellerPercentage <= 0) return 0
-  return Math.round(((base * input.sellerPercentage) / 100) * 100) / 100
+
+  const destino = input.operationCurrency || input.saleCurrency
+  const baseEnMonedaDeLaOperacion = convertir(
+    base,
+    input.saleCurrency,
+    destino,
+    input.exchangeRate
+  )
+  if (baseEnMonedaDeLaOperacion === null) return null
+
+  return Math.round(((baseEnMonedaDeLaOperacion * input.sellerPercentage) / 100) * 100) / 100
 }

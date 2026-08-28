@@ -86,3 +86,99 @@ describe("serviceCommissionAmount", () => {
     expect(serviceCommissionAmount({ ...base, sellerPercentage: 0 })).toBe(0)
   })
 })
+
+// ==================================================================
+// La comisión se expresa en la moneda de la OPERACIÓN.
+//
+// `commission_records` no tiene columna de moneda: el importe se lee asumiendo
+// la de la operación, en unos treinta lugares. Un servicio cargado en otra
+// moneda producía un importe en pesos que después se leía como dólares.
+//
+// Caso real (Lozada, OP-20260810-9A7235EE): operación en USD, transfer en
+// pesos con $159.000 de margen, vendedora al 13%. Se guardaba 20.670 y el
+// sistema mostraba que le debían USD 20.670.
+// ==================================================================
+describe("serviceCommissionAmount — moneda de la operación", () => {
+  const transferEnPesos = {
+    saleAmount: 300000,
+    costAmount: 141000,
+    saleCurrency: "ARS",
+    costCurrency: "ARS",
+    sellerPercentage: 13,
+  }
+
+  it("convierte la comisión de un servicio en pesos sobre una operación en USD", () => {
+    // Margen $159.000 × 13% = $20.670 → a USD 1510 = 13,69.
+    const amount = serviceCommissionAmount({
+      ...transferEnPesos,
+      operationCurrency: "USD",
+      exchangeRate: 1510,
+    })
+    expect(amount).toBeCloseTo(13.69, 2)
+  })
+
+  it("el caso de Lozada deja de valer 20.670 dólares", () => {
+    // La regresión concreta: sin convertir daba 20.670, que leído como USD es
+    // más de 300 veces el margen de toda la operación.
+    const amount = serviceCommissionAmount({
+      ...transferEnPesos,
+      operationCurrency: "USD",
+      exchangeRate: 1510,
+    })
+    expect(amount!).toBeLessThan(100)
+  })
+
+  it("convierte al revés: servicio en USD sobre operación en pesos", () => {
+    const amount = serviceCommissionAmount({
+      saleAmount: 1000,
+      costAmount: 800,
+      saleCurrency: "USD",
+      costCurrency: "USD",
+      sellerPercentage: 10,
+      operationCurrency: "ARS",
+      exchangeRate: 1500,
+    })
+    // Margen USD 200 × 10% = USD 20 → $30.000.
+    expect(amount).toBe(30000)
+  })
+
+  it("no convierte nada si el servicio ya está en la moneda de la operación", () => {
+    const amount = serviceCommissionAmount({
+      ...transferEnPesos,
+      operationCurrency: "ARS",
+      // El TC no debería usarse; si se usara, el número cambiaría.
+      exchangeRate: 1510,
+    })
+    expect(amount).toBe(20670)
+  })
+
+  it("devuelve null —no 0— si hace falta convertir y no hay tipo de cambio", () => {
+    // 0 significaría "no corresponde comisión" y la fila se borraría. null
+    // significa "no se pudo calcular", que es otra cosa y el caller la maneja.
+    expect(
+      serviceCommissionAmount({ ...transferEnPesos, operationCurrency: "USD", exchangeRate: null })
+    ).toBeNull()
+    expect(
+      serviceCommissionAmount({ ...transferEnPesos, operationCurrency: "USD", exchangeRate: 0 })
+    ).toBeNull()
+  })
+
+  it("sin moneda de operación mantiene el comportamiento viejo", () => {
+    // Compatibilidad: los callers que todavía no la pasan siguen igual.
+    expect(serviceCommissionAmount(transferEnPesos)).toBe(20670)
+  })
+
+  it("un servicio a pérdida sigue dando 0 aunque haya que convertir", () => {
+    // El corte por margen negativo va antes que la conversión: no tiene sentido
+    // pedir tipo de cambio para algo que no comisiona.
+    expect(
+      serviceCommissionAmount({
+        ...transferEnPesos,
+        saleAmount: 100000,
+        costAmount: 141000,
+        operationCurrency: "USD",
+        exchangeRate: null,
+      })
+    ).toBe(0)
+  })
+})
