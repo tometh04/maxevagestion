@@ -172,6 +172,32 @@ export function esAnticipoCreible(venta: number, cobrado: number): boolean {
   return c <= v * FACTOR_IMPLAUSIBLE
 }
 
+/**
+ * Materialidad: por debajo de esto, un excedente es ruido de conversión.
+ *
+ * El caso que lo motivó, real y medido: un cliente pagó ARS 2.117.500 contra una
+ * venta de USD 1.450. Convertidos al tipo de cambio de ese día dan USD 1.450,34.
+ * Esos 34 centavos no son plata que la agencia deba: son el residuo de pasar de
+ * una moneda a otra. De los cinco anticipos que salían en Lozada Rosario, cuatro
+ * eran de este tipo — 34 centavos, 58 centavos, 83 centavos y dos pesos.
+ *
+ * Un balance con un pasivo de 34 centavos no es más preciso, es menos legible.
+ *
+ * Se piden las DOS condiciones porque cada una tapa un agujero de la otra: el
+ * porcentaje solo dejaría pasar 83 centavos sobre una venta de 120, y el piso
+ * absoluto solo dejaría pasar 2 pesos sobre una venta de 68.778.
+ */
+export const MATERIALIDAD_RELATIVA = 0.005
+export const MATERIALIDAD_ABSOLUTA = 1
+
+/** Si el excedente merece un asiento o es residuo de redondeo. */
+export function esAnticipoMaterial(venta: number, anticipo: number): boolean {
+  const v = Number(venta) || 0
+  const a = Number(anticipo) || 0
+  if (a < MATERIALIDAD_ABSOLUTA) return false
+  return a > v * MATERIALIDAD_RELATIVA
+}
+
 /** Los ajustes que corresponden a una operación. Puede devolver varios. */
 export function planificarOperacion(
   op: OperacionAlCierre,
@@ -197,8 +223,13 @@ export function planificarOperacion(
       venta: op.ventaDevengada,
       pagadoEnMonedaDeLaDeuda: op.cobrado,
     })
-    // El excedente implausible NO se asienta: se informa. Ver esAnticipoCreible.
-    if (a.tipo && esAnticipoCreible(op.ventaDevengada, op.cobrado)) {
+    // Dos filtros distintos: el implausible se informa como dato a revisar; el
+    // inmaterial simplemente no merece un asiento.
+    if (
+      a.tipo &&
+      esAnticipoCreible(op.ventaDevengada, op.cobrado) &&
+      esAnticipoMaterial(op.ventaDevengada, a.monto)
+    ) {
       agregar("ANTICIPO_CLIENTE", a.monto, op.currency, "Anticipo de cliente")
     }
   }
@@ -208,7 +239,9 @@ export function planificarOperacion(
       costo: op.costoComprometido,
       pagadoEnMonedaDeLaDeuda: op.pagadoAOperadores,
     })
-    if (a.tipo) agregar("ANTICIPO_PROVEEDOR", a.monto, op.costCurrency, "Anticipo a operador")
+    if (a.tipo && esAnticipoMaterial(op.costoComprometido, a.monto)) {
+      agregar("ANTICIPO_PROVEEDOR", a.monto, op.costCurrency, "Anticipo a operador")
+    }
   }
 
   if (config.ventas_sin_facturar) {
@@ -256,7 +289,11 @@ export function planificarCierre(
   if (config.anticipos_clientes) {
     for (const op of operaciones) {
       const excedente = (Number(op.cobrado) || 0) - (Number(op.ventaDevengada) || 0)
-      if (excedente >= 0.01 && !esAnticipoCreible(op.ventaDevengada, op.cobrado)) {
+      if (
+        excedente >= 0.01 &&
+        esAnticipoMaterial(op.ventaDevengada, excedente) &&
+        !esAnticipoCreible(op.ventaDevengada, op.cobrado)
+      ) {
         anomalias.push({
           operationId: op.id,
           numero: op.numero,

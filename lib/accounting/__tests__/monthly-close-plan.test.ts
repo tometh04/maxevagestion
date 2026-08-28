@@ -14,6 +14,8 @@
 import {
   CIERRE_POR_DEFECTO,
   esAnticipoCreible,
+  esAnticipoMaterial,
+  MATERIALIDAD_ABSOLUTA,
   FACTOR_IMPLAUSIBLE,
   CUENTAS_DEL_AJUSTE,
   planificarCierre,
@@ -267,6 +269,51 @@ describe("un excedente implausible no es un anticipo", () => {
 
   it("una operación saldada no aparece como anomalía", () => {
     const plan = planificarCierre([op()], CIERRE_POR_DEFECTO)
+    expect(plan.anomalias).toEqual([])
+  })
+})
+
+describe("materialidad: el ruido de conversión no es un anticipo", () => {
+  it("descarta el residuo de convertir de una moneda a otra", () => {
+    // Caso real: el cliente pagó ARS 2.117.500 contra una venta de USD 1.450.
+    // Al tipo de cambio de ese día dan 1.450,34. Los 34 centavos son residuo.
+    expect(esAnticipoMaterial(1450, 0.34)).toBe(false)
+  })
+
+  it("descarta un excedente chico aunque la venta también lo sea", () => {
+    // 83 centavos sobre una venta de 120 pasa el filtro porcentual, y por eso
+    // hace falta también el piso absoluto.
+    expect(esAnticipoMaterial(120, 0.83)).toBe(false)
+  })
+
+  it("descarta dos pesos sobre una venta de 68.778", () => {
+    // Al revés que el anterior: supera el piso absoluto pero no el porcentual.
+    expect(esAnticipoMaterial(68778, 2)).toBe(false)
+  })
+
+  it("conserva un anticipo de verdad", () => {
+    expect(esAnticipoMaterial(480, 820)).toBe(true)
+    expect(esAnticipoMaterial(10000, 500)).toBe(true)
+  })
+
+  it("nada por debajo del piso absoluto se asienta", () => {
+    expect(esAnticipoMaterial(0, MATERIALIDAD_ABSOLUTA - 0.01)).toBe(false)
+  })
+
+  it("el plan descarta el ruido sin reportarlo como anomalía", () => {
+    // Es la diferencia con el excedente implausible: el ruido de redondeo no es
+    // un dato para revisar, es aritmética. Llenar la lista de revisión con
+    // centavos haría que nadie la mire.
+    const plan = planificarCierre(
+      [
+        op({ id: "ruido", numero: "OP-1", ventaDevengada: 1450, cobrado: 1450.34 }),
+        op({ id: "real", numero: "OP-2", ventaDevengada: 480, cobrado: 1300 }),
+      ],
+      { ...CIERRE_POR_DEFECTO, anticipos_proveedores: false }
+    )
+
+    expect(plan.ajustes).toHaveLength(1)
+    expect(plan.ajustes[0].operationId).toBe("real")
     expect(plan.anomalias).toEqual([])
   })
 })
