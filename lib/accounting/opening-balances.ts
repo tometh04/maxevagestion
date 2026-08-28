@@ -1,0 +1,234 @@
+/**
+ * Saldos de apertura — VIB-141.
+ *
+ * Junta cómo estaba una agencia el día anterior a su fecha de inicio contable y
+ * arma el asiento de apertura. Los números salen de lo operativo, que vibook ya
+ * conoce; pedírselos a la agencia sería pedirle que transcriba lo que el sistema
+ * tiene.
+ *
+ * TODO EL HISTÓRICO, A DIFERENCIA DEL CIERRE
+ * ------------------------------------------
+ * El cierre mensual se acota a partir de la fecha de inicio, para no arrastrar
+ * las operaciones importadas con importes poco confiables. La apertura hace lo
+ * contrario a propósito: mira TODO lo anterior, porque es justamente el lugar
+ * donde eso tiene que entrar. Lo viejo se convierte en un puñado de saldos que
+ * el contador revisa y ajusta si hace falta, en vez de colarse operación por
+ * operación en los meses siguientes.
+ *
+ * Esa es la división de trabajo entre los dos: la apertura absorbe la historia,
+ * el cierre mantiene el día a día.
+ */
+import type { SupabaseClient } from "@supabase/supabase-js"
+import { getAccountBalancesBatch } from "./ledger"
+import { recolectarOperaciones } from "./monthly-close"
+import {
+  armarAsientoDeApertura,
+  saldosDesdeOperativo,
+  type AsientoDeApertura,
+} from "./opening-entry"
+import { calcularAnticipoAProveedor, calcularAnticipoDeCliente } from "./advances"
+
+const redondear = (n: number) => Math.round(n * 100) / 100
+
+/**
+ * Cuentas cuyo saldo sale de las operaciones y no de `financial_accounts`.
+ *
+ * El sistema mantiene cuentas de control con estos mismos códigos. Tomar el
+ * saldo de las dos fuentes duplicaría la deuda de los clientes y la de los
+ * operadores. Se elige la operativa porque es la que la agencia ve en pantalla:
+ * si el asiento de apertura dijera otra cosa, nadie podría conciliarlo.
+ */
+const CALCULADAS_DESDE_OPERACIONES = new Set([
+  "1.1.03", // Cuentas por Cobrar
+  "1.1.06", // Anticipos a Proveedores
+  "2.1.01", // Cuentas por Pagar
+  "2.1.07", // Anticipos de Clientes
+])
+
+/** El día anterior a una fecha 'YYYY-MM-DD'. */
+export function diaAnterior(fecha: string): string {
+  const d = new Date(`${fecha}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() - 1)
+  return d.toISOString().slice(0, 10)
+}
+
+export interface AperturaParams {
+  orgId: string
+  agencyId: string
+  /** `financial_settings.accounting_start_date`. */
+  fechaDeInicio: string
+}
+
+export interface Apertura {
+  /** El día que retratan los saldos: el anterior al inicio contable. */
+  corte: string
+  /** Un asiento por moneda. Nunca se mezclan. */
+  asientos: AsientoDeApertura[]
+  /** Cuentas financieras sin cuenta contable asignada, que quedaron afuera. */
+  cuentasSinPlan: string[]
+  /** Cuentas de control excluidas a propósito, con el motivo. */
+  excluidas: string[]
+}
+
+/**
+ * Calcula la apertura de una agencia. No escribe nada.
+ */
+export async function calcularApertura(
+  admin: SupabaseClient<any>,
+  params: AperturaParams
+): Promise<Apertura> {
+  const corte = diaAnterior(params.fechaDeInicio)
+
+  // ── Cuentas financieras ───────────────────────────────────────────────
+  const { data: cuentas } = await (admin.from("financial_accounts") as any)
+    .select("id, name, currency, chart_account_id, agency_id")
+    .eq("org_id", params.orgId)
+    .eq("is_active", true)
+
+  const propias = ((cuentas ?? []) as any[]).filter(
+    // Una cuenta sin agencia es de toda la organización; se la considera de la
+    // agencia que está abriendo para no dejar plata sin registrar.
+    (c) => !c.agency_id || c.agency_id === params.agencyId
+  )
+
+  const cuentasSinPlan = propias.filter((c) => !c.chart_account_id).map((c) => c.name)
+  const conPlan = propias.filter((c) => c.chart_account_id)
+
+  const saldos =
+    conPlan.length > 0
+      ? await getAccountBalancesBatch(
+          conPlan.map((c) => c.id),
+          admin as any,
+          corte
+        )
+      : {}
+
+  const codigosPorId = new Map<string, string>()
+  const categoriasPorId = new Map<string, string>()
+  const chartIds = Array.from(new Set(conPlan.map((c) => c.chart_account_id)))
+  if (chartIds.length > 0) {
+    const { data: plan } = await (admin.from("chart_of_accounts") as any)
+      .select("id, account_code, category")
+      .eq("org_id", params.orgId)
+      .in("id", chartIds)
+    for (const p of (plan ?? []) as any[]) {
+      codigosPorId.set(p.id, p.account_code)
+      categoriasPorId.set(p.id, p.category)
+    }
+  }
+
+  // ── Deudas de clientes y operadores ───────────────────────────────────
+  // Se pide desde el principio de los tiempos: la apertura absorbe todo lo
+  // anterior a la fecha de inicio.
+  const operaciones = await recolectarOperaciones(admin, {
+    orgId: params.orgId,
+    agencyId: params.agencyId,
+    hasta: corte,
+    desde: "1900-01-01",
+  })
+
+  interface Acumulado {
+    cuentasPorCobrar: number
+    anticiposDeClientes: number
+    cuentasPorPagar: number
+    anticiposAProveedores: number
+    cuentasFinancieras: Array<{ codigo: string; nombre: string; saldo: number }>
+  }
+  const porMoneda = new Map<string, Acumulado>()
+  const acumulado = (cur: string): Acumulado => {
+    if (!porMoneda.has(cur)) {
+      porMoneda.set(cur, {
+        cuentasPorCobrar: 0,
+        anticiposDeClientes: 0,
+        cuentasPorPagar: 0,
+        anticiposAProveedores: 0,
+        cuentasFinancieras: [],
+      })
+    }
+    return porMoneda.get(cur)!
+  }
+
+  const excluidas: string[] = []
+
+  for (const c of conPlan) {
+    const codigo = codigosPorId.get(c.chart_account_id)
+    if (!codigo) continue
+    const categoria = categoriasPorId.get(c.chart_account_id)
+
+    // `financial_accounts` no contiene solo cuentas de plata: el sistema crea
+    // ahí también cuentas de control ("Cuentas por Cobrar", "Costo de
+    // Operadores", "Ganancia Financiera") que no son dinero disponible.
+    //
+    // Una cuenta de resultado NUNCA puede entrar a un asiento de apertura: los
+    // resultados del pasado ya están, por definición, dentro de Resultados
+    // Acumulados. Incluirlos los contaría dos veces. En Lozada Rosario eso
+    // metía 3.740 millones de "Costo de Operadores" y dejaba el patrimonio
+    // inicial en menos 4.227 millones.
+    if (categoria === "RESULTADO") {
+      excluidas.push(`${c.name} (${codigo}, cuenta de resultado)`)
+      continue
+    }
+
+    // Y las contrapartidas de clientes y operadores tampoco: esos saldos se
+    // calculan desde las operaciones, que es lo que la agencia ve en pantalla.
+    // Tomarlos de los dos lados los duplicaría.
+    if (CALCULADAS_DESDE_OPERACIONES.has(codigo)) {
+      excluidas.push(`${c.name} (${codigo}, se calcula desde las operaciones)`)
+      continue
+    }
+
+    // El saldo viene firmado según la naturaleza de la cuenta. En un pasivo,
+    // "saldo positivo" significa que se debe esa plata, y eso va al Haber.
+    const bruto = redondear(saldos[c.id] ?? 0)
+    const saldo = categoria === "PASIVO" ? -bruto : bruto
+
+    acumulado(c.currency || "ARS").cuentasFinancieras.push({
+      codigo,
+      nombre: c.name,
+      saldo,
+    })
+  }
+
+  for (const op of operaciones) {
+    // Cliente: en la moneda de la venta. Deuda y anticipo son excluyentes.
+    const anticipoCliente = calcularAnticipoDeCliente({
+      venta: op.ventaDevengada,
+      pagadoEnMonedaDeLaDeuda: op.cobrado,
+    })
+    const acCliente = acumulado(op.currency)
+    if (anticipoCliente.tipo) {
+      acCliente.anticiposDeClientes += anticipoCliente.monto
+    } else {
+      acCliente.cuentasPorCobrar += Math.max(0, op.ventaDevengada - op.cobrado)
+    }
+
+    // Operador: en la moneda del costo, que puede ser otra.
+    const anticipoProveedor = calcularAnticipoAProveedor({
+      costo: op.costoComprometido,
+      pagadoEnMonedaDeLaDeuda: op.pagadoAOperadores,
+    })
+    const acOperador = acumulado(op.costCurrency)
+    if (anticipoProveedor.tipo) {
+      acOperador.anticiposAProveedores += anticipoProveedor.monto
+    } else {
+      acOperador.cuentasPorPagar += Math.max(0, op.costoComprometido - op.pagadoAOperadores)
+    }
+  }
+
+  const asientos: AsientoDeApertura[] = []
+  for (const [currency, ac] of Array.from(porMoneda.entries())) {
+    const asiento = armarAsientoDeApertura(
+      saldosDesdeOperativo({
+        cuentasFinancieras: ac.cuentasFinancieras,
+        cuentasPorCobrar: redondear(ac.cuentasPorCobrar),
+        anticiposDeClientes: redondear(ac.anticiposDeClientes),
+        cuentasPorPagar: redondear(ac.cuentasPorPagar),
+        anticiposAProveedores: redondear(ac.anticiposAProveedores),
+      }),
+      currency
+    )
+    if (asiento) asientos.push(asiento)
+  }
+
+  return { corte, asientos, cuentasSinPlan, excluidas }
+}

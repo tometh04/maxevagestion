@@ -338,7 +338,18 @@ export async function getAccountBalance(
  */
 export async function getAccountBalancesBatch(
   accountIds: string[],
-  supabase: SupabaseClient<Database>
+  supabase: SupabaseClient<Database>,
+  /**
+   * Saldo AL CIERRE de esta fecha ('YYYY-MM-DD'), en vez del saldo de hoy.
+   *
+   * Lo necesita el asiento de apertura (VIB-141): una agencia que arranca
+   * contabilidad el 1° de septiembre tiene que registrar cuánta plata tenía el
+   * 31 de agosto, y si el asiento se genera el 5 el saldo de hoy ya incluye
+   * cuatro días de movimientos que no corresponden.
+   *
+   * Omitirlo deja el comportamiento intacto: saldo actual, con caché.
+   */
+  hastaFecha?: string | null
 ): Promise<Record<string, number>> {
   if (accountIds.length === 0) {
     return {}
@@ -378,10 +389,15 @@ export async function getAccountBalancesBatch(
   const accountsToCalculate: typeof accounts = []
   const now = Date.now()
 
+  // El caché guarda saldos de HOY. Con corte de fecha hay que recalcular
+  // siempre: devolver el saldo actual como si fuera el del 31 de agosto sería
+  // un error silencioso y del peor tipo, porque el número parece razonable.
+  const usaCache = !hastaFecha
+
   for (const account of accounts) {
     const cacheKey = account.id
-    const cached = balanceCache.get(cacheKey)
-    
+    const cached = usaCache ? balanceCache.get(cacheKey) : undefined
+
     if (cached && (now - cached.timestamp) < CACHE_TTL_MS) {
       result[account.id] = cached.balance
     } else {
@@ -398,6 +414,17 @@ export async function getAccountBalancesBatch(
   const accountIdsToCalculate = accountsToCalculate.map((a: { id: string }) => a.id)
 
   const accountIdsSQL = accountIdsToCalculate.map((id: string) => `'${id}'`).join(",")
+
+  // Se valida el formato antes de interpolar: la fecha entra a un SQL armado
+  // como texto y no puede venir de un input sin verificar.
+  if (hastaFecha && !/^\d{4}-\d{2}-\d{2}$/.test(hastaFecha)) {
+    throw new Error(`Fecha de corte inválida: ${hastaFecha}`)
+  }
+  // `movement_date` es timestamptz: se corta por "menor al día siguiente" para
+  // incluir el día entero y no solo su medianoche.
+  const filtroFecha = hastaFecha
+    ? ` AND movement_date < (DATE '${hastaFecha}' + INTERVAL '1 day')`
+    : ""
   // IMPORTANTE: la agrupación separa movements "legacy" (sin debit/credit seteados) de
   // los de partida doble. Antes se usaba has_debit_credit a nivel de (account_id, type)
   // y eso descartaba los legacy cuando cualquier movement del mismo tipo tenía d/c,
@@ -413,7 +440,7 @@ export async function getAccountBalancesBatch(
       SUM(COALESCE(debit_amount, 0)::numeric) AS total_debit,
       SUM(COALESCE(credit_amount, 0)::numeric) AS total_credit
       FROM ledger_movements
-      WHERE account_id IN (${accountIdsSQL}) AND affects_balance = true
+      WHERE account_id IN (${accountIdsSQL}) AND affects_balance = true${filtroFecha}
       GROUP BY account_id, type`
   })
 
@@ -490,7 +517,10 @@ export async function getAccountBalancesBatch(
     const finalBalance = initialBalance + movementsSum
     result[account.id] = finalBalance
 
-    // Guardar en caché
+    // Guardar en caché — solo el saldo de hoy. Cachear un saldo con corte de
+    // fecha envenenaría al resto de la app: las pantallas pedirían el saldo
+    // actual y recibirían el del 31 de agosto.
+    if (!usaCache) continue
     balanceCache.set(account.id, {
       balance: finalBalance,
       timestamp: now,
