@@ -98,6 +98,13 @@ function makeSupabase(cashMovements: any[], extraTables: Record<string, any[]> =
           if (table === "cash_movements") isCalls.push([col, val])
           return builder
         }),
+        // `fetchExpenses` pagina con `.range()`. El mock devuelve la porción
+        // pedida para que la paginación termine de verdad: si devolviera
+        // siempre el set completo, el helper pediría páginas para siempre.
+        range: jest.fn((from: number, to: number) => ({
+          then: (resolve: any) =>
+            Promise.resolve({ data: rows.slice(from, to + 1), error: null }).then(resolve),
+        })),
         then: (resolve: any) => Promise.resolve({ data: rows, error: null }).then(resolve),
       }
       return builder
@@ -112,13 +119,13 @@ async function gastosVariables(
   extraTables: Record<string, any[]> = {}
 ) {
   const { client, isCalls, eqCalls, notCalls, selectedColumns } = makeSupabase(cashMovements, extraTables)
-  const { expenses, totals, excludedTouristic } = await fetchExpenses({
+  const { expenses, totals, excludedTouristic, truncated } = await fetchExpenses({
     supabase: client,
     orgId: "org-1",
     type: "variable",
     ...extra,
   })
-  return { expenses, totals, excludedTouristic, isCalls, eqCalls, notCalls, selectedColumns }
+  return { expenses, totals, excludedTouristic, truncated, isCalls, eqCalls, notCalls, selectedColumns }
 }
 
 describe("fetchExpenses — gastos variables", () => {
@@ -415,5 +422,74 @@ describe("fetchExpenses — oficina propia del gasto", () => {
       type: "recurring",
     })
     expect(expenses[0].agency_id).toBe("ag-1")
+  })
+})
+
+// ==================================================================
+// VIB-160 — PostgREST corta en 1000 filas y no avisa.
+//
+// Era el único de los cinco fetchers del Reporte Societario sin paginar, así
+// que el total de gastos salía corto y se leía como completo. Lozada tiene
+// 1.376 gastos variables en 2026: el rango anual ya perdía ~376 filas.
+// ==================================================================
+describe("fetchExpenses — paginado", () => {
+  it("trae más de 1000 gastos variables, no los primeros 1000", async () => {
+    const muchos = Array.from({ length: 2350 }, (_, i) =>
+      movimiento({ id: `mov-${i}`, amount: 1, currency: "USD" })
+    )
+    const { expenses, totals } = await gastosVariables(muchos)
+
+    expect(expenses).toHaveLength(2350)
+    expect(totals.usd).toBe(2350)
+  })
+
+  it("trae más de 1000 gastos recurrentes", async () => {
+    const muchos = Array.from({ length: 1500 }, (_, i) =>
+      recurrente({ id: `rec-${i}`, concept: "Gasto recurrente: Alquiler" })
+    )
+    const { client } = makeSupabase([], {
+      ledger_movements: muchos,
+      recurring_payments: [{ description: "Alquiler", category_id: null, agency_id: "ag-1" }],
+    })
+    const { expenses } = await fetchExpenses({
+      supabase: client,
+      orgId: "org-1",
+      type: "recurring",
+    })
+    expect(expenses).toHaveLength(1500)
+  })
+
+  it("un dataset que entra en una página no queda marcado como truncado", async () => {
+    const { truncated } = await gastosVariables([movimiento({ amount: 100 })])
+    expect(truncated).toBe(false)
+  })
+
+  it("si la lectura falla, el total se marca incompleto en vez de pasar por completo", async () => {
+    // Antes el error se tragaba en silencio y el reporte mostraba los gastos
+    // que sí pudo leer como si fueran todos.
+    const client = {
+      from: () => ({
+        select: () => ({
+          eq: function () { return this },
+          neq: function () { return this },
+          not: function () { return this },
+          like: function () { return this },
+          gte: function () { return this },
+          lte: function () { return this },
+          in: function () { return this },
+          order: function () { return this },
+          is: function () { return this },
+          range: () => Promise.resolve({ data: null, error: { message: "boom" } }),
+          then: (r: any) => Promise.resolve({ data: [], error: null }).then(r),
+        }),
+      }),
+    }
+    const { truncated, expenses } = await fetchExpenses({
+      supabase: client as any,
+      orgId: "org-1",
+      type: "variable",
+    })
+    expect(truncated).toBe(true)
+    expect(expenses).toEqual([])
   })
 })

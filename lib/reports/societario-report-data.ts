@@ -199,6 +199,7 @@ export async function buildSocietarioReportData(
     },
     commissionsTruncated: commissions.truncated || referrals.truncated,
     financialTruncated: financial.truncated,
+    expensesTruncated: expensesResult.truncated,
     partners: orgPartners.partners,
     allocations,
     // Nombres para el desglose por concepto. Se prefiere el mapa de ventas

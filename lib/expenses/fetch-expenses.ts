@@ -20,6 +20,7 @@
 
 import { roundMoney } from "@/lib/currency"
 import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
+import { fetchAllRows } from "@/lib/supabase/fetch-all"
 
 export type ExpenseType = "recurring" | "variable"
 
@@ -111,6 +112,12 @@ export interface FetchExpensesResult {
   totals: ExpenseTotals
   /** Movimientos descartados por `excludeTouristic`. 0 si la opción está off. */
   excludedTouristic: number
+  /**
+   * El dataset quedó incompleto: se alcanzó el tope de `fetchAllRows` o una de
+   * las dos lecturas falló. El total NO es el del período y quien lo muestre
+   * tiene que decirlo.
+   */
+  truncated: boolean
 }
 
 export async function fetchExpenses(
@@ -178,6 +185,7 @@ export async function fetchExpenses(
 
   const allExpenses: ExpenseRow[] = []
   let excludedTouristic = 0
+  let truncated = false
 
   // 1. RECURRING EXPENSES (paid): from ledger_movements
   if (!typeFilter || typeFilter === "recurring") {
@@ -196,7 +204,10 @@ export async function fetchExpenses(
       // líneas con el mismo concepto y el mismo type. Un movimiento de dinero
       // siempre tiene cuenta financiera; una línea de asiento nunca.
       .not("account_id", "is", null)
+      // `id` como desempate: `movement_date` sola no es un orden estable y la
+      // paginación repetiría o saltearía filas con la misma fecha.
       .order("movement_date", { ascending: false })
+      .order("id", { ascending: true })
 
     if (dateFrom) recQuery = recQuery.gte("movement_date", startOfDayAR(dateFrom))
     if (dateTo) recQuery = recQuery.lte("movement_date", endOfDayAR(dateTo))
@@ -204,9 +215,22 @@ export async function fetchExpenses(
     // El filtro por agencia se resuelve abajo, en memoria, atribuyendo cada
     // pago a la oficina del gasto (no a la de la cuenta pagadora).
 
-    const { data: recurring, error: recError } = await recQuery
+    // Paginado: PostgREST corta en 1000 filas sin avisar. Lozada ya cruzó ese
+    // techo en el rango anual, así que el total del reporte salía corto y se
+    // leía como completo.
+    let recurring: any[] = []
+    try {
+      const res = await fetchAllRows<any>((from, to) => recQuery.range(from, to))
+      recurring = res.rows
+      if (res.truncated) truncated = true
+    } catch (recError) {
+      // Se conserva el comportamiento de no romper la pantalla, pero el total
+      // deja de presentarse como completo.
+      console.error("[fetchExpenses] error leyendo gastos recurrentes:", recError)
+      truncated = true
+    }
 
-    if (!recError && recurring) {
+    {
       for (const e of recurring) {
         const description = (e.concept || "")
           .replace("Gasto recurrente: ", "")
@@ -286,7 +310,9 @@ export async function fetchExpenses(
       // caja. La contrapartida de la reversa es un INCOME, así que no entra en
       // esta query.
       .is("reversed_at", null)
+      // `id` como desempate: sin orden estable la paginación repite o saltea.
       .order("movement_date", { ascending: false })
+      .order("id", { ascending: true })
 
     if (dateFrom) varQuery = varQuery.gte("movement_date", startOfDayAR(dateFrom))
     if (dateTo) varQuery = varQuery.lte("movement_date", endOfDayAR(dateTo))
@@ -299,9 +325,17 @@ export async function fetchExpenses(
     // Restringido a gastos propios (cash.ownDataOnly por agencia)
     if (ownDataOnlyUserId) varQuery = varQuery.eq("user_id", ownDataOnlyUserId)
 
-    const { data: variables, error: varError } = await varQuery
+    let variables: any[] = []
+    try {
+      const res = await fetchAllRows<any>((from, to) => varQuery.range(from, to))
+      variables = res.rows
+      if (res.truncated) truncated = true
+    } catch (varError) {
+      console.error("[fetchExpenses] error leyendo gastos variables:", varError)
+      truncated = true
+    }
 
-    if (!varError && variables) {
+    {
       for (const v of variables) {
         // Turístico = plata que ya se descontó del margen de la operación
         // (pago a operador, devolución al cliente). Restarla otra vez contra el
@@ -371,6 +405,7 @@ export async function fetchExpenses(
     expenses: allExpenses,
     totals: computeExpenseTotals(allExpenses),
     excludedTouristic,
+    truncated,
   }
 }
 

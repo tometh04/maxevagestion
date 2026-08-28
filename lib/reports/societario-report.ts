@@ -334,6 +334,8 @@ export interface BuildSocietarioReportParams {
   // ── resultado financiero (ganancia por depósito y comisión de la financiera)
   financialMovements?: FinancialResultRow[]
   financialTruncated?: boolean
+  /** El dataset de gastos vino incompleto (tope de paginado o lectura fallida). */
+  expensesTruncated?: boolean
   // ── comisiones
   commissionRecords: CommissionRecordRow[]
   referralCommissions: ReferralCommissionRow[]
@@ -454,6 +456,7 @@ export function buildSocietarioReport(params: BuildSocietarioReportParams): Soci
     excludedTouristicCount = 0,
     financialMovements = [],
     financialTruncated = false,
+    expensesTruncated = false,
     commissionRecords,
     referralCommissions,
     commissionsExcluded = { settled: 0, cancelled: 0 },
@@ -1087,7 +1090,7 @@ export function buildSocietarioReport(params: BuildSocietarioReportParams): Soci
     })
   }
 
-  if (salesTruncated || commissionsTruncated || financialTruncated) {
+  if (salesTruncated || commissionsTruncated || financialTruncated || expensesTruncated) {
     warnings.push({
       code: "TRUNCATED",
       level: "danger",
