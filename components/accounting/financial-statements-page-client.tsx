@@ -49,6 +49,11 @@ interface Respuesta {
     totalPasivo: number
     totalPatrimonio: number
     descuadre: number
+    orden: {
+      deudoras: Renglon[]
+      acreedoras: Renglon[]
+      total: number
+    }
     sinCotizacion: Faltante[]
   }
 }
@@ -281,6 +286,33 @@ export function FinancialStatementsPageClient({ agencies }: Props) {
               total={data.balance.totalPatrimonio}
               currency={data.currency}
             />
+
+            {/* Al pie, aparte: no son activo, pasivo ni patrimonio. */}
+            {data.balance.orden.deudoras.length > 0 && (
+              <div className="space-y-3 border-t pt-5">
+                <div>
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                    Cuentas de orden
+                  </h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Compromisos que no son activo, pasivo ni resultado. Se informan al pie y no
+                    afectan los totales de arriba.
+                  </p>
+                </div>
+                <Grupo
+                  titulo="Deudoras"
+                  renglones={data.balance.orden.deudoras}
+                  total={data.balance.orden.total}
+                  currency={data.currency}
+                />
+                <Grupo
+                  titulo="Acreedoras"
+                  renglones={data.balance.orden.acreedoras}
+                  total={data.balance.orden.total}
+                  currency={data.currency}
+                />
+              </div>
+            )}
 
             {data.balance.descuadre !== 0 && (
               <div className="flex gap-2.5 rounded-md border border-accent-sand/40 bg-accent-sand/10 px-3.5 py-3 text-sm">

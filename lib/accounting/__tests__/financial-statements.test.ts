@@ -184,3 +184,44 @@ describe("armarBalance", () => {
     expect(armarBalance(seCancela, COTIZ, "USD").activo).toHaveLength(0)
   })
 })
+
+describe("armarBalance — cuentas de orden", () => {
+  const conOrden: LineaContable[] = [
+    linea({ account_code: "1.1.02", account_name: "Bancos", category: "ACTIVO", debit: 5000 }),
+    linea({
+      account_code: "5.1.01",
+      account_name: "Ventas Pendientes de Facturar",
+      category: "ORDEN",
+      debit: 600,
+    }),
+    linea({
+      account_code: "5.2.01",
+      account_name: "Ventas Pendientes de Facturar por Contra",
+      category: "ORDEN",
+      credit: 600,
+    }),
+  ]
+
+  it("no distorsionan el Activo, el Pasivo ni el Patrimonio", () => {
+    // Es la razón de ser de una cuenta de orden: informa sin ensuciar el
+    // balance. Si entraran al Activo, estarían duplicando la venta.
+    const b = armarBalance(conOrden, COTIZ, "USD")
+    expect(b.totalActivo).toBe(5000)
+    expect(b.totalPasivo).toBe(0)
+    expect(b.totalPatrimonio).toBe(0)
+  })
+
+  it("se informan aparte, deudoras y acreedoras", () => {
+    const b = armarBalance(conOrden, COTIZ, "USD")
+    expect(b.orden.deudoras).toHaveLength(1)
+    expect(b.orden.acreedoras).toHaveLength(1)
+    expect(b.orden.total).toBe(600)
+  })
+
+  it("las deudoras igualan a las acreedoras", () => {
+    const b = armarBalance(conOrden, COTIZ, "USD")
+    const deudoras = b.orden.deudoras.reduce((s, r) => s + r.amount, 0)
+    const acreedoras = b.orden.acreedoras.reduce((s, r) => s + r.amount, 0)
+    expect(deudoras).toBe(acreedoras)
+  })
+})

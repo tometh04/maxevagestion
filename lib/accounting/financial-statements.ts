@@ -68,6 +68,16 @@ export interface Balance {
    * taparlo sería mentir.
    */
   descuadre: number
+  /**
+   * Cuentas de orden (VIB-140). Van al PIE del balance, aparte del Activo, el
+   * Pasivo y el Patrimonio: registran compromisos que no son ninguna de esas
+   * tres cosas. Deudoras y acreedoras se cancelan entre sí.
+   */
+  orden: {
+    deudoras: RenglonEstado[]
+    acreedoras: RenglonEstado[]
+    total: number
+  }
   currency: Moneda
   sinCotizacion: Array<{ mes: string; lineas: number }>
 }
@@ -246,6 +256,23 @@ export function armarBalance(
     (l) => l.credit - l.debit
   )
 
+  // Las de orden no entran en ninguno de los tres grupos de arriba porque su
+  // categoría es ORDEN: quedan fuera por construcción, no por un filtro.
+  const ordenDeudoras = acumular(
+    lineas,
+    cotizaciones,
+    moneda,
+    (l) => l.category === "ORDEN" && l.account_code.startsWith("5.1"),
+    (l) => l.debit - l.credit
+  )
+  const ordenAcreedoras = acumular(
+    lineas,
+    cotizaciones,
+    moneda,
+    (l) => l.category === "ORDEN" && l.account_code.startsWith("5.2"),
+    (l) => l.credit - l.debit
+  )
+
   const totalActivo = sumar(activo.renglones)
   const totalPasivo = sumar(pasivo.renglones)
   const totalPatrimonio = sumar(patrimonio.renglones)
@@ -258,7 +285,18 @@ export function armarBalance(
     totalPasivo,
     totalPatrimonio,
     descuadre: redondear(totalActivo - (totalPasivo + totalPatrimonio)),
+    orden: {
+      deudoras: ordenDeudoras.renglones,
+      acreedoras: ordenAcreedoras.renglones,
+      total: sumar(ordenDeudoras.renglones),
+    },
     currency: moneda,
-    sinCotizacion: unirFaltantes(activo.faltantes, pasivo.faltantes, patrimonio.faltantes),
+    sinCotizacion: unirFaltantes(
+      activo.faltantes,
+      pasivo.faltantes,
+      patrimonio.faltantes,
+      ordenDeudoras.faltantes,
+      ordenAcreedoras.faltantes
+    ),
   }
 }

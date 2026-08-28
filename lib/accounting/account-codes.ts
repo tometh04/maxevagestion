@@ -78,6 +78,18 @@ export const ACCOUNT_CODES = {
   GASTOS_BANCARIOS: "4.3.12",
   DIF_CAMBIO_NEGATIVA: "4.3.13",
   GASTOS_SISTEMAS: "4.3.14",
+
+  // ==========================================
+  // CUENTAS DE ORDEN (5.x) — VIB-140
+  //
+  // Compromisos que no son activo, pasivo ni resultado. Van SIEMPRE de a pares
+  // (deudora contra acreedora) para que se cancelen entre sí y se presenten al
+  // pie del balance sin distorsionarlo.
+  // ==========================================
+  ORDEN_VENTAS_SIN_FACTURAR: "5.1.01",
+  ORDEN_FACTURAS_A_RECIBIR: "5.1.02",
+  ORDEN_VENTAS_SIN_FACTURAR_CONTRA: "5.2.01",
+  ORDEN_FACTURAS_A_RECIBIR_CONTRA: "5.2.02",
   OTROS_GASTOS: "4.3.15",
 } as const
 
