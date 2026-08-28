@@ -154,7 +154,9 @@ export function generateSocietarioReportPdf({
     // en un orden de magnitud y el lector no tendría cómo saber cuál está viendo.
     `Venta neta: IVA sobre ${ventaNeta.criterio === "VENTA" ? "la venta" : "el margen"}`,
     filters.exchangeRate
-      ? `TC fijo: ${filters.exchangeRate.toLocaleString("es-AR")}`
+      ? `TC fijo: ${filters.exchangeRate.toLocaleString("es-AR")}${
+          filters.exchangeRateEsPromedio ? " (promedio del período)" : ""
+        }`
       : "TC de la fecha de cada movimiento",
     `Generado: ${fmtDateTime(generatedAt)}`,
   ])

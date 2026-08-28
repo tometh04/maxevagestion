@@ -64,7 +64,13 @@ interface ReportPayload {
     exchangeRate: number | null
     ivaRatePct: number
     netoIvaCriterio: "MARGEN" | "VENTA"
+    exchangeRateEsPromedio: boolean
   }
+  tipoCambioSugerido: {
+    criterio: "PROMEDIO"
+    rate: number | null
+    muestras: number
+  } | null
   report: {
     currency: string
     dateFrom: string
@@ -280,6 +286,7 @@ export function SocietarioReport({ agencies }: SocietarioReportProps) {
   )
 
   const report = data?.report
+  const sugerido = data?.tipoCambioSugerido ?? null
   const resultado = report?.resultado
   const socios = report?.socios
   // Un período con sólo movimientos financieros tiene resultado: decir "sin
@@ -387,6 +394,27 @@ export function SocietarioReport({ agencies }: SocietarioReportProps) {
                 value={fixedRate}
                 onChange={(e) => setFixedRate(e.target.value)}
               />
+              {/* El cierre se valúa a un TC único, y el que se usa es el
+                  promedio del período. Precargarlo evita que haya que buscarlo
+                  por afuera; queda editable porque la agencia puede operar a
+                  un TC negociado distinto del oficial. */}
+              {sugerido && sugerido.rate !== null ? (
+                <button
+                  type="button"
+                  className="text-xs text-primary hover:underline disabled:opacity-50"
+                  onClick={() => setFixedRate(String(sugerido.rate))}
+                >
+                  Usar TC promedio del período: {sugerido.rate.toLocaleString("es-AR")}
+                  <span className="text-muted-foreground">
+                    {" "}
+                    ({sugerido.muestras} cotizaciones)
+                  </span>
+                </button>
+              ) : sugerido ? (
+                <p className="text-xs text-muted-foreground">
+                  No hay cotizaciones diarias cargadas en el período.
+                </p>
+              ) : null}
             </div>
             {agencies.length > 1 && (
               <div className="space-y-1.5">

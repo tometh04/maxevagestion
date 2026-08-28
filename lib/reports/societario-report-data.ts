@@ -11,6 +11,7 @@
  */
 
 import { buildExchangeRateMap } from "@/lib/accounting/exchange-rates"
+import { sugerirCotizacionEnRango } from "@/lib/accounting/monthly-rate-suggestion"
 import { fetchFinancialResults } from "@/lib/accounting/fetch-financial-results"
 import { fetchCommissionRecords } from "@/lib/commissions/fetch-commission-records"
 import { fetchReferralCommissions } from "@/lib/commissions/fetch-referral-commissions"
@@ -48,11 +49,34 @@ export interface SocietarioReportFilters {
   ivaRatePct: number
   /** Base del IVA de la venta neta. Viaja hasta acá para imprimirse en el PDF. */
   netoIvaCriterio: NetoIvaCriterio
+  /**
+   * El TC fijo elegido coincide con el promedio del período.
+   *
+   * Lo decide el servidor comparando contra la sugerencia, no el cliente: si
+   * el PDF dijera "promedio del período" porque un query param lo afirma,
+   * cualquiera podría estampar esa leyenda sobre una cotización inventada.
+   */
+  exchangeRateEsPromedio: boolean
+}
+
+/** Cotización propuesta para el período. Es un dato de la UI, no del informe. */
+export interface SocietarioTipoCambioSugerido {
+  criterio: "PROMEDIO"
+  /** null = el período no tiene cotizaciones diarias cargadas. */
+  rate: number | null
+  muestras: number
+  desde: string
+  hasta: string
 }
 
 export interface SocietarioReportPayload {
   filters: SocietarioReportFilters
   report: SocietarioReport
+  /**
+   * Va afuera de `report` a propósito: el PDF imprime `report` + `filters`, y
+   * una sugerencia que nadie aplicó no es una cifra del informe.
+   */
+  tipoCambioSugerido: SocietarioTipoCambioSugerido | null
 }
 
 export interface BuildSocietarioReportDataParams {
@@ -87,8 +111,9 @@ export async function buildSocietarioReportData(
   const agencyId = params.agencyId && params.agencyId !== "ALL" ? params.agencyId : null
   const agencyIds = params.agencyIds ?? []
 
-  // Las seis lecturas son independientes entre sí.
-  const [sales, expensesResult, financial, commissions, referrals, orgPartners] = await Promise.all([
+  // Las siete lecturas son independientes entre sí.
+  const [sales, expensesResult, financial, commissions, referrals, orgPartners, sugerida] =
+    await Promise.all([
     fetchSalesOperations({ supabase, orgId, dateFrom, dateTo, agencyId, agencyIds }),
     fetchExpenses({
       supabase,
@@ -109,6 +134,10 @@ export async function buildSocietarioReportData(
     fetchCommissionRecords({ supabase, orgId, dateFrom, dateTo, agencyId, agencyIds }),
     fetchReferralCommissions({ supabase, orgId, dateFrom, dateTo, agencyId, agencyIds }),
     fetchOrgPartners(supabase, orgId),
+    // Cotización promedio del período, para ofrecerla como TC del cierre. Es
+    // una sugerencia: si `exchange_rates` falla, el reporte tiene que salir
+    // igual, así que no puede tumbar el Promise.all.
+    sugerirCotizacionEnRango(supabase, dateFrom, dateTo, "PROMEDIO").catch(() => null),
   ])
 
   const monthKeys = monthKeysBetween(dateFrom, dateTo)
@@ -174,6 +203,13 @@ export async function buildSocietarioReportData(
     fixedRate: exchangeRate,
   })
 
+  // Comparación con tolerancia de un centavo: la sugerencia viene redondeada a
+  // dos decimales y el usuario la aplica tal cual desde el botón.
+  const exchangeRateEsPromedio =
+    exchangeRate != null &&
+    sugerida?.rate != null &&
+    Math.abs(exchangeRate - sugerida.rate) < 0.01
+
   return {
     filters: {
       dateFrom,
@@ -184,8 +220,18 @@ export async function buildSocietarioReportData(
       exchangeRate,
       ivaRatePct,
       netoIvaCriterio,
+      exchangeRateEsPromedio,
     },
     report,
+    tipoCambioSugerido: sugerida
+      ? {
+          criterio: "PROMEDIO",
+          rate: sugerida.rate,
+          muestras: sugerida.muestras,
+          desde: dateFrom,
+          hasta: dateTo,
+        }
+      : null,
   }
 }
 
