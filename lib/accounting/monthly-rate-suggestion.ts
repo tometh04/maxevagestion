@@ -82,20 +82,24 @@ export function rangoDelMes(year: number, month: number): { desde: string; hasta
 }
 
 /**
- * Sugerencia para un mes, leyendo las cotizaciones diarias que ya baja el cron.
+ * Sugerencia para un rango de fechas, leyendo las cotizaciones diarias que ya
+ * baja el cron.
+ *
+ * El rango existe además del mes calendario porque un cierre no siempre lo
+ * respeta: el Reporte Societario trabaja con `dateFrom`/`dateTo` libres, y
+ * pedirle al usuario que saque el promedio por afuera sería devolverle el
+ * problema que vino a resolver.
  *
  * `exchange_rates` no es multi-tenant a propósito: la cotización del dólar es
  * la misma para todos. Lo que sí es por organización es la cotización MENSUAL
  * elegida, que vive en `monthly_exchange_rates`.
  */
-export async function sugerirCotizacionMensual(
+export async function sugerirCotizacionEnRango(
   supabase: SupabaseClient<Database>,
-  year: number,
-  month: number,
+  desde: string,
+  hasta: string,
   criterio: CriterioCotizacion = "CIERRE"
 ): Promise<CotizacionSugerida> {
-  const { desde, hasta } = rangoDelMes(year, month)
-
   const { data } = await (supabase.from("exchange_rates") as any)
     .select("rate_date, rate")
     .eq("from_currency", "USD")
@@ -108,4 +112,15 @@ export async function sugerirCotizacionMensual(
     ((data ?? []) as any[]).map((r) => ({ rate_date: r.rate_date, rate: Number(r.rate) })),
     criterio
   )
+}
+
+/** Sugerencia para un mes calendario: es el rango del mes, nada más. */
+export async function sugerirCotizacionMensual(
+  supabase: SupabaseClient<Database>,
+  year: number,
+  month: number,
+  criterio: CriterioCotizacion = "CIERRE"
+): Promise<CotizacionSugerida> {
+  const { desde, hasta } = rangoDelMes(year, month)
+  return sugerirCotizacionEnRango(supabase, desde, hasta, criterio)
 }

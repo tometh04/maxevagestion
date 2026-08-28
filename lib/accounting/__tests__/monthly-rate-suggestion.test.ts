@@ -6,9 +6,45 @@
  * devuelva un valor inventado cuando no hay datos. Un cero o un NaN pasando por
  * acá valuaría un ejercicio entero mal.
  */
-import { calcularSugerencia, rangoDelMes } from "../monthly-rate-suggestion"
+import {
+  calcularSugerencia,
+  rangoDelMes,
+  sugerirCotizacionEnRango,
+  sugerirCotizacionMensual,
+} from "../monthly-rate-suggestion"
 
 const r = (rate_date: string, rate: number) => ({ rate_date, rate })
+
+/**
+ * Supabase de mentira que aplica el rango pedido sobre un set fijo.
+ *
+ * Verifica algo que mirando el número no se ve: que el rango que llega a
+ * PostgREST sea el correcto. Si `sugerirCotizacionMensual` dejara de acotar por
+ * mes, el promedio saldría de todo el histórico y seguiría pareciendo un TC
+ * plausible.
+ */
+function fakeSupabase(rows: Array<{ rate_date: string; rate: number }>) {
+  const filtros: Record<string, string> = {}
+  const chain: any = {
+    select: () => chain,
+    eq: (col: string, val: string) => {
+      filtros[col] = val
+      return chain
+    },
+    gte: (_col: string, val: string) => {
+      filtros.desde = val
+      return chain
+    },
+    lte: (_col: string, val: string) => {
+      filtros.hasta = val
+      return chain
+    },
+    order: () => ({
+      data: rows.filter((x) => x.rate_date >= filtros.desde && x.rate_date <= filtros.hasta),
+    }),
+  }
+  return { supabase: { from: () => chain } as any, filtros }
+}
 
 describe("calcularSugerencia", () => {
   const agosto = [
@@ -80,5 +116,63 @@ describe("rangoDelMes", () => {
 
   it("pone el mes en dos dígitos", () => {
     expect(rangoDelMes(2026, 1)).toEqual({ desde: "2026-01-01", hasta: "2026-01-31" })
+  })
+})
+
+describe("sugerirCotizacionEnRango", () => {
+  // Julio y agosto con cotizaciones distintas: si el rango no se respetara, el
+  // promedio se contaminaría con el otro mes.
+  const historico = [
+    r("2026-07-10", 1500),
+    r("2026-07-20", 1510),
+    r("2026-08-05", 1600),
+    r("2026-08-25", 1620),
+  ]
+
+  it("promedia solo lo que cae dentro del rango pedido", async () => {
+    const { supabase } = fakeSupabase(historico)
+    const s = await sugerirCotizacionEnRango(supabase, "2026-07-01", "2026-07-31", "PROMEDIO")
+    expect(s).toMatchObject({ rate: 1505, muestras: 2, ultima: "2026-07-20" })
+  })
+
+  it("acepta un rango que cruza el corte de mes", async () => {
+    // Es el caso que motiva la función: el Societario deja elegir cualquier
+    // rango, no solo meses calendario.
+    const { supabase } = fakeSupabase(historico)
+    const s = await sugerirCotizacionEnRango(supabase, "2026-07-15", "2026-08-15", "PROMEDIO")
+    expect(s).toMatchObject({ rate: 1555, muestras: 2 })
+  })
+
+  it("CIERRE toma la última del rango, no la del histórico", async () => {
+    const { supabase } = fakeSupabase(historico)
+    const s = await sugerirCotizacionEnRango(supabase, "2026-07-01", "2026-07-31", "CIERRE")
+    expect(s.rate).toBe(1510)
+  })
+
+  it("devuelve null si el rango no tiene cotizaciones, no un TC inventado", async () => {
+    // El caller tiene que poder decir "no hay dato". Caer a un fallback acá
+    // valuaría un cierre entero a una cotización que nadie eligió.
+    const { supabase } = fakeSupabase(historico)
+    const s = await sugerirCotizacionEnRango(supabase, "2026-05-01", "2026-05-31", "PROMEDIO")
+    expect(s.rate).toBeNull()
+    expect(s.muestras).toBe(0)
+  })
+})
+
+describe("sugerirCotizacionMensual", () => {
+  const agosto = [r("2026-07-31", 1400), r("2026-08-05", 1600), r("2026-08-25", 1620), r("2026-09-01", 1700)]
+
+  it("sigue acotando al mes después de delegar en el rango", async () => {
+    const { supabase, filtros } = fakeSupabase(agosto)
+    const s = await sugerirCotizacionMensual(supabase, 2026, 8, "PROMEDIO")
+    expect(s).toMatchObject({ rate: 1610, muestras: 2, ultima: "2026-08-25" })
+    expect(filtros).toMatchObject({ desde: "2026-08-01", hasta: "2026-08-31" })
+  })
+
+  it("mantiene CIERRE como criterio por defecto", async () => {
+    // Es el que consume `/api/accounting/monthly-exchange-rates`: cambiarlo
+    // movería la cotización de cierre de todas las agencias.
+    const { supabase } = fakeSupabase(agosto)
+    expect((await sugerirCotizacionMensual(supabase, 2026, 8)).rate).toBe(1620)
   })
 })
