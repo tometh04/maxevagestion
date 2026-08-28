@@ -35,7 +35,7 @@ export async function PATCH(
 
     // Filtro explícito por org_id (no confiar en RLS).
     const { data: existing, error: fetchError } = await (supabase.from("cash_movements") as any)
-      .select("id, type, financial_account_id, ledger_movement_id, org_id")
+      .select("id, type, financial_account_id, ledger_movement_id, org_id, notes")
       .eq("id", id)
       .eq("type", "EXPENSE")
       .eq("org_id", userOrgId)
@@ -64,6 +64,35 @@ export async function PATCH(
     }
     if (body.notes !== undefined) updateData.notes = body.notes
     if (body.movement_date !== undefined) updateData.movement_date = body.movement_date
+
+    // Reclasificar una salida de caja como "no es gasto" (o de vuelta a gasto).
+    //
+    // El flag sólo se podía elegir AL CREAR el movimiento: si se cargaba mal,
+    // no había forma de corregirlo salvo borrar y volver a cargar, lo que
+    // significa borrar un egreso que realmente ocurrió. Reportado por Lozada
+    // sobre un ajuste de caja que quedó figurando como gasto.
+    //
+    // La plata no se toca: sigue saliendo de la caja. Lo único que cambia es si
+    // cuenta como gasto de la agencia en los reportes.
+    if (body.is_agency_expense !== undefined) {
+      if (typeof body.is_agency_expense !== "boolean") {
+        return NextResponse.json(
+          { error: "is_agency_expense tiene que ser booleano" },
+          { status: 400 }
+        )
+      }
+      // Mismo criterio que el alta: sacar algo de los gastos exige decir por
+      // qué. El motivo es lo que hace auditable la decisión. Si el movimiento
+      // ya traía notas y no se están cambiando, esas alcanzan.
+      const motivo = body.notes !== undefined ? body.notes : existing.notes
+      if (body.is_agency_expense === false && !String(motivo ?? "").trim()) {
+        return NextResponse.json(
+          { error: "Indicá el motivo: por qué esta salida no es un gasto" },
+          { status: 400 }
+        )
+      }
+      updateData.is_agency_expense = body.is_agency_expense
+    }
 
     if (Object.keys(updateData).length === 0) {
       return NextResponse.json({ error: "No hay campos para actualizar" }, { status: 400 })

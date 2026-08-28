@@ -17,6 +17,7 @@ import { ServerPagination } from "@/components/ui/server-pagination"
 import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
 import Link from "next/link"
 import { CashMovementReverseButton } from "@/components/cash/cash-movement-reverse-button"
+import { CashMovementExpenseFlagButton } from "@/components/cash/cash-movement-expense-flag-button"
 import {
   CashMovementReconciliation,
   type ReconciliationStatus,
@@ -284,12 +285,24 @@ export function MovementsTable({
                       <Undo2 className="h-2.5 w-2.5 mr-1" /> Reverso
                     </Badge>
                   ) : (
-                    <CashMovementReverseButton
-                      movementId={movement.id}
-                      endpoint="cash-movements"
-                      movementLabel={movement.type === "INCOME" ? "ingreso" : "egreso"}
-                      disabled={!canReverse}
-                    />
+                    <div className="flex items-center justify-end gap-1">
+                      {/* Reclasificar sólo aplica a egresos: un ingreso nunca
+                          es un gasto de la agencia. */}
+                      {movement.type === "EXPENSE" && (
+                        <CashMovementExpenseFlagButton
+                          movementId={movement.id}
+                          isAgencyExpense={movement.is_agency_expense !== false}
+                          currentNotes={movement.notes}
+                          disabled={!canReverse}
+                        />
+                      )}
+                      <CashMovementReverseButton
+                        movementId={movement.id}
+                        endpoint="cash-movements"
+                        movementLabel={movement.type === "INCOME" ? "ingreso" : "egreso"}
+                        disabled={!canReverse}
+                      />
+                    </div>
                   )}
                 </TableCell>
               </TableRow>
