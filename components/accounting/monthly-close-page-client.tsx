@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { AlertTriangle, CalendarClock, Lock, Unlock, RefreshCw } from "lucide-react"
+import { OpeningEntryCard } from "./opening-entry-card"
 
 interface Periodo {
   period: string
@@ -190,6 +191,11 @@ export function MonthlyClosePageClient({ agencies }: Props) {
 
       {!loading && estado?.configurado && (
         <>
+          {/* Va primero porque es el punto de partida: sin apertura, los
+              cierres mensuales que vengan después arrancan de un balance
+              incompleto. */}
+          <OpeningEntryCard agencyId={agencyId} />
+
           <p className="text-sm text-muted-foreground">
             Contabilidad desde el {estado.accountingStartDate}. Cierre{" "}
             {estado.autoCloseMonth ? (

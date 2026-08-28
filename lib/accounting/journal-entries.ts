@@ -28,6 +28,9 @@ export type JournalCloseKind =
   | "VENTA_SIN_FACTURAR"
   | "FACTURA_A_RECIBIR"
   | "REVALUACION"
+  // El asiento de apertura va con `close_period` en NULL: no pertenece a un mes,
+  // es el punto desde el que arrancan todos.
+  | "APERTURA"
 
 export interface JournalEntryLine {
   /** ID de la cuenta del plan de cuentas */

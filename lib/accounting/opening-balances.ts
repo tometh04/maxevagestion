@@ -28,6 +28,7 @@ import {
 } from "./opening-entry"
 import { calcularAnticipoAProveedor, calcularAnticipoDeCliente } from "./advances"
 import { esAnticipoCreible, type Anomalia } from "./monthly-close-plan"
+import { createJournalEntry, resolveAccountIds } from "./journal-entries"
 
 const redondear = (n: number) => Math.round(n * 100) / 100
 
@@ -280,4 +281,85 @@ export async function calcularApertura(
   }
 
   return { corte, asientos, cuentasSinPlan, excluidas, anomalias }
+}
+
+export interface ResultadoDeApertura {
+  asientosCreados: number
+  asientosBorrados: number
+  /** Códigos del plan que no se pudieron resolver, si los hubo. */
+  cuentasFaltantes: string[]
+}
+
+/**
+ * Escribe el asiento de apertura de una agencia.
+ *
+ * Borra la apertura anterior y la vuelve a crear. Regenerar es una operación
+ * legítima —el contador puede querer rehacerla después de corregir un saldo— y
+ * no se pierde información al hacerlo: el asiento no registra un hecho, retrata
+ * un estado que se puede volver a calcular.
+ *
+ * Lo que NO se puede es regenerarla a ciegas una vez que hay meses cerrados
+ * encima. Eso lo decide el llamador, que conoce el estado de los períodos.
+ */
+export async function escribirApertura(
+  admin: SupabaseClient<any>,
+  params: AperturaParams & { userId?: string | null }
+): Promise<ResultadoDeApertura> {
+  const apertura = await calcularApertura(admin, params)
+
+  const { data: previos } = await (admin.from("journal_entries") as any)
+    .select("id")
+    .eq("org_id", params.orgId)
+    .eq("agency_id", params.agencyId)
+    .eq("close_kind", "APERTURA")
+
+  const idsPrevios = ((previos ?? []) as any[]).map((r) => r.id)
+  if (idsPrevios.length > 0) {
+    // Las líneas primero: cuelgan del asiento.
+    await (admin.from("ledger_movements") as any).delete().in("journal_entry_id", idsPrevios)
+    await (admin.from("journal_entries") as any).delete().in("id", idsPrevios)
+  }
+
+  const codigos = Array.from(
+    new Set(apertura.asientos.flatMap((a) => a.lineas.map((l) => l.codigo)))
+  )
+  const cuentas = codigos.length > 0 ? await resolveAccountIds(codigos, admin as any, params.orgId) : {}
+  const cuentasFaltantes = codigos.filter((c) => !cuentas[c])
+
+  // Si falta una sola cuenta el asiento no balancea, y un asiento de apertura
+  // desbalanceado deja el balance torcido desde el primer día. Se aborta entero
+  // en vez de escribir una parte.
+  if (cuentasFaltantes.length > 0) {
+    return { asientosCreados: 0, asientosBorrados: idsPrevios.length, cuentasFaltantes }
+  }
+
+  let creados = 0
+  for (const asiento of apertura.asientos) {
+    await createJournalEntry(
+      {
+        entry_date: params.fechaDeInicio,
+        description: `Asiento de apertura en ${asiento.currency}`,
+        source: "MANUAL",
+        currency: asiento.currency as "ARS" | "USD",
+        org_id: params.orgId,
+        agency_id: params.agencyId,
+        close_kind: "APERTURA",
+        created_by: params.userId ?? null,
+        notes:
+          "Saldos al cierre del " +
+          apertura.corte +
+          ". Generado por el sistema a partir de los saldos operativos.",
+        lines: asiento.lineas.map((l) => ({
+          chart_account_id: cuentas[l.codigo],
+          debit_amount: l.debe > 0 ? l.debe : undefined,
+          credit_amount: l.haber > 0 ? l.haber : undefined,
+          concept: l.detalle,
+        })) as any,
+      },
+      admin as any
+    )
+    creados += 1
+  }
+
+  return { asientosCreados: creados, asientosBorrados: idsPrevios.length, cuentasFaltantes: [] }
 }
