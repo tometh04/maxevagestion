@@ -149,6 +149,21 @@ describe("GET /api/reports/societario — parámetros", () => {
     expect((await GET(req("?exchangeRate=0"))).status).toBe(400)
     expect((await GET(req("?exchangeRate=99999999"))).status).toBe(400)
   })
+
+  it("acepta los dos criterios de venta neta y rechaza cualquier otro", async () => {
+    // El criterio cambia la venta neta en un orden de magnitud: un valor no
+    // reconocido tiene que cortar, no caer en silencio al default.
+    login("CONTABLE")
+    expect((await GET(req("?netoIvaCriterio=MARGEN"))).status).toBe(200)
+    expect((await GET(req("?netoIvaCriterio=VENTA"))).status).toBe(200)
+    expect((await GET(req("?netoIvaCriterio=OTRO"))).status).toBe(400)
+  })
+
+  it("el criterio de venta neta no relaja el gate de roles", async () => {
+    login("VIEWER")
+    expect((await GET(req("?netoIvaCriterio=VENTA"))).status).toBe(403)
+    expect((await GET_PDF(req("/pdf?netoIvaCriterio=VENTA"))).status).toBe(403)
+  })
 })
 
 describe("GET /api/reports/societario/pdf", () => {

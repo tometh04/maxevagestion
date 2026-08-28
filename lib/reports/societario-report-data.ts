@@ -19,7 +19,11 @@ import { fetchSalesOperations } from "@/lib/operations/fetch-sales-operations"
 import { fetchOrgPartners, fetchPartnerAllocations } from "@/lib/partners/fetch-partner-accounts"
 import { monthKeysBetween } from "@/lib/reports/period"
 import { loadReportCompany, type ReportCompany } from "@/lib/reports/report-company"
-import { buildSocietarioReport, type SocietarioReport } from "@/lib/reports/societario-report"
+import {
+  buildSocietarioReport,
+  type NetoIvaCriterio,
+  type SocietarioReport,
+} from "@/lib/reports/societario-report"
 
 export type { ReportCompany }
 
@@ -42,6 +46,8 @@ export interface SocietarioReportFilters {
   exchangeRate: number | null
   /** Alícuota en porcentaje, como la eligió el usuario. */
   ivaRatePct: number
+  /** Base del IVA de la venta neta. Viaja hasta acá para imprimirse en el PDF. */
+  netoIvaCriterio: NetoIvaCriterio
 }
 
 export interface SocietarioReportPayload {
@@ -60,6 +66,7 @@ export interface BuildSocietarioReportDataParams {
   exchangeRate?: number | null
   ivaRate: number
   ivaRatePct: number
+  netoIvaCriterio?: NetoIvaCriterio
 }
 
 export async function buildSocietarioReportData(
@@ -74,6 +81,7 @@ export async function buildSocietarioReportData(
     exchangeRate = null,
     ivaRate,
     ivaRatePct,
+    netoIvaCriterio = "MARGEN",
   } = params
 
   const agencyId = params.agencyId && params.agencyId !== "ALL" ? params.agencyId : null
@@ -159,6 +167,7 @@ export async function buildSocietarioReportData(
     referralPartnerNames: referrals.partnerNames,
     currency,
     ivaRate,
+    netoIvaCriterio,
     dateFrom,
     dateTo,
     getRate,
@@ -174,6 +183,7 @@ export async function buildSocietarioReportData(
       agencyName,
       exchangeRate,
       ivaRatePct,
+      netoIvaCriterio,
     },
     report,
   }

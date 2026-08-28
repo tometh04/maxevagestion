@@ -32,6 +32,7 @@ const filters: SocietarioReportFilters = {
   agencyName: null,
   exchangeRate: null,
   ivaRatePct: 10.5,
+  netoIvaCriterio: "MARGEN",
 }
 
 function venta(over: Record<string, any> = {}) {

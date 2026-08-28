@@ -921,3 +921,91 @@ describe("truncado", () => {
     expect(w?.level).toBe("danger")
   })
 })
+
+// ─────────────────────────── Venta neta de IVA ─────────────────────────
+describe("venta neta de IVA", () => {
+  // Venta 10.000, costo 8.000, margen 2.000, alícuota 10,5%.
+  const conVenta = () => [venta()]
+
+  it("por defecto descuenta el IVA sobre el margen", () => {
+    const r = build({ operations: conVenta() })
+    expect(r.ventaNeta.criterio).toBe("MARGEN")
+    expect(r.ventaNeta.bruta).toBe(10000)
+    expect(r.ventaNeta.iva).toBe(210) // 2000 × 10,5%
+    expect(r.ventaNeta.neta).toBe(9790)
+  })
+
+  it("el criterio MARGEN usa exactamente el IVA de la cascada", () => {
+    // Si divergieran, el reporte mostraría dos IVA distintos en la misma hoja.
+    const r = build({ operations: conVenta(), netoIvaCriterio: "MARGEN" })
+    expect(r.ventaNeta.iva).toBe(r.resultado.iva)
+  })
+
+  it("el criterio VENTA trata la venta como IVA incluido", () => {
+    const r = build({ operations: conVenta(), netoIvaCriterio: "VENTA" })
+    expect(r.ventaNeta.neta).toBeCloseTo(10000 / 1.105, 2) // 9049,77
+    expect(r.ventaNeta.iva).toBeCloseTo(10000 - 10000 / 1.105, 2) // 950,23
+  })
+
+  it("VENTA da un IVA mucho mayor que MARGEN, y por eso no entra a la cascada", () => {
+    // El orden de magnitud es el motivo de que esto sea informativo: con datos
+    // reales de Lozada el IVA sobre la venta se come el margen bruto entero.
+    const margen = build({ operations: conVenta(), netoIvaCriterio: "MARGEN" })
+    const venta_ = build({ operations: conVenta(), netoIvaCriterio: "VENTA" })
+    expect(venta_.ventaNeta.iva).toBeGreaterThan(margen.ventaNeta.iva * 4)
+  })
+
+  it("cambiar el criterio NO mueve el resultado ni el reparto entre socios", () => {
+    // Es la decisión de diseño del feature: un selector de presentación no
+    // puede cambiar cuánta plata le toca a cada socio.
+    const args = {
+      operations: conVenta(),
+      expenses: [gasto({ amount: 100 })],
+      commissionRecords: [comision({ amount: 200 })],
+      referralCommissions: [referido({ amount: 50 })],
+      financialMovements: [financiero()],
+      partners: SOCIOS,
+    }
+    const margen = build({ ...args, netoIvaCriterio: "MARGEN" })
+    const venta_ = build({ ...args, netoIvaCriterio: "VENTA" })
+
+    expect(venta_.resultado).toEqual(margen.resultado)
+    expect(venta_.socios).toEqual(margen.socios)
+    expect(venta_.comisiones).toEqual(margen.comisiones)
+    expect(venta_.gastos).toEqual(margen.gastos)
+  })
+
+  it("con alícuota 0 los dos criterios dan neta = bruta", () => {
+    for (const criterio of ["MARGEN", "VENTA"] as const) {
+      const r = build({ operations: conVenta(), ivaRate: 0, netoIvaCriterio: criterio })
+      expect(r.ventaNeta.iva).toBe(0)
+      expect(r.ventaNeta.neta).toBe(r.ventaNeta.bruta)
+    }
+  })
+
+  it("el criterio VENTA avisa que la cascada usa otro IVA", () => {
+    const r = build({ operations: conVenta(), netoIvaCriterio: "VENTA" })
+    const w = r.warnings.find((x) => x.code === "NETO_IVA_CRITERIO_VENTA")
+    expect(w?.level).toBe("warning")
+    expect(w?.message).toMatch(/IVA sobre el margen/)
+  })
+
+  it("el criterio MARGEN no emite ese aviso", () => {
+    const r = build({ operations: conVenta(), netoIvaCriterio: "MARGEN" })
+    expect(r.warnings.some((x) => x.code === "NETO_IVA_CRITERIO_VENTA")).toBe(false)
+  })
+
+  it("una operación con pérdida baja el IVA sobre el margen pero no el de la venta", () => {
+    // Muestra que cada criterio mira una base distinta, no una escala de la otra.
+    const ops = [
+      venta({ id: "gana", sale_amount_total: 10000, operator_cost: 8000, margin_amount: 2000 }),
+      venta({ id: "pierde", sale_amount_total: 1000, operator_cost: 3000, margin_amount: -2000 }),
+    ]
+    const margen = build({ operations: ops, netoIvaCriterio: "MARGEN" })
+    const venta_ = build({ operations: ops, netoIvaCriterio: "VENTA" })
+
+    expect(margen.ventaNeta.iva).toBe(210) // solo el margen positivo
+    expect(venta_.ventaNeta.bruta).toBe(11000)
+    expect(venta_.ventaNeta.iva).toBeCloseTo(11000 - 11000 / 1.105, 2)
+  })
+})

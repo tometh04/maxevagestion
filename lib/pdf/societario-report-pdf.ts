@@ -131,7 +131,7 @@ export function generateSocietarioReportPdf({
 }: SocietarioReportPdfParams): ArrayBuffer {
   const currency = report.currency
   const money = (amount: number) => fmtMoney(amount, currency)
-  const { resultado, ventas, gastos, financiero, comisiones, socios } = report
+  const { resultado, ventas, gastos, financiero, comisiones, socios, ventaNeta } = report
 
   const b = new ReportPdfBuilder({
     company,
@@ -150,6 +150,9 @@ export function generateSocietarioReportPdf({
   b.filtersLine([
     `Oficina: ${filters.agencyName || "Todas"}`,
     `IVA aplicado: ${fmtPct(filters.ivaRatePct)}`,
+    // Sin esto, "venta neta" es un número sin criterio: los dos modos difieren
+    // en un orden de magnitud y el lector no tendría cómo saber cuál está viendo.
+    `Venta neta: IVA sobre ${ventaNeta.criterio === "VENTA" ? "la venta" : "el margen"}`,
     filters.exchangeRate
       ? `TC fijo: ${filters.exchangeRate.toLocaleString("es-AR")}`
       : "TC de la fecha de cada movimiento",
@@ -185,7 +188,9 @@ export function generateSocietarioReportPdf({
     {
       label: "Ventas",
       value: money(ventas.total),
-      hint: `${ventas.count} operaciones`,
+      // Abreviado a propósito: con cinco KPIs el valor se corta, así que la
+      // venta neta viaja en el hint y desarrollada en la nota de abajo.
+      hint: `${ventas.count} ops · neto de IVA ${money(ventaNeta.neta)}`,
     },
     {
       label: "Ganancia bruta",
@@ -231,6 +236,16 @@ export function generateSocietarioReportPdf({
     `El IVA de ${fmtPct(filters.ivaRatePct)} se estima sobre ${money(resultado.ivaBase)} ` +
       `(suma de los márgenes positivos). Es un parámetro de este reporte: el sistema no guarda ` +
       `una alícuota por operación.`
+  )
+  b.note(
+    ventaNeta.criterio === "VENTA"
+      ? `Venta neta de IVA: ${money(ventaNeta.neta)} = ${money(ventaNeta.bruta)} ÷ ` +
+          `${(1 + ventaNeta.ivaRate).toLocaleString("es-AR")}, tratando la venta como IVA incluido. ` +
+          `Ese IVA (${money(ventaNeta.iva)}) es el débito bruto: no netea el crédito fiscal del costo ` +
+          `del operador. La cascada de arriba NO usa este criterio, sigue con el IVA sobre el margen.`
+      : `Venta neta de IVA: ${money(ventaNeta.neta)} = ${money(ventaNeta.bruta)} − ` +
+          `${money(ventaNeta.iva)}, el débito fiscal sobre el margen. Es el criterio de una agencia ` +
+          `de intermediación: el IVA no se calcula sobre el total del paquete.`
   )
   if (gastos.excludedTouristic > 0) {
     b.note(

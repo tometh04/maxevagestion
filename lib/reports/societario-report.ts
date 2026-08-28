@@ -66,6 +66,18 @@ const MARGIN_DRIFT_TOLERANCE = 1
 /** Diferencia aceptable al validar que las participaciones sumen 100. */
 const PERCENTAGE_TOLERANCE = 0.01
 
+/**
+ * Cómo se calcula el IVA que se le descuenta a la venta bruta.
+ *
+ * `MARGEN` es el débito fiscal real de una agencia de intermediación (RG 3166),
+ * el mismo que ya usa la cascada. `VENTA` trata la venta como IVA incluido, que
+ * es como se pide en un estado de resultados por cuenta propia. La diferencia
+ * no es cosmética: con 10,5% sobre ventas reales de Lozada, el segundo criterio
+ * da un IVA diez veces mayor. Por eso es un parámetro explícito del informe y
+ * se imprime en el PDF, en vez de que el número aparezca sin decir de dónde sale.
+ */
+export type NetoIvaCriterio = "MARGEN" | "VENTA"
+
 export type SocietarioWarningCode =
   | "PERCENTAGES_NOT_100"
   | "NO_PARTNERS"
@@ -77,6 +89,7 @@ export type SocietarioWarningCode =
   | "ALLOCATIONS_PARTIAL"
   | "MARGIN_RECALCULATED"
   | "NEGATIVE_RESULT"
+  | "NETO_IVA_CRITERIO_VENTA"
 
 export interface SocietarioWarning {
   code: SocietarioWarningCode
@@ -213,6 +226,22 @@ export interface SocietarioReport {
     missingRate: ReportMissingRate[]
   }
 
+  /**
+   * Venta bruta menos IVA. Es una cifra INFORMATIVA, deliberadamente fuera de
+   * la cascada: el criterio `VENTA` calcula el débito bruto sin netear el
+   * crédito fiscal del costo del operador, así que meterlo en la cascada
+   * cambiaría cuánta plata le toca a cada socio según un selector de pantalla.
+   * La ganancia a repartir sigue usando el IVA sobre el margen en los dos modos.
+   */
+  ventaNeta: {
+    criterio: NetoIvaCriterio
+    /** Fracción (0.105 = 10,5%). */
+    ivaRate: number
+    bruta: number
+    iva: number
+    neta: number
+  }
+
   resultado: {
     ventas: number
     costoOperador: number
@@ -283,6 +312,8 @@ export interface BuildSocietarioReportParams {
   currency: string
   /** Fracción: 0.105 = 10,5%. */
   ivaRate: number
+  /** Base del IVA para la venta neta. Default `"MARGEN"`. */
+  netoIvaCriterio?: NetoIvaCriterio
   dateFrom: string
   dateTo: string
   getRate?: (date: string | Date) => number | null
@@ -383,6 +414,7 @@ export function buildSocietarioReport(params: BuildSocietarioReportParams): Soci
     referralPartnerNames,
     currency,
     ivaRate,
+    netoIvaCriterio = "MARGEN",
     dateFrom,
     dateTo,
     getRate,
@@ -559,6 +591,22 @@ export function buildSocietarioReport(params: BuildSocietarioReportParams): Soci
   const gananciaNeta = roundMoney(
     margenNetoIva - comisionesTotal - gastosTotal + resultadoFinanciero
   )
+
+  // ───────────────────────── Venta neta de IVA ──────────────────────────
+  // Se calcula acá y NO se enchufa a la cascada de arriba. Con el criterio
+  // VENTA el IVA es del orden del margen entero, así que restarlo del resultado
+  // dejaría a los socios repartiendo una pérdida por haber cambiado un selector
+  // de presentación. `gananciaNeta`, `margenNetoIva` y el waterfall son
+  // idénticos en los dos criterios; hay un test que lo fija.
+  const ivaVentaNeta =
+    netoIvaCriterio === "VENTA" ? roundMoney(ventasTotal - ventasTotal / (1 + rate)) : iva
+  const ventaNetaBloque = {
+    criterio: netoIvaCriterio,
+    ivaRate: rate,
+    bruta: roundMoney(ventasTotal),
+    iva: ivaVentaNeta,
+    neta: roundMoney(ventasTotal - ivaVentaNeta),
+  }
 
   // ─────────────────────── Desglose de cada línea ───────────────────────
   const opsHint = new Map(
@@ -778,6 +826,14 @@ export function buildSocietarioReport(params: BuildSocietarioReportParams): Soci
   }
 
   // ───────────────────────────── Warnings ───────────────────────────────
+  if (netoIvaCriterio === "VENTA" && rate > 0) {
+    warnings.push({
+      code: "NETO_IVA_CRITERIO_VENTA",
+      level: "warning",
+      message: `La venta neta se calculó tratando la venta como IVA incluido (venta ÷ ${(1 + rate).toLocaleString("es-AR")}). Ese IVA es el débito bruto: no netea el crédito fiscal del costo del operador. La ganancia a repartir de abajo sigue usando el IVA sobre el margen, que es el débito real de una agencia de intermediación.`,
+    })
+  }
+
   if (activos.length === 0) {
     warnings.push({
       code: "NO_PARTNERS",
@@ -921,6 +977,7 @@ export function buildSocietarioReport(params: BuildSocietarioReportParams): Soci
       truncated: commissionsTruncated,
       missingRate: fxComisiones.missing(),
     },
+    ventaNeta: ventaNetaBloque,
     resultado: {
       ventas: roundMoney(ventasTotal),
       costoOperador: roundMoney(costoTotal),

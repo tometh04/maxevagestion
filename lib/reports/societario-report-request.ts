@@ -22,6 +22,7 @@ import {
   type ResolvedReportRequest,
 } from "@/lib/reports/report-request"
 import { canViewSocietarioReport } from "@/lib/reports/societario-access"
+import type { NetoIvaCriterio } from "@/lib/reports/societario-report"
 
 export { currentMonthRangeAR }
 
@@ -43,6 +44,12 @@ const societarioQuerySchema = baseReportQuerySchema.extend({
    * el IVA como gasto y no quiere estimarlo de nuevo acá.
    */
   ivaRatePct: z.coerce.number().min(0).max(100).optional(),
+  /**
+   * Base del IVA para la línea de venta neta: sobre el margen (débito real de
+   * intermediación) o sobre la venta (IVA incluido). No mueve la cascada; ver
+   * `NetoIvaCriterio` en `societario-report.ts`.
+   */
+  netoIvaCriterio: z.enum(["MARGEN", "VENTA"]).optional(),
 })
 
 export interface SocietarioReportRequestParams {
@@ -58,6 +65,8 @@ export interface SocietarioReportRequestParams {
   ivaRatePct: number
   /** Fracción lista para el agregador (0.105). Se convierte una sola vez, acá. */
   ivaRate: number
+  /** Base del IVA de la venta neta. */
+  netoIvaCriterio: NetoIvaCriterio
 }
 
 export type ResolvedSocietarioReportRequest =
@@ -108,6 +117,7 @@ export async function resolveSocietarioReportRequest(
       exchangeRate: resolved.params.exchangeRate ?? null,
       ivaRatePct,
       ivaRate: ivaRatePct / 100,
+      netoIvaCriterio: resolved.params.netoIvaCriterio ?? "MARGEN",
     },
   }
 }

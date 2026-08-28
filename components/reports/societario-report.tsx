@@ -63,6 +63,7 @@ interface ReportPayload {
     agencyName: string | null
     exchangeRate: number | null
     ivaRatePct: number
+    netoIvaCriterio: "MARGEN" | "VENTA"
   }
   report: {
     currency: string
@@ -108,6 +109,13 @@ interface ReportPayload {
       effectiveRate: number
       excluded: { settled: number; cancelled: number }
       missingRate: Array<{ currency: string; count: number; total: number }>
+    }
+    ventaNeta: {
+      criterio: "MARGEN" | "VENTA"
+      ivaRate: number
+      bruta: number
+      iva: number
+      neta: number
     }
     resultado: {
       ventas: number
@@ -169,15 +177,17 @@ export function SocietarioReport({ agencies }: SocietarioReportProps) {
   const [currency, setCurrency] = useState("USD")
   const [fixedRate, setFixedRate] = useState("")
   const [ivaRatePct, setIvaRatePct] = useState(DEFAULT_IVA_RATE_PCT)
+  const [netoIvaCriterio, setNetoIvaCriterio] = useState("MARGEN")
   const [agencyId, setAgencyId] = useState("ALL")
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams({ dateFrom, dateTo, currency })
     if (fixedRate.trim() !== "" && Number(fixedRate) > 0) params.set("exchangeRate", fixedRate)
     if (ivaRatePct.trim() !== "") params.set("ivaRatePct", ivaRatePct)
+    if (netoIvaCriterio !== "MARGEN") params.set("netoIvaCriterio", netoIvaCriterio)
     if (agencyId !== "ALL") params.set("agencyId", agencyId)
     return params.toString()
-  }, [dateFrom, dateTo, currency, fixedRate, ivaRatePct, agencyId])
+  }, [dateFrom, dateTo, currency, fixedRate, ivaRatePct, netoIvaCriterio, agencyId])
 
   const fetchReport = useCallback(async () => {
     setLoading(true)
@@ -301,7 +311,7 @@ export function SocietarioReport({ agencies }: SocietarioReportProps) {
           </Button>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
+          <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
             <div className="space-y-1.5">
               <Label htmlFor="societario-from">Desde</Label>
               <Input
@@ -349,6 +359,21 @@ export function SocietarioReport({ agencies }: SocietarioReportProps) {
                 value={ivaRatePct}
                 onChange={(e) => setIvaRatePct(e.target.value)}
               />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="societario-neto-iva">Base del IVA</Label>
+              {/* Cambia la venta neta en un orden de magnitud, así que es una
+                  elección explícita y se imprime en el PDF. No mueve la
+                  cascada: ver el bloque `ventaNeta` del agregador. */}
+              <Select value={netoIvaCriterio} onValueChange={setNetoIvaCriterio}>
+                <SelectTrigger id="societario-neto-iva">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="MARGEN">Sobre el margen (intermediación)</SelectItem>
+                  <SelectItem value="VENTA">Sobre la venta (IVA incluido)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="societario-rate">Tipo de cambio</Label>
@@ -447,7 +472,7 @@ export function SocietarioReport({ agencies }: SocietarioReportProps) {
           )}
 
           {/* KPIs */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
             <KpiTile
               label="Ganancia neta a repartir"
               value={money(resultado!.gananciaNeta)}
@@ -458,6 +483,15 @@ export function SocietarioReport({ agencies }: SocietarioReportProps) {
               label="Ventas totales"
               value={money(report.ventas.total)}
               hint={`${report.ventas.count} ventas · ticket ${money(report.ventas.averageTicket)}`}
+            />
+            <KpiTile
+              label="Venta neta de IVA"
+              value={money(report.ventaNeta.neta)}
+              // El hint es obligatorio: entre los dos criterios este número
+              // cambia ~10x, y sin decir cuál se aplicó no significa nada.
+              hint={`IVA ${data!.filters.ivaRatePct}% sobre ${
+                report.ventaNeta.criterio === "VENTA" ? "la venta" : "el margen"
+              } · ${money(report.ventaNeta.iva)}`}
             />
             <KpiTile
               label="Ganancia bruta"
