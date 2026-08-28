@@ -155,6 +155,19 @@ export async function buildSocietarioReportData(
     agencyName = (agency as any)?.name ?? null
   }
 
+  // Nombres de TODAS las oficinas de la org (2-6 filas). `sales.agencyNames`
+  // solo cubre las que tuvieron ventas en el período: una oficina que solo tuvo
+  // gastos aparecería en el cierre sin nombre.
+  //
+  // `.eq("org_id", orgId)` explícito: no se confía en RLS (AGENTS, regla 2).
+  const { data: agenciasDeLaOrg } = await (supabase.from("agencies") as any)
+    .select("id, name")
+    .eq("org_id", orgId)
+  const nombresDeAgencia = new Map<string, string>()
+  for (const a of (agenciasDeLaOrg ?? []) as any[]) {
+    if (a?.id && a?.name) nombresDeAgencia.set(a.id, a.name)
+  }
+
   // Mapa de TC en memoria: una sola query para todo el rango en vez de una por
   // fila. No hace falta si el usuario fijó una cotización única.
   const fechas = [
@@ -191,7 +204,7 @@ export async function buildSocietarioReportData(
     // Nombres para el desglose por concepto. Se prefiere el mapa de ventas
     // para las oficinas porque cubre todas las del período, no solo las que
     // tuvieron comisiones.
-    agencyNames: sales.agencyNames,
+    agencyNames: mergeNames(nombresDeAgencia, sales.agencyNames),
     sellerNames: mergeNames(commissions.sellerNames, sales.sellerNames),
     referralPartnerNames: referrals.partnerNames,
     currency,

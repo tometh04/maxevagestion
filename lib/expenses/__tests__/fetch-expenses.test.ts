@@ -360,3 +360,60 @@ describe("fetchExpenses — gastos fijos vs líneas de asiento", () => {
     expect(ledgerNotCalls.length).toBeGreaterThan(0)
   })
 })
+
+// ==================================================================
+// La oficina que expone cada gasto es la SUYA, no la de la cuenta pagadora.
+//
+// El cierre por oficina del Reporte Societario pone en una fila aparte los
+// gastos sin oficina. Si acá viniera la oficina resuelta con fallback a la
+// cuenta, alquiler y sueldos sin clasificar aterrizarían en la oficina que
+// tiene la cuenta y esa fila quedaría vacía: el pendiente de clasificar se
+// volvería invisible.
+// ==================================================================
+describe("fetchExpenses — oficina propia del gasto", () => {
+  it("el gasto variable expone su agency_id", async () => {
+    const { expenses } = await gastosVariables([
+      movimiento({ id: "con-oficina", agency_id: "ag-1" }),
+      movimiento({ id: "sin-oficina", agency_id: null }),
+    ])
+    expect(expenses.find((e: any) => e.id === "con-oficina")!.agency_id).toBe("ag-1")
+    expect(expenses.find((e: any) => e.id === "sin-oficina")!.agency_id).toBeNull()
+  })
+
+  it("el recurrente sin oficina queda en null aunque la cuenta pagadora tenga una", async () => {
+    const { client } = makeSupabase([], {
+      ledger_movements: [
+        recurrente({ id: "alquiler", concept: "Gasto recurrente: Alquiler compartido" }),
+      ],
+      recurring_payments: [
+        { description: "Alquiler compartido", category_id: null, agency_id: null },
+      ],
+      financial_accounts: [{ id: "acc-1", agency_id: "ag-1" }],
+    })
+    const { expenses } = await fetchExpenses({
+      supabase: client,
+      orgId: "org-1",
+      type: "recurring",
+    })
+    expect(expenses).toHaveLength(1)
+    expect(expenses[0].agency_id).toBeNull()
+  })
+
+  it("el recurrente con oficina propia la expone", async () => {
+    const { client } = makeSupabase([], {
+      ledger_movements: [
+        recurrente({ id: "alq-rosario", concept: "Gasto recurrente: Alquiler Rosario" }),
+      ],
+      recurring_payments: [
+        { description: "Alquiler Rosario", category_id: null, agency_id: "ag-1" },
+      ],
+      financial_accounts: [{ id: "acc-1", agency_id: "ag-2" }],
+    })
+    const { expenses } = await fetchExpenses({
+      supabase: client,
+      orgId: "org-1",
+      type: "recurring",
+    })
+    expect(expenses[0].agency_id).toBe("ag-1")
+  })
+})

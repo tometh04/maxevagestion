@@ -55,6 +55,24 @@ interface WaterfallStep {
   breakdown?: BreakdownRow[]
 }
 
+interface AgencyRow {
+  key: string
+  agencyId: string | null
+  name: string
+  kind: "AGENCY" | "SIN_OFICINA" | "SIN_ASIGNAR" | "TOTAL"
+  operaciones: number
+  ventaBruta: number
+  ivaBase: number
+  iva: number
+  ventaNeta: number
+  costoOperador: number
+  gananciaBruta: number
+  comisionesVendedores: number
+  comisionesReferidores: number
+  comisiones: number
+  gastos: number
+}
+
 interface ReportPayload {
   filters: {
     dateFrom: string
@@ -122,6 +140,11 @@ interface ReportPayload {
       bruta: number
       iva: number
       neta: number
+    }
+    porAgencia: {
+      criterio: "MARGEN" | "VENTA"
+      rows: AgencyRow[]
+      total: AgencyRow
     }
     resultado: {
       ventas: number
@@ -287,6 +310,9 @@ export function SocietarioReport({ agencies }: SocietarioReportProps) {
 
   const report = data?.report
   const sugerido = data?.tipoCambioSugerido ?? null
+  // Con el dataset cortado los totales por oficina no cierran contra la
+  // realidad, así que la tabla de cierre no se muestra.
+  const hayTruncado = report?.warnings.some((w) => w.code === "TRUNCATED") ?? false
   const resultado = report?.resultado
   const socios = report?.socios
   // Un período con sólo movimientos financieros tiene resultado: decir "sin
@@ -532,6 +558,99 @@ export function SocietarioReport({ agencies }: SocietarioReportProps) {
               hint={`${report.comisiones.effectiveRate.toFixed(1)}% de la ganancia bruta`}
             />
           </div>
+
+          {/* Cierre por oficina. Va acá arriba, y no al final, porque es lo que
+              se viene a buscar cuando hay que cerrar el mes.
+              Con el dataset truncado no se muestra: una tabla parcial
+              presentada como cierre es peor que ninguna. */}
+          {report.porAgencia.rows.length > 1 && !hayTruncado && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Cierre por oficina</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Oficina</TableHead>
+                        <TableHead className="text-right">Venta bruta</TableHead>
+                        <TableHead className="text-right">
+                          Venta neta
+                          <span className="block text-[11px] font-normal text-muted-foreground">
+                            IVA sobre {report.porAgencia.criterio === "VENTA" ? "la venta" : "el margen"}
+                          </span>
+                        </TableHead>
+                        <TableHead className="text-right">Comisiones</TableHead>
+                        <TableHead className="text-right">Gastos</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {report.porAgencia.rows.map((row) => (
+                        <TableRow
+                          key={row.key}
+                          className={row.kind === "AGENCY" ? undefined : "text-muted-foreground"}
+                        >
+                          <TableCell className="font-medium">
+                            {row.name}
+                            {row.kind === "AGENCY" && row.operaciones > 0 && (
+                              <span className="ml-2 text-xs font-normal text-muted-foreground">
+                                {row.operaciones} {row.operaciones === 1 ? "operación" : "operaciones"}
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {money(row.ventaBruta)}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {money(row.ventaNeta)}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {money(row.comisiones)}
+                            {row.comisionesReferidores !== 0 && (
+                              <span className="block text-[11px] text-muted-foreground">
+                                incluye {money(row.comisionesReferidores)} de referidores
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">{money(row.gastos)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                    <TableFooter>
+                      <TableRow>
+                        <TableCell className="font-semibold">Total</TableCell>
+                        <TableCell className="text-right font-semibold tabular-nums">
+                          {money(report.porAgencia.total.ventaBruta)}
+                        </TableCell>
+                        <TableCell className="text-right font-semibold tabular-nums">
+                          {money(report.porAgencia.total.ventaNeta)}
+                        </TableCell>
+                        <TableCell className="text-right font-semibold tabular-nums">
+                          {money(report.porAgencia.total.comisiones)}
+                        </TableCell>
+                        <TableCell className="text-right font-semibold tabular-nums">
+                          {money(report.porAgencia.total.gastos)}
+                        </TableCell>
+                      </TableRow>
+                    </TableFooter>
+                  </Table>
+                </div>
+                {report.porAgencia.rows.some((r) => r.kind === "SIN_ASIGNAR") && (
+                  <p className="text-xs text-muted-foreground">
+                    Los gastos sin oficina asignada —alquiler, sueldos, contador— van en su propia
+                    fila y no se reparten entre las oficinas: cómo prorratearlos es una decisión
+                    contable, no del reporte. Suman al total.
+                  </p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  La tabla llega hasta las cifras atribuibles a cada oficina. La ganancia neta a
+                  repartir no se abre por oficina porque los gastos sin asignar y el resultado
+                  financiero no registran cuál les corresponde.
+                </p>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Cascada del resultado */}
           <Card>

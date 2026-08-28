@@ -37,6 +37,17 @@ export interface ExpenseRow {
   financial_accounts: { id: string; name: string; currency: string } | null
   users: { id: string; name: string } | null
   is_paid: boolean
+  /**
+   * Oficina PROPIA del gasto. `null` = sin oficina asignada.
+   *
+   * NO es la oficina resuelta con fallback a la cuenta pagadora: es la que
+   * tiene cargada el gasto (`recurring_payments.agency_id` para los
+   * recurrentes, `cash_movements.agency_id` para los variables). La distinción
+   * importa para el cierre por oficina: si acá viniera la resuelta, un alquiler
+   * sin clasificar aterrizaría en la oficina de la cuenta pagadora y nadie
+   * vería que le falta la oficina.
+   */
+  agency_id: string | null
 }
 
 export interface ExpenseTotals {
@@ -240,6 +251,9 @@ export async function fetchExpenses(
           financial_accounts: e.financial_accounts,
           users: e.users,
           is_paid: true,
+          // La del gasto recurrente, sin fallback a la cuenta pagadora: ver el
+          // comentario de `ExpenseRow.agency_id`.
+          agency_id: recAgencyIdByDescription.get(description) ?? null,
         })
       }
     }
@@ -344,6 +358,7 @@ export async function fetchExpenses(
           financial_accounts: v.financial_accounts,
           users: v.users,
           is_paid: true,
+          agency_id: v.agency_id ?? null,
         })
       }
     }

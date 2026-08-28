@@ -55,6 +55,7 @@ function expense(partial: Partial<ExpenseRow> & { amount: number }): ExpenseRow 
     financial_accounts: { id: "acc-1", name: "Caja Rosario", currency: "ARS" },
     users: { id: "u1", name: "Ana" },
     is_paid: true,
+    agency_id: null,
     ...partial,
   }
 }

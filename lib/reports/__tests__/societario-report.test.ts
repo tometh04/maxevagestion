@@ -64,6 +64,7 @@ function gasto(over: Record<string, any> = {}) {
     financial_accounts: null,
     users: null,
     is_paid: true,
+    agency_id: "ag-1",
     ...over,
   } as any
 }
@@ -124,6 +125,7 @@ function referido(over: Record<string, any> = {}) {
     currency: "USD",
     status: "PENDING",
     operationDate: "2026-07-10",
+    agencyId: "ag-1",
     ...over,
   }
 }
@@ -1007,5 +1009,196 @@ describe("venta neta de IVA", () => {
     expect(margen.ventaNeta.iva).toBe(210) // solo el margen positivo
     expect(venta_.ventaNeta.bruta).toBe(11000)
     expect(venta_.ventaNeta.iva).toBeCloseTo(11000 - 11000 / 1.105, 2)
+  })
+})
+
+// ────────────────────────── Cierre por oficina ─────────────────────────
+describe("cierre por oficina", () => {
+  const NOMBRES = new Map([
+    ["ag-1", "Rosario"],
+    ["ag-2", "Madero"],
+  ])
+
+  /** Dos oficinas con venta, comisión y gasto propios. */
+  const dosOficinas = () => ({
+    operations: [
+      venta({ id: "op-1", agency_id: "ag-1" }),
+      venta({
+        id: "op-2",
+        agency_id: "ag-2",
+        sale_amount_total: 5000,
+        operator_cost: 4000,
+        margin_amount: 1000,
+      }),
+    ],
+    commissionRecords: [
+      comision({ id: "c-1", amount: 200 }),
+      comision({
+        id: "c-2",
+        amount: 100,
+        agency_id: "ag-2",
+        operations: { ...comision().operations, id: "op-2", agency_id: "ag-2" },
+      }),
+    ],
+    referralCommissions: [
+      referido({ id: "r-1", amount: 50, agencyId: "ag-1" }),
+      referido({ id: "r-2", amount: 30, agencyId: "ag-2" }),
+    ],
+    expenses: [
+      gasto({ id: "e-1", amount: 100, agency_id: "ag-1" }),
+      gasto({ id: "e-2", amount: 60, agency_id: "ag-2" }),
+    ],
+    agencyNames: NOMBRES,
+  })
+
+  it("abre las cuatro cifras del cierre por oficina", () => {
+    const r = build(dosOficinas())
+    const rosario = r.porAgencia.rows.find((x) => x.agencyId === "ag-1")!
+    const madero = r.porAgencia.rows.find((x) => x.agencyId === "ag-2")!
+
+    expect(rosario.name).toBe("Rosario")
+    expect(rosario.ventaBruta).toBe(10000)
+    expect(rosario.ventaNeta).toBe(10000 - 210) // IVA sobre margen 2000
+    expect(rosario.comisiones).toBe(250) // 200 vendedor + 50 referidor
+    expect(rosario.gastos).toBe(100)
+
+    expect(madero.ventaBruta).toBe(5000)
+    expect(madero.comisiones).toBe(130)
+    expect(madero.gastos).toBe(60)
+  })
+
+  it("el total sale de sumar las filas y cuadra con el resultado", () => {
+    // Es la invariante que hace auditable la tabla: si una fila se perdiera por
+    // una clave mal armada, el total dejaría de cerrar contra el consolidado.
+    const r = build(dosOficinas())
+    const t = r.porAgencia.total
+
+    expect(t.ventaBruta).toBeCloseTo(r.resultado.ventas, 2)
+    expect(t.iva).toBeCloseTo(r.resultado.iva, 2)
+    expect(t.comisiones).toBeCloseTo(r.resultado.comisiones, 2)
+    expect(t.gastos).toBeCloseTo(r.resultado.gastos, 2)
+    expect(t.gananciaBruta).toBeCloseTo(r.resultado.gananciaBruta, 2)
+    expect(t.ventaNeta).toBeCloseTo(r.ventaNeta.neta, 2)
+  })
+
+  it("el IVA de una oficina sale de SUS márgenes, no de un prorrateo", () => {
+    // Con prorrateo por venta, la oficina que perdió plata se llevaría parte
+    // del débito fiscal que generó la otra.
+    const r = build({
+      operations: [
+        venta({ id: "gana", agency_id: "ag-1" }),
+        venta({
+          id: "pierde",
+          agency_id: "ag-2",
+          sale_amount_total: 5000,
+          operator_cost: 7000,
+          margin_amount: -2000,
+        }),
+      ],
+      agencyNames: NOMBRES,
+    })
+    const rosario = r.porAgencia.rows.find((x) => x.agencyId === "ag-1")!
+    const madero = r.porAgencia.rows.find((x) => x.agencyId === "ag-2")!
+
+    expect(rosario.iva).toBe(210)
+    expect(madero.iva).toBe(0)
+    expect(madero.ivaBase).toBe(0)
+    expect(r.porAgencia.total.iva).toBeCloseTo(r.resultado.iva, 2)
+  })
+
+  it("los gastos sin oficina van a su propia fila y no se prorratean", () => {
+    // Alquiler, sueldos y contador: repartirlos exige una clave de asignación
+    // que es del contador, no del reporte.
+    const base = build(dosOficinas())
+    const conCompartido = build({
+      ...dosOficinas(),
+      expenses: [
+        gasto({ id: "e-1", amount: 100, agency_id: "ag-1" }),
+        gasto({ id: "e-2", amount: 60, agency_id: "ag-2" }),
+        gasto({ id: "e-3", amount: 500, agency_id: null }),
+      ],
+    })
+
+    const filaAg1 = (r: typeof base) => r.porAgencia.rows.find((x) => x.agencyId === "ag-1")!.gastos
+    expect(filaAg1(conCompartido)).toBe(filaAg1(base))
+
+    const sinAsignar = conCompartido.porAgencia.rows.find((x) => x.kind === "SIN_ASIGNAR")!
+    expect(sinAsignar.gastos).toBe(500)
+    expect(conCompartido.porAgencia.total.gastos).toBeCloseTo(conCompartido.resultado.gastos, 2)
+  })
+
+  it("separa las ventas sin oficina de los gastos sin oficina", () => {
+    // Son dos problemas distintos: una venta sin oficina es un dato faltante en
+    // la operación; un gasto sin oficina puede ser un costo compartido.
+    const r = build({
+      operations: [venta({ id: "op-x", agency_id: null })],
+      expenses: [gasto({ id: "e-x", amount: 40, agency_id: null })],
+      agencyNames: NOMBRES,
+    })
+    const kinds = r.porAgencia.rows.map((x) => x.kind)
+    expect(kinds).toContain("SIN_OFICINA")
+    expect(kinds).toContain("SIN_ASIGNAR")
+    expect(r.porAgencia.rows.find((x) => x.kind === "SIN_OFICINA")!.ventaBruta).toBe(10000)
+    expect(r.porAgencia.rows.find((x) => x.kind === "SIN_ASIGNAR")!.gastos).toBe(40)
+  })
+
+  it("imputa la comisión a la oficina de la OPERACIÓN, no a la del registro", () => {
+    // `commission_records.agency_id` puede quedar viejo si la operación cambió
+    // de oficina; usarlo desacoplaría la comisión de su propia venta.
+    const r = build({
+      operations: [venta({ id: "op-1", agency_id: "ag-2" })],
+      commissionRecords: [
+        comision({
+          amount: 200,
+          agency_id: "ag-1", // desactualizado
+          operations: { ...comision().operations, agency_id: "ag-2" },
+        }),
+      ],
+      agencyNames: NOMBRES,
+    })
+    const madero = r.porAgencia.rows.find((x) => x.agencyId === "ag-2")!
+    expect(madero.comisionesVendedores).toBe(200)
+    expect(r.porAgencia.rows.find((x) => x.agencyId === "ag-1")).toBeUndefined()
+  })
+
+  it("consolida las dos monedas por oficina con el mismo TC que el total", () => {
+    const r = build({
+      operations: [
+        venta({ id: "usd", agency_id: "ag-1" }),
+        venta({
+          id: "ars",
+          agency_id: "ag-2",
+          sale_amount_total: 1_500_000,
+          operator_cost: 1_200_000,
+          margin_amount: 300_000,
+          sale_currency: "ARS",
+          currency: "ARS",
+        }),
+      ],
+      currency: "USD",
+      fixedRate: 1500,
+      agencyNames: NOMBRES,
+    })
+    expect(r.porAgencia.rows.find((x) => x.agencyId === "ag-2")!.ventaBruta).toBe(1000)
+    expect(r.porAgencia.total.ventaBruta).toBeCloseTo(r.resultado.ventas, 2)
+  })
+
+  it("respeta el criterio de venta neta elegido", () => {
+    const r = build({ ...dosOficinas(), netoIvaCriterio: "VENTA" })
+    const rosario = r.porAgencia.rows.find((x) => x.agencyId === "ag-1")!
+    expect(r.porAgencia.criterio).toBe("VENTA")
+    expect(rosario.ventaNeta).toBeCloseTo(10000 / 1.105, 2)
+    expect(r.porAgencia.total.ventaNeta).toBeCloseTo(r.ventaNeta.neta, 2)
+  })
+
+  it("una oficina sin nombre cargado no rompe la tabla", () => {
+    const r = build({ operations: [venta({ agency_id: "ag-fantasma" })] })
+    expect(r.porAgencia.rows[0].name).toBe("Oficina sin nombre")
+  })
+
+  it("sin movimientos no inventa filas", () => {
+    const r = build()
+    expect(r.porAgencia.rows).toEqual([])
+    expect(r.porAgencia.total.ventaBruta).toBe(0)
   })
 })

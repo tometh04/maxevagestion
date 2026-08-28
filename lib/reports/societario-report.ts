@@ -162,6 +162,33 @@ export interface SocietarioWaterfallStep {
   breakdown?: SocietarioBreakdownRow[]
 }
 
+/**
+ * Una oficina en el cierre del mes.
+ *
+ * `kind` distingue las oficinas reales de las dos filas residuales, que no son
+ * lo mismo: `SIN_OFICINA` son ventas o comisiones cuya operación no tiene
+ * oficina cargada (dato faltante), y `SIN_ASIGNAR` son gastos sin oficina, que
+ * pueden ser costos compartidos legítimos o pendientes de clasificar.
+ */
+export interface SocietarioAgencyRow {
+  key: string
+  agencyId: string | null
+  name: string
+  kind: "AGENCY" | "SIN_OFICINA" | "SIN_ASIGNAR" | "TOTAL"
+  operaciones: number
+  ventaBruta: number
+  /** Suma de los márgenes positivos de esta oficina. */
+  ivaBase: number
+  iva: number
+  ventaNeta: number
+  costoOperador: number
+  gananciaBruta: number
+  comisionesVendedores: number
+  comisionesReferidores: number
+  comisiones: number
+  gastos: number
+}
+
 export interface SocietarioReport {
   currency: string
   dateFrom: string
@@ -240,6 +267,19 @@ export interface SocietarioReport {
     bruta: number
     iva: number
     neta: number
+  }
+
+  /**
+   * Las cuatro cifras del cierre abiertas por oficina, más el total.
+   *
+   * Llega hasta la ganancia bruta y no más: los gastos sin oficina no son
+   * atribuibles y los movimientos financieros no registran oficina, así que una
+   * ganancia neta por sucursal no sumaría al total ni se podría auditar.
+   */
+  porAgencia: {
+    criterio: NetoIvaCriterio
+    rows: SocietarioAgencyRow[]
+    total: SocietarioAgencyRow
   }
 
   resultado: {
@@ -366,6 +406,17 @@ function convertAllocation(
 const SIN_OFICINA = "Sin oficina"
 
 /**
+ * Clave de los gastos que no tienen oficina cargada.
+ *
+ * Es una clave distinta de `SIN_OFICINA` a propósito: una venta sin oficina es
+ * un dato mal cargado en la operación, y un gasto sin oficina puede ser un
+ * costo compartido legítimo (alquiler, contador) o también un pendiente de
+ * clasificar. Son dos problemas con dos arreglos distintos; juntarlos en una
+ * fila los volvería invisibles a los dos.
+ */
+const SIN_ASIGNAR = "Sin oficina asignada"
+
+/**
  * Convierte un acumulador id → monto en filas de desglose ordenadas de mayor a
  * menor, aplicando el signo de la línea padre y descartando los ceros (una fila
  * en 0 solo agrega ruido a un documento que se presenta).
@@ -447,6 +498,15 @@ export function buildSocietarioReport(params: BuildSocietarioReportParams): Soci
   const ventasPorAgencia = new Map<string, number>()
   const costoPorAgencia = new Map<string, number>()
   const opsPorAgencia = new Map<string, number>()
+  /**
+   * Base del IVA por oficina: la suma de SUS márgenes positivos.
+   *
+   * Se acumula acá y no se prorratea el IVA total según la venta de cada
+   * oficina. Prorratear rompería la regla de "solo márgenes positivos" en
+   * cuanto una oficina tuviera operaciones con pérdida: le asignaría débito
+   * fiscal que no generó.
+   */
+  const ivaBasePorAgencia = new Map<string, number>()
 
   for (const op of operations) {
     const extras = serviceExtras[op.id] ?? { saleExtra: 0, costExtra: 0 }
@@ -478,6 +538,9 @@ export function buildSocietarioReport(params: BuildSocietarioReportParams): Soci
     ventasPorAgencia.set(agencyKey, (ventasPorAgencia.get(agencyKey) || 0) + saleConv)
     costoPorAgencia.set(agencyKey, (costoPorAgencia.get(agencyKey) || 0) + costConv)
     opsPorAgencia.set(agencyKey, (opsPorAgencia.get(agencyKey) || 0) + 1)
+    if (marginConv > 0) {
+      ivaBasePorAgencia.set(agencyKey, (ivaBasePorAgencia.get(agencyKey) || 0) + marginConv)
+    }
 
     const bucket = monthAgg.get(monthKeyOf(opDate))
     if (bucket) {
@@ -511,9 +574,18 @@ export function buildSocietarioReport(params: BuildSocietarioReportParams): Soci
   let gastosTotal = 0
   let gastosRecurring = 0
   let gastosVariable = 0
+  /**
+   * Gastos por oficina. Los que no la tienen van a su propia clave y NO se
+   * prorratean: repartir alquiler y sueldos entre oficinas exige una clave de
+   * asignación (por venta, por headcount, por m²) que no existe en el sistema
+   * y que es una decisión del contador, no del reporte.
+   */
+  const gastosPorAgencia = new Map<string, number>()
   const categoryAgg = new Map<string, { total: number; count: number; color: string | null }>()
   for (const e of gastosConv) {
     gastosTotal += e.convertedAmount
+    const gastoKey = e.agency_id || SIN_ASIGNAR
+    gastosPorAgencia.set(gastoKey, (gastosPorAgencia.get(gastoKey) || 0) + e.convertedAmount)
     if (e.expense_type === "recurring") gastosRecurring += e.convertedAmount
     else gastosVariable += e.convertedAmount
 
@@ -559,6 +631,14 @@ export function buildSocietarioReport(params: BuildSocietarioReportParams): Soci
   // ───────────────────────────── Comisiones ─────────────────────────────
   let comisionesVendedores = 0
   const comisionPorVendedor = new Map<string, number>()
+  /**
+   * Comisiones por oficina, con la de la OPERACIÓN como clave.
+   *
+   * `commission_records.agency_id` existe, pero puede quedar desactualizado si
+   * la operación cambió de oficina. Usar el de la operación es lo que hace que
+   * el ratio comisiones/margen de cada fila reconcilie con su propia venta.
+   */
+  const comisionVendedoresPorAgencia = new Map<string, number>()
   for (const rec of commissionRecords) {
     const monto = fxComisiones.take(
       Number(rec.amount) || 0,
@@ -570,15 +650,26 @@ export function buildSocietarioReport(params: BuildSocietarioReportParams): Soci
     comisionesVendedores += monto
     const key = rec.seller_id || "sin-vendedor"
     comisionPorVendedor.set(key, (comisionPorVendedor.get(key) || 0) + monto)
+    const agKey = (rec.operations as any)?.agency_id || rec.agency_id || SIN_OFICINA
+    comisionVendedoresPorAgencia.set(
+      agKey,
+      (comisionVendedoresPorAgencia.get(agKey) || 0) + monto
+    )
   }
 
   let comisionesReferidos = 0
   const comisionPorReferidor = new Map<string, number>()
+  const comisionReferidoresPorAgencia = new Map<string, number>()
   for (const ref of referralCommissions) {
     const monto = fxComisiones.take(ref.amount, ref.currency, ref.operationDate)
     comisionesReferidos += monto
     const key = ref.partnerId || "sin-referidor"
     comisionPorReferidor.set(key, (comisionPorReferidor.get(key) || 0) + monto)
+    const agKey = ref.agencyId || SIN_OFICINA
+    comisionReferidoresPorAgencia.set(
+      agKey,
+      (comisionReferidoresPorAgencia.get(agKey) || 0) + monto
+    )
   }
 
   const comisionesTotal = comisionesVendedores + comisionesReferidos
@@ -606,6 +697,107 @@ export function buildSocietarioReport(params: BuildSocietarioReportParams): Soci
     bruta: roundMoney(ventasTotal),
     iva: ivaVentaNeta,
     neta: roundMoney(ventasTotal - ivaVentaNeta),
+  }
+
+  // ───────────────────────── Cierre por oficina ─────────────────────────
+  // Las cuatro cifras que se necesitan para cerrar el mes, abiertas por
+  // oficina. Se corta en la ganancia bruta: los gastos sin oficina no son
+  // atribuibles y el resultado financiero no registra oficina, así que una
+  // columna de "ganancia neta por oficina" sería un número que no suma al
+  // total y que nadie podría auditar.
+  const clavesDeAgencia = Array.from(
+    new Set<string>([
+      ...Array.from(ventasPorAgencia.keys()),
+      ...Array.from(costoPorAgencia.keys()),
+      ...Array.from(comisionVendedoresPorAgencia.keys()),
+      ...Array.from(comisionReferidoresPorAgencia.keys()),
+      ...Array.from(gastosPorAgencia.keys()),
+    ])
+  )
+
+  const agencyRows: SocietarioAgencyRow[] = []
+  for (const key of clavesDeAgencia) {
+    const kind: SocietarioAgencyRow["kind"] =
+      key === SIN_ASIGNAR ? "SIN_ASIGNAR" : key === SIN_OFICINA ? "SIN_OFICINA" : "AGENCY"
+
+    const ventaBruta = roundMoney(ventasPorAgencia.get(key) || 0)
+    const costoOperador = roundMoney(costoPorAgencia.get(key) || 0)
+    const baseIva = ivaBasePorAgencia.get(key) || 0
+    // Mismo criterio que el total, aplicado a los números de esta oficina.
+    const ivaFila =
+      netoIvaCriterio === "VENTA"
+        ? roundMoney(ventaBruta - ventaBruta / (1 + rate))
+        : roundMoney(baseIva * rate)
+    const comisionesVendedoresFila = roundMoney(comisionVendedoresPorAgencia.get(key) || 0)
+    const comisionesReferidoresFila = roundMoney(comisionReferidoresPorAgencia.get(key) || 0)
+
+    const fila: SocietarioAgencyRow = {
+      key,
+      agencyId: kind === "AGENCY" ? key : null,
+      name:
+        kind === "AGENCY"
+          ? agencyNames?.get(key) || "Oficina sin nombre"
+          : kind === "SIN_ASIGNAR"
+            ? SIN_ASIGNAR
+            : SIN_OFICINA,
+      kind,
+      operaciones: opsPorAgencia.get(key) || 0,
+      ventaBruta,
+      ivaBase: roundMoney(baseIva),
+      iva: ivaFila,
+      ventaNeta: roundMoney(ventaBruta - ivaFila),
+      costoOperador,
+      gananciaBruta: roundMoney(ventaBruta - costoOperador),
+      comisionesVendedores: comisionesVendedoresFila,
+      comisionesReferidores: comisionesReferidoresFila,
+      comisiones: roundMoney(comisionesVendedoresFila + comisionesReferidoresFila),
+      gastos: roundMoney(gastosPorAgencia.get(key) || 0),
+    }
+
+    // Una fila enteramente en cero solo agrega ruido, igual que en el desglose
+    // de la cascada.
+    const tieneAlgo =
+      fila.operaciones !== 0 ||
+      fila.ventaBruta !== 0 ||
+      fila.comisiones !== 0 ||
+      fila.gastos !== 0 ||
+      fila.costoOperador !== 0
+    if (tieneAlgo) agencyRows.push(fila)
+  }
+
+  // Las oficinas reales primero por venta; las dos filas sin oficina al final,
+  // que es donde se leen como "lo que falta clasificar".
+  const ordenKind: Record<SocietarioAgencyRow["kind"], number> = {
+    AGENCY: 0,
+    SIN_OFICINA: 1,
+    SIN_ASIGNAR: 2,
+    TOTAL: 3,
+  }
+  agencyRows.sort(
+    (a, b) => ordenKind[a.kind] - ordenKind[b.kind] || b.ventaBruta - a.ventaBruta
+  )
+
+  // El total se arma SUMANDO las filas, no recalculando: así, si una fila se
+  // perdiera, el total no cerraría contra `resultado` y el test lo caza.
+  const sumaFilas = (pick: (r: SocietarioAgencyRow) => number) =>
+    roundMoney(agencyRows.reduce((acc, r) => acc + pick(r), 0))
+
+  const agencyTotal: SocietarioAgencyRow = {
+    key: "TOTAL",
+    agencyId: null,
+    name: "Total",
+    kind: "TOTAL",
+    operaciones: agencyRows.reduce((acc, r) => acc + r.operaciones, 0),
+    ventaBruta: sumaFilas((r) => r.ventaBruta),
+    ivaBase: sumaFilas((r) => r.ivaBase),
+    iva: sumaFilas((r) => r.iva),
+    ventaNeta: sumaFilas((r) => r.ventaNeta),
+    costoOperador: sumaFilas((r) => r.costoOperador),
+    gananciaBruta: sumaFilas((r) => r.gananciaBruta),
+    comisionesVendedores: sumaFilas((r) => r.comisionesVendedores),
+    comisionesReferidores: sumaFilas((r) => r.comisionesReferidores),
+    comisiones: sumaFilas((r) => r.comisiones),
+    gastos: sumaFilas((r) => r.gastos),
   }
 
   // ─────────────────────── Desglose de cada línea ───────────────────────
@@ -978,6 +1170,11 @@ export function buildSocietarioReport(params: BuildSocietarioReportParams): Soci
       missingRate: fxComisiones.missing(),
     },
     ventaNeta: ventaNetaBloque,
+    porAgencia: {
+      criterio: netoIvaCriterio,
+      rows: agencyRows,
+      total: agencyTotal,
+    },
     resultado: {
       ventas: roundMoney(ventasTotal),
       costoOperador: roundMoney(costoTotal),

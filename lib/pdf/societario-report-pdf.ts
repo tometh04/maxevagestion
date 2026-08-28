@@ -265,6 +265,83 @@ export function generateSocietarioReportPdf({
     )
   }
 
+  // ============================================== CIERRE POR OFICINA ======
+  // Va después de la cascada —que explica el total— y antes de los socios: la
+  // tabla abre ese mismo total por sucursal.
+  const porAgencia = report.porAgencia
+  const hayTruncado = report.warnings.some((w) => w.code === "TRUNCATED")
+  if (porAgencia.rows.length > 1 && !hayTruncado) {
+    b.ensure(30 + porAgencia.rows.length * 8)
+    b.sectionTitle(
+      "Cierre por oficina",
+      `Venta, venta neta, comisiones y gastos de cada oficina · ${currency}`
+    )
+
+    type Fila = (typeof porAgencia.rows)[number]
+    b.table({
+      columns: [
+        {
+          header: "Oficina",
+          x: MARGIN + 2,
+          width: 52,
+          cell: (row: Fila) => row.name,
+        },
+        {
+          header: "Venta bruta",
+          x: MARGIN + 92,
+          align: "right",
+          cell: (row: Fila) => money(row.ventaBruta),
+        },
+        {
+          header: "Venta neta",
+          x: MARGIN + 122,
+          align: "right",
+          cell: (row: Fila) => money(row.ventaNeta),
+        },
+        {
+          header: "Comisiones",
+          x: MARGIN + 152,
+          align: "right",
+          cell: (row: Fila) => money(row.comisiones),
+        },
+        {
+          header: "Gastos",
+          x: RIGHT - 2,
+          align: "right",
+          cell: (row: Fila) => money(row.gastos),
+        },
+      ],
+      rows: porAgencia.rows,
+      total: {
+        accent: true,
+        cells: [
+          { x: MARGIN + 2, text: "Total" },
+          { x: MARGIN + 92, align: "right", text: money(porAgencia.total.ventaBruta) },
+          { x: MARGIN + 122, align: "right", text: money(porAgencia.total.ventaNeta) },
+          { x: MARGIN + 152, align: "right", text: money(porAgencia.total.comisiones) },
+          { x: RIGHT - 2, align: "right", text: money(porAgencia.total.gastos) },
+        ],
+      },
+    })
+
+    b.note(
+      `La venta neta de cada oficina usa el IVA sobre ${
+        porAgencia.criterio === "VENTA" ? "la venta" : "el margen"
+      }, calculado con sus propios números y no repartiendo el IVA total.`
+    )
+    if (porAgencia.rows.some((r) => r.kind === "SIN_ASIGNAR")) {
+      b.note(
+        `Los gastos sin oficina asignada —alquiler, sueldos, contador— van en su propia fila y no ` +
+          `se prorratean entre las oficinas: cómo repartirlos es una decisión contable. Suman al total.`
+      )
+    }
+    b.note(
+      `La tabla llega hasta las cifras atribuibles a cada oficina. La ganancia neta a repartir no ` +
+        `se abre por sucursal porque los gastos sin asignar y el resultado financiero no registran ` +
+        `a cuál corresponden.`
+    )
+  }
+
   // ========================================================== SOCIOS ======
   b.ensure(24 + socios.rows.length * 8)
   b.sectionTitle(
