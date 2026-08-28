@@ -81,6 +81,20 @@ async function main() {
     )
   }
 
+  if (r.anomalias.length > 0) {
+    console.log(`=== NO REGISTRADO POR NO SER CREÍBLE COMO ANTICIPO: ${r.anomalias.length} ===`)
+    console.log("   Su contrapartida quedó dentro de Resultados Acumulados.\n")
+    console.log(`   ${"Operación".padEnd(24)} ${"Venta/Costo".padStart(18)} ${"Cobrado/Pagado".padStart(18)}`)
+    for (const a of r.anomalias.slice(0, 12)) {
+      console.log(
+        `   ${a.numero.padEnd(24)} ${(a.currency + " " + plata(a.venta)).padStart(18)} ` +
+          `${(a.currency + " " + plata(a.cobrado)).padStart(18)}`
+      )
+    }
+    if (r.anomalias.length > 12) console.log(`   ... y ${r.anomalias.length - 12} más.`)
+    console.log("")
+  }
+
   console.log("--- Nada de esto se escribió. Es solo lectura. ---\n")
 }
 

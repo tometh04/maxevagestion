@@ -27,6 +27,7 @@ import {
   type AsientoDeApertura,
 } from "./opening-entry"
 import { calcularAnticipoAProveedor, calcularAnticipoDeCliente } from "./advances"
+import { esAnticipoCreible, type Anomalia } from "./monthly-close-plan"
 
 const redondear = (n: number) => Math.round(n * 100) / 100
 
@@ -68,6 +69,12 @@ export interface Apertura {
   cuentasSinPlan: string[]
   /** Cuentas de control excluidas a propósito, con el motivo. */
   excluidas: string[]
+  /**
+   * Operaciones cuyo excedente no se registró por no ser creíble como anticipo.
+   * Su contrapartida quedó dentro de Resultados Acumulados; se listan para que
+   * el contador pueda revisarlas y ajustar si corresponde.
+   */
+  anomalias: Anomalia[]
 }
 
 /**
@@ -189,6 +196,8 @@ export async function calcularApertura(
     })
   }
 
+  const anomalias: Anomalia[] = []
+
   for (const op of operaciones) {
     // Cliente: en la moneda de la venta. Deuda y anticipo son excluyentes.
     const anticipoCliente = calcularAnticipoDeCliente({
@@ -196,8 +205,31 @@ export async function calcularApertura(
       pagadoEnMonedaDeLaDeuda: op.cobrado,
     })
     const acCliente = acumulado(op.currency)
+
     if (anticipoCliente.tipo) {
-      acCliente.anticiposDeClientes += anticipoCliente.monto
+      // Mismo criterio que el cierre mensual: un excedente desproporcionado no
+      // es un anticipo, es una venta mal cargada. Registrarlo como pasivo
+      // declararía una deuda con el cliente que la agencia no tiene.
+      //
+      // Al no registrarlo, la plata que efectivamente entró sigue estando en
+      // las cuentas financieras y la contrapartida cae en Resultados
+      // Acumulados, que es exactamente donde corresponde lo que no se puede
+      // explicar: ganancia de origen incierto, no un pasivo inventado.
+      if (esAnticipoCreible(op.ventaDevengada, op.cobrado)) {
+        acCliente.anticiposDeClientes += anticipoCliente.monto
+      } else {
+        anomalias.push({
+          operationId: op.id,
+          numero: op.numero,
+          motivo:
+            op.ventaDevengada < 1
+              ? "La operación no tiene importe de venta cargado, pero registra cobros."
+              : "Los cobros superan la venta por un margen que no se explica como anticipo.",
+          venta: op.ventaDevengada,
+          cobrado: op.cobrado,
+          currency: op.currency,
+        })
+      }
     } else {
       acCliente.cuentasPorCobrar += Math.max(0, op.ventaDevengada - op.cobrado)
     }
@@ -208,8 +240,25 @@ export async function calcularApertura(
       pagadoEnMonedaDeLaDeuda: op.pagadoAOperadores,
     })
     const acOperador = acumulado(op.costCurrency)
+
     if (anticipoProveedor.tipo) {
-      acOperador.anticiposAProveedores += anticipoProveedor.monto
+      // Espejo del anterior: un pago desproporcionado al operador no es un
+      // anticipo, y registrarlo crearía un activo que nadie va a cobrar.
+      if (esAnticipoCreible(op.costoComprometido, op.pagadoAOperadores)) {
+        acOperador.anticiposAProveedores += anticipoProveedor.monto
+      } else {
+        anomalias.push({
+          operationId: op.id,
+          numero: op.numero,
+          motivo:
+            op.costoComprometido < 1
+              ? "La operación no tiene costo de operador cargado, pero registra pagos."
+              : "Los pagos al operador superan el costo por un margen que no se explica como anticipo.",
+          venta: op.costoComprometido,
+          cobrado: op.pagadoAOperadores,
+          currency: op.costCurrency,
+        })
+      }
     } else {
       acOperador.cuentasPorPagar += Math.max(0, op.costoComprometido - op.pagadoAOperadores)
     }
@@ -230,5 +279,5 @@ export async function calcularApertura(
     if (asiento) asientos.push(asiento)
   }
 
-  return { corte, asientos, cuentasSinPlan, excluidas }
+  return { corte, asientos, cuentasSinPlan, excluidas, anomalias }
 }
