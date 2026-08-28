@@ -1,7 +1,7 @@
 "use client"
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { BookOpen, Users, Plane, UserCheck, BarChart3, FileText, BookMarked, ListTree, Scale, Landmark } from "lucide-react"
+import { BookOpen, Users, Plane, UserCheck, BarChart3, FileText, BookMarked, ListTree, Scale, Landmark, CalendarCheck } from "lucide-react"
 import { AccountingSetupBanner } from "./accounting-setup-banner"
 
 interface ContabilidadTabsProps {
@@ -9,6 +9,7 @@ interface ContabilidadTabsProps {
   journalEntriesContent: React.ReactNode
   generalLedgerContent: React.ReactNode
   financialStatementsContent: React.ReactNode
+  monthlyCloseContent: React.ReactNode
   chartOfAccountsContent: React.ReactNode
   debtsSalesContent: React.ReactNode
   operatorPaymentsContent: React.ReactNode
@@ -25,6 +26,7 @@ export function ContabilidadTabs({
   journalEntriesContent,
   generalLedgerContent,
   financialStatementsContent,
+  monthlyCloseContent,
   chartOfAccountsContent,
   debtsSalesContent,
   operatorPaymentsContent,
@@ -39,6 +41,7 @@ export function ContabilidadTabs({
     "asientos",
     "mayor",
     "estados",
+    "cierre",
     "operators",
     "debts",
     "partners",
@@ -72,6 +75,10 @@ export function ContabilidadTabs({
           <TabsTrigger value="estados" className="gap-1.5">
             <Landmark className="h-3.5 w-3.5" />
             Estados Contables
+          </TabsTrigger>
+          <TabsTrigger value="cierre" className="gap-1.5">
+            <CalendarCheck className="h-3.5 w-3.5" />
+            Cierre Mensual
           </TabsTrigger>
           <TabsTrigger value="operators" className="gap-1.5">
             <Plane className="h-3.5 w-3.5" />
@@ -115,6 +122,10 @@ export function ContabilidadTabs({
 
         <TabsContent value="estados" className="mt-6">
           {financialStatementsContent}
+        </TabsContent>
+
+        <TabsContent value="cierre" className="mt-6">
+          {monthlyCloseContent}
         </TabsContent>
 
         <TabsContent value="operators" className="mt-6">

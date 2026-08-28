@@ -99,6 +99,16 @@ const FinancialStatementsPageClient = dynamic(
   }
 )
 
+const MonthlyClosePageClient = dynamic(
+  () =>
+    import("@/components/accounting/monthly-close-page-client").then((m) => ({
+      default: m.MonthlyClosePageClient,
+    })),
+  {
+    loading: () => <Skeleton className="h-[400px] w-full" />,
+  }
+)
+
 const ChartOfAccountsTree = dynamic(
   () =>
     import("@/components/accounting/chart-of-accounts-tree").then((m) => ({
@@ -207,6 +217,9 @@ export default async function ContabilidadPage({
       }
       financialStatementsContent={
         <FinancialStatementsPageClient agencies={agencies} />
+      }
+      monthlyCloseContent={
+        <MonthlyClosePageClient agencies={agencies} />
       }
       chartOfAccountsContent={
         <ChartOfAccountsTree />
