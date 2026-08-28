@@ -1,6 +1,7 @@
 import {
   getServiceExtrasByOperation,
   computeCustomerDebtInSaleCurrency,
+  computeCustomerAdvanceInSaleCurrency,
 } from "../operation-services-debt"
 
 /**
@@ -149,5 +150,46 @@ describe("computeCustomerDebtInSaleCurrency (matriz de daño)", () => {
         includeServices: true,
       })
     ).toBe(2000)
+  })
+})
+
+describe("computeCustomerAdvanceInSaleCurrency", () => {
+  const base = { saleBase: 1000, serviceExtra: 0, includeServices: false }
+
+  it("recupera lo que el clamp de la deuda tiraba", () => {
+    // La deuda muestra 0 porque no existe una deuda negativa. Pero el cliente
+    // pagó 300 de más y la agencia se los debe en servicios.
+    const caso = { ...base, paidNet: 1300 }
+    expect(computeCustomerDebtInSaleCurrency(caso)).toBe(0)
+    expect(computeCustomerAdvanceInSaleCurrency(caso)).toBe(300)
+  })
+
+  it("no hay anticipo si el cliente debe plata", () => {
+    const caso = { ...base, paidNet: 400 }
+    expect(computeCustomerDebtInSaleCurrency(caso)).toBe(600)
+    expect(computeCustomerAdvanceInSaleCurrency(caso)).toBe(0)
+  })
+
+  it("deuda y anticipo nunca son ambos distintos de cero", () => {
+    // Es la propiedad que las mantiene sincronizadas: son las dos mitades del
+    // mismo número. Si alguien cambia el criterio de una sola, esto rompe.
+    for (const paidNet of [0, 250, 999.99, 1000, 1000.01, 1500, 99999]) {
+      const caso = { ...base, paidNet }
+      const deuda = computeCustomerDebtInSaleCurrency(caso)
+      const anticipo = computeCustomerAdvanceInSaleCurrency(caso)
+      expect(deuda === 0 || anticipo === 0).toBe(true)
+      // Y su diferencia siempre reconstruye el saldo real.
+      expect(Math.round((anticipo - deuda) * 100) / 100).toBe(
+        Math.round((paidNet - 1000) * 100) / 100
+      )
+    }
+  })
+
+  it("cuenta los servicios solo si la agencia los suma a la venta", () => {
+    // Con el flag apagado, pagar los servicios aparte se vería como un anticipo
+    // que no existe.
+    const conServicios = { saleBase: 1000, serviceExtra: 200, paidNet: 1150 }
+    expect(computeCustomerAdvanceInSaleCurrency({ ...conServicios, includeServices: true })).toBe(0)
+    expect(computeCustomerAdvanceInSaleCurrency({ ...conServicios, includeServices: false })).toBe(150)
   })
 })
