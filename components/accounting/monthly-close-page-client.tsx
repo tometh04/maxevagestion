@@ -49,6 +49,13 @@ interface Resultado {
   asientosBorrados: number
   anomalias: Anomalia[]
   resumen?: Record<string, { cantidad: number; porMoneda: Record<string, number> }>
+  revaluacion?: {
+    omitido?: string
+    cuentasRevaluadas: number
+    ganancia: number
+    perdida: number
+    monedaFuncional?: string
+  }
 }
 
 interface Props {
@@ -271,6 +278,32 @@ export function MonthlyClosePageClient({ agencies }: Props) {
                       ))}
                   </tbody>
                 </table>
+              )}
+
+              {resultado.revaluacion && (
+                <div className="rounded-md border bg-muted/40 px-3.5 py-3 text-sm">
+                  <p className="font-medium">Revaluación de saldos en otra moneda</p>
+                  {resultado.revaluacion.omitido ? (
+                    <p className="mt-0.5 text-muted-foreground">
+                      No se hizo: {resultado.revaluacion.omitido} Se prefiere no hacerla antes que
+                      valuar con una cotización que no corresponde.
+                    </p>
+                  ) : resultado.revaluacion.cuentasRevaluadas === 0 ? (
+                    <p className="mt-0.5 text-muted-foreground">
+                      No hay saldos en otra moneda que revaluar.
+                    </p>
+                  ) : (
+                    <p className="mt-0.5 text-muted-foreground">
+                      {resultado.revaluacion.cuentasRevaluadas}{" "}
+                      {resultado.revaluacion.cuentasRevaluadas === 1 ? "cuenta" : "cuentas"}.
+                      Ganancia {plata(resultado.revaluacion.ganancia, resultado.revaluacion.monedaFuncional ?? "")}
+                      {" · "}
+                      Pérdida {plata(resultado.revaluacion.perdida, resultado.revaluacion.monedaFuncional ?? "")}.
+                      No cambia la plata que hay en las cuentas, solo su valor en la moneda de los
+                      libros.
+                    </p>
+                  )}
+                </div>
               )}
 
               {resultado.anomalias.length > 0 && (

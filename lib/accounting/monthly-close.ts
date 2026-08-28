@@ -29,7 +29,14 @@ import {
   getServiceExtrasByOperation,
   computeCustomerAdvanceInSaleCurrency,
 } from "./operation-services-debt"
-import { rangoDelPeriodo, puedeCerrar, type Periodo } from "./accounting-periods"
+import {
+  rangoDelPeriodo,
+  periodoAnterior,
+  puedeCerrar,
+  type Periodo,
+} from "./accounting-periods"
+import { getAccountBalancesBatch } from "./ledger"
+import { calcularRevaluacion, CUENTAS_DIFERENCIA } from "./fx-difference"
 import {
   CIERRE_POR_DEFECTO,
   planificarCierre,
@@ -214,6 +221,8 @@ export interface ResultadoDeCierre {
   asientosBorrados: number
   anomalias: Anomalia[]
   resumen?: ReturnType<typeof planificarCierre>["resumen"]
+  /** Qué pasó con la revaluación de saldos en otra moneda. */
+  revaluacion?: ResultadoRevaluacion
 }
 
 /** Lee la configuración de cierre de la agencia. */
@@ -267,7 +276,7 @@ export async function ejecutarCierre(
 
   const { data: settings } = await (admin.from("financial_settings") as any)
     .select(
-      "accounting_start_date, close_anticipos_clientes, close_anticipos_proveedores, close_ventas_sin_facturar, close_facturas_a_recibir"
+      "accounting_start_date, primary_currency, close_anticipos_clientes, close_anticipos_proveedores, close_ventas_sin_facturar, close_facturas_a_recibir"
     )
     .eq("org_id", orgId)
     .eq("agency_id", agencyId)
@@ -359,6 +368,16 @@ export async function ejecutarCierre(
     creados += 1
   }
 
+  // La revaluación va después de los ajustes por operación: mide saldos, y los
+  // ajustes anteriores no los mueven (son reclasificaciones y cuentas de orden).
+  const revaluacion = await revaluarSaldos(admin, {
+    orgId,
+    agencyId,
+    periodo,
+    monedaFuncional: settings.primary_currency || "ARS",
+    userId: params.userId,
+  })
+
   await (admin.from("accounting_periods") as any).upsert(
     {
       org_id: orgId,
@@ -372,9 +391,197 @@ export async function ejecutarCierre(
 
   return {
     ...base,
-    asientosCreados: creados,
+    // La revaluación es un asiento más, con todas las cuentas adentro.
+    asientosCreados: creados + (revaluacion.cuentasRevaluadas > 0 ? 1 : 0),
     asientosBorrados: idsPrevios.length,
     anomalias: plan.anomalias,
     resumen: plan.resumen,
+    revaluacion,
   }
+}
+
+/**
+ * Revaluación de saldos en otra moneda al cierre — VIB-141 (D).
+ *
+ * Una agencia que lleva sus libros en dólares y tiene pesos en la caja no tiene
+ * los mismos dólares al cierre que cuando esos pesos entraron. Esa diferencia es
+ * resultado del período aunque nadie haya movido un peso, y sin registrarla el
+ * estado de resultados omite una ganancia o una pérdida real.
+ *
+ * NO TOCA EL SALDO DE LA CUENTA
+ * -----------------------------
+ * Los pesos que hay en la caja siguen siendo los mismos. Lo que cambia es su
+ * valor expresado en la moneda de los libros. Por eso el asiento va contra
+ * Diferencia de Cambio y las líneas nunca llevan `account_id`.
+ *
+ * CÓMO OPTA LA AGENCIA
+ * --------------------
+ * Cargando su cotización mensual. No hace falta otra perilla: una vez que la
+ * agencia declaró una moneda funcional, revaluar no es opcional contablemente,
+ * y sin cotización del mes no hay forma de hacerlo. Si falta, se informa el
+ * motivo en vez de valuar con una cotización que no corresponde.
+ *
+ * UN SOLO ASIENTO, CON PRESENTACIÓN BRUTA
+ * ---------------------------------------
+ * Todas las cuentas van en el mismo asiento, y las ganancias y las pérdidas se
+ * exponen por separado en vez de netearse. Un contador quiere ver cuánto ganó y
+ * cuánto perdió, no la resta.
+ */
+export interface ResultadoRevaluacion {
+  /** Por qué no se hizo, si no se hizo. */
+  omitido?: string
+  cuentasRevaluadas: number
+  ganancia: number
+  perdida: number
+  monedaFuncional?: string
+}
+
+export async function revaluarSaldos(
+  admin: SupabaseClient<any>,
+  params: {
+    orgId: string
+    agencyId: string
+    periodo: Periodo
+    monedaFuncional: string
+    userId?: string | null
+    simular?: boolean
+  }
+): Promise<ResultadoRevaluacion> {
+  const vacio: ResultadoRevaluacion = {
+    cuentasRevaluadas: 0,
+    ganancia: 0,
+    perdida: 0,
+    monedaFuncional: params.monedaFuncional,
+  }
+
+  const { hasta } = rangoDelPeriodo(params.periodo)
+  const anterior = periodoAnterior(params.periodo)
+
+  const leerCotizacion = async (p: Periodo): Promise<number | null> => {
+    const { data } = await (admin.from("monthly_exchange_rates") as any)
+      .select("usd_to_ars_rate")
+      .eq("org_id", params.orgId)
+      .eq("year", Number(p.slice(0, 4)))
+      .eq("month", Number(p.slice(5, 7)))
+      .maybeSingle()
+    const r = Number(data?.usd_to_ars_rate) || 0
+    return r > 0 ? r : null
+  }
+
+  const cotizacionCierre = await leerCotizacion(params.periodo)
+  if (!cotizacionCierre) {
+    return { ...vacio, omitido: `Falta la cotización mensual de ${params.periodo}.` }
+  }
+
+  // La cotización anterior es a la que están valuados los saldos hoy en los
+  // libros. Sin ella no se puede medir la diferencia, y suponerla sería
+  // inventar el resultado del período.
+  const cotizacionAnterior = await leerCotizacion(anterior)
+  if (!cotizacionAnterior) {
+    return {
+      ...vacio,
+      omitido: `Falta la cotización mensual de ${anterior}, que es contra la que se mide la diferencia.`,
+    }
+  }
+
+  const { data: cuentas } = await (admin.from("financial_accounts") as any)
+    .select("id, name, currency, chart_account_id, agency_id")
+    .eq("org_id", params.orgId)
+    .eq("is_active", true)
+    .neq("currency", params.monedaFuncional)
+
+  const propias = ((cuentas ?? []) as any[]).filter(
+    (c) => c.chart_account_id && (!c.agency_id || c.agency_id === params.agencyId)
+  )
+  if (propias.length === 0) return vacio
+
+  const saldos = await getAccountBalancesBatch(
+    propias.map((c) => c.id),
+    admin as any,
+    hasta
+  )
+
+  const lineas: any[] = []
+  let ganancia = 0
+  let perdida = 0
+  let revaluadas = 0
+
+  for (const c of propias) {
+    const diferencia = calcularRevaluacion({
+      saldo: Number(saldos[c.id]) || 0,
+      monedaSaldo: c.currency,
+      monedaFuncional: params.monedaFuncional as any,
+      cotizacionAnterior,
+      cotizacionCierre,
+    })
+    if (!diferencia.tipo || diferencia.monto <= 0) continue
+
+    revaluadas += 1
+    const esGanancia = diferencia.tipo === "FX_GAIN"
+    if (esGanancia) ganancia += diferencia.monto
+    else perdida += diferencia.monto
+
+    lineas.push({
+      chart_account_id: c.chart_account_id,
+      // Una ganancia sube el valor del activo; una pérdida lo baja.
+      debit_amount: esGanancia ? diferencia.monto : undefined,
+      credit_amount: esGanancia ? undefined : diferencia.monto,
+      concept: `Revaluación — ${c.name}`,
+    })
+  }
+
+  if (lineas.length === 0) return vacio
+
+  const redondear2 = (n: number) => Math.round(n * 100) / 100
+  ganancia = redondear2(ganancia)
+  perdida = redondear2(perdida)
+
+  if (params.simular) {
+    return { ...vacio, cuentasRevaluadas: revaluadas, ganancia, perdida }
+  }
+
+  const codigos = [CUENTAS_DIFERENCIA.FX_GAIN, CUENTAS_DIFERENCIA.FX_LOSS]
+  const cuentasResultado = await resolveAccountIds(codigos, admin as any, params.orgId)
+
+  // Presentación bruta: la ganancia y la pérdida van a cuentas distintas en vez
+  // de netearse. Un contador quiere ver las dos.
+  if (ganancia > 0) {
+    const id = cuentasResultado[CUENTAS_DIFERENCIA.FX_GAIN]
+    if (!id) return { ...vacio, omitido: `Falta la cuenta ${CUENTAS_DIFERENCIA.FX_GAIN} en el plan.` }
+    lineas.push({
+      chart_account_id: id,
+      credit_amount: ganancia,
+      concept: "Diferencia de cambio positiva del período",
+      legacy_type: "FX_GAIN" as const,
+    })
+  }
+  if (perdida > 0) {
+    const id = cuentasResultado[CUENTAS_DIFERENCIA.FX_LOSS]
+    if (!id) return { ...vacio, omitido: `Falta la cuenta ${CUENTAS_DIFERENCIA.FX_LOSS} en el plan.` }
+    lineas.push({
+      chart_account_id: id,
+      debit_amount: perdida,
+      concept: "Diferencia de cambio negativa del período",
+      legacy_type: "FX_LOSS" as const,
+    })
+  }
+
+  await createJournalEntry(
+    {
+      entry_date: hasta,
+      description: `Revaluación de saldos en otra moneda al ${hasta}`,
+      source: "AUTO_FX",
+      currency: params.monedaFuncional as "ARS" | "USD",
+      org_id: params.orgId,
+      agency_id: params.agencyId,
+      close_period: params.periodo,
+      close_kind: "REVALUACION",
+      created_by: params.userId ?? null,
+      notes: `Cotización de cierre ${cotizacionCierre}, anterior ${cotizacionAnterior}.`,
+      lines: lineas,
+    },
+    admin as any
+  )
+
+  return { ...vacio, cuentasRevaluadas: revaluadas, ganancia, perdida }
 }
