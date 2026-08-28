@@ -1,13 +1,14 @@
 "use client"
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { BookOpen, Users, Plane, UserCheck, BarChart3, FileText, BookMarked, ListTree, Scale } from "lucide-react"
+import { BookOpen, Users, Plane, UserCheck, BarChart3, FileText, BookMarked, ListTree, Scale, Landmark } from "lucide-react"
 import { AccountingSetupBanner } from "./accounting-setup-banner"
 
 interface ContabilidadTabsProps {
   ledgerContent: React.ReactNode
   journalEntriesContent: React.ReactNode
   generalLedgerContent: React.ReactNode
+  financialStatementsContent: React.ReactNode
   chartOfAccountsContent: React.ReactNode
   debtsSalesContent: React.ReactNode
   operatorPaymentsContent: React.ReactNode
@@ -23,6 +24,7 @@ export function ContabilidadTabs({
   ledgerContent,
   journalEntriesContent,
   generalLedgerContent,
+  financialStatementsContent,
   chartOfAccountsContent,
   debtsSalesContent,
   operatorPaymentsContent,
@@ -36,6 +38,7 @@ export function ContabilidadTabs({
     "ledger",
     "asientos",
     "mayor",
+    "estados",
     "operators",
     "debts",
     "partners",
@@ -65,6 +68,10 @@ export function ContabilidadTabs({
           <TabsTrigger value="mayor" className="gap-1.5">
             <Scale className="h-3.5 w-3.5" />
             Mayor por Cuenta
+          </TabsTrigger>
+          <TabsTrigger value="estados" className="gap-1.5">
+            <Landmark className="h-3.5 w-3.5" />
+            Estados Contables
           </TabsTrigger>
           <TabsTrigger value="operators" className="gap-1.5">
             <Plane className="h-3.5 w-3.5" />
@@ -104,6 +111,10 @@ export function ContabilidadTabs({
 
         <TabsContent value="mayor" className="mt-6">
           {generalLedgerContent}
+        </TabsContent>
+
+        <TabsContent value="estados" className="mt-6">
+          {financialStatementsContent}
         </TabsContent>
 
         <TabsContent value="operators" className="mt-6">
