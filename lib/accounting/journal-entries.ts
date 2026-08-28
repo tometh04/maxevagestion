@@ -21,6 +21,14 @@ export type JournalEntrySource =
   | "AUTO_COMMISSION"
   | "AUTO_FX"
 
+/** Los ajustes que genera el cierre mensual. Espeja el CHECK de la columna. */
+export type JournalCloseKind =
+  | "ANTICIPO_CLIENTE"
+  | "ANTICIPO_PROVEEDOR"
+  | "VENTA_SIN_FACTURAR"
+  | "FACTURA_A_RECIBIR"
+  | "REVALUACION"
+
 export interface JournalEntryLine {
   /** ID de la cuenta del plan de cuentas */
   chart_account_id: string
@@ -103,6 +111,17 @@ export interface CreateJournalEntryParams {
    * reporte, que sigue siendo consolidado por defecto.
    */
   agency_id?: string | null
+  /**
+   * Período de cierre (AAAA-MM) y tipo de ajuste, para los asientos que genera
+   * el cierre mensual (VIB-141). Juntos son la clave de idempotencia: la base
+   * tiene un índice único sobre (org, agencia, período, tipo, operación), así
+   * que recalcular un mes no puede duplicar sus ajustes.
+   *
+   * Van en NULL en todo asiento que nazca de un hecho puntual.
+   */
+  close_period?: string | null
+  close_kind?: JournalCloseKind | null
+
   /** Usuario que crea */
   created_by?: string | null
   /** Notas del asiento */
@@ -153,7 +172,7 @@ export async function createJournalEntry(
   params: CreateJournalEntryParams,
   supabase: SupabaseClient<Database>
 ): Promise<JournalEntry> {
-  const { lines, entry_date, description, source, currency = "ARS", exchange_rate, created_by, operation_id, notes, org_id, entry_kind, source_movement_id, agency_id } = params
+  const { lines, entry_date, description, source, currency = "ARS", exchange_rate, created_by, operation_id, notes, org_id, entry_kind, source_movement_id, agency_id, close_period, close_kind } = params
 
   // Validar mínimo 2 líneas
   if (lines.length < 2) {
@@ -238,6 +257,8 @@ export async function createJournalEntry(
     p_entry_kind: entry_kind ?? null,
     p_source_movement_id: source_movement_id ?? null,
     p_agency_id: agency_id ?? null,
+    p_close_period: close_period ?? null,
+    p_close_kind: close_kind ?? null,
     p_created_by: created_by || null,
     p_notes: notes || null,
   })
@@ -283,6 +304,8 @@ export async function createJournalEntry(
       entry_kind: entry_kind ?? null,
       source_movement_id: source_movement_id ?? null,
       agency_id: agency_id ?? null,
+      close_period: close_period ?? null,
+      close_kind: close_kind ?? null,
     })
     .select("id, entry_number, entry_date, description, source, total_amount, currency")
     .single()

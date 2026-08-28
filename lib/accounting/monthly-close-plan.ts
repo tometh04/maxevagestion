@@ -133,6 +133,45 @@ export const CUENTAS_DEL_AJUSTE: Record<TipoDeAjuste, { debe: string; haber: str
   },
 }
 
+/**
+ * Cuántas veces la venta puede superarse antes de que deje de ser un anticipo.
+ *
+ * Un cliente que paga un 5% de más está anticipando. Uno que paga 58 veces la
+ * venta no: ese número salió de una venta mal cargada. El caso es real y está
+ * medido: en las operaciones importadas de Lozada Rosario hay una con venta
+ * USD 100 y cobros por USD 5.850, y el operador cobró 5.208 — o sea que la
+ * venta verdadera rondaba los 5.850 y el 100 es el dato equivocado.
+ *
+ * Asentar eso crearía un pasivo de USD 5.750 que la agencia no le debe a nadie.
+ * El umbral es deliberadamente holgado: prefiere dejar pasar un dato raro antes
+ * que descartar un anticipo legítimo, porque lo que se descarta se informa y
+ * alguien lo mira, mientras que lo que se asienta mal se vuelve un pasivo que
+ * nadie cuestiona.
+ */
+export const FACTOR_IMPLAUSIBLE = 3
+
+export interface Anomalia {
+  operationId: string
+  numero: string
+  motivo: string
+  venta: number
+  cobrado: number
+  currency: string
+}
+
+/**
+ * Si el excedente de una operación es creíble como anticipo.
+ *
+ * Una venta en cero o casi cero no permite juzgar proporción alguna, y es
+ * justamente la forma que toma el dato faltante, así que se trata aparte.
+ */
+export function esAnticipoCreible(venta: number, cobrado: number): boolean {
+  const v = Number(venta) || 0
+  const c = Number(cobrado) || 0
+  if (v < 1) return false
+  return c <= v * FACTOR_IMPLAUSIBLE
+}
+
 /** Los ajustes que corresponden a una operación. Puede devolver varios. */
 export function planificarOperacion(
   op: OperacionAlCierre,
@@ -158,7 +197,10 @@ export function planificarOperacion(
       venta: op.ventaDevengada,
       pagadoEnMonedaDeLaDeuda: op.cobrado,
     })
-    if (a.tipo) agregar("ANTICIPO_CLIENTE", a.monto, op.currency, "Anticipo de cliente")
+    // El excedente implausible NO se asienta: se informa. Ver esAnticipoCreible.
+    if (a.tipo && esAnticipoCreible(op.ventaDevengada, op.cobrado)) {
+      agregar("ANTICIPO_CLIENTE", a.monto, op.currency, "Anticipo de cliente")
+    }
   }
 
   if (config.anticipos_proveedores) {
@@ -192,6 +234,13 @@ export function planificarOperacion(
 
 export interface PlanDeCierre {
   ajustes: AjustePlanificado[]
+  /**
+   * Excedentes que NO se asentaron por implausibles. No son un error del
+   * cierre: son operaciones con un dato mal cargado que alguien tiene que
+   * mirar. Se informan en vez de descartarse en silencio, que es la diferencia
+   * entre un sistema contable y uno que esconde lo que no entiende.
+   */
+  anomalias: Anomalia[]
   /** Cuántos ajustes de cada tipo, para mostrar el resultado sin recontar. */
   resumen: Record<TipoDeAjuste, { cantidad: number; porMoneda: Record<string, number> }>
 }
@@ -202,6 +251,26 @@ export function planificarCierre(
   config: ConfiguracionDeCierre
 ): PlanDeCierre {
   const ajustes = operaciones.flatMap((op) => planificarOperacion(op, config))
+
+  const anomalias: Anomalia[] = []
+  if (config.anticipos_clientes) {
+    for (const op of operaciones) {
+      const excedente = (Number(op.cobrado) || 0) - (Number(op.ventaDevengada) || 0)
+      if (excedente >= 0.01 && !esAnticipoCreible(op.ventaDevengada, op.cobrado)) {
+        anomalias.push({
+          operationId: op.id,
+          numero: op.numero,
+          motivo:
+            op.ventaDevengada < 1
+              ? "La operación no tiene importe de venta cargado, pero registra cobros."
+              : `Los cobros superan la venta más de ${FACTOR_IMPLAUSIBLE} veces.`,
+          venta: Number(op.ventaDevengada) || 0,
+          cobrado: Number(op.cobrado) || 0,
+          currency: op.currency,
+        })
+      }
+    }
+  }
 
   const resumen: PlanDeCierre["resumen"] = {
     ANTICIPO_CLIENTE: { cantidad: 0, porMoneda: {} },
@@ -218,5 +287,5 @@ export function planificarCierre(
     r.porMoneda[a.currency] = Math.round(((r.porMoneda[a.currency] ?? 0) + a.monto) * 100) / 100
   }
 
-  return { ajustes, resumen }
+  return { ajustes, anomalias, resumen }
 }

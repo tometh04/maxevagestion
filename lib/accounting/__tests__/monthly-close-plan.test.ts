@@ -13,6 +13,8 @@
  */
 import {
   CIERRE_POR_DEFECTO,
+  esAnticipoCreible,
+  FACTOR_IMPLAUSIBLE,
   CUENTAS_DEL_AJUSTE,
   planificarCierre,
   planificarOperacion,
@@ -95,7 +97,9 @@ describe("un cierre no mezcla monedas", () => {
     const plan = planificarCierre(
       [
         op({ id: "a", currency: "USD", ventaDevengada: 100, cobrado: 150 }),
-        op({ id: "b", currency: "ARS", ventaDevengada: 1000, cobrado: 4000 }),
+        // La venta es 2000 y no 1000 para que el sobrepago quede dentro de lo
+        // creíble: cobrar 4 veces la venta ya lo trata como dato mal cargado.
+        op({ id: "b", currency: "ARS", ventaDevengada: 2000, cobrado: 5000 }),
         op({ id: "c", currency: "USD", ventaDevengada: 100, cobrado: 180 }),
       ],
       { ...CIERRE_POR_DEFECTO, anticipos_proveedores: false }
@@ -217,5 +221,52 @@ describe("planificarCierre", () => {
     )
     expect(plan.ajustes[0].operationId).toBe("abc")
     expect(plan.ajustes[0].concepto).toContain("OP-20260901-XYZ")
+  })
+})
+
+describe("un excedente implausible no es un anticipo", () => {
+  it("un sobrepago chico sí lo es", () => {
+    // Anticipar el 20% de un viaje es lo más normal del mundo.
+    expect(esAnticipoCreible(1000, 1200)).toBe(true)
+  })
+
+  it("cobrar 58 veces la venta no lo es", () => {
+    // Caso real de Lozada Rosario: venta importada USD 100, cobros USD 5.850,
+    // y el operador cobró 5.208. La venta verdadera rondaba los 5.850.
+    expect(esAnticipoCreible(100, 5850)).toBe(false)
+  })
+
+  it("una operación sin venta cargada nunca genera anticipo", () => {
+    // Es la forma que toma el dato faltante, y con venta 0 no hay proporción
+    // que juzgar. Asentarlo crearía un pasivo del total cobrado.
+    expect(esAnticipoCreible(0, 5000)).toBe(false)
+    expect(esAnticipoCreible(1, 323108)).toBe(false)
+  })
+
+  it("el umbral está justo donde dice estar", () => {
+    expect(esAnticipoCreible(100, 100 * FACTOR_IMPLAUSIBLE)).toBe(true)
+    expect(esAnticipoCreible(100, 100 * FACTOR_IMPLAUSIBLE + 0.01)).toBe(false)
+  })
+
+  it("el plan no lo asienta, pero lo informa", () => {
+    // Lo que importa: no desaparece. Alguien lo tiene que mirar.
+    const plan = planificarCierre(
+      [
+        op({ id: "sana", numero: "OP-1", ventaDevengada: 1000, cobrado: 1200 }),
+        op({ id: "rota", numero: "OP-2", ventaDevengada: 100, cobrado: 5850 }),
+      ],
+      { ...CIERRE_POR_DEFECTO, anticipos_proveedores: false }
+    )
+
+    expect(plan.ajustes).toHaveLength(1)
+    expect(plan.ajustes[0].operationId).toBe("sana")
+
+    expect(plan.anomalias).toHaveLength(1)
+    expect(plan.anomalias[0]).toMatchObject({ operationId: "rota", numero: "OP-2" })
+  })
+
+  it("una operación saldada no aparece como anomalía", () => {
+    const plan = planificarCierre([op()], CIERRE_POR_DEFECTO)
+    expect(plan.anomalias).toEqual([])
   })
 })
