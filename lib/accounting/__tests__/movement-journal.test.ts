@@ -255,3 +255,42 @@ describe("createMovementJournalEntry — casos que se saltean sin romper", () =>
     expect(journal.createJournalEntry).not.toHaveBeenCalled()
   })
 })
+
+/**
+ * Diferencia de cambio — VIB-141 / D1.
+ *
+ * Lo que se fija acá es el contrato contable del espejo, que es donde estaba el
+ * riesgo de doble conteo: el movimiento de plata sigue existiendo y afectando
+ * el saldo igual que antes, y el asiento se suma aparte contra las cuentas de
+ * resultado que hasta ahora estaban huérfanas.
+ */
+describe("contrapartidas de la diferencia de cambio", () => {
+  it("la ganancia va contra Diferencia de Cambio Positiva", () => {
+    expect(COUNTERPART_CODES.FX_GAIN).toBe(ACCOUNT_CODES.DIF_CAMBIO_POSITIVA)
+  })
+
+  it("la pérdida va contra Diferencia de Cambio Negativa", () => {
+    expect(COUNTERPART_CODES.FX_LOSS).toBe(ACCOUNT_CODES.DIF_CAMBIO_NEGATIVA)
+  })
+
+  it("las dos son cuentas de resultado, y de signo opuesto", () => {
+    // La ganancia es un ingreso (4.1) y la pérdida un gasto (4.3). Si las dos
+    // cayeran en la misma familia, el resultado del período saldría con el
+    // signo equivocado en uno de los dos casos.
+    expect(COUNTERPART_CODES.FX_GAIN.startsWith("4.1")).toBe(true)
+    expect(COUNTERPART_CODES.FX_LOSS.startsWith("4.3")).toBe(true)
+  })
+
+  it("no comparten cuenta con ningún otro flujo", () => {
+    // Reutilizar una cuenta de otro flujo mezclaría la diferencia de cambio con
+    // ventas o gastos administrativos, y el contador no podría separarlas.
+    const otras = [
+      COUNTERPART_CODES.CUSTOMER_COLLECTION,
+      COUNTERPART_CODES.OPERATOR_PAYMENT,
+      COUNTERPART_CODES.COMMISSION_PAYMENT,
+      COUNTERPART_CODES.EXPENSE,
+    ]
+    expect(otras).not.toContain(COUNTERPART_CODES.FX_GAIN)
+    expect(otras).not.toContain(COUNTERPART_CODES.FX_LOSS)
+  })
+})

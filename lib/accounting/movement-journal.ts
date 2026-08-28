@@ -94,6 +94,20 @@ export const COUNTERPART_CODES = {
    * nunca los importes.
    */
   EXPENSE: ACCOUNT_CODES.GASTOS_ADMIN,
+  /**
+   * Diferencia de cambio al cobrar (VIB-141 / D1).
+   *
+   * El movimiento de plata que ya existe NO se toca: sigue afectando el saldo
+   * igual que antes, así que ninguna pantalla cambia. Lo que se agrega es el
+   * asiento, que hasta ahora no existía y dejaba a 4.1.05 y 4.3.13 huérfanas
+   * pese a estar en el plan de las 22 organizaciones.
+   *
+   * Espejar en vez de reemplazar es lo que evita el doble conteo que advierte
+   * la issue: la línea del asiento va con `account_id` nulo y
+   * `affects_balance = false`, así que no puede sumar al saldo por segunda vez.
+   */
+  FX_GAIN: ACCOUNT_CODES.DIF_CAMBIO_POSITIVA,
+  FX_LOSS: ACCOUNT_CODES.DIF_CAMBIO_NEGATIVA,
 } as const
 
 /** Postgres: violación de unique. Acá significa "ya lo asentó otro". */

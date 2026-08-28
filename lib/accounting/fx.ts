@@ -21,6 +21,47 @@ import { getExchangeRate, getLatestExchangeRate } from "./exchange-rates"
  * - Una venta fue en USD y se pagó en ARS, y el ARS pagado > ARS equivalente registrado en la venta
  * - O viceversa (venta en ARS, pago en USD)
  */
+/**
+ * Espeja el movimiento de diferencia de cambio como asiento — VIB-141 / D1.
+ *
+ * El movimiento de plata NO se toca: sigue afectando el saldo igual que antes,
+ * así que ninguna pantalla cambia. Lo que se agrega es el asiento contra
+ * `4.1.05` / `4.3.13`, que hasta ahora no existía y dejaba esas dos cuentas
+ * huérfanas pese a estar en el plan de las 22 organizaciones.
+ *
+ * Espejar en vez de reemplazar es lo que evita el doble conteo que advierte la
+ * issue: la línea del asiento va con `account_id` nulo y
+ * `affects_balance = false`, así que no puede sumar al saldo por segunda vez.
+ *
+ * Nunca lanza. Si asentar falla, la diferencia de cambio ya quedó bien en la
+ * caja y lo único pendiente es su reflejo contable; romper el cobro por eso
+ * sería mucho peor para la agencia.
+ */
+async function asentarDiferenciaDeCambio(
+  movementId: string,
+  fxType: "FX_GAIN" | "FX_LOSS",
+  descripcion: string,
+  supabase: SupabaseClient<Database>
+): Promise<void> {
+  try {
+    const { createMovementJournalEntry, COUNTERPART_CODES } = await import("./movement-journal")
+    await createMovementJournalEntry(
+      {
+        movementId,
+        counterpartCode:
+          fxType === "FX_GAIN" ? COUNTERPART_CODES.FX_GAIN : COUNTERPART_CODES.FX_LOSS,
+        // Una ganancia por diferencia de cambio entra a la cuenta y una pérdida
+        // sale: el mismo signo con el que el movimiento afecta el saldo.
+        direction: fxType === "FX_GAIN" ? "IN" : "OUT",
+        description: descripcion,
+      },
+      supabase
+    )
+  } catch (error) {
+    console.error("[fx] No se pudo asentar la diferencia de cambio:", error)
+  }
+}
+
 export async function calculateAndRecordFX(
   supabase: SupabaseClient<Database>,
   operationId: string,
@@ -61,7 +102,7 @@ export async function calculateAndRecordFX(
   const defaultAccountId = await getOrCreateDefaultAccount("CASH", "ARS", userId, supabase)
 
   // Crear ledger movement para FX
-  await createLedgerMovement(
+  const fxMovement = await createLedgerMovement(
     {
       operation_id: operationId,
       type: fxType,
@@ -80,6 +121,15 @@ export async function calculateAndRecordFX(
     },
     supabase
   )
+
+  if (fxMovement?.id) {
+    await asentarDiferenciaDeCambio(
+      fxMovement.id,
+      fxType,
+      `Diferencia de cambio ${fxType === "FX_GAIN" ? "positiva" : "negativa"}: ${saleCurrency} → ${paymentCurrency}`,
+      supabase
+    )
+  }
 
   return { fxType, fxAmount }
 }
@@ -251,7 +301,7 @@ export async function autoCalculateFXForPayment(
   const defaultAccountId = await getOrCreateDefaultAccount("CASH", "ARS", userId, supabase)
 
   // Crear ledger movement para FX
-  await createLedgerMovement(
+  const fxMovement = await createLedgerMovement(
     {
       operation_id: operationId,
       type: fxType,
@@ -270,6 +320,15 @@ export async function autoCalculateFXForPayment(
     },
     supabase
   )
+
+  if (fxMovement?.id) {
+    await asentarDiferenciaDeCambio(
+      fxMovement.id,
+      fxType,
+      `Diferencia de cambio ${fxType === "FX_GAIN" ? "positiva" : "negativa"} — operación ${operationId.slice(0, 8)}`,
+      supabase
+    )
+  }
 
   return { fxType, fxAmount }
 }
