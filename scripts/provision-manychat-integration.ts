@@ -18,14 +18,23 @@
  * Imprime el token y el secret EN CLARO una sola vez. No escribe en la base:
  * deja el SQL listo para revisar y correr.
  *
- * Uso (desde root del repo):
- *   npx tsx scripts/provision-manychat-integration.ts <org_id | email_de_un_usuario>
+ * Uso RECOMENDADO (inyecta las variables de prod sin escribirlas a disco):
+ *   railway link --project "Vibook - Sistema de Gestion" --environment production
+ *   railway run npx tsx scripts/provision-manychat-integration.ts <org_id | email>
  *
- * Requiere .env.local con:
+ * La clave de cifrado NUNCA tiene que quedar en un archivo local: con
+ * `railway run` vive solo en el proceso. `dotenv` no pisa variables que ya
+ * existen en el entorno, asi que lo que inyecta Railway gana sobre .env.local.
+ *
+ * Uso alternativo (requiere las tres variables en .env.local):
+ *   npx tsx scripts/provision-manychat-integration.ts <org_id | email>
+ *
+ * Variables necesarias:
  *   NEXT_PUBLIC_SUPABASE_URL
  *   SUPABASE_SERVICE_ROLE_KEY
  *   WEBHOOK_SECRET_ENCRYPTION_KEY  (la MISMA que usa prod, si no el secret no
- *                                   se puede desencriptar al verificar la firma)
+ *                                   se puede desencriptar al verificar la firma
+ *                                   y el endpoint devuelve 500 en cada request)
  */
 
 import { createClient } from "@supabase/supabase-js"
@@ -112,7 +121,10 @@ async function main() {
     webhook_secret_encrypted = encryptSecret(webhook_secret_plain)
   } catch (err: any) {
     console.error(`Error encriptando el secret: ${err.message}`)
-    console.error("Falta WEBHOOK_SECRET_ENCRYPTION_KEY en .env.local (la misma que prod).")
+    console.error("Falta WEBHOOK_SECRET_ENCRYPTION_KEY, o no es la de produccion.")
+    console.error("Camino recomendado, sin dejar la clave en disco:")
+    console.error('  railway link --project "Vibook - Sistema de Gestion" --environment production')
+    console.error("  railway run npx tsx scripts/provision-manychat-integration.ts <org_id>")
     process.exit(1)
   }
 
@@ -156,8 +168,21 @@ WHERE id = '${existing.id}';`)
 );`)
   }
 
+  // Pre-carga del smoke test de Agente Blanco. Su boton "Probar conexion" manda
+  // SIEMPRE event_id = "agenteblanco-smoke-test" (constante, igual para todos
+  // los clientes). Al existir la fila, el insert de idempotencia choca contra
+  // UNIQUE (org_id, integration, event_id) y el endpoint corta con
+  // 200 {"status":"duplicate"} ANTES de crear el lead: valida token, firma y
+  // secreto sin ensuciar el tablero, y es repetible.
+  // La unicidad es por org, asi que cada cliente necesita su propia fila.
+  console.log(`
+-- Pre-carga del smoke test (sin esto, "Probar conexion" CREA un lead real)
+INSERT INTO webhook_event_log (org_id, integration, event_id, event_type, payload, result)
+VALUES ('${orgId}', 'manychat', 'agenteblanco-smoke-test', 'lead', '{}'::jsonb, 'ignored')
+ON CONFLICT (org_id, integration, event_id) DO NOTHING;`)
+
   console.log("\nSmoke test (firma el body crudo con HMAC-SHA256, digest hex):\n")
-  console.log(`BODY='{"event_id":"smoke-1","source":"agenteblanco","agency":"${agencies[0].name}","whatsapp":"+5491100000000","name":"Smoke Test","phase":"initial"}'
+  console.log(`BODY='{"event_id":"agenteblanco-smoke-test","source":"agenteblanco","agency":"${agencies[0].name}"}'
 SIG=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac '${webhook_secret_plain}' -hex | sed 's/^.*= //')
 curl -X POST '${url}' \
   -H 'Content-Type: application/json' \
@@ -174,7 +199,10 @@ Notas para el integrador:
   - Un token por ORG. No mezclar clientes en un mismo token: la org sale del
     token y el \`agency\` del body solo elige entre las agencias de ESA org.
   - Respuestas: 201 creado, 200 actualizado, 401 firma invalida, 404 token
-    desconocido o inactivo.`)
+    desconocido o inactivo.
+  - Smoke test con event_id "agenteblanco-smoke-test", una vez pre-cargada la
+    fila de arriba: 200 {"status":"duplicate"} = token + firma + secreto OK y
+    sin crear lead. 401 = firma o secreto mal. 404 = token mal.`)
 }
 
 main().catch((err) => {
