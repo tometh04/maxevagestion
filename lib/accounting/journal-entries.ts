@@ -97,6 +97,12 @@ export interface CreateJournalEntryParams {
    * un índice único parcial sobre esta columna.
    */
   source_movement_id?: string | null
+  /**
+   * Agencia del asiento (VIB-143). Una organización puede tener varias
+   * sucursales operando por separado. No parte los libros: es un filtro del
+   * reporte, que sigue siendo consolidado por defecto.
+   */
+  agency_id?: string | null
   /** Usuario que crea */
   created_by?: string | null
   /** Notas del asiento */
@@ -147,7 +153,7 @@ export async function createJournalEntry(
   params: CreateJournalEntryParams,
   supabase: SupabaseClient<Database>
 ): Promise<JournalEntry> {
-  const { lines, entry_date, description, source, currency = "ARS", exchange_rate, created_by, operation_id, notes, org_id, entry_kind, source_movement_id } = params
+  const { lines, entry_date, description, source, currency = "ARS", exchange_rate, created_by, operation_id, notes, org_id, entry_kind, source_movement_id, agency_id } = params
 
   // Validar mínimo 2 líneas
   if (lines.length < 2) {
@@ -231,6 +237,7 @@ export async function createJournalEntry(
     p_org_id: org_id ?? null,
     p_entry_kind: entry_kind ?? null,
     p_source_movement_id: source_movement_id ?? null,
+    p_agency_id: agency_id ?? null,
     p_created_by: created_by || null,
     p_notes: notes || null,
   })
@@ -275,6 +282,7 @@ export async function createJournalEntry(
       org_id: org_id ?? null,
       entry_kind: entry_kind ?? null,
       source_movement_id: source_movement_id ?? null,
+      agency_id: agency_id ?? null,
     })
     .select("id, entry_number, entry_date, description, source, total_amount, currency")
     .single()
@@ -971,6 +979,7 @@ export async function createSaleJournalEntry(
       org_id: chartOrgId,
       entry_kind: "SALE" as const,
       exchange_rate: (operation as any).exchange_rate ?? undefined,
+      agency_id: (operation as any).agency_id ?? null,
       lines: [
         {
           chart_account_id: cpcId,
@@ -1136,6 +1145,7 @@ export async function createCostJournalEntry(
       org_id: chartOrgId,
       entry_kind: "COST" as const,
       exchange_rate: (operation as any).exchange_rate ?? undefined,
+      agency_id: (operation as any).agency_id ?? null,
       lines,
     }, supabase)
 
@@ -1258,6 +1268,7 @@ export async function createCommissionJournalEntry(
       org_id: chartOrgId,
       entry_kind: "COMMISSION" as const,
       exchange_rate: (operation as any).exchange_rate ?? undefined,
+      agency_id: (operation as any).agency_id ?? null,
       lines,
     }, supabase)
 

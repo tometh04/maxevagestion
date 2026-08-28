@@ -140,9 +140,21 @@ export async function createMovementJournalEntry(
     if (!orgId) return null
 
     const { data: finAccount } = await (supabase.from("financial_accounts") as any)
-      .select("chart_account_id")
+      .select("chart_account_id, agency_id")
       .eq("id", mov.account_id)
       .maybeSingle()
+
+    // VIB-143: la agencia sale de la operación y, si no la tiene, de la cuenta
+    // financiera. Medido sobre Lozada, entre las dos cubren 8.649 de 8.650
+    // asientos.
+    let agencyId: string | null = finAccount?.agency_id ?? null
+    if (mov.operation_id) {
+      const { data: op } = await (supabase.from("operations") as any)
+        .select("agency_id")
+        .eq("id", mov.operation_id)
+        .maybeSingle()
+      if (op?.agency_id) agencyId = op.agency_id
+    }
 
     const financialChartId = finAccount?.chart_account_id ?? null
     if (!financialChartId) {
@@ -181,6 +193,7 @@ export async function createMovementJournalEntry(
         // la agencia efectivamente usó.
         exchange_rate: mov.exchange_rate ? Number(mov.exchange_rate) : undefined,
         org_id: orgId,
+        agency_id: agencyId,
         source_movement_id: mov.id,
         created_by: mov.created_by || null,
         lines: [
