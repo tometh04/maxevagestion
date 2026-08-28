@@ -1020,9 +1020,25 @@ export function OperationDetailClient({
               operatorCost={operation.operator_cost || 0}
               currency={operationCurrency}
               commissionPercent={
+                // Sin comisión calculada va `null`, NO un 10% inventado: antes
+                // la pantalla descontaba una comisión que no existía.
                 commissionRecords.length > 0 && commissionRecords[0]?.percentage
                   ? commissionRecords[0].percentage
-                  : 10
+                  : null
+              }
+              // La comisión del referidor sale de la MISMA ganancia. Sin esto,
+              // la "Ganancia Neta" de esta pestaña quedaba inflada (reportado
+              // por Lozada: una venta de margen USD 1.218 mostraba ~1.035
+              // cuando lo real eran 826).
+              referralCommission={
+                referralCommission
+                  ? {
+                      amount: referralCommission.amount,
+                      currency: referralCommission.currency,
+                      status: referralCommission.status,
+                      partnerName: referralCommission.referral_partners?.name ?? null,
+                    }
+                  : null
               }
               operationServices={operationServices}
             />
