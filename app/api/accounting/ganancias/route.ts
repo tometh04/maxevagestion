@@ -7,6 +7,7 @@ import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags
 import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
 import { isFinancialCostConcept } from "@/lib/accounting/financial-result"
 import { computeGananciasResult } from "@/lib/accounting/ganancias-calc"
+import { sumarReferidosPorMoneda } from "@/lib/commissions/referral-totals"
 
 /** Chunk del `.in()` de operation_id: mantiene corta la URL de PostgREST. */
 const COMMISSION_IDS_CHUNK_SIZE = 200
@@ -151,6 +152,31 @@ export async function GET(request: Request) {
       commissions.push(...(data || []))
     }
 
+    // Comisiones a REFERIDORES de esas mismas operaciones.
+    //
+    // Faltaban por completo: esta ruta leía sólo `commission_records`
+    // (vendedores) y, del ledger, sólo `type = 'EXPENSE'` — y la liquidación al
+    // referidor se registra como `type = 'COMMISSION'`, así que se escapaba por
+    // los dos caminos. La base imponible quedaba inflada por plata que sale de
+    // la misma ganancia. Reportado por Lozada.
+    const referralCommissions: any[] = []
+    for (let i = 0; i < quarterOperationIds.length; i += COMMISSION_IDS_CHUNK_SIZE) {
+      const chunk = quarterOperationIds.slice(i, i + COMMISSION_IDS_CHUNK_SIZE)
+      const { data, error: refErr } = await (supabase.from("referral_commissions") as any)
+        .select("id, operation_id, amount, currency, status")
+        .eq("org_id", user.org_id)
+        .in("operation_id", chunk)
+      if (refErr) {
+        // Mismo criterio que arriba: es un componente del resultado impositivo.
+        console.error("Error querying referral commissions for ganancias:", refErr)
+        return NextResponse.json(
+          { error: "No se pudieron leer las comisiones de referidores del trimestre" },
+          { status: 500 }
+        )
+      }
+      referralCommissions.push(...(data || []))
+    }
+
     // Calculate income (margins from operations)
     let totalMarginUSD = 0
     let totalMarginARS = 0
@@ -219,6 +245,19 @@ export async function GET(request: Request) {
       else totalCommissionsARS += amount
     }
 
+    // Los referidores van al MISMO balde de moneda que su operación, igual que
+    // las comisiones de vendedores. El criterio (qué fila cuenta y en qué balde
+    // cae) vive en `lib/commissions/referral-totals.ts`, compartido con el
+    // reporte de cierre y testeado ahí.
+    const referralTotals = sumarReferidosPorMoneda(referralCommissions, (r) =>
+      currencyByOperation.get(r.operation_id)
+    )
+    const totalReferralCommissionsARS = referralTotals.ars
+    const totalReferralCommissionsUSD = referralTotals.usd
+
+    totalCommissionsARS += totalReferralCommissionsARS
+    totalCommissionsUSD += totalReferralCommissionsUSD
+
     // Get retenciones de ganancias sufridas in the quarter
     const quarterMonths = Array.from({ length: 3 }, (_, i) =>
       `${year}-${String(quarterStartMonth + i).padStart(2, "0")}`
@@ -272,6 +311,13 @@ export async function GET(request: Request) {
         comisiones: {
           ars: Math.round(totalCommissionsARS * 100) / 100,
           usd: Math.round(totalCommissionsUSD * 100) / 100,
+          // Abierto porque son dos cosas distintas: una se le paga al vendedor
+          // y la otra a un tercero. Verlas sumadas sin desglose es lo que hizo
+          // dudar del número en el detalle de operación.
+          referidores: {
+            ars: Math.round(totalReferralCommissionsARS * 100) / 100,
+            usd: Math.round(totalReferralCommissionsUSD * 100) / 100,
+          },
         },
         gastos_deducibles: {
           ars: Math.round(gastosDeduciblesARS * 100) / 100,

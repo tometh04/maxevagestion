@@ -12,6 +12,7 @@ import { getOrgFeatureFlag } from "@/lib/settings/org-features"
 import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
 import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
 import { commissionDateColumn } from "@/lib/commissions/date-filter"
+import { cuentaComoCosto } from "@/lib/commissions/referral-totals"
 
 /**
  * GET /api/reports/closing?months=6&agencyId=ALL
@@ -84,6 +85,8 @@ type MonthBucket = {
   fixed_expenses_usd: number
   variable_expenses_usd: number
   commissions_usd: number
+  /** Parte de `commissions_usd` que corresponde a referidores. */
+  referral_commissions_usd: number
   taxes_usd: number
   real_profit_usd: number
   ops_count: number
@@ -298,6 +301,34 @@ export async function GET(request: Request) {
     }
 
     // ---------------------------------------------------------------------
+    // Comisiones a REFERIDORES.
+    //
+    // Faltaban: la "Ganancia Real" restaba sólo las comisiones de vendedores,
+    // así que mostraba como ganancia plata ya comprometida con un tercero.
+    // Reportado por Lozada.
+    //
+    // El mes sale de `operations.operation_date`, igual que el margen y que las
+    // comisiones de vendedores: los dos lados de una fila tienen que caer en el
+    // mismo mes.
+    // ---------------------------------------------------------------------
+    let refCommQuery = (supabase.from("referral_commissions") as any)
+      .select("id, amount, status, operations!inner(operation_date, currency, sale_currency, agency_id)")
+      .eq("org_id", user.org_id) // 🔴 scope multi-tenant explícito
+      .gte("operations.operation_date", fromIso)
+      .lte("operations.operation_date", toIso)
+      // Una comisión anulada no se paga: no es costo del mes.
+      .neq("status", "CANCELLED")
+    if (agencyFilter) refCommQuery = refCommQuery.in("operations.agency_id", agencyFilter)
+    const { data: referralCommissions, error: refCommErr } = (await refCommQuery) as {
+      data: any[] | null
+      error: any
+    }
+    if (refCommErr) {
+      console.error("closing: referral commissions error", refCommErr)
+      return NextResponse.json({ error: refCommErr.message }, { status: 500 })
+    }
+
+    // ---------------------------------------------------------------------
     // 6. FX map para todas las fechas de conversión
     // ---------------------------------------------------------------------
     const allDates: (string | null | undefined)[] = [
@@ -334,6 +365,7 @@ export async function GET(request: Request) {
         fixed_expenses_usd: 0,
         variable_expenses_usd: 0,
         commissions_usd: 0,
+        referral_commissions_usd: 0,
         taxes_usd: 0,
         real_profit_usd: 0,
         ops_count: 0,
@@ -439,6 +471,25 @@ export async function GET(request: Request) {
       b.commissions_usd += toUsd(Number(c.amount) || 0, cur, opData?.operation_date ?? null)
     }
 
+    // Referidores al mismo bucket y con el mismo criterio de moneda que las
+    // comisiones de vendedores: la de la operación, no la de la fila. Qué fila
+    // cuenta lo decide `cuentaComoCosto` (ver lib/commissions/referral-totals.ts),
+    // compartido con el reporte de Ganancias.
+    for (const r of referralCommissions || []) {
+      if (!cuentaComoCosto(r.status)) continue
+      const opData = r.operations as {
+        operation_date?: string
+        currency?: string
+        sale_currency?: string
+      } | null
+      const b = ensureBucket(monthKeyFromIso(opData?.operation_date))
+      if (!b) continue
+      const cur = opData?.sale_currency || opData?.currency || "USD"
+      const usd = toUsd(Number(r.amount) || 0, cur, opData?.operation_date ?? null)
+      b.commissions_usd += usd
+      b.referral_commissions_usd += usd
+    }
+
     // ---------------------------------------------------------------------
     // 12. Calcular Ganancia Real por mes
     // ---------------------------------------------------------------------
@@ -463,6 +514,7 @@ export async function GET(request: Request) {
         fixed_expenses_usd: acc.fixed_expenses_usd + r.fixed_expenses_usd,
         variable_expenses_usd: acc.variable_expenses_usd + r.variable_expenses_usd,
         commissions_usd: acc.commissions_usd + r.commissions_usd,
+        referral_commissions_usd: acc.referral_commissions_usd + r.referral_commissions_usd,
         taxes_usd: acc.taxes_usd + r.taxes_usd,
         real_profit_usd: acc.real_profit_usd + r.real_profit_usd,
         ops_count: acc.ops_count + r.ops_count,
@@ -473,6 +525,7 @@ export async function GET(request: Request) {
         fixed_expenses_usd: 0,
         variable_expenses_usd: 0,
         commissions_usd: 0,
+        referral_commissions_usd: 0,
         taxes_usd: 0,
         real_profit_usd: 0,
         ops_count: 0,
