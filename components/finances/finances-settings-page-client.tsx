@@ -33,6 +33,18 @@ import {
 interface FinancialSettings {
   id?: string
   primary_currency: "ARS" | "USD"
+  /** Desde cuándo esta agencia lleva su contabilidad en vibook. */
+  accounting_start_date?: string | null
+  /**
+   * Cómo se valúa el dólar. `auto_update` = tomar el oficial que baja el cron;
+   * `criterio` = qué valor del mes usar (cierre o promedio).
+   */
+  exchange_rate_config?: {
+    source?: string
+    auto_update?: boolean
+    criterio?: "CIERRE" | "PROMEDIO"
+    [k: string]: unknown
+  } | null
   enabled_currencies: string[]
   default_usd_rate: number
   // Impuestos
@@ -63,6 +75,8 @@ export function FinancesSettingsPageClient() {
   const [savingFlag, setSavingFlag] = useState(false)
   const [settings, setSettings] = useState<FinancialSettings>({
     primary_currency: "USD",
+    accounting_start_date: null,
+    exchange_rate_config: { source: "manual", auto_update: false },
     enabled_currencies: ["ARS", "USD"],
     default_usd_rate: DEFAULT_USD_ARS_FALLBACK_RATE,
     default_iva_rate: 21,
@@ -300,6 +314,92 @@ export function FinancesSettingsPageClient() {
                     </Badge>
                   ))}
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-xl border-border/40">
+            <CardHeader>
+              <CardTitle>Contabilidad</CardTitle>
+              <CardDescription>
+                Desde cuándo esta agencia lleva su contabilidad en vibook y cómo se valúan las
+                operaciones en otra moneda.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="space-y-1.5">
+                <Label htmlFor="accounting-start">Fecha de inicio</Label>
+                <Input
+                  id="accounting-start"
+                  type="date"
+                  className="w-[190px]"
+                  value={settings.accounting_start_date ?? ""}
+                  onChange={(e) =>
+                    setSettings({ ...settings, accounting_start_date: e.target.value || null })
+                  }
+                />
+                <p className="text-sm text-muted-foreground">
+                  El Balance y el Estado de Resultados toman datos desde esta fecha. Lo anterior no
+                  se borra ni se oculta: se sigue viendo en el Libro Mayor.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Cotización del dólar</Label>
+                <div className="flex items-center justify-between rounded-md border px-3.5 py-3">
+                  <div className="pr-6">
+                    <p className="text-sm font-medium">Tomar el dólar oficial automáticamente</p>
+                    <p className="mt-0.5 text-sm text-muted-foreground">
+                      El sistema baja la cotización oficial todos los días y propone la del mes. Si
+                      tu agencia opera a otro tipo de cambio, desactivalo y cargala vos.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={settings.exchange_rate_config?.auto_update === true}
+                    onCheckedChange={(v) =>
+                      setSettings({
+                        ...settings,
+                        exchange_rate_config: {
+                          ...(settings.exchange_rate_config ?? {}),
+                          source: v ? "oficial" : "manual",
+                          auto_update: v,
+                        },
+                      })
+                    }
+                  />
+                </div>
+
+                {settings.exchange_rate_config?.auto_update === true && (
+                  <div className="flex items-center justify-between rounded-md border px-3.5 py-3">
+                    <div className="pr-6">
+                      <p className="text-sm font-medium">Qué valor del mes usar</p>
+                      <p className="mt-0.5 text-sm text-muted-foreground">
+                        El cierre es el del último día, que es lo que corresponde a un balance. El
+                        promedio suele usarse para el estado de resultados.
+                      </p>
+                    </div>
+                    <Select
+                      value={settings.exchange_rate_config?.criterio ?? "CIERRE"}
+                      onValueChange={(v) =>
+                        setSettings({
+                          ...settings,
+                          exchange_rate_config: {
+                            ...(settings.exchange_rate_config ?? {}),
+                            criterio: v as "CIERRE" | "PROMEDIO",
+                          },
+                        })
+                      }
+                    >
+                      <SelectTrigger className="w-[150px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="CIERRE">Cierre del mes</SelectItem>
+                        <SelectItem value="PROMEDIO">Promedio del mes</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

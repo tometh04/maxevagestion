@@ -2,6 +2,7 @@
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { BookOpen, Users, Plane, UserCheck, BarChart3, FileText, BookMarked, ListTree, Scale } from "lucide-react"
+import { AccountingSetupBanner } from "./accounting-setup-banner"
 
 interface ContabilidadTabsProps {
   ledgerContent: React.ReactNode
@@ -47,6 +48,9 @@ export function ContabilidadTabs({
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold tracking-tight">Contabilidad</h1>
+
+      {/* Solo aparece si falta configurar, y solo desde el 1/9. */}
+      <AccountingSetupBanner />
 
       <Tabs defaultValue={defaultTab}>
         <TabsList>
