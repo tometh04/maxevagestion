@@ -1,5 +1,5 @@
 import { getCurrentUser } from "@/lib/auth"
-import { createServerClient } from "@/lib/supabase/server"
+import { createAdminClient, createServerClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 import {
   canAccessEmiliaLeadAgency,
@@ -8,6 +8,8 @@ import {
 } from "@/lib/emilia/access"
 import { persistEmiliaTurnFailure, persistEmiliaTurnResult } from "@/lib/emilia/turn-result"
 import { z } from "zod"
+import { resolveAgencyEmiliaCredential } from "@/lib/emilia/agency-credential"
+import { resolveAgencyPermissionScope } from "@/lib/permissions/agency-scope-server"
 
 const paramsSchema = z.object({ jobId: z.string().uuid() })
 const querySchema = z.object({ conversationId: z.string().uuid() })
@@ -88,6 +90,7 @@ export async function GET(
     }
 
     const leadId = (conversation as any).lead_id as string | null | undefined
+    let agencyId: string
     if (leadId) {
       const leadAccess = await resolveLeadEmiliaAccess(supabase, user)
       if (!leadAccess.allowed) {
@@ -109,15 +112,43 @@ export async function GET(
       )) {
         return NextResponse.json({ error: "Lead no encontrado" }, { status: 404 })
       }
+      agencyId = (lead as any).agency_id
     } else {
       const access = await resolveEmiliaOrganizationAccess(supabase, user)
       if (!access.allowed) {
         return NextResponse.json({ error: access.message, code: access.code }, { status: access.status })
       }
+      const agencyScope = await resolveAgencyPermissionScope(supabase, user, "leads", "write")
+      if (agencyScope.agencyIds.length !== 1) {
+        return NextResponse.json(
+          {
+            error: agencyScope.agencyIds.length === 0
+              ? "No tiene una agencia habilitada para usar Emilia."
+              : "No se puede atribuir esta búsqueda a una única agencia.",
+            code: "emilia_agency_required",
+          },
+          { status: 409 }
+        )
+      }
+      agencyId = agencyScope.agencyIds[0]
     }
 
-    const apiKey = process.env.EMILIA_API_KEY
-    if (!apiKey) return NextResponse.json({ error: "Emilia no está configurada" }, { status: 503 })
+    let apiKey: string
+    try {
+      apiKey = (await resolveAgencyEmiliaCredential({
+        admin: createAdminClient(),
+        orgId: user.org_id,
+        agencyId,
+      })).apiKey
+    } catch (error) {
+      return NextResponse.json(
+        {
+          error: error instanceof Error ? error.message : "La agencia no tiene una credencial válida de Emilia.",
+          code: "emilia_agency_credential_unavailable",
+        },
+        { status: 503 }
+      )
+    }
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 15_000)
     let response: Response

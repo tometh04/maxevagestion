@@ -26,6 +26,7 @@ import {
   QUOTATION_STATUS_LABELS,
 } from "@/lib/quotations/presentation"
 import { QuotationPdfPriceDialog } from "@/components/sales/quotation-pdf-price-dialog"
+import { QuotationPriceRefreshDialog } from "@/components/sales/quotation-price-refresh-dialog"
 import {
   fetchQuotationDocumentForUser,
   QuotationDocumentDownloadError,
@@ -146,6 +147,7 @@ export function QuotationsDashboard({ sellers, agencies, currentUserRole, curren
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
   // Cotización con el dialog "Cambiar precio" abierto antes de generar el PDF
   const [pdfPriceQuotation, setPdfPriceQuotation] = useState<any | null>(null)
+  const [priceRefreshQuotationId, setPriceRefreshQuotationId] = useState<string | null>(null)
 
   const isSeller = currentUserRole === "SELLER"
 
@@ -625,6 +627,7 @@ export function QuotationsDashboard({ sellers, agencies, currentUserRole, curren
                     const documentReady = hasReadyQuotationDocument(q)
                     const quotationEditable = isQuotationContentEditable(q.status)
                     const canConvert = q.status === "APPROVED"
+                    const canRefreshPrices = ["DRAFT", "SENT", "PENDING_APPROVAL"].includes(q.status)
                     const displayAmount = getQuotationDisplayAmount(q)
 
                     return (
@@ -661,6 +664,18 @@ export function QuotationsDashboard({ sellers, agencies, currentUserRole, curren
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center justify-end gap-1">
+                            {canRefreshPrices && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 w-7 p-0"
+                                onClick={() => setPriceRefreshQuotationId(q.id)}
+                                title="Actualizar precio y disponibilidad"
+                                aria-label={`Actualizar precio y disponibilidad de ${q.quotation_number}`}
+                              >
+                                <RefreshCw className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
                             {q.public_token && q.active_document_id && (
                               <Button
                                 variant="ghost"
@@ -735,6 +750,14 @@ export function QuotationsDashboard({ sellers, agencies, currentUserRole, curren
           </div>
         )}
       </Card>
+
+      <QuotationPriceRefreshDialog
+        quotationId={priceRefreshQuotationId}
+        onClose={() => setPriceRefreshQuotationId(null)}
+        onApplied={async () => {
+          await Promise.all([fetchQuotationsList(), fetchData()])
+        }}
+      />
 
       {/* Cambiar precio antes de generar el PDF */}
       <QuotationPdfPriceDialog

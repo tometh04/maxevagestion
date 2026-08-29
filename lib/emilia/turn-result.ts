@@ -48,6 +48,166 @@ function canonicalResultSets(data: any): any[] | null {
   return Array.isArray(outcome?.results?.result_sets) ? outcome.results.result_sets : []
 }
 
+function canonicalResultSet(data: any, product: "flights" | "hotels") {
+  const resultSets = data?.outcome?.results?.result_sets
+  if (!Array.isArray(resultSets)) return null
+  return resultSets.find((entry: any) => entry?.product === product && Array.isArray(entry?.data)) || null
+}
+
+function validCanonicalMoney(value: any) {
+  return Number.isFinite(Number(value?.amount))
+    && Number(value.amount) > 0
+    && typeof value?.currency === "string"
+    && /^[A-Z]{3}$/.test(value.currency)
+}
+
+function canonicalCostBasis(value: any) {
+  const basis = value?.basis ?? value?.cost_basis ?? value?.costBasis
+  return ["AGENCY_NET", "PROVIDER_TOTAL", "COMMISSIONABLE_GROSS"].includes(String(basis))
+    ? basis as "AGENCY_NET" | "PROVIDER_TOTAL" | "COMMISSIONABLE_GROSS"
+    : "UNKNOWN" as const
+}
+
+function pointTimestamp(point: any) {
+  if (!point || typeof point !== "object") return null
+  if (typeof point.date === "string" && typeof point.time === "string") {
+    return `${point.date}T${point.time}`
+  }
+  return typeof point.date === "string" ? point.date : null
+}
+
+function canonicalDatePart(value: unknown) {
+  return typeof value === "string" && value ? value.slice(0, 10) : null
+}
+
+/** Añade al view model de cards la procedencia pública necesaria para refrescar
+ * una oferta, sin volver a pasar el contrato canónico por transformers legacy. */
+export function canonicalOfferCards(data: any) {
+  const flightSet = canonicalResultSet(data, "flights")
+  const hotelSet = canonicalResultSet(data, "hotels")
+  const flightQuery = flightSet?.query && typeof flightSet.query === "object" ? flightSet.query : {}
+  const hotelQuery = hotelSet?.query && typeof hotelSet.query === "object" ? hotelSet.query : {}
+  const flightArtifact = typeof flightSet?.artifact_id === "string" && flightSet.artifact_id.trim()
+    ? flightSet.artifact_id.trim()
+    : null
+  const hotelArtifact = typeof hotelSet?.artifact_id === "string" && hotelSet.artifact_id.trim()
+    ? hotelSet.artifact_id.trim()
+    : null
+
+  const rawFlights = flightSet
+    ? flightSet.data.filter((flight: any) => validCanonicalMoney(flight?.price))
+    : undefined
+  const transformedFlights = rawFlights
+    ? transformCanonicalFlights(rawFlights, flightQuery)
+    : undefined
+  const flights = transformedFlights?.map((flight: any, index: number) => {
+    const rawFlight = rawFlights?.[index]
+    const rawLegs = Array.isArray(rawFlight?.legs) ? rawFlight.legs : []
+    const firstDeparture = rawLegs[0]?.departure_at || rawLegs[0]?.segments?.[0]?.departure?.date
+    const secondDeparture = rawLegs[1]?.departure_at || rawLegs[1]?.segments?.[0]?.departure?.date
+
+    return {
+      ...flight,
+      price: {
+        ...flight.price,
+        cost_basis: canonicalCostBasis(rawFlight?.price),
+      },
+      departure_date: canonicalDatePart(
+        flightQuery.departure_date ?? flightQuery.departureDate ?? firstDeparture
+      ) || flight.departure_date,
+      return_date: canonicalDatePart(
+        flightQuery.return_date ?? flightQuery.returnDate ?? secondDeparture
+      ) ?? flight.return_date,
+      baggage: rawFlight?.baggage ?? null,
+      refundable: rawFlight?.refundable ?? null,
+      legs: flight.legs.map((leg: any, legIndex: number) => ({
+        ...leg,
+        baggage: rawFlight?.baggage ?? null,
+        segments: Array.isArray(rawLegs[legIndex]?.segments) ? rawLegs[legIndex].segments : [],
+      })),
+      offer_source: flightArtifact && typeof rawFlight?.id === "string" && rawFlight.id.trim()
+        ? {
+            artifact_id: flightArtifact,
+            product: "flights" as const,
+            offer_id: rawFlight.id,
+          }
+        : undefined,
+      offer_refresh_fallback: {
+        product: "flights" as const,
+        query: flightQuery,
+        identity: {
+          kind: "flight",
+          segments: rawLegs.flatMap((leg: any) => (
+            Array.isArray(leg?.segments) ? leg.segments : []
+          ).map((segment: any) => ({
+            marketing_airline: segment?.marketing_airline ?? null,
+            flight_number: segment?.flight_number ?? null,
+            origin: segment?.departure?.airport_code,
+            destination: segment?.arrival?.airport_code,
+            departure_at: pointTimestamp(segment?.departure),
+          }))),
+          cabin: rawFlight?.cabin ?? null,
+          checked_baggage: rawFlight?.baggage?.checked ?? null,
+          carry_on: rawFlight?.baggage?.carry_on ?? null,
+          refundable: rawFlight?.refundable ?? null,
+        },
+      },
+    }
+  })
+
+  const rawHotels = hotelSet
+    ? hotelSet.data.flatMap((hotel: any) => {
+        const rooms = (Array.isArray(hotel?.rooms) ? hotel.rooms : [])
+          .filter((room: any) => validCanonicalMoney(room?.price))
+        return rooms.length > 0 ? [{ ...hotel, rooms }] : []
+      })
+    : undefined
+  const transformedHotels = rawHotels
+    ? transformCanonicalHotels(rawHotels, hotelQuery)
+    : undefined
+  const hotels = transformedHotels?.map((hotel: any, index: number) => {
+    const rawHotel = rawHotels?.[index]
+    const rawRooms = Array.isArray(rawHotel?.rooms) ? rawHotel.rooms : []
+    return {
+      ...hotel,
+      rooms: hotel.rooms.map((room: any, roomIndex: number) => {
+        const rawRoom = rawRooms[roomIndex]
+        return {
+          ...room,
+          id: rawRoom?.id,
+          cost_basis: canonicalCostBasis(rawRoom?.price),
+          offer_source:
+            hotelArtifact && typeof rawHotel?.id === "string" && rawHotel.id.trim()
+              ? {
+                  artifact_id: hotelArtifact,
+                  product: "hotels" as const,
+                  offer_id: rawHotel.id,
+                  ...(typeof rawRoom?.id === "string" && rawRoom.id.trim()
+                    ? { selection_id: rawRoom.id }
+                    : {}),
+                }
+              : undefined,
+          offer_refresh_fallback: {
+            product: "hotels" as const,
+            query: hotelQuery,
+            identity: {
+              kind: "hotel_room",
+              hotel_name: rawHotel?.name,
+              city: rawHotel?.location?.city ?? null,
+              room_name: rawRoom?.name ?? null,
+              board: rawRoom?.board ?? null,
+              check_in: hotel.check_in,
+              check_out: hotel.check_out,
+            },
+          },
+        }
+      }),
+    }
+  })
+
+  return { flights, hotels }
+}
+
 function canonicalRequestType(flights: any, hotels: any): string | undefined {
   if (flights && hotels) return "combined"
   if (flights) return "flights"
@@ -89,12 +249,9 @@ function normalizeCanonicalTurn(data: any): NormalizedEmiliaTurn {
   const resultSets = canonicalResultSets(data) || []
   const flightSet = resultSets.find((resultSet) => resultSet?.product === "flights")
   const hotelSet = resultSets.find((resultSet) => resultSet?.product === "hotels")
-  const flightItems = flightSet
-    ? transformCanonicalFlights(Array.isArray(flightSet.data) ? flightSet.data : [], flightSet.query || {})
-    : undefined
-  const hotelItems = hotelSet
-    ? transformCanonicalHotels(Array.isArray(hotelSet.data) ? hotelSet.data : [], hotelSet.query || {})
-    : undefined
+  const canonicalCards = canonicalOfferCards(data)
+  const flightItems = canonicalCards.flights
+  const hotelItems = canonicalCards.hotels
   const requestType = canonicalRequestType(flightSet, hotelSet)
   const parsedRequest = requestType
     ? {

@@ -345,6 +345,23 @@ async function buildCurrentDocument(
   }
 }
 
+/**
+ * Prepara un documento completo desde una estructura staged. No persiste nada:
+ * QuotationRefresh lo entrega luego al RPC que intercambia estructura y
+ * active_document_id en una sola transacción.
+ */
+export async function prepareQuotationDocumentForAtomicIssue(input: {
+  supabase: DbClient
+  quotation: Record<string, unknown>
+}): Promise<ResolvedQuotationDocument> {
+  return prepareDocumentForIssue(
+    await buildCurrentDocument(
+      input.supabase,
+      input.quotation as QuotationSourceRow
+    )
+  )
+}
+
 async function issueDocument(
   supabase: DbClient,
   quotation: QuotationSourceRow,

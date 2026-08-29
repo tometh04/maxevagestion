@@ -9236,6 +9236,153 @@ export type Database = {
           },
         ]
       }
+      agency_emilia_credentials: {
+        Row: {
+          agency_id: string
+          api_key_encrypted: string
+          created_at: string
+          created_by: string | null
+          id: string
+          key_fingerprint: string
+          org_id: string
+          rotated_by: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          agency_id: string
+          api_key_encrypted: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          key_fingerprint: string
+          org_id: string
+          rotated_by?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          agency_id?: string
+          api_key_encrypted?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          key_fingerprint?: string
+          org_id?: string
+          rotated_by?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agency_emilia_credentials_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agency_emilia_credentials_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quotation_price_refresh_runs: {
+        Row: {
+          agency_id: string
+          applied_at: string | null
+          applied_by: string | null
+          completed_at: string | null
+          created_at: string
+          credential_id: string
+          error_code: string | null
+          error_message: string | null
+          id: string
+          idempotency_key: string
+          issued_document_id: string | null
+          org_id: string
+          proposal_snapshot: Json | null
+          quotation_id: string
+          remote_request_id: string
+          requested_by: string
+          source_active_document_id: string | null
+          source_quotation_updated_at: string
+          source_snapshot: Json
+          status: string
+          summary: Json
+          updated_at: string
+          valid_until: string | null
+        }
+        Insert: {
+          agency_id: string
+          applied_at?: string | null
+          applied_by?: string | null
+          completed_at?: string | null
+          created_at?: string
+          credential_id: string
+          error_code?: string | null
+          error_message?: string | null
+          id?: string
+          idempotency_key: string
+          issued_document_id?: string | null
+          org_id: string
+          proposal_snapshot?: Json | null
+          quotation_id: string
+          remote_request_id: string
+          requested_by: string
+          source_active_document_id?: string | null
+          source_quotation_updated_at: string
+          source_snapshot: Json
+          status: string
+          summary?: Json
+          updated_at?: string
+          valid_until?: string | null
+        }
+        Update: {
+          agency_id?: string
+          applied_at?: string | null
+          applied_by?: string | null
+          completed_at?: string | null
+          created_at?: string
+          credential_id?: string
+          error_code?: string | null
+          error_message?: string | null
+          id?: string
+          idempotency_key?: string
+          issued_document_id?: string | null
+          org_id?: string
+          proposal_snapshot?: Json | null
+          quotation_id?: string
+          remote_request_id?: string
+          requested_by?: string
+          source_active_document_id?: string | null
+          source_quotation_updated_at?: string
+          source_snapshot?: Json
+          status?: string
+          summary?: Json
+          updated_at?: string
+          valid_until?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quotation_price_refresh_runs_quotation_id_fkey"
+            columns: ["quotation_id"]
+            isOneToOne: false
+            referencedRelation: "quotations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotation_price_refresh_runs_credential_id_fkey"
+            columns: ["credential_id"]
+            isOneToOne: false
+            referencedRelation: "agency_emilia_credentials"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       quotation_items: {
         Row: {
           admin_fee_percentage: number
@@ -9244,6 +9391,7 @@ export type Database = {
           checkout_date: string | null
           commission_percentage: number
           cost_amount: number | null
+          cost_basis: string | null
           cost_calculation_mode: string
           cost_currency: string | null
           created_at: string | null
@@ -9271,6 +9419,8 @@ export type Database = {
           meal_plan: string | null
           nights: number | null
           notes: string | null
+          offer_refresh_fallback: Json | null
+          offer_source: Json | null
           operator_id: string | null
           option_id: string | null
           order_index: number | null
@@ -9294,6 +9444,7 @@ export type Database = {
           checkout_date?: string | null
           commission_percentage?: number
           cost_amount?: number | null
+          cost_basis?: string | null
           cost_calculation_mode?: string
           cost_currency?: string | null
           created_at?: string | null
@@ -9321,6 +9472,8 @@ export type Database = {
           meal_plan?: string | null
           nights?: number | null
           notes?: string | null
+          offer_refresh_fallback?: Json | null
+          offer_source?: Json | null
           operator_id?: string | null
           option_id?: string | null
           order_index?: number | null
@@ -9344,6 +9497,7 @@ export type Database = {
           checkout_date?: string | null
           commission_percentage?: number
           cost_amount?: number | null
+          cost_basis?: string | null
           cost_calculation_mode?: string
           cost_currency?: string | null
           created_at?: string | null
@@ -9371,6 +9525,8 @@ export type Database = {
           meal_plan?: string | null
           nights?: number | null
           notes?: string | null
+          offer_refresh_fallback?: Json | null
+          offer_source?: Json | null
           operator_id?: string | null
           option_id?: string | null
           order_index?: number | null
@@ -9497,6 +9653,8 @@ export type Database = {
           insurance_amount: number
           internal_notes: string | null
           lead_id: string | null
+          last_price_refresh_at: string | null
+          last_price_refresh_run_id: string | null
           notes: string | null
           operation_id: string | null
           operator_id: string | null
@@ -9542,6 +9700,8 @@ export type Database = {
           insurance_amount?: number
           internal_notes?: string | null
           lead_id?: string | null
+          last_price_refresh_at?: string | null
+          last_price_refresh_run_id?: string | null
           notes?: string | null
           operation_id?: string | null
           operator_id?: string | null
@@ -9587,6 +9747,8 @@ export type Database = {
           insurance_amount?: number
           internal_notes?: string | null
           lead_id?: string | null
+          last_price_refresh_at?: string | null
+          last_price_refresh_run_id?: string | null
           notes?: string | null
           operation_id?: string | null
           operator_id?: string | null
@@ -13105,6 +13267,26 @@ export type Database = {
       assert_quotation_structure_valid: {
         Args: { p_currency: string; p_org_id: string; p_quotation_id: string }
         Returns: undefined
+      }
+      apply_quotation_price_refresh: {
+        Args: {
+          p_actor_id: string
+          p_agency_id: string
+          p_content_hash: string
+          p_data_snapshot: Json
+          p_expected_quotation_updated_at: string
+          p_expected_run_updated_at: string
+          p_file_name: string
+          p_html_snapshot: string
+          p_items: Json
+          p_manifest_snapshot: Json
+          p_options: Json
+          p_org_id: string
+          p_quotation_id: string
+          p_revision_id: string | null
+          p_run_id: string
+        }
+        Returns: Json
       }
       create_quotation_with_structure: {
         Args: {

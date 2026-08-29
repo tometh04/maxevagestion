@@ -5,6 +5,7 @@ import {
   normalizeManualQuotationTotal,
   roundQuotationMoney,
 } from "@/lib/quotations/totals"
+import type { OfferRefreshFallback, OfferSource, RefreshCostBasis } from "@/lib/quotation-refresh/types"
 
 export interface PreparedQuotationItem {
   item_type: string
@@ -44,6 +45,9 @@ export interface PreparedQuotationItem {
   cost_calculation_mode: string
   gross_price: number | null
   commission_percentage: number
+  cost_basis?: RefreshCostBasis
+  offer_source?: OfferSource | null
+  offer_refresh_fallback?: OfferRefreshFallback | null
 }
 
 export interface PreparedQuotationOption {
@@ -122,6 +126,12 @@ function quotationPercentage(value: unknown, label: string) {
   return parsed
 }
 
+function normalizeCostBasis(value: unknown): RefreshCostBasis {
+  return ["AGENCY_NET", "PROVIDER_TOTAL", "COMMISSIONABLE_GROSS"].includes(String(value))
+    ? value as RefreshCostBasis
+    : "UNKNOWN"
+}
+
 function prepareQuotationItem(rawItem: any, fallbackCurrency: string): PreparedQuotationItem {
   const rawQuantity = Number(rawItem?.quantity ?? 1)
   if (!Number.isFinite(rawQuantity) || rawQuantity <= 0) {
@@ -194,6 +204,42 @@ function prepareQuotationItem(rawItem: any, fallbackCurrency: string): PreparedQ
     cost_calculation_mode: costCalculationMode,
     gross_price: grossPrice,
     commission_percentage: commissionPercentage,
+    cost_basis: normalizeCostBasis(rawItem?.cost_basis),
+    offer_source: normalizeOfferSource(rawItem?.offer_source),
+    offer_refresh_fallback: normalizeOfferRefreshFallback(rawItem?.offer_refresh_fallback),
+  }
+}
+
+function normalizeOfferRefreshFallback(value: unknown): OfferRefreshFallback | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null
+  const fallback = value as Record<string, unknown>
+  if (
+    (fallback.product !== "flights" && fallback.product !== "hotels")
+    || !fallback.query || typeof fallback.query !== "object" || Array.isArray(fallback.query)
+    || !fallback.identity || typeof fallback.identity !== "object" || Array.isArray(fallback.identity)
+  ) return null
+  return {
+    product: fallback.product,
+    query: fallback.query as Record<string, unknown>,
+    identity: fallback.identity as Record<string, unknown>,
+  }
+}
+
+function normalizeOfferSource(value: unknown): OfferSource | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null
+  const source = value as Record<string, unknown>
+  const artifactId = typeof source.artifact_id === "string" ? source.artifact_id.trim() : ""
+  const product = source.product === "flights" || source.product === "hotels"
+    ? source.product
+    : null
+  const offerId = typeof source.offer_id === "string" ? source.offer_id.trim() : ""
+  const selectionId = typeof source.selection_id === "string" ? source.selection_id.trim() : ""
+  if (!artifactId || !product || !offerId) return null
+  return {
+    artifact_id: artifactId,
+    product,
+    offer_id: offerId,
+    ...(selectionId ? { selection_id: selectionId } : {}),
   }
 }
 
@@ -286,6 +332,9 @@ function buildQuotationItemsInsertPayload(
     cost_calculation_mode: item.cost_calculation_mode || 'SIMPLE',
     gross_price: item.gross_price ?? null,
     commission_percentage: item.commission_percentage || 0,
+    cost_basis: item.cost_basis ?? "UNKNOWN",
+    offer_source: item.offer_source ?? null,
+    offer_refresh_fallback: item.offer_refresh_fallback ?? null,
   }))
 }
 
@@ -441,7 +490,7 @@ export async function replaceQuotationStructure({
   }
 }
 
-function buildQuotationStructureRows({
+export function buildQuotationStructureRows({
   quotationId,
   currency,
   preparedOptions,

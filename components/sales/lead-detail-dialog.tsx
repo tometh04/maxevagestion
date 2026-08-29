@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
-import { ExternalLink, MapPin, Users, Phone, Mail, Instagram, Calendar, FileText, Edit, Trash2, ArrowRight, AlertTriangle, UserPlus, Loader2, CheckCircle2, User, Briefcase, Save, X, MessageSquare, Send, Archive, ArchiveRestore, ClipboardList, Clock, DollarSign, Eye, Download, MoreHorizontal, Upload, Paperclip } from "lucide-react"
+import { ExternalLink, MapPin, Users, Phone, Mail, Instagram, Calendar, FileText, Edit, Trash2, ArrowRight, AlertTriangle, UserPlus, Loader2, CheckCircle2, User, Briefcase, Save, X, MessageSquare, Send, Archive, ArchiveRestore, ClipboardList, Clock, DollarSign, Eye, Download, MoreHorizontal, Upload, Paperclip, RefreshCw } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -53,6 +53,7 @@ import { isQuotationContentEditable } from "@/lib/quotations/lifecycle"
 import { getQuotationStatusColors } from "@/lib/vibook-status-colors"
 import { fetchQuotationDocumentForUser } from "@/lib/quotation-documents/client"
 import { QuotationPdfPriceDialog } from "@/components/sales/quotation-pdf-price-dialog"
+import { QuotationPriceRefreshDialog } from "@/components/sales/quotation-price-refresh-dialog"
 import { LeadEmiliaChat } from "@/components/sales/lead-emilia-chat"
 import { LeadOutcomeBadge } from "@/components/sales/lead-outcome-badge"
 import { useScreenView } from "@/hooks/use-screen-view"
@@ -264,6 +265,7 @@ export function LeadDetailDialog({
     active_document_id?: string | null
     status: string
   } | null>(null)
+  const [priceRefreshQuotationId, setPriceRefreshQuotationId] = useState<string | null>(null)
   const [mode, setMode] = useState<"detail" | "emilia">("detail")
   // Conversación que ya trajo el gate de "Cotizar" (perf: el chat evita re-fetchear).
   const [emiliaConversation, setEmiliaConversation] = useState<{ id: string } | null | undefined>(undefined)
@@ -979,6 +981,7 @@ export function LeadDetailDialog({
                     const statusLabel = QUOTATION_STATUS_LABELS[effectiveStatus] || effectiveStatus
                     const documentReady = hasReadyQuotationDocument(q)
                     const quotationEditable = isQuotationContentEditable(q.status)
+                    const canRefreshPrices = ["DRAFT", "SENT", "PENDING_APPROVAL"].includes(q.status)
 
                     return (
                       <div
@@ -1017,6 +1020,21 @@ export function LeadDetailDialog({
                           </div>
                         </div>
                         <div className="flex items-center gap-1 ml-2">
+                          {canRefreshPrices && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                setPriceRefreshQuotationId(q.id)
+                              }}
+                              title="Actualizar precio y disponibilidad"
+                              aria-label={`Actualizar precio y disponibilidad de ${q.quotation_number}`}
+                            >
+                              <RefreshCw className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
                           {/* El lápiz vuelve a abrir la estructura completa del borrador. */}
                           {q.status === "DRAFT" && (
                             <Button
@@ -1503,6 +1521,12 @@ export function LeadDetailDialog({
           }}
         />
       )}
+
+      <QuotationPriceRefreshDialog
+        quotationId={priceRefreshQuotationId}
+        onClose={() => setPriceRefreshQuotationId(null)}
+        onApplied={loadQuotations}
+      />
 
       {/* Mismo modal Generar PDF que Emilia: precio, adicionales y descarga */}
       <QuotationPdfPriceDialog
