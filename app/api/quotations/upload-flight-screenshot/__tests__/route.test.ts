@@ -29,6 +29,10 @@ const AGENCY_ID = "22222222-2222-4222-8222-222222222222"
 const OTHER_AGENCY_ID = "33333333-3333-4333-8333-333333333333"
 const USER_ID = "44444444-4444-4444-8444-444444444444"
 const QUOTATION_ID = "55555555-5555-4555-8555-555555555555"
+const PNG_BYTES = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  "base64"
+)
 
 function requestWith(input: {
   agencyId?: string
@@ -37,7 +41,7 @@ function requestWith(input: {
   fileName?: string
   fileBytes?: number[]
 }) {
-  const bytes = new Uint8Array(input.fileBytes ?? [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+  const bytes = new Uint8Array(input.fileBytes ?? PNG_BYTES)
   const values = new Map<string, unknown>()
   values.set("file", {
     name: input.fileName || "captura.png",
@@ -115,6 +119,36 @@ describe("POST /api/quotations/upload-flight-screenshot", () => {
       agencyId: AGENCY_ID,
       fileType: "image/png",
       fileBytes: Array.from(Buffer.from("<html>payload</html>")),
+    }))
+
+    expect(response.status).toBe(400)
+    expect(createAdminClient).not.toHaveBeenCalled()
+  })
+
+  it("acepta bytes PNG válidos aunque el navegador declare MIME genérico", async () => {
+    const { upload } = storageAdmin()
+
+    const response = await POST(requestWith({
+      agencyId: AGENCY_ID,
+      fileType: "application/octet-stream",
+      fileName: "captura",
+    }))
+
+    expect(response.status).toBe(200)
+    expect(upload).toHaveBeenCalledWith(
+      expect.stringMatching(/\.png$/),
+      expect.any(Buffer),
+      expect.objectContaining({ contentType: "image/png" })
+    )
+  })
+
+  it("rechaza bytes GIF aunque el navegador declare PNG", async () => {
+    const gif = Buffer.from("R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==", "base64")
+
+    const response = await POST(requestWith({
+      agencyId: AGENCY_ID,
+      fileType: "image/png",
+      fileBytes: Array.from(gif),
     }))
 
     expect(response.status).toBe(400)

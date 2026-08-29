@@ -15,10 +15,16 @@
  * una presentación perfectamente válida.
  */
 
-/** jsPDF y pdf-lib solo embeben PNG y JPEG. */
-const EMBEDDABLE_MIME = /^image\/(png|jpe?g)$/i
+import {
+  DOCUMENT_LOGO_MAX_STORED_BYTES,
+  decodeVisualImageDataUri,
+  detectVisualImageMime,
+  materializeVisualImage,
+  readResponseBytesWithLimit,
+} from "@/lib/document-assets/visual-image-server"
+
 const FETCH_TIMEOUT_MS = 4000
-const MAX_BYTES = 2_000_000
+const MAX_BYTES = DOCUMENT_LOGO_MAX_STORED_BYTES
 
 export interface ResolvedLogo {
   /** Data URI listo para `jsPDF.addImage`. */
@@ -28,22 +34,34 @@ export interface ResolvedLogo {
   format: "PNG" | "JPEG"
 }
 
-function parseDataUri(value: string): ResolvedLogo | null {
-  const match = /^data:(image\/[a-z+]+);base64,(.+)$/i.exec(value)
-  if (!match) return null
-  const [, mime, base64] = match
-  if (!EMBEDDABLE_MIME.test(mime)) return null
+async function materializeLogo(bytes: Buffer, declaredMime?: string): Promise<ResolvedLogo | null> {
   try {
-    const bytes = Buffer.from(base64, "base64")
-    if (bytes.byteLength === 0) return null
+    const detectedMime = detectVisualImageMime(bytes)
+    const materialized = await materializeVisualImage({
+      bytes,
+      declaredMime,
+      maxInputBytes: MAX_BYTES,
+      maxOutputBytes: MAX_BYTES,
+      output: "pdf-embeddable",
+      validation: detectedMime === "image/png" || detectedMime === "image/jpeg"
+        ? "legacy-raster"
+        : "strict",
+    })
     return {
-      dataUri: value,
-      bytes: new Uint8Array(bytes),
-      format: /jpe?g$/i.test(mime) ? "JPEG" : "PNG",
+      dataUri: materialized.dataUri,
+      bytes: new Uint8Array(materialized.bytes),
+      format: materialized.mime === "image/jpeg" ? "JPEG" : "PNG",
     }
   } catch {
     return null
   }
+}
+
+async function parseDataUri(value: string): Promise<ResolvedLogo | null> {
+  const decoded = decodeVisualImageDataUri(value, MAX_BYTES)
+  return decoded
+    ? materializeLogo(decoded.bytes, decoded.declaredMime)
+    : null
 }
 
 /**
@@ -62,18 +80,9 @@ export async function resolveTenantLogo(raw: string | null | undefined): Promise
     if (!response.ok) return null
 
     const contentType = (response.headers.get("content-type") || "").split(";")[0].trim()
-    if (!EMBEDDABLE_MIME.test(contentType)) return null
-
-    const buffer = Buffer.from(await response.arrayBuffer())
-    if (buffer.byteLength === 0 || buffer.byteLength > MAX_BYTES) return null
-
-    const isJpeg = /jpe?g$/i.test(contentType)
-    const mime = isJpeg ? "image/jpeg" : "image/png"
-    return {
-      dataUri: `data:${mime};base64,${buffer.toString("base64")}`,
-      bytes: new Uint8Array(buffer),
-      format: isJpeg ? "JPEG" : "PNG",
-    }
+    const buffer = await readResponseBytesWithLimit(response, MAX_BYTES)
+    if (buffer.byteLength === 0) return null
+    return materializeLogo(buffer, contentType)
   } catch {
     return null
   }

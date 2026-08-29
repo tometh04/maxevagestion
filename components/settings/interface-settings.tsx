@@ -292,46 +292,24 @@ export function InterfaceSettings() {
       toast.error("El archivo no puede superar 2MB")
       return
     }
-    const validTypes = ["image/png", "image/svg+xml", "image/webp"]
-    if (!validTypes.includes(file.type)) {
-      toast.error("Solo se permiten archivos PNG, SVG o WEBP")
-      return
-    }
-
     setUploading(true)
     try {
-      // Upload server-side: el upload client-side directo a Storage fallaba
-      // siempre por RLS (policies de storage.objects ausentes en prod) y caía
-      // al fallback data URL, embebiendo el logo en organization_settings.
-      try {
-        const formData = new FormData()
-        formData.append("file", file)
+      const formData = new FormData()
+      formData.append("file", file)
 
-        const res = await fetch("/api/settings/organization/logo", {
-          method: "POST",
-          body: formData,
-        })
-        const json = await res.json()
-        if (!res.ok || !json?.data?.url) {
-          throw new Error(json?.error || "Error al subir el logo")
-        }
-
-        setLogoUrl(json.data.url)
-        toast.success("Logo actualizado correctamente")
-      } catch (storageError) {
-        // Fallback: convert to data URL and store in organization_settings
-        console.warn("Storage upload failed, using data URL fallback:", storageError)
-        const reader = new FileReader()
-        reader.onload = async (e) => {
-          const dataUrl = e.target?.result as string
-          setLogoUrl(dataUrl)
-          await saveSetting("brand_logo", dataUrl)
-          toast.success("Logo guardado localmente")
-        }
-        reader.readAsDataURL(file)
+      const res = await fetch("/api/settings/organization/logo", {
+        method: "POST",
+        body: formData,
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok || !json?.data?.url) {
+        throw new Error(json?.error || "Error al subir el logo")
       }
-    } catch (err) {
-      toast.error("Error al subir el logo")
+
+      setLogoUrl(json.data.url)
+      toast.success("Logo actualizado correctamente")
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Error al subir el logo")
       console.error(err)
     } finally {
       setUploading(false)
@@ -800,7 +778,7 @@ export function InterfaceSettings() {
                   : "Arrastra o hace click para subir tu logo"}
               </span>
               <span className="text-[11px] text-muted-foreground/60">
-                PNG, SVG o WEBP — Max 2MB
+                PNG, JPG, SVG o WebP — Máx. 2MB
               </span>
             </div>
           )}
@@ -809,13 +787,13 @@ export function InterfaceSettings() {
           <input
             ref={fileInputRef}
             type="file"
-            accept=".png,.svg,.webp,image/png,image/svg+xml,image/webp"
+            accept=".png,.jpg,.jpeg,.svg,.webp,image/png,image/jpeg,image/svg+xml,image/webp"
             className="hidden"
             onChange={handleFileChange}
           />
 
           <p className="text-xs text-muted-foreground/70">
-            Recomendamos un logo con fondo transparente en formato PNG o SVG
+            Recomendamos un logo con fondo transparente en formato PNG o SVG.
           </p>
         </div>
       </div>

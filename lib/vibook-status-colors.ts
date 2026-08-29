@@ -11,6 +11,7 @@ export const QUOTATION_STATUS_COLORS: Record<string, StatusColors> = {
   APPROVED: { bg: "bg-success/10", text: "text-success", border: "border-success/15" },
   REJECTED: { bg: "bg-destructive/10", text: "text-destructive", border: "border-destructive/15" },
   EXPIRED: { bg: "bg-muted", text: "text-muted-foreground", border: "border-border" },
+  CONVERTING: { bg: "bg-primary/10", text: "text-primary", border: "border-primary/15" },
   CONVERTED: { bg: "bg-success/10", text: "text-success", border: "border-success/15" },
 }
 

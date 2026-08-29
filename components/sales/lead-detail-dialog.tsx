@@ -42,9 +42,15 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { toast } from "sonner"
-import { getQuotationOptionPricing } from "@/lib/quotations/presentation"
+import {
+  getQuotationOptionPricing,
+  QUOTATION_STATUS_LABELS,
+} from "@/lib/quotations/presentation"
 import { getPublicQuotationPath } from "@/lib/quotations/public-links"
 import { downloadQuotationPdfFromPriceDialog } from "@/lib/pdf/quotation-pdf-html"
+import { hasReadyQuotationDocument } from "@/lib/quotations/document-projection"
+import { isQuotationContentEditable } from "@/lib/quotations/lifecycle"
+import { getQuotationStatusColors } from "@/lib/vibook-status-colors"
 import { fetchQuotationDocumentForUser } from "@/lib/quotation-documents/client"
 import { QuotationPdfPriceDialog } from "@/components/sales/quotation-pdf-price-dialog"
 import { LeadEmiliaChat } from "@/components/sales/lead-emilia-chat"
@@ -300,6 +306,7 @@ export function LeadDetailDialog({
     valid_until: string | null
     public_token: string | null
     active_document_id?: string | null
+    document?: { status: "NONE" | "READY"; active_document_id: string | null }
     quotation_options?: Array<{ id: string; title: string; total_amount: number }>
   }>>([])
   const [loadingQuotations, setLoadingQuotations] = useState(false)
@@ -335,7 +342,7 @@ export function LeadDetailDialog({
   }
 
   // Cargar cotizaciones del lead
-  const loadQuotations = async () => {
+  const loadQuotations = async (options: { silent?: boolean } = {}) => {
     if (!lead) return
     setLoadingQuotations(true)
     try {
@@ -346,7 +353,7 @@ export function LeadDetailDialog({
       }
     } catch (error) {
       console.error("Error loading quotations:", error)
-      toast.error("Error al cargar cotizaciones")
+      if (!options.silent) toast.error("Error al cargar cotizaciones")
     } finally {
       setLoadingQuotations(false)
     }
@@ -965,16 +972,13 @@ export function LeadDetailDialog({
               ) : (
                 <div className="space-y-2">
                   {quotations.map((q) => {
-                    const statusConfig: Record<string, { label: string; color: string }> = {
-                      DRAFT: { label: "Borrador", color: "bg-muted text-muted-foreground" },
-                      SENT: { label: "Enviada", color: "bg-accent-teal/10 text-accent-teal" },
-                      APPROVED: { label: "Aprobada", color: "bg-success/10 text-success" },
-                      REJECTED: { label: "Rechazada", color: "bg-destructive/10 text-destructive" },
-                      EXPIRED: { label: "Vencida", color: "bg-accent-coral/10 text-accent-coral" },
-                      CONVERTED: { label: "Convertida", color: "bg-primary/10 text-primary" },
-                    }
-                    const sc = statusConfig[q.status] || statusConfig.DRAFT
                     const isExpired = q.valid_until && new Date(q.valid_until) < new Date() && q.status === "SENT"
+                    const effectiveStatus = isExpired ? "EXPIRED" : q.status
+                    const statusColors = getQuotationStatusColors(effectiveStatus)
+                    const statusClasses = `${statusColors.bg} ${statusColors.text} ${statusColors.border}`
+                    const statusLabel = QUOTATION_STATUS_LABELS[effectiveStatus] || effectiveStatus
+                    const documentReady = hasReadyQuotationDocument(q)
+                    const quotationEditable = isQuotationContentEditable(q.status)
 
                     return (
                       <div
@@ -984,8 +988,16 @@ export function LeadDetailDialog({
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <p className="text-sm font-medium truncate">{q.quotation_number}</p>
-                            <Badge variant="secondary" className={`text-[10px] px-1.5 py-0 ${sc.color}`}>
-                              {isExpired ? "Vencida" : sc.label}
+                            <Badge variant="secondary" className={`text-[10px] px-1.5 py-0 ${statusClasses}`}>
+                              {statusLabel}
+                            </Badge>
+                            <Badge
+                              variant="outline"
+                              className={documentReady
+                                ? "text-[10px] px-1.5 py-0 border-success/30 text-success"
+                                : "text-[10px] px-1.5 py-0 text-muted-foreground"}
+                            >
+                              {documentReady ? "Documento emitido" : "Sin emitir"}
                             </Badge>
                           </div>
                           <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
@@ -1041,7 +1053,7 @@ export function LeadDetailDialog({
                             className="h-7 w-7 p-0"
                             onClick={(e) => {
                               e.stopPropagation()
-                              if (["DRAFT", "SENT", "PENDING_APPROVAL"].includes(q.status)) {
+                              if (quotationEditable) {
                                 setPdfPriceQuotation({
                                   id: q.id,
                                   public_token: q.public_token,
@@ -1051,10 +1063,15 @@ export function LeadDetailDialog({
                                 void downloadQuotationPdfFromPriceDialog({
                                   quotationId: q.id,
                                   publicToken: q.public_token,
-                                }).catch(() => toast.error("No se pudo descargar el documento emitido"))
+                                })
+                                  .then(() => loadQuotations({ silent: true }))
+                                  .catch((error) => toast.error(
+                                    error instanceof Error ? error.message : "No se pudo descargar el documento emitido"
+                                  ))
                               }
                             }}
-                            title="Generar PDF"
+                            disabled={!quotationEditable && !documentReady}
+                            title={!quotationEditable && !documentReady ? "La cotización no tiene un PDF emitido" : "Generar PDF"}
                           >
                             <Download className="h-3.5 w-3.5" />
                           </Button>
@@ -1493,14 +1510,14 @@ export function LeadDetailDialog({
         onClose={() => setPdfPriceQuotation(null)}
         onGenerate={async (_quotationId, expectedUpdatedAt) => {
           if (!pdfPriceQuotation) return
-          loadQuotations() // refrescar totales mostrados en la lista
-          const result = await downloadQuotationPdfFromPriceDialog({
-            quotationId: pdfPriceQuotation.id,
-            publicToken: pdfPriceQuotation.public_token,
-            expectedUpdatedAt,
-          })
-          if (result === "none") {
-            toast.error("No se pudo generar el PDF de esta cotización")
+          try {
+            return await downloadQuotationPdfFromPriceDialog({
+              quotationId: pdfPriceQuotation.id,
+              publicToken: pdfPriceQuotation.public_token,
+              expectedUpdatedAt,
+            })
+          } finally {
+            await loadQuotations({ silent: true })
           }
         }}
         sendValidationError={!pdfPriceQuotation?.public_token
@@ -1512,7 +1529,7 @@ export function LeadDetailDialog({
           if (!pdfPriceQuotation?.public_token) throw new Error("La cotización no tiene enlace público")
           const phone = lead.contact_phone?.replace(/[^0-9+]/g, "") || ""
           if (!phone) throw new Error("El lead no tiene un teléfono para WhatsApp")
-          await fetchQuotationDocumentForUser(pdfPriceQuotation.id, {
+          const document = await fetchQuotationDocumentForUser(pdfPriceQuotation.id, {
             issue: true,
             markSent: true,
             expectedUpdatedAt,
@@ -1520,10 +1537,11 @@ export function LeadDetailDialog({
           const publicUrl = `${window.location.origin}${getPublicQuotationPath(pdfPriceQuotation.public_token)}`
           const cleanPhone = phone.startsWith("+") ? phone.slice(1) : phone
           const message = encodeURIComponent(`Hola ${lead.contact_name}! Te paso tu cotización:\n\n${publicUrl}\n\nQuedo a disposición por cualquier consulta.`)
-          loadQuotations()
           const whatsappUrl = `https://wa.me/${cleanPhone}?text=${message}`
           sendWindow.location.href = whatsappUrl
           toast.success("Cotización preparada para enviar")
+          void loadQuotations({ silent: true })
+          return document
         } : undefined}
       />
 

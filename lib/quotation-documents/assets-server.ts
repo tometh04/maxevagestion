@@ -1,16 +1,59 @@
 import { readFile } from "node:fs/promises"
 import path from "node:path"
+import {
+  decodeVisualImageDataUri,
+  detectVisualImageMime,
+  materializeVisualImage,
+  readResponseBytesWithLimit,
+  VisualImageError,
+} from "@/lib/document-assets/visual-image-server"
 
 const MAX_ASSET_BYTES = 5 * 1024 * 1024
 const MAX_TOTAL_ASSET_BYTES = 20 * 1024 * 1024
+const MAX_LEGACY_DATA_URI_BYTES = 10 * 1024 * 1024
+const MAX_TOTAL_LEGACY_DATA_URI_BYTES = 40 * 1024 * 1024
 const ASSET_TIMEOUT_MS = 6_000
 const TRANSPARENT_PIXEL = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="
+
+export class QuotationDocumentAssetError extends Error {
+  constructor(
+    public readonly code:
+      | "ASSET_INVALID"
+      | "ASSET_TOO_LARGE"
+      | "ASSET_UNAVAILABLE"
+      | "ASSET_UNSAFE",
+    public readonly source: string,
+    message: string,
+    public readonly causeValue?: unknown
+  ) {
+    super(message)
+    this.name = "QuotationDocumentAssetError"
+  }
+}
+
+function materializationError(source: string, error: unknown): QuotationDocumentAssetError {
+  const cause = error instanceof Error ? error.message : "contenido visual inválido"
+  const code = error instanceof VisualImageError
+    ? error.code === "UNSAFE_SVG"
+      ? "ASSET_UNSAFE"
+      : error.code === "TOO_LARGE"
+        ? "ASSET_TOO_LARGE"
+        : "ASSET_INVALID"
+    : "ASSET_INVALID"
+  return new QuotationDocumentAssetError(
+    code,
+    source,
+    `No se pudo congelar el asset aprobado: ${cause}`,
+    error
+  )
+}
 
 const MIME_BY_EXTENSION: Record<string, string> = {
   ".gif": "image/gif",
   ".jpeg": "image/jpeg",
   ".jpg": "image/jpeg",
   ".png": "image/png",
+  ".svg": "image/svg+xml",
   ".webp": "image/webp",
   ".woff2": "font/woff2",
 }
@@ -94,17 +137,18 @@ async function fetchApprovedImage(source: string): Promise<
       signal: controller.signal,
     })
     if (!response.ok) return { kind: "failed", reason: `HTTP ${response.status}` }
-    const declaredLength = Number(response.headers.get("content-length") || 0)
-    if (declaredLength > MAX_ASSET_BYTES) return { kind: "failed", reason: "asset demasiado grande" }
     const mime = (response.headers.get("content-type") || "").split(";")[0].trim().toLowerCase()
-    if (!["image/gif", "image/jpeg", "image/png", "image/webp"].includes(mime)) {
-      return { kind: "failed", reason: "tipo de contenido no permitido" }
-    }
-    const buffer = Buffer.from(await response.arrayBuffer())
-    if (buffer.byteLength > MAX_ASSET_BYTES) return { kind: "failed", reason: "asset demasiado grande" }
+    const buffer = await readResponseBytesWithLimit(response, MAX_ASSET_BYTES)
     return { kind: "ok", cacheKey: url.toString(), buffer, mime }
   } catch (error) {
-    return { kind: "failed", reason: error instanceof Error ? error.message : "error de red" }
+    return {
+      kind: "failed",
+      reason: error instanceof VisualImageError && error.code === "TOO_LARGE"
+        ? "asset demasiado grande"
+        : error instanceof Error
+          ? error.message
+          : "error de red",
+    }
   } finally {
     clearTimeout(timeout)
   }
@@ -145,42 +189,127 @@ export async function freezeQuotationDocumentAssets(
   let frozenAssetCount = 0
   let omittedRemoteAssetCount = 0
   let totalBytes = 0
+  let totalLegacyDataUriBytes = 0
   const frozenSources: Record<string, string> = {}
 
   for (const [source, encodedVariants] of Array.from(sourceVariants.entries())) {
     let replacement: string
-    const local = source.startsWith("data:") ? null : internalAsset(source, publicDir)
+    let local: ReturnType<typeof internalAsset>
+    try {
+      local = source.startsWith("data:") ? null : internalAsset(source, publicDir)
+    } catch (error) {
+      throw materializationError(source, error)
+    }
     if (source.startsWith("data:")) {
-      replacement = source
+      const decoded = decodeVisualImageDataUri(source, MAX_LEGACY_DATA_URI_BYTES)
+      if (!decoded) throw materializationError(source, new Error("El recurso contiene un data URI visual inválido"))
+      const detectedMime = detectVisualImageMime(decoded.bytes)
+      const legacyRaster = Boolean(detectedMime && detectedMime !== "image/svg+xml")
+      let materialized
+      try {
+        materialized = await materializeVisualImage({
+          bytes: decoded.bytes,
+          declaredMime: decoded.declaredMime,
+          maxInputBytes: legacyRaster ? MAX_LEGACY_DATA_URI_BYTES : MAX_ASSET_BYTES,
+          maxOutputBytes: legacyRaster ? MAX_LEGACY_DATA_URI_BYTES : MAX_ASSET_BYTES,
+          validation: "legacy-raster",
+        })
+      } catch (error) {
+        throw materializationError(source, error)
+      }
+      if (
+        legacyRaster
+        && totalLegacyDataUriBytes + materialized.bytes.byteLength > MAX_TOTAL_LEGACY_DATA_URI_BYTES
+      ) {
+        throw new QuotationDocumentAssetError(
+          "ASSET_TOO_LARGE",
+          source,
+          "Los assets data URI heredados exceden el límite total permitido"
+        )
+      }
+      if (!legacyRaster && totalBytes + materialized.bytes.byteLength > MAX_TOTAL_ASSET_BYTES) {
+        throw new QuotationDocumentAssetError(
+          "ASSET_TOO_LARGE",
+          source,
+          "Los assets del documento exceden el límite total permitido"
+        )
+      }
+      if (legacyRaster) totalLegacyDataUriBytes += materialized.bytes.byteLength
+      else totalBytes += materialized.bytes.byteLength
+      replacement = materialized.dataUri
     } else if (local) {
       const cached = resolvedByKey.get(local.cacheKey)
       if (cached) {
         replacement = cached
       } else {
-        const buffer = await readFile(local.filePath)
-        if (buffer.byteLength > MAX_ASSET_BYTES || totalBytes + buffer.byteLength > MAX_TOTAL_ASSET_BYTES) {
-          throw new Error(`El asset ${local.filePath} excede el límite permitido`)
+        let buffer: Buffer
+        let materialized
+        try {
+          buffer = await readFile(local.filePath)
+          materialized = local.mime.startsWith("image/")
+            ? await materializeVisualImage({
+                bytes: buffer,
+                declaredMime: local.mime,
+                maxInputBytes: MAX_ASSET_BYTES,
+                maxOutputBytes: MAX_ASSET_BYTES,
+                validation: "legacy-raster",
+              })
+            : null
+        } catch (error) {
+          throw materializationError(source, error)
         }
-        totalBytes += buffer.byteLength
-        replacement = dataUri(buffer, local.mime)
+        const materializedBytes = materialized?.bytes || buffer
+        if (
+          materializedBytes.byteLength > MAX_ASSET_BYTES
+          || totalBytes + materializedBytes.byteLength > MAX_TOTAL_ASSET_BYTES
+        ) {
+          throw new QuotationDocumentAssetError(
+            "ASSET_TOO_LARGE",
+            source,
+            "El asset excede el límite permitido"
+          )
+        }
+        totalBytes += materializedBytes.byteLength
+        replacement = materialized?.dataUri || dataUri(materializedBytes, local.mime)
         resolvedByKey.set(local.cacheKey, replacement)
       }
       frozenAssetCount += 1
     } else {
       const remote = await fetchApprovedImage(source)
       if (remote.kind === "failed") {
-        throw new Error(`No se pudo congelar el asset aprobado ${source}: ${remote.reason}`)
+        throw new QuotationDocumentAssetError(
+          "ASSET_UNAVAILABLE",
+          source,
+          `No se pudo congelar el asset aprobado: ${remote.reason}`
+        )
       }
-      if (remote.kind === "ok" && totalBytes + remote.buffer.byteLength <= MAX_TOTAL_ASSET_BYTES) {
+      if (remote.kind === "ok") {
+        let materialized
+        try {
+          materialized = await materializeVisualImage({
+            bytes: remote.buffer,
+            declaredMime: remote.mime,
+            maxInputBytes: MAX_ASSET_BYTES,
+            maxOutputBytes: MAX_ASSET_BYTES,
+            validation: "legacy-raster",
+          })
+        } catch (error) {
+          throw materializationError(source, error)
+        }
+        if (totalBytes + materialized.bytes.byteLength > MAX_TOTAL_ASSET_BYTES) {
+          throw new QuotationDocumentAssetError(
+            "ASSET_TOO_LARGE",
+            source,
+            "Los assets del documento exceden el límite total permitido"
+          )
+        }
         const cached = resolvedByKey.get(remote.cacheKey)
-        replacement = cached || dataUri(remote.buffer, remote.mime)
+        replacement = cached || materialized.dataUri
         if (!cached) {
-          totalBytes += remote.buffer.byteLength
+          totalBytes += materialized.bytes.byteLength
           resolvedByKey.set(remote.cacheKey, replacement)
         }
         frozenAssetCount += 1
-      } else if (remote.kind === "ok") {
-        throw new Error(`Los assets del documento exceden el límite total permitido`)
       } else {
         replacement = TRANSPARENT_PIXEL
         omittedRemoteAssetCount += 1

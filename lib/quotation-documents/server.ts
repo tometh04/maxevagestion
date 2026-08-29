@@ -10,7 +10,10 @@ import {
   type QuotationModelManifestV1,
 } from "@/lib/quotation-documents"
 import { countRenderedPages } from "@/lib/quotation-documents/html"
-import { freezeQuotationDocumentAssets } from "@/lib/quotation-documents/assets-server"
+import {
+  freezeQuotationDocumentAssets,
+  QuotationDocumentAssetError,
+} from "@/lib/quotation-documents/assets-server"
 import { withSelectedQuotationOption } from "@/lib/quotation-documents/presentation"
 import { isQuotationContentEditable } from "@/lib/quotations/lifecycle"
 import {
@@ -65,6 +68,7 @@ export interface ResolvedQuotationDocument {
   model: QuotationDocumentDataV1
   manifest: QuotationModelManifestV1
   quotationStatus: string
+  quotationUpdatedAt?: string
   omittedRemoteAssetCount: number
 }
 
@@ -73,6 +77,7 @@ export class QuotationDocumentServerError extends Error {
     public readonly code:
       | "NOT_FOUND"
       | "FORBIDDEN"
+      | "ASSET_INVALID"
       | "TEMPLATE_INVALID"
       | "NOT_ISSUED"
       | "INVALID_STATE"
@@ -122,6 +127,22 @@ async function prepareDocumentForIssue(
       omittedRemoteAssetCount: frozen.omittedRemoteAssetCount,
     }
   } catch (error) {
+    if (error instanceof QuotationDocumentAssetError) {
+      const logoSources = [
+        document.manifest.assets.logoPath,
+        document.model.agency.logoUrl,
+      ].map(source => source?.trim()).filter(Boolean)
+      const isLogo = logoSources.includes(error.source)
+      const subject = isLogo ? "El logo institucional" : "Un recurso visual del documento"
+      const message = error.code === "ASSET_UNSAFE"
+        ? `${subject} contiene elementos no permitidos. Volvé a cargarlo desde Configuración.`
+        : error.code === "ASSET_TOO_LARGE"
+          ? `${subject} supera los límites permitidos. Volvé a cargar una versión más liviana.`
+          : error.code === "ASSET_UNAVAILABLE"
+            ? `${subject} no está disponible. Verificá el archivo configurado y volvé a intentar.`
+            : `${subject} no contiene una imagen compatible. Volvé a cargarlo desde Configuración.`
+      throw new QuotationDocumentServerError("ASSET_INVALID", message, error)
+    }
     throw new QuotationDocumentServerError(
       "TEMPLATE_INVALID",
       "No se pudieron congelar los recursos visuales del documento",
@@ -372,6 +393,27 @@ async function issueDocument(
     throw new QuotationDocumentServerError("PERSISTENCE_FAILED", "No se pudo leer el documento emitido")
   }
 
+  let committedQuotation: {
+    active_document_id?: string | null
+    status?: string | null
+    updated_at?: string | null
+  } | null = null
+  try {
+    const { data: currentQuotation } = await supabase
+      .from("quotations")
+      .select("active_document_id, status, updated_at")
+      .eq("id", quotation.id)
+      .eq("org_id", quotation.org_id)
+      .eq("agency_id", quotation.agency_id)
+      .maybeSingle()
+    if (currentQuotation?.active_document_id === issued.id) {
+      committedQuotation = currentQuotation
+    }
+  } catch {
+    // El RPC ya confirmó la emisión. Esta lectura sólo completa la versión que
+    // el cliente necesita para reintentar sin reutilizar un CAS anterior.
+  }
+
   return {
     ...document,
     revisionId: issued.revision_id,
@@ -379,7 +421,8 @@ async function issueDocument(
     contentHash: issued.content_hash,
     html: issued.html_snapshot,
     filename: issued.file_name,
-    quotationStatus: document.quotationStatus,
+    quotationStatus: committedQuotation?.status || document.quotationStatus,
+    quotationUpdatedAt: committedQuotation?.updated_at || undefined,
   }
 }
 

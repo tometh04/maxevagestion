@@ -15,6 +15,7 @@ import {
   resolveAgencyPermissionScope,
 } from "@/lib/permissions/agency-scope-server"
 import { quotationPresentationContentSchema } from "@/lib/quotation-documents/schemas"
+import { withQuotationDocumentProjection } from "@/lib/quotations/document-projection"
 
 export const dynamic = "force-dynamic"
 
@@ -100,7 +101,11 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json({ data })
+    return NextResponse.json({
+      data: Array.isArray(data)
+        ? data.map(withQuotationDocumentProjection)
+        : data,
+    })
   } catch (error: any) {
     if (error?.digest === "NEXT_REDIRECT") throw error
     console.error("Error in quotations GET:", error)

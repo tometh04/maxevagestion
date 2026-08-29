@@ -178,4 +178,5 @@ app/api/public/quotations/[token]/__tests__/route.test.ts                 # TEST
 app/api/quotations/__tests__/id-route.test.ts                             # TEST — simula reemplazo/rollback service-role después de validar org, agencia y seller.
 app/api/quotations/[id]/convert/__tests__/route.test.ts                   # TEST — mock de conversión transaccional y alerta de revisión de comisiones.
 app/api/quotations/__tests__/route.test.ts                                # TEST — mock del alta atómica y su reload service-role post-gate.
+app/api/quotations/__tests__/document-projection-route.test.ts            # TEST — mock de lecturas scoped para verificar la proyección documental aditiva.
 app/api/quotations/upload-flight-screenshot/__tests__/route.test.ts       # TEST — mock de lectura scoped y Storage service-role.

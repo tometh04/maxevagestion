@@ -6,13 +6,16 @@ El PDF de una cotización es un documento de negocio multi-tenant. Su apariencia
 puede variar por agencia, pero sus datos, permisos, selección de modelo y emisión
 no deben depender de decisiones tomadas por componentes del CRM.
 
-La implementación separa dos módulos profundos:
+La implementación separa tres Modules profundos:
 
 - `lib/quotation-documents/authoring-server.ts`: administra borradores,
   publicación y asignación explícita a una agencia. El resolver admite además
   un fallback organizacional, reservado por ahora para configuración de sistema.
 - `lib/quotation-documents/server.ts`: arma el modelo canónico, resuelve el
   modelo aplicable y emite o recupera un documento congelado.
+- `lib/document-assets/visual-image-server.ts`: expone la Interface
+  `materializeVisualImage` para validar por bytes y materializar imágenes de
+  branding y documentos sin trasladar reglas de formatos a cada caller.
 
 Los layouts viven en `lib/quotation-documents/layouts/`. Un manifiesto configura
 un layout conocido mediante un vocabulario seguro; no almacena HTML, CSS ni
@@ -92,9 +95,39 @@ snapshot de datos usado por la barra pública. Así un logo reemplazado o una UR
 firmada vencida no modifica un documento histórico. Un host remoto adicional debe
 declararse explícitamente en `QUOTATION_DOCUMENT_ASSET_HOSTS` como lista de
 hostnames separados por coma; los hosts no aprobados se omiten para evitar SSRF.
+
+El `DocumentAssets Module` no confía en la extensión ni en el MIME declarado:
+detecta el formato real por sus bytes. Los uploads nuevos y las conversiones
+aplican validación estricta, con decodificación y límites de entrada, salida,
+dimensiones y píxeles. El congelado usa un perfil compatible para PNG, JPEG,
+WebP y GIF ya publicados: valida su firma y conserva sus bytes y límites
+históricos, sin imponerles retroactivamente un máximo dimensional. Así una
+cotización existente no cambia de hash ni deja de emitir por una recodificación
+innecesaria. Un caller de jsPDF/pdf-lib puede pedir una variante
+`pdf-embeddable`; esa variante rasteriza a PNG sólo los formatos que esos
+renderers no admiten. Los `data:` raster heredados conservan el techo histórico
+de 10 MB por screenshot y tienen un límite total defensivo de 40 MB por
+documento; los uploads nuevos nunca crean este fallback.
+
+SVG se admite únicamente como entrada: se rechazan DTD, entidades, contenido
+activo y referencias externas, y un SVG seguro siempre se materializa como PNG
+antes de llegar al snapshot o a Storage. Los `data:` heredados tampoco se dejan
+pasar como texto confiable: se decodifica su base64, se valida la firma del
+raster con el perfil compatible y se normaliza SVG con el perfil estricto. La
+subida de branding ya no persiste nuevos `data:` como fallback; conserva el logo
+anterior si la carga normalizada falla. Los SVG con dimensiones relativas usan
+su `viewBox` acotado; sin dimensiones absolutas ni `viewBox` fallan cerrados. El
+upload y todos los consumidores de logos comparten el mismo contrato: hasta
+2 MiB de fuente y hasta 5 MiB para la variante normalizada almacenada.
+
 Open Sans también se sirve desde un asset local versionado y se espera su carga
 antes de imprimir. El fondo editorial se incrusta una sola vez por documento y
 se reutiliza por CSS en todas sus páginas, incluso en propuestas extensas.
+
+El artefacto canónico actual sigue siendo el snapshot HTML inmutable junto con
+su hash. La creación y persistencia server-side de un binario PDF, con worker,
+reintentos y Storage propio, queda como una fase futura; no forma parte de esta
+Interface ni se debe inferir de `pdf_storage_path`.
 
 La aceptación pública exige `issued_document_id`, `content_hash` y una opción
 presente tanto en el snapshot como en la cotización. La selección, el estado
@@ -122,9 +155,16 @@ esa rama de compatibilidad no habilita nuevas aceptaciones sin snapshot.
 7. Descarga, WhatsApp y enlace público consumen el mismo documento.
 
 Si la descarga o emisión falla después de preparar el contenido, el modal
-conserva la nueva versión CAS para reintentar sin recargar. Para WhatsApp se
-validan enlace y teléfono antes de persistir, y se reserva la ventana durante
-el gesto del usuario para evitar el bloqueo de popups del navegador.
+conserva la nueva versión CAS para reintentar sin recargar y comunica que la
+cotización sí quedó guardada. Son estados distintos: `quotations.status`
+representa el ciclo comercial, mientras que el estado documental depende de
+que exista un snapshot emitido y activo. Guardar contenido no equivale a emitir
+ni a descargar; el paso de `DRAFT` a `SENT` sólo ocurre junto con una emisión
+exitosa. La respuesta de emisión devuelve la versión comprometida; si la
+descarga local falla, la UI conserva el documento emitido y refresca su
+proyección antes de permitir un reintento. Para WhatsApp se validan enlace y teléfono antes de persistir, y se
+reserva la ventana durante el gesto del usuario para evitar el bloqueo de
+popups del navegador.
 
 ### Emilia
 

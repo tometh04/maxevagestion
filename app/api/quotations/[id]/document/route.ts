@@ -50,6 +50,7 @@ function documentResponse(document: Awaited<ReturnType<typeof renderQuotationDoc
       issuedDocumentId: document.issuedDocumentId,
       contentHash: document.contentHash,
       quotationStatus: document.quotationStatus,
+      quotationUpdatedAt: document.quotationUpdatedAt,
       omittedRemoteAssetCount: document.omittedRemoteAssetCount,
     },
   }, {
@@ -65,9 +66,9 @@ function errorResponse(error: unknown) {
         ? 403
         : error.code === "INVALID_CONTENT"
           ? 400
-        : error.code === "QUOTATION_CHANGED" || error.code === "INVALID_STATE"
-          ? 409
-          : error.code === "TEMPLATE_INVALID"
+          : error.code === "QUOTATION_CHANGED" || error.code === "INVALID_STATE"
+            ? 409
+          : error.code === "TEMPLATE_INVALID" || error.code === "ASSET_INVALID"
             ? 422
             : 500
     return NextResponse.json({ error: error.message, code: error.code }, { status })

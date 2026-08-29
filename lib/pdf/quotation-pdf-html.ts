@@ -32,7 +32,10 @@ import {
   formatQuotationDateShort,
   normalizeQuotationForPresentation,
 } from "@/lib/quotations/presentation"
-import { downloadQuotationDocumentById } from "@/lib/quotation-documents/client"
+import {
+  downloadQuotationDocumentById,
+  type QuotationDocumentPayload,
+} from "@/lib/quotation-documents/client"
 
 export type OrganizationBrandingSettings = Record<string, string>
 
@@ -537,7 +540,6 @@ export async function downloadQuotationPdfFromPriceDialog(options: {
   quotationId: string
   publicToken?: string | null
   expectedUpdatedAt?: string
-}): Promise<"html" | "public" | "none"> {
-  await downloadQuotationDocumentById(options.quotationId, options.expectedUpdatedAt)
-  return "html"
+}): Promise<QuotationDocumentPayload> {
+  return downloadQuotationDocumentById(options.quotationId, options.expectedUpdatedAt)
 }

@@ -18,6 +18,7 @@ import {
   resolveAgencyPermissionScope,
 } from "@/lib/permissions/agency-scope-server"
 import { isQuotationContentEditable } from "@/lib/quotations/lifecycle"
+import { withQuotationDocumentProjection } from "@/lib/quotations/document-projection"
 
 export const dynamic = "force-dynamic"
 
@@ -81,10 +82,10 @@ export async function GET(
     }
 
     return NextResponse.json({
-      data: {
+      data: withQuotationDocumentProjection({
         ...data,
         available_operators: availableOperators || [],
-      },
+      }),
     })
   } catch (error: any) {
     if (error?.digest === "NEXT_REDIRECT") throw error
