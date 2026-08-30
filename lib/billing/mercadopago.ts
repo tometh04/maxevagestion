@@ -449,6 +449,11 @@ export async function fetchAuthorizedPayment(authorizedPaymentId: string): Promi
  * `retry_attempt` y `next_retry_date`, además del `payment` con su
  * `status_detail`. El preapproval solo expone `summarized`, que dice cuánto
  * se cobró pero no qué pasó con lo que NO se cobró.
+ *
+ * OJO con los query params: este endpoint NO es como /preapproval/search.
+ * Rechaza con 400 "Invalid value for limit" el mismo `limit` que aquel acepta,
+ * así que pedimos la página default y ordenamos/recortamos acá. Ordenar del
+ * lado nuestro además no depende de que MP respete un `sort`.
  */
 export async function searchAuthorizedPayments(
   preapprovalId: string,
@@ -456,8 +461,6 @@ export async function searchAuthorizedPayments(
 ): Promise<any[]> {
   const url = new URL(`${MP_API}/authorized_payments/search`)
   url.searchParams.set("preapproval_id", preapprovalId)
-  url.searchParams.set("sort", "date_created:desc")
-  url.searchParams.set("limit", String(limit))
 
   const res = await fetch(url.toString(), {
     headers: { Authorization: `Bearer ${mpAccessToken()}` },
@@ -467,7 +470,14 @@ export async function searchAuthorizedPayments(
     throw new Error(`MP search authorized_payments failed (${res.status}): ${text}`)
   }
   const data = await res.json()
-  return (data?.results as any[]) ?? []
+  const results = (data?.results as any[]) ?? []
+
+  const ts = (ap: any) => {
+    const raw = ap?.debit_date || ap?.date_created
+    const t = raw ? new Date(raw).getTime() : NaN
+    return Number.isNaN(t) ? 0 : t
+  }
+  return [...results].sort((a, b) => ts(b) - ts(a)).slice(0, limit)
 }
 
 /**

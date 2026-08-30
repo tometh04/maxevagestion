@@ -1,4 +1,4 @@
-import { createPreapprovalPlan } from "./mercadopago"
+import { createPreapprovalPlan, searchAuthorizedPayments } from "./mercadopago"
 
 describe("createPreapprovalPlan", () => {
   const originalFetch = global.fetch
@@ -71,5 +71,71 @@ describe("createPreapprovalPlan", () => {
     await expect(createPreapprovalPlan({
       reason: "x", amount: 1, backUrl: "https://x", includeFreeTrial: false,
     })).rejects.toThrow(/MP preapproval_plan failed \(400\)/)
+  })
+})
+
+describe("searchAuthorizedPayments", () => {
+  const originalFetch = global.fetch
+  afterEach(() => { global.fetch = originalFetch })
+
+  function mockOk(results: any[]) {
+    const mockFetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ results }),
+    })
+    global.fetch = mockFetch as any
+    process.env.MERCADOPAGO_ACCESS_TOKEN = "APP_USR-test-token"
+    return mockFetch
+  }
+
+  it("no manda limit ni sort: MP los rechaza con 400 en este endpoint", async () => {
+    const mockFetch = mockOk([])
+    await searchAuthorizedPayments("pa-1", 30)
+
+    const url = new URL(mockFetch.mock.calls[0][0])
+    expect(url.pathname).toBe("/authorized_payments/search")
+    expect(url.searchParams.get("preapproval_id")).toBe("pa-1")
+    expect(url.searchParams.get("limit")).toBeNull()
+    expect(url.searchParams.get("sort")).toBeNull()
+  })
+
+  it("ordena del intento más nuevo al más viejo sin depender del orden de MP", async () => {
+    mockOk([
+      { id: "viejo", debit_date: "2026-07-29T09:37:53.000Z" },
+      { id: "nuevo", debit_date: "2026-08-29T10:11:47.000Z" },
+      { id: "medio", date_created: "2026-08-14T12:00:00.000Z" },
+    ])
+    const res = await searchAuthorizedPayments("pa-1")
+    expect(res.map((r) => r.id)).toEqual(["nuevo", "medio", "viejo"])
+  })
+
+  it("recorta a limit del lado nuestro", async () => {
+    mockOk([
+      { id: "a", debit_date: "2026-08-29T00:00:00.000Z" },
+      { id: "b", debit_date: "2026-07-29T00:00:00.000Z" },
+      { id: "c", debit_date: "2026-06-29T00:00:00.000Z" },
+    ])
+    expect(await searchAuthorizedPayments("pa-1", 2)).toHaveLength(2)
+  })
+
+  it("una fecha inválida no rompe el orden", async () => {
+    mockOk([
+      { id: "sin-fecha" },
+      { id: "con-fecha", debit_date: "2026-08-29T00:00:00.000Z" },
+    ])
+    const res = await searchAuthorizedPayments("pa-1")
+    expect(res[0].id).toBe("con-fecha")
+  })
+
+  it("propaga el error de MP con status y body", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 400,
+      text: async () => '{"message":"Invalid value for limit"}',
+    }) as any
+    await expect(searchAuthorizedPayments("pa-1")).rejects.toThrow(
+      /MP search authorized_payments failed \(400\)/
+    )
   })
 })
