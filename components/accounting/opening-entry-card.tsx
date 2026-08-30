@@ -188,9 +188,9 @@ export function OpeningEntryCard({ agencyId }: { agencyId: string }) {
       ))}
 
       {anomalias.length > 0 && (
-        <div className="space-y-2 rounded-md border border-accent-sand/40 bg-accent-sand/10 px-3.5 py-3">
+        <div className="space-y-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3.5 py-3">
           <div className="flex gap-2.5">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-accent-sand" aria-hidden />
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
             <div>
               <p className="text-sm font-medium">
                 {anomalias.length === 1

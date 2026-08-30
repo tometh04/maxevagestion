@@ -179,8 +179,8 @@ export function MonthlyClosePageClient({ agencies }: Props) {
       {/* Sin fecha de inicio no hay contabilidad que cerrar. Se manda a
           configurarla en vez de mostrar una tabla vacía que parezca una falla. */}
       {!loading && estado && !estado.configurado && (
-        <div className="flex flex-wrap items-start gap-3 rounded-md border border-accent-sand/40 bg-accent-sand/10 px-4 py-3.5">
-          <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-accent-sand" aria-hidden />
+        <div className="flex flex-wrap items-start gap-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-3.5">
+          <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
           <div className="min-w-0 flex-1 space-y-1">
             <p className="text-sm font-medium">Falta definir desde cuándo se lleva contabilidad</p>
             <p className="text-sm text-muted-foreground">
@@ -307,10 +307,10 @@ export function MonthlyClosePageClient({ agencies }: Props) {
               )}
 
               {resultado.anomalias.length > 0 && (
-                <div className="space-y-2 rounded-md border border-accent-sand/40 bg-accent-sand/10 px-3.5 py-3">
+                <div className="space-y-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3.5 py-3">
                   <div className="flex gap-2.5">
                     <AlertTriangle
-                      className="mt-0.5 h-4 w-4 shrink-0 text-accent-sand"
+                      className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400"
                       aria-hidden
                     />
                     <div>

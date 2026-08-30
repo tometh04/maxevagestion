@@ -200,8 +200,8 @@ export function FinancialStatementsPageClient({ agencies }: Props) {
       {/* Sin fecha de inicio no hay estado que emitir. Se manda a configurarlo
           en vez de mostrar un informe vacío que parezca un error. */}
       {!loading && data && !data.configurado && (
-        <div className="flex flex-wrap items-start gap-3 rounded-md border border-accent-sand/40 bg-accent-sand/10 px-4 py-3.5">
-          <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-accent-sand" aria-hidden />
+        <div className="flex flex-wrap items-start gap-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-3.5">
+          <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
           <div className="min-w-0 flex-1 space-y-1">
             <p className="text-sm font-medium">Falta configurar la contabilidad</p>
             <p className="text-sm text-muted-foreground">{data.message}</p>
@@ -220,8 +220,8 @@ export function FinancialStatementsPageClient({ agencies }: Props) {
           </p>
 
           {mesesSinCotizacion.length > 0 && (
-            <div className="flex gap-2.5 rounded-md border border-accent-sand/40 bg-accent-sand/10 px-3.5 py-3 text-sm">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-accent-sand" aria-hidden />
+            <div className="flex gap-2.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-3.5 py-3 text-sm">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
               <div className="space-y-1">
                 <p className="font-medium">Faltan cotizaciones</p>
                 <p className="text-muted-foreground">
@@ -315,8 +315,8 @@ export function FinancialStatementsPageClient({ agencies }: Props) {
             )}
 
             {data.balance.descuadre !== 0 && (
-              <div className="flex gap-2.5 rounded-md border border-accent-sand/40 bg-accent-sand/10 px-3.5 py-3 text-sm">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-accent-sand" aria-hidden />
+              <div className="flex gap-2.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-3.5 py-3 text-sm">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
                 <div className="space-y-1">
                   <p className="font-medium">
                     El balance no cierra por {monto(Math.abs(data.balance.descuadre), data.currency)}
