@@ -441,6 +441,36 @@ export async function fetchAuthorizedPayment(authorizedPaymentId: string): Promi
 }
 
 /**
+ * Lista los intentos de cobro (authorized_payments) de un preapproval, del más
+ * nuevo al más viejo.
+ *
+ * Es la única forma de responder "¿MP va a volver a intentar el cobro que se
+ * cayó?": cada intento trae su `status` (scheduled/processed/recycling),
+ * `retry_attempt` y `next_retry_date`, además del `payment` con su
+ * `status_detail`. El preapproval solo expone `summarized`, que dice cuánto
+ * se cobró pero no qué pasó con lo que NO se cobró.
+ */
+export async function searchAuthorizedPayments(
+  preapprovalId: string,
+  limit = 30
+): Promise<any[]> {
+  const url = new URL(`${MP_API}/authorized_payments/search`)
+  url.searchParams.set("preapproval_id", preapprovalId)
+  url.searchParams.set("sort", "date_created:desc")
+  url.searchParams.set("limit", String(limit))
+
+  const res = await fetch(url.toString(), {
+    headers: { Authorization: `Bearer ${mpAccessToken()}` },
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`MP search authorized_payments failed (${res.status}): ${text}`)
+  }
+  const data = await res.json()
+  return (data?.results as any[]) ?? []
+}
+
+/**
  * Busca preapprovals asociados a un payer_email. Los preapprovals hijos
  * creados vía preapproval_plan NO traen external_reference, así que el
  * matching se hace por payer_email cuando llega un webhook tipo "payment".

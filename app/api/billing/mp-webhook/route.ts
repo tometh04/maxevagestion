@@ -12,6 +12,7 @@ import { isAccessAllowed } from "@/lib/billing/access"
 import { buildAgreedPriceUpdate } from "@/lib/billing/agreed-price"
 import { logSecurityEvent } from "@/lib/security/audit"
 import { notifyBillingSlack } from "@/lib/billing/slack-notify"
+import { formatRejectionReason } from "@/lib/billing/rejection-reason"
 
 /**
  * POST /api/billing/mp-webhook
@@ -145,6 +146,10 @@ export async function POST(request: Request) {
     if (type === "subscription_authorized_payment") {
       let preapprovalId = body?.preapproval_id || body?.data?.preapproval_id
       let authPaymentStatus: string | undefined = body?.status
+      // Motivo del rechazo. MP solo lo expone en el payment embebido del
+      // authorized_payment; el body del webhook no lo trae.
+      let authStatusDetail: string | null = null
+      let mpPaymentId: string | number | null = null
       if (!preapprovalId) {
         // MP NO siempre manda preapproval_id en el body — a veces solo el id del
         // authorized_payment (data.id). Sin esto, los cobros de preapprovals
@@ -162,6 +167,8 @@ export async function POST(request: Request) {
         // El estado que importa es el del PAGO (approved/rejected), no el del
         // authorized_payment (processed/scheduled).
         authPaymentStatus = authPayment?.payment?.status ?? authPaymentStatus
+        authStatusDetail = authPayment?.payment?.status_detail ?? null
+        mpPaymentId = authPayment?.payment?.id ?? null
         if (!preapprovalId) {
           console.warn("mp-webhook: authorized_payment sin preapproval_id", { authPaymentId })
           await markProcessed()
@@ -172,6 +179,8 @@ export async function POST(request: Request) {
       paymentEvent = {
         type: "subscription_authorized_payment",
         status: authPaymentStatus || "pending",
+        status_detail: authStatusDetail,
+        payment_id: mpPaymentId,
       }
     } else if (type === "payment") {
       // payment no siempre trae preapproval_id en el payload del webhook.
@@ -206,6 +215,8 @@ export async function POST(request: Request) {
         type: "subscription_authorized_payment",
         status: paymentDetails?.status || "pending",
         transaction_amount: paymentDetails?.transaction_amount ?? undefined,
+        status_detail: paymentDetails?.status_detail ?? null,
+        payment_id: paymentDetails?.id ?? null,
       }
     } else {
       preapproval = await fetchPreapproval(String(resolvedId))
@@ -440,8 +451,11 @@ export async function POST(request: Request) {
       event: "PAYMENT_REJECTED",
       orgName: org.name || orgId,
       orgId,
-      amount: amount ? `$${amount.toLocaleString("es-AR")}` : undefined,
-      details: `Pago rechazado por MP. Status anterior: ${org.subscription_status}. Transición a PAST_DUE.`,
+      amount: amount ? `${amount.toLocaleString("es-AR")}` : undefined,
+      details:
+        `Pago rechazado por MP: ${formatRejectionReason(paymentEvent?.status_detail)}. ` +
+        `Medio: ${preapproval.payment_method_id ?? "?"}. ` +
+        `Status anterior: ${org.subscription_status}. Transición a PAST_DUE.`,
       severity: "error",
     })
   } else if (transition.event_type === "SUBSCRIPTION_CANCELLED") {

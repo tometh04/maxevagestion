@@ -39,6 +39,16 @@ export interface MPPaymentEvent {
   type: "subscription_authorized_payment"
   status: "approved" | "rejected" | "pending" | string
   transaction_amount?: number
+  /**
+   * `status_detail` del pago de MP (ej. cc_rejected_insufficient_amount).
+   * No participa de la transición — el estado lo decide `status` — pero se
+   * persiste en billing_events y se manda a Slack: sin esto un cobro caído
+   * queda como "rechazado" a secas y no se puede distinguir "no tenía saldo"
+   * de "tarjeta vencida". Ver lib/billing/rejection-reason.ts.
+   */
+  status_detail?: string | null
+  /** Id del pago en MP, para poder abrirlo en el panel. */
+  payment_id?: string | number | null
 }
 
 export interface TransitionContext {

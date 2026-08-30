@@ -85,6 +85,8 @@ app/api/admin/billing/plan-prices/route.test.ts                          # TEST 
 app/api/admin/orgs/[id]/change-plan/route.test.ts                        # TEST — mock de createAdminClient para tests de cambio de plan.
 app/api/reports/societario/__tests__/authorization.test.ts               # TEST — mock de createAdminClient para el test de permisos del reporte societario.
 app/api/cron/billing-reconcile/route.ts                                  # CRON — reconciliación de suscripciones MP.
+app/api/cron/past-due-reminders/route.ts                                 # CRON — dunning de orgs PAST_DUE (mail al cliente + escalada); cross-tenant, todo write lleva org_id.
+app/api/cron/past-due-reminders/__tests__/route.test.ts                  # TEST — mock de createAdminClient para el test del dunning.
 app/api/cron/usage-retention/route.ts                                    # CRON — purga usage_events > 90 días, cross-tenant por diseño.
 app/api/cron/sync-login-sessions/route.ts                                # CRON — snapshot de auth.sessions a login_sessions, cross-tenant por diseño.
 app/api/cron/billing-reconcile/route.test.ts                             # TEST — mock de createAdminClient para el test del reconcile.
