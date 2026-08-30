@@ -8,14 +8,18 @@
  * es uno de esos escenarios.
  */
 import {
+  ejercicioDe,
   esPeriodoValido,
   fechaDeCierre,
+  mesesDelEjercicio,
   periodoAnterior,
   periodoDe,
   periodoSiguiente,
   periodosPendientes,
   puedeCerrar,
+  puedeCerrarEjercicio,
   puedeRecalcular,
+  rangoDelEjercicio,
   rangoDelPeriodo,
 } from "../accounting-periods"
 
@@ -179,5 +183,146 @@ describe("puedeRecalcular", () => {
 
   it("un período cerrado no", () => {
     expect(puedeRecalcular("CLOSED")).toBe(false)
+  })
+})
+
+/**
+ * Ejercicio contable.
+ *
+ * El caso que hay que tener bien es el ejercicio que NO coincide con el año
+ * calendario. Una sociedad que cierra en junio tiene un ejercicio que arranca en
+ * julio del año anterior, y equivocarse ahí significa refundir doce meses que no
+ * son los del ejercicio.
+ */
+describe("a qué ejercicio pertenece una fecha", () => {
+  it("con cierre en diciembre el ejercicio es el año calendario", () => {
+    expect(ejercicioDe("2026-01-01", 12)).toBe(2026)
+    expect(ejercicioDe("2026-12-31", 12)).toBe(2026)
+  })
+
+  it("con cierre en junio, julio ya pertenece al ejercicio siguiente", () => {
+    // Es el corte: el 30/6 cierra 2026 y el 1/7 abre 2027.
+    expect(ejercicioDe("2026-06-30", 6)).toBe(2026)
+    expect(ejercicioDe("2026-07-01", 6)).toBe(2027)
+  })
+
+  it("un mes de cierre inválido cae en diciembre en vez de romper", () => {
+    expect(ejercicioDe("2026-03-15", 0)).toBe(2026)
+    expect(ejercicioDe("2026-03-15", 13)).toBe(2026)
+  })
+})
+
+describe("rangoDelEjercicio", () => {
+  it("con cierre en diciembre va de enero a diciembre", () => {
+    expect(rangoDelEjercicio(2026, 12)).toEqual({
+      desde: "2026-01-01",
+      hasta: "2026-12-31",
+    })
+  })
+
+  it("con cierre en junio arranca en julio del año anterior", () => {
+    expect(rangoDelEjercicio(2026, 6)).toEqual({
+      desde: "2025-07-01",
+      hasta: "2026-06-30",
+    })
+  })
+
+  it("el último día lo calcula, no lo supone", () => {
+    // Febrero bisiesto: si estuviera hardcodeado en 28 se perdería un día de
+    // movimientos al refundir.
+    expect(rangoDelEjercicio(2028, 2).hasta).toBe("2028-02-29")
+    expect(rangoDelEjercicio(2026, 2).hasta).toBe("2026-02-28")
+  })
+})
+
+describe("mesesDelEjercicio", () => {
+  it("son doce y arrancan donde arranca el ejercicio", () => {
+    const m = mesesDelEjercicio(2026, 12)
+    expect(m).toHaveLength(12)
+    expect(m[0]).toBe("2026-01")
+    expect(m[11]).toBe("2026-12")
+  })
+
+  it("cruzando el año, también son doce", () => {
+    const m = mesesDelEjercicio(2026, 6)
+    expect(m).toHaveLength(12)
+    expect(m[0]).toBe("2025-07")
+    expect(m[11]).toBe("2026-06")
+  })
+})
+
+describe("puedeCerrarEjercicio", () => {
+  const todos = mesesDelEjercicio(2026, 12)
+
+  it("no se cierra un ejercicio que no terminó", () => {
+    const r = puedeCerrarEjercicio({
+      ejercicio: 2026,
+      hoy: "2026-08-30",
+      mesDeCierre: 12,
+      mesesCerrados: todos,
+    })
+    expect(r.puede).toBe(false)
+    expect(r.motivo).toMatch(/todavía no terminó/)
+  })
+
+  it("con todos los meses cerrados, se puede", () => {
+    const r = puedeCerrarEjercicio({
+      ejercicio: 2026,
+      hoy: "2027-01-15",
+      mesDeCierre: 12,
+      mesesCerrados: todos,
+    })
+    expect(r.puede).toBe(true)
+    expect(r.mesesAbiertos).toEqual([])
+  })
+
+  it("con un mes abierto, lo nombra", () => {
+    // Decir "no se puede" a secas obligaría al contador a revisar doce meses a
+    // ojo para encontrar cuál falta.
+    const r = puedeCerrarEjercicio({
+      ejercicio: 2026,
+      hoy: "2027-01-15",
+      mesDeCierre: 12,
+      mesesCerrados: todos.filter((m) => m !== "2026-03"),
+    })
+    expect(r.puede).toBe(false)
+    expect(r.mesesAbiertos).toEqual(["2026-03"])
+    expect(r.motivo).toContain("2026-03")
+  })
+
+  it("con varios abiertos, los lista", () => {
+    const r = puedeCerrarEjercicio({
+      ejercicio: 2026,
+      hoy: "2027-01-15",
+      mesDeCierre: 12,
+      mesesCerrados: [],
+    })
+    expect(r.mesesAbiertos).toHaveLength(12)
+    expect(r.motivo).toMatch(/12 meses/)
+  })
+
+  it("un ejercicio ya cerrado no se vuelve a cerrar", () => {
+    const r = puedeCerrarEjercicio({
+      ejercicio: 2026,
+      hoy: "2027-01-15",
+      mesDeCierre: 12,
+      mesesCerrados: todos,
+      yaCerrado: true,
+    })
+    expect(r.puede).toBe(false)
+    expect(r.motivo).toMatch(/reabrirlo/)
+  })
+
+  it("los meses cerrados de OTRO ejercicio no cuentan", () => {
+    // Cerrar todo 2025 no habilita cerrar 2026. Sin esta comprobación, una
+    // agencia con historia cerrada podría cerrar un año que nadie revisó.
+    const r = puedeCerrarEjercicio({
+      ejercicio: 2026,
+      hoy: "2027-01-15",
+      mesDeCierre: 12,
+      mesesCerrados: mesesDelEjercicio(2025, 12),
+    })
+    expect(r.puede).toBe(false)
+    expect(r.mesesAbiertos).toHaveLength(12)
   })
 })

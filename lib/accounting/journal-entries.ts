@@ -31,6 +31,11 @@ export type JournalCloseKind =
   // El asiento de apertura va con `close_period` en NULL: no pertenece a un mes,
   // es el punto desde el que arrancan todos.
   | "APERTURA"
+  // Los dos del cierre de ejercicio, también con `close_period` en NULL.
+  // REFUNDICION cancela las cuentas de resultado contra 3.1.04;
+  // TRASLADO_RESULTADO lleva ese saldo a 3.1.03.
+  | "REFUNDICION"
+  | "TRASLADO_RESULTADO"
 
 export interface JournalEntryLine {
   /** ID de la cuenta del plan de cuentas */
