@@ -8,7 +8,8 @@ import {
   validateSufficientBalance,
   getMainPassengerName,
 } from "@/lib/accounting/ledger"
-import { autoCalculateFXForPayment } from "@/lib/accounting/fx"
+import { getOperationExchangeRate } from "@/lib/accounting/fx"
+import { registrarDiferenciaPorCobro } from "@/lib/accounting/fx-journal"
 import { getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
 import {
   applyOperatorPaymentSettlement,
@@ -513,27 +514,67 @@ export async function POST(request: Request) {
       // No romper el flujo principal
     }
 
-    // Calcular FX automáticamente si hay diferencia de moneda
-    // NOTA: autoCalculateFXForPayment no es transaccional — si falla, el pago
-    // queda registrado pero sin su movimiento FX correlativo. Generamos alerta
-    // visible para revisión manual.
-    // TODO: migrar a RPC atómico (payment + ledger + FX en una sola transacción).
-    if (paymentData.operation_id) {
+    // Diferencia de cambio del cobro (VIB-141 / D1 y D2).
+    //
+    // Se registra como ASIENTO, no como movimiento de plata: la diferencia es
+    // nocional, no entró ni salió un peso de ninguna caja. El mecanismo
+    // anterior creaba un movimiento contra la Caja ARS que habría inflado su
+    // saldo con dinero inexistente.
+    //
+    // Y se calcula POR COBRO, comparando lo que entró contra el valor en libros
+    // de la porción de deuda que cancela. El anterior comparaba la venta total
+    // contra los pagos acumulados, así que un cobro parcial generaba una
+    // "diferencia" del tamaño del saldo impago.
+    //
+    // La idempotencia la da el movimiento del cobro, con su índice único.
+    if (paymentData.operation_id && operation?.sale_currency) {
       try {
-        await autoCalculateFXForPayment(
-          supabase,
-          paymentData.operation_id,
-          paymentData.currency as "ARS" | "USD",
-          parseFloat(paymentData.amount),
-          paymentData.currency === "USD" ? exchangeRate : null,
-          user.id
-        )
+        const monedaDeuda = operation.sale_currency as "ARS" | "USD"
+        const monedaCobro = paymentData.currency as "ARS" | "USD"
 
-        // Si se generó un FX_LOSS, verificar si debemos generar alerta
-        // (la alerta se generará automáticamente en generateAllAlerts)
+        // Sin diferencia de moneda no hay nada que reconocer, que es el caso
+        // más común. Se corta antes de pedirle cotizaciones a la base.
+        if (monedaDeuda !== monedaCobro) {
+          const { data: settingsFx } = await (supabase as any)
+            .from("financial_settings")
+            .select("primary_currency")
+            .eq("org_id", (user as any).org_id)
+            .eq("agency_id", agencyId)
+            .maybeSingle()
+
+          const cotizacionReconocimiento = await getOperationExchangeRate(
+            supabase,
+            paymentData.operation_id,
+            monedaDeuda
+          )
+          // El mismo tipo de cambio con el que se registró el movimiento del
+          // cobro, para que el asiento y la plata cuenten la misma historia.
+          const cotizacionCobro = exchangeRate
+
+          // Sin las dos cotizaciones no se puede medir la diferencia, y
+          // suponerla sería inventar un resultado.
+          if (cotizacionReconocimiento && cotizacionCobro) {
+            await registrarDiferenciaPorCobro(
+              {
+                movementId: ledgerMovementId,
+                orgId: (user as any).org_id,
+                agencyId: agencyId || null,
+                operationId: paymentData.operation_id,
+                fecha: String(paymentData.date_paid || new Date().toISOString()).slice(0, 10),
+                montoCobrado: parseFloat(paymentData.amount),
+                monedaCobro,
+                cotizacionCobro,
+                monedaDeuda,
+                cotizacionReconocimiento,
+                monedaFuncional: (settingsFx?.primary_currency as "ARS" | "USD") || "ARS",
+              },
+              supabase
+            )
+          }
+        }
       } catch (error) {
         console.error(
-          `⚠️ CRITICAL: Error calculando FX para payment ${paymentId} (op ${paymentData.operation_id}). Pago quedó sin FX correlativo. Revisar manualmente.`,
+          `⚠️ Error asentando la diferencia de cambio del pago ${paymentId} (op ${paymentData.operation_id}). El cobro quedó bien registrado; falta su asiento.`,
           error
         )
         // Crear alerta de sistema para revisión manual
@@ -544,7 +585,7 @@ export async function POST(request: Request) {
             user_id: user.id,
             operation_id: paymentData.operation_id,
             type: "SYSTEM",
-            description: `FX no calculado para pago ${paymentId}. Revisar manualmente diferencia de cambio.`,
+            description: `Falta el asiento de diferencia de cambio del pago ${paymentId}. El cobro está bien registrado.`,
             date_due: new Date().toISOString(),
             status: "PENDING",
           })
