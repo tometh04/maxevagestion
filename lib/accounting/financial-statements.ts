@@ -31,6 +31,37 @@ export interface LineaContable {
   credit: number
   /** Fecha del movimiento, para elegir la cotización del mes. */
   movement_date: string
+  /**
+   * Tipo de asiento de cierre, si la línea pertenece a uno.
+   *
+   * Lo necesita el Estado de Resultados para excluir la refundición. Ver
+   * `esLineaDeRefundicion`.
+   */
+  close_kind?: string | null
+}
+
+/**
+ * Si la línea pertenece al asiento que cancela las cuentas de resultado.
+ *
+ * EL PROBLEMA QUE RESUELVE
+ * ------------------------
+ * El asiento de refundición está fechado el último día del ejercicio, o sea
+ * DENTRO del rango que el Estado de Resultados consulta. Como debita las
+ * cuentas 4.1 y acredita las 4.2 y 4.3 por exactamente su saldo, incluirlo hace
+ * que el estado de ese mismo año muestre todo en cero: el asiento que anula las
+ * cuentas se suma a las cuentas que anula.
+ *
+ * Por eso el Estado de Resultados lo excluye y el Balance no. Así el estado del
+ * ejercicio sigue mostrando lo que pasó ese año, y el balance muestra el
+ * resultado ya absorbido en el patrimonio. Es lo que un contador espera de los
+ * dos informes.
+ *
+ * El traslado a Resultados Acumulados no hace falta excluirlo —toca 3.1.04 y
+ * 3.1.03, que no son cuentas de resultado— pero se filtra igual: si mañana
+ * alguien cambia las cuentas del traslado, el estado no se rompe en silencio.
+ */
+export function esLineaDeCierreDeEjercicio(l: LineaContable): boolean {
+  return l.close_kind === "REFUNDICION" || l.close_kind === "TRASLADO_RESULTADO"
 }
 
 /** Cotización mensual: clave "YYYY-MM" → pesos por dólar. */
@@ -182,10 +213,16 @@ function unirFaltantes(
 }
 
 export function armarEstadoDeResultados(
-  lineas: LineaContable[],
+  todasLasLineas: LineaContable[],
   cotizaciones: Cotizaciones,
   moneda: Moneda
 ): EstadoDeResultados {
+  // El asiento de cierre de ejercicio queda afuera. Está fechado dentro del
+  // rango y cancela exactamente estas mismas cuentas, así que incluirlo haría
+  // que el estado del año cerrado muestre todo en cero. Ver
+  // `esLineaDeCierreDeEjercicio`.
+  const lineas = todasLasLineas.filter((l) => !esLineaDeCierreDeEjercicio(l))
+
   // Ingresos (4.1.x): son de naturaleza acreedora, así que suma el Haber y
   // resta el Debe (una nota de crédito, por ejemplo).
   const ingresos = acumular(

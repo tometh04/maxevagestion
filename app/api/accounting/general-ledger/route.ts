@@ -23,6 +23,7 @@ import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { getUserAgencyIds } from "@/lib/permissions-api"
 import { resolveUserPermissions, assertPermission } from "@/lib/permissions-agency"
+import { calcularSaldosPorCuenta } from "@/lib/accounting/chart-account-balances"
 
 /** Naturaleza de cada categoría: define si el saldo es Debe − Haber o al revés. */
 const SALDO_DEUDOR: Record<string, boolean> = {
@@ -149,78 +150,29 @@ export async function GET(request: Request) {
     }
 
     // -------------------------------------------------- sumas y saldos
-    // PostgREST no agrupa, así que se agrega en memoria. Se pagina de verdad:
-    // el cap silencioso de 1.000 filas daría totales incompletos que igual
-    // parecerían correctos (ver el mismo problema en AGENTS.md con .limit(0)).
-    const PAGE = 1000
-    const acumulado = new Map<string, Fila>()
-    let conCuenta = 0
-    let sinCuenta = 0
-
-    for (let from = 0; ; from += PAGE) {
-      let q = (supabase.from("ledger_movements") as any)
-        .select("chart_account_id, currency, debit_amount, credit_amount")
-        .eq("org_id", orgId)
-        .order("id", { ascending: true })
-        .range(from, from + PAGE - 1)
-
-      if (dateFrom) q = q.gte("movement_date", dateFrom)
-      if (dateTo) q = q.lte("movement_date", dateTo)
-      if (currency && currency !== "ALL") q = q.eq("currency", currency)
-
-      const { data, error } = await q
-      if (error) {
-        console.error("Error leyendo movimientos:", error.message)
-        return NextResponse.json({ error: "Error al obtener el mayor" }, { status: 500 })
-      }
-      if (!data || data.length === 0) break
-
-      for (const m of data as any[]) {
-        const debe = Number(m.debit_amount) || 0
-        const haber = Number(m.credit_amount) || 0
-
-        // Un movimiento cuenta para el mayor solo si tiene cuenta contable Y un
-        // lado de la partida doble. Hay movimientos con cuenta pero sin Debe ni
-        // Haber (no son línea de asiento): sumarlos como "clasificados" infla la
-        // cobertura y agrega filas en cero que no significan nada.
-        if (!m.chart_account_id || (debe === 0 && haber === 0)) {
-          sinCuenta++
-          continue
-        }
-        const cuenta = planPorId.get(m.chart_account_id)
-        // Defensa: una cuenta de otra org no debería aparecer nunca (RLS +
-        // filtro por org_id), pero si aparece no se cuenta como clasificada.
-        if (!cuenta) {
-          sinCuenta++
-          continue
-        }
-        conCuenta++
-
-        const key = `${m.chart_account_id}|${m.currency}`
-        let fila = acumulado.get(key)
-        if (!fila) {
-          fila = {
-            chart_account_id: m.chart_account_id,
-            account_code: cuenta.account_code,
-            account_name: cuenta.account_name,
-            category: cuenta.category,
-            currency: m.currency,
-            debit: 0,
-            credit: 0,
-            balance: 0,
-            movements: 0,
-          }
-          acumulado.set(key, fila)
-        }
-        fila.debit += debe
-        fila.credit += haber
-        fila.movements++
-      }
-
-      if (data.length < PAGE) break
+    // La acumulación vive en lib/accounting/chart-account-balances.ts: el cierre
+    // de ejercicio necesita exactamente el mismo cálculo, y tenerlo dos veces es
+    // como aparecen las diferencias que después nadie sabe explicar.
+    //
+    // El helper devuelve Debe y Haber crudos, sin signo. El signo se aplica acá
+    // abajo con el criterio de esta pantalla, que trata a la familia 4 como
+    // deudora — distinto del que usa el Estado de Resultados.
+    let saldos
+    try {
+      saldos = await calcularSaldosPorCuenta(
+        supabase as any,
+        { orgId, desde: dateFrom, hasta: dateTo, currency },
+        planPorId
+      )
+    } catch (e: any) {
+      console.error("Error leyendo movimientos:", e?.message)
+      return NextResponse.json({ error: "Error al obtener el mayor" }, { status: 500 })
     }
 
-    const filas = Array.from(acumulado.values())
+    const conCuenta = saldos.clasificados
+    const sinCuenta = saldos.sinClasificar
+    const filas = saldos.filas as Fila[]
+
     for (const f of filas) {
       const deudor = SALDO_DEUDOR[f.category] ?? true
       f.balance = deudor ? f.debit - f.credit : f.credit - f.debit

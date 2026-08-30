@@ -225,3 +225,96 @@ describe("armarBalance — cuentas de orden", () => {
     expect(deudoras).toBe(acreedoras)
   })
 })
+
+/**
+ * El asiento de cierre de ejercicio no puede comerse su propio Estado de
+ * Resultados — VIB-141.
+ *
+ * La refundición está fechada el último día del ejercicio, o sea DENTRO del
+ * rango que el estado consulta, y cancela exactamente las mismas cuentas que el
+ * estado suma. Sin excluirla, cerrar 2026 haría que el Estado de Resultados de
+ * 2026 pase a mostrar todo en cero.
+ *
+ * Es el bug más caro de esta etapa porque no rompe nada: devuelve números
+ * perfectamente formados y todos equivocados.
+ */
+describe("el cierre de ejercicio no distorsiona el estado del año cerrado", () => {
+  const actividad: LineaContable[] = [
+    linea({ account_code: "4.1.01", credit: 1000 }),
+    linea({ account_code: "4.2.01", account_name: "Costo de Operadores", debit: 700 }),
+  ]
+
+  // Lo que escribe la refundición: cancela cada cuenta con el signo opuesto.
+  const refundicion: LineaContable[] = [
+    linea({ account_code: "4.1.01", debit: 1000, close_kind: "REFUNDICION" }),
+    linea({ account_code: "4.2.01", credit: 700, close_kind: "REFUNDICION" }),
+    linea({
+      account_code: "3.1.04",
+      account_name: "Resultado del Ejercicio",
+      category: "PATRIMONIO_NETO",
+      credit: 300,
+      close_kind: "REFUNDICION",
+    }),
+  ]
+
+  it("el estado del ejercicio cerrado sigue mostrando lo que pasó ese año", () => {
+    const r = armarEstadoDeResultados([...actividad, ...refundicion], COTIZ, "USD")
+
+    expect(r.totalIngresos).toBe(1000)
+    expect(r.totalCostos).toBe(700)
+    expect(r.resultado).toBe(300)
+  })
+
+  it("sin el filtro daría todo en cero, que es el bug", () => {
+    // Se comprueba explícitamente para que quede claro qué se está evitando:
+    // las mismas líneas sin la marca de cierre sí se anulan entre sí.
+    const sinMarca = refundicion.map((l) => ({ ...l, close_kind: null }))
+    const r = armarEstadoDeResultados([...actividad, ...sinMarca], COTIZ, "USD")
+
+    expect(r.totalIngresos).toBe(0)
+    expect(r.totalCostos).toBe(0)
+  })
+
+  it("el traslado a Resultados Acumulados tampoco entra", () => {
+    const traslado: LineaContable[] = [
+      linea({
+        account_code: "3.1.04",
+        category: "PATRIMONIO_NETO",
+        debit: 300,
+        close_kind: "TRASLADO_RESULTADO",
+      }),
+      linea({
+        account_code: "3.1.03",
+        account_name: "Resultados Acumulados",
+        category: "PATRIMONIO_NETO",
+        credit: 300,
+        close_kind: "TRASLADO_RESULTADO",
+      }),
+    ]
+    const r = armarEstadoDeResultados([...actividad, ...traslado], COTIZ, "USD")
+    expect(r.resultado).toBe(300)
+  })
+
+  it("pero el BALANCE sí incluye el cierre: ahí el resultado ya es patrimonio", () => {
+    // Los dos informes tienen que contar cosas distintas del mismo hecho. El
+    // estado dice qué pasó en el año; el balance, cómo quedó el patrimonio
+    // después de absorberlo.
+    const b = armarBalance(
+      [
+        linea({ account_code: "1.1.02", account_name: "Bancos", category: "ACTIVO", debit: 300 }),
+        linea({
+          account_code: "3.1.03",
+          account_name: "Resultados Acumulados",
+          category: "PATRIMONIO_NETO",
+          credit: 300,
+          close_kind: "TRASLADO_RESULTADO",
+        }),
+      ],
+      COTIZ,
+      "USD"
+    )
+
+    expect(b.totalPatrimonio).toBe(300)
+    expect(b.descuadre).toBe(0)
+  })
+})

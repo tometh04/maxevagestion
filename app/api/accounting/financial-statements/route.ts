@@ -59,8 +59,16 @@ export async function GET(request: Request) {
     // Si el reporte es de UNA agencia, manda su configuración. Consolidado usa
     // la de la primera del usuario, que es el criterio que ya aplica el resto
     // de la pantalla de Finanzas.
+    // El filtro por `org_id` es explícito y no se apoya en RLS. Sin él, la
+    // query se quedaba con la primera fila que encontrara cuando el usuario no
+    // tiene agencias asignadas. Hoy RLS lo acota, pero es el anti-patrón que
+    // marca AGENTS.md: el día que esto corra con service role —un cron, un
+    // backfill— devolvería la configuración de otra organización, y
+    // `primary_currency` y `accounting_start_date` deciden cómo se valúa y
+    // desde cuándo se informa.
     let settingsQuery = (supabase.from("financial_settings") as any)
       .select("agency_id, primary_currency, accounting_start_date")
+      .eq("org_id", orgId)
     if (agencyId) settingsQuery = settingsQuery.eq("agency_id", agencyId)
     else if (agencyIds.length > 0) settingsQuery = settingsQuery.in("agency_id", agencyIds)
 
@@ -101,7 +109,7 @@ export async function GET(request: Request) {
     for (let from = 0; ; from += PAGE) {
       let q = (supabase.from("ledger_movements") as any)
         .select(
-          "debit_amount, credit_amount, currency, movement_date, chart_account_id, journal_entries!inner(agency_id, org_id), chart_of_accounts!inner(account_code, account_name, category)"
+          "debit_amount, credit_amount, currency, movement_date, chart_account_id, journal_entries!inner(agency_id, org_id, close_kind), chart_of_accounts!inner(account_code, account_name, category)"
         )
         .eq("org_id", orgId)
         .not("chart_account_id", "is", null)
@@ -130,6 +138,7 @@ export async function GET(request: Request) {
           debit: Number(m.debit_amount) || 0,
           credit: Number(m.credit_amount) || 0,
           movement_date: String(m.movement_date).slice(0, 10),
+          close_kind: m.journal_entries?.close_kind ?? null,
         })
       }
 
