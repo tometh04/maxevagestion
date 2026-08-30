@@ -219,8 +219,8 @@ export function MonthlyClosePageClient({ agencies }: Props) {
             <div className="rounded-md border bg-muted/40 px-4 py-3.5">
               <p className="text-sm font-medium">
                 {estado.pendientes.length === 1
-                  ? "Hay un período sin calcular"
-                  : `Hay ${estado.pendientes.length} períodos sin calcular`}
+                  ? "Hay un período sin cerrar"
+                  : `Hay ${estado.pendientes.length} períodos sin cerrar`}
               </p>
               <div className="mt-2.5 flex flex-wrap gap-2">
                 {estado.pendientes.map((p) => (

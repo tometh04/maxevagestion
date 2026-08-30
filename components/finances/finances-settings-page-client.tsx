@@ -150,7 +150,17 @@ export function FinancesSettingsPageClient() {
 
       if (!response.ok) {
         const error = await response.json()
-        throw new Error(error.error || "Error al guardar configuración")
+        // La API manda `details` con el campo que falló, pero antes se
+        // descartaba y el usuario veía solo "Datos inválidos", sin ninguna
+        // pista de qué corregir. Con varias decenas de campos en esta pantalla,
+        // ese mensaje no permite avanzar.
+        const campos = Array.isArray(error.details)
+          ? error.details
+              .map((d: any) => (Array.isArray(d?.path) ? d.path.join(".") : null))
+              .filter(Boolean)
+          : []
+        const detalle = campos.length > 0 ? ` Revisá: ${campos.join(", ")}.` : ""
+        throw new Error(`${error.error || "Error al guardar configuración"}.${detalle}`)
       }
 
       toast({
