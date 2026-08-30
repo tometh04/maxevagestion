@@ -7,6 +7,7 @@
  * clientes en producción.
  */
 import {
+  createTransferJournalEntry,
   createMovementJournalEntry,
   COUNTERPART_CODES,
 } from "../movement-journal"
@@ -292,5 +293,156 @@ describe("contrapartidas de la diferencia de cambio", () => {
     ]
     expect(otras).not.toContain(COUNTERPART_CODES.FX_GAIN)
     expect(otras).not.toContain(COUNTERPART_CODES.FX_LOSS)
+  })
+})
+
+/**
+ * Transferencias y compra de dólares — VIB-141.
+ *
+ * Lo que se fija acá:
+ *
+ *   1. **Una transferencia es UN asiento, no dos.** Espejar los dos movimientos
+ *      por separado contaría la misma transferencia dos veces.
+ *   2. **Comprar dólares no genera resultado.** Los dólares entran valuados a lo
+ *      que costaron. La ganancia aparece recién al revaluarlos al cierre, y si
+ *      el asiento de la compra tocara una cuenta de resultado, esa ganancia se
+ *      contaría dos veces.
+ */
+function mockTransferencia(salida: any, entrada: any, cuentas: any[]) {
+  const from = jest.fn((table: string) => {
+    const chain: any = {}
+    chain.select = jest.fn(() => chain)
+    chain.eq = jest.fn(() => chain)
+    chain.in = jest.fn(() =>
+      Promise.resolve({
+        data: table === "ledger_movements" ? [salida, entrada] : cuentas,
+        error: null,
+      })
+    )
+    return chain
+  })
+  return { from } as any
+}
+
+describe("createTransferJournalEntry", () => {
+  const salidaBase = {
+    id: "mov-out",
+    org_id: "org-1",
+    account_id: "fa-pesos",
+    concept: "Compra de dólares - Caja Pesos → Caja USD",
+    currency: "ARS",
+    amount_original: 1_500_000,
+    amount_ars_equivalent: 1_500_000,
+    exchange_rate: 1500,
+    movement_date: "2026-08-15T10:00:00Z",
+    created_by: "user-1",
+    journal_entry_id: null,
+    affects_balance: true,
+  }
+  const entradaBase = {
+    ...salidaBase,
+    id: "mov-in",
+    account_id: "fa-usd",
+    currency: "USD",
+    amount_original: 1000,
+    amount_ars_equivalent: 1_500_000,
+  }
+  const cuentas = [
+    { id: "fa-pesos", chart_account_id: "chart-caja-ars", agency_id: "ag-1" },
+    { id: "fa-usd", chart_account_id: "chart-caja-usd", agency_id: "ag-1" },
+  ]
+
+  beforeEach(() => {
+    jest.clearAllMocks()
+    ;(journal.createJournalEntry as jest.Mock).mockResolvedValue({ id: "je-1" })
+  })
+
+  it("arma un solo asiento: Debe en la que recibe, Haber en la que entrega", async () => {
+    await createTransferJournalEntry(
+      { fromMovementId: "mov-out", toMovementId: "mov-in" },
+      mockTransferencia(salidaBase, entradaBase, cuentas)
+    )
+
+    expect(journal.createJournalEntry).toHaveBeenCalledTimes(1)
+    const args = (journal.createJournalEntry as jest.Mock).mock.calls[0][0]
+
+    expect(args.lines).toHaveLength(2)
+    expect(args.lines[0]).toMatchObject({
+      chart_account_id: "chart-caja-usd",
+      debit_amount: 1_500_000,
+    })
+    expect(args.lines[1]).toMatchObject({
+      chart_account_id: "chart-caja-ars",
+      credit_amount: 1_500_000,
+    })
+  })
+
+  it("comprar dólares no toca ninguna cuenta de resultado", async () => {
+    // Si tocara una, la ganancia por tener dólares se contaría dos veces: acá y
+    // otra vez al revaluar al cierre.
+    await createTransferJournalEntry(
+      { fromMovementId: "mov-out", toMovementId: "mov-in" },
+      mockTransferencia(salidaBase, entradaBase, cuentas)
+    )
+    const args = (journal.createJournalEntry as jest.Mock).mock.calls[0][0]
+    for (const l of args.lines) {
+      expect(String(l.chart_account_id)).not.toMatch(/^4\./)
+    }
+  })
+
+  it("con monedas distintas usa el equivalente en pesos, donde los dos lados coinciden", async () => {
+    await createTransferJournalEntry(
+      { fromMovementId: "mov-out", toMovementId: "mov-in" },
+      mockTransferencia(salidaBase, entradaBase, cuentas)
+    )
+    const args = (journal.createJournalEntry as jest.Mock).mock.calls[0][0]
+    expect(args.currency).toBe("ARS")
+    // 1000 dólares habría sido el importe equivocado: los dos lados solo
+    // coinciden en pesos.
+    expect(args.lines[0].debit_amount).toBe(1_500_000)
+  })
+
+  it("con la misma moneda usa el importe original", async () => {
+    const salida = { ...salidaBase, concept: "Transferencia", amount_original: 50_000, amount_ars_equivalent: 50_000 }
+    const entrada = { ...entradaBase, currency: "ARS", amount_original: 50_000, amount_ars_equivalent: 50_000 }
+
+    await createTransferJournalEntry(
+      { fromMovementId: "mov-out", toMovementId: "mov-in" },
+      mockTransferencia(salida, entrada, cuentas)
+    )
+    const args = (journal.createJournalEntry as jest.Mock).mock.calls[0][0]
+    expect(args.currency).toBe("ARS")
+    expect(args.lines[0].debit_amount).toBe(50_000)
+  })
+
+  it("la clave de idempotencia es el movimiento de salida", async () => {
+    // Una transferencia, un asiento. Sin esto, dos corridas la duplicarían.
+    await createTransferJournalEntry(
+      { fromMovementId: "mov-out", toMovementId: "mov-in" },
+      mockTransferencia(salidaBase, entradaBase, cuentas)
+    )
+    const args = (journal.createJournalEntry as jest.Mock).mock.calls[0][0]
+    expect(args.source_movement_id).toBe("mov-out")
+  })
+
+  it("no asienta si alguno de los dos ya tiene asiento", async () => {
+    await createTransferJournalEntry(
+      { fromMovementId: "mov-out", toMovementId: "mov-in" },
+      mockTransferencia(salidaBase, { ...entradaBase, journal_entry_id: "je-viejo" }, cuentas)
+    )
+    expect(journal.createJournalEntry).not.toHaveBeenCalled()
+  })
+
+  it("no asienta si una cuenta no está mapeada al plan", async () => {
+    // Configuración faltante, no un error del flujo: se saltea entero en vez de
+    // armar medio asiento.
+    await createTransferJournalEntry(
+      { fromMovementId: "mov-out", toMovementId: "mov-in" },
+      mockTransferencia(salidaBase, entradaBase, [
+        { id: "fa-pesos", chart_account_id: null, agency_id: "ag-1" },
+        cuentas[1],
+      ])
+    )
+    expect(journal.createJournalEntry).not.toHaveBeenCalled()
   })
 })

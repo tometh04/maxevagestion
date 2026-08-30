@@ -239,3 +239,129 @@ export async function createMovementJournalEntry(
     return null
   }
 }
+
+/**
+ * Asienta una transferencia entre dos cuentas financieras — VIB-141.
+ *
+ * POR QUÉ NO SIRVE EL ESPEJO DE UN MOVIMIENTO SUELTO
+ * --------------------------------------------------
+ * En una transferencia la contrapartida no es una cuenta fija del plan: es la
+ * otra cuenta financiera. Y son DOS movimientos —la salida y la entrada— que
+ * describen un solo hecho. Espejarlos por separado produciría dos asientos que
+ * cuentan la misma transferencia dos veces.
+ *
+ * Por eso esto arma UN asiento con los dos lados: Debe en la cuenta que recibe,
+ * Haber en la que entrega.
+ *
+ * LA TRAMPA DE LA COMPRA DE DÓLARES
+ * ---------------------------------
+ * Cuando las monedas difieren, los importes de los dos lados también: salen
+ * pesos y entran dólares. Un asiento tiene una sola moneda, así que se usa el
+ * equivalente en pesos, que la transferencia ya calcula igual de los dos lados
+ * al tipo de cambio de la operación.
+ *
+ * Eso además es lo correcto: comprar dólares no genera resultado. Los dólares
+ * entran valuados a lo que costaron. La ganancia o la pérdida aparece después,
+ * cuando se revalúan al cierre, y esa sí es la revaluación de D3.
+ *
+ * NO CAMBIA NINGÚN SALDO
+ * ----------------------
+ * Los dos movimientos de plata quedan intactos. Las líneas del asiento van con
+ * `account_id` nulo y `affects_balance = false`, igual que el resto de los
+ * espejos.
+ */
+export async function createTransferJournalEntry(
+  params: {
+    /** Movimiento de salida (EXPENSE) de la cuenta origen. */
+    fromMovementId: string
+    /** Movimiento de entrada (INCOME) en la cuenta destino. */
+    toMovementId: string
+    description?: string
+    orgId?: string | null
+  },
+  supabase: SupabaseClient<Database>
+): Promise<string | null> {
+  try {
+    const campos =
+      "id, org_id, account_id, concept, currency, amount_original, amount_ars_equivalent, exchange_rate, movement_date, created_by, journal_entry_id, affects_balance"
+
+    const { data: movs } = await (supabase.from("ledger_movements") as any)
+      .select(campos)
+      .in("id", [params.fromMovementId, params.toMovementId])
+
+    const salida = ((movs ?? []) as any[]).find((m) => m.id === params.fromMovementId)
+    const entrada = ((movs ?? []) as any[]).find((m) => m.id === params.toMovementId)
+    if (!salida || !entrada) return null
+
+    // Cualquiera de los dos ya asentado significa que esta transferencia ya
+    // tiene su asiento.
+    if (salida.journal_entry_id || entrada.journal_entry_id) return null
+    if (salida.affects_balance === false || entrada.affects_balance === false) return null
+    if (!salida.account_id || !entrada.account_id) return null
+
+    const orgId = params.orgId ?? salida.org_id ?? entrada.org_id
+    if (!orgId) return null
+
+    const { data: cuentas } = await (supabase.from("financial_accounts") as any)
+      .select("id, chart_account_id, agency_id")
+      .in("id", [salida.account_id, entrada.account_id])
+
+    const cuentaSalida = ((cuentas ?? []) as any[]).find((c) => c.id === salida.account_id)
+    const cuentaEntrada = ((cuentas ?? []) as any[]).find((c) => c.id === entrada.account_id)
+
+    if (!cuentaSalida?.chart_account_id || !cuentaEntrada?.chart_account_id) {
+      console.warn(
+        `[movement-journal] Transferencia sin asiento: alguna de las cuentas no está mapeada al plan (${salida.account_id} → ${entrada.account_id}).`
+      )
+      return null
+    }
+
+    // Misma moneda: el importe es el mismo de los dos lados. Distinta moneda:
+    // se usa el equivalente en pesos, que es donde los dos lados coinciden.
+    const mismaMoneda = salida.currency === entrada.currency
+    const currency: "ARS" | "USD" = mismaMoneda ? salida.currency : "ARS"
+    const monto = mismaMoneda
+      ? Number(salida.amount_original) || 0
+      : Number(salida.amount_ars_equivalent) || 0
+
+    if (monto <= 0) return null
+
+    const concepto = params.description || salida.concept || "Transferencia entre cuentas"
+
+    const entry = await createJournalEntry(
+      {
+        entry_date: String(salida.movement_date).slice(0, 10),
+        description: concepto,
+        source: "AUTO_PAYMENT",
+        currency,
+        exchange_rate: salida.exchange_rate ? Number(salida.exchange_rate) : undefined,
+        org_id: orgId,
+        agency_id: cuentaSalida.agency_id ?? cuentaEntrada.agency_id ?? null,
+        // La salida es la clave: una transferencia, un asiento.
+        source_movement_id: salida.id,
+        created_by: salida.created_by ?? null,
+        lines: [
+          {
+            chart_account_id: cuentaEntrada.chart_account_id,
+            debit_amount: monto,
+            concept: concepto,
+          },
+          {
+            chart_account_id: cuentaSalida.chart_account_id,
+            credit_amount: monto,
+            concept: concepto,
+          },
+        ] as any,
+      },
+      supabase
+    )
+
+    return entry.id
+  } catch (error: any) {
+    if (error?.code === UNIQUE_VIOLATION || /duplicate key|23505/i.test(String(error?.message))) {
+      return null
+    }
+    console.error("[movement-journal] Error asentando la transferencia:", error)
+    return null
+  }
+}

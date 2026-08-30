@@ -3,6 +3,7 @@ import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canPerformAction, getUserAgencyIds } from "@/lib/permissions-api"
 import { resolveUserPermissions } from "@/lib/permissions-agency"
+import { createTransferJournalEntry } from "@/lib/accounting/movement-journal"
 import {
   createLedgerMovement,
   calculateARSEquivalent,
@@ -140,7 +141,7 @@ export async function POST(request: Request) {
       }
 
       // EXPENSE en cuenta origen
-      await createLedgerMovement(
+      const movSalida = await createLedgerMovement(
         {
           operation_id: null,
           lead_id: null,
@@ -159,7 +160,7 @@ export async function POST(request: Request) {
       )
 
       // INCOME en cuenta destino
-      await createLedgerMovement(
+      const movEntrada = await createLedgerMovement(
         {
           operation_id: null,
           lead_id: null,
@@ -176,6 +177,22 @@ export async function POST(request: Request) {
         },
         supabase
       )
+
+      // VIB-141 — El asiento de la transferencia. Va aparte y no puede romper
+      // la transferencia: la plata ya se movió bien y lo único que quedaría
+      // pendiente es su reflejo contable.
+      try {
+        await createTransferJournalEntry(
+          {
+            fromMovementId: movSalida.id,
+            toMovementId: movEntrada.id,
+            description: concept,
+          },
+          supabase
+        )
+      } catch (journalError) {
+        console.error("[transfer] No se pudo asentar la transferencia:", journalError)
+      }
 
       const fromBalance = await getAccountBalance(from_account_id, supabase)
       const toBalance = await getAccountBalance(to_account_id, supabase)
@@ -218,7 +235,7 @@ export async function POST(request: Request) {
 
       const concept = `Transferencia de "${fromAccount.name}" a "${toAccount.name}"`
 
-      await createLedgerMovement(
+      const movSalida = await createLedgerMovement(
         {
           operation_id: null,
           lead_id: null,
@@ -236,7 +253,7 @@ export async function POST(request: Request) {
         supabase
       )
 
-      await createLedgerMovement(
+      const movEntrada = await createLedgerMovement(
         {
           operation_id: null,
           lead_id: null,
@@ -253,6 +270,22 @@ export async function POST(request: Request) {
         },
         supabase
       )
+
+      // VIB-141 — El asiento de la transferencia. Va aparte y no puede romper
+      // la transferencia: la plata ya se movió bien y lo único que quedaría
+      // pendiente es su reflejo contable.
+      try {
+        await createTransferJournalEntry(
+          {
+            fromMovementId: movSalida.id,
+            toMovementId: movEntrada.id,
+            description: concept,
+          },
+          supabase
+        )
+      } catch (journalError) {
+        console.error("[transfer] No se pudo asentar la transferencia:", journalError)
+      }
 
       const fromBalance = await getAccountBalance(from_account_id, supabase)
       const toBalance = await getAccountBalance(to_account_id, supabase)
