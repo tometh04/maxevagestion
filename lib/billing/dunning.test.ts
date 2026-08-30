@@ -1,4 +1,4 @@
-import { computeDunningStep, dunningIdempotencyKey, DUNNING_SLOTS } from "./dunning"
+import { computeDunningStep, dunningIdempotencyKey, summarizeMpRetry, DUNNING_SLOTS } from "./dunning"
 import { PAST_DUE_GRACE_DAYS } from "./access"
 
 const DAY = 24 * 60 * 60 * 1000
@@ -70,5 +70,49 @@ describe("dunningIdempotencyKey", () => {
     // Un ciclo impago posterior arranca la cadencia de cero.
     expect(a).not.toBe(dunningIdempotencyKey("org-1", "2026-09-29T13:36:18.000Z", 0))
     expect(a).not.toBe(dunningIdempotencyKey("org-1", PERIOD_END, "expired"))
+  })
+})
+
+describe("summarizeMpRetry", () => {
+  const now = new Date("2026-08-30T12:00:00.000Z").getTime()
+  const grace = new Date("2026-09-03T13:36:18.000Z")
+
+  it("sin intentos, no sabemos si MP va a reintentar", () => {
+    expect(summarizeMpRetry(null, grace, now).unknown).toBe(true)
+    expect(summarizeMpRetry([], grace, now).unknown).toBe(true)
+    expect(summarizeMpRetry([{ next_retry_date: null }], grace, now).unknown).toBe(true)
+  })
+
+  it("detecta el reintento que cae dentro de la gracia", () => {
+    const r = summarizeMpRetry([{ next_retry_date: "2026-09-01T10:00:00.000Z" }], grace, now)
+    expect(r.retryWithinGrace).toBe(true)
+    expect(r.nextRetryAt).toBe("2026-09-01T10:00:00.000Z")
+  })
+
+  it("el reintento del mes siguiente NO cuenta como dentro de la gracia", () => {
+    // Caso real: MP dejó el intento en scheduled y lo reprogramó a 30 días,
+    // así que el ciclo caído no se recupera solo.
+    const r = summarizeMpRetry([{ next_retry_date: "2026-09-29T13:36:18.000Z" }], grace, now)
+    expect(r.retryWithinGrace).toBe(false)
+    expect(r.unknown).toBe(false)
+    expect(r.nextRetryAt).toBe("2026-09-29T13:36:18.000Z")
+  })
+
+  it("ignora reintentos ya pasados y toma el más próximo futuro", () => {
+    const r = summarizeMpRetry(
+      [
+        { next_retry_date: "2026-08-29T10:00:00.000Z" },
+        { next_retry_date: "2026-09-29T13:36:18.000Z" },
+        { next_retry_date: "2026-09-02T10:00:00.000Z" },
+      ],
+      grace,
+      now
+    )
+    expect(r.nextRetryAt).toBe("2026-09-02T10:00:00.000Z")
+    expect(r.retryWithinGrace).toBe(true)
+  })
+
+  it("una fecha basura no lo rompe", () => {
+    expect(summarizeMpRetry([{ next_retry_date: "no-es-fecha" }], grace, now).unknown).toBe(true)
   })
 })

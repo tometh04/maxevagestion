@@ -86,6 +86,52 @@ export function computeDunningStep(input: DunningInput): DunningStep {
 }
 
 /**
+ * ¿MP tiene agendado un reintento de cobro ANTES de que se nos acabe la gracia?
+ *
+ * MP documenta que un cobro rechazado entra en `recycling` y se reintenta hasta
+ * 4 veces dentro de una ventana de 10 días. En la práctica no siempre pasa: se
+ * vio un preapproval cuyo intento quedó en `scheduled` con el próximo reintento
+ * recién al mes siguiente, o sea que el ciclo caído no se recupera.
+ *
+ * No podemos forzar el cobro — MP no expone un endpoint para reintentar una
+ * cuota rechazada. Lo único que podemos hacer es SABER si va a reintentar, para
+ * que la escalada diga si todavía hay chance de que entre solo o si depende
+ * enteramente de que el cliente regularice.
+ */
+export interface MpRetryOutlook {
+  /** Hay un reintento agendado dentro de la ventana de gracia. */
+  retryWithinGrace: boolean
+  /** Próximo reintento conocido (ISO), dentro o fuera de la gracia. */
+  nextRetryAt: string | null
+  /** true si MP no expone ningún reintento futuro. */
+  unknown: boolean
+}
+
+export function summarizeMpRetry(
+  attempts: Array<{ next_retry_date?: string | null; status?: string | null }> | null | undefined,
+  graceEndsAt: Date | null,
+  now?: number
+): MpRetryOutlook {
+  const ts = now ?? Date.now()
+  const dates = (attempts ?? [])
+    .map((a) => a?.next_retry_date)
+    .filter((d): d is string => !!d)
+    .map((d) => new Date(d).getTime())
+    .filter((t) => !Number.isNaN(t) && t > ts)
+    .sort((a, b) => a - b)
+
+  if (dates.length === 0) {
+    return { retryWithinGrace: false, nextRetryAt: null, unknown: true }
+  }
+  const next = dates[0]
+  return {
+    retryWithinGrace: !!graceEndsAt && next < graceEndsAt.getTime(),
+    nextRetryAt: new Date(next).toISOString(),
+    unknown: false,
+  }
+}
+
+/**
  * Clave de idempotencia del aviso. Va en `billing_events.external_id`, que tiene
  * UNIQUE parcial junto a event_type: si dos corridas del cron se pisan, la
  * segunda choca con 23505 y el cliente no recibe el mail duplicado.

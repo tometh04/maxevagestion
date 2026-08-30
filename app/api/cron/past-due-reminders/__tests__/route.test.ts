@@ -12,16 +12,19 @@ jest.mock("@/lib/cron/auth", () => ({ checkCronAuth: jest.fn() }))
 jest.mock("@/lib/email/email-service", () => ({ sendPaymentFailedEmail: jest.fn() }))
 jest.mock("@/lib/billing/slack-notify", () => ({ notifyBillingSlack: jest.fn() }))
 jest.mock("@/lib/security/audit", () => ({ logSecurityEvent: jest.fn() }))
+jest.mock("@/lib/billing/mercadopago", () => ({ searchAuthorizedPayments: jest.fn() }))
 
 import { createAdminClient } from "@/lib/supabase/server"
 import { checkCronAuth } from "@/lib/cron/auth"
 import { sendPaymentFailedEmail } from "@/lib/email/email-service"
 import { notifyBillingSlack } from "@/lib/billing/slack-notify"
+import { searchAuthorizedPayments } from "@/lib/billing/mercadopago"
 
 const mockAdmin = createAdminClient as jest.Mock
 const mockAuth = checkCronAuth as jest.Mock
 const mockSend = sendPaymentFailedEmail as jest.Mock
 const mockSlack = notifyBillingSlack as jest.Mock
+const mockAttempts = searchAuthorizedPayments as jest.Mock
 
 const DAY = 86400_000
 
@@ -103,6 +106,7 @@ function orgAt(offsetDays: number, extra: Record<string, any> = {}) {
     plan: "PRO",
     current_period_ends_at: new Date(Date.now() - offsetDays * DAY).toISOString(),
     agreed_plan_price_ars: 119000,
+    mp_preapproval_id: "pa-1",
     ...extra,
   }
 }
@@ -111,6 +115,7 @@ beforeEach(() => {
   jest.clearAllMocks()
   mockAuth.mockReturnValue({ authorized: true })
   mockSend.mockResolvedValue({ success: true, id: "email-1" })
+  mockAttempts.mockResolvedValue([])
 })
 
 it("rechaza sin CRON_SECRET válido", async () => {
@@ -178,4 +183,24 @@ it("sin billing_email avisa a un humano en vez de fallar en silencio", async () 
   expect(body.sent).toBe(0)
   expect(body.skipped).toBe(1)
   expect(mockSlack).toHaveBeenCalledTimes(1)
+})
+
+it("si MP no responde, el aviso sale igual (la cobranza no depende de esa consulta)", async () => {
+  mockAttempts.mockRejectedValue(new Error("MP 503"))
+  setup({ orgs: [orgAt(0)] })
+  const body = await (await POST(makeReq())).json()
+
+  expect(body.sent).toBe(1)
+  expect(mockSend).toHaveBeenCalledTimes(1)
+})
+
+it("registra el próximo reintento de MP en el resultado", async () => {
+  const nextRetry = new Date(Date.now() + 30 * DAY).toISOString()
+  mockAttempts.mockResolvedValue([{ next_retry_date: nextRetry }])
+  setup({ orgs: [orgAt(0)] })
+  const body = await (await POST(makeReq())).json()
+
+  expect(body.details[0].mp_next_retry_at).toBe(nextRetry)
+  // A 30 días vista: fuera de la gracia, el ciclo caído no se recupera solo.
+  expect(body.details[0].mp_retry_within_grace).toBe(false)
 })

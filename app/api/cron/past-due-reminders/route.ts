@@ -2,7 +2,8 @@ import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { checkCronAuth } from "@/lib/cron/auth"
 import { sendPaymentFailedEmail } from "@/lib/email/email-service"
-import { computeDunningStep, dunningIdempotencyKey } from "@/lib/billing/dunning"
+import { computeDunningStep, dunningIdempotencyKey, summarizeMpRetry } from "@/lib/billing/dunning"
+import { searchAuthorizedPayments } from "@/lib/billing/mercadopago"
 import { parseRejectionReason } from "@/lib/billing/rejection-reason"
 import { notifyBillingSlack } from "@/lib/billing/slack-notify"
 import { logSecurityEvent } from "@/lib/security/audit"
@@ -49,7 +50,7 @@ export async function POST(request: Request) {
     .from("organizations")
     .select(
       "id, name, billing_email, plan, subscription_status, " +
-      "current_period_ends_at, agreed_plan_price_ars"
+      "current_period_ends_at, agreed_plan_price_ars, mp_preapproval_id"
     )
     .eq("subscription_status", "PAST_DUE")
     .not("current_period_ends_at", "is", null)
@@ -66,6 +67,7 @@ export async function POST(request: Request) {
     plan: string | null
     current_period_ends_at: string
     agreed_plan_price_ars: number | null
+    mp_preapproval_id: string | null
   }>
 
   let sent = 0
@@ -85,6 +87,22 @@ export async function POST(request: Request) {
       continue
     }
 
+    // ¿MP va a reintentar solo antes de que se acabe la gracia? No podemos
+    // forzar el cobro (MP no expone endpoint para reintentar una cuota
+    // rechazada), pero sí saber si depende enteramente del cliente. Read-only y
+    // best-effort: si MP falla, seguimos con el aviso igual.
+    let retry = summarizeMpRetry(null, step.graceEndsAt)
+    if (org.mp_preapproval_id) {
+      try {
+        const attempts = await searchAuthorizedPayments(org.mp_preapproval_id)
+        retry = summarizeMpRetry(attempts, step.graceEndsAt, now)
+      } catch (err: any) {
+        console.warn("past-due-reminders: no se pudo leer reintentos MP", {
+          orgId: org.id, error: err?.message,
+        })
+      }
+    }
+
     const slotKey = step.action === "expired" ? "expired" : step.slot!
     const eventType = step.action === "expired" ? "PAST_DUE_GRACE_EXPIRED" : "PAST_DUE_REMINDER"
     const externalId = dunningIdempotencyKey(org.id, org.current_period_ends_at, slotKey)
@@ -102,6 +120,8 @@ export async function POST(request: Request) {
           days_left: step.daysLeft,
           grace_ends_at: step.graceEndsAt?.toISOString() ?? null,
           current_period_ends_at: org.current_period_ends_at,
+          mp_next_retry_at: retry.nextRetryAt,
+          mp_retry_within_grace: retry.retryWithinGrace,
         },
       })
       .select("id")
@@ -129,13 +149,22 @@ export async function POST(request: Request) {
           : undefined,
         details:
           `Se agotó la gracia de PAST_DUE sin pago: el acceso quedó cortado. ` +
-          `MP no reintenta el ciclo caído, así que este mes no se factura salvo ` +
-          `que el cliente regularice. Contactar.`,
+          (retry.retryWithinGrace
+            ? `MP tenía un reintento agendado y tampoco entró. `
+            : retry.nextRetryAt
+              ? `MP no reintentó dentro de la gracia; su próximo intento recién es ` +
+                `${new Date(retry.nextRetryAt).toLocaleString("es-AR")}, así que el ciclo caído no se recupera. `
+              : `MP no tiene ningún reintento agendado. `) +
+          `Este mes no se factura salvo que el cliente regularice. Contactar.`,
         severity: "error",
       })
       await admin.from("billing_events").update({ status: "processed" }).eq("id", claim.data.id)
       escalated++
-      details.push({ org_id: org.id, action: "escalated" })
+      details.push({
+        org_id: org.id,
+        action: "escalated",
+        mp_next_retry_at: retry.nextRetryAt,
+      })
       continue
     }
 
@@ -179,7 +208,13 @@ export async function POST(request: Request) {
     if (result.success) {
       await admin.from("billing_events").update({ status: "processed" }).eq("id", claim.data.id)
       sent++
-      details.push({ org_id: org.id, action: "sent", slot: slotKey })
+      details.push({
+        org_id: org.id,
+        action: "sent",
+        slot: slotKey,
+        mp_next_retry_at: retry.nextRetryAt,
+        mp_retry_within_grace: retry.retryWithinGrace,
+      })
       logSecurityEvent({
         eventType: "past_due_reminder_sent",
         severity: "INFO",
