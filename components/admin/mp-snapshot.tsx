@@ -127,13 +127,19 @@ export function MpSnapshot({ orgId }: { orgId: string }) {
                             )}
                             {a.retry_attempt != null && <span>intento #{a.retry_attempt}</span>}
                           </div>
-                          {a.reason_label && (
+                          {a.reason_label ? (
                             <div className="text-muted-foreground">
                               Motivo: {a.reason_label}
                               {a.reason_retryable === false && " — no sirve reintentar el mismo medio"}
                               {a.reason_action ? ` → ${a.reason_action}` : ""}
                             </div>
-                          )}
+                          ) : a.status_detail ? (
+                            <div className="text-muted-foreground">Detalle MP: {a.status_detail}</div>
+                          ) : !a.has_payment ? (
+                            <div className="text-muted-foreground">
+                              Sin cobro ejecutado — MP dejó el intento agendado.
+                            </div>
+                          ) : null}
                           {a.next_retry_date && (
                             <div className="text-muted-foreground">
                               Próximo reintento de MP:{" "}

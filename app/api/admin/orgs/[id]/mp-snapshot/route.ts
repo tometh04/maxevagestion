@@ -38,7 +38,12 @@ export async function GET(
       const attempts = await searchAuthorizedPayments(org.mp_preapproval_id, 30)
       chargeAttempts = attempts.map((ap: any) => {
         const detail = ap?.payment?.status_detail ?? null
-        const reason = parseRejectionReason(detail)
+        const paymentStatus = ap?.payment?.status ?? null
+        // Solo interpretamos el detail cuando el pago fue RECHAZADO. Un pago
+        // aprobado trae detail "accredited", y pasarlo por el mapper de rechazos
+        // lo mostraba como "Rechazo no mapeado (accredited)" sobre un cobro que
+        // había entrado perfecto.
+        const reason = paymentStatus === "rejected" ? parseRejectionReason(detail) : null
         return {
           id: ap.id,
           // status del authorized_payment: scheduled / processed / recycling / cancelled.
@@ -50,7 +55,10 @@ export async function GET(
           retry_attempt: ap.retry_attempt ?? null,
           next_retry_date: ap.next_retry_date ?? null,
           payment_id: ap?.payment?.id ?? null,
-          payment_status: ap?.payment?.status ?? null,
+          payment_status: paymentStatus,
+          // Sin objeto `payment` no hubo cobro ejecutado: MP dejó el intento
+          // agendado (status "scheduled"/"recycling") y lo reprogramó.
+          has_payment: !!ap?.payment,
           status_detail: detail,
           reason_label: reason?.label ?? null,
           reason_retryable: reason?.retryable ?? null,
