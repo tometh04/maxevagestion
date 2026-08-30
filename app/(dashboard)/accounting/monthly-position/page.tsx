@@ -1,24 +1,16 @@
-import { Metadata } from "next"
-import { createServerClient } from "@/lib/supabase/server"
-import { getCurrentUser } from "@/lib/auth"
-import { getScopedAgenciesForUser } from "@/lib/permissions-api"
-import { MonthlyPositionPageClient } from "@/components/accounting/monthly-position-page-client"
+import { redirect } from "next/navigation"
 
-export const metadata: Metadata = {
-  title: "Posición Contable Mensual | Contabilidad",
-  description: "Balance General y Estado de Resultados",
-}
-
-export default async function MonthlyPositionPage() {
-  const supabase = await createServerClient()
-  const { user } = await getCurrentUser()
-
-  const agencies = await getScopedAgenciesForUser(supabase, user)
-
-  return (
-    <MonthlyPositionPageClient
-      agencies={agencies}
-      userRole={user.role || "SELLER"}
-    />
-  )
+/**
+ * Posición Mensual — redirección a su pestaña.
+ *
+ * Esta pantalla existía dos veces: como ruta suelta y como pestaña de
+ * Contabilidad, con el mismo componente y las mismas props. Dos fuentes para lo
+ * mismo significa que un arreglo puede aplicarse a una sola.
+ *
+ * La ruta no se borra porque hay links internos que apuntan acá (el semáforo de
+ * pagos del dashboard, el diálogo de distribución de ganancias, el reporte
+ * societario). Redirigir los mantiene funcionando y deja una sola pantalla real.
+ */
+export default function Page() {
+  redirect("/accounting/ledger?tab=posicion")
 }
