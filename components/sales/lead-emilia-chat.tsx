@@ -2,7 +2,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Loader2, ChevronLeft, ChevronRight, MessageSquarePlus, Send, AlertTriangle, CheckCircle2, ExternalLink, X, Sparkles, FileText } from "lucide-react"
+import { Loader2, ChevronLeft, ChevronRight, MessageSquarePlus, Send, AlertTriangle, CheckCircle2, ExternalLink, X, Sparkles, FileText, HelpCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -32,6 +32,8 @@ import {
 import { getPublicQuotationPath } from "@/lib/quotations/public-links"
 import { downloadQuotationPdfFromPriceDialog } from "@/lib/pdf/quotation-pdf-html"
 import { QuotationPdfPriceDialog } from "@/components/sales/quotation-pdf-price-dialog"
+import { EmiliaPromptGuide } from "@/components/sales/emilia-prompt-guide"
+import { useTours } from "@/components/tours/tours-provider"
 import { fetchQuotationDocumentForUser } from "@/lib/quotation-documents/client"
 import {
   withDefaultOrigin,
@@ -544,6 +546,13 @@ export function LeadEmiliaChat({
   initialConversation,
   defaultOrigin,
 }: Props) {
+  const {
+    abort: abortTour,
+    activeTour,
+    isUnseen,
+    start: startTour,
+    toursDisabled,
+  } = useTours()
   const [loading, setLoading] = useState(true)
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
@@ -560,6 +569,22 @@ export function LeadEmiliaChat({
   // Cargando el prompt sugerido (gpt). Loading sutil: se llena una sola vez.
   const [promptLoading, setPromptLoading] = useState(false)
   const pendingJobControllerRef = useRef<AbortController | null>(null)
+  const contextualTourStartedRef = useRef(false)
+  const activeTourIdRef = useRef<string | null>(null)
+  const abortTourRef = useRef(abortTour)
+  activeTourIdRef.current = activeTour?.id ?? null
+  abortTourRef.current = abortTour
+
+  // El diálogo es el dueño del contexto de esta guía. Si se cierra mientras la
+  // guía está activa, la aborta (no la descarta ni la marca como completada) y
+  // nunca toca una guía distinta que pudiera haberse abierto en paralelo.
+  useEffect(() => {
+    return () => {
+      if (activeTourIdRef.current === "cotizar-emilia") {
+        abortTourRef.current("cotizar-emilia")
+      }
+    }
+  }, [])
 
   // Selección
   const [selectedFlightId, setSelectedFlightId] = useState<string | null>(null)
@@ -608,6 +633,40 @@ export function LeadEmiliaChat({
     setFlightFiltersByMessage({})
     setHotelFiltersByMessage({})
   }, [lead.id])
+
+  // La guía de prompt arranca únicamente dentro del chat autorizado. El gate de
+  // "Cotizar" ya resolvió plan, tenant, agencia y leads.write antes de montar
+  // este componente; los fallbacks al cotizador manual nunca llegan acá.
+  useEffect(() => {
+    if (
+      contextualTourStartedRef.current ||
+      loading ||
+      promptLoading ||
+      !conversationId ||
+      messages.length > 0 ||
+      activeTour ||
+      toursDisabled ||
+      !isUnseen("cotizar-emilia")
+    ) {
+      return
+    }
+
+    const timer = window.setTimeout(() => {
+      contextualTourStartedRef.current = true
+      startTour("cotizar-emilia")
+    }, 400)
+
+    return () => window.clearTimeout(timer)
+  }, [
+    activeTour,
+    conversationId,
+    isUnseen,
+    loading,
+    messages.length,
+    promptLoading,
+    startTour,
+    toursDisabled,
+  ])
 
   useEffect(() => {
     if (!activeSearchContextId) return
@@ -1067,13 +1126,25 @@ export function LeadEmiliaChat({
         <span className="font-semibold text-primary inline-flex items-center gap-1">
           <MessageSquarePlus className="h-4 w-4" /> Chat con Emilia
         </span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="ml-auto h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+          aria-label="Ver cómo pedirle una cotización a Emilia"
+          onClick={() => startTour("cotizar-emilia")}
+          disabled={Boolean(activeTour)}
+        >
+          <HelpCircle className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+          Cómo pedir
+        </Button>
       </div>
 
       {/* Mensajes */}
       <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4 space-y-3">
         {messages.length === 0 && (
-          <div className="text-center text-sm text-muted-foreground py-8">
-            Revisá el prompt sugerido y enviá a Emilia.
+          <div className="py-6">
+            <EmiliaPromptGuide />
           </div>
         )}
         {messages.map((m, i) => {
@@ -1322,22 +1393,33 @@ export function LeadEmiliaChat({
               {promptLoading
                 ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
                 : <Sparkles className="h-3.5 w-3.5 mr-1" />}
-              Sugerir prompt inicial
+              Sugerir pedido
             </Button>
           </div>
         )}
         <div className="flex gap-2">
           <Textarea
+            data-tour="emilia.prompt"
+            aria-label="Pedido para Emilia"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={promptLoading && !input ? "✨ Generando sugerencia…" : "Escribí a Emilia..."}
+            placeholder={promptLoading && !input
+              ? "✨ Preparando una sugerencia…"
+              : "Ej.: vuelo y hotel desde Buenos Aires a Cancún, 10 al 17/10, 2 adultos"}
             className="min-h-[60px] resize-none"
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSend()
             }}
             disabled={sending}
           />
-          <Button onClick={handleSend} disabled={!input.trim() || sending} className="self-end">
+          <Button
+            type="button"
+            data-tour="emilia.send"
+            aria-label="Enviar pedido a Emilia"
+            onClick={handleSend}
+            disabled={!input.trim() || sending}
+            className="self-end"
+          >
             {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </Button>
         </div>

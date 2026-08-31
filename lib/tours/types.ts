@@ -121,6 +121,15 @@ export interface TourDefinition {
   /** Especificidad para desempatar. Si se omite, se deriva de los segmentos. */
   priority?: number
   autoStart: boolean
+  /**
+   * Ancla que debe existir para poder iniciar esta guía contextual.
+   *
+   * Estas guías no se listan en el menú global porque su host puede montarse y
+   * desmontarse sin que el provider vuelva a renderizar. El componente host
+   * ofrece el replay local y `start()` vuelve a validar el DOM en el momento
+   * exacto del click, evitando consumir la guía fuera de contexto.
+   */
+  contextualAnchor?: string
   /** Gate por rol (para tours de configuración que solo hacen owner/admin). */
   requireRoles?: string[]
   /**

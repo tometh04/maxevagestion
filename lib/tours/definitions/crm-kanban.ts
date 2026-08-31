@@ -51,6 +51,12 @@ export const crmKanbanTour: TourDefinition = {
       onMissing: "skip",
     },
     {
+      id: "cotizar-con-emilia",
+      title: "Cotizá con Emilia desde el lead",
+      body: "Abrí un lead y elegí “Más → Cotizar”. Si Emilia está habilitada para tu agencia, busca opciones reales y convierte lo que selecciones en una cotización.",
+      requirePermission: { module: "leads", permission: "write" },
+    },
+    {
       id: "lead-a-operacion",
       title: "De lead a venta",
       body: "Abrí el lead y desde “Más → Cotizar” armás la cotización. Cuando el cliente acepta, el botón “Crear operación” abre el alta ya precargada con sus datos.",
