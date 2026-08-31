@@ -13,6 +13,7 @@ import { getOrgOnboardingState } from "@/lib/onboarding/server"
 import { ToursProvider } from "@/components/tours/tours-provider"
 import { TourOverlay } from "@/components/tours/tour-overlay"
 import { CheckinReminderModal } from "@/components/alerts/checkin-reminder-modal"
+import { ReleaseModal } from "@/components/notifications/release-modal"
 import {
   SidebarInset,
   SidebarProvider,
@@ -160,6 +161,9 @@ export default async function DashboardLayout({
             <AnalyticsIdentity identity={analyticsIdentity} />
             <PerfNavLogger />
             <CheckinReminderModal />
+            {/* Va después del de check-in a propósito: le cede el paso si ese
+                ya está abierto (ver el componente). */}
+            <ReleaseModal />
             <TourOverlay />
           </ToursProvider>
         </SidebarProvider>

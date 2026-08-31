@@ -16,6 +16,22 @@
  *   --body-file <path>  Alternativa a --body: lee el texto de un archivo.
  *   --type    <NEW|IMPROVEMENT|FIX>  Default NEW.
  *   --draft           Si está, la crea sin publicar (published=false).
+ *
+ * Modal (para releases grandes que además piden que el usuario configure algo):
+ *   --modal              Se muestra como modal al entrar, además de en la campana.
+ *   --modal-from <fecha> Desde cuándo (YYYY-MM-DD). Default: ya.
+ *   --modal-until <fecha> Hasta cuándo (YYYY-MM-DD). Sin esto no vence.
+ *   --modal-roles <lista> Roles separados por coma que lo ven. Sin esto, todos.
+ *                         Restringe la interrupción, no la información: la
+ *                         novedad se sigue viendo en la campana para cualquiera.
+ *   --cta-label <str>    Texto del botón.
+ *   --cta-href  <ruta>   Destino, ruta interna (tiene que empezar con "/").
+ *
+ * Ej:
+ *   npm run announce -- --type NEW --modal --modal-until 2026-09-15 \
+ *     --modal-roles SUPER_ADMIN,ORG_OWNER,ADMIN,CONTABLE \
+ *     --cta-label "Configurar contabilidad" --cta-href "/finances/settings" \
+ *     --title "..." --body-file texto.txt
  */
 import { createClient } from "@supabase/supabase-js"
 import * as dotenv from "dotenv"
@@ -29,6 +45,18 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
 const VALID_TYPES = ["NEW", "IMPROVEMENT", "FIX"] as const
 type AnnouncementType = (typeof VALID_TYPES)[number]
+
+// Copiados de lib/permissions.ts (UserRole). No se importa para que el script
+// siga corriendo sin el árbol de la app; si se agrega un rol, va acá también.
+const VALID_ROLES = [
+  "SUPER_ADMIN",
+  "ORG_OWNER",
+  "ADMIN",
+  "CONTABLE",
+  "SELLER",
+  "VIEWER",
+  "POST_VENTA",
+] as const
 
 function parseArgs(argv: string[]) {
   const args: Record<string, string> = {}
@@ -76,11 +104,55 @@ async function main() {
     process.exit(1)
   }
 
+  // ─── Modal ──────────────────────────────────────────────────
+  const modal = flags.has("modal")
+  const roles = args["modal-roles"]
+    ? args["modal-roles"].split(",").map((r) => r.trim().toUpperCase()).filter(Boolean)
+    : null
+
+  if (roles) {
+    const invalidos = roles.filter((r) => !VALID_ROLES.includes(r as any))
+    if (invalidos.length > 0) {
+      console.error(`❌ --modal-roles inválido: ${invalidos.join(", ")}`)
+      console.error(`   Roles válidos: ${VALID_ROLES.join(", ")}`)
+      process.exit(1)
+    }
+  }
+
+  const ctaHref = args["cta-href"]?.trim() || null
+  const ctaLabel = args["cta-label"]?.trim() || null
+
+  // Ruta interna y no URL completa: es un destino administrable que termina en
+  // un enlace que el usuario clickea. Aceptar cualquier host lo convertiría en
+  // una redirección abierta cargable desde el panel.
+  if (ctaHref && !/^\/[^/]/.test(ctaHref)) {
+    console.error(`❌ --cta-href tiene que ser una ruta interna, ej "/finances/settings".`)
+    process.exit(1)
+  }
+  if ((ctaHref && !ctaLabel) || (ctaLabel && !ctaHref)) {
+    console.error("❌ --cta-label y --cta-href van juntos: un botón sin destino no sirve.")
+    process.exit(1)
+  }
+  if (!modal && (ctaHref || roles || args["modal-until"] || args["modal-from"])) {
+    console.error("❌ Pusiste opciones de modal pero falta --modal, así que no se mostraría.")
+    process.exit(1)
+  }
+
   const supabase = createClient(supabaseUrl, supabaseServiceKey)
-  const { data, error } = await supabase
-    .from("announcements")
-    .insert({ title, body, type, published })
-    .select("id, title, type, published, published_at")
+  const { data, error } = await (supabase.from("announcements") as any)
+    .insert({
+      title,
+      body,
+      type,
+      published,
+      modal,
+      modal_starts_at: args["modal-from"] ? new Date(args["modal-from"]).toISOString() : null,
+      modal_ends_at: args["modal-until"] ? new Date(`${args["modal-until"]}T23:59:59`).toISOString() : null,
+      modal_roles: roles,
+      modal_cta_label: ctaLabel,
+      modal_cta_href: ctaHref,
+    })
+    .select("id, title, type, published, published_at, modal, modal_ends_at, modal_roles")
     .single()
 
   if (error) {
@@ -91,6 +163,13 @@ async function main() {
   console.log(`✅ Novedad ${published ? "publicada" : "guardada como borrador"}:`)
   console.log(`   [${data.type}] ${data.title}`)
   console.log(`   id: ${data.id}`)
+  if (data.modal) {
+    console.log(
+      `   modal: sí — ${
+        data.modal_ends_at ? `hasta ${String(data.modal_ends_at).slice(0, 10)}` : "SIN VENCIMIENTO"
+      }, roles: ${data.modal_roles?.join(", ") || "todos"}`
+    )
+  }
 }
 
 main().catch((e) => {

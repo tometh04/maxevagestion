@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { createServerClient, createAdminClient } from "@/lib/supabase/server"
 import { isPlatformAdmin } from "@/lib/auth/platform"
 import { logSecurityEvent } from "@/lib/security/audit"
+import { parsearCamposDelModal } from "@/lib/announcements/modal-payload"
 
 const VALID_TYPES = ["NEW", "IMPROVEMENT", "FIX"]
 
@@ -25,6 +26,20 @@ export async function PATCH(
   if (typeof body.body === "string") update.body = body.body.trim()
   if (VALID_TYPES.includes(body.type)) update.type = body.type
   if (typeof body.published === "boolean") update.published = body.published
+
+  // Los campos del modal se aplican solo si el cliente los mandó.
+  //
+  // El PATCH es parcial y el botón de publicar/despublicar del panel manda
+  // únicamente `{ published }`. Si se aplicaran siempre, cada vez que alguien
+  // despublica y vuelve a publicar una novedad se le borraría la ventana, los
+  // roles y el botón sin que nadie lo pidiera.
+  if ("modal" in body) {
+    const modal = parsearCamposDelModal(body)
+    if (!modal.ok) {
+      return NextResponse.json({ error: modal.error }, { status: 400 })
+    }
+    Object.assign(update, modal.campos)
+  }
 
   if (Object.keys(update).length === 0) {
     return NextResponse.json({ error: "Nada para actualizar" }, { status: 400 })
