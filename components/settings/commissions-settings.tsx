@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { DecimalInput } from "@/components/ui/decimal-input"
@@ -47,11 +47,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Percent, Plus, Info, Settings2, Calendar, Wallet } from "lucide-react"
+import { Percent, Plus, Info, Settings2, Calendar, Wallet, Users } from "lucide-react"
 import { toast } from "sonner"
 // Fix UTC shift en fechas DATE (VICO 2026-05-22)
 import { parseDateOnlyLocal, formatDateOnlyLocal } from "@/lib/utils/date-only"
 import { SELLER_OPTION_ROLES } from "@/lib/sellers/seller-option"
+import {
+  resolveEffectivePercentage,
+  type SellerPercentageSource,
+} from "@/lib/commissions/seller-commission-profile"
 
 // Umbral de cobranza (% de la venta cobrado) a partir del cual una comisión
 // PENDING se puede pagar al vendedor. Configurable por agencia:
@@ -131,6 +135,14 @@ function describeRuleScope(
   return "Todos"
 }
 
+/** Cómo se le explica al usuario de dónde salió el porcentaje. */
+const ORIGEN_PORCENTAJE: Record<SellerPercentageSource, string> = {
+  SELLER_RULE: "Regla propia",
+  USER_DEFAULT: "El que se cargó al crear el usuario",
+  ORG_RULE: "La regla general de la agencia",
+  NONE: "Ninguna: no se le calcula comisión",
+}
+
 export function CommissionsSettings() {
   const [rules, setRules] = useState<CommissionRule[]>([])
   const [loading, setLoading] = useState(false)
@@ -165,6 +177,45 @@ export function CommissionsSettings() {
     fetchSellers()
     fetchThreshold()
   }, [])
+
+  /**
+   * La regla general de la organización: la que no apunta a nadie en concreto.
+   * Sólo cuenta como porcentaje si está expresada en porcentaje —- una regla de
+   * monto fijo no es un "X%" que se pueda mostrar en la columna.
+   */
+  const reglaGeneralPct = useMemo(() => {
+    const generica = rules.find(
+      (r) =>
+        r.type === "SELLER" &&
+        !r.seller_id &&
+        !r.agency_id &&
+        !r.destination_region &&
+        r.basis === "FIXED_PERCENTAGE"
+    )
+    return generica ? Number(generica.value) : null
+  }, [rules])
+
+  /**
+   * Los vendedores que no tienen una regla propia, con lo que cobran hoy.
+   *
+   * Cualquier regla con `seller_id` cuenta, incluso una con vigencia futura: la
+   * persona ya está configurada y ofrecerle "Configurar" llevaría a crear una
+   * segunda regla para el mismo vendedor.
+   */
+  const sellersSinRegla = useMemo(() => {
+    const conRegla = new Set(rules.map((r) => r.seller_id).filter(Boolean) as string[])
+    return sellers
+      .filter((s) => !conRegla.has(s.id))
+      .map((seller) => ({
+        seller,
+        ...resolveEffectivePercentage({
+          sellerRule: null,
+          userDefault: seller.default_commission_percentage,
+          orgRule: reglaGeneralPct,
+        }),
+      }))
+      .sort((a, b) => (a.seller.name || "").localeCompare(b.seller.name || "", "es"))
+  }, [sellers, rules, reglaGeneralPct])
 
   const fetchThreshold = async () => {
     try {
@@ -240,6 +291,28 @@ export function CommissionsSettings() {
     } catch (error) {
       console.error("Error fetching sellers:", error)
     }
+  }
+
+  /**
+   * Nueva regla ya apuntando a un vendedor, con el porcentaje que cobra hoy.
+   *
+   * Precargar el número importa: quien viene a subirle 5 puntos a alguien no
+   * tiene por qué acordarse de cuánto cobraba, y un formulario en 0 invita a
+   * guardar un 0 sin querer.
+   */
+  const handleOpenDialogForSeller = (sellerId: string, percentage: number | null) => {
+    setEditingRule(null)
+    form.reset({
+      type: "SELLER",
+      basis: "FIXED_PERCENTAGE",
+      value: percentage ?? 0,
+      destination_region: null,
+      agency_id: null,
+      seller_id: sellerId,
+      valid_from: formatDateOnlyLocal(new Date()) ?? "",
+      valid_to: null,
+    })
+    setDialogOpen(true)
   }
 
   const handleOpenDialog = (rule?: CommissionRule) => {
@@ -470,6 +543,74 @@ export function CommissionsSettings() {
           </div>
         )}
       </div>
+
+      {/*
+        Los vendedores que NO tienen regla propia.
+
+        La tabla de arriba lista reglas, no personas, así que quien nunca tuvo
+        una era invisible acá — y como el porcentaje sólo se puede cargar al
+        crear el usuario, no había ninguna pantalla donde cambiárselo. Reportado
+        por Lozada: los 6 vendedores de Madero "no aparecen".
+
+        El porcentaje que se muestra es el que se les está pagando hoy, resuelto
+        con la misma función que usa el cálculo.
+      */}
+      {!loading && sellersSinRegla.length > 0 && (
+        <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+          <div className="flex items-center gap-2">
+            <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+              <Users className="h-3.5 w-3.5 text-primary" />
+            </div>
+            <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">
+              Vendedores sin regla propia
+            </h4>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Cobran el porcentaje que se les cargó al crearlos o el general de la agencia.
+            Para cambiárselo hay que crearles una regla.
+          </p>
+          <div className="rounded-xl border border-border/40 overflow-hidden">
+            <Table>
+              <TableHeader className="sticky top-0 bg-muted/50">
+                <TableRow>
+                  <TableHead>Vendedor</TableHead>
+                  <TableHead>Cobra hoy</TableHead>
+                  <TableHead>De dónde sale</TableHead>
+                  <TableHead>Acciones</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {sellersSinRegla.map(({ seller, percentage, source }) => (
+                  <TableRow key={seller.id}>
+                    <TableCell className="text-sm">
+                      {seller.name || seller.email || "Sin nombre"}
+                    </TableCell>
+                    <TableCell className="font-medium tabular-nums">
+                      {percentage == null ? (
+                        <span className="text-destructive">Sin configurar</span>
+                      ) : (
+                        `${percentage}%`
+                      )}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {ORIGEN_PORCENTAJE[source]}
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleOpenDialogForSeller(seller.id, percentage)}
+                      >
+                        Configurar
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-[95vw] sm:max-w-2xl">

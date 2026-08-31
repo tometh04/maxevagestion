@@ -46,6 +46,34 @@ export interface SellerCommissionProfile {
   advisorManagerPercentage: number | null
 }
 
+/** Las tres fuentes posibles de un porcentaje, en crudo. `null` = no hay. */
+export interface PercentageSources {
+  /** `commission_rules` con `seller_id` — el override por vendedor. */
+  sellerRule: number | null
+  /** `users.default_commission_percentage`. */
+  userDefault: number | null
+  /** `commission_rules` genérica de la org (`seller_id is null`). */
+  orgRule: number | null
+}
+
+/**
+ * La precedencia, sola y sin I/O.
+ *
+ * Está separada porque la pantalla de Reglas de Comisiones tiene que mostrar
+ * cuánto cobra hoy un vendedor SIN regla propia, y ya tiene los tres números en
+ * memoria. Si la repitiera por su cuenta, la pantalla y el cálculo podrían
+ * decir cosas distintas sobre la misma persona.
+ */
+export function resolveEffectivePercentage(sources: PercentageSources): {
+  percentage: number | null
+  source: SellerPercentageSource
+} {
+  if (sources.sellerRule != null) return { percentage: sources.sellerRule, source: "SELLER_RULE" }
+  if (sources.userDefault != null) return { percentage: sources.userDefault, source: "USER_DEFAULT" }
+  if (sources.orgRule != null) return { percentage: sources.orgRule, source: "ORG_RULE" }
+  return { percentage: null, source: "NONE" }
+}
+
 function emptyProfile(sellerId: string): SellerCommissionProfile {
   return {
     sellerId,
@@ -191,35 +219,31 @@ export async function resolveSellerCommissionProfiles(
     if (value != null) ruleBySeller.set(rule.seller_id, value)
   }
 
+  // Las fuentes en crudo. La precedencia se aplica más abajo, una sola vez y
+  // con `resolveEffectivePercentage`, para que el cálculo y la pantalla de
+  // Reglas de Comisiones no puedan separarse.
   const resolved = ids.map((id) => {
     const row = byId.get(id)
-    const mode = normalizeMode(row?.mode)
-    const name = row?.name ?? null
-    // El administrador no participa de la precedencia de arriba: no hay reglas
-    // en `commission_rules` para él, y heredar un default de la org sería
-    // pagarle a alguien un porcentaje que nadie eligió.
+    // El administrador no participa de la precedencia: no hay reglas en
+    // `commission_rules` para él, y heredar un default de la org sería pagarle
+    // a alguien un porcentaje que nadie eligió.
     const advisorManagerId = row?.managerId ?? null
-    const advisorManagerPercentage = advisorManagerId ? normalizePct(row?.managerPct) : null
-    const link = { advisorManagerId, advisorManagerPercentage }
-
-    const rulePct = ruleBySeller.get(id)
-    if (rulePct != null) {
-      return { sellerId: id, name, percentage: rulePct, mode, source: "SELLER_RULE" as const, ...link }
+    return {
+      sellerId: id,
+      name: row?.name ?? null,
+      mode: normalizeMode(row?.mode),
+      advisorManagerId,
+      advisorManagerPercentage: advisorManagerId ? normalizePct(row?.managerPct) : null,
+      sellerRule: ruleBySeller.get(id) ?? null,
+      userDefault: normalizePct(row?.pct),
     }
-
-    const userPct = normalizePct(row?.pct)
-    if (userPct != null) {
-      return { sellerId: id, name, percentage: userPct, mode, source: "USER_DEFAULT" as const, ...link }
-    }
-
-    return { sellerId: id, name, percentage: null, mode, source: "NONE" as const, ...link }
   })
 
   // La regla genérica de la org solo se consulta si algún vendedor la necesita.
   // Acá el filtro por org_id SÍ es estricto: sin `seller_id` que ancle el
   // tenant, una regla con org_id nulo es justamente la que se filtraba a otras
   // organizaciones.
-  const needsGeneric = resolved.some((p) => p.percentage == null)
+  const needsGeneric = resolved.some((p) => p.sellerRule == null && p.userDefault == null)
   let genericPct: number | null = null
 
   if (needsGeneric) {
@@ -244,17 +268,20 @@ export async function resolveSellerCommissionProfiles(
     genericPct = normalizePct((genericRules as any[])?.[0]?.value)
   }
 
-  for (const profile of resolved) {
-    if (profile.percentage == null && genericPct != null) {
-      profiles.set(profile.sellerId, { ...profile, percentage: genericPct, source: "ORG_RULE" })
-      continue
-    }
-    if (profile.percentage == null) {
+  for (const { sellerRule, userDefault, ...rest } of resolved) {
+    const { percentage, source } = resolveEffectivePercentage({
+      sellerRule,
+      userDefault,
+      orgRule: genericPct,
+    })
+
+    if (percentage == null) {
       console.warn(
-        `[Commissions] El vendedor ${profile.sellerId} no tiene porcentaje de comisión configurado. Cargalo en Configuración → Usuarios.`
+        `[Commissions] El vendedor ${rest.sellerId} no tiene porcentaje de comisión configurado. Cargalo en Configuración → Usuarios.`
       )
     }
-    profiles.set(profile.sellerId, profile)
+
+    profiles.set(rest.sellerId, { ...rest, percentage, source })
   }
 
   return profiles
