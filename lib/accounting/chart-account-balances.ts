@@ -106,8 +106,13 @@ export async function calcularSaldosPorCuenta(
   const excluir = new Set(params.excluirCloseKinds ?? [])
   // Solo se pide `journal_entries.close_kind` si hace falta filtrar: el join
   // encarece la query y la mayoría de los llamadores no lo necesita.
+  //
+  // Se nombra la clave foránea explícitamente porque hay DOS relaciones entre
+  // estas tablas —`ledger_movements.journal_entry_id` y
+  // `journal_entries.source_movement_id`— y sin desambiguar PostgREST rechaza
+  // la query. La que sirve es la primera: la línea que pertenece al asiento.
   const select = excluir.size
-    ? "chart_account_id, currency, debit_amount, credit_amount, journal_entries(close_kind)"
+    ? "chart_account_id, currency, debit_amount, credit_amount, journal_entries!ledger_movements_journal_entry_id_fkey(close_kind)"
     : "chart_account_id, currency, debit_amount, credit_amount"
 
   for (let from = 0; ; from += PAGE) {
