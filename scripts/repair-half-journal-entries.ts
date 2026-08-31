@@ -103,6 +103,22 @@ async function main() {
     console.log(`  ${f.org_name.slice(0,20).padEnd(22)} ${f.currency} ${String(monto).padStart(12)}  ${originalEsDebe ? "Debe" : "Haber"} original -> ${originalEsDebe ? "Haber" : "Debe"} ${code}${detalleOriginal}`)
 
     if (APLICAR) {
+      // Relectura justo antes de escribir.
+      //
+      // En la corrida de VICO el proceso recibio SIGTERM por timeout, siguio
+      // insertando un rato mas y se solapo con la corrida siguiente: 53 asientos
+      // recibieron la contrapartida dos veces y quedaron con el haber al doble
+      // del debe. El candidato se elige con una SELECT del principio, asi que
+      // para cuando le toca el turno puede haber dejado de serlo.
+      const { count } = await (db.from("ledger_movements") as any)
+        .select("id", { count: "exact", head: true })
+        .eq("journal_entry_id", f.journal_entry_id)
+      if ((count ?? 0) !== 1) {
+        console.log(`    SALTEADA: el asiento ya tiene ${count} lineas (otra corrida lo tomo)`)
+        saltadas++
+        continue
+      }
+
       const { error } = await (db.from("ledger_movements") as any).insert(nueva)
       if (error) { console.log(`    ERROR: ${error.message}`); continue }
       creadas++
@@ -139,4 +155,22 @@ main().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit
  *   Saldos de cuentas financieras: identicos antes y despues.
  *   Descuadre Compañia USD 6828 -> 0, Lozada ARS -31000 -> 0.
  *   Quedaron 3 medios asientos sin pago asociado, para revisar a mano.
+ */
+
+/*
+ * CORRIDA DEL 2026-08-31, resto de las agencias:
+ *   Milla Cero      128 lineas, 128 originales imputadas. Descuadre a 0 en ARS y USD.
+ *   Gualeguaychu    195 lineas, 195 originales imputadas. Descuadre a 0 en ARS y USD.
+ *   VICO            587 lineas, 587 originales imputadas. Descuadre a 0 en ARS, 500 en USD
+ *                   (el unico medio asiento que queda ahi).
+ *
+ * En VICO el proceso corto por timeout, siguio corriendo en segundo plano y se
+ * solapo con el relanzamiento: 53 asientos recibieron la contrapartida dos veces.
+ * Se detecto verificando (haber = 2x debe), se borraron las 53 sobrantes y se
+ * agrego la relectura previa a la escritura para que no pueda repetirse.
+ *
+ * Estado del sistema despues: 926 medios asientos -> 4. Los 4 que quedan no
+ * tienen pago asociado y hay que resolverlos a mano.
+ *
+ * Saldos de cuentas financieras: identicos antes y despues en las 5 agencias.
  */
