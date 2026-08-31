@@ -17,6 +17,8 @@ export const ACCOUNT_CODES = {
   ANTICIPOS_PROVEEDORES: "1.1.06",
   IVA_CREDITO: "1.1.07",
   OTROS_CREDITOS: "1.1.08",
+  /** Cheques de terceros recibidos y todavía no depositados. No es dinero disponible. */
+  VALORES_A_DEPOSITAR: "1.1.09",
   INVERSIONES: "1.2.01",
 
   // ==========================================
