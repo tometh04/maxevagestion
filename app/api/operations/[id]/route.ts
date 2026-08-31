@@ -1438,6 +1438,43 @@ export async function DELETE(
       }
     }
 
+    // 9-bis. Percepciones y asientos vacíos que quedaron de los pagos (VIB-166/165).
+    //
+    // `tax_withholdings.operation_id` es la ÚNICA FK hacia `operations` que es
+    // NO ACTION: si queda una percepción viva, el DELETE de abajo explota con
+    // una violación de foreign key y el usuario sólo ve "Error al eliminar
+    // operación". Reportado por Lozada, que no podía borrar una venta cargada
+    // en la moneda equivocada aunque ya hubiera borrado el pago.
+    try {
+      await (supabase.from("tax_withholdings") as any)
+        .delete()
+        .eq("operation_id", operationId)
+        .eq("org_id", (user as any).org_id)
+    } catch (error) {
+      console.error("Error deleting tax_withholdings:", error)
+    }
+
+    // Las cabeceras de asiento quedan en SET NULL, así que no bloquean, pero
+    // sin líneas son comprobantes numerados que no respaldan nada. Se borran
+    // sólo las que efectivamente quedaron vacías.
+    try {
+      const { data: entries } = await (supabase.from("journal_entries") as any)
+        .select("id")
+        .eq("operation_id", operationId)
+        .eq("org_id", (user as any).org_id)
+
+      for (const entry of (entries ?? []) as any[]) {
+        const { count } = await (supabase.from("ledger_movements") as any)
+          .select("id", { count: "exact", head: true })
+          .eq("journal_entry_id", entry.id)
+        if ((count ?? 0) === 0) {
+          await (supabase.from("journal_entries") as any).delete().eq("id", entry.id)
+        }
+      }
+    } catch (error) {
+      console.error("Error deleting empty journal entries:", error)
+    }
+
     // 10. Finalmente eliminar la operación (esto cascadea operation_customers)
     const { error: deleteError } = await supabase
       .from("operations")
@@ -1446,7 +1483,19 @@ export async function DELETE(
 
     if (deleteError) {
       console.error("Error deleting operation:", deleteError)
-      return NextResponse.json({ error: "Error al eliminar operación" }, { status: 500 })
+      // 23503 es una FK que quedó apuntando a la operación. Decir qué pasó, en
+      // vez de un "Error al eliminar operación" que no le dice nada a nadie:
+      // fue exactamente lo que dejó a Lozada sin saber cómo seguir.
+      const esFk = (deleteError as any)?.code === "23503"
+      return NextResponse.json(
+        {
+          error: esFk
+            ? "No se puede eliminar: la operación todavía tiene registros contables o impositivos asociados. Avisá a soporte con el número de operación."
+            : "Error al eliminar operación",
+          detail: (deleteError as any)?.message ?? null,
+        },
+        { status: esFk ? 400 : 500 }
+      )
     }
 
 
