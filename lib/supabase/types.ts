@@ -102,6 +102,7 @@ export type Database = {
       }
       agencies: {
         Row: {
+          agente_blanco_network: string | null
           city: string
           created_at: string | null
           id: string
@@ -111,6 +112,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          agente_blanco_network?: string | null
           city: string
           created_at?: string | null
           id?: string
@@ -120,6 +122,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          agente_blanco_network?: string | null
           city?: string
           created_at?: string | null
           id?: string
@@ -7571,6 +7574,7 @@ export type Database = {
           address_postal_code: string | null
           address_province: string | null
           address_street: string | null
+          agente_blanco_org_slug: string | null
           agreed_plan_id: string | null
           agreed_plan_price_ars: number | null
           agreed_plan_price_source: string | null
@@ -7617,6 +7621,7 @@ export type Database = {
           address_postal_code?: string | null
           address_province?: string | null
           address_street?: string | null
+          agente_blanco_org_slug?: string | null
           agreed_plan_id?: string | null
           agreed_plan_price_ars?: number | null
           agreed_plan_price_source?: string | null
@@ -7663,6 +7668,7 @@ export type Database = {
           address_postal_code?: string | null
           address_province?: string | null
           address_street?: string | null
+          agente_blanco_org_slug?: string | null
           agreed_plan_id?: string | null
           agreed_plan_price_ars?: number | null
           agreed_plan_price_source?: string | null

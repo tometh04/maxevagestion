@@ -51,6 +51,10 @@ interface NavSubItem {
     variant: 'warning' | 'error' | 'info'
     tooltip: string
   }
+  /** Micro logo de marca (ruta en /public), para integraciones de terceros. */
+  iconSrc?: string
+  /** Solo visible si la org tiene el embebido de Agente Blanco habilitado. */
+  requiresAgenteBlanco?: boolean
 }
 
 interface NavItem {
@@ -195,6 +199,15 @@ const allNavigation: NavItem[] = [
       { title: "Mensajes", url: "/messages" },
       { title: "Templates", url: "/resources/templates", module: "settings" as const },
       { title: "Tareas", url: "/tools/tasks" },
+      // Bandeja de Agente Blanco embebida. Solo aparece si la org tiene
+      // `agente_blanco_org_slug`: sin el campo la sección no existe.
+      {
+        title: "Agente Blanco",
+        url: "/conversaciones",
+        module: "leads" as const,
+        iconSrc: "/agente-blanco-icon.png",
+        requiresAgenteBlanco: true,
+      },
       { title: "WHA Control", url: "/tools/wha-control" },
       // Pendientes 3.2: el v2 import vivía sólo via URL directa. Lo colgamos
       // de Herramientas (admin task) en vez de Configuración para evitar
@@ -234,6 +247,7 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   userRole: UserRole
   resolvedPermissions?: ResolvedPermissionsMatrix | null
   growthStudioEnabled?: boolean
+  conversationsEnabled?: boolean
   user: {
     name: string
     email: string
@@ -245,6 +259,7 @@ export function AppSidebar({
   userRole,
   resolvedPermissions,
   growthStudioEnabled = false,
+  conversationsEnabled = false,
   user,
   ...props
 }: AppSidebarProps) {
@@ -395,6 +410,9 @@ export function AppSidebar({
       if (item.items) {
         const filteredItems = item.items
           .map((subItem) => {
+            if (subItem.requiresAgenteBlanco && !conversationsEnabled) {
+              return null
+            }
             // Si el subitem tiene módulo propio, verificar ese módulo
             // Si no, heredar el módulo del padre
             const moduleToCheck = subItem.module || item.module

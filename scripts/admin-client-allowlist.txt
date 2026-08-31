@@ -54,6 +54,7 @@ app/admin/metrics/page.tsx                                               # PLATF
 app/admin/usage/page.tsx                                                 # PLATFORM_ADMIN — mapa de calor de uso; RPCs admin_usage_* cross-org (EXECUTE solo service_role).
 app/admin/audit/page.tsx                                                 # PLATFORM_ADMIN — security_audit_log reader.
 app/api/admin/orgs/route.ts                                              # PLATFORM_ADMIN — crear org nueva.
+app/api/admin/orgs/[id]/agente-blanco/route.ts                           # PLATFORM_ADMIN — setear el slug de Agente Blanco de un tenant.
 app/api/admin/orgs/[id]/cancel-subscription/route.ts                     # PLATFORM_ADMIN — cancelar suscripción de un tenant.
 app/api/admin/orgs/[id]/change-plan/route.ts                             # PLATFORM_ADMIN — cambiar plan (Ent↔PRO) + sync límites + reprice MP.
 app/api/admin/orgs/[id]/custom-plan/route.ts                             # PLATFORM_ADMIN — CRUD plan custom.

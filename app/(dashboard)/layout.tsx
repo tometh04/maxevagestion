@@ -27,6 +27,8 @@ import { getUserAgencyIds } from "@/lib/permissions-api"
 import { resolveUserPermissions, type ResolvedPermissionsMatrix } from "@/lib/permissions-agency"
 import { getEffectiveAgencyScopeRole } from "@/lib/permissions"
 import { resolveGrowthStudioOrganizationAccess } from "@/lib/growth-studio/access"
+import { getAgenteBlancoOrgSlug } from "@/lib/agente-blanco/org"
+import { isAgenteBlancoSoftLaunchUser } from "@/lib/agente-blanco/config"
 
 export default async function DashboardLayout({
   children,
@@ -63,7 +65,10 @@ export default async function DashboardLayout({
   // determinar qué agencias son visibles; luego la resolución fusiona todos los roles.
   const effectiveRole = getEffectiveAgencyScopeRole((user as any).roles ?? [user.role as any])
   const agencyIds = await getUserAgencyIds(supabase, user.id, effectiveRole)
-  const [resolvedPermissions, growthStudioAccess] = await Promise.all([
+  // El slug de Agente Blanco decide si existe la sección "Conversaciones".
+  // Es un SELECT de una columna sobre la propia org: va en el mismo
+  // Promise.all para no sumar un round-trip por navegación.
+  const [resolvedPermissions, growthStudioAccess, agenteBlancoOrgSlug] = await Promise.all([
     user.org_id
       ? resolveUserPermissions(
           supabase as any, user.id, user.org_id,
@@ -72,6 +77,7 @@ export default async function DashboardLayout({
         )
       : Promise.resolve<ResolvedPermissionsMatrix | null>(null),
     resolveGrowthStudioOrganizationAccess(supabase, user),
+    getAgenteBlancoOrgSlug(supabase, user.org_id),
   ])
   t.mark("resolvePermissions")
 
@@ -127,6 +133,9 @@ export default async function DashboardLayout({
               userRole={user.role as any}
               resolvedPermissions={resolvedPermissions}
               growthStudioEnabled={growthStudioAccess.allowed}
+              conversationsEnabled={
+                agenteBlancoOrgSlug !== null && isAgenteBlancoSoftLaunchUser(user.email)
+              }
               user={{
                 name: user.name,
                 email: user.email,

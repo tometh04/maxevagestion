@@ -43,6 +43,8 @@ interface NavSubItem {
   url: string
   items?: NavSubSubItem[]
   badge?: SidebarBadge
+  /** Micro logo de marca (ruta en /public). Para integraciones de terceros. */
+  iconSrc?: string
 }
 
 interface NavItem {
@@ -196,6 +198,15 @@ export function NavMain({ items, pathname, tabActivo }: NavMainProps) {
                           <SidebarMenuSubItem key={subItem.url}>
                             <SidebarMenuSubButton asChild isActive={subIsActive}>
                               <Link href={subItem.url} onClick={() => logSidebarClick(subItem.url)}>
+                                {subItem.iconSrc && (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={subItem.iconSrc}
+                                    alt=""
+                                    aria-hidden="true"
+                                    className="h-4 w-4 shrink-0 rounded-[3px]"
+                                  />
+                                )}
                                 <span className="flex-1">{subItem.title}</span>
                                 {subItem.badge && (
                                   <span

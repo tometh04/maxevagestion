@@ -15,6 +15,7 @@ import { MpSnapshot } from "@/components/admin/mp-snapshot"
 import { AuditLogInline } from "@/components/admin/audit-log-inline"
 import { OrgProfileCard } from "@/components/admin/org-profile-card"
 import { OrgMembersCard } from "@/components/admin/org-members-card"
+import { AgenteBlancoCard } from "@/components/admin/agente-blanco-card"
 import { OrgActivityTimeline } from "@/components/admin/org-activity-timeline"
 import { OrgHealthCard } from "@/components/admin/org-health-card"
 import { PageHeader } from "@/components/admin/page-header"
@@ -71,6 +72,13 @@ export default async function AdminOrgDetailPage({ params }: { params: Promise<{
     website: sMap["website"] ?? sMap["company_website"] ?? null,
     instagram: sMap["instagram"] ?? sMap["company_instagram"] ?? null,
   }
+
+  // Agencias del tenant, para configurar la red de Agente Blanco de cada una.
+  const { data: agencyRows } = await admin
+    .from("agencies")
+    .select("id, name, agente_blanco_network")
+    .eq("org_id", org.id)
+    .order("name")
 
   let customPlan: any = null
   if (org.custom_plan_id) {
@@ -215,6 +223,16 @@ export default async function AdminOrgDetailPage({ params }: { params: Promise<{
         orgId={org.id}
         settings={orgSettings}
         internalNotes={org.internal_notes ?? null}
+      />
+
+      <AgenteBlancoCard
+        orgId={org.id}
+        currentSlug={org.agente_blanco_org_slug ?? null}
+        agencies={(agencyRows ?? []).map((a: any) => ({
+          id: a.id,
+          name: a.name ?? "Sin nombre",
+          network: a.agente_blanco_network ?? null,
+        }))}
       />
 
       <OrgMembersCard orgId={org.id} />
