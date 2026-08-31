@@ -18,6 +18,8 @@ import { opPaxTour } from "./op-pax"
 import { opCobroTour } from "./op-cobro"
 import { opPagoTour } from "./op-pago"
 import { billingNewTour } from "./billing-new"
+import { cotizarEmiliaTour } from "./cotizar-emilia"
+import { crmEmiliaDiscoveryTour } from "./crm-emilia-discovery"
 
 export const ALL_TOURS: TourDefinition[] = [
   setupCuentaTour,
@@ -32,6 +34,8 @@ export const ALL_TOURS: TourDefinition[] = [
   cashSummaryTour,
   crmKanbanTour,
   leadNewTour,
+  cotizarEmiliaTour,
+  crmEmiliaDiscoveryTour,
   commissionsTour,
 ]
 
@@ -48,5 +52,7 @@ export {
   cashSummaryTour,
   crmKanbanTour,
   leadNewTour,
+  cotizarEmiliaTour,
+  crmEmiliaDiscoveryTour,
   commissionsTour,
 }

@@ -51,6 +51,7 @@ import { LeadEmiliaChat } from "@/components/sales/lead-emilia-chat"
 import { LeadOutcomeBadge } from "@/components/sales/lead-outcome-badge"
 import { detectBrowserOriginCity } from "@/lib/emilia/browser-geolocation"
 import type { EmiliaDefaultOrigin } from "@/lib/emilia/origin-context"
+import { useCan } from "@/components/permissions/permissions-provider"
 
 // Las cotizaciones adjuntas (type QUOTATION) se muestran en la sección
 // Cotizaciones, no en el listado genérico de documentos. Referencia estable
@@ -246,6 +247,7 @@ export function LeadDetailDialog({
   onClaim,
   tagsSection,
 }: LeadDetailDialogProps) {
+  const canWriteLeads = useCan("leads", "write")
   const [convertDialogOpen, setConvertDialogOpen] = useState(false)
   const [quotationDialogOpen, setQuotationDialogOpen] = useState(false)
   const [editingQuotationId, setEditingQuotationId] = useState<string | null>(null)
@@ -1275,7 +1277,7 @@ export function LeadDetailDialog({
             const resolved = hasOp || lead.outcome === "SALE" || lead.outcome === "DISCARDED" || lead.status === "LOST"
             const canReopen = !hasOp && (lead.outcome === "SALE" || lead.outcome === "DISCARDED")
             const canConvert = !hasOp && lead.status !== "LOST" && !!onConvert && agencies.length > 0 && sellers.length > 0
-            const canQuote = !hasOp && lead.status !== "LOST"
+            const canQuote = canWriteLeads && !hasOp && lead.status !== "LOST"
             const canClaim = !lead.assigned_seller_id && canClaimLeads && lead.status !== "WON"
             return (
               <div className="flex items-center gap-1.5">

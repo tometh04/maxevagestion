@@ -3,6 +3,7 @@ import { createServerClient } from "@/lib/supabase/server"
 import { getScopedAgenciesForUser, getUserAgencyIds } from "@/lib/permissions-api"
 import { CRMManychatPageClient } from "@/components/sales/crm-manychat-page-client"
 import { AdvancedCRMKanban } from "./_components/advanced-crm-kanban"
+import { EmiliaCrmDiscovery } from "@/components/sales/emilia-crm-discovery"
 import { getOrgFeatureFlags } from "@/lib/settings/org-features"
 import { resolveUserPermissions, assertPermission } from "@/lib/permissions-agency"
 import {
@@ -48,6 +49,7 @@ export default async function CRMManychatPage() {
     if (org?.crm_mode === "advanced") {
       return (
         <div className="p-6 h-full">
+          <EmiliaCrmDiscovery />
           <AdvancedCRMKanban orgId={user.org_id} />
         </div>
       )
@@ -109,19 +111,22 @@ export default async function CRMManychatPage() {
   ])
 
   return (
-    <CRMManychatPageClient
-      agencies={(agencies || []) as Array<{ id: string; name: string }>}
-      sellers={toSellerOptions(sellers)}
-      operators={(operators || []) as QuotationOperatorOption[]}
-      defaultAgencyId={agencyIds[0] || undefined}
-      defaultSellerId={user.role === "SELLER" ? user.id : undefined}
-      currentUserId={user.id}
-      currentUserRole={user.role}
-      orgId={(user as any).org_id || undefined}
-      enableRegionFilter={featureFlags["features.region_filter_in_kanban"]}
-      enableListStatusSync={featureFlags["features.list_name_to_status_sync"]}
-      enableCreatedAtFilter={featureFlags["features.created_at_filter_in_kanban"]}
-    />
+    <>
+      <EmiliaCrmDiscovery />
+      <CRMManychatPageClient
+        agencies={(agencies || []) as Array<{ id: string; name: string }>}
+        sellers={toSellerOptions(sellers)}
+        operators={(operators || []) as QuotationOperatorOption[]}
+        defaultAgencyId={agencyIds[0] || undefined}
+        defaultSellerId={user.role === "SELLER" ? user.id : undefined}
+        currentUserId={user.id}
+        currentUserRole={user.role}
+        orgId={(user as any).org_id || undefined}
+        enableRegionFilter={featureFlags["features.region_filter_in_kanban"]}
+        enableListStatusSync={featureFlags["features.list_name_to_status_sync"]}
+        enableCreatedAtFilter={featureFlags["features.created_at_filter_in_kanban"]}
+      />
+    </>
   )
 }
 

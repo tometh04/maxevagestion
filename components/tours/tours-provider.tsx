@@ -29,6 +29,7 @@ import {
 } from "@/lib/tours/registry"
 import { resolveVisibleSteps } from "@/lib/tours/filter"
 import { entryStepIndex, tourLaunchPath } from "@/lib/tours/entry"
+import { anchorSelector } from "@/lib/tours/anchors"
 import { isAnchorActive } from "./use-tour-prepare"
 import type { TourDefinition, TourPermission, TourStep } from "@/lib/tours/types"
 import {
@@ -49,6 +50,13 @@ import {
 
 /** Deja aterrizar los datos de la ruta antes de iluminar nada. */
 const AUTOSTART_DELAY_MS = 600
+
+function isContextAnchorMounted(name: string): boolean {
+  if (typeof document === "undefined") return false
+  return Array.from(document.querySelectorAll(anchorSelector(name))).some(
+    (element) => element instanceof HTMLElement && element.isConnected
+  )
+}
 
 interface ActiveTour {
   tourId: string
@@ -84,6 +92,8 @@ interface ToursContextValue {
   next: () => void
   prev: () => void
   close: () => void
+  /** Cancela una guía sin consumirla; si se pasa id, no toca otra guía activa. */
+  abort: (tourId?: string) => void
   /** Arranca la guía que el paso actual ofrece encadenar. */
   startChained: () => void
   setToursDisabled: (value: boolean) => void
@@ -157,6 +167,10 @@ export function ToursProvider({
   // Si un tour no logra iluminar NINGÚN paso, se aborta sin marcarlo como visto
   // para que vuelva a intentar cuando la pantalla tenga sus anclas.
   const shownAnyRef = useRef(false)
+  const userTourStateBeforeStartRef = useRef<{
+    tourId: string
+    previous: PersistedTourState["seenTours"][string] | null
+  } | null>(null)
 
   const can = useCallback(
     (module: Module, permission: TourPermission) =>
@@ -187,6 +201,10 @@ export function ToursProvider({
     () =>
       TOURS.filter((tour) => {
         if (tour.scope === "org" && !canRunSetup) return false
+        // Las guías cuyo host vive dentro de un diálogo se reproducen desde el
+        // propio diálogo. Listarlas acá dejaría un botón visualmente stale al
+        // montar/desmontar el host sin que este provider cambie de estado.
+        if (tour.contextualAnchor) return false
         return resolveVisibleSteps(tour, roles, filterCtx).length > 0
       }).map((tour) => ({
         tour,
@@ -204,7 +222,7 @@ export function ToursProvider({
                 : null
             : (userState.seenTours[tour.id]?.status ?? null),
       })),
-    [roles, filterCtx, canRunSetup, userState.seenTours, orgSetup]
+    [roles, filterCtx, canRunSetup, userState.seenTours, orgSetup, pathname]
   )
 
   // ── Persistencia ────────────────────────────────────────────────────────
@@ -225,14 +243,24 @@ export function ToursProvider({
     (tourId: string, atIndex = 0) => {
       const tour = getTourById(tourId)
       if (!tour) return
+      // Seguridad en el seam público: aunque otro componente llame `start`
+      // directamente, una guía contextual nunca arranca ni persiste progreso
+      // si su host no está montado.
+      if (tour.contextualAnchor && !isContextAnchorMounted(tour.contextualAnchor)) return
       shownAnyRef.current = false
       setActive({ tourId, stepIndex: atIndex })
       if (tour.scope === "user") {
         setUserState((prev) => {
+          userTourStateBeforeStartRef.current = {
+            tourId,
+            previous: prev.seenTours[tourId] ?? null,
+          }
           const next = markTourStarted(prev, tourId, new Date().toISOString())
           persistUserState(next)
           return next
         })
+      } else {
+        userTourStateBeforeStartRef.current = null
       }
     },
     []
@@ -283,6 +311,9 @@ export function ToursProvider({
       if (!tour) return
 
       if (tour.scope === "user") {
+        if (userTourStateBeforeStartRef.current?.tourId === current.tourId) {
+          userTourStateBeforeStartRef.current = null
+        }
         setUserState((prev) => {
           const next = markTourFinished(
             prev,
@@ -304,15 +335,21 @@ export function ToursProvider({
   )
 
   /** Aborta sin dejar rastro: la pantalla no tenía las anclas del tour. */
-  const abort = useCallback(() => {
+  const abort = useCallback((tourId?: string) => {
     const current = active
-    setActive(null)
     if (!current) return
+    if (tourId && current.tourId !== tourId) return
+    setActive(null)
     const tour = getTourById(current.tourId)
     if (tour?.scope === "user") {
+      const snapshot = userTourStateBeforeStartRef.current?.tourId === current.tourId
+        ? userTourStateBeforeStartRef.current
+        : null
+      userTourStateBeforeStartRef.current = null
       setUserState((prev) => {
         const seenTours = { ...prev.seenTours }
-        delete seenTours[current.tourId]
+        if (snapshot?.previous) seenTours[current.tourId] = snapshot.previous
+        else delete seenTours[current.tourId]
         const next = { ...prev, seenTours }
         persistUserState(next)
         return next
@@ -480,6 +517,7 @@ export function ToursProvider({
       next,
       prev,
       close,
+      abort,
       startChained,
       setToursDisabled,
       resetAll,
@@ -503,6 +541,7 @@ export function ToursProvider({
       next,
       prev,
       close,
+      abort,
       startChained,
       setToursDisabled,
       resetAll,
