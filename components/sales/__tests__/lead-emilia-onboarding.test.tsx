@@ -1,7 +1,10 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
-import { useState } from "react"
+import userEvent from "@testing-library/user-event"
+import { useEffect, useRef, useState } from "react"
 import { PermissionsProvider } from "@/components/permissions/permissions-provider"
 import { SidebarProvider } from "@/components/ui/sidebar"
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
+import { TourOverlay } from "@/components/tours/tour-overlay"
 import { ToursProvider, useTours } from "@/components/tours/tours-provider"
 import { LeadEmiliaChat } from "../lead-emilia-chat"
 
@@ -10,6 +13,17 @@ jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn(), replace: jest.fn(), prefetch: jest.fn() }),
   useSearchParams: () => new URLSearchParams(),
 }))
+
+jest.mock("@/components/tours/use-target-rect", () => {
+  const actual = jest.requireActual("@/components/tours/use-target-rect")
+  return {
+    ...actual,
+    useStepTarget: () => ({
+      rect: { top: 360, left: 420, width: 420, height: 120, radius: 12 },
+      phase: "ready",
+    }),
+  }
+})
 
 function ActiveTourProbe() {
   const { activeTour, availableTours, isUnseen, start } = useTours()
@@ -42,6 +56,53 @@ function EmiliaChatHarness() {
   )
 }
 
+function ContextualDialogHost() {
+  const { abort, activeTour, activeStep, start } = useTours()
+  const activeTourIdRef = useRef<string | null>(null)
+  const abortRef = useRef(abort)
+  activeTourIdRef.current = activeTour?.id ?? null
+  abortRef.current = abort
+
+  useEffect(() => {
+    start("cotizar-emilia")
+  }, [start])
+
+  useEffect(() => {
+    return () => {
+      if (activeTourIdRef.current === "cotizar-emilia") abortRef.current("cotizar-emilia")
+    }
+  }, [])
+
+  return (
+    <>
+      <output data-testid="dialog-tour-step">{activeStep?.id ?? "none"}</output>
+      <div data-tour="emilia.prompt-guide">Guía del prompt</div>
+      <textarea data-tour="emilia.prompt" aria-label="Pedido de prueba" />
+      <button type="button" data-tour="emilia.send">Enviar</button>
+    </>
+  )
+}
+
+function ContextualDialogHarness() {
+  const [open, setOpen] = useState(true)
+
+  return (
+    <>
+      <output data-testid="contextual-dialog-open">{open ? "yes" : "no"}</output>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogTitle>Cotizar lead</DialogTitle>
+          <DialogDescription className="sr-only">
+            Prueba del onboarding contextual dentro del diálogo del lead.
+          </DialogDescription>
+          <ContextualDialogHost />
+        </DialogContent>
+      </Dialog>
+      <TourOverlay />
+    </>
+  )
+}
+
 describe("onboarding contextual de Emilia", () => {
   const originalFetch = global.fetch
 
@@ -53,6 +114,14 @@ describe("onboarding contextual de Emilia", () => {
         addEventListener: jest.fn(),
         removeEventListener: jest.fn(),
       })),
+    })
+    Object.defineProperty(document.documentElement, "clientWidth", {
+      configurable: true,
+      value: 1280,
+    })
+    Object.defineProperty(document.documentElement, "clientHeight", {
+      configurable: true,
+      value: 720,
     })
   })
 
@@ -303,5 +372,46 @@ describe("onboarding contextual de Emilia", () => {
 
     await waitFor(() => expect(screen.getByTestId("active-tour")).toHaveTextContent("none"))
     expect(screen.getByTestId("emilia-unseen")).toHaveTextContent("no")
+  })
+
+  it("mantiene abierto el diálogo contextual al avanzar con Siguiente", async () => {
+    global.fetch = jest.fn(async () => new Response("{}", { status: 200 })) as typeof fetch
+    const user = userEvent.setup()
+
+    render(
+      <PermissionsProvider role="SELLER" matrix={null}>
+        <SidebarProvider>
+          <ToursProvider
+            initialUserState={{
+              version: 1,
+              seenTours: {
+                "crm-kanban": {
+                  status: "completed",
+                  lastStepIndex: 5,
+                  startedAt: "2026-08-01T10:00:00.000Z",
+                  completedAt: "2026-08-01T10:05:00.000Z",
+                  dismissedAt: null,
+                },
+              },
+              toursDisabled: false,
+            }}
+            initialOrgSetupState={null}
+            roles={["SELLER"]}
+            canRunSetup={false}
+          >
+            <ContextualDialogHarness />
+          </ToursProvider>
+        </SidebarProvider>
+      </PermissionsProvider>
+    )
+
+    expect(await screen.findByText("Empezá con el viaje completo")).toBeVisible()
+    await user.click(screen.getByRole("button", { name: "Siguiente" }))
+
+    await waitFor(() =>
+      expect(screen.getByTestId("dialog-tour-step")).toHaveTextContent("revisar-prompt")
+    )
+    expect(screen.getByTestId("contextual-dialog-open")).toHaveTextContent("yes")
+    expect(screen.getByText("Revisá el pedido sugerido")).toBeVisible()
   })
 })

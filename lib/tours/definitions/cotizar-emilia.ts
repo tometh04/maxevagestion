@@ -19,7 +19,7 @@ export const cotizarEmiliaTour: TourDefinition = {
       body: "Emilia prepara una sugerencia con los datos del lead. Usala como base y completá lo que falte antes de buscar.",
       details: [
         "Un buen pedido incluye origen, destino, fechas o noches, pasajeros y las preferencias que cambian la búsqueda: equipaje, escalas, régimen, categoría o presupuesto.",
-        "Ejemplo: “Buscá vuelo ida y vuelta de Buenos Aires a Cancún del 10 al 17 de octubre para 2 adultos, con carry on, y hotel all inclusive de 4 estrellas o más”.",
+        "Ejemplo: “Quiero un vuelo ida y vuelta de Buenos Aires a Cancún del 10 al 17 de octubre para 2 adultos, con carry on, y hotel all inclusive de 4 estrellas o más”.",
       ],
       requirePermission: CAN_QUOTE,
       placement: "top",

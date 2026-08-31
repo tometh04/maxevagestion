@@ -74,6 +74,7 @@ export function TourCard(props: TourCardProps) {
         />
       </PopoverAnchor>
       <PopoverContent
+        dismissableLayerBranch
         side={side}
         align={align}
         sideOffset={14}
