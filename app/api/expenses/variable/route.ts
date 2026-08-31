@@ -292,7 +292,7 @@ export async function GET(request: Request) {
       .select(`
         id, type, category, category_id, amount, currency, movement_date, notes,
         financial_account_id, ledger_movement_id, created_at,
-        expense_classification, cc_payment_group_id,
+        expense_classification, cc_payment_group_id, agency_id, operation_id,
         ledger_movements:ledger_movement_id (affects_balance),
         users:user_id (id, name)
       `)

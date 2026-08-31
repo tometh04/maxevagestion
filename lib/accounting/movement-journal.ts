@@ -66,6 +66,13 @@ export interface CreateMovementJournalEntryParams {
   description?: string
   /** Solo para procesos sin sesión (backfills, crons); si no, se deriva. */
   orgId?: string | null
+  /**
+   * Oficina del asiento, cuando el caller la sabe mejor que la derivación de
+   * abajo. Lo usa la división de un gasto entre oficinas: las partes salen de
+   * la misma cuenta financiera, así que derivarla daría la misma oficina para
+   * todas y el reparto no se vería en los estados por agencia.
+   */
+  agencyId?: string | null
 }
 
 /** Códigos de contrapartida por flujo, para que los callers no los inventen. */
@@ -161,8 +168,8 @@ export async function createMovementJournalEntry(
     // VIB-143: la agencia sale de la operación y, si no la tiene, de la cuenta
     // financiera. Medido sobre Lozada, entre las dos cubren 8.649 de 8.650
     // asientos.
-    let agencyId: string | null = finAccount?.agency_id ?? null
-    if (mov.operation_id) {
+    let agencyId: string | null = params.agencyId ?? finAccount?.agency_id ?? null
+    if (!params.agencyId && mov.operation_id) {
       const { data: op } = await (supabase.from("operations") as any)
         .select("agency_id")
         .eq("id", mov.operation_id)
