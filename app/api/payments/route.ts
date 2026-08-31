@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { limpiarResiduosDePago } from "@/lib/accounting/payment-cleanup"
 import { createAdminClient, createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
@@ -1956,69 +1957,25 @@ export async function DELETE(request: Request) {
       }
     }
 
-    // 3-bis. Eliminar las percepciones que practicó este pago (VIB-166).
-    //
-    // Quedaban vivas apuntando con `source_id` a un pago que ya no existe, y
-    // eso tiene dos consecuencias: entran a la posición impositiva del período
-    // sin un cobro detrás, y bloquean el borrado de la operación —
-    // `tax_withholdings.operation_id` es la única FK hacia `operations` que es
-    // NO ACTION, así que el DELETE explota con un error genérico que no dice
-    // nada. Reportado por Lozada al no poder corregir una venta cargada en la
-    // moneda equivocada.
-    const { data: deletedWithholdings, error: withholdingError } = await (
-      supabase.from("tax_withholdings") as any
-    )
-      .delete()
-      .eq("source_type", "PAYMENT")
-      .eq("source_id", paymentId)
-      .eq("org_id", user.org_id)
-      .select("id, type, amount")
-
-    if (withholdingError) {
-      // No corta el borrado: el pago tiene que poder eliminarse igual. Pero se
-      // loguea, porque deja percepciones sin respaldo.
-      console.error("Error deleting tax withholdings for payment:", withholdingError)
-    } else if (deletedWithholdings?.length) {
-      console.log(
-        `🧾 Eliminadas ${deletedWithholdings.length} percepción(es) del pago ${paymentId}`
-      )
+    // 3-bis. Residuos del pago: percepciones y cabeceras de asiento sin líneas.
+    // El criterio vive en lib/accounting/payment-cleanup.ts porque un pago se
+    // borra también desde el DELETE de operación y los dos tienen que limpiar
+    // lo mismo. Ver ahí por qué cada uno importa.
+    const residuos = await limpiarResiduosDePago(supabase, {
+      paymentId,
+      operationId: payment.operation_id,
+      orgId: user.org_id,
+    })
+    for (const err of residuos.errors) {
+      // No cortan el borrado —el pago tiene que poder eliminarse igual— pero
+      // dejan rastro, porque significan residuos que quedaron vivos.
+      console.error(`Error limpiando residuos del pago ${paymentId}:`, err)
     }
-
-    // 3-ter. Eliminar las cabeceras de asiento que quedaron sin líneas (VIB-165).
-    //
-    // Al borrar los `ledger_movements` se van las líneas, pero la cabecera de
-    // `journal_entries` quedaba colgada: un comprobante numerado, con
-    // `total_amount` cargado y CERO líneas. Había 159 así en producción.
-    //
-    // Se buscan por operación en vez de rastrear cada delete, porque las líneas
-    // se borran en tres lugares distintos (el movimiento principal, el impuesto
-    // Ley 25413 y la contrapartida CxC/CxP) y cualquiera de ellos puede dejar
-    // la cabecera vacía. El filtro "sin líneas" es lo que lo hace seguro: un
-    // asiento de otro pago que todavía tenga las suyas no se toca, y un asiento
-    // sin líneas no es un asiento.
-    if (payment.operation_id) {
-      const { data: entriesDeLaOperacion } = await (supabase.from("journal_entries") as any)
-        .select("id")
-        .eq("operation_id", payment.operation_id)
-        .eq("org_id", user.org_id)
-
-      for (const entry of (entriesDeLaOperacion ?? []) as any[]) {
-        const { count } = await (supabase.from("ledger_movements") as any)
-          .select("id", { count: "exact", head: true })
-          .eq("journal_entry_id", entry.id)
-
-        if ((count ?? 0) === 0) {
-          const { error: jeError } = await (supabase.from("journal_entries") as any)
-            .delete()
-            .eq("id", entry.id)
-            .eq("org_id", user.org_id)
-          if (jeError) {
-            console.error("Error deleting empty journal entry:", jeError)
-          } else {
-            console.log(`📕 Eliminado asiento vacío ${entry.id} tras borrar el pago ${paymentId}`)
-          }
-        }
-      }
+    if (residuos.withholdings > 0 || residuos.emptyJournalEntries > 0) {
+      console.log(
+        `🧹 Pago ${paymentId}: ${residuos.withholdings} percepción(es) y ` +
+          `${residuos.emptyJournalEntries} asiento(s) vacío(s) eliminados`
+      )
     }
 
     // 4. Eliminar el pago

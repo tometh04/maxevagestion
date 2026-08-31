@@ -1,4 +1,5 @@
 import { splitModeForUpdate } from "@/lib/commissions/split-mode"
+import { limpiarAsientosVaciosDeOperacion } from "@/lib/accounting/payment-cleanup"
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
@@ -1445,6 +1446,8 @@ export async function DELETE(
     // una violación de foreign key y el usuario sólo ve "Error al eliminar
     // operación". Reportado por Lozada, que no podía borrar una venta cargada
     // en la moneda equivocada aunque ya hubiera borrado el pago.
+    // Acá se borra por OPERACIÓN y no por pago: los pagos ya se eliminaron
+    // arriba, así que cualquier percepción que siga viva es de alguno de ellos.
     try {
       await (supabase.from("tax_withholdings") as any)
         .delete()
@@ -1455,21 +1458,15 @@ export async function DELETE(
     }
 
     // Las cabeceras de asiento quedan en SET NULL, así que no bloquean, pero
-    // sin líneas son comprobantes numerados que no respaldan nada. Se borran
-    // sólo las que efectivamente quedaron vacías.
+    // sin líneas son comprobantes numerados que no respaldan nada. Mismo
+    // criterio que el borrado de un pago suelto.
     try {
-      const { data: entries } = await (supabase.from("journal_entries") as any)
-        .select("id")
-        .eq("operation_id", operationId)
-        .eq("org_id", (user as any).org_id)
-
-      for (const entry of (entries ?? []) as any[]) {
-        const { count } = await (supabase.from("ledger_movements") as any)
-          .select("id", { count: "exact", head: true })
-          .eq("journal_entry_id", entry.id)
-        if ((count ?? 0) === 0) {
-          await (supabase.from("journal_entries") as any).delete().eq("id", entry.id)
-        }
+      const asientos = await limpiarAsientosVaciosDeOperacion(supabase, {
+        operationId,
+        orgId: (user as any).org_id,
+      })
+      for (const err of asientos.errors) {
+        console.error("Error deleting empty journal entries:", err)
       }
     } catch (error) {
       console.error("Error deleting empty journal entries:", error)
