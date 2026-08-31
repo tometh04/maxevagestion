@@ -8,6 +8,8 @@ import {
   movimientosDeCliente,
   movimientosDeOperador,
 } from "@/lib/accounting/current-account-data"
+import { generateCurrentAccountPdf } from "@/lib/pdf/current-account-pdf"
+import { loadReportCompany } from "@/lib/reports/report-company"
 
 /**
  * GET /api/accounting/current-account?customerId=... | ?operatorId=...
@@ -40,6 +42,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const customerId = searchParams.get("customerId")
   const operatorId = searchParams.get("operatorId")
+  const formato = searchParams.get("formato")
   const desde = searchParams.get("desde")
   const hasta = searchParams.get("hasta")
 
@@ -68,11 +71,14 @@ export async function GET(request: Request) {
       if (!cliente) return NextResponse.json({ error: "Cliente no encontrado" }, { status: 404 })
 
       const movimientos = await movimientosDeCliente(supabase as any, customerId, ctx)
-      return NextResponse.json({
-        tipo: "CLIENTE",
-        contraparte: `${cliente.first_name ?? ""} ${cliente.last_name ?? ""}`.trim(),
-        cuentas: armarCuentasPorMoneda(movimientos, "CLIENTE"),
-      })
+      return await responder(
+        supabase,
+        user.org_id,
+        formato,
+        "CLIENTE",
+        `${cliente.first_name ?? ""} ${cliente.last_name ?? ""}`.trim(),
+        armarCuentasPorMoneda(movimientos, "CLIENTE")
+      )
     }
 
     const { data: operador } = await (supabase.from("operators") as any)
@@ -83,13 +89,42 @@ export async function GET(request: Request) {
     if (!operador) return NextResponse.json({ error: "Operador no encontrado" }, { status: 404 })
 
     const movimientos = await movimientosDeOperador(supabase as any, operatorId!, ctx)
-    return NextResponse.json({
-      tipo: "OPERADOR",
-      contraparte: operador.name,
-      cuentas: armarCuentasPorMoneda(movimientos, "OPERADOR"),
-    })
+    return await responder(
+      supabase,
+      user.org_id,
+      formato,
+      "OPERADOR",
+      operador.name,
+      armarCuentasPorMoneda(movimientos, "OPERADOR")
+    )
   } catch (e: any) {
     console.error("[accounting/current-account] error:", e?.message)
     return NextResponse.json({ error: "No se pudo armar el extracto" }, { status: 500 })
   }
+}
+
+/** JSON para la pantalla, PDF para mandar. El dato es el mismo. */
+async function responder(
+  supabase: any,
+  orgId: string,
+  formato: string | null,
+  tipo: "CLIENTE" | "OPERADOR",
+  contraparte: string,
+  cuentas: ReturnType<typeof armarCuentasPorMoneda>
+) {
+  if (formato !== "pdf") {
+    return NextResponse.json({ tipo, contraparte, cuentas })
+  }
+
+  const company = await loadReportCompany({ supabase, orgId })
+  const pdf = generateCurrentAccountPdf({ contraparte, tipo, cuentas, company })
+  const nombre = contraparte.replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase() || "extracto"
+
+  return new Response(pdf, {
+    headers: {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `attachment; filename="cuenta-corriente-${nombre}.pdf"`,
+      "Cache-Control": "no-store",
+    },
+  })
 }
