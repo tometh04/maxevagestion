@@ -55,6 +55,9 @@ export interface CashMovement {
   /** Conciliación bancaria (VIB-137). null = sin marcar. */
   reconciliation_status?: ReconciliationStatus
   reconciled_at?: string | null
+  /** Oficina del movimiento. Los gastos de agencia la tienen y no cuelgan de ninguna operación. */
+  agency_id?: string | null
+  agency_name?: string | null
   operations?: MovementOperation | null
   users?: MovementUser | null
 }
@@ -211,7 +214,7 @@ export function MovementsTable({
                     <p className="font-medium">{movement.category}</p>
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-xs text-muted-foreground">
-                        {movement.operations?.agencies?.name || "Sin agencia"}
+                        {movement.agency_name || movement.operations?.agencies?.name || "Sin agencia"}
                       </p>
                       {movement.affects_balance === false && (
                         <Badge variant="outline" className="text-[10px]">

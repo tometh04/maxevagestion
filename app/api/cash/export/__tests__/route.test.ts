@@ -222,3 +222,35 @@ describe("GET /api/cash/export — bordes", () => {
     expect(response.status).toBe(400)
   })
 })
+
+describe("GET /api/cash/export — oficina del movimiento", () => {
+  it("usa la oficina del movimiento, no la de la operacion", async () => {
+    // El gasto de agencia no cuelga de ninguna venta: la unica oficina que
+    // tiene es la suya. Antes se leia `operations.agencies.name` y la columna
+    // salia vacia para los 843 movimientos sin operacion.
+    useMovements([movement({ agencies: { name: "Rosario" }, operations: null })])
+    const csv = await exportCsv()
+
+    expect(csv.split("\r\n")[2].split(";")[7]).toBe("Rosario")
+  })
+
+  it("cae a la oficina de la operacion si el movimiento no la tiene", async () => {
+    useMovements([
+      movement({ agencies: null, operations: { destination: "Cancún", agencies: { name: "Madero" } } }),
+    ])
+    const csv = await exportCsv()
+
+    expect(csv.split("\r\n")[2].split(";")[7]).toBe("Madero")
+  })
+
+  it("cuando difieren manda la del movimiento: la plata se movio ahi", async () => {
+    // Pasa de verdad en produccion (5 movimientos): una venta de Madero cobrada
+    // en una cuenta de Rosario. En Caja interesa donde entro la plata.
+    useMovements([
+      movement({ agencies: { name: "Rosario" }, operations: { destination: "Cancún", agencies: { name: "Madero" } } }),
+    ])
+    const csv = await exportCsv()
+
+    expect(csv.split("\r\n")[2].split(";")[7]).toBe("Rosario")
+  })
+})

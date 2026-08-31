@@ -111,6 +111,9 @@ export async function GET(request: Request) {
       .select(
         `
         *,
+        agencies:agency_id (
+          name
+        ),
         users:user_id (
           name
         ),
@@ -147,20 +150,10 @@ export async function GET(request: Request) {
     }
 
     if (agencyId && agencyId !== "ALL") {
-      // Filter by agency through operations (scopeado por org)
-      const { data: agencyOperations } = await (supabase
-        .from("operations") as any)
-        .select("id")
-        .eq("agency_id", agencyId)
-        .eq("org_id", (user as any).org_id)
-
-      const agencyOperationIds = (agencyOperations || []).map((op: any) => op.id)
-
-      if (agencyOperationIds.length > 0) {
-        query = query.in("operation_id", agencyOperationIds)
-      } else {
-        return buildCsvResponse([])
-      }
+      // Por la oficina DEL MOVIMIENTO. Antes se resolvía por las operaciones de
+      // esa oficina, así que el export por oficina dejaba afuera todo lo que no
+      // cuelga de una venta (gastos, transferencias, ajustes).
+      query = query.eq("agency_id", agencyId)
     }
 
     // Mapeo dateType (mismo comportamiento que /api/cash/movements):
@@ -221,7 +214,7 @@ export async function GET(request: Request) {
         numEs(signedAmount),
         movement.currency,
         numEs(running),
-        movement.operations?.agencies?.name || "",
+        movement.agencies?.name || movement.operations?.agencies?.name || "",
         movement.operations?.destination || "",
         movement.users?.name || "",
         movement.notes || "",
