@@ -110,15 +110,18 @@ const MOUNT_TIMEOUT_MS = 10000
  * dentro de nuestro shell queda grande: menos chats visibles y mucho aire.
  *
  * Agente Blanco no expone densidad ni zoom (no hay data-* ni opcion de mount()
- * para eso), asi que lo escalamos desde afuera. Con `zoom` el contenido se
- * re-renderiza a esa escala —queda nitido, a diferencia de transform: scale— y
- * el viewport interno del iframe pasa a ser mas ancho en px CSS, que es
- * justamente lo que hace entrar mas contenido.
+ * para eso), asi que lo escalamos desde afuera.
  *
- * El alto y el ancho se compensan con el inverso para que el iframe siga
- * llenando el contenedor. Si se toca este numero, no hace falta tocar nada mas.
+ * Se hace con `transform: scale` y NO con `zoom`: zoom participa del layout,
+ * asi que el box compensado al inverso quedaba mas alto que el contenedor y
+ * `overflow-hidden` cortaba justo la barra de escribir. transform no toca el
+ * layout, entonces el box mide el inverso exacto, la escala lo devuelve a
+ * 100% x 100% y no queda ni recorte ni hueco.
+ *
+ * Poner 1 desactiva el escalado. Si se toca este numero no hay nada mas que
+ * tocar.
  */
-const EMBED_ZOOM = 0.85
+const EMBED_ZOOM: number = 0.85
 
 export interface InboxNetwork {
   agencyId: string
@@ -249,14 +252,16 @@ export function AgenteBlancoInbox({
         </div>
       )}
 
-      <div className="relative flex min-h-0 flex-1 overflow-hidden rounded-lg border border-border bg-card">
-        {/* El snippet monta el iframe acá adentro. */}
+      <div className="relative min-h-0 flex-1 overflow-hidden rounded-lg border border-border bg-card">
+        {/* El snippet monta el iframe acá adentro. Absolute para que los
+            porcentajes resuelvan contra un alto definido. */}
         <div
           id="ab-chats"
+          className="absolute left-0 top-0 origin-top-left"
           style={{
-            zoom: EMBED_ZOOM,
             width: `${100 / EMBED_ZOOM}%`,
             height: `${100 / EMBED_ZOOM}%`,
+            transform: EMBED_ZOOM === 1 ? undefined : `scale(${EMBED_ZOOM})`,
           }}
         />
 
