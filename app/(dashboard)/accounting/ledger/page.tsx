@@ -109,6 +109,16 @@ const MonthlyClosePageClient = dynamic(
   }
 )
 
+const LibroDiarioPageClient = dynamic(
+  () =>
+    import("@/components/accounting/libro-diario-page-client").then((m) => ({
+      default: m.LibroDiarioPageClient,
+    })),
+  {
+    loading: () => <Skeleton className="h-[400px] w-full" />,
+  }
+)
+
 const ChartOfAccountsTree = dynamic(
   () =>
     import("@/components/accounting/chart-of-accounts-tree").then((m) => ({
@@ -220,6 +230,9 @@ export default async function ContabilidadPage({
       }
       monthlyCloseContent={
         <MonthlyClosePageClient agencies={agencies} />
+      }
+      libroDiarioContent={
+        <LibroDiarioPageClient agencies={agencies} />
       }
       chartOfAccountsContent={
         <ChartOfAccountsTree />

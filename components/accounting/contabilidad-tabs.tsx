@@ -1,7 +1,7 @@
 "use client"
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { BookOpen, Users, Plane, UserCheck, BarChart3, FileText, BookMarked, ListTree, Scale, Landmark, CalendarCheck } from "lucide-react"
+import { BookOpen, Users, Plane, UserCheck, BarChart3, FileText, BookMarked, ListTree, Scale, Landmark, CalendarCheck, BookText } from "lucide-react"
 import { AccountingSetupBanner } from "./accounting-setup-banner"
 
 interface ContabilidadTabsProps {
@@ -10,6 +10,7 @@ interface ContabilidadTabsProps {
   generalLedgerContent: React.ReactNode
   financialStatementsContent: React.ReactNode
   monthlyCloseContent: React.ReactNode
+  libroDiarioContent: React.ReactNode
   chartOfAccountsContent: React.ReactNode
   debtsSalesContent: React.ReactNode
   operatorPaymentsContent: React.ReactNode
@@ -27,6 +28,7 @@ export function ContabilidadTabs({
   generalLedgerContent,
   financialStatementsContent,
   monthlyCloseContent,
+  libroDiarioContent,
   chartOfAccountsContent,
   debtsSalesContent,
   operatorPaymentsContent,
@@ -39,6 +41,7 @@ export function ContabilidadTabs({
   const validTabs = [
     "ledger",
     "asientos",
+    "diario",
     "mayor",
     "estados",
     "cierre",
@@ -67,6 +70,10 @@ export function ContabilidadTabs({
           <TabsTrigger value="asientos" className="gap-1.5">
             <BookMarked className="h-3.5 w-3.5" />
             Asientos
+          </TabsTrigger>
+          <TabsTrigger value="diario" className="gap-1.5">
+            <BookText className="h-3.5 w-3.5" />
+            Libro Diario
           </TabsTrigger>
           <TabsTrigger value="mayor" className="gap-1.5">
             <Scale className="h-3.5 w-3.5" />
@@ -114,6 +121,10 @@ export function ContabilidadTabs({
 
         <TabsContent value="asientos" className="mt-6">
           {journalEntriesContent}
+        </TabsContent>
+
+        <TabsContent value="diario" className="mt-6">
+          {libroDiarioContent}
         </TabsContent>
 
         <TabsContent value="mayor" className="mt-6">

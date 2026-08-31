@@ -6,6 +6,12 @@ import { resolveUserPermissions } from "@/lib/permissions-agency"
 import { loadReportCompany } from "@/lib/reports/report-company"
 import { armarLibroDiario, tamañoDelLibro, type AsientoCrudo } from "@/lib/accounting/libro-diario"
 import { generateLibroDiarioPdf } from "@/lib/pdf/libro-diario-pdf"
+import {
+  buildCsvBody,
+  csvDate,
+  csvDownloadHeaders,
+  csvNumber,
+} from "@/lib/export/csv-excel-es"
 
 /**
  * GET /api/accounting/libro-diario
@@ -118,6 +124,44 @@ export async function GET(request: Request) {
     }
 
     const libro = armarLibroDiario(crudos, desde, hasta)
+
+    // El CSV es para el estudio contable, que lo importa a su propio sistema.
+    // Va una fila por LÍNEA y no por asiento: es la única forma de que del otro
+    // lado se pueda reconstruir la partida doble.
+    if (formato === "csv") {
+      const filas = libro.asientos.flatMap((a) =>
+        a.lineas.map((l) => [
+          a.numero,
+          csvDate(a.fecha),
+          a.descripcion,
+          a.currency,
+          l.account_code,
+          l.account_name,
+          l.concepto,
+          csvNumber(l.debe),
+          csvNumber(l.haber),
+        ])
+      )
+
+      const csv = buildCsvBody(
+        [
+          "Asiento",
+          "Fecha",
+          "Descripción",
+          "Moneda",
+          "Cuenta",
+          "Nombre de la cuenta",
+          "Detalle",
+          "Debe",
+          "Haber",
+        ],
+        filas
+      )
+
+      return new Response(csv, {
+        headers: csvDownloadHeaders(`libro-diario-${desde}_${hasta}.csv`),
+      })
+    }
 
     if (formato !== "pdf") {
       return NextResponse.json({ ...libro, tamaño: tamañoDelLibro(libro) })
