@@ -97,17 +97,28 @@ export async function GET(request: Request) {
           description: e.description,
           currency: e.currency,
           entry_number: e.entry_number,
-          lineas: ((e.ledger_movements ?? []) as any[])
-            // Una línea sin cuenta del plan no se puede imprimir en un libro:
-            // no habría qué poner en la columna Cuenta.
-            .filter((l) => l.chart_of_accounts)
-            .map((l) => ({
-              account_code: l.chart_of_accounts.account_code,
-              account_name: l.chart_of_accounts.account_name,
-              debit_amount: l.debit_amount,
-              credit_amount: l.credit_amount,
-              concept: l.concept,
-            })),
+          // Las líneas sin cuenta del plan se muestran, no se descartan.
+          //
+          // Antes se filtraban con el argumento de que no habría qué poner en la
+          // columna Cuenta. El efecto real era peor: un asiento cuya única línea
+          // no estaba imputada se dibujaba vacío y aun así consumía un número,
+          // así que el libro mostraba un renglón en blanco y saltaba en la
+          // correlatividad. Se vio en Compañía de Viajes, donde el libro pasaba
+          // del 57 al 59.
+          //
+          // Y ocultaba el problema justo donde había que verlo: en VICO hay 55
+          // asientos con una pata sin imputar, y filtrarla los dejaba mostrando
+          // una sola pata, o sea descuadrados a la vista sin explicación.
+          //
+          // Un libro se lleva sin blancos y sin omisiones. Si una línea no está
+          // imputada, eso es exactamente lo que el contador tiene que ver.
+          lineas: ((e.ledger_movements ?? []) as any[]).map((l) => ({
+            account_code: l.chart_of_accounts?.account_code ?? "—",
+            account_name: l.chart_of_accounts?.account_name ?? "Sin imputar",
+            debit_amount: l.debit_amount,
+            credit_amount: l.credit_amount,
+            concept: l.concept,
+          })),
         })
       }
 

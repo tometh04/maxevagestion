@@ -217,3 +217,41 @@ describe("encabezados sin líneas", () => {
     expect(libro.totalesPorMoneda.USD).toEqual({ debe: 1000, haber: 1000 })
   })
 })
+
+describe("líneas sin imputar", () => {
+  // El libro las mostraba en blanco y saltaba la numeración: en Compañía de
+  // Viajes pasaba del 57 al 59. La API las descartaba antes de llegar acá.
+  it("una línea sin cuenta del plan sigue siendo una línea del asiento", () => {
+    const libro = armarLibroDiario(
+      [
+        asiento({
+          id: "a",
+          lineas: [
+            {
+              account_code: "1.1.02",
+              account_name: "Bancos",
+              debit_amount: 500,
+              credit_amount: null,
+              concept: null,
+            },
+            {
+              account_code: "—",
+              account_name: "Sin imputar",
+              debit_amount: null,
+              credit_amount: 500,
+              concept: null,
+            },
+          ],
+        }),
+      ],
+      "2026-08-01",
+      "2026-08-31"
+    )
+
+    expect(libro.asientos).toHaveLength(1)
+    expect(libro.asientos[0].lineas).toHaveLength(2)
+    expect(libro.vacios).toBe(0)
+    // Y con las dos patas presentes, el asiento cuadra.
+    expect(libro.asientos[0].descuadrado).toBe(false)
+  })
+})
