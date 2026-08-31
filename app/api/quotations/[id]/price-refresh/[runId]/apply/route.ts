@@ -28,6 +28,7 @@ export async function POST(
 ) {
   try {
     const { id, runId } = await params
+    const context = await quotationRefreshRequestContext(id, "write")
     const parsed = applySchema.safeParse(await request.json())
     if (!parsed.success) {
       return NextResponse.json(
@@ -35,7 +36,6 @@ export async function POST(
         { status: 400 }
       )
     }
-    const context = await quotationRefreshRequestContext(id, "write")
     const run = await context.module.apply({
       quotationId: id,
       runId,
@@ -49,7 +49,7 @@ export async function POST(
     })
     return NextResponse.json({ data: { run } }, { headers: { "Cache-Control": "no-store" } })
   } catch (error) {
-    if ((error as { digest?: string })?.digest === "NEXT_REDIRECT") throw error
+    if ((error as { digest?: string })?.digest?.startsWith("NEXT_REDIRECT")) throw error
     const response = quotationRefreshHttpError(error)
     return NextResponse.json(response.body, { status: response.status })
   }
