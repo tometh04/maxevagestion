@@ -42,13 +42,11 @@ export default async function ConversacionesPage() {
     // Altura fija en vez de `data-height="fill"`: la bandeja es una app con
     // scroll propio y el shell del dashboard ya tiene header + contenedor
     // scrolleable, así que sin altura acotada el iframe colapsa.
-    <div className="flex h-[calc(100dvh-var(--header-height,3.5rem)-2rem)] min-h-[520px] flex-col gap-4 md:h-[calc(100dvh-var(--header-height,3.5rem)-3rem)]">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Agente Blanco</h1>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          Tus chats de Instagram y WhatsApp, sin salir de Vibook.
-        </p>
-      </div>
+    <div className="flex h-[calc(100dvh-var(--header-height,3.5rem)-2rem)] min-h-[520px] flex-col md:h-[calc(100dvh-var(--header-height,3.5rem)-3rem)]">
+      {/* Sin encabezado visible: la bandeja ya se presenta sola y el título
+          comía alto que acá vale más que en cualquier otra pantalla. Queda
+          para lectores de pantalla, que sí necesitan el h1. */}
+      <h1 className="sr-only">Agente Blanco</h1>
       <AgenteBlancoInbox
         clientId={getAgenteBlancoClientId()}
         orgSlug={orgSlug}
