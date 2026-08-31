@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { paymentLedgerType } from "@/lib/payments/ledger-type"
 import { limpiarResiduosDePago } from "@/lib/accounting/payment-cleanup"
 import { createAdminClient, createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
@@ -887,9 +888,7 @@ export async function POST(request: Request) {
         const ledgerMethod = mapPaymentMethodToLedgerMethod(method)
 
         // 6. Determinar tipo de ledger movement
-        const ledgerType = direction === "INCOME"
-          ? "INCOME"
-          : (payer_type === "OPERATOR" ? "OPERATOR_PAYMENT" : "EXPENSE")
+        const ledgerType = paymentLedgerType({ direction, payer_type })
 
         // 6.1. Obtener nombre del pasajero principal para el concepto
         const passengerName = operation_id ? await getMainPassengerName(operation_id, supabase) : null
@@ -1840,7 +1839,11 @@ export async function DELETE(request: Request) {
     // Fallback: si no hay ledger_movement_id pero el pago era PAID con operation_id,
     // buscar ledger movement huérfano por operation_id + monto + tipo
     if (!ledgerMovementId && payment.status === "PAID" && payment.operation_id) {
-      const expectedType = payment.direction === "INCOME" ? "INCOME" : "OPERATOR_PAYMENT"
+      // El tipo sale del mismo helper que usa el alta. Esta línea tenía su
+      // propia copia de la regla, sin el caso de la devolución al cliente
+      // (EXPENSE + CUSTOMER): buscaba un OPERATOR_PAYMENT que no existía y
+      // dejaba el egreso vivo en el mayor.
+      const expectedType = paymentLedgerType(payment)
       const { data: orphaned } = await (supabase.from("ledger_movements") as any)
         .select("id")
         .eq("operation_id", payment.operation_id)
@@ -2383,9 +2386,7 @@ export async function PATCH(request: Request) {
         // Mapear método
         const ledgerMethod = mapPaymentMethodToLedgerMethod(finalMethod)
 
-        const ledgerType = existingPayment.direction === "INCOME"
-          ? "INCOME"
-          : (existingPayment.payer_type === "OPERATOR" ? "OPERATOR_PAYMENT" : "EXPENSE")
+        const ledgerType = paymentLedgerType(existingPayment)
 
         const passengerName = existingPayment.operation_id
           ? await getMainPassengerName(existingPayment.operation_id, supabase)

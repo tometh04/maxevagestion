@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { paymentLedgerType } from "@/lib/payments/ledger-type"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
@@ -410,12 +411,7 @@ export async function POST(request: Request) {
     }
 
     // Determinar tipo de ledger movement
-    const ledgerType =
-      paymentData.direction === "INCOME"
-        ? "INCOME"
-        : paymentData.payer_type === "OPERATOR"
-        ? "OPERATOR_PAYMENT"
-        : "EXPENSE"
+    const ledgerType = paymentLedgerType(paymentData)
 
     // Obtener nombre del pasajero principal para el concepto
     const passengerName = paymentData.operation_id 
@@ -453,7 +449,31 @@ export async function POST(request: Request) {
       },
       supabase
     )
-    
+
+    // Vincular el pago con su movimiento del mayor (VIB-167).
+    //
+    // El UPDATE a PAID de más arriba no puede incluirlo porque corre ANTES de
+    // crear el movimiento; hace falta este segundo update. Sin él, el pago
+    // queda con `ledger_movement_id` en NULL y el borrado cae a un fallback que
+    // busca por `operation_id` + tipo + monto + moneda con `.limit(1)`: con dos
+    // cuotas del mismo importe se lleva el movimiento de la otra. Eran 282
+    // pagos en producción, y es también la causa de los huérfanos que venía
+    // detectando `/api/payments/orphans`.
+    //
+    // No corta el flujo si falla: el cobro ya está registrado y revertirlo acá
+    // sería peor. Pero se loguea, porque deja un pago sin vínculo.
+    const { error: linkError } = await paymentsTable
+      .update({ ledger_movement_id: ledgerMovementId })
+      .eq("id", paymentId)
+
+    if (linkError) {
+      console.error(
+        `❌ mark-paid ${paymentId}: no se pudo vincular el ledger_movement ${ledgerMovementId}. ` +
+          `El pago queda sin vínculo y su borrado dependerá del fallback por convención.`,
+        linkError
+      )
+    }
+
     // Si es un pago a operador, marcar operator_payment como PAID
     if (paymentData.payer_type === "OPERATOR" && linkedOperatorPaymentId) {
       try {
