@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select"
 import { AlertTriangle, CalendarClock, Lock, Unlock, RefreshCw } from "lucide-react"
 import { OpeningEntryCard } from "./opening-entry-card"
+import { YearEndCloseCard } from "./year-end-close-card"
 
 interface Periodo {
   period: string
@@ -471,6 +472,8 @@ export function MonthlyClosePageClient({ agencies }: Props) {
               </tbody>
             </table>
           )}
+          <YearEndCloseCard agencyId={agencyId} />
+
 
           <p className="text-sm text-muted-foreground">
             Cerrar un período deja sus ajustes firmes. No impide registrar cobros ni pagos con
