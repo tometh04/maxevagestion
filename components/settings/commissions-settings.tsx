@@ -51,6 +51,7 @@ import { Percent, Plus, Info, Settings2, Calendar, Wallet } from "lucide-react"
 import { toast } from "sonner"
 // Fix UTC shift en fechas DATE (VICO 2026-05-22)
 import { parseDateOnlyLocal, formatDateOnlyLocal } from "@/lib/utils/date-only"
+import { SELLER_OPTION_ROLES } from "@/lib/sellers/seller-option"
 
 // Umbral de cobranza (% de la venta cobrado) a partir del cual una comisión
 // PENDING se puede pagar al vendedor. Configurable por agencia:
@@ -222,10 +223,18 @@ export function CommissionsSettings() {
   }
 
   // Vendedores elegibles para una regla propia. Se incluyen ADMIN/SUPER_ADMIN
-  // porque en las agencias chicas el dueño también vende y cobra comisión.
+  // porque en las agencias chicas el dueño también vende y cobra comisión, y
+  // POST_VENTA porque también genera comisiones: la lista sale de
+  // `SELLER_OPTION_ROLES`, que es la misma que usan el resto de los selectores.
+  //
+  // Estaba hardcodeada sin POST_VENTA, y el efecto era que a esa gente el
+  // sistema le calculaba comisión con la regla genérica de la organización pero
+  // no había forma de darles la suya desde la pantalla. Reportado por Lozada:
+  // una administrativa con 19 comisiones generadas al 20% de la regla general
+  // cuando le corresponde 5%.
   const fetchSellers = async () => {
     try {
-      const response = await fetch("/api/users?role=SELLER,ADMIN,SUPER_ADMIN")
+      const response = await fetch(`/api/users?role=${SELLER_OPTION_ROLES.join(",")}`)
       const data = await response.json()
       setSellers(data.users || [])
     } catch (error) {
