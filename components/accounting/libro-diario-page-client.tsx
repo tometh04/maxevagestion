@@ -38,6 +38,7 @@ interface Libro {
   asientos: AsientoDelDiario[]
   totalesPorMoneda: Record<string, { debe: number; haber: number }>
   descuadrados: number
+  vacios: number
   tamaño: { asientos: number; lineas: number }
 }
 
@@ -232,6 +233,26 @@ export function LibroDiarioPageClient({ agencies }: Props) {
                 <p className="text-muted-foreground">
                   Tienen una sola línea, así que su Debe y su Haber no coinciden. Se listan tal como
                   están registrados: corregirlos automáticamente alteraría el libro.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {libro.vacios > 0 && (
+            <div className="flex gap-2.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-3.5 py-3 text-sm">
+              <AlertTriangle
+                className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400"
+                aria-hidden
+              />
+              <div className="space-y-1">
+                <p className="font-medium">
+                  {libro.vacios === 1
+                    ? "Hay un asiento sin líneas en este período"
+                    : `Hay ${libro.vacios} asientos sin líneas en este período`}
+                </p>
+                <p className="text-muted-foreground">
+                  Quedaron fuera del libro: numerarlos dejaría un renglón en blanco. Suelen ser
+                  restos de algo que se borró a medias, así que conviene revisarlos.
                 </p>
               </div>
             </div>

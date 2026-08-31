@@ -115,6 +115,14 @@ export function generateLibroDiarioPdf({
     )
   }
 
+  if (libro.vacios > 0) {
+    b.note(
+      `${libro.vacios} ${
+        libro.vacios === 1 ? "encabezado quedó" : "encabezados quedaron"
+      } fuera del libro por no tener ninguna línea. Numerarlos dejaría un renglón en blanco, que es lo que la exigencia de llevar el Diario sin blancos prohíbe.`
+    )
+  }
+
   for (const moneda of monedas) {
     const asientos = libro.asientos.filter((a) => a.currency === moneda)
     if (asientos.length === 0) continue

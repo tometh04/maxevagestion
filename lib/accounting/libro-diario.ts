@@ -54,6 +54,18 @@ export interface LibroDiario {
   totalesPorMoneda: Record<string, { debe: number; haber: number }>
   /** Cuántos asientos no cuadran. Cero es lo esperable. */
   descuadrados: number
+  /**
+   * Encabezados sin ninguna línea que se dejaron fuera del libro.
+   *
+   * Un asiento sin líneas no es un asiento: no tiene importe ni contrapartida.
+   * Si se numerara, el libro imprimiría un número con un renglón en blanco, que
+   * es justamente lo que la exigencia de llevarlo "sin blancos" prohíbe. Se
+   * excluyen antes de numerar, así la correlatividad no queda con huecos.
+   *
+   * No se ocultan: el número se informa, porque un encabezado huérfano indica
+   * que algo se borró a medias y hay que ir a mirarlo.
+   */
+  vacios: number
 }
 
 /** Fila cruda del asiento, tal como viene de la base. */
@@ -99,7 +111,14 @@ export function armarLibroDiario(
   const totalesPorMoneda: Record<string, { debe: number; haber: number }> = {}
   let descuadrados = 0
 
-  const asientos: AsientoDelDiario[] = ordenados.map((e, i) => {
+  // Los encabezados sin líneas quedan afuera ANTES de numerar. Si entraran,
+  // consumirían un número y el libro mostraría un renglón en blanco: en
+  // producción hay 158 así, residuo de pagos borrados, y en Compañía de Viajes
+  // eso hacía que el libro saltara del 41 al 43.
+  const conLineas = ordenados.filter((e) => e.lineas.length > 0)
+  const vacios = ordenados.length - conLineas.length
+
+  const asientos: AsientoDelDiario[] = conLineas.map((e, i) => {
     const lineas: LineaDelDiario[] = e.lineas.map((l) => ({
       account_code: l.account_code,
       account_name: l.account_name,
@@ -143,7 +162,7 @@ export function armarLibroDiario(
     t.haber = redondear(t.haber)
   }
 
-  return { desde, hasta, asientos, totalesPorMoneda, descuadrados }
+  return { desde, hasta, asientos, totalesPorMoneda, descuadrados, vacios }
 }
 
 /**

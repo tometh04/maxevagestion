@@ -170,3 +170,50 @@ describe("tamañoDelLibro", () => {
     expect(libro.totalesPorMoneda).toEqual({})
   })
 })
+
+describe("encabezados sin líneas", () => {
+  // El caso real: 158 asientos vacíos en producción, resto de pagos borrados.
+  // En Compañía de Viajes uno de ellos hacía que el libro saltara del 41 al 43.
+  it("no los numera, así la correlatividad no queda con huecos", () => {
+    const libro = armarLibroDiario(
+      [
+        asiento({ id: "a", entry_date: "2026-08-10" }),
+        asiento({ id: "b", entry_date: "2026-08-11", lineas: [] }),
+        asiento({ id: "c", entry_date: "2026-08-12" }),
+      ],
+      "2026-08-01",
+      "2026-08-31"
+    )
+
+    expect(libro.asientos.map((a) => a.numero)).toEqual([1, 2])
+    expect(libro.asientos.map((a) => a.fecha)).toEqual(["2026-08-10", "2026-08-12"])
+  })
+
+  it("los cuenta en vez de esconderlos: un encabezado huérfano hay que ir a mirarlo", () => {
+    const libro = armarLibroDiario(
+      [asiento({ id: "a" }), asiento({ id: "b", lineas: [] }), asiento({ id: "c", lineas: [] })],
+      "2026-08-01",
+      "2026-08-31"
+    )
+    expect(libro.vacios).toBe(2)
+  })
+
+  it("no los toma como descuadrados: no tienen Debe ni Haber que comparar", () => {
+    const libro = armarLibroDiario(
+      [asiento({ id: "a", lineas: [] })],
+      "2026-08-01",
+      "2026-08-31"
+    )
+    expect(libro.descuadrados).toBe(0)
+    expect(libro.asientos).toHaveLength(0)
+  })
+
+  it("no ensucia los totales por moneda", () => {
+    const libro = armarLibroDiario(
+      [asiento({ id: "a" }), asiento({ id: "b", lineas: [] })],
+      "2026-08-01",
+      "2026-08-31"
+    )
+    expect(libro.totalesPorMoneda.USD).toEqual({ debe: 1000, haber: 1000 })
+  })
+})
