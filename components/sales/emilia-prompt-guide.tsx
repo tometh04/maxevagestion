@@ -20,7 +20,7 @@ export function EmiliaPromptGuide() {
           </p>
           <p className="rounded-lg bg-background/70 px-3 py-2 text-xs leading-relaxed text-foreground/80">
             <span className="font-medium text-foreground">Ejemplo: </span>
-            Vuelo ida y vuelta de Buenos Aires a Cancún, del 10 al 17 de octubre, para 2 adultos
+            Quiero un vuelo ida y vuelta de Buenos Aires a Cancún, del 10 al 17 de octubre, para 2 adultos
             con carry on; hotel all inclusive de 4 estrellas o más.
           </p>
         </div>

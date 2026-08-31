@@ -7,7 +7,7 @@ describe("EmiliaPromptGuide", () => {
 
     expect(screen.getByRole("note", { name: /cómo pedirle una cotización a Emilia/i })).toBeInTheDocument()
     expect(screen.getByText(/origen, destino, fechas o noches, pasajeros/i)).toBeInTheDocument()
-    expect(screen.getByText(/Buenos Aires a Cancún/i)).toBeInTheDocument()
+    expect(screen.getByText(/Quiero un vuelo ida y vuelta de Buenos Aires a Cancún/i)).toBeInTheDocument()
     expect(container.querySelector('[data-tour="emilia.prompt-guide"]')).toBeInTheDocument()
   })
 })

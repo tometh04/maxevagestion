@@ -1402,7 +1402,7 @@ export function LeadEmiliaChat({
             onChange={(e) => setInput(e.target.value)}
             placeholder={promptLoading && !input
               ? "✨ Preparando una sugerencia…"
-              : "Ej.: vuelo y hotel desde Buenos Aires a Cancún, 10 al 17/10, 2 adultos"}
+              : "Ej.: Quiero un vuelo y hotel desde Buenos Aires a Cancún, 10 al 17/10, 2 adultos"}
             className="min-h-[60px] resize-none"
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSend()

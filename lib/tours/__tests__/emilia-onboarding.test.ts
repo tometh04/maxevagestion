@@ -56,5 +56,6 @@ describe("onboarding de Emilia en CRM", () => {
     expect(copy).toMatch(/fecha/i)
     expect(copy).toMatch(/pasajer/i)
     expect(copy).toMatch(/preferencia/i)
+    expect(copy).toMatch(/Ejemplo: “Quiero un vuelo/i)
   })
 })
