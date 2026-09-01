@@ -15,6 +15,11 @@ import { redirect } from "next/navigation"
 import { headers } from "next/headers"
 import { getCurrentUser } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
+import {
+  isTransientPostgrestError,
+  retryTransient,
+  describeError,
+} from "@/lib/auth/transient"
 import { isAccessAllowed, type BillingOrg } from "@/lib/billing/access"
 
 // Re-export para no romper importadores existentes (`@/lib/billing/guard`).
@@ -61,13 +66,33 @@ export const assertSubscriptionActive = cache(async (): Promise<BillingOrgWithPl
   if (!user.org_id) redirect("/onboarding")
 
   const admin = createAdminClient() as any
-  const { data } = await admin
-    .from("organizations")
-    .select("subscription_status, current_period_ends_at, trial_ends_at, plan")
-    .eq("id", user.org_id)
-    .maybeSingle()
+  // Mismo criterio que `getCurrentUser()`: una query que fallo no es una org
+  // que no existe. Sin esto un timeout de Postgres manda a /onboarding a una
+  // agencia con la suscripcion al dia, que se lee como "se me cayo la sesion".
+  const { data, error } = await retryTransient<{
+    data: BillingOrgWithPlan | null
+    error: { code?: string; message?: string } | null
+  }>(
+    () =>
+      admin
+        .from("organizations")
+        .select("subscription_status, current_period_ends_at, trial_ends_at, plan")
+        .eq("id", user.org_id)
+        .maybeSingle(),
+    isTransientPostgrestError,
+    "select organizations"
+  )
 
-  if (!data) redirect("/onboarding")
+  if (error && isTransientPostgrestError(error)) {
+    throw new Error(`[billing] no se pudo leer la organizacion: ${describeError(error)}`)
+  }
+
+  if (!data) {
+    console.warn(
+      `[billing] redirect a /onboarding: org ${user.org_id.slice(0, 8)} sin fila — ${describeError(error)}`
+    )
+    redirect("/onboarding")
+  }
 
   const org = data as BillingOrgWithPlan
   if (!isAccessAllowed(org)) {

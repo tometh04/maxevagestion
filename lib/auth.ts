@@ -3,6 +3,12 @@ import { createServerClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Database } from '@/lib/supabase/types'
 import { makeTimer } from '@/lib/perf-log'
+import {
+  isTransientAuthError,
+  isTransientPostgrestError,
+  retryTransient,
+  describeError,
+} from '@/lib/auth/transient'
 import type { UserRole } from '@/lib/permissions'
 
 type UserRow = Database['public']['Tables']['users']['Row']
@@ -65,22 +71,53 @@ export const getCurrentUser = cache(async (): Promise<{ user: User; session: { u
     redirect('/login')
   }
 
-  const { data: { user: authUser }, error: authError } = await supabase.auth.getUser()
+  // Un error de infraestructura NO es "no hay sesion". Ver lib/auth/transient.ts:
+  // mandar a /login ante cualquier error convierte un 429/502/timeout del
+  // servicio de Auth en un deslogueo con la cookie de sesion intacta.
+  const { data: { user: authUser }, error: authError } = await retryTransient(
+    () => supabase.auth.getUser(),
+    isTransientAuthError,
+    'auth.getUser'
+  )
   t.mark('auth.getUser')
 
+  if (authError && isTransientAuthError(authError)) {
+    // Sobrevivio a los reintentos: es la infra, no la sesion. Tirar el error
+    // muestra una pantalla reintentable en vez de destruir la sesion.
+    throw new Error(`[auth] servicio de Auth no disponible: ${describeError(authError)}`)
+  }
+
   if (authError || !authUser) {
+    console.warn(`[auth] logout forzado en auth.getUser — ${describeError(authError)}`)
     redirect('/login')
   }
 
-  const { data: user, error } = await supabase
-    .from('users')
-    .select('*')
-    .eq('auth_id', authUser.id)
-    .maybeSingle()
+  const { data: user, error } = await retryTransient(
+    () =>
+      supabase
+        .from('users')
+        .select('*')
+        .eq('auth_id', authUser.id)
+        .maybeSingle(),
+    isTransientPostgrestError,
+    'select users'
+  )
   t.mark('select users')
+
+  if (error && isTransientPostgrestError(error)) {
+    throw new Error(`[auth] no se pudo leer el usuario: ${describeError(error)}`)
+  }
 
   const userData = user as any
   if (error || !userData || !userData.is_active) {
+    const reason = error
+      ? `error=${describeError(error)}`
+      : !userData
+        ? 'sin fila en users'
+        : 'is_active=false'
+    console.warn(
+      `[auth] logout forzado tras select users (auth_id=${authUser.id.slice(0, 8)}) — ${reason}`
+    )
     redirect('/login')
   }
 
