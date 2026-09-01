@@ -438,4 +438,135 @@ describe("resolveEffectivePercentage", () => {
       resolveEffectivePercentage({ sellerRule: 0, userDefault: 50, orgRule: 20 })
     ).toEqual({ percentage: 0, source: "SELLER_RULE" })
   })
+
+  it("la regla de la oficina le gana a la regla general del vendedor (VIB-175)", () => {
+    // El caso de Lozada: Santi tiene 45% general y 25% en Madero.
+    expect(
+      resolveEffectivePercentage({
+        sellerAgencyRule: 25,
+        sellerRule: 45,
+        userDefault: 35,
+        orgRule: 20,
+      })
+    ).toEqual({ percentage: 25, source: "SELLER_AGENCY_RULE" })
+  })
+
+  it("sin regla de oficina se sigue usando la general", () => {
+    expect(
+      resolveEffectivePercentage({
+        sellerAgencyRule: null,
+        sellerRule: 45,
+        userDefault: 35,
+        orgRule: 20,
+      })
+    ).toEqual({ percentage: 45, source: "SELLER_RULE" })
+  })
+
+  it("un 0 en la oficina es una decisión y gana igual", () => {
+    expect(
+      resolveEffectivePercentage({
+        sellerAgencyRule: 0,
+        sellerRule: 45,
+        userDefault: 35,
+        orgRule: 20,
+      })
+    ).toEqual({ percentage: 0, source: "SELLER_AGENCY_RULE" })
+  })
+})
+
+describe("porcentaje por oficina (VIB-175)", () => {
+  /**
+   * El caso que reportó Yamil: Santiago Nader y Ramiro Airaldi cobran 25% en
+   * Madero y 45% en Rosario. Antes de esto, `agency_id` existía en la tabla
+   * pero la resolución lo ignoraba, así que ganaba la regla más nueva para las
+   * dos oficinas y nadie se enteraba.
+   */
+  const MADERO = "ag-madero"
+  const ROSARIO = "ag-rosario"
+
+  function clientConReglas(rules: Array<{ agency_id: string | null; value: number; valid_from: string }>) {
+    return createClient((table, calls) => {
+      if (table === "users") {
+        return {
+          data: [{ id: "santi", name: "Santiago", default_commission_percentage: 35 }],
+          error: null,
+        }
+      }
+      if (table === "commission_rules" && !isGenericRuleQuery(calls)) {
+        return {
+          data: rules.map((r) => ({ seller_id: "santi", ...r })),
+          error: null,
+        }
+      }
+      return { data: [], error: null }
+    }).client
+  }
+
+  const dosReglas = [
+    { agency_id: null, value: 45, valid_from: "2026-03-28" },
+    { agency_id: MADERO, value: 25, valid_from: "2026-09-01" },
+  ]
+
+  it("en Madero cobra 25 aunque su regla general diga 45", async () => {
+    const profiles = await resolveSellerCommissionProfiles(
+      clientConReglas(dosReglas),
+      ORG,
+      ["santi"],
+      MADERO
+    )
+
+    expect(profiles.get("santi")?.percentage).toBe(25)
+    expect(profiles.get("santi")?.source).toBe("SELLER_AGENCY_RULE")
+  })
+
+  it("en Rosario sigue cobrando 45: la regla de Madero no se mira", async () => {
+    const profiles = await resolveSellerCommissionProfiles(
+      clientConReglas(dosReglas),
+      ORG,
+      ["santi"],
+      ROSARIO
+    )
+
+    expect(profiles.get("santi")?.percentage).toBe(45)
+    expect(profiles.get("santi")?.source).toBe("SELLER_RULE")
+  })
+
+  it("sin oficina en juego se usa la regla general, no una de oficina cualquiera", async () => {
+    // Un caller que no sabe en qué sucursal está no puede elegir entre 25 y 45.
+    const profiles = await resolveSellerCommissionProfiles(
+      clientConReglas(dosReglas),
+      ORG,
+      ["santi"]
+    )
+
+    expect(profiles.get("santi")?.percentage).toBe(45)
+    expect(profiles.get("santi")?.source).toBe("SELLER_RULE")
+  })
+
+  it("una regla SOLO de otra oficina no pisa el porcentaje del usuario", async () => {
+    // Este era el bug: la regla de Rosario ganaba en Madero por ser la única.
+    const profiles = await resolveSellerCommissionProfiles(
+      clientConReglas([{ agency_id: ROSARIO, value: 45, valid_from: "2026-03-28" }]),
+      ORG,
+      ["santi"],
+      MADERO
+    )
+
+    expect(profiles.get("santi")?.percentage).toBe(35)
+    expect(profiles.get("santi")?.source).toBe("USER_DEFAULT")
+  })
+
+  it("con dos reglas de la misma oficina gana la vigente más reciente", async () => {
+    const profiles = await resolveSellerCommissionProfiles(
+      clientConReglas([
+        { agency_id: MADERO, value: 25, valid_from: "2026-09-01" },
+        { agency_id: MADERO, value: 30, valid_from: "2026-01-01" },
+      ]),
+      ORG,
+      ["santi"],
+      MADERO
+    )
+
+    expect(profiles.get("santi")?.percentage).toBe(25)
+  })
 })

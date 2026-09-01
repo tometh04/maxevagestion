@@ -48,6 +48,13 @@ export async function resolveEffectiveSellerOptions(
   supabase: any,
   orgId: string | null | undefined,
   rows: any[] | null | undefined,
+  /**
+   * Oficina para la que se resuelve (VIB-175). Un vendedor puede cobrar 25% en
+   * una sucursal y 45% en otra, así que sin esto el tope que muestra el diálogo
+   * volvería a poder discrepar del que aplica el servidor: el mismo bug que
+   * este módulo vino a arreglar, ahora por oficina.
+   */
+  agencyId?: string | null,
 ): Promise<SellerOption[]> {
   const options = toSellerOptions(rows)
   if (!orgId || options.length === 0) return options
@@ -57,6 +64,7 @@ export async function resolveEffectiveSellerOptions(
       supabase,
       orgId,
       options.map((o) => o.id),
+      agencyId,
     )
 
     return options.map((option) => {

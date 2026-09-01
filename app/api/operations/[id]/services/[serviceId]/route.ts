@@ -8,6 +8,7 @@ import {
   serviceGeneratesCommission,
   getServiceCommissionTypesConfig,
 } from "@/lib/commissions/service-commission"
+import { getCommissionBaseConfig } from "@/lib/commissions/net-base"
 import { resolveServiceSeller } from "@/lib/sellers/resolve-service-seller"
 import { getOpenOperatorPaymentStatus } from "@/lib/accounting/operator-payment-settlement"
 import { getOrgFeatureFlag } from "@/lib/settings/org-features"
@@ -206,7 +207,9 @@ export async function PATCH(
     const { data: operation, error: opError } = await (supabase.from("operations") as any)
       // `sale_currency`/`currency`: la comision del servicio se guarda en la
       // moneda de la OPERACION (ver service-commission.ts).
-      .select("id, seller_id, status, agency_id, file_code, destination, departure_date, sale_currency, currency")
+      // `operation_date`: la base neta de IVA tiene corte por fecha y sin ella
+      // `resolveCommissionBase` cae a la bruta a propósito (VIB-176).
+      .select("id, seller_id, status, agency_id, file_code, destination, departure_date, operation_date, sale_currency, currency")
       .eq("id", operationId)
       .eq("org_id", (user as any).org_id)
       .single()
@@ -513,6 +516,9 @@ export async function PATCH(
             serviceRate = await getExchangeRate(supabase, new Date())
           }
 
+          // Misma base que la comisión del paquete (VIB-176).
+          const svcBaseConfig = await getCommissionBaseConfig(supabase, operation.agency_id)
+
           const commissionAmount = serviceCommissionAmount({
             saleAmount: Number(updatedService.sale_amount ?? 0),
             costAmount: Number(updatedService.cost_amount ?? 0),
@@ -521,6 +527,8 @@ export async function PATCH(
             sellerPercentage: sellerPct,
             operationCurrency,
             exchangeRate: serviceRate,
+            baseConfig: svcBaseConfig,
+            operationDate: operation.operation_date ?? null,
           })
 
           if (commissionAmount === null) {

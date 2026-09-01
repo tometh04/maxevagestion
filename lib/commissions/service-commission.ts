@@ -14,6 +14,8 @@
  * si esa comisión ya estaba pagada el servicio simplemente no comisionaba nada.
  */
 
+import { resolveCommissionBase, type CommissionBaseConfig } from "@/lib/commissions/net-base"
+
 /**
  * Catálogo completo de tipos de servicio (el enum `operation_service_type`).
  *
@@ -138,6 +140,17 @@ export interface ServiceCommissionInput {
   /** Porcentaje del vendedor DEL SERVICIO, no el de la operación. */
   sellerPercentage: number
   /**
+   * Config de base neta de IVA de la oficina (VIB-176).
+   *
+   * Sin esto, la comisión del servicio salía de la ganancia BRUTA mientras la
+   * del paquete salía de la NETA: dos criterios distintos para la misma
+   * pregunta, conviviendo en la misma operación. En Lozada, con la base neta
+   * prendida al 10,5% desde junio, los servicios venían comisionando de más.
+   */
+  baseConfig?: CommissionBaseConfig | null
+  /** Fecha de la operación, para el corte por fecha de la base neta. */
+  operationDate?: string | null
+  /**
    * Moneda en la que se expresa la comisión: la de la OPERACIÓN.
    *
    * `commission_records` no tiene columna de moneda — el `amount` se lee
@@ -196,8 +209,14 @@ function convertir(
  * cosas, porque se leería como si estuviera en la moneda de la operación.
  */
 export function serviceCommissionAmount(input: ServiceCommissionInput): number | null {
-  const base = serviceCommissionBase(input)
-  if (base <= 0 || input.sellerPercentage <= 0) return 0
+  const bruta = serviceCommissionBase(input)
+  if (bruta <= 0 || input.sellerPercentage <= 0) return 0
+
+  // Misma base que el paquete (VIB-176). Se resuelve ANTES de convertir de
+  // moneda porque la alícuota es un porcentaje: el orden no cambia el número,
+  // pero así el descuento se lee sobre la ganancia del servicio, que es lo que
+  // el usuario ve en pantalla.
+  const base = resolveCommissionBase(bruta, input.operationDate, input.baseConfig).base
 
   const destino = input.operationCurrency || input.saleCurrency
   const baseEnMonedaDeLaOperacion = convertir(
@@ -209,4 +228,29 @@ export function serviceCommissionAmount(input: ServiceCommissionInput): number |
   if (baseEnMonedaDeLaOperacion === null) return null
 
   return Math.round(((baseEnMonedaDeLaOperacion * input.sellerPercentage) / 100) * 100) / 100
+}
+
+/**
+ * Ganancia bruta y neta de un servicio, para mostrarlas juntas (VIB-176).
+ *
+ * "Los servicios tienen que tener ganancia bruta y neta también, y que de ahí
+ * salgan las comisiones a repartir". La neta se deriva, no se persiste:
+ * `operation_services.margin_amount` es una columna generada `venta − costo` y
+ * la alícuota es config de la oficina, que puede cambiar.
+ */
+export function serviceProfit(
+  input: Pick<
+    ServiceCommissionInput,
+    "saleAmount" | "costAmount" | "saleCurrency" | "costCurrency" | "baseConfig" | "operationDate"
+  >
+): { bruta: number; neta: number; iva: number; aplicaIva: boolean } {
+  const bruta = serviceCommissionBase(input)
+  const resuelta = resolveCommissionBase(bruta, input.operationDate, input.baseConfig)
+
+  return {
+    bruta: resuelta.grossMargin,
+    neta: resuelta.base,
+    iva: resuelta.ivaAmount,
+    aplicaIva: resuelta.applied,
+  }
 }

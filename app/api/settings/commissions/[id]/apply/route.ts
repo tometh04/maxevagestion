@@ -24,6 +24,8 @@ interface RuleRow {
   basis: string
   value: number
   seller_id: string | null
+  /** Oficina a la que aplica la regla. NULL = todas (VIB-175). */
+  agency_id: string | null
   valid_from: string | null
   valid_to: string | null
 }
@@ -33,7 +35,7 @@ async function cargarAlcance(ruleId: string, orgId: string) {
   const supabase = await createServerClient()
 
   const { data: rule } = await (supabase.from("commission_rules") as any)
-    .select("id, type, basis, value, seller_id, valid_from, valid_to")
+    .select("id, type, basis, value, seller_id, agency_id, valid_from, valid_to")
     .eq("id", ruleId)
     .eq("org_id", orgId)
     .maybeSingle()
@@ -54,8 +56,21 @@ async function cargarAlcance(ruleId: string, orgId: string) {
     return { error: alcance.reason, status: 400 as const }
   }
 
+  // VIB-175: una regla de oficina sólo alcanza a las ventas de ESA oficina. El
+  // join va con `!inner` a propósito: sin él, PostgREST ignora el filtro sobre
+  // la tabla embebida y el preview prometería recalcular toda la organización.
+  //
+  // La oficina se toma de la OPERACIÓN y no de `commission_records.agency_id`,
+  // que puede quedar desactualizado si la operación cambió de sucursal. Es el
+  // mismo criterio que usa el societario.
+  const scopeAgency = typed.agency_id
+
   let query = (supabase.from("commission_records") as any)
-    .select("id, operation_id, status, amount_paid, settled_at, percentage")
+    .select(
+      scopeAgency
+        ? "id, operation_id, status, amount_paid, settled_at, percentage, operations!inner(agency_id)"
+        : "id, operation_id, status, amount_paid, settled_at, percentage"
+    )
     .eq("org_id", orgId)
     .eq("seller_id", alcance.sellerId)
     // Las de servicio y las de ajuste no las produce el plan de la operación:
@@ -68,6 +83,7 @@ async function cargarAlcance(ruleId: string, orgId: string) {
     .gte("accrual_date", alcance.window.from)
 
   if (alcance.window.to) query = query.lte("accrual_date", alcance.window.to)
+  if (scopeAgency) query = query.eq("operations.agency_id", scopeAgency)
 
   const { data: records, error } = await query
 

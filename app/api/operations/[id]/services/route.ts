@@ -18,6 +18,7 @@ import {
   serviceGeneratesCommission,
   getServiceCommissionTypesConfig,
 } from "@/lib/commissions/service-commission"
+import { getCommissionBaseConfig } from "@/lib/commissions/net-base"
 
 // Labels para conceptos contables
 const SERVICE_TYPE_LABELS: Record<string, string> = {
@@ -52,7 +53,7 @@ export async function GET(
 
     // Verificar que la operación existe y el usuario tiene acceso
     const { data: operation, error: opError } = await (supabase.from("operations") as any)
-      .select("id, agency_id, seller_id, file_code, departure_date")
+      .select("id, agency_id, seller_id, file_code, departure_date, operation_date")
       .eq("id", operationId)
       .eq("org_id", (user as any).org_id)
       .single()
@@ -87,9 +88,17 @@ export async function GET(
     // tipo, no una restricción — el usuario puede prenderlo o apagarlo igual.
     const svcTypesConfig = await getServiceCommissionTypesConfig(supabase, operation.agency_id)
 
+    // La base con la que la oficina comisiona (VIB-176). Viaja para que la
+    // pantalla pueda mostrar ganancia bruta y neta de cada servicio con el
+    // MISMO helper puro que usa el servidor para calcular la comisión, en vez
+    // de repetir la fórmula y arriesgar que digan cosas distintas.
+    const baseConfig = await getCommissionBaseConfig(supabase, operation.agency_id)
+
     return NextResponse.json({
       services: services || [],
       commissionServiceTypes: Array.from(svcTypesConfig.types),
+      commissionBase: baseConfig,
+      operationDate: operation.operation_date ?? null,
     })
   } catch (error: any) {
     console.error("[Services GET] Error inesperado:", error)
@@ -124,7 +133,10 @@ export async function POST(
       // `sale_currency`/`currency`: la comisión del servicio se guarda en la
       // moneda de la OPERACIÓN, porque `commission_records` no tiene columna de
       // moneda y así la leen todos los reportes.
-      .select("id, agency_id, seller_id, file_code, departure_date, destination, status, sale_currency, currency")
+      // `operation_date`: la base neta de IVA tiene corte por fecha, y sin la
+      // fecha `resolveCommissionBase` cae a la base bruta a propósito. O sea
+      // que omitirla acá dejaría el comportamiento viejo en silencio (VIB-176).
+      .select("id, agency_id, seller_id, file_code, departure_date, operation_date, destination, status, sale_currency, currency")
       .eq("id", operationId)
       .eq("org_id", (user as any).org_id)
       .single()
@@ -479,6 +491,10 @@ export async function POST(
           serviceRate = await getExchangeRate(supabase, new Date())
         }
 
+        // La misma base que usa la comisión del paquete (VIB-176): si la
+        // oficina comisiona neto de IVA, el servicio también.
+        const serviceBaseConfig = await getCommissionBaseConfig(supabase, operation.agency_id)
+
         const commissionAmount = serviceCommissionAmount({
           saleAmount,
           costAmount,
@@ -487,6 +503,8 @@ export async function POST(
           sellerPercentage: sellerPct,
           operationCurrency,
           exchangeRate: serviceRate,
+          baseConfig: serviceBaseConfig,
+          operationDate: operation.operation_date ?? null,
         })
 
         // null = hacía falta convertir y no había tipo de cambio. No se crea la

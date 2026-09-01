@@ -130,6 +130,26 @@ export async function POST(request: Request) {
       }
     }
 
+    // Y la oficina también (VIB-175). Antes `agency_id` se guardaba tal cual
+    // porque nadie lo leía; ahora decide qué porcentaje se aplica, así que una
+    // regla apuntada a una oficina ajena sería una regla que no rige nunca y
+    // que nadie podría explicar.
+    if (agency_id) {
+      const { data: agency } = await supabase
+        .from("agencies")
+        .select("id")
+        .eq("id", agency_id)
+        .eq("org_id", user.org_id)
+        .maybeSingle()
+
+      if (!agency) {
+        return NextResponse.json(
+          { error: "La oficina no pertenece a esta organización" },
+          { status: 400 }
+        )
+      }
+    }
+
     const ruleData: Record<string, any> = {
       type,
       basis,

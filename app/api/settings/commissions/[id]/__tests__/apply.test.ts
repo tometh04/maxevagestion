@@ -139,6 +139,30 @@ describe("GET /api/settings/commissions/[id]/apply — alcance", () => {
     expect(filtrosRecords.some((f) => f.column === "date_calculated")).toBe(false)
   })
 
+  it("una regla de oficina sólo alcanza a las ventas de esa oficina (VIB-175)", async () => {
+    // El caso de Lozada: la regla del 25% es de Madero. Sin este filtro, el
+    // preview prometería recalcular también las ventas de Rosario, que siguen
+    // al 45%.
+    setup({
+      rule: { ...REGLA_SANTI, value: 25, agency_id: "ag-madero" },
+      records: [],
+    })
+    await GET(req, params)
+
+    expect(filtrosRecords).toContainEqual({
+      op: "eq",
+      column: "operations.agency_id",
+      value: "ag-madero",
+    })
+  })
+
+  it("una regla sin oficina no filtra por oficina", async () => {
+    setup({ records: [] })
+    await GET(req, params)
+
+    expect(filtrosRecords.some((f) => f.column === "operations.agency_id")).toBe(false)
+  })
+
   it("deja afuera las comisiones de servicios y las de ajuste", async () => {
     // Las escribe otro flujo con su propio porcentaje: recalcular la operación
     // no las toca, así que contarlas prometería un cambio que no va a pasar.

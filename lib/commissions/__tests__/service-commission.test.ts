@@ -12,6 +12,7 @@ import {
   parseCommissionServiceTypes,
   serviceCommissionAmount,
   serviceCommissionBase,
+  serviceProfit,
   serviceGeneratesCommission,
 } from "@/lib/commissions/service-commission"
 
@@ -247,5 +248,70 @@ describe("serviceCommissionAmount — moneda de la operación", () => {
         exchangeRate: null,
       })
     ).toBe(0)
+  })
+})
+
+describe("ganancia bruta y neta del servicio (VIB-176)", () => {
+  // Hasta acá la comisión del servicio salía de la ganancia BRUTA mientras la
+  // del paquete salía de la NETA de IVA: dos criterios distintos conviviendo en
+  // la misma operación. Lozada tiene la base neta al 10,5% desde junio.
+  const netConfig = { enabled: true, rate: 0.105, from: null }
+
+  const servicio = {
+    saleAmount: 1000,
+    costAmount: 0,
+    saleCurrency: "USD",
+    costCurrency: "USD",
+    sellerPercentage: 10,
+    operationDate: "2026-07-10",
+  }
+
+  it("con base neta prendida la comisión sale de la neta, igual que el paquete", () => {
+    // Ganancia 1000 → neta 895 → 10% = 89,50 (antes daba 100).
+    expect(serviceCommissionAmount({ ...servicio, baseConfig: netConfig })).toBe(89.5)
+  })
+
+  it("sin config sigue comisionando sobre la bruta", () => {
+    expect(serviceCommissionAmount(servicio)).toBe(100)
+  })
+
+  it("respeta el corte por fecha: un servicio anterior va sobre bruta", () => {
+    expect(
+      serviceCommissionAmount({
+        ...servicio,
+        operationDate: "2026-01-15",
+        baseConfig: { enabled: true, rate: 0.105, from: "2026-06-01" },
+      })
+    ).toBe(100)
+  })
+
+  it("sin fecha de operación NO baja la comisión", () => {
+    // Mismo criterio que el paquete: preferimos no bajarle la comisión a
+    // alguien por una fecha que no conocemos.
+    expect(
+      serviceCommissionAmount({
+        ...servicio,
+        operationDate: null,
+        baseConfig: { enabled: true, rate: 0.105, from: "2026-06-01" },
+      })
+    ).toBe(100)
+  })
+
+  it("serviceProfit devuelve las dos ganancias y el IVA descontado", () => {
+    expect(serviceProfit({ ...servicio, baseConfig: netConfig })).toEqual({
+      bruta: 1000,
+      neta: 895,
+      iva: 105,
+      aplicaIva: true,
+    })
+  })
+
+  it("sin base neta, bruta y neta son el mismo número", () => {
+    expect(serviceProfit(servicio)).toEqual({
+      bruta: 1000,
+      neta: 1000,
+      iva: 0,
+      aplicaIva: false,
+    })
   })
 })

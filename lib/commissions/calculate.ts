@@ -514,10 +514,14 @@ export async function recalculateOperationCommissions(
   }
 
   const orgId = operation.org_id || ""
-  const profiles = await resolveSellerCommissionProfiles(supabase, orgId, [
-    operation.seller_id,
-    operation.seller_secondary_id,
-  ])
+  // La oficina va porque un vendedor puede cobrar distinto en cada sucursal
+  // (VIB-175): en Lozada, 25% en Madero y 45% en Rosario.
+  const profiles = await resolveSellerCommissionProfiles(
+    supabase,
+    orgId,
+    [operation.seller_id, operation.seller_secondary_id],
+    operation.agency_id
+  )
 
   // Si el caller no pasó la config, la resolvemos por la agencia de la operación.
   const resolvedConfig =
@@ -625,8 +629,10 @@ export async function processCommissionsForOperations(
 export async function getSellerPercentage(
   supabase: any,
   orgId: string,
-  sellerId: string
+  sellerId: string,
+  /** Oficina de la operación, para resolver el porcentaje que rige ahí (VIB-175). */
+  agencyId?: string | null
 ): Promise<number> {
-  const profiles = await resolveSellerCommissionProfiles(supabase, orgId, [sellerId])
+  const profiles = await resolveSellerCommissionProfiles(supabase, orgId, [sellerId], agencyId)
   return profiles.get(sellerId)?.percentage ?? 0
 }

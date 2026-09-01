@@ -49,7 +49,8 @@ import { Input } from "@/components/ui/input"
 import { DecimalInput } from "@/components/ui/decimal-input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { DEFAULT_COMMISSION_SERVICE_TYPES } from "@/lib/commissions/service-commission"
+import { DEFAULT_COMMISSION_SERVICE_TYPES, serviceProfit } from "@/lib/commissions/service-commission"
+import type { CommissionBaseConfig } from "@/lib/commissions/net-base"
 import { Textarea } from "@/components/ui/textarea"
 import { Separator } from "@/components/ui/separator"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -294,6 +295,13 @@ export function OperationServicesSection({
   const [commissionServiceTypes, setCommissionServiceTypes] = useState<string[]>(
     DEFAULT_COMMISSION_SERVICE_TYPES
   )
+  /**
+   * Base con la que comisiona esta oficina (VIB-176). Con la base neta
+   * prendida, la ganancia que se reparte no es venta − costo sino esa menos el
+   * IVA, y hay que poder ver las dos.
+   */
+  const [commissionBase, setCommissionBase] = useState<CommissionBaseConfig | null>(null)
+  const [operationDate, setOperationDate] = useState<string | null>(null)
   /** Para mostrar en la tabla de quién es la comisión de cada servicio. */
   const sellerNameById = useMemo(
     () => new Map(sellers.map((s) => [s.id, s.name])),
@@ -411,6 +419,10 @@ export function OperationServicesSection({
       if (Array.isArray(data.commissionServiceTypes)) {
         setCommissionServiceTypes(data.commissionServiceTypes)
       }
+      // VIB-176: con qué base comisiona esta oficina, para mostrar la ganancia
+      // neta además de la bruta.
+      setCommissionBase(data.commissionBase ?? null)
+      setOperationDate(data.operationDate ?? null)
     } catch {
       toast.error("Error al cargar los servicios")
     } finally {
@@ -436,6 +448,19 @@ export function OperationServicesSection({
         if (s.margin_amount !== null) {
           if (!acc.margin[s.sale_currency]) acc.margin[s.sale_currency] = 0
           acc.margin[s.sale_currency] += s.margin_amount
+
+          // La ganancia que realmente se reparte cuando la oficina comisiona
+          // neto de IVA (VIB-176).
+          const { neta } = serviceProfit({
+            saleAmount: s.sale_amount,
+            costAmount: s.cost_amount,
+            saleCurrency: s.sale_currency,
+            costCurrency: s.cost_currency,
+            baseConfig: commissionBase,
+            operationDate,
+          })
+          if (!acc.marginNet[s.sale_currency]) acc.marginNet[s.sale_currency] = 0
+          acc.marginNet[s.sale_currency] += neta
         }
       }
 
@@ -445,6 +470,7 @@ export function OperationServicesSection({
       sale: {} as Record<string, number>,
       cost: {} as Record<string, number>,
       margin: {} as Record<string, number>,
+      marginNet: {} as Record<string, number>,
     }
   )
 
@@ -875,9 +901,31 @@ export function OperationServicesSection({
                           </TableCell>
                           <TableCell className="text-right">
                             {s.margin_amount !== null ? (
-                              <span className={s.margin_amount >= 0 ? "text-success" : "text-destructive"}>
-                                {formatCurrency(s.margin_amount, s.sale_currency)}
-                              </span>
+                              <div className="leading-tight">
+                                <span className={s.margin_amount >= 0 ? "text-success" : "text-destructive"}>
+                                  {formatCurrency(s.margin_amount, s.sale_currency)}
+                                </span>
+                                {/* La neta sólo se muestra cuando difiere de la
+                                    bruta: si la oficina no comisiona neto de
+                                    IVA, repetir el mismo número dos veces es
+                                    ruido. */}
+                                {(() => {
+                                  const { neta, aplicaIva } = serviceProfit({
+                                    saleAmount: s.sale_amount,
+                                    costAmount: s.cost_amount,
+                                    saleCurrency: s.sale_currency,
+                                    costCurrency: s.cost_currency,
+                                    baseConfig: commissionBase,
+                                    operationDate,
+                                  })
+                                  if (!aplicaIva) return null
+                                  return (
+                                    <span className="block text-xs text-muted-foreground">
+                                      neta {formatCurrency(neta, s.sale_currency)}
+                                    </span>
+                                  )
+                                })()}
+                              </div>
                             ) : (
                               <span className="text-muted-foreground text-xs">Monedas distintas</span>
                             )}
@@ -956,7 +1004,9 @@ export function OperationServicesSection({
 
                 {showFinancialColumns && Object.keys(serviceTotals.margin).length > 0 && (
                   <div className="text-right">
-                    <p className="text-muted-foreground text-xs mb-1">Margen servicios</p>
+                    <p className="text-muted-foreground text-xs mb-1">
+                      {commissionBase?.enabled ? "Ganancia bruta servicios" : "Margen servicios"}
+                    </p>
                     {Object.entries(serviceTotals.margin).map(([currency, amount]) => (
                       <p
                         key={currency}
@@ -967,6 +1017,29 @@ export function OperationServicesSection({
                     ))}
                   </div>
                 )}
+
+                {/* La neta sólo aparece si difiere de la bruta: es la que se
+                    reparte en comisiones (VIB-176). */}
+                {showFinancialColumns &&
+                  commissionBase?.enabled &&
+                  Object.entries(serviceTotals.marginNet).some(
+                    ([currency, neta]) => Math.abs(neta - (serviceTotals.margin[currency] ?? 0)) >= 0.01
+                  ) && (
+                    <div className="text-right">
+                      <p className="text-muted-foreground text-xs mb-1">Ganancia neta servicios</p>
+                      {Object.entries(serviceTotals.marginNet).map(([currency, amount]) => (
+                        <p
+                          key={currency}
+                          className={`font-semibold ${amount >= 0 ? "text-success" : "text-destructive"}`}
+                        >
+                          {formatCurrency(amount, currency as Currency)}
+                        </p>
+                      ))}
+                      <p className="text-muted-foreground text-[11px] mt-0.5">
+                        Sobre esta se calculan las comisiones
+                      </p>
+                    </div>
+                  )}
               </div>
             </div>
           )}

@@ -7,23 +7,31 @@
  * `org_id`** al buscar la regla genérica: un vendedor sin porcentaje configurado
  * podía terminar heredando el default de otro tenant.
  *
- * Precedencia (se mantiene la que ya estaba en producción):
- *   1. `commission_rules` con `seller_id` — override avanzado por vendedor.
- *   2. `users.default_commission_percentage` — la fuente canónica, la que se
+ * Precedencia:
+ *   1. `commission_rules` con `seller_id` **y la oficina de la operación**
+ *      (VIB-175) — la misma persona puede cobrar distinto en cada sucursal.
+ *   2. `commission_rules` con `seller_id` y sin oficina — vale en todas.
+ *   3. `users.default_commission_percentage` — la fuente canónica, la que se
  *      edita en Configuración → Usuarios.
- *   3. `commission_rules` genérica de la org (`seller_id is null`).
- *   4. Sin porcentaje: `null`, y el motor de reparto lo reporta como warning.
+ *   4. `commission_rules` genérica de la org (`seller_id is null`).
+ *   5. Sin porcentaje: `null`, y el motor de reparto lo reporta como warning.
  *
- * ⚠️ El paso 1 hace *shadowing* del paso 2: hoy Lozada tiene 13 reglas por
+ * ⚠️ El paso 2 hace *shadowing* del paso 3: hoy Lozada tiene 13 reglas por
  * vendedor sembradas por la migración 116, así que editar el porcentaje de un
  * vendedor en Configuración → Usuarios puede no tener ningún efecto. Por eso
  * `source` viaja en el perfil: permite mostrar de dónde salió el número en vez
  * de dejar al admin cambiando un campo que no manda.
+ *
+ * ⚠️ VIB-175: hasta ahora `agency_id` existía en la tabla pero la resolución lo
+ * ignoraba, así que cargar dos reglas para el mismo vendedor en oficinas
+ * distintas hacía ganar a la más nueva **para las dos**, en silencio. Una regla
+ * de OTRA oficina ahora no se mira: no puede pisar ni al default del usuario.
  */
 
 import type { SharedSaleMode } from "@/lib/commissions/shared-split"
 
 export type SellerPercentageSource =
+  | "SELLER_AGENCY_RULE"
   | "SELLER_RULE"
   | "USER_DEFAULT"
   | "ORG_RULE"
@@ -46,9 +54,15 @@ export interface SellerCommissionProfile {
   advisorManagerPercentage: number | null
 }
 
-/** Las tres fuentes posibles de un porcentaje, en crudo. `null` = no hay. */
+/** Las fuentes posibles de un porcentaje, en crudo. `null` = no hay. */
 export interface PercentageSources {
-  /** `commission_rules` con `seller_id` — el override por vendedor. */
+  /**
+   * `commission_rules` con `seller_id` Y `agency_id` = la oficina en juego
+   * (VIB-175). Manda sobre todo lo demás: es lo más específico que se puede
+   * decir de un vendedor.
+   */
+  sellerAgencyRule?: number | null
+  /** `commission_rules` con `seller_id` y sin oficina — el override por vendedor. */
   sellerRule: number | null
   /** `users.default_commission_percentage`. */
   userDefault: number | null
@@ -68,6 +82,9 @@ export function resolveEffectivePercentage(sources: PercentageSources): {
   percentage: number | null
   source: SellerPercentageSource
 } {
+  if (sources.sellerAgencyRule != null) {
+    return { percentage: sources.sellerAgencyRule, source: "SELLER_AGENCY_RULE" }
+  }
   if (sources.sellerRule != null) return { percentage: sources.sellerRule, source: "SELLER_RULE" }
   if (sources.userDefault != null) return { percentage: sources.userDefault, source: "USER_DEFAULT" }
   if (sources.orgRule != null) return { percentage: sources.orgRule, source: "ORG_RULE" }
@@ -169,7 +186,13 @@ async function fetchSellerRows(
 export async function resolveSellerCommissionProfiles(
   supabase: any,
   orgId: string,
-  sellerIds: Array<string | null | undefined>
+  sellerIds: Array<string | null | undefined>,
+  /**
+   * Oficina de la operación (VIB-175). Sin ella solo se miran las reglas sin
+   * oficina, que es el comportamiento de siempre: un caller que no sabe en qué
+   * sucursal está no puede elegir entre dos porcentajes.
+   */
+  agencyId?: string | null
 ): Promise<Map<string, SellerCommissionProfile>> {
   const ids = Array.from(new Set(sellerIds.filter((id): id is string => !!id)))
   const profiles = new Map<string, SellerCommissionProfile>()
@@ -195,7 +218,7 @@ export async function resolveSellerCommissionProfiles(
   // que quedaron con org_id nulo.
   const { data: sellerRules, error: sellerRulesError } = await supabase
     .from("commission_rules")
-    .select("seller_id, value, valid_from")
+    .select("seller_id, value, valid_from, agency_id")
     .eq("type", "SELLER")
     .in("seller_id", ids)
     .or(`org_id.eq.${orgId},org_id.is.null`)
@@ -212,11 +235,26 @@ export async function resolveSellerCommissionProfiles(
 
   // La query viene ordenada por valid_from desc; la primera de cada vendedor es
   // la vigente más reciente.
-  const ruleBySeller = new Map<string, number>()
+  //
+  // Se separan en dos baldes (VIB-175): la regla de ESTA oficina y la que no
+  // tiene oficina y vale en todas. Una regla de OTRA oficina se descarta acá y
+  // no entra a la precedencia: si entrara, el 45% de Rosario le ganaría al
+  // default del usuario en las ventas de Madero, que es exactamente el bug.
+  const ruleBySellerForAgency = new Map<string, number>()
+  const ruleBySellerGlobal = new Map<string, number>()
+
   for (const rule of (sellerRules || []) as any[]) {
-    if (!rule.seller_id || ruleBySeller.has(rule.seller_id)) continue
+    if (!rule.seller_id) continue
     const value = normalizePct(rule.value)
-    if (value != null) ruleBySeller.set(rule.seller_id, value)
+    if (value == null) continue
+
+    if (rule.agency_id == null) {
+      if (!ruleBySellerGlobal.has(rule.seller_id)) ruleBySellerGlobal.set(rule.seller_id, value)
+    } else if (agencyId && rule.agency_id === agencyId) {
+      if (!ruleBySellerForAgency.has(rule.seller_id)) {
+        ruleBySellerForAgency.set(rule.seller_id, value)
+      }
+    }
   }
 
   // Las fuentes en crudo. La precedencia se aplica más abajo, una sola vez y
@@ -234,7 +272,8 @@ export async function resolveSellerCommissionProfiles(
       mode: normalizeMode(row?.mode),
       advisorManagerId,
       advisorManagerPercentage: advisorManagerId ? normalizePct(row?.managerPct) : null,
-      sellerRule: ruleBySeller.get(id) ?? null,
+      sellerAgencyRule: ruleBySellerForAgency.get(id) ?? null,
+      sellerRule: ruleBySellerGlobal.get(id) ?? null,
       userDefault: normalizePct(row?.pct),
     }
   })
@@ -243,7 +282,9 @@ export async function resolveSellerCommissionProfiles(
   // Acá el filtro por org_id SÍ es estricto: sin `seller_id` que ancle el
   // tenant, una regla con org_id nulo es justamente la que se filtraba a otras
   // organizaciones.
-  const needsGeneric = resolved.some((p) => p.sellerRule == null && p.userDefault == null)
+  const needsGeneric = resolved.some(
+    (p) => p.sellerAgencyRule == null && p.sellerRule == null && p.userDefault == null
+  )
   let genericPct: number | null = null
 
   if (needsGeneric) {
@@ -268,8 +309,9 @@ export async function resolveSellerCommissionProfiles(
     genericPct = normalizePct((genericRules as any[])?.[0]?.value)
   }
 
-  for (const { sellerRule, userDefault, ...rest } of resolved) {
+  for (const { sellerAgencyRule, sellerRule, userDefault, ...rest } of resolved) {
     const { percentage, source } = resolveEffectivePercentage({
+      sellerAgencyRule,
       sellerRule,
       userDefault,
       orgRule: genericPct,
@@ -291,8 +333,9 @@ export async function resolveSellerCommissionProfiles(
 export async function resolveSellerCommissionProfile(
   supabase: any,
   orgId: string,
-  sellerId: string
+  sellerId: string,
+  agencyId?: string | null
 ): Promise<SellerCommissionProfile> {
-  const profiles = await resolveSellerCommissionProfiles(supabase, orgId, [sellerId])
+  const profiles = await resolveSellerCommissionProfiles(supabase, orgId, [sellerId], agencyId)
   return profiles.get(sellerId) ?? emptyProfile(sellerId)
 }

@@ -32,7 +32,7 @@ import {
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Badge } from "@/components/ui/badge"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
@@ -127,7 +127,15 @@ function describeRuleScope(
   if (rule.type === "SELLER" && rule.seller_id) {
     // El nombre puede faltar si el usuario fue dado de baja: mejor decirlo que
     // mostrar la celda vacía y volver al problema original.
-    return rule.seller_name || "Vendedor dado de baja"
+    const seller = rule.seller_name || "Vendedor dado de baja"
+    // VIB-175: sin la oficina, las dos reglas de una misma persona —la de
+    // Madero al 25% y la general al 45%— se veían idénticas en la tabla. Es el
+    // mismo problema que VIB-124 vino a arreglar, un nivel más abajo.
+    if (rule.agency_id) {
+      const oficina = agencies.find((a) => a.id === rule.agency_id)?.name || "una oficina"
+      return `${seller} · ${oficina}`
+    }
+    return seller
   }
   if (rule.agency_id) {
     return agencies.find((a) => a.id === rule.agency_id)?.name || "Agencia"
@@ -164,6 +172,7 @@ interface ApplyDialogState {
 
 /** Cómo se le explica al usuario de dónde salió el porcentaje. */
 const ORIGEN_PORCENTAJE: Record<SellerPercentageSource, string> = {
+  SELLER_AGENCY_RULE: "Regla propia para esa oficina",
   SELLER_RULE: "Regla propia",
   USER_DEFAULT: "El que se cargó al crear el usuario",
   ORG_RULE: "La regla general de la agencia",
@@ -816,6 +825,44 @@ export function CommissionsSettings() {
                               ))}
                             </SelectContent>
                           </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
+
+                  {/* VIB-175: la misma persona puede cobrar distinto en cada
+                      sucursal. Sin oficina la regla vale en todas; con oficina
+                      manda sobre la general para las ventas de esa oficina. */}
+                  {form.watch("type") === "SELLER" && form.watch("seller_id") && agencies.length > 1 && (
+                    <FormField
+                      control={form.control}
+                      name="agency_id"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Oficina</FormLabel>
+                          <Select
+                            onValueChange={(v) => field.onChange(v === "__ALL__" ? null : v)}
+                            value={field.value || "__ALL__"}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="__ALL__">Todas las oficinas</SelectItem>
+                              {agencies.map((agency) => (
+                                <SelectItem key={agency.id} value={agency.id}>
+                                  {agency.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormDescription>
+                            Elegí una oficina si esta persona cobra un porcentaje distinto ahí.
+                            La regla de una oficina manda sobre la que vale para todas.
+                          </FormDescription>
                           <FormMessage />
                         </FormItem>
                       )}
