@@ -95,6 +95,7 @@ describe("novedad común", () => {
   it("sin modal, todos los campos quedan apagados", () => {
     const c = ok(parsearCamposDelModal({}))
     expect(c).toEqual({
+      release_version: null,
       modal: false,
       modal_starts_at: null,
       modal_ends_at: null,

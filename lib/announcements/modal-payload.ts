@@ -18,6 +18,8 @@ export const ROLES_VALIDOS = [
 ] as const
 
 export interface CamposDelModal {
+  /** Número de release, ej "2026.09". Null en una novedad suelta. */
+  release_version: string | null
   modal: boolean
   modal_starts_at: string | null
   modal_ends_at: string | null
@@ -87,6 +89,7 @@ export function parsearCamposDelModal(body: any): ResultadoParseo {
   return {
     ok: true,
     campos: {
+      release_version: texto(body?.release_version),
       modal,
       modal_starts_at: desde,
       modal_ends_at: hasta,

@@ -18,7 +18,7 @@ export async function GET() {
   const admin = createAdminClient() as any
   const { data, error } = await admin
     .from("announcements")
-    .select("id, title, body, type, published, published_at, created_at, updated_at, modal, modal_starts_at, modal_ends_at, modal_roles, modal_cta_label, modal_cta_href")
+    .select("id, title, body, type, published, published_at, created_at, updated_at, release_version, modal, modal_starts_at, modal_ends_at, modal_roles, modal_cta_label, modal_cta_href")
     .order("published_at", { ascending: false })
 
   if (error) {

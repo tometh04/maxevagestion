@@ -23,7 +23,7 @@ export async function GET() {
     // últimos y se elige entre ellos.
     const { data, error } = await (supabase.from("announcements") as any)
       .select(
-        "id, title, body, type, published_at, modal, modal_starts_at, modal_ends_at, modal_roles, modal_cta_label, modal_cta_href"
+        "id, title, body, type, published_at, release_version, modal, modal_starts_at, modal_ends_at, modal_roles, modal_cta_label, modal_cta_href"
       )
       .eq("published", true)
       .eq("modal", true)

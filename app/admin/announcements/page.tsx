@@ -40,6 +40,7 @@ interface Announcement {
   published_at: string
   created_at: string
   updated_at: string
+  release_version: string | null
   modal: boolean
   modal_starts_at: string | null
   modal_ends_at: string | null
@@ -60,6 +61,7 @@ const emptyDraft = {
   body: "",
   type: "NEW" as AnnouncementType,
   published: true,
+  release_version: "",
   // El modal arranca apagado: interrumpir a toda la base tiene que ser una
   // decisión explícita, no lo que pasa si nadie toca nada.
   modal: false,
@@ -108,6 +110,7 @@ export default function AdminAnnouncementsPage() {
       body: a.body,
       type: a.type,
       published: a.published,
+      release_version: a.release_version ?? "",
       modal: a.modal ?? false,
       // Los inputs de fecha trabajan con YYYY-MM-DD; la base guarda timestamps.
       modal_starts_at: a.modal_starts_at?.slice(0, 10) ?? "",
@@ -134,6 +137,7 @@ export default function AdminAnnouncementsPage() {
           body: draft.body,
           type: draft.type,
           published: draft.published,
+          release_version: draft.release_version || null,
           modal: draft.modal,
           modal_starts_at: draft.modal_starts_at || null,
           modal_ends_at: draft.modal_ends_at || null,
@@ -328,6 +332,33 @@ export default function AdminAnnouncementsPage() {
 
               {draft.modal && (
                 <div className="space-y-3 border-t pt-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="release-version">Número de release</Label>
+                    <Input
+                      id="release-version"
+                      placeholder="2026.09"
+                      className="max-w-[10rem]"
+                      value={draft.release_version}
+                      onChange={(e) => setDraft((d) => ({ ...d, release_version: e.target.value }))}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Se muestra en el encabezado junto a la fecha, para que el usuario pueda ubicar
+                      qué cambió y cuándo. Opcional.
+                    </p>
+                  </div>
+
+                  <div className="rounded-md bg-muted/50 px-3 py-2.5 text-xs text-muted-foreground">
+                    <span className="font-medium text-foreground">Páginas.</span> Separá el texto con
+                    una línea que diga <code className="font-mono">---</code> y la primera línea de
+                    cada bloque será su título. Sin separadores el modal muestra una sola página.
+                    {(() => {
+                      const n = draft.body.split(/\r?\n/).filter((l) => /^[ \t]*---[ \t]*$/.test(l)).length + 1
+                      return n > 1 ? (
+                        <span className="mt-1 block text-foreground">Ahora mismo: {n} páginas.</span>
+                      ) : null
+                    })()}
+                  </div>
+
                   <div className="flex gap-3">
                     <div className="space-y-1.5 flex-1">
                       <Label htmlFor="modal-from">Desde</Label>

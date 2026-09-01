@@ -19,6 +19,9 @@
  *
  * Modal (para releases grandes que además piden que el usuario configure algo):
  *   --modal              Se muestra como modal al entrar, además de en la campana.
+ *   --version <str>      Número de release, ej "2026.09". Se muestra en el encabezado.
+ *                        El texto se parte en páginas con una línea "---";
+ *                        la primera línea de cada bloque es su título.
  *   --modal-from <fecha> Desde cuándo (YYYY-MM-DD). Default: ya.
  *   --modal-until <fecha> Hasta cuándo (YYYY-MM-DD). Sin esto no vence.
  *   --modal-roles <lista> Roles separados por coma que lo ven. Sin esto, todos.
@@ -151,6 +154,7 @@ async function main() {
       modal_roles: roles,
       modal_cta_label: ctaLabel,
       modal_cta_href: ctaHref,
+      release_version: args.version?.trim() ?? null,
     })
     .select("id, title, type, published, published_at, modal, modal_ends_at, modal_roles")
     .single()
