@@ -202,6 +202,12 @@ export default function NewInvoicePage() {
   // clásico). Con uno o más índices de `operation_operators`, se facturan esos
   // servicios juntos, un par de ítems por cada uno (VIB-112 fase 1 → VIB-121).
   const [selectedLegIndexes, setSelectedLegIndexes] = useState<number[]>([])
+  // La lista de servicios queda detrás de un modo explícito a propósito. Medido
+  // en producción: Lozada Rosario ve este selector en 119 de sus 207 facturas y
+  // NUNCA facturó por servicio, y Compañía de Viajes tampoco. Con las casillas
+  // siempre a la vista, un clic accidental les cambiaría los importes del
+  // comprobante en silencio. Con el modo, para ellos la pantalla no cambia.
+  const [serviceScopeMode, setServiceScopeMode] = useState<'FULL' | 'PICK'>('FULL')
   const amountEntryMode = getRecommendedAmountEntryMode(formData.cbte_tipo, formData.receptor_condicion_iva)
   const calculatedInvoice = calculateInvoice(items, amountEntryMode)
   const shouldHideTaxBreakdown = shouldHideInvoiceTaxBreakdown({
@@ -245,7 +251,10 @@ export default function NewInvoicePage() {
     rebuildItemsForSelection(next)
   }
 
-  const selectFullSale = () => {
+  // Cambiar de modo siempre vuelve a la venta completa: pasar a "Elegir
+  // servicios" no debe facturar nada distinto hasta que se marque algo.
+  const handleScopeModeChange = (mode: 'FULL' | 'PICK') => {
+    setServiceScopeMode(mode)
     setSelectedLegIndexes([])
     rebuildItemsForSelection([])
   }
@@ -567,6 +576,7 @@ export default function NewInvoicePage() {
           // Cada operación nueva arranca en "Venta completa"; el usuario puede
           // luego elegir uno o varios servicios (vuelo, hotel, transfer...).
           setSelectedLegIndexes([])
+          setServiceScopeMode('FULL')
           // Los items se arman en la moneda nativa de la operación (USD para ops USD).
           // La factura por defecto se emite en PES, así que si la op es USD hay que
           // convertir los precios a ARS con el TC recién traído. Sin esto los items
@@ -623,6 +633,7 @@ export default function NewInvoicePage() {
       setSelectedOperation(null)
       setInvoiceRemaining(null)
       setSelectedLegIndexes([])
+      setServiceScopeMode('FULL')
       setFormData(prev => ({
         ...prev,
         operation_id: '',
@@ -1379,48 +1390,52 @@ export default function NewInvoicePage() {
                 hotel) o unificar varios servicios en una sola factura (VIB-121). */}
             {selectedOperation && (selectedOperation.operation_operators?.length || 0) >= 2 && (
               <div className="rounded-lg border border-border/40 bg-muted/30 p-3 space-y-2">
-                <Label className="text-xs font-medium">Servicios a facturar</Label>
+                <Label className="text-xs font-medium">Qué se factura</Label>
 
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      id="scope-full"
-                      checked={selectedLegIndexes.length === 0}
-                      onCheckedChange={(checked) => {
-                        if (checked === true) selectFullSale()
-                      }}
-                    />
-                    <Label htmlFor="scope-full" className="text-sm font-normal cursor-pointer">
-                      Venta completa
-                    </Label>
+                <Select
+                  value={serviceScopeMode}
+                  onValueChange={(v) => handleScopeModeChange(v as 'FULL' | 'PICK')}
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="FULL">Venta completa</SelectItem>
+                    <SelectItem value="PICK">Elegir servicios</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                {serviceScopeMode === 'PICK' && (
+                  <div className="space-y-2 pt-1">
+                    {(selectedOperation.operation_operators || []).map((leg, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <Checkbox
+                          id={`scope-leg-${i}`}
+                          checked={selectedLegIndexes.includes(i)}
+                          onCheckedChange={(checked) => toggleLeg(i, checked === true)}
+                        />
+                        <Label
+                          htmlFor={`scope-leg-${i}`}
+                          className="text-sm font-normal cursor-pointer"
+                        >
+                          {getLegLabel(leg, i)}
+                        </Label>
+                      </div>
+                    ))}
                   </div>
-
-                  {(selectedOperation.operation_operators || []).map((leg, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <Checkbox
-                        id={`scope-leg-${i}`}
-                        checked={selectedLegIndexes.includes(i)}
-                        onCheckedChange={(checked) => toggleLeg(i, checked === true)}
-                      />
-                      <Label
-                        htmlFor={`scope-leg-${i}`}
-                        className="text-sm font-normal cursor-pointer"
-                      >
-                        {getLegLabel(leg, i)}
-                      </Label>
-                    </div>
-                  ))}
-                </div>
+                )}
 
                 <p className="text-xs text-muted-foreground">
-                  {selectedLegIndexes.length === 0
-                    ? 'Se factura el total de la venta. Marcá uno o varios servicios para facturar solo esa parte.'
-                    : reconcileOperatorSaleBreakdown({
-                        legs: selectedOperation.operation_operators || [],
-                        saleAmountTotal: selectedOperation.sale_amount_total,
-                      }).status === 'BALANCED'
-                      ? `${selectedLegIndexes.length} ${selectedLegIndexes.length === 1 ? 'servicio' : 'servicios'} en esta factura, con el precio de venta cargado en cada uno. Ajustá los importes si hace falta.`
-                      : `${selectedLegIndexes.length} ${selectedLegIndexes.length === 1 ? 'servicio' : 'servicios'} en esta factura. Los montos se estiman repartiendo la venta según el costo de cada uno. Ajustá los importes si hace falta.`}
+                  {serviceScopeMode === 'FULL'
+                    ? 'Se factura el total de la venta.'
+                    : selectedLegIndexes.length === 0
+                      ? 'Marcá uno o varios servicios. Mientras no marques ninguno se factura la venta completa.'
+                      : reconcileOperatorSaleBreakdown({
+                          legs: selectedOperation.operation_operators || [],
+                          saleAmountTotal: selectedOperation.sale_amount_total,
+                        }).status === 'BALANCED'
+                        ? `${selectedLegIndexes.length} ${selectedLegIndexes.length === 1 ? 'servicio' : 'servicios'} en esta factura, con el precio de venta cargado en cada uno. Ajustá los importes si hace falta.`
+                        : `${selectedLegIndexes.length} ${selectedLegIndexes.length === 1 ? 'servicio' : 'servicios'} en esta factura. Los montos se estiman repartiendo la venta según el costo de cada uno. Ajustá los importes si hace falta.`}
                 </p>
               </div>
             )}
