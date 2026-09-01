@@ -7,10 +7,6 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
 import { toast } from "sonner"
 import Link from "next/link"
 import { format } from "date-fns"
@@ -36,17 +32,13 @@ import { hasReadyQuotationDocument } from "@/lib/quotations/document-projection"
 import { isQuotationContentEditable } from "@/lib/quotations/lifecycle"
 import { getQuotationStatusColors } from "@/lib/vibook-status-colors"
 import { QuotationQuotaCard } from "@/components/sales/quotation-quota-card"
+import { QuotationBookingDialog } from "@/components/sales/quotation-booking-dialog"
 
 interface QuotationsDashboardProps {
   sellers: Array<{ id: string; name: string }>
   agencies: Array<{ id: string; name: string }>
   currentUserRole: string
   currentUserId: string
-}
-
-function formatCurrency(amount: number, currency: string) {
-  const prefix = currency === "USD" ? "US$" : "$"
-  return `${prefix} ${Number(amount).toLocaleString("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
 }
 
 function getQuotationDisplayAmount(quotation: any) {
@@ -82,7 +74,6 @@ export function QuotationsDashboard({ sellers, agencies, currentUserRole, curren
   const [quotaRefreshKey, setQuotaRefreshKey] = useState(0)
   const [quotationsList, setQuotationsList] = useState<any[]>([])
   const [loadingList, setLoadingList] = useState(true)
-  const [convertingId, setConvertingId] = useState<string | null>(null)
   const [convertDialogOpen, setConvertDialogOpen] = useState(false)
   const [selectedQuotation, setSelectedQuotation] = useState<any>(null)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
@@ -111,32 +102,6 @@ export function QuotationsDashboard({ sellers, agencies, currentUserRole, curren
       setLoadingList(false)
     }
   }, [sellerId, agencyId])
-
-  const handleConvert = async () => {
-    if (!selectedQuotation) return
-    setConvertingId(selectedQuotation.id)
-    try {
-      const res = await fetch(`/api/quotations/${selectedQuotation.id}/convert`, {
-        method: "POST",
-      })
-      const json = await res.json()
-      if (!res.ok) {
-        toast.error(json.error || "Error al convertir")
-        return
-      }
-      toast.success(`Operación ${json.data.file_code} creada`)
-      for (const warning of Array.isArray(json.warnings) ? json.warnings : []) {
-        toast.warning(warning)
-      }
-      fetchQuotationsList()
-    } catch (err) {
-      toast.error("Error al convertir cotizacion")
-    } finally {
-      setConvertingId(null)
-      setConvertDialogOpen(false)
-      setSelectedQuotation(null)
-    }
-  }
 
   const handleDownloadPDF = async (
     quotation: any,
@@ -358,14 +323,9 @@ export function QuotationsDashboard({ sellers, agencies, currentUserRole, curren
                                   setSelectedQuotation(q)
                                   setConvertDialogOpen(true)
                                 }}
-                                disabled={convertingId === q.id}
                               >
-                                {convertingId === q.id ? (
-                                  <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
-                                ) : (
-                                  <Briefcase className="h-3.5 w-3.5 mr-1" />
-                                )}
-                                Convertir
+                                <Briefcase className="h-3.5 w-3.5 mr-1" />
+                                Convertir y reservar
                               </Button>
                             )}
                             {q.status === "CONVERTED" && q.operation_id && (
@@ -436,67 +396,12 @@ export function QuotationsDashboard({ sellers, agencies, currentUserRole, curren
         } : undefined}
       />
 
-      {/* Convert confirmation dialog */}
-      <AlertDialog open={convertDialogOpen} onOpenChange={setConvertDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Convertir cotizacion a operacion</AlertDialogTitle>
-            <AlertDialogDescription>
-              {selectedQuotation && (
-                (() => {
-                  const displayAmount = getQuotationDisplayAmount(selectedQuotation)
-
-                  return (
-                    <>
-                  Se creara una operacion a partir de la cotizacion{" "}
-                  <strong>{selectedQuotation.quotation_number}</strong> por{" "}
-                  <strong>{displayAmount.amount}</strong>
-                  {displayAmount.label === "Precio por persona" && (
-                    <> (total {formatCurrency(
-                      getQuotationCustomerTotal(
-                        (selectedQuotation.quotation_options || []).find((option: any) => option.is_selected)
-                          || (selectedQuotation.quotation_options || [])[0]
-                          || { total_amount: selectedQuotation.total_amount },
-                        {
-                          insuranceAmount: selectedQuotation.insurance_amount,
-                          transferAmount: selectedQuotation.transfer_amount,
-                        }
-                      ),
-                      selectedQuotation.currency
-                    )})</>
-                  )}
-                  .
-                  <br /><br />
-                  Esto creara la operacion con todos los servicios, vinculara al cliente del lead,
-                  y marcara el lead como ganado. Esta accion no se puede deshacer.
-                    </>
-                  )
-                })()
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={!!convertingId}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleConvert}
-              disabled={!!convertingId}
-              className="bg-success hover:bg-success/90"
-            >
-              {convertingId ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  Convirtiendo...
-                </>
-              ) : (
-                <>
-                  <Briefcase className="h-4 w-4 mr-2" />
-                  Convertir
-                </>
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <QuotationBookingDialog
+        quotation={selectedQuotation}
+        open={convertDialogOpen}
+        onOpenChange={(open) => { setConvertDialogOpen(open); if (!open) setSelectedQuotation(null) }}
+        onQueued={() => { void fetchQuotationsList() }}
+      />
     </div>
   )
 }

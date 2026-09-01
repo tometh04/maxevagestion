@@ -19,6 +19,7 @@ import {
   processQuotationConversionEffects,
 } from "@/lib/quotations/conversion-effects"
 import { createAdminClient, createServerClient } from "@/lib/supabase/server"
+import { bookingItemsFromQuotation, enqueueProviderBooking } from "@/lib/provider-booking/booking"
 import { POST } from "../route"
 
 jest.mock("@/lib/auth", () => ({ getCurrentUser: jest.fn() }))
@@ -46,6 +47,11 @@ jest.mock("@/lib/accounting/file-code", () => ({
 jest.mock("@/lib/audit", () => ({
   getClientIP: jest.fn().mockReturnValue(null),
   logAudit: jest.fn().mockResolvedValue(undefined),
+}))
+jest.mock("@/lib/provider-booking/booking", () => ({
+  bookingFormSchema: jest.requireActual("@/lib/provider-booking/booking").bookingFormSchema,
+  bookingItemsFromQuotation: jest.fn(),
+  enqueueProviderBooking: jest.fn(),
 }))
 
 const fullScope = {
@@ -118,6 +124,8 @@ describe("POST /api/quotations/[id]/convert", () => {
       warnings: [],
     })
     ;(ensureQuotationCommissionReviewAlert as jest.Mock).mockResolvedValue(true)
+    ;(bookingItemsFromQuotation as jest.Mock).mockReturnValue([{ client_item_id: "item-1", product: "flights" }])
+    ;(enqueueProviderBooking as jest.Mock).mockResolvedValue({ requestId: "11111111-1111-4111-8111-111111111111", jobId: "22222222-2222-4222-8222-222222222222", status: "queued" })
   })
 
   it("congela reglas y delega conversión y efectos a contratos durables", async () => {
@@ -243,5 +251,48 @@ describe("POST /api/quotations/[id]/convert", () => {
 
     expect(response.status).toBe(404)
     expect(convertQuotationToOperation).not.toHaveBeenCalled()
+  })
+
+  it("convierte y deja la reserva durable en Wholesale antes de responder", async () => {
+    const query = quotationQueryWith("APPROVED")
+    const upsert = jest.fn().mockResolvedValue({ error: null })
+    const admin = { from: jest.fn((table: string) => table === "quotation_provider_bookings" ? { upsert } : query), rpc: jest.fn() }
+    ;(createServerClient as jest.Mock).mockResolvedValue({ from: jest.fn(() => query) })
+    ;(createAdminClient as jest.Mock).mockReturnValue(admin)
+    const booking = {
+      holder: { name: "Ada", surnames: ["Lovelace"], contact: { mails: ["ada@example.com"], phones: [{ country_pref: "+54", number: "1112345678" }] } },
+      travellers: [{ type: "ADT", title: "Ms", name: "Ada", surnames: ["Lovelace"] }],
+    }
+
+    const response = await POST(
+      { json: jest.fn().mockResolvedValue({ booking }), headers: { get: jest.fn().mockReturnValue(null) } } as any,
+      { params: Promise.resolve({ id: "quotation-1" }) }
+    )
+    const body = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(enqueueProviderBooking).toHaveBeenCalledWith(expect.objectContaining({ quotationId: "quotation-1", operationId: "operation-1", form: booking }))
+    expect(upsert).toHaveBeenCalledWith(expect.objectContaining({ quotation_id: "quotation-1", remote_job_id: "22222222-2222-4222-8222-222222222222", status: "QUEUED" }), { onConflict: "quotation_id" })
+    expect(body.data.provider_booking).toEqual(expect.objectContaining({ job_id: "22222222-2222-4222-8222-222222222222" }))
+  })
+
+  it("rechaza una reserva sin referencias Delfos antes de convertir la cotización", async () => {
+    const query = quotationQueryWith("APPROVED")
+    ;(createServerClient as jest.Mock).mockResolvedValue({ from: jest.fn(() => query) })
+    ;(createAdminClient as jest.Mock).mockReturnValue({ from: jest.fn(() => query) })
+    ;(bookingItemsFromQuotation as jest.Mock).mockReturnValue([])
+    const booking = {
+      holder: { name: "Ada", surnames: ["Lovelace"], contact: { mails: ["ada@example.com"], phones: [{ country_pref: "+54", number: "1112345678" }] } },
+      travellers: [{ type: "ADT", title: "Ms", name: "Ada", surnames: ["Lovelace"] }],
+    }
+
+    const response = await POST(
+      { json: jest.fn().mockResolvedValue({ booking }), headers: { get: jest.fn().mockReturnValue(null) } } as any,
+      { params: Promise.resolve({ id: "quotation-1" }) }
+    )
+
+    expect(response.status).toBe(422)
+    expect(convertQuotationToOperation).not.toHaveBeenCalled()
+    expect(enqueueProviderBooking).not.toHaveBeenCalled()
   })
 })

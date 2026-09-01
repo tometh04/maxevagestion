@@ -17,6 +17,11 @@ import {
   processQuotationConversionEffects,
 } from "@/lib/quotations/conversion-effects"
 import { createAdminClient, createServerClient } from "@/lib/supabase/server"
+import {
+  bookingFormSchema,
+  bookingItemsFromQuotation,
+  enqueueProviderBooking,
+} from "@/lib/provider-booking/booking"
 
 export const dynamic = "force-dynamic"
 
@@ -26,6 +31,13 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const rawBody = typeof (request as any).json === "function"
+      ? await (request as any).json().catch(() => null)
+      : null
+    const bookingForm = rawBody?.booking ? bookingFormSchema.safeParse(rawBody.booking) : null
+    if (bookingForm && !bookingForm.success) {
+      return NextResponse.json({ error: "Los datos de titular y pasajeros no son válidos", details: bookingForm.error.flatten() }, { status: 400 })
+    }
     const { user } = await getCurrentUser()
     if (!user.org_id) {
       return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
@@ -47,7 +59,7 @@ export async function POST(
     const admin = createAdminClient()
     let quotationQuery = admin
       .from("quotations")
-      .select("id, org_id, agency_id, seller_id, status, operation_id")
+      .select("id, org_id, agency_id, seller_id, status, operation_id, quotation_options(id,is_selected), quotation_items(id,option_id,item_type,provider,cost_amount,cost_currency,currency,cost_basis,gross_price,offer_source)")
       .eq("id", id)
       .eq("org_id", user.org_id)
       .in("agency_id", memberAgencyIds)
@@ -67,6 +79,11 @@ export async function POST(
         { error: `La cotización no se puede convertir desde el estado ${quotation.status}` },
         { status: 409 }
       )
+    }
+
+    const providerItems = bookingForm?.success ? bookingItemsFromQuotation(quotation) : []
+    if (bookingForm?.success && providerItems.length === 0) {
+      return NextResponse.json({ error: "La opción aceptada no contiene ofertas Delfos reservables con su referencia original" }, { status: 422 })
     }
 
     // Una repetición idempotente no consume una segunda operación ni debe ser
@@ -98,6 +115,7 @@ export async function POST(
     })
 
     const warnings: string[] = []
+    let providerBooking: { request_id: string; job_id: string; status: string } | null = null
     let commissionErrors: string[] = []
     let financialEffectsStatus = "PENDING"
     try {
@@ -139,6 +157,33 @@ export async function POST(
     } else if (financialEffectsStatus === "PROCESSING" || financialEffectsStatus === "PENDING") {
       warnings.push("La operación quedó creada y sus comisiones se están procesando de forma segura.")
     }
+    if (bookingForm?.success) {
+      try {
+        const queued = await enqueueProviderBooking({
+          admin,
+          orgId: user.org_id,
+          agencyId: quotation.agency_id,
+          quotationId: quotation.id,
+          operationId: conversion.operationId,
+          form: bookingForm.data,
+          items: providerItems,
+        })
+        const { error: bookingWriteError } = await (admin as any).from("quotation_provider_bookings").upsert({
+          org_id: user.org_id,
+          agency_id: quotation.agency_id,
+          quotation_id: quotation.id,
+          operation_id: conversion.operationId,
+          request_id: queued.requestId,
+          remote_job_id: queued.jobId,
+          status: String(queued.status || "queued").toUpperCase(),
+          created_by: user.id,
+        }, { onConflict: "quotation_id" })
+        if (bookingWriteError) throw new Error("No se pudo guardar el seguimiento de la reserva")
+        providerBooking = { request_id: queued.requestId, job_id: queued.jobId, status: queued.status }
+      } catch (bookingError) {
+        warnings.push(bookingError instanceof Error ? bookingError.message : "La operación quedó creada, pero no se pudo encolar la reserva")
+      }
+    }
 
     await logAudit(supabase, {
       user_id: user.id,
@@ -165,6 +210,7 @@ export async function POST(
         services_created: conversion.servicesCreated,
         already_converted: conversion.alreadyConverted,
         financial_effects_status: financialEffectsStatus,
+        ...(bookingForm?.success ? { provider_booking: providerBooking } : {}),
       },
       warnings,
     })

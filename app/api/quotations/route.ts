@@ -62,7 +62,8 @@ export async function GET(request: Request) {
         *,
         lead:lead_id(id, contact_name, contact_phone, contact_email, destination, status),
         seller:seller_id(id, name, email),
-        quotation_options(*)
+        quotation_options(*),
+        quotation_items(*)
       `)
       .eq("org_id", user.org_id)
       .order("created_at", { ascending: false })
