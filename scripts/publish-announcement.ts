@@ -164,10 +164,18 @@ async function main() {
   console.log(`   [${data.type}] ${data.title}`)
   console.log(`   id: ${data.id}`)
   if (data.modal) {
+    // En hora argentina y no cortando el ISO: el vencimiento se guarda como
+    // 23:59:59 local, que en UTC ya es el día siguiente. Mostrar el ISO hacía
+    // que un `--modal-until 2026-09-15` se confirmara como "hasta el 16".
+    const vence = data.modal_ends_at
+      ? new Date(data.modal_ends_at).toLocaleString("es-AR", {
+          timeZone: "America/Argentina/Buenos_Aires",
+        })
+      : null
     console.log(
-      `   modal: sí — ${
-        data.modal_ends_at ? `hasta ${String(data.modal_ends_at).slice(0, 10)}` : "SIN VENCIMIENTO"
-      }, roles: ${data.modal_roles?.join(", ") || "todos"}`
+      `   modal: sí — ${vence ? `hasta ${vence}` : "SIN VENCIMIENTO"}, roles: ${
+        data.modal_roles?.join(", ") || "todos"
+      }`
     )
   }
 }
