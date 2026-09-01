@@ -53,26 +53,34 @@ export function NavUser({
   const router = useRouter()
 
   /**
-   * Navegacion DURA y no `router.push`.
+   * `scope: "local"` y navegacion DURA. Las dos cosas importan.
    *
-   * `signOut()` con el scope default (global) revoca todos los refresh tokens
-   * del usuario, pero un `router.push` es navegacion blanda: el cliente
-   * Supabase es un singleton a nivel modulo y sobrevive con sus timers de
-   * auto-refresh, su handler de visibilitychange y cualquier refresh en vuelo.
+   * El default de `signOut()` es `scope: "global"`, que borra los refresh
+   * tokens de TODAS las sesiones del usuario, en todos sus dispositivos y
+   * pestañas. Medido contra nuestro propio proyecto: despues de un signOut
+   * global, el refresh de otra sesion viva devuelve
+   * `400 refresh_token_not_found`. Y peor: un signOut global que llega tarde
+   * mata incluso a una sesion creada DESPUES.
    *
-   * Si el usuario vuelve a loguearse enseguida, ese refresh viejo falla — su
-   * token ya esta revocado — y gotrue-js, en el handler de error, llama
-   * `_removeSession()`: borra las cookies de auth, que a esa altura son las de
-   * la sesion NUEVA. El primer render server-side no encuentra sesion y manda
-   * al login. Reproducible: cerrar sesion y volver a entrar en el acto.
+   * Eso convierte cada pestaña abierta en una mina. Su cliente Supabase
+   * intenta refrescar, recibe un error no retryable, y `_recoverAndRefresh`
+   * llama `_removeSession()` — que borra la cookie de auth. La cookie es
+   * compartida entre pestañas, asi que si eso pasa despues de que volviste a
+   * entrar, se borra la sesion NUEVA. Sintoma: cerras sesion, entras de nuevo,
+   * y no tenes sesion en ninguna pantalla.
    *
-   * Recargar de verdad destruye el contexto JS, o sea el singleton, sus timers
-   * y todo lo que este en vuelo. No queda nada de la sesion vieja que pueda
-   * pisar a la nueva.
+   * Con `local` se revoca solo esta sesion: las demas siguen refrescando bien
+   * y nadie borra la cookie de nadie. Es tambien la semantica correcta para un
+   * boton "Cerrar sesion" del navegador.
+   *
+   * La navegacion dura completa el arreglo: recargar destruye el contexto JS,
+   * o sea el cliente singleton de `lib/supabase/client.ts`, sus timers de
+   * auto-refresh y cualquier request en vuelo. Con `router.push` todo eso
+   * sobrevivia a la navegacion.
    */
   const handleLogout = async () => {
     try {
-      await supabase.auth.signOut()
+      await supabase.auth.signOut({ scope: "local" })
     } catch (error) {
       // Si el signOut no sale (red caida), igual hay que sacar al usuario de
       // la app. El `finally` navega siempre.

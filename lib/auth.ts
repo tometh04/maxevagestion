@@ -1,4 +1,5 @@
 import { cache } from 'react'
+import { headers } from 'next/headers'
 import { createServerClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Database } from '@/lib/supabase/types'
@@ -19,6 +20,27 @@ export type User = UserRow & { roles: UserRole[] }
 // React.cache deduplica DENTRO del mismo request. Multi-tenant safe:
 // per-request scope, no global; distintos users = distintas cookies =
 // distintos requests = distinto cache.
+/**
+ * Adonde mandar a alguien sin sesion.
+ *
+ * En una pagina, `/login`. En una route handler NO: el `redirect` sale como
+ * 307 y el `fetch` del browser lo sigue, asi que la pantalla recibe el HTML del
+ * login donde esperaba JSON y lo unico visible es
+ * `SyntaxError: Unexpected token '<'`. Para esos casos se manda a un endpoint
+ * que devuelve un 401 parseable (ver `app/api/auth/unauthorized/route.ts`).
+ *
+ * El pathname viene del header que setea el middleware. Si falta, se asume
+ * pagina: mandar al login es el default seguro.
+ */
+export async function loginRedirectTarget(): Promise<string> {
+  try {
+    const pathname = (await headers()).get('x-pathname') ?? ''
+    return pathname.startsWith('/api/') ? '/api/auth/unauthorized' : '/login'
+  } catch {
+    return '/login'
+  }
+}
+
 export const getCurrentUser = cache(async (): Promise<{ user: User; session: { user: any } }> => {
   // BYPASS LOGIN EN DESARROLLO - TODO: Remover antes de producción
   // Seguridad: si DISABLE_AUTH=true pero NODE_ENV=production, ignoramos la flag.
@@ -89,7 +111,7 @@ export const getCurrentUser = cache(async (): Promise<{ user: User; session: { u
 
   if (authError || !authUser) {
     console.warn(`[auth] logout forzado en auth.getUser — ${describeError(authError)}`)
-    redirect('/login')
+    redirect(await loginRedirectTarget())
   }
 
   const { data: user, error } = await retryTransient(
@@ -118,7 +140,7 @@ export const getCurrentUser = cache(async (): Promise<{ user: User; session: { u
     console.warn(
       `[auth] logout forzado tras select users (auth_id=${authUser.id.slice(0, 8)}) — ${reason}`
     )
-    redirect('/login')
+    redirect(await loginRedirectTarget())
   }
 
   // Fusionar rol primario + roles adicionales en un array deduplicado.
