@@ -135,6 +135,33 @@ function describeRuleScope(
   return "Todos"
 }
 
+/** Lo mínimo que hace falta para ofrecer arrastrar una regla a lo ya calculado. */
+interface RuleToApply {
+  id: string
+  seller_id: string | null
+  seller_name: string | null
+  value: number
+  valid_from: string
+  valid_to: string | null
+}
+
+/** Lo que devuelve el GET de alcance: cuántas comisiones toca y cuántas no. */
+interface ApplyPreview {
+  percentage: number
+  window: { from: string; to: string | null }
+  aRecalcular: number
+  bloqueadas: number
+  yaEnElPorcentaje: number
+}
+
+interface ApplyDialogState {
+  open: boolean
+  rule: RuleToApply | null
+  preview: ApplyPreview | null
+  error: string | null
+  loading: boolean
+}
+
 /** Cómo se le explica al usuario de dónde salió el porcentaje. */
 const ORIGEN_PORCENTAJE: Record<SellerPercentageSource, string> = {
   SELLER_RULE: "Regla propia",
@@ -156,6 +183,14 @@ export function CommissionsSettings() {
   // Umbral de cobranza para habilitar el pago de comisión (% de la venta cobrado).
   const [collectionThreshold, setCollectionThreshold] = useState<string>("95")
   const [savingThreshold, setSavingThreshold] = useState(false)
+  const [applyDialog, setApplyDialog] = useState<ApplyDialogState>({
+    open: false,
+    rule: null,
+    preview: null,
+    error: null,
+    loading: false,
+  })
+  const [applying, setApplying] = useState(false)
 
   const form = useForm<CommissionRuleFormValues>({
     resolver: zodResolver(commissionRuleSchema),
@@ -347,6 +382,8 @@ export function CommissionsSettings() {
   const handleSubmit = async (values: CommissionRuleFormValues) => {
     setIsSaving(true)
     try {
+      let guardadaId: string | null = editingRule?.id ?? null
+
       if (editingRule) {
         // Update
         const response = await fetch(`/api/settings/commissions/${editingRule.id}`, {
@@ -369,15 +406,90 @@ export function CommissionsSettings() {
         if (!response.ok) {
           throw new Error("Error al crear")
         }
+
+        const creada = await response.json()
+        guardadaId = creada?.data?.id ?? creada?.rule?.id ?? creada?.id ?? null
       }
 
       setDialogOpen(false)
       fetchRules()
+
+      // Guardar la regla NO recalcula lo ya calculado: cada comisión guarda el
+      // porcentaje con el que nació. Ese es exactamente el reporte de Yamil
+      // ("cambiamos las comisiones pero no impacta desde agosto"), así que en
+      // vez de esperar a que alguien encuentre el botón, se ofrece al guardar.
+      if (guardadaId && values.type === "SELLER" && values.seller_id) {
+        openApplyDialog({
+          id: guardadaId,
+          seller_id: values.seller_id,
+          value: values.value,
+          valid_from: values.valid_from,
+          valid_to: values.valid_to ?? null,
+          seller_name: sellers.find((s) => s.id === values.seller_id)?.name ?? null,
+        })
+      }
     } catch (error) {
       console.error("Error saving rule:", error)
       toast.error("Error al guardar la regla")
     } finally {
       setIsSaving(false)
+    }
+  }
+
+  /**
+   * Cuántas comisiones ya calculadas cambiaría esta regla. Se consulta antes de
+   * abrir el diálogo: hacer confirmar a ciegas un cambio de plata no alcanza.
+   */
+  const openApplyDialog = async (rule: RuleToApply) => {
+    setApplyDialog({ open: true, rule, preview: null, error: null, loading: true })
+    try {
+      const response = await fetch(`/api/settings/commissions/${rule.id}/apply`)
+      const data = await response.json()
+      setApplyDialog({
+        open: true,
+        rule,
+        preview: response.ok ? data : null,
+        error: response.ok ? null : data.error || "No se pudo calcular el alcance",
+        loading: false,
+      })
+    } catch (error) {
+      console.error("Error consultando el alcance de la regla:", error)
+      setApplyDialog({
+        open: true,
+        rule,
+        preview: null,
+        error: "No se pudo calcular el alcance",
+        loading: false,
+      })
+    }
+  }
+
+  const closeApplyDialog = () =>
+    setApplyDialog({ open: false, rule: null, preview: null, error: null, loading: false })
+
+  const confirmApply = async () => {
+    if (!applyDialog.rule) return
+    setApplying(true)
+    try {
+      const response = await fetch(`/api/settings/commissions/${applyDialog.rule.id}/apply`, {
+        method: "POST",
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        toast.error(data.error || "No se pudieron recalcular las comisiones")
+        return
+      }
+      toast.success(
+        data.actualizadas > 0
+          ? `${data.actualizadas} comisiones recalculadas`
+          : "No había comisiones para recalcular"
+      )
+      closeApplyDialog()
+    } catch (error) {
+      console.error("Error aplicando la regla:", error)
+      toast.error("No se pudieron recalcular las comisiones")
+    } finally {
+      setApplying(false)
     }
   }
 
@@ -531,6 +643,31 @@ export function CommissionsSettings() {
                         <Button variant="ghost" size="sm" onClick={() => handleOpenDialog(rule)}>
                           Editar
                         </Button>
+                        {/*
+                          Cambiar el porcentaje no mueve las comisiones ya
+                          calculadas: cada una guarda el suyo. Esto las arrastra,
+                          acotado al período de vigencia de la regla.
+                        */}
+                        {rule.type === "SELLER" &&
+                          rule.seller_id &&
+                          rule.basis === "FIXED_PERCENTAGE" && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() =>
+                                openApplyDialog({
+                                  id: rule.id,
+                                  seller_id: rule.seller_id,
+                                  seller_name: rule.seller_name,
+                                  value: rule.value,
+                                  valid_from: rule.valid_from,
+                                  valid_to: rule.valid_to,
+                                })
+                              }
+                            >
+                              Aplicar
+                            </Button>
+                          )}
                         <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => handleDeleteClick(rule.id)}>
                           Eliminar
                         </Button>
@@ -856,6 +993,97 @@ export function CommissionsSettings() {
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+
+    {/*
+      Arrastrar la regla a las comisiones que ya estaban calculadas.
+
+      Se muestran los números ANTES de tocar nada: cuántas cambian, cuántas ya
+      estaban en el porcentaje nuevo y cuántas quedan afuera por tener plata
+      atrás. Confirmar a ciegas un cambio de comisiones no alcanza.
+    */}
+    <Dialog open={applyDialog.open} onOpenChange={(open) => !open && closeApplyDialog()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Aplicar a las comisiones ya calculadas</DialogTitle>
+          <DialogDescription>
+            Cambiar el porcentaje no modifica las comisiones que ya se calcularon: cada
+            una guarda el porcentaje con el que nació.
+          </DialogDescription>
+        </DialogHeader>
+
+        {applyDialog.loading ? (
+          <p className="text-sm text-muted-foreground py-4">Calculando el alcance...</p>
+        ) : applyDialog.error ? (
+          <Alert>
+            <Info className="h-4 w-4" />
+            <AlertDescription>{applyDialog.error}</AlertDescription>
+          </Alert>
+        ) : applyDialog.preview ? (
+          <div className="space-y-3 py-2">
+            <p className="text-sm">
+              <span className="font-medium">
+                {applyDialog.rule?.seller_name || "El vendedor"}
+              </span>{" "}
+              pasa a <span className="font-medium">{applyDialog.preview.percentage}%</span> en
+              las comisiones desde el{" "}
+              <span className="font-medium">
+                {format(
+                  parseDateOnlyLocal(applyDialog.preview.window.from) ??
+                    new Date(applyDialog.preview.window.from),
+                  "dd/MM/yyyy",
+                  { locale: es }
+                )}
+              </span>
+              {applyDialog.preview.window.to
+                ? ` hasta el ${format(
+                    parseDateOnlyLocal(applyDialog.preview.window.to) ??
+                      new Date(applyDialog.preview.window.to),
+                    "dd/MM/yyyy",
+                    { locale: es }
+                  )}`
+                : " en adelante"}
+              .
+            </p>
+
+            {applyDialog.preview.aRecalcular === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No hay comisiones pendientes en ese período.
+              </p>
+            ) : (
+              <ul className="text-sm space-y-1">
+                <li className="tabular-nums">
+                  <span className="font-medium">{applyDialog.preview.aRecalcular}</span> comisiones
+                  se recalculan
+                  {applyDialog.preview.yaEnElPorcentaje > 0 &&
+                    ` (${applyDialog.preview.yaEnElPorcentaje} ya estaban en ${applyDialog.preview.percentage}%)`}
+                </li>
+                {applyDialog.preview.bloqueadas > 0 && (
+                  <li className="tabular-nums text-muted-foreground">
+                    <span className="font-medium">{applyDialog.preview.bloqueadas}</span> quedan
+                    como están: ya se pagaron o se dieron por saldadas
+                  </li>
+                )}
+              </ul>
+            )}
+
+            <p className="text-xs text-muted-foreground">
+              Las comisiones de servicios no entran: llevan su propio porcentaje.
+            </p>
+          </div>
+        ) : null}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={closeApplyDialog} disabled={applying}>
+            {applyDialog.preview?.aRecalcular ? "Dejar como está" : "Cerrar"}
+          </Button>
+          {!!applyDialog.preview?.aRecalcular && (
+            <Button onClick={confirmApply} disabled={applying}>
+              {applying ? "Recalculando..." : "Recalcular"}
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
     </>
   )
 }
