@@ -11,6 +11,7 @@ import {
   roundQuotationMoney,
 } from "@/lib/quotations/totals"
 import type {
+  OfferRefreshJobSnapshot,
   OfferRefreshPort,
   OfferRefreshRequestItem,
 } from "@/lib/quotation-refresh/offer-refresh-port"
@@ -1186,6 +1187,39 @@ async function refreshInBatches(input: {
   }
 }
 
+function refreshBatches(requestId: string, items: OfferRefreshRequestItem[]) {
+  const batches: Array<{ requestId: string; items: OfferRefreshRequestItem[] }> = []
+  for (let index = 0; index < items.length; index += 50) {
+    const batch = items.slice(index, index + 50)
+    batches.push({
+      requestId: items.length <= 50 ? requestId : `${requestId}_${index / 50 + 1}`,
+      items: batch,
+    })
+  }
+  return batches
+}
+
+function combineJobResults(requestId: string, snapshots: OfferRefreshJobSnapshot[]): RemoteOfferRefreshResponse {
+  const responses = snapshots.map(snapshot => snapshot.result).filter(
+    (result): result is RemoteOfferRefreshResponse => Boolean(result)
+  )
+  if (responses.length !== snapshots.length) {
+    throw new QuotationRefreshError("REMOTE_FAILED", "Wholesale terminó un job sin resultado de precios.")
+  }
+  const statuses = responses.map(response => response.status)
+  return {
+    schema_version: "offer-refresh.v1",
+    request_id: requestId,
+    status: statuses.every(status => status === "complete")
+      ? "complete"
+      : statuses.every(status => status === "failed")
+        ? "failed"
+        : "partial",
+    checked_at: responses.map(response => response.checked_at).sort().at(-1) || new Date().toISOString(),
+    items: responses.flatMap(response => response.items),
+  }
+}
+
 export function createQuotationRefreshModule(deps: {
   db: Db
   offerRefresh: OfferRefreshPort
@@ -1221,6 +1255,36 @@ export function createQuotationRefreshModule(deps: {
       .eq("agency_id", input.agencyId)
       .maybeSingle()
     if (error || !data) throw new QuotationRefreshError("NOT_FOUND", "Actualización no encontrada.", error)
+    return data as Record<string, any>
+  }
+
+  async function completeRunningRun(
+    run: Record<string, any>,
+    quotation: Record<string, any>,
+    remote: RemoteOfferRefreshResponse
+  ) {
+    const lines = sourceLines(quotation)
+    const remoteByLine = new Map(remote.items.map(item => [item.client_item_id, item]))
+    const items = lines.map(line => toItemView(line, remoteByLine.get(line.row.id)))
+    const summary = makeSummary(quotation, items)
+    const validUntil = remoteValidUntil(remote, now().getTime())
+    const alreadyExpired = Date.parse(validUntil) <= now().getTime()
+    const { data, error } = await deps.db
+      .from("quotation_price_refresh_runs")
+      .update({
+        status: alreadyExpired ? "STALE" : "REVIEW_REQUIRED",
+        proposal_snapshot: { version: 1, items, remote },
+        summary,
+        completed_at: remote.checked_at,
+        valid_until: validUntil,
+        error_code: alreadyExpired ? "REVIEW_EXPIRED" : null,
+        error_message: alreadyExpired ? "La propuesta venció antes de completar la consulta. Volvé a intentarlo." : null,
+      })
+      .eq("id", run.id)
+      .eq("status", "RUNNING")
+      .select("*")
+      .single()
+    if (error || !data) throw mapDatabaseError(error, "No se pudo guardar la propuesta de actualización.")
     return data as Record<string, any>
   }
 
@@ -1411,32 +1475,60 @@ export function createQuotationRefreshModule(deps: {
         throw mapDatabaseError(insertError, "No se pudo iniciar la actualización.")
       }
 
+      const requestItems = lines.flatMap(line => line.request ? [line.request] : [])
+      if (requestItems.length > 0 && deps.offerRefresh.enqueue && deps.offerRefresh.read) {
+        try {
+          const jobs: Array<Record<string, unknown>> = []
+          for (const batch of refreshBatches(requestId, requestItems)) {
+            const accepted = await deps.offerRefresh.enqueue({
+              apiKey: credential.apiKey,
+              requestId: batch.requestId,
+              items: batch.items,
+            })
+            jobs.push({
+              job_id: accepted.jobId,
+              request_id: accepted.requestId,
+              item_ids: batch.items.map(item => item.client_item_id),
+              status: accepted.status,
+              stage: accepted.stage,
+            })
+          }
+          const { data: queued, error: queueError } = await deps.db
+            .from("quotation_price_refresh_runs")
+            .update({ remote_jobs: jobs })
+            .eq("id", runId)
+            .eq("status", "RUNNING")
+            .select("*")
+            .single()
+          if (queueError || !queued) {
+            throw mapDatabaseError(queueError, "No se pudo vincular el job de actualización.")
+          }
+          return runView(queued)
+        } catch (error) {
+          await deps.db
+            .from("quotation_price_refresh_runs")
+            .update({
+              status: "FAILED",
+              error_code: error instanceof Error && "code" in error ? String((error as any).code) : "REMOTE_FAILED",
+              error_message: error instanceof Error ? error.message : "No se pudo encolar la actualización de precios.",
+              completed_at: now().toISOString(),
+            })
+            .eq("id", runId)
+            .eq("status", "RUNNING")
+          if (error instanceof QuotationRefreshError) throw error
+          throw new QuotationRefreshError(
+            "REMOTE_FAILED",
+            error instanceof Error ? error.message : "No se pudo encolar la actualización de precios.",
+            error
+          )
+        }
+      }
+
       try {
-        const requestItems = lines.flatMap(line => line.request ? [line.request] : [])
         const remote = requestItems.length > 0
           ? await refreshInBatches({ port: deps.offerRefresh, apiKey: credential.apiKey, requestId, items: requestItems })
           : { schema_version: "offer-refresh.v1" as const, request_id: requestId, status: "complete" as const, checked_at: now().toISOString(), items: [] }
-        const remoteByLine = new Map(remote.items.map(item => [item.client_item_id, item]))
-        const items = lines.map(line => toItemView(line, remoteByLine.get(line.row.id)))
-        const summary = makeSummary(quotation, items)
-        const validUntil = remoteValidUntil(remote, now().getTime())
-        const alreadyExpired = Date.parse(validUntil) <= now().getTime()
-        const { data: completed, error: updateError } = await deps.db
-          .from("quotation_price_refresh_runs")
-          .update({
-            status: alreadyExpired ? "STALE" : "REVIEW_REQUIRED",
-            proposal_snapshot: { version: 1, items, remote },
-            summary,
-            completed_at: remote.checked_at,
-            valid_until: validUntil,
-            error_code: alreadyExpired ? "REVIEW_EXPIRED" : null,
-            error_message: alreadyExpired ? "La propuesta venció antes de completar la consulta. Volvé a intentarlo." : null,
-          })
-          .eq("id", runId)
-          .eq("status", "RUNNING")
-          .select("*")
-          .single()
-        if (updateError || !completed) throw mapDatabaseError(updateError, "No se pudo guardar la propuesta de actualización.")
+        const completed = await completeRunningRun(inserted, quotation, remote)
         return runView(completed)
       } catch (error) {
         await deps.db
@@ -1460,6 +1552,83 @@ export function createQuotationRefreshModule(deps: {
 
     async read(input: QuotationRefreshReadInput): Promise<QuotationRefreshRunView> {
       const run = await loadRun(input)
+      const remoteJobs = Array.isArray(run.remote_jobs) ? run.remote_jobs : []
+      if (
+        run.status === "RUNNING"
+        && remoteJobs.length > 0
+        && deps.offerRefresh.read
+      ) {
+        const quotation = run.source_snapshot?.quotation
+        if (!quotation || typeof quotation !== "object") {
+          throw new QuotationRefreshError("PERSISTENCE_FAILED", "La actualización no conserva su cotización de origen.")
+        }
+        let credential
+        try {
+          credential = await resolveCredential({
+            admin: deps.db,
+            orgId: input.orgId,
+            agencyId: input.agencyId,
+          })
+        } catch (error) {
+          throw new QuotationRefreshError(
+            "CREDENTIAL_UNAVAILABLE",
+            error instanceof Error ? error.message : "La agencia no tiene una credencial válida de Emilia.",
+            error
+          )
+        }
+        const requestItems = sourceLines(quotation).flatMap(line => line.request ? [line.request] : [])
+        const byId = new Map(requestItems.map(item => [item.client_item_id, item]))
+        const snapshots: OfferRefreshJobSnapshot[] = []
+        for (const remoteJob of remoteJobs) {
+          const batchItems = (Array.isArray(remoteJob.item_ids) ? remoteJob.item_ids : [])
+            .map((id: unknown) => typeof id === "string" ? byId.get(id) : undefined)
+            .filter((item: OfferRefreshRequestItem | undefined): item is OfferRefreshRequestItem => Boolean(item))
+          if (batchItems.length === 0) {
+            throw new QuotationRefreshError("PERSISTENCE_FAILED", "El job remoto perdió sus servicios asociados.")
+          }
+          snapshots.push(await deps.offerRefresh.read({
+            apiKey: credential.apiKey,
+            jobId: String(remoteJob.job_id),
+            requestId: String(remoteJob.request_id),
+            items: batchItems,
+          }))
+        }
+        if (snapshots.some(snapshot => snapshot.status === "failed")) {
+          const failure = snapshots.find(snapshot => snapshot.status === "failed")
+          const { data, error } = await deps.db
+            .from("quotation_price_refresh_runs")
+            .update({
+              status: "FAILED",
+              error_code: failure?.error?.code || "REMOTE_FAILED",
+              error_message: failure?.error?.message || "Wholesale no pudo actualizar los precios.",
+              completed_at: now().toISOString(),
+            })
+            .eq("id", run.id)
+            .eq("status", "RUNNING")
+            .select("*")
+            .single()
+          if (error || !data) throw mapDatabaseError(error, "No se pudo guardar el fallo de actualización.")
+          return runView(data)
+        }
+        if (snapshots.every(snapshot => snapshot.status === "completed")) {
+          const remote = combineJobResults(run.remote_request_id, snapshots)
+          return runView(await completeRunningRun(run, quotation, remote))
+        }
+        const nextJobs = remoteJobs.map((remoteJob: Record<string, any>, index: number) => ({
+          ...remoteJob,
+          status: snapshots[index].status,
+          stage: snapshots[index].stage,
+        }))
+        const { data, error } = await deps.db
+          .from("quotation_price_refresh_runs")
+          .update({ remote_jobs: nextJobs })
+          .eq("id", run.id)
+          .eq("status", "RUNNING")
+          .select("*")
+          .single()
+        if (error || !data) throw mapDatabaseError(error, "No se pudo guardar el avance de la actualización.")
+        return runView(data)
+      }
       const runningExpired = runLeaseExpired(run, now().getTime())
       const pendingReviewExpired = reviewExpired(run, now().getTime())
       if (!runningExpired && !pendingReviewExpired) return runView(run)

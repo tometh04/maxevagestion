@@ -357,7 +357,6 @@ export function QuotationPriceRefreshDialog({
               expected_updated_at: quotation.updated_at,
               idempotency_key: idempotencyKeyRef.current,
             }),
-            signal: controller.signal,
           }
         )
         let currentRun = extractRun(await requestPayload(startResponse))

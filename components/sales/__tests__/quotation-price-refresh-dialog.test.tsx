@@ -196,6 +196,7 @@ describe("QuotationPriceRefreshDialog", () => {
 
     const startCall = fetchMock.mock.calls[1]
     expect(startCall[0]).toBe("/api/quotations/" + QUOTATION_ID + "/price-refresh")
+    expect(startCall[1]).not.toHaveProperty("signal")
     const startBody = JSON.parse(String((startCall[1] as RequestInit).body))
     expect(startBody).toEqual(expect.objectContaining({
       expected_updated_at: SOURCE_VERSION,

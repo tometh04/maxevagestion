@@ -262,6 +262,70 @@ function moduleFor(db: FakeDb, port: OfferRefreshPort) {
 }
 
 describe("QuotationRefresh module", () => {
+  it("deja el precio en background y materializa los cambios al consultar el mismo run", async () => {
+    const line = item(1)
+    const source = quotation([line])
+    const db = new FakeDb(source)
+    const enqueue = jest.fn(async () => ({
+      jobId: "99999999-9999-4999-8999-999999999999",
+      requestId: "req_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      status: "queued" as const,
+      stage: "queued",
+      result: null,
+      error: null,
+    }))
+    const read = jest.fn(async () => ({
+      jobId: "99999999-9999-4999-8999-999999999999",
+      requestId: "req_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      status: "completed" as const,
+      stage: "completed",
+      result: {
+        schema_version: "offer-refresh.v1" as const,
+        request_id: "req_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        status: "complete" as const,
+        checked_at: "2026-08-29T12:05:01.000Z",
+        items: [remoteItem(line, 120)],
+      },
+      error: null,
+    }))
+    const module = moduleFor(db, {
+      refresh: jest.fn(() => { throw new Error("synchronous refresh must not run") }),
+      enqueue,
+      read,
+    } as unknown as OfferRefreshPort)
+
+    const started = await module.start({
+      quotationId: source.id,
+      orgId: source.org_id,
+      agencyId: source.agency_id,
+      actorId: source.seller_id,
+      expectedUpdatedAt: source.updated_at,
+      idempotencyKey: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    })
+
+    expect(started.status).toBe("RUNNING")
+    expect(enqueue).toHaveBeenCalledTimes(1)
+    expect(read).not.toHaveBeenCalled()
+    expect(db.tables.quotation_price_refresh_runs[0].remote_jobs).toEqual([expect.objectContaining({
+      job_id: "99999999-9999-4999-8999-999999999999",
+      request_id: "req_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    })])
+
+    const completed = await module.read({
+      quotationId: source.id,
+      runId: started.id,
+      orgId: source.org_id,
+      agencyId: source.agency_id,
+    })
+
+    expect(completed.status).toBe("REVIEW_REQUIRED")
+    expect(completed.items[0]).toMatchObject({
+      outcome: "PRICE_CHANGED",
+      current: { cost_amount: 100 },
+      refreshed: { cost_amount: 120 },
+    })
+  })
+
   it("conserva el source exacto después del round-trip canónico a cotización", async () => {
     const cards = canonicalOfferCards({
       outcome: {
@@ -1353,5 +1417,18 @@ describe("QuotationRefresh module", () => {
     const destructiveSwap = sql.indexOf("DELETE FROM public.quotation_items")
     expect(expiryGuard).toBeGreaterThan(-1)
     expect(destructiveSwap).toBeGreaterThan(expiryGuard)
+  })
+
+  it("persiste los jobs remotos sin relajar el scope server-only del refresh", () => {
+    const sql = readFileSync(
+      join(process.cwd(), "supabase/migrations/20260901000008_quotation_refresh_remote_jobs.sql"),
+      "utf8"
+    )
+    expect(sql).toMatch(/ADD COLUMN IF NOT EXISTS remote_jobs JSONB NOT NULL DEFAULT '\[\]'::jsonb/i)
+    expect(sql).toMatch(/jsonb_typeof\(remote_jobs\) = 'array'/i)
+    expect(sql).toMatch(/jsonb_array_length\(remote_jobs\) <= 10/i)
+    expect(sql).toMatch(/FORCE ROW LEVEL SECURITY/i)
+    expect(sql).toMatch(/REVOKE ALL PRIVILEGES[\s\S]*PUBLIC, anon, authenticated/i)
+    expect(sql).not.toMatch(/DROP TABLE|TRUNCATE|DELETE FROM public\.quotation_price_refresh_runs/i)
   })
 })

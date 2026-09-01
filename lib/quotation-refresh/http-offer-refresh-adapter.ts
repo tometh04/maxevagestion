@@ -1,6 +1,7 @@
 import {
   OfferRefreshPortError,
   type OfferRefreshPort,
+  type OfferRefreshRequestItem,
 } from "@/lib/quotation-refresh/offer-refresh-port"
 import type { RemoteOfferRefreshResponse } from "@/lib/quotation-refresh/types"
 import { z } from "zod"
@@ -65,6 +66,25 @@ const responseSchema = z.object({
   is_retry: z.boolean().optional(),
   cached_at: z.string().datetime({ offset: true }).optional(),
 }).strict()
+const jobSchema = z.object({
+  schema_version: z.literal("offer-refresh-job.v1"),
+  success: z.boolean(),
+  job_id: z.string().uuid(),
+  request_id: z.string().min(1),
+  status: z.enum(["queued", "processing", "completed", "failed"]),
+  stage: z.string().min(1),
+  attempt: z.number().int().nonnegative(),
+  max_attempts: z.number().int().positive(),
+  poll_after_ms: z.number().int().nonnegative().optional(),
+  result: responseSchema.optional(),
+  error: z.object({
+    code: z.string().optional(),
+    message: z.string(),
+    retryable: z.boolean().optional(),
+  }).passthrough().optional(),
+  created_at: z.string().datetime({ offset: true }),
+  completed_at: z.string().datetime({ offset: true }).nullable(),
+}).strict()
 
 function offerRefreshUrl() {
   return process.env.EMILIA_OFFER_REFRESH_URL?.trim()
@@ -82,6 +102,60 @@ function mapRemoteError(status: number) {
   if (status === 409) return "IDEMPOTENCY_CONFLICT" as const
   if (status === 429) return "RATE_LIMITED" as const
   return "REMOTE_UNAVAILABLE" as const
+}
+
+function jobUrl(url: string) {
+  return url.replace(/\/offer-refresh\/?$/, "/offer-refreshes")
+}
+
+function requestBody(requestId: string, items: OfferRefreshRequestItem[]) {
+  return {
+    request_id: requestId,
+    items: items.map(item => ({
+      client_item_id: item.client_item_id,
+      current: item.current,
+      source: item.source ? { type: "search_artifact", ...item.source } : undefined,
+      fallback: item.fallback,
+    })),
+  }
+}
+
+function parseResponse(payload: unknown, requestId: string, items: OfferRefreshRequestItem[]) {
+  const parsed = responseSchema.safeParse(payload)
+  const requestedIds = items.map(item => item.client_item_id).sort()
+  const returnedIds = parsed.success
+    ? parsed.data.items.map(item => item.client_item_id).sort()
+    : []
+  const requestedById = new Map(items.map(item => [item.client_item_id, item]))
+  const responseMatchesRequest = parsed.success && parsed.data.items.every(item => {
+    const requested = requestedById.get(item.client_item_id)
+    const product = requested?.source?.product || requested?.fallback?.product
+    if (!requested || !product || item.product !== product) return false
+    if (
+      item.previous.price.amount !== requested.current.amount
+      || item.previous.price.currency !== requested.current.currency
+      || item.previous.price.basis !== requested.current.basis
+    ) return false
+    const sources = [
+      item.source,
+      item.current?.source,
+      ...item.candidates.map(candidate => candidate.source),
+    ].filter(Boolean)
+    return sources.every(source => source?.product === product)
+  })
+  if (
+    !parsed.success
+    || parsed.data.request_id !== requestId
+    || new Set(returnedIds).size !== returnedIds.length
+    || JSON.stringify(returnedIds) !== JSON.stringify(requestedIds)
+    || !responseMatchesRequest
+  ) {
+    throw new OfferRefreshPortError(
+      "INVALID_RESPONSE",
+      "El actualizador devolvió una respuesta inválida."
+    )
+  }
+  return parsed.data as RemoteOfferRefreshResponse
 }
 
 function requestProgressDelay(response: Response) {
@@ -108,6 +182,91 @@ export function createHttpOfferRefreshAdapter(input: {
   const fetchImpl = input.fetchImpl || fetch
 
   return {
+    async enqueue(request) {
+      const url = jobUrl(input.url || offerRefreshUrl())
+      let response: Response
+      let payload: unknown
+      try {
+        response = await fetchImpl(url, {
+          method: "POST",
+          headers: {
+            "X-API-Key": request.apiKey,
+            "Content-Type": "application/json",
+            "User-Agent": "Vibook-Quotation-Refresh/1.0",
+          },
+          body: JSON.stringify(requestBody(request.requestId, request.items)),
+          cache: "no-store",
+        })
+        payload = await response.json().catch(() => null)
+      } catch {
+        throw new OfferRefreshPortError("REMOTE_UNAVAILABLE", "No se pudo encolar la actualización de ofertas.")
+      }
+      if (!response.ok) {
+        throw new OfferRefreshPortError(
+          mapRemoteError(response.status),
+          (payload as any)?.error?.message || "No se pudo encolar la actualización de ofertas.",
+          response.status
+        )
+      }
+      const parsed = jobSchema.safeParse(payload)
+      if (!parsed.success || parsed.data.request_id !== request.requestId) {
+        throw new OfferRefreshPortError("INVALID_RESPONSE", "Wholesale devolvió un job inválido.")
+      }
+      return {
+        jobId: parsed.data.job_id,
+        requestId: parsed.data.request_id,
+        status: parsed.data.status,
+        stage: parsed.data.stage,
+        result: parsed.data.result
+          ? parseResponse(parsed.data.result, request.requestId, request.items)
+          : null,
+        error: parsed.data.error || null,
+      }
+    },
+
+    async read(request) {
+      let response: Response
+      let payload: unknown
+      try {
+        response = await fetchImpl(`${jobUrl(input.url || offerRefreshUrl())}/${encodeURIComponent(request.jobId)}`, {
+          method: "GET",
+          headers: {
+            "X-API-Key": request.apiKey,
+            "User-Agent": "Vibook-Quotation-Refresh/1.0",
+          },
+          cache: "no-store",
+        })
+        payload = await response.json().catch(() => null)
+      } catch {
+        throw new OfferRefreshPortError("REMOTE_UNAVAILABLE", "No se pudo consultar la actualización de ofertas.")
+      }
+      if (!response.ok) {
+        throw new OfferRefreshPortError(
+          mapRemoteError(response.status),
+          (payload as any)?.error?.message || "No se pudo consultar la actualización de ofertas.",
+          response.status
+        )
+      }
+      const parsed = jobSchema.safeParse(payload)
+      if (
+        !parsed.success
+        || parsed.data.job_id !== request.jobId
+        || parsed.data.request_id !== request.requestId
+      ) {
+        throw new OfferRefreshPortError("INVALID_RESPONSE", "Wholesale devolvió un estado de job inválido.")
+      }
+      return {
+        jobId: parsed.data.job_id,
+        requestId: parsed.data.request_id,
+        status: parsed.data.status,
+        stage: parsed.data.stage,
+        result: parsed.data.result
+          ? parseResponse(parsed.data.result, request.requestId, request.items)
+          : null,
+        error: parsed.data.error || null,
+      }
+    },
+
     async refresh(request) {
       const controller = new AbortController()
       const timeout = setTimeout(() => controller.abort(), input.timeout || timeoutMs())
@@ -122,15 +281,7 @@ export function createHttpOfferRefreshAdapter(input: {
               "Content-Type": "application/json",
               "User-Agent": "Vibook-Quotation-Refresh/1.0",
             },
-            body: JSON.stringify({
-              request_id: request.requestId,
-              items: request.items.map(item => ({
-                client_item_id: item.client_item_id,
-                current: item.current,
-                source: item.source ? { type: "search_artifact", ...item.source } : undefined,
-                fallback: item.fallback,
-              })),
-            }),
+            body: JSON.stringify(requestBody(request.requestId, request.items)),
             signal: controller.signal,
             cache: "no-store",
           })
@@ -163,41 +314,7 @@ export function createHttpOfferRefreshAdapter(input: {
           response.status
         )
       }
-      const parsed = responseSchema.safeParse(payload)
-      const requestedIds = request.items.map(item => item.client_item_id).sort()
-      const returnedIds = parsed.success
-        ? parsed.data.items.map(item => item.client_item_id).sort()
-        : []
-      const requestedById = new Map(request.items.map(item => [item.client_item_id, item]))
-      const responseMatchesRequest = parsed.success && parsed.data.items.every(item => {
-        const requested = requestedById.get(item.client_item_id)
-        const product = requested?.source?.product || requested?.fallback?.product
-        if (!requested || !product || item.product !== product) return false
-        if (
-          item.previous.price.amount !== requested.current.amount
-          || item.previous.price.currency !== requested.current.currency
-          || item.previous.price.basis !== requested.current.basis
-        ) return false
-        const sources = [
-          item.source,
-          item.current?.source,
-          ...item.candidates.map(candidate => candidate.source),
-        ].filter(Boolean)
-        return sources.every(source => source?.product === product)
-      })
-      if (
-        !parsed.success
-        || parsed.data.request_id !== request.requestId
-        || new Set(returnedIds).size !== returnedIds.length
-        || JSON.stringify(returnedIds) !== JSON.stringify(requestedIds)
-        || !responseMatchesRequest
-      ) {
-        throw new OfferRefreshPortError(
-          "INVALID_RESPONSE",
-          "El actualizador devolvió una respuesta inválida."
-        )
-      }
-      return parsed.data as RemoteOfferRefreshResponse
+      return parseResponse(payload, request.requestId, request.items)
     },
   }
 }
