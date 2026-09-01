@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import {
@@ -32,16 +31,39 @@ interface NavbarProps {
 }
 
 export function Navbar({ user, agencies = [], currentAgencyId }: NavbarProps) {
-  const router = useRouter()
   const [aiOpen, setAiOpen] = useState(false)
   const [aiMessage, setAiMessage] = useState("")
   const [aiLoading, setAiLoading] = useState(false)
   const [aiHistory, setAiHistory] = useState<Array<{ role: string; content: string }>>([])
 
+  /**
+   * Navegacion DURA y no `router.push`.
+   *
+   * `signOut()` con el scope default (global) revoca todos los refresh tokens
+   * del usuario, pero un `router.push` es navegacion blanda: el cliente
+   * Supabase es un singleton a nivel modulo y sobrevive con sus timers de
+   * auto-refresh, su handler de visibilitychange y cualquier refresh en vuelo.
+   *
+   * Si el usuario vuelve a loguearse enseguida, ese refresh viejo falla — su
+   * token ya esta revocado — y gotrue-js, en el handler de error, llama
+   * `_removeSession()`: borra las cookies de auth, que a esa altura son las de
+   * la sesion NUEVA. El primer render server-side no encuentra sesion y manda
+   * al login. Reproducible: cerrar sesion y volver a entrar en el acto.
+   *
+   * Recargar de verdad destruye el contexto JS, o sea el singleton, sus timers
+   * y todo lo que este en vuelo. No queda nada de la sesion vieja que pueda
+   * pisar a la nueva.
+   */
   const handleLogout = async () => {
-    await supabase.auth.signOut()
-    router.push("/login")
-    router.refresh()
+    try {
+      await supabase.auth.signOut()
+    } catch (error) {
+      // Si el signOut no sale (red caida), igual hay que sacar al usuario de
+      // la app. El `finally` navega siempre.
+      console.error("[auth] signOut fallo, se sale igual:", error)
+    } finally {
+      window.location.assign("/login")
+    }
   }
 
   const handleAISend = async () => {
