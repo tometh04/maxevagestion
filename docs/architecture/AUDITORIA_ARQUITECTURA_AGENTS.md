@@ -272,6 +272,7 @@ El patron real esta en `lib/cron/auth.ts`:
 - `exchange-rates`
 - `generate-monthly-commissions`
 - `notifications`
+- `past-due-reminders`
 - `payment-reminders`
 - `recurring-payments`
 - `task-reminders`

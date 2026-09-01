@@ -22,11 +22,19 @@ import { downloadQuotationPdfFromPriceDialog } from "@/lib/pdf/quotation-pdf-htm
 import {
   formatQuotationCurrency,
   getQuotationOptionPricing,
+  QUOTATION_STATUS_LABELS,
 } from "@/lib/quotations/presentation"
 import { QuotationPdfPriceDialog } from "@/components/sales/quotation-pdf-price-dialog"
 import { QuotationPriceRefreshDialog } from "@/components/sales/quotation-price-refresh-dialog"
-import { fetchQuotationDocumentForUser } from "@/lib/quotation-documents/client"
+import {
+  fetchQuotationDocumentForUser,
+  QuotationDocumentDownloadError,
+  type QuotationDocumentPayload,
+} from "@/lib/quotation-documents/client"
 import { getQuotationCustomerTotal } from "@/lib/quotations/totals"
+import { hasReadyQuotationDocument } from "@/lib/quotations/document-projection"
+import { isQuotationContentEditable } from "@/lib/quotations/lifecycle"
+import { getQuotationStatusColors } from "@/lib/vibook-status-colors"
 import { QuotationQuotaCard } from "@/components/sales/quotation-quota-card"
 
 interface QuotationsDashboardProps {
@@ -135,18 +143,38 @@ export function QuotationsDashboard({ sellers, agencies, currentUserRole, curren
     propagateError = false,
     expectedUpdatedAt?: string
   ) => {
+    const applyIssuedDocument = (document: QuotationDocumentPayload) => {
+      if (!document.issuedDocumentId) return
+      setQuotationsList(current => current.map(item => item.id === quotation.id
+        ? {
+            ...item,
+            active_document_id: document.issuedDocumentId,
+            status: document.quotationStatus || item.status,
+            document: {
+              status: "READY",
+              active_document_id: document.issuedDocumentId,
+            },
+          }
+        : item))
+    }
     setDownloadingId(quotation.id)
     try {
-      const result = await downloadQuotationPdfFromPriceDialog({
+      const document = await downloadQuotationPdfFromPriceDialog({
         quotationId: quotation.id,
         publicToken: quotation.public_token,
         expectedUpdatedAt,
       })
-      if (result === "none") throw new Error("No hay un documento disponible")
+      applyIssuedDocument(document)
+      void fetchQuotationsList()
+      return document
     } catch (err) {
       console.error("Error downloading PDF:", err)
-      toast.error("Error al descargar PDF")
+      if (err instanceof QuotationDocumentDownloadError) {
+        applyIssuedDocument(err.document)
+      }
+      void fetchQuotationsList()
       if (propagateError) throw err
+      toast.error(err instanceof Error ? err.message : "Error al descargar PDF")
     } finally {
       setDownloadingId(null)
     }
@@ -235,16 +263,11 @@ export function QuotationsDashboard({ sellers, agencies, currentUserRole, curren
                 </TableHeader>
                 <TableBody>
                   {quotationsList.map((q) => {
-                    const statusConfig: Record<string, { label: string; color: string }> = {
-                      DRAFT: { label: "Borrador", color: "bg-muted text-muted-foreground" },
-                      SENT: { label: "Enviada", color: "bg-accent-teal/10 text-accent-teal" },
-                      PENDING_APPROVAL: { label: "Pendiente", color: "bg-accent-coral/10 text-accent-coral" },
-                      APPROVED: { label: "Aprobada", color: "bg-success/10 text-success" },
-                      REJECTED: { label: "Rechazada", color: "bg-destructive/10 text-destructive" },
-                      EXPIRED: { label: "Vencida", color: "bg-accent-coral/10 text-accent-coral" },
-                      CONVERTED: { label: "Convertida", color: "bg-primary/10 text-primary" },
-                    }
-                    const sc = statusConfig[q.status] || statusConfig.DRAFT
+                    const statusColors = getQuotationStatusColors(q.status)
+                    const statusLabel = QUOTATION_STATUS_LABELS[q.status] || q.status
+                    const statusClasses = `${statusColors.bg} ${statusColors.text} ${statusColors.border}`
+                    const documentReady = hasReadyQuotationDocument(q)
+                    const quotationEditable = isQuotationContentEditable(q.status)
                     const canConvert = q.status === "APPROVED"
                     const canRefreshPrices = ["DRAFT", "SENT", "PENDING_APPROVAL"].includes(q.status)
                     const displayAmount = getQuotationDisplayAmount(q)
@@ -264,9 +287,19 @@ export function QuotationsDashboard({ sellers, agencies, currentUserRole, curren
                           </span>
                         </TableCell>
                         <TableCell>
-                          <Badge variant="secondary" className={`text-[10px] px-1.5 py-0 ${sc.color}`}>
-                            {sc.label}
-                          </Badge>
+                          <div className="flex flex-col items-start gap-1">
+                            <Badge variant="secondary" className={`text-[10px] px-1.5 py-0 ${statusClasses}`}>
+                              {statusLabel}
+                            </Badge>
+                            <Badge
+                              variant="outline"
+                              className={documentReady
+                                ? "text-[10px] px-1.5 py-0 border-success/30 text-success"
+                                : "text-[10px] px-1.5 py-0 text-muted-foreground"}
+                            >
+                              {documentReady ? "Documento emitido" : "Sin emitir"}
+                            </Badge>
+                          </div>
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground">
                           {format(new Date(q.created_at), "dd/MM/yy")}
@@ -280,7 +313,7 @@ export function QuotationsDashboard({ sellers, agencies, currentUserRole, curren
                                 className="h-7 w-7 p-0"
                                 onClick={() => setPriceRefreshQuotationId(q.id)}
                                 title="Actualizar precio y disponibilidad"
-                                aria-label={"Actualizar precio y disponibilidad de " + q.quotation_number}
+                                aria-label={`Actualizar precio y disponibilidad de ${q.quotation_number}`}
                               >
                                 <RefreshCw className="h-3.5 w-3.5" />
                               </Button>
@@ -301,14 +334,14 @@ export function QuotationsDashboard({ sellers, agencies, currentUserRole, curren
                               size="sm"
                               className="h-7 w-7 p-0"
                               onClick={() => {
-                                if (["DRAFT", "SENT", "PENDING_APPROVAL"].includes(q.status)) {
+                                if (quotationEditable) {
                                   setPdfPriceQuotation(q)
                                 } else {
                                   void handleDownloadPDF(q)
                                 }
                               }}
-                              disabled={downloadingId === q.id}
-                              title="Descargar PDF"
+                              disabled={downloadingId === q.id || (!quotationEditable && !documentReady)}
+                              title={!quotationEditable && !documentReady ? "La cotización no tiene un PDF emitido" : "Descargar PDF"}
                             >
                               {downloadingId === q.id ? (
                                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -374,7 +407,7 @@ export function QuotationsDashboard({ sellers, agencies, currentUserRole, curren
         quotationId={pdfPriceQuotation?.id ?? null}
         onClose={() => setPdfPriceQuotation(null)}
         onGenerate={async (_quotationId, expectedUpdatedAt) => {
-          if (pdfPriceQuotation) await handleDownloadPDF(pdfPriceQuotation, true, expectedUpdatedAt)
+          if (pdfPriceQuotation) return handleDownloadPDF(pdfPriceQuotation, true, expectedUpdatedAt)
         }}
         sendValidationError={!pdfPriceQuotation?.public_token
           ? "La cotización no tiene enlace público"
@@ -387,7 +420,7 @@ export function QuotationsDashboard({ sellers, agencies, currentUserRole, curren
           const phone = rawPhone.replace(/[^0-9+]/g, "")
           if (!token) throw new Error("La cotización no tiene enlace público")
           if (!phone) throw new Error("El lead no tiene un teléfono para WhatsApp")
-          await fetchQuotationDocumentForUser(pdfPriceQuotation.id, {
+          const document = await fetchQuotationDocumentForUser(pdfPriceQuotation.id, {
             issue: true,
             markSent: true,
             expectedUpdatedAt,
@@ -399,6 +432,7 @@ export function QuotationsDashboard({ sellers, agencies, currentUserRole, curren
           const whatsappUrl = `https://wa.me/${cleanPhone}?text=${message}`
           sendWindow.location.href = whatsappUrl
           toast.success("Cotización preparada para enviar")
+          return document
         } : undefined}
       />
 

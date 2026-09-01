@@ -26,18 +26,18 @@ export async function GET(
     })
     return NextResponse.json({ data: { run } }, { headers: { "Cache-Control": "no-store" } })
   } catch (error) {
-    if ((error as { digest?: string })?.digest === "NEXT_REDIRECT") throw error
+    if ((error as { digest?: string })?.digest?.startsWith("NEXT_REDIRECT")) throw error
     const response = quotationRefreshHttpError(error)
     return NextResponse.json(response.body, { status: response.status })
   }
 }
-
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string; runId: string }> }
 ) {
   try {
     const { id, runId } = await params
+    const context = await quotationRefreshRequestContext(id, "write")
     const parsed = discardSchema.safeParse(await request.json())
     if (!parsed.success) {
       return NextResponse.json(
@@ -45,7 +45,6 @@ export async function DELETE(
         { status: 400 }
       )
     }
-    const context = await quotationRefreshRequestContext(id, "write")
     const run = await context.module.discard({
       quotationId: id,
       runId,
@@ -55,7 +54,7 @@ export async function DELETE(
     })
     return NextResponse.json({ data: { run } }, { headers: { "Cache-Control": "no-store" } })
   } catch (error) {
-    if ((error as { digest?: string })?.digest === "NEXT_REDIRECT") throw error
+    if ((error as { digest?: string })?.digest?.startsWith("NEXT_REDIRECT")) throw error
     const response = quotationRefreshHttpError(error)
     return NextResponse.json(response.body, { status: response.status })
   }

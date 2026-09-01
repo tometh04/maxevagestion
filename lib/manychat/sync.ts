@@ -16,6 +16,12 @@ export interface ManychatLeadData {
   evento?: string
   phase?: string
   agency?: string // "rosario" | "madero"
+  // Vendedor decidido por el integrador ANTES del primer POST (Agente Blanco
+  // sortea el asesor al capturar el WhatsApp y manda el mismo en ambos POST).
+  // Se guardan crudos en `manychat_full_data` para auditar el rollout;
+  // `vendedor_email` es además la clave que resuelve `assigned_seller_id`.
+  vendedor?: string
+  vendedor_email?: string
   source?: string // "agenteblanco" | "manychat" | ...  (default: Manychat)
   manychat_user_id?: string
   flow_id?: string
@@ -101,6 +107,11 @@ export function buildStructuredDescription(data: ManychatLeadData): string {
   // 🧭 Región (igual que Zapier)
   if (data.region) desc += `🧭 Región: ${data.region}\n`
   
+  // Vendedor elegido por el integrador. Se muestra en las notas del lead para
+  // que la agencia compare a ojo lo que mando el bot contra el vendedor
+  // realmente asignado, sin tener que mirar el JSONB.
+  if (data.vendedor) desc += `🧑 Vendedor: ${data.vendedor}\n`
+
   // Instagram siempre se agrega (normalizado, sin @)
   const instagram = (data.ig || "").replace(/^@/, "").trim().toLowerCase()
   if (instagram) desc += `Instagram: ${instagram}\n`
@@ -120,23 +131,40 @@ export function normalizeInstagram(ig: string | undefined): string | null {
   return ig.replace(/^@/, "").trim().toLowerCase() || null
 }
 
+type AgencyRow = { id: string; name: string; org_id: string; created_at: string | null }
+
+/**
+ * Normaliza un nombre de agencia para comparar sin mayusculas, acentos ni
+ * separadores. "Kyo Viajes" / "kyo-viajes" / "KyoViajes" -> "kyoviajes".
+ */
+export function normalizeAgencyKey(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "")
+    .trim()
+}
+
 /**
  * Determinar agency_id + org_id para un lead entrante de ManyChat.
  *
  * VIB-61 / regla de integraciones: la org es AUTORITATIVA desde el token del
  * webhook (`org_integrations.org_id`), nunca desde el body ni desde un match de
- * nombre global. Hay múltiples tenants con agencias homónimas (ej: 3 orgs
- * "Lozada", cada una con "Rosario"/"Madero"): resolver por nombre sin scope de
- * org puede meter el lead en el tenant equivocado o dejar `org_id` inconsistente.
+ * nombre global. Puede haber tenants con agencias homonimas: resolver por
+ * nombre sin scope de org puede meter el lead en el tenant equivocado o dejar
+ * `org_id` inconsistente.
  *
- * Por eso, cuando conocemos `orgId`:
+ * Con `orgId` (endpoint por token):
  *  - Buscamos la agencia SOLO dentro de esa org.
- *  - El fallback es la agencia más antigua de esa org (determinístico), no un
- *    hardcode "Rosario" global.
+ *  - El fallback es la agencia mas antigua de esa org (determinístico).
  *  - El `org_id` devuelto es siempre el del token.
  *
- * Sin `orgId` (solo el webhook legacy X-API-Key global, deprecado) mantenemos el
- * match por nombre acotado, prefiriendo fallar antes que asignar cross-tenant.
+ * Sin `orgId` (webhook legacy X-API-Key, deprecado): el match se hace igual,
+ * pero si no resuelve a UNA sola agencia devolvemos vacio y el caller corta con
+ * 400. No hay fallback global: el `findByName("rosario")` que habia antes
+ * mandaba los leads de un cliente al tablero de otro (ver el comentario en el
+ * paso 4).
  */
 export async function determineAgencyId(
   agencyTag: string | undefined,
@@ -144,39 +172,64 @@ export async function determineAgencyId(
   orgId?: string | null
 ): Promise<{ agency_id: string; org_id: string }> {
   const empty = { agency_id: "", org_id: "" }
+  const normalizedTag = normalizeAgencyKey(agencyTag || "")
 
-  // Busca la primera agencia cuyo nombre matchee `term`, scopeada a la org si la
-  // conocemos. `.limit(1)` en vez de `.maybeSingle()`: con varios matches
-  // (homónimos) maybeSingle tira error; acá tomamos uno determinístico.
-  const findByName = async (term: string) => {
-    let q = (supabase.from("agencies") as any).select("id, org_id").ilike("name", `%${term}%`)
-    if (orgId) q = q.eq("org_id", orgId)
-    const { data } = await q.order("name", { ascending: true }).limit(1)
-    const row = (data || [])[0]
-    return row ? { agency_id: row.id as string, org_id: (orgId ?? row.org_id) as string } : null
-  }
+  // Universo de busqueda: la org del token si la conocemos, si no toda la tabla
+  // (26 agencias al 2026-08; es chica a proposito, el match se hace en JS para
+  // poder normalizar). Orden por created_at: la primera es el fallback estable.
+  let query = (supabase.from("agencies") as any).select("id, name, org_id, created_at")
+  if (orgId) query = query.eq("org_id", orgId)
+  const { data } = await query.order("created_at", { ascending: true })
+  const agencies = (data || []) as AgencyRow[]
 
-  const normalizedTag = (agencyTag || "").toLowerCase().trim()
+  if (agencies.length === 0) return empty
+
+  const pick = (row: AgencyRow) => ({
+    agency_id: row.id,
+    org_id: (orgId ?? row.org_id) as string,
+  })
+
   if (normalizedTag) {
-    const tagMap: Record<string, string> = { rosario: "rosario", madero: "madero" }
-    const hit = await findByName(tagMap[normalizedTag] || normalizedTag)
-    if (hit) return hit
+    // 1. Match exacto por nombre normalizado. Tolera mayusculas, acentos,
+    //    espacios y guiones: "kyo-viajes", "KyoViajes" y "Kyo Viajes" son el
+    //    mismo tablero. Antes esto se hacia con ilike '%tag%' y "kyo-viajes"
+    //    NO matcheaba "Kyo Viajes", asi que caia al fallback de abajo.
+    const exact = agencies.filter((a) => normalizeAgencyKey(a.name) === normalizedTag)
+    if (exact.length === 1) return pick(exact[0])
+    if (exact.length > 1) {
+      if (orgId) return pick(exact[0]) // homonimos dentro del mismo tenant: el mas antiguo
+      console.error(
+        `[manychat/sync] agency="${agencyTag}" matchea ${exact.length} agencias de tenants distintos; sin token de org no puedo desempatar`
+      )
+      return empty
+    }
+
+    // 2. Substring normalizado, por retrocompatibilidad con integradores que
+    //    mandan el nombre parcial. Misma regla: ambiguo sin org = no adivinar.
+    const partial = agencies.filter((a) => normalizeAgencyKey(a.name).includes(normalizedTag))
+    if (partial.length === 1) return pick(partial[0])
+    if (partial.length > 1) {
+      if (orgId) return pick(partial[0])
+      console.error(
+        `[manychat/sync] agency="${agencyTag}" matchea parcialmente ${partial.length} agencias de tenants distintos; sin token de org no puedo desempatar`
+      )
+      return empty
+    }
   }
 
-  if (orgId) {
-    // Fallback determinístico: agencia más antigua de la org del token.
-    const { data } = await (supabase.from("agencies") as any)
-      .select("id, org_id")
-      .eq("org_id", orgId)
-      .order("created_at", { ascending: true })
-      .limit(1)
-    const row = (data || [])[0]
-    return row ? { agency_id: row.id as string, org_id: orgId } : empty
-  }
+  // 3. Sin match. Con org del token, fallback determinístico DENTRO del tenant:
+  //    peor caso el lead cae en la agencia equivocada de la agencia correcta.
+  if (orgId) return pick(agencies[0])
 
-  // Sin org conocida (legacy): último recurso acotado a "rosario".
-  const rosario = await findByName("rosario")
-  return rosario ?? empty
+  // 4. Sin org y sin match no hay nada seguro que hacer. Antes esto caia a un
+  //    `findByName("rosario")` GLOBAL: un typo en el payload de un cliente
+  //    escribia el lead en el tablero de OTRO tenant (paso de verdad, lead
+  //    8f5ace24 el 2026-08-21 con agency="kyo-viajes"). Preferimos fallar con
+  //    400 y que el integrador lo vea, antes que una fuga cross-tenant muda.
+  console.error(
+    `[manychat/sync] agency="${agencyTag ?? ""}" no matchea ninguna agencia y el request no trae token de org; rechazo el lead en vez de adivinar`
+  )
+  return empty
 }
 
 /**
@@ -378,7 +431,8 @@ export function determineListName(manychatData: ManychatLeadData): string {
 const FULL_DATA_KEYS: (keyof ManychatLeadData)[] = [
   "ig", "name", "bucket", "region", "whatsapp", "destino", "fechas",
   "personas", "menores", "presupuesto", "servicio", "evento", "phase",
-  "agency", "manychat_user_id", "flow_id", "page_id", "timestamp",
+  "agency", "vendedor", "vendedor_email",
+  "manychat_user_id", "flow_id", "page_id", "timestamp",
 ]
 
 function isNonEmpty(v: unknown): boolean {
@@ -526,6 +580,79 @@ async function registerListOrder(
 }
 
 /**
+ * Resolver `vendedor_email` -> `users.id` para asignar el lead al CREARLO.
+ *
+ * Contexto (pedido de Agente Blanco): el integrador sortea el asesor antes del
+ * primer POST y manda el mismo vendedor en ambos. Sin esto el lead cae en la
+ * columna del vendedor pero queda `assigned_seller_id = null`, o sea que la
+ * columna y la asignacion dicen cosas distintas y el vendedor no lo ve como suyo.
+ *
+ * Reglas:
+ * - Solo se usa al crear. En update NO se toca `assigned_seller_id` (el asesor
+ *   pudo reasignar el lead a mano; ver `buildLeadPatch`).
+ * - El match es dentro de la AGENCIA del lead (`user_agencies`), no global: dos
+ *   tenants pueden tener el mismo email de dominio compartido y no queremos
+ *   asignar cross-agencia.
+ * - Comparacion exacta case-insensitive hecha en JS, no con `ilike`: en LIKE el
+ *   `_` es un comodin y los emails lo usan seguido (juan_perez@...).
+ * - Nunca rompe la creacion del lead: si no resuelve, el lead entra igual con
+ *   `assigned_seller_id = null` y el motivo queda en `manychat_full_data`.
+ */
+export type SellerResolution =
+  | "matched"
+  | "absent"
+  | "no_agency_users"
+  | "not_found"
+  | "error"
+
+export async function resolveSellerIdByEmail(
+  email: string | undefined,
+  agencyId: string,
+  supabase: Awaited<ReturnType<typeof createServerClient>>
+): Promise<{ sellerId: string | null; resolution: SellerResolution }> {
+  const normalized = (email || "").trim().toLowerCase()
+  if (!normalized) return { sellerId: null, resolution: "absent" }
+
+  try {
+    const { data: memberships } = await (supabase.from("user_agencies") as any)
+      .select("user_id")
+      .eq("agency_id", agencyId)
+
+    const userIds = Array.from(
+      new Set(((memberships || []) as any[]).map((m) => m.user_id).filter(Boolean))
+    )
+    if (userIds.length === 0) {
+      console.warn(
+        `[manychat/sync] vendedor_email "${normalized}": la agencia ${agencyId} no tiene usuarios`
+      )
+      return { sellerId: null, resolution: "no_agency_users" }
+    }
+
+    const { data: users } = await (supabase.from("users") as any)
+      .select("id, email")
+      .in("id", userIds)
+      .eq("is_active", true)
+
+    const hit = ((users || []) as any[]).find(
+      (u) => (u.email || "").trim().toLowerCase() === normalized
+    )
+
+    if (!hit) {
+      console.warn(
+        `[manychat/sync] vendedor_email "${normalized}" no matchea ningun usuario activo de la agencia ${agencyId}; el lead entra sin asignar`
+      )
+      return { sellerId: null, resolution: "not_found" }
+    }
+
+    return { sellerId: hit.id as string, resolution: "matched" }
+  } catch (e: any) {
+    // Un fallo resolviendo el vendedor no puede tumbar la creacion del lead.
+    console.error("[manychat/sync] error resolviendo vendedor_email:", e?.message)
+    return { sellerId: null, resolution: "error" }
+  }
+}
+
+/**
  * Sync Manychat lead data to a lead in the database.
  */
 export async function syncManychatLeadToLead(
@@ -645,6 +772,11 @@ export async function syncManychatLeadToLead(
   const region = normalizeRegion(manychatData.region, manychatData.destino)
   const status = mapPhaseToStatus(manychatData.phase)
   const notes = buildStructuredDescription(manychatData)
+  const { sellerId, resolution: sellerResolution } = await resolveSellerIdByEmail(
+    manychatData.vendedor_email,
+    agency_id,
+    supabase
+  )
 
   const manychatFullData = {
     // Datos del lead
@@ -662,6 +794,13 @@ export async function syncManychatLeadToLead(
     evento: manychatData.evento,
     phase: manychatData.phase,
     agency: manychatData.agency,
+    vendedor: manychatData.vendedor,
+    vendedor_email: manychatData.vendedor_email,
+    // Rastro del intento de asignacion (solo cuando el payload trae vendedor).
+    // Sobrevive a los updates porque el merge parte del full_data existente.
+    ...(manychatData.vendedor_email
+      ? { assigned_seller_resolution: sellerResolution }
+      : {}),
 
     // Metadata de Manychat
     manychat_user_id: manychatData.manychat_user_id,
@@ -684,7 +823,9 @@ export async function syncManychatLeadToLead(
     contact_phone: contact_phone || "",
     contact_email: null, // el payload no envía email por ahora
     contact_instagram,
-    assigned_seller_id: null, // No se asigna automáticamente
+    // Se asigna solo si el payload trae `vendedor_email` y resuelve a un
+    // usuario activo de la agencia; si no, queda null como siempre.
+    assigned_seller_id: sellerId,
     notes: notes || null,
     manychat_full_data: manychatFullData,
     list_name: listName, // Nombre de la lista para el kanban

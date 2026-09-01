@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { ColumnDef } from "@tanstack/react-table"
+import { format } from "date-fns"
+import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
@@ -43,10 +45,21 @@ interface Customer {
   totalSpentByCurrency: Record<string, number>
   agency_id?: string
   referral_partner_id?: string | null
+  /**
+   * Ultima operacion del cliente (VIB-153). Define quien es "su" vendedor a
+   * efectos de recontacto: el de la venta mas reciente, no todos los que
+   * alguna vez le vendieron.
+   */
+  last_operation?: {
+    date: string | null
+    destination: string | null
+    seller_id: string | null
+    seller_name: string | null
+  } | null
 }
 
 interface CustomersTableProps {
-  initialFilters: { search: string }
+  initialFilters: { search: string; sellerId?: string }
 }
 
 export function CustomersTable({ initialFilters }: CustomersTableProps) {
@@ -65,6 +78,11 @@ export function CustomersTable({ initialFilters }: CustomersTableProps) {
     try {
       const params = new URLSearchParams()
       if (filters.search) params.append("search", filters.search)
+      // VIB-153: cartera por vendedor. El server lo resuelve sobre la ultima
+      // operacion del cliente; aca solo viaja el id.
+      if (filters.sellerId && filters.sellerId !== "ALL") {
+        params.append("sellerId", filters.sellerId)
+      }
 
       const url = `/api/customers?${params.toString()}`
       console.log("[CustomersTable] Fetching:", url)
@@ -212,6 +230,39 @@ export function CustomersTable({ initialFilters }: CustomersTableProps) {
           <DataTableColumnHeader column={column} title="Viajes" />
         ),
         cell: ({ row }) => <div>{row.original.trips || 0}</div>,
+      },
+      {
+        id: "lastSeller",
+        enableSorting: false,
+        header: "Vendedor",
+        cell: ({ row }) => {
+          const name = row.original.last_operation?.seller_name
+          return name
+            ? <div>{name}</div>
+            : <div className="text-muted-foreground">-</div>
+        },
+      },
+      {
+        id: "lastOperationDate",
+        enableSorting: false,
+        header: "Última operación",
+        cell: ({ row }) => {
+          const date = row.original.last_operation?.date
+          if (!date) return <div className="text-muted-foreground">-</div>
+          const parsed = parseDateOnlyLocal(date)
+          return <div>{parsed ? format(parsed, "dd/MM/yyyy") : date}</div>
+        },
+      },
+      {
+        id: "lastDestination",
+        enableSorting: false,
+        header: "Último destino",
+        cell: ({ row }) => {
+          const destination = row.original.last_operation?.destination
+          return destination
+            ? <div>{destination}</div>
+            : <div className="text-muted-foreground">-</div>
+        },
       },
       {
         id: "totalSpent",

@@ -129,6 +129,91 @@ describe("Withholding Rules - calculateWithholdings", () => {
     })
   })
 
+  describe("operadores exentos (VIB-136/G2)", () => {
+    const reglaConOperadorExento: WithholdingRule[] = [
+      {
+        type: "PERCEPCION_IVA",
+        applies_to: "ALL",
+        rate: 3,
+        min_amount: 0,
+        exempt_cuits: [],
+        exempt_operator_ids: ["op-exento-1", "op-exento-2"],
+        is_active: true,
+      },
+    ]
+
+    it("saltea la regla si el operador está exento", () => {
+      const results = calculateWithholdings(reglaConOperadorExento, {
+        amount: 100_000,
+        currency: "ARS",
+        type: "OPERATOR_PAYMENT",
+        operator_id: "op-exento-1",
+      })
+
+      expect(results).toHaveLength(0)
+    })
+
+    it("aplica la regla a un operador que no está en la lista", () => {
+      const results = calculateWithholdings(reglaConOperadorExento, {
+        amount: 100_000,
+        currency: "ARS",
+        type: "OPERATOR_PAYMENT",
+        operator_id: "op-cualquiera",
+      })
+
+      expect(results).toHaveLength(1)
+      expect(results[0].amount).toBe(3000)
+    })
+
+    it("aplica la regla si no se informó operador", () => {
+      const results = calculateWithholdings(reglaConOperadorExento, {
+        amount: 100_000,
+        currency: "ARS",
+        type: "OPERATOR_PAYMENT",
+      })
+
+      expect(results).toHaveLength(1)
+    })
+
+    it("una regla sin exempt_operator_ids se comporta como antes", () => {
+      // Las reglas ya guardadas en financial_settings no tienen el campo:
+      // no deben cambiar de comportamiento.
+      const reglaVieja: WithholdingRule[] = [
+        {
+          type: "PERCEPCION_IVA",
+          applies_to: "ALL",
+          rate: 3,
+          min_amount: 0,
+          exempt_cuits: [],
+          is_active: true,
+        },
+      ]
+
+      const results = calculateWithholdings(reglaVieja, {
+        amount: 100_000,
+        currency: "ARS",
+        type: "OPERATOR_PAYMENT",
+        operator_id: "op-exento-1",
+      })
+
+      expect(results).toHaveLength(1)
+    })
+
+    it("la exención por operador es independiente de la de CUIT", () => {
+      // Un operador sin CUIT cargado igual puede eximirse: ese es el caso que
+      // la exención por CUIT no cubría.
+      const results = calculateWithholdings(reglaConOperadorExento, {
+        amount: 100_000,
+        currency: "ARS",
+        type: "OPERATOR_PAYMENT",
+        operator_id: "op-exento-2",
+        counterpart_cuit: undefined,
+      })
+
+      expect(results).toHaveLength(0)
+    })
+  })
+
   describe("exempt CUITs", () => {
     it("should skip rule for exempt CUIT", () => {
       const rules: WithholdingRule[] = [

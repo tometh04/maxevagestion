@@ -138,6 +138,9 @@ export async function POST(request: Request) {
         type: type as any,
         file_url: fileUrl,
         uploaded_by_user_id: user.id,
+        // El documento SIEMPRE se sella con la org del autor: la pantalla del
+        // cliente filtra por org_id, y sin esto queda invisible (VIB-139).
+        org_id: (user as any).org_id,
       })
       .select()
       .single()

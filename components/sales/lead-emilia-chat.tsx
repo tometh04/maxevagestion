@@ -1285,7 +1285,8 @@ export function LeadEmiliaChat({
 
               {/* Turno de búsqueda SIN resultados: en vez de dejar solo el texto
                   de Emilia, mostramos qué entendió + cómo reintentar. */}
-              {!hasCards && m.role === "assistant" && m.meta?.messageType === "search_results" && (
+              {!hasCards && m.role === "assistant" && m.meta?.messageType
+                && ["search_results", "no_results"].includes(m.meta.messageType) && (
                 <EmptySearchNotice meta={m.meta} />
               )}
             </div>
@@ -1340,12 +1341,13 @@ export function LeadEmiliaChat({
         onClose={() => setPdfPriceQuotation(null)}
         onGenerate={async (_quotationId, expectedUpdatedAt) => {
           if (!pdfPriceQuotation) return
-          await downloadQuotationPdfFromPriceDialog({
+          const document = await downloadQuotationPdfFromPriceDialog({
             quotationId: pdfPriceQuotation.id,
             publicToken: pdfPriceQuotation.public_token,
             expectedUpdatedAt,
           })
           setCreatedQuotationDocumentReady(true)
+          return document
         }}
         sendValidationError={!pdfPriceQuotation?.public_token
           ? "La cotización no tiene enlace público"
@@ -1356,7 +1358,7 @@ export function LeadEmiliaChat({
           if (!pdfPriceQuotation?.public_token) throw new Error("La cotización no tiene enlace público")
           const phone = lead.contact_phone?.replace(/[^0-9+]/g, "") || ""
           if (!phone) throw new Error("El lead no tiene un teléfono para WhatsApp")
-          await fetchQuotationDocumentForUser(pdfPriceQuotation.id, {
+          const document = await fetchQuotationDocumentForUser(pdfPriceQuotation.id, {
             issue: true,
             markSent: true,
             expectedUpdatedAt,
@@ -1370,6 +1372,7 @@ export function LeadEmiliaChat({
           const whatsappUrl = `https://wa.me/${cleanPhone}?text=${message}`
           sendWindow.location.href = whatsappUrl
           toast.success("Cotización preparada para enviar")
+          return document
         }}
       />
 

@@ -31,10 +31,12 @@ import {
 import { useLeadRegions } from "@/lib/hooks/use-lead-regions"
 import { trackEvent } from "@/lib/analytics/track"
 import { bucketCount } from "@/lib/analytics/ga/scrub"
+import { useScreenView } from "@/hooks/use-screen-view"
 import {
   parseQuotationPresentationContent,
   type QuotationPresentationContent,
 } from "@/lib/quotation-documents/schemas"
+import { fetchQuotationDocumentForUser } from "@/lib/quotation-documents/client"
 import type { QuotationOperatorOption } from "@/lib/operators/quotation-option"
 
 interface QuotationBuilderProps {
@@ -335,6 +337,7 @@ async function searchAirports(query: string): Promise<ComboboxOption[]> {
 }
 
 export function QuotationBuilderDialog({ open, onOpenChange, lead, operators: allOperators = [], onSuccess, existingQuotationId }: QuotationBuilderProps) {
+  useScreenView("quotation-builder", open)
   const operators = useMemo(
     () => allOperators.filter(operator => !operator.agency_id || operator.agency_id === lead.agency_id),
     [allOperators, lead.agency_id]
@@ -1064,15 +1067,6 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators: al
     })
   }
 
-  function readFileAsDataUrl(file: File) {
-    return new Promise<string>((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(String(reader.result || ""))
-      reader.onerror = () => reject(reader.error || new Error("No se pudo leer la imagen"))
-      reader.readAsDataURL(file)
-    })
-  }
-
   async function handleFlightScreenshotUpload(optionId: string, itemId: string, file: File) {
     if (file.size > 10 * 1024 * 1024) {
       toast.error("La imagen no puede superar 10MB")
@@ -1100,7 +1094,8 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators: al
       })
 
       if (!res.ok) {
-        throw new Error("quotation_screenshot_upload_failed")
+        const error = await res.json().catch(() => ({}))
+        throw new Error(error?.error || "No se pudo subir el screenshot")
       }
 
       const data = await res.json()
@@ -1112,14 +1107,8 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators: al
 
       updateItem(optionId, itemId, "flight_screenshot_url", uploadedUrl)
       toast.success("Screenshot subido correctamente")
-    } catch {
-      try {
-        const dataUrl = await readFileAsDataUrl(file)
-        updateItem(optionId, itemId, "flight_screenshot_url", dataUrl)
-        toast.success("Screenshot cargado")
-      } catch {
-        toast.error("No se pudo cargar el screenshot")
-      }
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "No se pudo cargar el screenshot")
     } finally {
       setFlightScreenshotUploading(itemId, false)
     }
@@ -1250,6 +1239,9 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators: al
 
     setSaving(true)
     if (andSend) setSending(true)
+
+    let quotationSaved = false
+    let documentIssued = false
 
     try {
       const finalOptions = syncedOptions.map(opt => {
@@ -1391,6 +1383,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators: al
       setActiveQuotationId(quotation.id)
       setActiveQuotationUpdatedAt(quotation.updated_at || null)
       setSavedQuotation(quotation)
+      quotationSaved = true
 
       if (andSend && quotation) {
         if (!sendWindow || sendWindow.closed) {
@@ -1402,17 +1395,21 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators: al
         // Congela datos + revisión publicada y recién entonces cambia DRAFT a
         // SENT dentro de la misma transacción. Nunca queda como enviada sin el
         // documento que recibirá el cliente.
-        const documentResponse = await fetch(`/api/quotations/${quotation.id}/document`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            expected_updated_at: quotation.updated_at,
-            mark_sent: true,
-          }),
+        const issuedDocument = await fetchQuotationDocumentForUser(quotation.id, {
+          issue: true,
+          expectedUpdatedAt: quotation.updated_at,
+          markSent: true,
         })
-        if (!documentResponse.ok) {
-          const error = await documentResponse.json().catch(() => ({}))
-          throw new Error(error?.error || "No se pudo preparar el documento para enviar")
+        documentIssued = true
+        const issuedQuotation = {
+          ...quotation,
+          active_document_id: issuedDocument.issuedDocumentId,
+          status: issuedDocument.quotationStatus || "SENT",
+          updated_at: issuedDocument.quotationUpdatedAt || quotation.updated_at,
+        }
+        setSavedQuotation(issuedQuotation)
+        if (issuedDocument.quotationUpdatedAt) {
+          setActiveQuotationUpdatedAt(issuedDocument.quotationUpdatedAt)
         }
 
         const publicUrl = `${window.location.origin}/cotizacion/${quotation.public_token}`
@@ -1428,7 +1425,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators: al
 
         toast.success(isEditing ? "Cotizacion actualizada y enviada" : "Cotizacion creada y enviada")
         trackQuotation(isEditing, true)
-        onSuccess?.({ ...quotation, status: "SENT" })
+        onSuccess?.(issuedQuotation)
         onOpenChange(false)
       } else {
         toast.success(isEditing ? "Cotizacion actualizada" : "Cotizacion guardada como borrador")
@@ -1437,7 +1434,14 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators: al
       }
     } catch (error: any) {
       if (sendWindow && !sendWindow.closed) sendWindow.close()
-      toast.error(error.message || "Error al guardar cotizacion")
+      const detail = error.message || "Error al guardar cotizacion"
+      if (andSend && documentIssued) {
+        toast.error(`El documento quedó emitido, pero no se pudo completar el envío: ${detail}`)
+      } else if (andSend && quotationSaved) {
+        toast.error(`La cotización quedó guardada, pero no se pudo emitir el documento: ${detail}`)
+      } else {
+        toast.error(detail)
+      }
     } finally {
       setSaving(false)
       setSending(false)

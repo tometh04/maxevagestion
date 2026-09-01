@@ -103,14 +103,27 @@ export function LoginForm({
 
         trackEvent("login", { method: "password" })
 
-        // Refresh to ensure cookies are set. Redirect a /post-login que
-        // decide server-side: platform admin → /admin/orgs, resto → /dashboard.
-        router.refresh()
-        router.push("/post-login")
+        // Navegacion DURA a /post-login (que decide server-side: platform admin
+        // → /admin/orgs, resto → /dashboard).
+        //
+        // Antes era `router.refresh()` + `router.push()`, o sea navegacion
+        // blanda. El problema es lo que sobrevive: el cliente Supabase es un
+        // singleton a nivel modulo, y si en esta misma pagina hubo una sesion
+        // anterior — el caso tipico es cerrar sesion y volver a entrar en el
+        // acto — sus timers y refreshes en vuelo siguen vivos. Cuando uno de
+        // esos falla con un token ya revocado, gotrue-js llama
+        // `_removeSession()` y borra las cookies recien escritas por ESTE login.
+        //
+        // Recargar de verdad garantiza que el documento nuevo arranque con las
+        // cookies de la sesion nueva y sin nada de la vieja en memoria. Cuesta
+        // una carga completa, en la unica pantalla donde no importa.
+        window.location.assign("/post-login")
+        return
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al iniciar sesión")
-    } finally {
+      // Solo se rehabilita el boton si el login fallo. En el camino feliz la
+      // pagina ya esta recargando y volver a "Iniciar Sesión" es un parpadeo.
       setLoading(false)
     }
   }

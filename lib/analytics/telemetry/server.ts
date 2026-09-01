@@ -24,10 +24,38 @@ export type IncomingUsageEvent = {
   name: string
   params?: Record<string, unknown>
   occurred_at?: string
+  screen?: string
+  session_id?: string
 }
 
 /** Ventana aceptada para el timestamp del cliente. */
 const MAX_CLOCK_SKEW_MS = 60 * 60 * 1000
+
+/**
+ * Vocabulario aceptado para `screen`. El cliente propone, el server valida: un
+ * emisor propio o un cliente manipulado no puede inventar la dimension.
+ */
+const SCREEN_RE = /^\/[a-z0-9/:_-]*(#(tab|dlg):[a-z0-9_-]{1,32})?$/
+const MAX_SCREEN_LENGTH = 64
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+export function sanitizeScreen(raw: unknown): string | null {
+  if (typeof raw !== "string") return null
+  const value = raw.trim()
+  if (!value || value.length > MAX_SCREEN_LENGTH) return null
+  return SCREEN_RE.test(value) ? value : null
+}
+
+/**
+ * La columna es UUID: un valor con otra forma haria fallar el INSERT del BATCH
+ * ENTERO de 50 eventos, no de la fila. Por eso se valida en JS y no se delega
+ * en el tipo de Postgres.
+ */
+export function sanitizeSessionId(raw: unknown): string | null {
+  if (typeof raw !== "string") return null
+  return UUID_RE.test(raw.trim()) ? raw.trim().toLowerCase() : null
+}
 
 /**
  * El `occurred_at` viene del reloj del browser, que puede estar mal o venir
@@ -43,17 +71,26 @@ export function clampOccurredAt(raw: string | undefined, now: Date = new Date())
   return new Date(Math.min(Math.max(ts, min), max)).toISOString()
 }
 
+export type SanitizedUsageEvent = {
+  name: string
+  module: string | null
+  params: Record<string, unknown>
+  occurred_at: string
+  screen: string | null
+  session_id: string | null
+}
+
 /** Normaliza y filtra un batch crudo. Puro: es lo que testean los tests. */
 export function sanitizeUsageBatch(
   events: unknown,
   now: Date = new Date()
-): { name: string; module: string | null; params: Record<string, unknown>; occurred_at: string }[] {
+): SanitizedUsageEvent[] {
   if (!Array.isArray(events)) return []
 
-  const out = []
+  const out: SanitizedUsageEvent[] = []
   for (const raw of events) {
     if (!raw || typeof raw !== "object") continue
-    const { name, params, occurred_at } = raw as IncomingUsageEvent
+    const { name, params, occurred_at, screen, session_id } = raw as IncomingUsageEvent
 
     // Un nombre que no esta en el catalogo con sink `db` se descarta entero: la
     // tabla no es un buzon abierto donde el cliente inventa metricas.
@@ -67,6 +104,8 @@ export function sanitizeUsageBatch(
       module: isModuleKey(module) ? module : DEFAULT_EVENT_MODULE[name] ?? null,
       params: clean,
       occurred_at: clampOccurredAt(occurred_at, now),
+      screen: sanitizeScreen(screen),
+      session_id: sanitizeSessionId(session_id),
     })
   }
   return out
@@ -79,7 +118,8 @@ export function sanitizeUsageBatch(
 export async function recordUsageEvents(
   orgId: string,
   userId: string | null,
-  events: unknown
+  events: unknown,
+  segment?: { role?: string | null; agencyId?: string | null }
 ): Promise<number> {
   if (!orgId) return 0
 
@@ -96,6 +136,11 @@ export async function recordUsageEvents(
         module: r.module,
         params: r.params,
         occurred_at: r.occurred_at,
+        screen: r.screen,
+        session_id: r.session_id,
+        // Resueltos en el server por el caller. Nunca vienen del payload.
+        role: segment?.role ?? null,
+        agency_id: segment?.agencyId ?? null,
       }))
     )
     if (error) {
@@ -120,10 +165,14 @@ export function trackServerEvent<K extends AnalyticsEventName>(
   orgId: string | null | undefined,
   userId: string | null | undefined,
   name: K,
-  params: AnalyticsEventParams[K]
+  params: AnalyticsEventParams[K],
+  segment?: { role?: string | null; agencyId?: string | null }
 ): void {
   if (!orgId) return
-  void recordUsageEvents(orgId, userId ?? null, [
-    { name, params: params as Record<string, unknown> },
-  ])
+  void recordUsageEvents(
+    orgId,
+    userId ?? null,
+    [{ name, params: params as Record<string, unknown> }],
+    segment
+  )
 }

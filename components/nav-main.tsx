@@ -43,6 +43,8 @@ interface NavSubItem {
   url: string
   items?: NavSubSubItem[]
   badge?: SidebarBadge
+  /** Micro logo de marca (ruta en /public). Para integraciones de terceros. */
+  iconSrc?: string
 }
 
 interface NavItem {
@@ -57,6 +59,13 @@ interface NavItem {
 interface NavMainProps {
   items: NavItem[]
   pathname: string
+  /**
+   * Pestaña activa de la URL, cuando la hay.
+   *
+   * Hace falta porque varios subítems pueden compartir ruta y diferenciarse
+   * solo por la pestaña. Sin esto se marcarían todos activos a la vez.
+   */
+  tabActivo?: string | null
 }
 
 // [perf-instrumentation] Loguea el momento exacto del click en sidebar para
@@ -68,7 +77,7 @@ const logSidebarClick = (url: string) => {
   console.log(`[perf:client] CLICK → ${url} at ${performance.now().toFixed(0)}ms`)
 }
 
-export function NavMain({ items, pathname }: NavMainProps) {
+export function NavMain({ items, pathname, tabActivo }: NavMainProps) {
   return (
     <SidebarGroup>
       <SidebarGroupContent className="flex flex-col gap-1">
@@ -77,7 +86,19 @@ export function NavMain({ items, pathname }: NavMainProps) {
             const hasChildren = item.items && item.items.length > 0
             const isCollapsible = item.collapsible !== false && hasChildren
             const itemPath = item.url.split("?")[0]
-            const isActive = pathname === itemPath || pathname?.startsWith(itemPath + "/")
+            const enSuRuta = pathname === itemPath || pathname?.startsWith(itemPath + "/")
+
+            // El grupo también cuenta como activo si estás parado en alguno de
+            // sus hijos. Sin esto, un grupo cuya URL propia apunta al primer
+            // hijo queda cerrado al entrar por cualquiera de los otros: en
+            // Contabilidad, venir de Impuestos dejaba el menú colapsado.
+            const enAlgunHijo =
+              item.items?.some((sub) => {
+                const p = sub.url.split("?")[0]
+                return pathname === p || pathname?.startsWith(p + "/")
+              }) ?? false
+
+            const isActive = enSuRuta || enAlgunHijo
 
             // Si NO es colapsable (como Dashboard), renderizar como link directo
             if (!isCollapsible) {
@@ -113,8 +134,25 @@ export function NavMain({ items, pathname }: NavMainProps) {
                     <SidebarMenuSub>
                       {item.items?.map((subItem) => {
                         const subHasChildren = subItem.items && subItem.items.length > 0
-                        const subPath = subItem.url.split("?")[0]
-                        const subIsActive = pathname === subPath || pathname?.startsWith(subPath + "/")
+                        const [subPath, subQuery] = subItem.url.split("?")
+                        const enLaRuta =
+                          pathname === subPath || pathname?.startsWith(subPath + "/")
+
+                        // Varios subítems pueden compartir ruta y diferenciarse
+                        // solo por la pestaña (Contabilidad: Libros, Estados,
+                        // Cierre y Plan de Cuentas viven todos en
+                        // /accounting/ledger). Comparando solo el path se
+                        // marcarían los cuatro activos a la vez.
+                        const tabDelItem = subQuery
+                          ? new URLSearchParams(subQuery).get("tab")
+                          : null
+                        const subIsActive = !enLaRuta
+                          ? false
+                          : tabDelItem
+                            ? tabDelItem === tabActivo
+                            : // El ítem sin pestaña es el de la pestaña por
+                              // defecto: activo solo si tampoco hay una elegida.
+                              !tabActivo
 
                         // Si el subitem tiene hijos (nivel 3), renderizar como collapsible
                         if (subHasChildren) {
@@ -160,6 +198,15 @@ export function NavMain({ items, pathname }: NavMainProps) {
                           <SidebarMenuSubItem key={subItem.url}>
                             <SidebarMenuSubButton asChild isActive={subIsActive}>
                               <Link href={subItem.url} onClick={() => logSidebarClick(subItem.url)}>
+                                {subItem.iconSrc && (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={subItem.iconSrc}
+                                    alt=""
+                                    aria-hidden="true"
+                                    className="h-4 w-4 shrink-0 rounded-[3px]"
+                                  />
+                                )}
                                 <span className="flex-1">{subItem.title}</span>
                                 {subItem.badge && (
                                   <span

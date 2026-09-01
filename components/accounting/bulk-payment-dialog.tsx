@@ -37,6 +37,7 @@ import { Loader2, AlertCircle, ChevronRight, CheckCircle2, Search, Building2, Do
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { useScreenView } from "@/hooks/use-screen-view"
 
 interface Operator {
   id: string
@@ -95,6 +96,7 @@ export function BulkPaymentDialog({
   agencies,
   selectedAgencyId,
 }: BulkPaymentDialogProps) {
+  useScreenView("bulk-payment", open)
   const router = useRouter()
   
   // Paso 1: Operador

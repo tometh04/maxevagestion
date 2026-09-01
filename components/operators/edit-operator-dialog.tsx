@@ -40,6 +40,8 @@ const operatorSchema = z.object({
   admin_fee_percentage: z.coerce.number().min(0).max(100).optional(),
   cost_calculation_mode: z.enum(["SIMPLE", "COMMISSIONABLE"]).nullable().optional(),
   commission_percentage: z.coerce.number().min(0).max(100).optional(),
+  iva_condition: z.string().nullable().optional(),
+  cost_chart_account_id: z.string().nullable().optional(),
 })
 
 type OperatorFormValues = z.infer<typeof operatorSchema>
@@ -54,6 +56,8 @@ interface Operator {
   admin_fee_percentage?: number | null
   cost_calculation_mode?: string | null
   commission_percentage?: number | null
+  iva_condition?: string | null
+  cost_chart_account_id?: string | null
 }
 
 interface EditOperatorDialogProps {
@@ -70,6 +74,8 @@ export function EditOperatorDialog({
   onSuccess,
 }: EditOperatorDialogProps) {
   const [isLoading, setIsLoading] = useState(false)
+  // Cuentas de COSTO del plan (4.2.x). Son las que este override reemplaza.
+  const [cuentasCosto, setCuentasCosto] = useState<Array<{ id: string; account_code: string; account_name: string }>>([])
 
   const form = useForm<OperatorFormValues>({
     resolver: zodResolver(operatorSchema),
@@ -82,12 +88,44 @@ export function EditOperatorDialog({
       admin_fee_percentage: operator.admin_fee_percentage ?? 0,
       cost_calculation_mode: (operator.cost_calculation_mode as "SIMPLE" | "COMMISSIONABLE" | null) ?? null,
       commission_percentage: operator.commission_percentage ?? 0,
+      iva_condition: operator.iva_condition ?? null,
+      cost_chart_account_id: operator.cost_chart_account_id ?? null,
     },
   })
 
   const watchedMode = form.watch("cost_calculation_mode")
 
   // Reset form when operator changes
+  useEffect(() => {
+    if (!open) return
+    let cancelado = false
+    ;(async () => {
+      try {
+        const res = await fetch("/api/accounting/chart-of-accounts")
+        if (!res.ok) return
+        const json = await res.json()
+        const raices = Array.isArray(json) ? json : (json.data ?? json.accounts ?? json.tree ?? [])
+        const planas: any[] = []
+        const recorrer = (n: any) => {
+          planas.push(n)
+          ;(n.children ?? []).forEach(recorrer)
+        }
+        raices.forEach(recorrer)
+        if (!cancelado) {
+          setCuentasCosto(
+            planas.filter((c: any) => String(c.account_code ?? "").startsWith("4.2."))
+          )
+        }
+      } catch {
+        // Sin plan de cuentas el selector queda vacío y el operador sigue
+        // derivando su costo por tipo de producto, que es el default.
+      }
+    })()
+    return () => {
+      cancelado = true
+    }
+  }, [open])
+
   useEffect(() => {
     if (operator) {
       form.reset({
@@ -99,6 +137,8 @@ export function EditOperatorDialog({
         admin_fee_percentage: operator.admin_fee_percentage ?? 0,
         cost_calculation_mode: (operator.cost_calculation_mode as "SIMPLE" | "COMMISSIONABLE" | null) ?? null,
         commission_percentage: operator.commission_percentage ?? 0,
+        iva_condition: operator.iva_condition ?? null,
+        cost_chart_account_id: operator.cost_chart_account_id ?? null,
       })
     }
   }, [operator, form])
@@ -312,6 +352,75 @@ export function EditOperatorDialog({
                     </Select>
                     <FormDescription>
                       Define cómo se calcula el costo real en cotizaciones. Configurable globalmente en Ajustes → Finanzas.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="iva_condition"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Condición frente al IVA</FormLabel>
+                    <Select
+                      value={field.value ?? AGENCY_DEFAULT}
+                      onValueChange={(v) => field.onChange(v === AGENCY_DEFAULT ? null : v)}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Sin definir" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value={AGENCY_DEFAULT}>Sin definir</SelectItem>
+                        <SelectItem value="RESPONSABLE_INSCRIPTO">Responsable Inscripto</SelectItem>
+                        <SelectItem value="MONOTRIBUTO">Monotributista</SelectItem>
+                        <SelectItem value="EXENTO">Exento</SelectItem>
+                        <SelectItem value="CONSUMIDOR_FINAL">Consumidor Final</SelectItem>
+                        <SelectItem value="EXTERIOR">Exterior</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      Solo un Responsable Inscripto discrimina IVA, así que es el único que genera crédito fiscal
+                      sobre su costo. Sin definir se computa la alícuota general (21%).
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="cost_chart_account_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Cuenta de costo</FormLabel>
+                    <Select
+                      value={field.value ?? AGENCY_DEFAULT}
+                      onValueChange={(v) => field.onChange(v === AGENCY_DEFAULT ? null : v)}
+                      disabled={cuentasCosto.length === 0}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Según el tipo de producto" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value={AGENCY_DEFAULT}>Según el tipo de producto</SelectItem>
+                        {cuentasCosto.map((c) => (
+                          <SelectItem key={c.id} value={c.id}>
+                            {c.account_code} · {c.account_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      Dónde imputar contablemente el costo de este operador. Por defecto se deduce
+                      del tipo de producto de cada tramo: hotelería, aéreos, transfers o el genérico
+                      de operadores. Elegí una cuenta si querés verlo separado. Solo afecta a los
+                      asientos que se generen de acá en adelante.
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

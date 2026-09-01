@@ -1,102 +1,62 @@
 /**
- * FX SERVICE - Cálculo de Ganancias y Pérdidas por Tipo de Cambio
- * 
- * Este servicio maneja el cálculo automático de FX_GAIN y FX_LOSS
- * cuando hay diferencias entre monedas en ventas y pagos.
+ * Tipo de cambio de reconocimiento de una operación.
+ *
+ * QUÉ HABÍA ACÁ ANTES, Y POR QUÉ SE FUE
+ * ------------------------------------
+ * Este módulo tenía dos funciones que calculaban la diferencia de cambio del
+ * cobro y la registraban como un MOVIMIENTO DE PLATA contra una caja en pesos.
+ * Las dos se retiraron (VIB-141 / D1 y D2), por tres motivos que se refuerzan
+ * entre sí:
+ *
+ *   1. **Registraban plata que nadie movió.** Una ganancia por diferencia de
+ *      cambio es nocional: no entró un peso a ninguna caja. Como el movimiento
+ *      afectaba el saldo, habría inflado la Caja ARS con dinero inexistente.
+ *
+ *   2. **El cálculo era acumulativo.** Comparaban la venta TOTAL contra los
+ *      pagos acumulados, así que con un cobro parcial la "diferencia" era el
+ *      saldo impago, y lo registraban como pérdida de cambio. Con cobros
+ *      sucesivos, además, cada uno volvía a registrar la diferencia entera.
+ *
+ *   3. **No eran idempotentes.** El dedupe era una ventana de cinco minutos:
+ *      dejaba pasar un duplicado a los seis y bloqueaba uno legítimo a los
+ *      cuatro.
+ *
+ * Retirarlas fue de riesgo cero: en producción no existía **ni un solo**
+ * movimiento de diferencia de cambio, en ninguna agencia. La función corría en
+ * cada cobro y siempre cortaba antes de escribir. En los hechos era una bomba
+ * desactivada por accidente.
+ *
+ * QUÉ LAS REEMPLAZA
+ * -----------------
+ * `registrarDiferenciaPorCobro` en `fx-journal.ts`, que calcula la diferencia
+ * POR COBRO —comparando lo que entró contra el valor en libros de la porción de
+ * deuda que cancela—, la registra como asiento balanceado contra `4.1.05` /
+ * `4.3.13`, y usa el movimiento del cobro como clave de idempotencia real.
+ *
+ * Lo único que sobrevive acá es el helper que resuelve a qué cotización se
+ * reconoció la deuda, que es un dato de la operación y no del cálculo.
  */
-
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/lib/supabase/types"
-import { createLedgerMovement } from "./ledger"
-import { getOrCreateDefaultAccount } from "./ledger"
-import { getExchangeRate, getLatestExchangeRate } from "./exchange-rates"
+import { getExchangeRate } from "./exchange-rates"
 
 /**
- * Calcular y registrar FX_GAIN o FX_LOSS
- * 
- * Se genera FX_GAIN cuando:
- * - Una venta fue en USD y se pagó en ARS, y el ARS pagado < ARS equivalente registrado en la venta
- * 
- * Se genera FX_LOSS cuando:
- * - Una venta fue en USD y se pagó en ARS, y el ARS pagado > ARS equivalente registrado en la venta
- * - O viceversa (venta en ARS, pago en USD)
+ * La cotización a la que se reconoció la deuda de una operación.
+ *
+ * Se busca en el primer movimiento de ingreso que tenga tipo de cambio, porque
+ * es el que refleja con qué valor se registró la venta. Si no hay ninguno, se
+ * cae a la cotización de la fecha de la operación.
+ *
+ * Devuelve `null` para una deuda en pesos: no hay conversión que hacer, y
+ * devolver un 1 haría creer que sí.
  */
-export async function calculateAndRecordFX(
-  supabase: SupabaseClient<Database>,
-  operationId: string,
-  saleCurrency: "ARS" | "USD",
-  saleAmount: number,
-  saleExchangeRate: number | null,
-  paymentCurrency: "ARS" | "USD",
-  paymentAmount: number,
-  paymentExchangeRate: number | null,
-  userId: string
-): Promise<{ fxType: "FX_GAIN" | "FX_LOSS" | null; fxAmount: number }> {
-  // Si ambas monedas son iguales, no hay FX
-  if (saleCurrency === paymentCurrency) {
-    return { fxType: null, fxAmount: 0 }
-  }
-
-  // Calcular ARS equivalentes
-  const saleArsEquivalent = saleCurrency === "ARS" 
-    ? saleAmount 
-    : saleAmount * (saleExchangeRate || 1)
-
-  const paymentArsEquivalent = paymentCurrency === "ARS"
-    ? paymentAmount
-    : paymentAmount * (paymentExchangeRate || 1)
-
-  // Calcular diferencia
-  const difference = saleArsEquivalent - paymentArsEquivalent
-
-  // Si la diferencia es muy pequeña (< 1 ARS), ignorar
-  if (Math.abs(difference) < 1) {
-    return { fxType: null, fxAmount: 0 }
-  }
-
-  const fxType: "FX_GAIN" | "FX_LOSS" = difference > 0 ? "FX_GAIN" : "FX_LOSS"
-  const fxAmount = Math.abs(difference)
-
-  // Obtener cuenta por defecto para FX
-  const defaultAccountId = await getOrCreateDefaultAccount("CASH", "ARS", userId, supabase)
-
-  // Crear ledger movement para FX
-  await createLedgerMovement(
-    {
-      operation_id: operationId,
-      type: fxType,
-      concept: `Diferencia de cambio: ${saleCurrency} → ${paymentCurrency}`,
-      currency: "ARS",
-      amount_original: fxAmount,
-      exchange_rate: null,
-      amount_ars_equivalent: fxAmount,
-      method: "OTHER",
-      account_id: defaultAccountId,
-      seller_id: null,
-      operator_id: null,
-      receipt_number: null,
-      notes: `Venta: ${saleAmount} ${saleCurrency} (ARS: ${saleArsEquivalent.toFixed(2)}), Pago: ${paymentAmount} ${paymentCurrency} (ARS: ${paymentArsEquivalent.toFixed(2)})`,
-      created_by: userId,
-    },
-    supabase
-  )
-
-  return { fxType, fxAmount }
-}
-
-/**
- * Obtener el exchange rate usado en la operación desde los ledger movements
- */
-async function getOperationExchangeRate(
+export async function getOperationExchangeRate(
   supabase: SupabaseClient<Database>,
   operationId: string,
   currency: "ARS" | "USD"
 ): Promise<number | null> {
-  if (currency === "ARS") {
-    return null // No hay conversión necesaria
-  }
+  if (currency === "ARS") return null
 
-  // Buscar el primer ledger movement de INCOME para esta operación que tenga exchange_rate
   const { data: movements } = await (supabase.from("ledger_movements") as any)
     .select("exchange_rate, created_at")
     .eq("operation_id", operationId)
@@ -106,11 +66,10 @@ async function getOperationExchangeRate(
     .limit(1)
     .maybeSingle()
 
-  if (movements && movements.exchange_rate) {
+  if (movements?.exchange_rate) {
     return parseFloat(movements.exchange_rate)
   }
 
-  // Si no hay en ledger, buscar en la fecha de creación de la operación
   const { data: operation } = await (supabase.from("operations") as any)
     .select("created_at, departure_date")
     .eq("id", operationId)
@@ -123,154 +82,3 @@ async function getOperationExchangeRate(
 
   return null
 }
-
-/**
- * Detectar y registrar FX automáticamente cuando se marca un pago como pagado
- * y hay diferencia de moneda con la operación
- * 
- * Compara los pagos acumulados vs la venta total para calcular FX correctamente
- */
-export async function autoCalculateFXForPayment(
-  supabase: SupabaseClient<Database>,
-  operationId: string,
-  paymentCurrency: "ARS" | "USD",
-  paymentAmount: number,
-  paymentExchangeRate: number | null,
-  userId: string
-): Promise<{ fxType: "FX_GAIN" | "FX_LOSS" | null; fxAmount: number }> {
-  // Obtener información de la operación
-  const { data: operation, error } = await (supabase.from("operations") as any)
-    .select("sale_amount_total, sale_currency, created_at, departure_date")
-    .eq("id", operationId)
-    .single()
-
-  if (error || !operation) {
-    console.error("Error fetching operation for FX calculation:", error)
-    return { fxType: null, fxAmount: 0 }
-  }
-
-  // Si no hay venta o moneda, no calcular FX
-  if (!operation.sale_currency || !operation.sale_amount_total) {
-    return { fxType: null, fxAmount: 0 }
-  }
-
-  // Si las monedas son iguales, no hay FX
-  if (operation.sale_currency === paymentCurrency) {
-    return { fxType: null, fxAmount: 0 }
-  }
-
-  // Obtener exchange rate de la operación
-  const saleExchangeRate = await getOperationExchangeRate(
-    supabase,
-    operationId,
-    operation.sale_currency
-  )
-
-  // Obtener todos los pagos acumulados para esta operación en la misma moneda del pago actual
-  const { data: allPayments } = await (supabase.from("payments") as any)
-    .select("amount, currency, date_paid")
-    .eq("operation_id", operationId)
-    .eq("status", "PAID")
-    .eq("direction", "INCOME")
-    .eq("payer_type", "CUSTOMER")
-
-  // Calcular total pagado en la moneda del pago
-  const totalPaidInPaymentCurrency = (allPayments || [])
-    .filter((p: any) => p.currency === paymentCurrency)
-    .reduce((sum: number, p: any) => sum + parseFloat(p.amount || "0"), 0)
-
-  // Calcular ARS equivalentes
-  if (operation.sale_currency !== "ARS" && !saleExchangeRate) {
-    console.warn(`No se encontró tipo de cambio para la operación ${operationId}. Configure un TC antes de calcular diferencias de cambio.`)
-    return { fxType: null, fxAmount: 0 }
-  }
-  const saleArsEquivalent = operation.sale_currency === "ARS"
-    ? operation.sale_amount_total
-    : operation.sale_amount_total * saleExchangeRate!
-
-  // Para el pago, usar el exchange rate proporcionado o buscar uno
-  let effectivePaymentRate = paymentExchangeRate
-  if (!effectivePaymentRate && paymentCurrency === "USD") {
-    const latestPayment = (allPayments || []).find((p: any) => p.currency === paymentCurrency && p.date_paid)
-    if (latestPayment) {
-      effectivePaymentRate = await getExchangeRate(supabase, latestPayment.date_paid)
-    }
-    if (!effectivePaymentRate) {
-      effectivePaymentRate = await getLatestExchangeRate(supabase)
-    }
-  }
-
-  if (paymentCurrency !== "ARS" && !effectivePaymentRate) {
-    console.warn(`No se encontró tipo de cambio para el pago de la operación ${operationId}. Configure un TC antes de calcular diferencias de cambio.`)
-    return { fxType: null, fxAmount: 0 }
-  }
-  const totalPaidArsEquivalent = paymentCurrency === "ARS"
-    ? totalPaidInPaymentCurrency
-    : totalPaidInPaymentCurrency * effectivePaymentRate!
-
-  // Calcular diferencia
-  const difference = saleArsEquivalent - totalPaidArsEquivalent
-
-  // Si la diferencia es muy pequeña (< 1 ARS), ignorar
-  if (Math.abs(difference) < 1) {
-    return { fxType: null, fxAmount: 0 }
-  }
-
-  // Verificar si ya existe un FX movement para esta operación (evitar duplicados)
-  const { data: existingFX } = await (supabase.from("ledger_movements") as any)
-    .select("id")
-    .eq("operation_id", operationId)
-    .in("type", ["FX_GAIN", "FX_LOSS"])
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  // Si ya existe un FX reciente (últimos 5 minutos), no crear otro
-  if (existingFX) {
-    const { data: fxMovement } = await (supabase.from("ledger_movements") as any)
-      .select("created_at")
-      .eq("id", existingFX.id)
-      .single()
-    
-    if (fxMovement) {
-      const fxDate = new Date(fxMovement.created_at)
-      const now = new Date()
-      const diffMinutes = (now.getTime() - fxDate.getTime()) / (1000 * 60)
-      
-      if (diffMinutes < 5) {
-        console.log("FX movement ya existe recientemente, no crear duplicado")
-        return { fxType: null, fxAmount: 0 }
-      }
-    }
-  }
-
-  const fxType: "FX_GAIN" | "FX_LOSS" = difference > 0 ? "FX_GAIN" : "FX_LOSS"
-  const fxAmount = Math.abs(difference)
-
-  // Obtener cuenta por defecto para FX
-  const defaultAccountId = await getOrCreateDefaultAccount("CASH", "ARS", userId, supabase)
-
-  // Crear ledger movement para FX
-  await createLedgerMovement(
-    {
-      operation_id: operationId,
-      type: fxType,
-      concept: `Diferencia de cambio: Venta ${operation.sale_amount_total} ${operation.sale_currency} vs Pagos ${totalPaidInPaymentCurrency.toFixed(2)} ${paymentCurrency}`,
-      currency: "ARS",
-      amount_original: fxAmount,
-      exchange_rate: null,
-      amount_ars_equivalent: fxAmount,
-      method: "OTHER",
-      account_id: defaultAccountId,
-      seller_id: null,
-      operator_id: null,
-      receipt_number: null,
-      notes: `Venta: ${operation.sale_amount_total} ${operation.sale_currency} (ARS: ${saleArsEquivalent.toFixed(2)}), Pagos acumulados: ${totalPaidInPaymentCurrency.toFixed(2)} ${paymentCurrency} (ARS: ${totalPaidArsEquivalent.toFixed(2)})`,
-      created_by: userId,
-    },
-    supabase
-  )
-
-  return { fxType, fxAmount }
-}
-

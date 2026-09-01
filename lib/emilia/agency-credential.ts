@@ -10,7 +10,6 @@ export interface AgencyEmiliaCredential {
   apiKey: string
   fingerprint: string
 }
-
 export class AgencyEmiliaCredentialError extends Error {
   constructor(
     public readonly code: "AGENCY_CREDENTIAL_MISSING" | "AGENCY_CREDENTIAL_INVALID",
@@ -20,7 +19,6 @@ export class AgencyEmiliaCredentialError extends Error {
     this.name = "AgencyEmiliaCredentialError"
   }
 }
-
 export function fingerprintEmiliaApiKey(apiKey: string): string {
   return createHash("sha256").update(apiKey.trim()).digest("hex")
 }

@@ -15,22 +15,34 @@ interface CustomerBreakdown {
   invoiced: number
 }
 
-interface MarginSummaryResponse {
+interface InvoicingSummaryResponse {
   operation: {
     id: string
     file_code: string
     destination: string
+    sale_amount_total: number
     margin_amount: number
+    /** Moneda de la venta: la venta y lo facturado se expresan en ella. */
+    sale_currency?: string | null
     customer: { id: string; name: string } | null
     customers?: CustomerBreakdown[]
     has_afip_emisor: boolean
   }
   summary: {
-    margin_total: number
+    /** VIB-157: la base es la venta total, no el margen. */
+    sale_total: number
     already_invoiced: number
     remaining: number
+    invoiced_pct: number
+    remaining_pct: number
     can_invoice: boolean
-    reason_disabled: "no_margin" | "no_customer" | "no_afip" | "already_fully_invoiced" | null
+    reason_disabled:
+      | "no_sale_amount"
+      | "no_customer"
+      | "no_afip"
+      | "already_fully_invoiced"
+      | null
+    unconverted_count: number
   }
   invoices: Array<{
     id: string
@@ -38,6 +50,8 @@ interface MarginSummaryResponse {
     pto_vta: number
     cbte_tipo: number
     imp_total: number
+    /** Moneda del comprobante (PES/DOL): puede diferir de la de la venta. */
+    moneda?: string | null
     fecha_emision: string | null
     status: string
     verification_status: string | null
@@ -46,14 +60,22 @@ interface MarginSummaryResponse {
 }
 
 const REASON_TEXT: Record<string, string> = {
-  no_margin: "Esta operación no tiene margen (costo ≥ venta)",
+  no_sale_amount: "Esta operación no tiene monto de venta cargado",
   no_customer: "Asigná un cliente a la operación primero",
   no_afip: "Configurá AFIP en Integraciones primero",
   already_fully_invoiced: "Ya facturada completa",
 }
 
-const fmtARS = (n: number) =>
-  new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 2 }).format(n)
+// VIB-151: una venta puede estar en USD y facturarse en pesos. Mostrar todo con
+// "$" hacía leer un margen de USD 8.050 como si fueran pesos.
+const fmtMoney = (n: number, currency: "ARS" | "USD" = "ARS") =>
+  new Intl.NumberFormat("es-AR", { style: "currency", currency, maximumFractionDigits: 2 }).format(n)
+
+const invoiceCurrency = (moneda?: string | null): "ARS" | "USD" =>
+  String(moneda ?? "PES").toUpperCase() === "DOL" ? "USD" : "ARS"
+
+const fmtPct = (n: number) =>
+  `${new Intl.NumberFormat("es-AR", { maximumFractionDigits: 1 }).format(n)}%`
 
 const fmtDate = (s: string | null) => {
   if (!s) return "-"
@@ -66,7 +88,7 @@ const fmtDate = (s: string | null) => {
 
 export function OperationFacturacionSection({ operationId }: { operationId: string }) {
   const router = useRouter()
-  const [data, setData] = useState<MarginSummaryResponse | null>(null)
+  const [data, setData] = useState<InvoicingSummaryResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -82,7 +104,7 @@ export function OperationFacturacionSection({ operationId }: { operationId: stri
         }
         return r.json()
       })
-      .then((d: MarginSummaryResponse) => {
+      .then((d: InvoicingSummaryResponse) => {
         if (!cancelled) setData(d)
       })
       .catch((e: any) => {
@@ -120,9 +142,7 @@ export function OperationFacturacionSection({ operationId }: { operationId: stri
   if (!data) return null
 
   const { summary, invoices } = data
-  const pct = summary.margin_total > 0
-    ? Math.min(100, (summary.already_invoiced / summary.margin_total) * 100)
-    : 0
+  const saleCurrency: "ARS" | "USD" = data.operation.sale_currency === "USD" ? "USD" : "ARS"
 
   const disabledReasonText = summary.reason_disabled
     ? REASON_TEXT[summary.reason_disabled]
@@ -133,29 +153,44 @@ export function OperationFacturacionSection({ operationId }: { operationId: stri
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-base">
           <Receipt className="h-4 w-4" />
-          Facturación de ganancia
+          Facturación de la operación
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Stats */}
+        {/* Stats — la base es la venta total del paquete (VIB-157) */}
         <div className="grid grid-cols-3 gap-4 text-sm">
           <div>
-            <div className="text-muted-foreground text-xs">Margen total</div>
-            <div className="font-semibold">{fmtARS(summary.margin_total)}</div>
+            <div className="text-muted-foreground text-xs">Venta total</div>
+            <div className="font-semibold">{fmtMoney(summary.sale_total, saleCurrency)}</div>
           </div>
           <div>
             <div className="text-muted-foreground text-xs">Ya facturado</div>
-            <div className="font-semibold">{fmtARS(summary.already_invoiced)}</div>
+            <div className="font-semibold">{fmtMoney(summary.already_invoiced, saleCurrency)}</div>
+            <div className="text-xs text-muted-foreground">{fmtPct(summary.invoiced_pct)}</div>
           </div>
           <div>
-            <div className="text-muted-foreground text-xs">Restante</div>
-            <div className="font-semibold text-success">{fmtARS(summary.remaining)}</div>
+            <div className="text-muted-foreground text-xs">Falta facturar</div>
+            <div className="font-semibold">{fmtMoney(summary.remaining, saleCurrency)}</div>
+            <div className="text-xs text-muted-foreground">{fmtPct(summary.remaining_pct)}</div>
           </div>
         </div>
 
         {/* Progress */}
-        {summary.margin_total > 0 && (
-          <Progress value={pct} className="h-2" />
+        {summary.sale_total > 0 && (
+          <Progress value={summary.invoiced_pct} className="h-2" />
+        )}
+
+        {/* Facturas que no se pudieron valuar en la moneda de la venta: el
+            restante que se muestra puede ser mayor que el real. */}
+        {summary.unconverted_count > 0 && (
+          <div className="flex items-start gap-2 text-xs text-accent-coral">
+            <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+            <span>
+              {summary.unconverted_count === 1
+                ? "Hay 1 factura en otra moneda sin tipo de cambio del día: no está contada en el total facturado."
+                : `Hay ${summary.unconverted_count} facturas en otra moneda sin tipo de cambio del día: no están contadas en el total facturado.`}
+            </span>
+          </div>
         )}
 
         {/* Per-customer breakdown when there are multiple passengers — facturación múltiple */}
@@ -175,7 +210,7 @@ export function OperationFacturacionSection({ operationId }: { operationId: stri
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-muted-foreground">
-                    Facturado: <span className="font-mono text-foreground">{fmtARS(c.invoiced)}</span>
+                    Facturado: <span className="font-mono text-foreground">{fmtMoney(c.invoiced, saleCurrency)}</span>
                   </span>
                   <Button
                     size="sm"
@@ -204,7 +239,7 @@ export function OperationFacturacionSection({ operationId }: { operationId: stri
             className="w-full sm:w-auto"
           >
             <Receipt className="h-4 w-4 mr-2" />
-            {(data.operation.customers?.length || 0) > 1 ? "Facturar (elegir cliente)" : "Facturar ganancia"}
+            {(data.operation.customers?.length || 0) > 1 ? "Facturar (elegir cliente)" : "Facturar"}
           </Button>
           {disabledReasonText && (
             <p className="text-xs text-muted-foreground mt-2">{disabledReasonText}</p>
@@ -231,7 +266,7 @@ export function OperationFacturacionSection({ operationId }: { operationId: stri
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-xs">{tipoLabel} {nroStr}</span>
                     <span className="text-muted-foreground text-xs">•</span>
-                    <span>{fmtARS(inv.imp_total)}</span>
+                    <span>{fmtMoney(inv.imp_total, invoiceCurrency(inv.moneda))}</span>
                     <span className="text-muted-foreground text-xs">•</span>
                     <span className="text-xs text-muted-foreground">{fmtDate(inv.fecha_emision)}</span>
                   </div>

@@ -11,13 +11,11 @@ export interface OfferSource {
   offer_id: string
   selection_id?: string
 }
-
 export interface OfferRefreshFallback {
   product: RefreshProduct
   query: Record<string, unknown>
   identity: Record<string, unknown>
 }
-
 export type RefreshRunStatus =
   | "RUNNING"
   | "REVIEW_REQUIRED"

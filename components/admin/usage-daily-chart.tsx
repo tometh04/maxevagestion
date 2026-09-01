@@ -8,21 +8,28 @@ import type { UsageDailyRow } from "@/lib/admin/usage"
 // (`--chart-1: 232 76% 58%`), asi que `var(--chart-1)` a secas no es un color
 // valido y recharts cae a negro sin avisar.
 const chartConfig = {
-  active_orgs: { label: "Agencias activas", color: "hsl(var(--chart-1))" },
+  value: { label: "Activas", color: "hsl(var(--chart-1))" },
 } satisfies Record<string, { label: string; color: string }>
 
 type Props = {
   rows: UsageDailyRow[]
   days: number
+  /**
+   * Qué se cuenta. Con una org elegida, contar organizaciones distintas daría
+   * una línea plana en 1 — lo que interesa ahí son sus personas.
+   */
+  metric?: "orgs" | "users"
 }
 
 /**
  * Serie completa: la RPC solo devuelve dias con actividad, y un fin de semana
  * vacio que se omite en vez de dibujarse en cero deforma la tendencia.
  */
-function fillGaps(rows: UsageDailyRow[], days: number) {
-  const byDay = new Map(rows.map((r) => [r.day, r.active_orgs]))
-  const out: { label: string; day: string; active_orgs: number }[] = []
+function fillGaps(rows: UsageDailyRow[], days: number, metric: "orgs" | "users") {
+  const byDay = new Map(
+    rows.map((r) => [r.day, metric === "users" ? r.active_users : r.active_orgs])
+  )
+  const out: { label: string; day: string; value: number }[] = []
   const today = new Date()
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date(today)
@@ -31,7 +38,7 @@ function fillGaps(rows: UsageDailyRow[], days: number) {
     out.push({
       day: key,
       label: `${d.getDate()}/${d.getMonth() + 1}`,
-      active_orgs: byDay.get(key) ?? 0,
+      value: byDay.get(key) ?? 0,
     })
   }
   return out
@@ -43,8 +50,8 @@ function fillGaps(rows: UsageDailyRow[], days: number) {
  * deja el resto del mes como una linea plana). El conteo de agencias esta
  * acotado y es el pulso real de retencion.
  */
-export function UsageDailyChart({ rows, days }: Props) {
-  const data = fillGaps(rows, days)
+export function UsageDailyChart({ rows, days, metric = "orgs" }: Props) {
+  const data = fillGaps(rows, days, metric)
   // Con 90 barras las etiquetas se pisan; una cada ~10 alcanza para ubicarse.
   const tickStep = days > 30 ? 10 : days > 7 ? 3 : 1
 
@@ -61,7 +68,7 @@ export function UsageDailyChart({ rows, days }: Props) {
         />
         <YAxis width={28} tickLine={false} axisLine={false} fontSize={10} allowDecimals={false} />
         <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
-        <Bar dataKey="active_orgs" fill="var(--color-active_orgs)" radius={2} />
+        <Bar dataKey="value" fill="var(--color-value)" radius={2} />
       </BarChart>
     </ChartContainer>
   )

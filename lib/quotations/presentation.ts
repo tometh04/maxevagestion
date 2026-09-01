@@ -138,6 +138,7 @@ export const QUOTATION_STATUS_LABELS: Record<string, string> = {
   APPROVED: "Aceptada",
   REJECTED: "Rechazada",
   EXPIRED: "Vencida",
+  CONVERTING: "Convirtiendo",
   CONVERTED: "Confirmada",
   DRAFT: "Borrador",
 }

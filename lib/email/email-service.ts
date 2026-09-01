@@ -295,6 +295,110 @@ export async function sendTrialExpiringEmail(
 }
 
 /**
+ * Aviso de cobro de suscripción rechazado (dunning).
+ *
+ * Se manda desde el cron past-due-reminders mientras la org está PAST_DUE y
+ * todavía dentro de la gracia. El objetivo es concreto: que el dueño entre y
+ * apriete "Regularizar pago" ANTES de que se le corte, porque MP no reintenta
+ * el ciclo caído — lo saltea y reprograma al mes siguiente.
+ *
+ * `reason` sale de lib/billing/rejection-reason.ts. Es la diferencia entre
+ * "no te pudimos cobrar" (inaccionable) y "no había saldo en tu cuenta de MP".
+ */
+export async function sendPaymentFailedEmail(
+  to: string,
+  agencyName: string,
+  opts: {
+    amountArs: number | null
+    graceEndsAt: Date
+    daysLeft: number
+    reasonLabel: string | null
+    reasonAction: string | null
+  }
+): Promise<SendEmailResult> {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://app.vibook.ai"
+  const graceFmt = opts.graceEndsAt.toLocaleDateString("es-AR", {
+    day: "numeric",
+    month: "long",
+  })
+  const amountFmt =
+    opts.amountArs != null ? `${Number(opts.amountArs).toLocaleString("es-AR")}` : null
+  const urgent = opts.daysLeft <= 1
+
+  const html = `<!DOCTYPE html>
+<html>
+<body style="font-family: -apple-system, system-ui, sans-serif; margin: 0; padding: 0; background: #f5f7fa;">
+  <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 16px; overflow: hidden; margin-top: 24px; margin-bottom: 24px;">
+    <div style="background: ${VIBOOK_EMAIL_GRADIENT_WARNING}; padding: 36px 30px; text-align: center;">
+      <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 700;">
+        No pudimos procesar tu pago
+      </h1>
+      <p style="color: rgba(255,255,255,0.9); margin: 12px 0 0 0; font-size: 15px;">
+        ${agencyName}${amountFmt ? ` · ${amountFmt}` : ""}
+      </p>
+    </div>
+
+    <div style="padding: 32px 30px;">
+      <p style="font-size: 15px; color: #1f2937; line-height: 1.6; margin: 0 0 20px 0;">
+        Mercado Pago rechazó el cobro de tu suscripción${
+          opts.reasonLabel ? `: <strong>${opts.reasonLabel}</strong>` : ""
+        }.
+      </p>
+
+      ${
+        opts.reasonAction
+          ? `<p style="font-size: 14px; color: #1f2937; line-height: 1.6; margin: 0 0 20px 0; padding: 12px 16px; background: #fef3f2; border-radius: 10px;">
+        ${opts.reasonAction}
+      </p>`
+          : ""
+      }
+
+      <p style="font-size: 15px; color: #1f2937; line-height: 1.6; margin: 0 0 20px 0;">
+        ${
+          urgent
+            ? `<strong>El acceso a ${agencyName} se suspende hoy</strong> si el pago no se regulariza.`
+            : `Tenés hasta el <strong>${graceFmt}</strong> para regularizarlo. Después el acceso queda suspendido.`
+        }
+      </p>
+
+      <p style="font-size: 14px; color: #6b7280; line-height: 1.6; margin: 0 0 20px 0;">
+        Importante: Mercado Pago no vuelve a intentar este cobro por su cuenta.
+        Para reactivar la suscripción tenés que completar el pago desde el botón
+        de abajo. Tus datos NO se borran.
+      </p>
+
+      <div style="text-align: center; margin: 28px 0;">
+        <a href="${appUrl}/settings/subscription"
+           style="display: inline-block; background: ${VIBOOK_EMAIL_GRADIENT}; color: white; padding: 14px 32px; border-radius: 999px; text-decoration: none; font-weight: 600; font-size: 15px;">
+          Regularizar pago
+        </a>
+      </div>
+
+      <p style="font-size: 13px; color: #6b7280; line-height: 1.6; margin: 24px 0 0 0;">
+        ¿Ya pagaste o querés cambiar el medio de pago? Respondé este mail o
+        escribinos a
+        <a href="mailto:soporte@vibook.ai" style="color: hsl(232 76% 58%); text-decoration: none;">soporte@vibook.ai</a>.
+      </p>
+    </div>
+
+    <div style="background: #f9fafb; padding: 16px; text-align: center; color: #9ca3af; font-size: 12px;">
+      Vibook — Gestión integral para agencias de viajes
+    </div>
+  </div>
+</body>
+</html>`
+
+  return sendEmail({
+    to,
+    subject: urgent
+      ? `[Urgente] Tu acceso a Vibook se suspende hoy · ${agencyName}`
+      : `No pudimos cobrar tu suscripción de Vibook · ${agencyName}`,
+    html,
+    replyTo: "soporte@vibook.ai",
+  })
+}
+
+/**
  * Enviar cotización por email
  */
 export async function sendQuotationEmail(

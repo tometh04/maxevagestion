@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -44,9 +44,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Loader2, Plus, FileText, DollarSign, MoreHorizontal, Pencil, Trash2, CreditCard } from "lucide-react"
+import { Loader2, Plus, FileText, DollarSign, MoreHorizontal, Pencil, Trash2, CreditCard, Split } from "lucide-react"
 import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
 import { NewVariableExpenseDialog } from "./new-variable-expense-dialog"
+import { SplitExpenseDialog } from "./split-expense-dialog"
 import { ExpenseReceiptDialog } from "./expense-receipt-dialog"
 import { CCPaymentDialog } from "./cc-payment-dialog"
 // Fix UTC shift en fechas DATE (VICO 2026-05-22)
@@ -78,6 +79,8 @@ interface Expense {
   users: { name: string } | null
   expense_classification: string | null
   cc_payment_group_id: string | null
+  agency_id: string | null
+  operation_id: string | null
 }
 
 interface VariableExpensesTabProps {
@@ -114,6 +117,10 @@ export function VariableExpensesTab({ agencies }: VariableExpensesTabProps) {
     expense: null,
   })
   const [editDialog, setEditDialog] = useState<{ open: boolean; expense: Expense | null }>({
+    open: false,
+    expense: null,
+  })
+  const [splitDialog, setSplitDialog] = useState<{ open: boolean; expense: Expense | null }>({
     open: false,
     expense: null,
   })
@@ -216,6 +223,10 @@ export function VariableExpensesTab({ agencies }: VariableExpensesTabProps) {
   useEffect(() => {
     fetchExpenses()
   }, [fetchExpenses])
+
+  // Dividir un gasto deja dos filas iguales salvo el importe: sin la oficina a
+  // la vista no hay forma de confirmar que el reparto quedó donde se quería.
+  const agencyNames = useMemo(() => new Map(agencies.map((a) => [a.id, a.name])), [agencies])
 
   const { sortedData: sortedExpenses, sortConfig, requestSort } = useSortableData(expenses, { key: "movement_date", direction: "desc" })
 
@@ -349,6 +360,7 @@ export function VariableExpensesTab({ agencies }: VariableExpensesTabProps) {
                 <SortableTableHead sortKey="category_info.name" sortConfig={sortConfig} onSort={requestSort}>Categoría</SortableTableHead>
                 <SortableTableHead sortKey="amount" sortConfig={sortConfig} onSort={requestSort} className="text-right">Monto</SortableTableHead>
                 <SortableTableHead sortKey="financial_account.name" sortConfig={sortConfig} onSort={requestSort}>Cuenta</SortableTableHead>
+                {agencies.length > 1 && <TableHead>Oficina</TableHead>}
                 <SortableTableHead sortKey="expense_classification" sortConfig={sortConfig} onSort={requestSort}>Tipo</SortableTableHead>
                 <TableHead className="text-center">Comprobante</TableHead>
                 <TableHead className="w-[50px]"></TableHead>
@@ -389,6 +401,11 @@ export function VariableExpensesTab({ agencies }: VariableExpensesTabProps) {
                   <TableCell className="text-right font-medium">
                     {formatCurrency(expense.amount, expense.currency)}
                   </TableCell>
+                  {agencies.length > 1 && (
+                    <TableCell className="text-sm text-muted-foreground">
+                      {agencyNames.get(expense.agency_id ?? "") || "Sin oficina"}
+                    </TableCell>
+                  )}
                   <TableCell className="text-sm text-muted-foreground">
                     {expense.financial_account?.name || "—"}
                   </TableCell>
@@ -436,6 +453,12 @@ export function VariableExpensesTab({ agencies }: VariableExpensesTabProps) {
                           <Pencil className="h-4 w-4 mr-2" />
                           Editar
                         </DropdownMenuItem>
+                        {agencies.length > 1 && !expense.operation_id && (
+                          <DropdownMenuItem onClick={() => setSplitDialog({ open: true, expense })}>
+                            <Split className="h-4 w-4 mr-2" />
+                            Dividir entre oficinas
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuItem
                           onClick={() => setDeleteDialog({ open: true, expense })}
                           className="text-destructive"
@@ -466,6 +489,13 @@ export function VariableExpensesTab({ agencies }: VariableExpensesTabProps) {
         onOpenChange={setCcPaymentOpen}
         onSuccess={fetchExpenses}
         agencies={agencies}
+      />
+      <SplitExpenseDialog
+        open={splitDialog.open}
+        onOpenChange={(open) => setSplitDialog((prev) => ({ ...prev, open }))}
+        expense={splitDialog.expense}
+        agencies={agencies}
+        onSuccess={fetchExpenses}
       />
       <ExpenseReceiptDialog
         open={receiptDialog.open}

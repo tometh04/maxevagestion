@@ -1,5 +1,11 @@
 import { buildAssistantContent, generateClientId, generateTitle } from "@/lib/emilia/utils"
-import { sanitizeEmiliaMetaForStorage, transformFlights, transformHotels } from "@/lib/emilia/transformers"
+import {
+  sanitizeEmiliaMetaForStorage,
+  transformCanonicalFlights,
+  transformCanonicalHotels,
+  transformFlights,
+  transformHotels,
+} from "@/lib/emilia/transformers"
 
 interface PersistTurnResultInput {
   supabase: any
@@ -16,26 +22,39 @@ function isDuplicate(error: any) {
   return error?.code === "23505" || error?.message?.includes("duplicate") || error?.message?.includes("unique")
 }
 
+interface NormalizedEmiliaTurn {
+  status: string
+  message?: string
+  missingFields: string[]
+  suggestedFollowups: string[]
+  flights?: { count: number; items: any[] }
+  hotels?: { count: number; items: any[] }
+  requestType?: string
+  parsedRequest: any
+  assistantText?: string
+  assistantMeta: any
+  searchId?: string
+}
+
+function assistantMessageText(message: any): string | undefined {
+  if (typeof message?.content === "string") return message.content
+  return typeof message?.content?.text === "string" ? message.content.text : undefined
+}
+
+function canonicalResultSets(data: any): any[] | null {
+  const outcome = data?.outcome
+  if (data?.schema_version !== "emilia.turn.v1" || !outcome) return null
+  if (outcome.type !== "search_results" && outcome.type !== "no_results") return []
+  return Array.isArray(outcome?.results?.result_sets) ? outcome.results.result_sets : []
+}
+
 function canonicalResultSet(data: any, product: "flights" | "hotels") {
-  const sets = data?.outcome?.results?.result_sets
-  if (!Array.isArray(sets)) return null
-  const set = sets.find((entry: any) => entry?.product === product && Array.isArray(entry?.data))
-  return set || null
+  const resultSets = data?.outcome?.results?.result_sets
+  if (!Array.isArray(resultSets)) return null
+  return resultSets.find((entry: any) => entry?.product === product && Array.isArray(entry?.data)) || null
 }
 
-function datePart(value: unknown) {
-  return typeof value === "string" && value ? value.slice(0, 10) : null
-}
-
-function durationLabel(minutes: unknown) {
-  const value = Number(minutes)
-  if (!Number.isFinite(value) || value <= 0) return ""
-  const hours = Math.floor(value / 60)
-  const rest = Math.round(value % 60)
-  return `${hours ? `${hours}h ` : ""}${rest ? `${rest}m` : ""}`.trim()
-}
-
-function validMoney(value: any) {
+function validCanonicalMoney(value: any) {
   return Number.isFinite(Number(value?.amount))
     && Number(value.amount) > 0
     && typeof value?.currency === "string"
@@ -57,16 +76,12 @@ function pointTimestamp(point: any) {
   return typeof point.date === "string" ? point.date : null
 }
 
-function waitingLabel(arrival: any, departure: any) {
-  const arrivalAt = pointTimestamp(arrival)
-  const departureAt = pointTimestamp(departure)
-  if (!arrivalAt || !departureAt) return ""
-  const minutes = Math.round((Date.parse(departureAt) - Date.parse(arrivalAt)) / 60_000)
-  return minutes > 0 ? durationLabel(minutes) : ""
+function canonicalDatePart(value: unknown) {
+  return typeof value === "string" && value ? value.slice(0, 10) : null
 }
 
-/** Proyecta el contrato publico emilia.turn.v1 al shape de cards, sin volver a
- * pasarlo por transformers legacy (sus legs/rooms tienen otra estructura). */
+/** Añade al view model de cards la procedencia pública necesaria para refrescar
+ * una oferta, sin volver a pasar el contrato canónico por transformers legacy. */
 export function canonicalOfferCards(data: any) {
   const flightSet = canonicalResultSet(data, "flights")
   const hotelSet = canonicalResultSet(data, "hotels")
@@ -78,158 +93,255 @@ export function canonicalOfferCards(data: any) {
   const hotelArtifact = typeof hotelSet?.artifact_id === "string" && hotelSet.artifact_id.trim()
     ? hotelSet.artifact_id.trim()
     : null
-  return {
-    flights: flightSet?.data?.flatMap((flight: any) => {
-      if (!validMoney(flight?.price)) return []
-      const legs = Array.isArray(flight?.legs) ? flight.legs : []
-      const firstDeparture = legs[0]?.departure_at || legs[0]?.segments?.[0]?.departure?.date
-      const secondDeparture = legs[1]?.departure_at || legs[1]?.segments?.[0]?.departure?.date
-      return [{
-        id: flight.id,
-        airline: {
-          code: flight.airline?.code || "",
-          name: flight.airline?.name || flight.airline?.code || "",
-        },
-        provider: flight.provider ?? null,
-        price: {
-          amount: Number(flight.price?.amount ?? 0),
-          currency: flight.price?.currency || "USD",
-          basis: "GROUP_TOTAL" as const,
-          cost_basis: canonicalCostBasis(flight.price),
-        },
-        adults: Number(flightQuery.adults ?? flightQuery.passengers?.adults ?? 1),
-        children: Number(flightQuery.children ?? flightQuery.passengers?.children ?? 0),
-        childrens: Number(flightQuery.children ?? flightQuery.passengers?.children ?? 0),
-        departure_date: datePart(flightQuery.departure_date ?? flightQuery.departureDate ?? firstDeparture) || "",
-        return_date: datePart(flightQuery.return_date ?? flightQuery.returnDate ?? secondDeparture),
-        cabin_class: flight.cabin ?? null,
-        legs: legs.map((leg: any, index: number) => {
-          const segments = Array.isArray(leg.segments) ? leg.segments : []
-          const first = segments[0]
-          const last = segments[segments.length - 1]
-          return {
-            departure: {
-              city_code: leg.origin || first?.departure?.airport_code || "",
-              city_name: first?.departure?.city || leg.origin || "",
-              time: first?.departure?.time || leg.departure_at || "",
-            },
-            arrival: {
-              city_code: leg.destination || last?.arrival?.airport_code || "",
-              city_name: last?.arrival?.city || leg.destination || "",
-              time: last?.arrival?.time || leg.arrival_at || "",
-            },
-            duration: durationLabel(leg.duration_minutes),
-            flight_type: index === 0 ? "outbound" as const : "inbound" as const,
-            layovers: segments.slice(0, -1).map((segment: any) => ({
-              destination_city: segment.arrival?.city || segment.arrival?.airport_code || "",
-              destination_code: segment.arrival?.airport_code || "",
-              waiting_time: waitingLabel(segment.arrival, segments[segments.indexOf(segment) + 1]?.departure),
-            })),
-            arrival_next_day: Boolean(
-              first?.departure?.date
-              && last?.arrival?.date
-              && last.arrival.date > first.departure.date
-            ),
-            baggage: flight.baggage,
-            segments,
-          }
-        }),
-        baggage: flight.baggage,
-        refundable: flight.refundable,
-        offer_source: flightArtifact && typeof flight?.id === "string" && flight.id.trim()
+
+  const rawFlights = flightSet
+    ? flightSet.data.filter((flight: any) => validCanonicalMoney(flight?.price))
+    : undefined
+  const transformedFlights = rawFlights
+    ? transformCanonicalFlights(rawFlights, flightQuery)
+    : undefined
+  const flights = transformedFlights?.map((flight: any, index: number) => {
+    const rawFlight = rawFlights?.[index]
+    const rawLegs = Array.isArray(rawFlight?.legs) ? rawFlight.legs : []
+    const firstDeparture = rawLegs[0]?.departure_at || rawLegs[0]?.segments?.[0]?.departure?.date
+    const secondDeparture = rawLegs[1]?.departure_at || rawLegs[1]?.segments?.[0]?.departure?.date
+
+    return {
+      ...flight,
+      price: {
+        ...flight.price,
+        cost_basis: canonicalCostBasis(rawFlight?.price),
+      },
+      departure_date: canonicalDatePart(
+        flightQuery.departure_date ?? flightQuery.departureDate ?? firstDeparture
+      ) || flight.departure_date,
+      return_date: canonicalDatePart(
+        flightQuery.return_date ?? flightQuery.returnDate ?? secondDeparture
+      ) ?? flight.return_date,
+      baggage: rawFlight?.baggage ?? null,
+      refundable: rawFlight?.refundable ?? null,
+      legs: flight.legs.map((leg: any, legIndex: number) => ({
+        ...leg,
+        baggage: rawFlight?.baggage ?? null,
+        segments: Array.isArray(rawLegs[legIndex]?.segments) ? rawLegs[legIndex].segments : [],
+      })),
+      offer_source: flightArtifact && typeof rawFlight?.id === "string" && rawFlight.id.trim()
         ? {
             artifact_id: flightArtifact,
             product: "flights" as const,
-            offer_id: flight.id,
+            offer_id: rawFlight.id,
           }
         : undefined,
-        offer_refresh_fallback: {
-          product: "flights" as const,
-          query: flightQuery,
-          identity: {
-            kind: "flight",
-            segments: legs.flatMap((leg: any) => (Array.isArray(leg.segments) ? leg.segments : []).map((segment: any) => ({
-              marketing_airline: segment.marketing_airline ?? null,
-              flight_number: segment.flight_number ?? null,
-              origin: segment.departure?.airport_code,
-              destination: segment.arrival?.airport_code,
-              departure_at: pointTimestamp(segment.departure),
-            }))),
-            cabin: flight.cabin ?? null,
-            checked_baggage: flight.baggage?.checked ?? null,
-            carry_on: flight.baggage?.carry_on ?? null,
-            refundable: flight.refundable ?? null,
-          },
+      offer_refresh_fallback: {
+        product: "flights" as const,
+        query: flightQuery,
+        identity: {
+          kind: "flight",
+          segments: rawLegs.flatMap((leg: any) => (
+            Array.isArray(leg?.segments) ? leg.segments : []
+          ).map((segment: any) => ({
+            marketing_airline: segment?.marketing_airline ?? null,
+            flight_number: segment?.flight_number ?? null,
+            origin: segment?.departure?.airport_code,
+            destination: segment?.arrival?.airport_code,
+            departure_at: pointTimestamp(segment?.departure),
+          }))),
+          cabin: rawFlight?.cabin ?? null,
+          checked_baggage: rawFlight?.baggage?.checked ?? null,
+          carry_on: rawFlight?.baggage?.carry_on ?? null,
+          refundable: rawFlight?.refundable ?? null,
         },
-      }]
-    }),
-    hotels: hotelSet?.data?.flatMap((hotel: any) => {
-      const rooms = (Array.isArray(hotel?.rooms) ? hotel.rooms : []).filter((room: any) => validMoney(room?.price))
-      if (rooms.length === 0) return []
-      const checkIn = hotel.stay?.check_in || hotelQuery.check_in || hotelQuery.checkIn || hotelQuery.checkinDate || ""
-      const checkOut = hotel.stay?.check_out || hotelQuery.check_out || hotelQuery.checkOut || hotelQuery.checkoutDate || ""
-      const derivedNights = checkIn && checkOut
-        ? Math.max(0, Math.round((Date.parse(checkOut) - Date.parse(checkIn)) / 86_400_000))
-        : 0
-      const nights = Number(hotel.stay?.nights ?? derivedNights)
-      return [{
-      id: hotel.id,
-      unique_id: hotel.id,
-      name: hotel.name,
-      category: hotel.stars ? `${hotel.stars} estrellas` : "",
-      city: hotel.location?.city || "",
-      address: hotel.location?.address || "",
-      phone: "",
-      images: [],
-      check_in: checkIn,
-      check_out: checkOut,
-      nights,
-      rooms: rooms.map((room: any) => ({
-            id: room.id,
-            type: room.name || "Habitación",
-            description: [room.name, room.board].filter(Boolean).join(" · "),
-            price_per_night: Number(room.price.amount) / Math.max(1, nights),
-            total_price: Number(room.price?.amount ?? 0),
-            currency: room.price?.currency || hotel.minimum_price?.currency || "USD",
-            cost_basis: canonicalCostBasis(room.price),
-            availability: 2,
-            occupancy_id: room.id,
-            adults: Number(hotelQuery.adults ?? hotelQuery.occupancies?.[0]?.adults ?? 1),
-            children: Number(hotelQuery.children ?? hotelQuery.occupancies?.[0]?.children ?? 0),
-            refundable: room.refundable,
-            policy_cancellation: room.cancellation_policy,
-            offer_source:
-              hotelArtifact && typeof hotel?.id === "string" && hotel.id.trim()
-                ? {
-                    artifact_id: hotelArtifact,
-                    product: "hotels" as const,
-                    offer_id: hotel.id,
-                    ...(typeof room?.id === "string" && room.id.trim()
-                      ? { selection_id: room.id }
-                      : {}),
-                  }
-                : undefined,
-            offer_refresh_fallback: {
-              product: "hotels" as const,
-              query: hotelQuery,
-              identity: {
-                kind: "hotel_room",
-                hotel_name: hotel.name,
-                city: hotel.location?.city ?? null,
-                room_name: room.name ?? null,
-                board: room.board ?? null,
-                check_in: checkIn,
-                check_out: checkOut,
-              },
+      },
+    }
+  })
+
+  const rawHotels = hotelSet
+    ? hotelSet.data.flatMap((hotel: any) => {
+        const rooms = (Array.isArray(hotel?.rooms) ? hotel.rooms : [])
+          .filter((room: any) => validCanonicalMoney(room?.price))
+        return rooms.length > 0 ? [{ ...hotel, rooms }] : []
+      })
+    : undefined
+  const transformedHotels = rawHotels
+    ? transformCanonicalHotels(rawHotels, hotelQuery)
+    : undefined
+  const hotels = transformedHotels?.map((hotel: any, index: number) => {
+    const rawHotel = rawHotels?.[index]
+    const rawRooms = Array.isArray(rawHotel?.rooms) ? rawHotel.rooms : []
+    return {
+      ...hotel,
+      rooms: hotel.rooms.map((room: any, roomIndex: number) => {
+        const rawRoom = rawRooms[roomIndex]
+        return {
+          ...room,
+          id: rawRoom?.id,
+          cost_basis: canonicalCostBasis(rawRoom?.price),
+          offer_source:
+            hotelArtifact && typeof rawHotel?.id === "string" && rawHotel.id.trim()
+              ? {
+                  artifact_id: hotelArtifact,
+                  product: "hotels" as const,
+                  offer_id: rawHotel.id,
+                  ...(typeof rawRoom?.id === "string" && rawRoom.id.trim()
+                    ? { selection_id: rawRoom.id }
+                    : {}),
+                }
+              : undefined,
+          offer_refresh_fallback: {
+            product: "hotels" as const,
+            query: hotelQuery,
+            identity: {
+              kind: "hotel_room",
+              hotel_name: rawHotel?.name,
+              city: rawHotel?.location?.city ?? null,
+              room_name: rawRoom?.name ?? null,
+              board: rawRoom?.board ?? null,
+              check_in: hotel.check_in,
+              check_out: hotel.check_out,
             },
-          })),
-      policy_cancellation: rooms[0]?.cancellation_policy || "",
-      policy_lodging: "",
-      search_adults: Number(hotelQuery.adults ?? hotelQuery.occupancies?.[0]?.adults ?? 1),
-      search_children: Number(hotelQuery.children ?? hotelQuery.occupancies?.[0]?.children ?? 0),
-      provider: hotel.provider ?? null,
-    }]
-    }),
+          },
+        }
+      }),
+    }
+  })
+
+  return { flights, hotels }
+}
+
+function canonicalRequestType(flights: any, hotels: any): string | undefined {
+  if (flights && hotels) return "combined"
+  if (flights) return "flights"
+  if (hotels) return "hotels"
+  return undefined
+}
+
+function normalizeCanonicalTurn(data: any): NormalizedEmiliaTurn {
+  const outcome = data.outcome || {}
+  const text = assistantMessageText(data.assistant_message)
+
+  if (outcome.type === "needs_input") {
+    return {
+      status: "incomplete",
+      message: outcome.question || text || "Necesito más información para completar la búsqueda.",
+      missingFields: Array.isArray(outcome.missing_fields) ? outcome.missing_fields : [],
+      suggestedFollowups: [],
+      parsedRequest: null,
+      assistantText: text,
+      assistantMeta: {
+        messageType: "needs_input",
+        missing_fields: Array.isArray(outcome.missing_fields) ? outcome.missing_fields : [],
+      },
+    }
+  }
+
+  if (outcome.type === "error") {
+    return {
+      status: "error",
+      message: outcome?.error?.message || text || "Emilia no pudo completar la búsqueda.",
+      missingFields: [],
+      suggestedFollowups: [],
+      parsedRequest: null,
+      assistantText: text,
+      assistantMeta: { messageType: "error" },
+    }
+  }
+
+  const resultSets = canonicalResultSets(data) || []
+  const flightSet = resultSets.find((resultSet) => resultSet?.product === "flights")
+  const hotelSet = resultSets.find((resultSet) => resultSet?.product === "hotels")
+  const canonicalCards = canonicalOfferCards(data)
+  const flightItems = canonicalCards.flights
+  const hotelItems = canonicalCards.hotels
+  const requestType = canonicalRequestType(flightSet, hotelSet)
+  const parsedRequest = requestType
+    ? {
+      type: requestType,
+      requestType,
+      ...(flightSet ? { flights: flightSet.query || {} } : {}),
+      ...(hotelSet ? { hotels: hotelSet.query || {} } : {}),
+    }
+    : null
+  const searchContextId = data?.metadata?.turn_id || data?.metadata?.job_id || data?.request_id
+  const turnSemantics = {
+    ...(data?.metadata?.turn_relation ? { relation: data.metadata.turn_relation } : {}),
+    ...(searchContextId ? { searchContextId } : {}),
+  }
+
+  return {
+    status: "completed",
+    message: text,
+    missingFields: [],
+    suggestedFollowups: [],
+    flights: flightSet ? { count: flightItems?.length || 0, items: flightItems || [] } : undefined,
+    hotels: hotelSet ? { count: hotelItems?.length || 0, items: hotelItems || [] } : undefined,
+    requestType,
+    parsedRequest,
+    assistantText: text,
+    assistantMeta: {
+      messageType: outcome.type || "message",
+      ...(parsedRequest ? { originalRequest: parsedRequest, parsedRequest } : {}),
+      ...(Object.keys(turnSemantics).length > 0 ? { turnSemantics } : {}),
+      canonicalResult: outcome.results
+        ? {
+          status: outcome.results.status,
+          warnings: outcome.results.warnings || [],
+          availableActions: outcome.results.available_actions || [],
+          references: outcome.results.references || [],
+        }
+        : undefined,
+    },
+  }
+}
+
+/** Adapta el contrato público de Emilia y el shape histórico al único view model de Maxeva. */
+export function normalizeEmiliaTurnPayload(data: any): NormalizedEmiliaTurn {
+  if (data?.schema_version === "emilia.turn.v1" && data?.outcome) {
+    return normalizeCanonicalTurn(data)
+  }
+
+  const metaCombined = data?.assistant_message?.meta?.combinedData
+  const flightsRaw = metaCombined?.flights ?? data?.results?.flights ?? data?.flights
+  const hotelsRaw = metaCombined?.hotels ?? data?.results?.hotels ?? data?.hotels
+  const flightsData = Array.isArray(flightsRaw)
+    ? { count: flightsRaw.length, items: flightsRaw }
+    : flightsRaw
+  const hotelsData = Array.isArray(hotelsRaw)
+    ? { count: hotelsRaw.length, items: hotelsRaw }
+    : hotelsRaw
+  const transformedFlights = flightsData?.items ? transformFlights(flightsData.items) : undefined
+  const transformedHotels = hotelsData?.items ? transformHotels(hotelsData.items) : undefined
+  const flights = transformedFlights
+    ? { count: transformedFlights.length, items: transformedFlights }
+    : flightsData
+  const hotels = transformedHotels
+    ? { count: transformedHotels.length, items: transformedHotels }
+    : hotelsData
+  const parsedRequest =
+    data?.parsed_request ??
+    data?.emilia?.parsed_request ??
+    data?.assistant_message?.meta?.parsedRequest ??
+    null
+  const parsedRequestType = parsedRequest?.requestType
+  const requestType = flights && hotels ? "combined"
+    : flights ? "flights-only"
+      : hotels ? "hotels-only"
+        : parsedRequestType === "flights" ? "flights-only"
+          : parsedRequestType === "hotels" ? "hotels-only"
+            : parsedRequestType === "combined" ? "combined"
+              : data?.requestType
+
+  return {
+    status: data?.status || "completed",
+    message: data?.message,
+    missingFields: data?.missing_fields || [],
+    suggestedFollowups: data?.suggested_followups || [],
+    flights,
+    hotels,
+    requestType,
+    parsedRequest,
+    assistantText: assistantMessageText(data?.assistant_message),
+    assistantMeta: data?.assistant_message?.meta,
+    searchId: data?.search_id,
   }
 }
 
@@ -244,14 +356,15 @@ export async function persistEmiliaTurnResult({
   jobId,
 }: PersistTurnResultInput) {
   const assistantClientId = jobId || generateClientId()
+  const normalized = normalizeEmiliaTurnPayload(data)
 
-  if (data.status === "incomplete" || data.request_type === "missing_info_request") {
+  if (normalized.status === "incomplete" || data.request_type === "missing_info_request") {
     const assistantContent = {
-      text: data.message || "Necesito más información para completar la búsqueda. ¿Podrías especificar las fechas, cantidad de personas y destino?",
+      text: normalized.message || "Necesito más información para completar la búsqueda. ¿Podrías especificar las fechas, cantidad de personas y destino?",
       metadata: {
         request_type: "missing_info_request",
-        missing_fields: data.missing_fields || [],
-        suggested_followups: data.suggested_followups || [],
+        missing_fields: normalized.missingFields,
+        suggested_followups: normalized.suggestedFollowups,
         emilia_job: jobId ? { job_id: jobId, request_id: requestId, status: "completed" } : undefined,
       },
     }
@@ -262,7 +375,7 @@ export async function persistEmiliaTurnResult({
       content: assistantContent,
       client_id: assistantClientId,
       api_request_id: requestId,
-      api_search_id: data.search_id,
+      api_search_id: normalized.searchId,
     })
     if (error && !isDuplicate(error)) throw error
 
@@ -276,66 +389,33 @@ export async function persistEmiliaTurnResult({
     return {
       status: "incomplete",
       message: assistantContent.text,
-      missing_fields: data.missing_fields || [],
-      suggested_followups: data.suggested_followups || [],
+      missing_fields: normalized.missingFields,
+      suggested_followups: normalized.suggestedFollowups,
       job_id: jobId,
       timestamp: new Date().toISOString(),
     }
   }
 
-  const metaCombined = data.assistant_message?.meta?.combinedData
-  const canonical = canonicalOfferCards(data)
-  const hasCanonicalFlights = canonical.flights !== undefined
-  const hasCanonicalHotels = canonical.hotels !== undefined
-  const flightsRaw = canonical.flights ?? metaCombined?.flights ?? data.results?.flights ?? data.flights
-  const hotelsRaw = canonical.hotels ?? metaCombined?.hotels ?? data.results?.hotels ?? data.hotels
-  const flightsData = Array.isArray(flightsRaw)
-    ? { count: flightsRaw.length, items: flightsRaw }
-    : flightsRaw
-  const hotelsData = Array.isArray(hotelsRaw)
-    ? { count: hotelsRaw.length, items: hotelsRaw }
-    : hotelsRaw
-  const transformedFlights = flightsData?.items
-    ? hasCanonicalFlights ? flightsData.items : transformFlights(flightsData.items)
-    : undefined
-  const transformedHotels = hotelsData?.items
-    ? hasCanonicalHotels ? hotelsData.items : transformHotels(hotelsData.items)
-    : undefined
-  const resultsFlights = transformedFlights
-    ? { count: flightsData.count, items: transformedFlights }
-    : flightsData
-  const resultsHotels = transformedHotels
-    ? { count: hotelsData.count, items: transformedHotels }
-    : hotelsData
-
-  const parsedReqType =
-    data.assistant_message?.meta?.parsedRequest?.requestType ??
-    data.emilia?.parsed_request?.requestType ??
-    data.parsed_request?.requestType
-  const derivedRequestType =
-    resultsFlights && resultsHotels ? "combined"
-      : resultsFlights ? "flights-only"
-        : resultsHotels ? "hotels-only"
-          : parsedReqType === "flights" ? "flights-only"
-            : parsedReqType === "hotels" ? "hotels-only"
-              : parsedReqType === "combined" ? "combined"
-                : data.requestType
+  const resultsFlights = normalized.flights
+  const resultsHotels = normalized.hotels
+  const derivedRequestType = normalized.requestType
 
   const normalizedDataForContent = {
     ...data,
+    status: normalized.status,
     results: resultsFlights || resultsHotels
       ? { flights: resultsFlights, hotels: resultsHotels }
       : data.results,
   }
-  const emiliaText = data.assistant_message?.content?.text as string | undefined
-  const emiliaMeta = sanitizeEmiliaMetaForStorage(data.assistant_message?.meta)
+  const emiliaText = normalized.assistantText || normalized.message
+  const emiliaMeta = sanitizeEmiliaMetaForStorage(normalized.assistantMeta)
   const assistantContent = {
     text: emiliaText || buildAssistantContent(normalizedDataForContent),
     cards: resultsFlights || resultsHotels
       ? { flights: resultsFlights, hotels: resultsHotels, requestType: derivedRequestType }
       : undefined,
     metadata: {
-      search_id: data.search_id,
+      search_id: normalized.searchId,
       results_count: (resultsFlights?.count || 0) + (resultsHotels?.count || 0),
       emilia_meta: emiliaMeta,
       emilia_job: jobId ? { job_id: jobId, request_id: requestId, status: "completed" } : undefined,
@@ -348,22 +428,18 @@ export async function persistEmiliaTurnResult({
     content: assistantContent,
     client_id: assistantClientId,
     api_request_id: requestId,
-    api_search_id: data.search_id,
+    api_search_id: normalized.searchId,
   })
   if (assistantError && !isDuplicate(assistantError)) throw assistantError
 
   const updates: any = { last_message_at: new Date().toISOString() }
-  const parsedRequestForCtx =
-    data.parsed_request ??
-    data.emilia?.parsed_request ??
-    data.assistant_message?.meta?.parsedRequest ??
-    null
+  const parsedRequestForCtx = normalized.parsedRequest
   if (data.context_management?.action === "save" && data.context_management?.context_to_save) {
     updates.last_search_context = data.context_management.context_to_save
   } else if (parsedRequestForCtx) {
     updates.last_search_context = parsedRequestForCtx
   }
-  if (conversation.title?.startsWith("Chat ") && data.status === "completed" && parsedRequestForCtx) {
+  if (conversation.title?.startsWith("Chat ") && normalized.status === "completed" && parsedRequestForCtx) {
     updates.title = generateTitle(parsedRequestForCtx)
   }
 
@@ -376,16 +452,20 @@ export async function persistEmiliaTurnResult({
 
   const normalizedResults = resultsFlights || resultsHotels
     ? { flights: resultsFlights, hotels: resultsHotels }
-    : data.results || (flightsData || hotelsData
-      ? { flights: resultsFlights, hotels: resultsHotels }
-      : undefined)
+    : data.results
+
+  const normalizedAssistantMessage = (data.assistant_message || emiliaText)
+    ? {
+      ...(data.assistant_message || { role: "assistant" }),
+      content: { text: assistantContent.text },
+      meta: emiliaMeta,
+    }
+    : data.assistant_message
 
   return {
     ...data,
-    assistant_message: data.assistant_message
-      ? { ...data.assistant_message, meta: emiliaMeta }
-      : data.assistant_message,
-    status: data.status || "completed",
+    assistant_message: normalizedAssistantMessage,
+    status: normalized.status,
     results: normalizedResults,
     requestType: derivedRequestType,
     job_id: jobId,

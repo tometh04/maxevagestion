@@ -70,13 +70,11 @@ function offerRefreshUrl() {
   return process.env.EMILIA_OFFER_REFRESH_URL?.trim()
     || "https://api.vibook.ai/v1/offer-refresh"
 }
-
 function timeoutMs() {
   const configured = Number(process.env.EMILIA_OFFER_REFRESH_TIMEOUT_MS || 210_000)
   if (!Number.isFinite(configured) || configured <= 0) return 210_000
   return Math.min(Math.max(configured, 30_000), 300_000)
 }
-
 function mapRemoteError(status: number) {
   if (status === 401) return "INVALID_CREDENTIAL" as const
   if (status === 403) return "FORBIDDEN" as const

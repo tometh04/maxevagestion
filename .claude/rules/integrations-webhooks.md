@@ -34,6 +34,10 @@ Pago webhook handling.
 
 - `/api/webhooks/manychat` is legacy. Prefer
   `/api/integrations/manychat/[token]/webhook` for new work.
+- Connecting a new Agente Blanco / ManyChat tenant goes through the token
+  webhook by default. Follow
+  `docs/integrations/manychat/conectar-cliente-agente-blanco.md`; do not
+  onboard new tenants on the shared global API key.
 - Do not copy old static API-key patterns into new integrations.
 - Trello is residual/legacy unless the user explicitly asks to work on Trello.
 

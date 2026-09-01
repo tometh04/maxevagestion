@@ -25,6 +25,12 @@ const financialSettingsSchema = z.object({
   primary_currency: z.enum(['ARS', 'USD']).optional(),
   enabled_currencies: z.array(z.string()).optional(),
   exchange_rate_config: z.record(z.any()).optional(),
+  /**
+   * Desde cuándo esta agencia lleva su contabilidad en vibook (VIB-143).
+   * Los estados formales toman datos a partir de acá; los asientos anteriores
+   * se siguen viendo en el Mayor.
+   */
+  accounting_start_date: z.string().nullable().optional(),
   default_usd_rate: z.number().optional(),
   default_accounts: z.record(z.string()).optional(),
   auto_create_accounts: z.boolean().optional(),

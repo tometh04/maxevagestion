@@ -153,6 +153,7 @@ export async function POST(request: Request) {
       "CREDIT_CARD",
       "ASSETS",
       "PARTNER",
+      "CHECK_PORTFOLIO",
     ]
     if (!validTypes.includes(type)) {
       return NextResponse.json({ error: "Tipo de cuenta inválido" }, { status: 400 })
@@ -178,6 +179,7 @@ export async function POST(request: Request) {
       SAVINGS_USD: "1.1.02", // Caja de Ahorro USD → Bancos
       ASSETS: "1.1.05", // Activos en Stock
       PARTNER: "3.1.01", // Cuenta Particular del Socio
+      CHECK_PORTFOLIO: "1.1.09", // Valores a Depositar (cheques de terceros en cartera)
     }
 
     // Obtener chart_account_id según el tipo de cuenta
@@ -186,6 +188,11 @@ export async function POST(request: Request) {
     if (chartCode) {
       const { data: chartAccount } = await (supabase.from("chart_of_accounts") as any)
         .select("id")
+        // El filtro por org es explícito y no delegado a RLS: las 25
+        // organizaciones tienen una cuenta con este mismo código, así que sin
+        // él la consulta depende de que la política esté puesta para no traer
+        // la cuenta de otro tenant.
+        .eq("org_id", user.org_id)
         .eq("account_code", chartCode)
         .eq("is_active", true)
         .maybeSingle()

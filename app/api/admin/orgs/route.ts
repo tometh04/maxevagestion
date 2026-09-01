@@ -5,6 +5,7 @@ import { isPlatformAdmin } from "@/lib/auth/platform"
 import { logSecurityEvent } from "@/lib/security/audit"
 import { seedChartOfAccountsForOrg } from "@/lib/accounting/seed-chart-of-accounts"
 import { seedManychatListsForAgency } from "@/lib/manychat/seed-lists"
+import { seedLeadRegionsForOrg } from "@/lib/leads/seed-lead-regions"
 
 /**
  * POST /api/admin/orgs
@@ -193,7 +194,16 @@ export async function POST(request: Request) {
       value: defaultCurrency,
     })
 
-    // 10. Seed chart of accounts (opcional)
+    // 10. Seed regiones default del CRM (no opcional: sin regiones la org
+    // no puede crear NINGÚN lead — POST /api/leads valida contra lead_regions
+    // y el select del front muestra un fallback hardcodeado que engaña).
+    try {
+      await seedLeadRegionsForOrg(org.id, admin)
+    } catch (e: any) {
+      console.warn(`[admin/orgs] seed lead_regions failed for ${org.id}:`, e?.message)
+    }
+
+    // 11. Seed chart of accounts (opcional)
     let chartResult = { created: 0, skipped: 0 }
     if (seedChart) {
       try {
@@ -204,7 +214,7 @@ export async function POST(request: Request) {
       }
     }
 
-    // 11. Seed Manychat lists (opcional)
+    // 12. Seed Manychat lists (opcional)
     let listsResult = { created: 0, skipped: 0 }
     if (seedLists) {
       try {

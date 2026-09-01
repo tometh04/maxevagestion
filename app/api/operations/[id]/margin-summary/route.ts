@@ -3,7 +3,17 @@ import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
 import { getAfipServiceForOrg } from "@/lib/afip/afip-service"
-import { calculateMarginSummary } from "@/lib/accounting/margin-summary"
+import { calculateInvoicingSummary } from "@/lib/accounting/invoicing-summary"
+import {
+  buildExchangeRateMap,
+  getExchangeRateWithFallback,
+} from "@/lib/accounting/exchange-rates"
+import {
+  getInvoiceSaleCurrency,
+  invoiceTotalInSaleCurrency,
+  needsMarketRate,
+  sumInvoicedInSaleCurrency,
+} from "@/lib/invoices/currency"
 
 export const dynamic = "force-dynamic"
 
@@ -11,7 +21,7 @@ export const dynamic = "force-dynamic"
  * GET /api/operations/:id/margin-summary
  *
  * Devuelve el estado de facturación de una operación:
- *   - margen total, ya facturado, restante
+ *   - venta total, ya facturado, restante y % de avance (VIB-157)
  *   - si se puede facturar y por qué no si bloqueado
  *   - lista de facturas emitidas (con CAE, status, verification_status)
  *
@@ -41,7 +51,7 @@ export async function GET(
     // MAIN se hace abajo.
     const { data: operation, error: opErr } = await (supabase
       .from("operations") as any)
-      .select("id, file_code, destination, sale_amount_total, operator_cost, margin_amount, org_id")
+      .select("id, file_code, destination, sale_amount_total, operator_cost, margin_amount, org_id, sale_currency, currency")
       .eq("id", id)
       .eq("org_id", (user as any).org_id)
       .single()
@@ -53,11 +63,52 @@ export async function GET(
 
     // Fetch invoices asociadas (incluyendo customer_id para agrupar)
     const { data: invoices } = await (supabase.from("invoices") as any)
-      .select("id, cbte_nro, pto_vta, cbte_tipo, imp_total, fecha_emision, status, verification_status, cae, customer_id")
+      .select("id, cbte_nro, pto_vta, cbte_tipo, imp_total, fecha_emision, status, verification_status, cae, customer_id, moneda, cotizacion")
       .eq("operation_id", id)
       .order("fecha_emision", { ascending: false })
 
     const invoicesList = (invoices ?? []) as any[]
+
+    // VIB-151: el margen está en la moneda de la venta y cada factura en la suya.
+    // Para valuar las que difieren hace falta el TC del día de emisión
+    // (`exchange_rates`, fuente autoritativa según
+    // docs/finance/TIPO-DE-CAMBIO-FUENTES.md).
+    const saleCurrency = getInvoiceSaleCurrency(operation)
+    const needsRates = invoicesList.some((inv) => needsMarketRate(inv, saleCurrency))
+    let rateFor: (date: string | null | undefined) => number | null = () => null
+    if (needsRates) {
+      const [rateMap, market] = await Promise.all([
+        buildExchangeRateMap(supabase, invoicesList.map((inv) => inv.fecha_emision)),
+        getExchangeRateWithFallback(supabase, new Date(), "margin-summary"),
+      ])
+      rateFor = (date) => rateMap(date) ?? market.rate
+    }
+
+    /**
+     * Importe de UNA factura llevado a la moneda de la venta, sin signo.
+     * Para totales usar `sumInvoiced`, que además netea las notas de crédito.
+     */
+    const invoicedInSaleCurrency = (inv: any): number => {
+      const impTotal = Number(inv.imp_total || 0)
+      const stored = Number(inv.cotizacion)
+      const rate = Number.isFinite(stored) && stored > 1 ? stored : rateFor(inv.fecha_emision)
+      const converted = invoiceTotalInSaleCurrency({
+        impTotal,
+        moneda: inv.moneda,
+        saleCurrency,
+        exchangeRate: rate,
+      })
+      return converted ?? impTotal
+    }
+
+    /**
+     * Total facturado de un conjunto de comprobantes, en la moneda de la venta y
+     * neto de notas de crédito. Es el mismo helper que usa el tope del servidor
+     * (VIB-157), así que el resumen que ve el usuario no puede divergir del
+     * guard que autoriza.
+     */
+    const sumInvoiced = (rows: any[]): number =>
+      sumInvoicedInSaleCurrency({ invoices: rows, saleCurrency, rateFor }).total
 
     // Fetch ALL customers via M:N operation_customers (ordenados MAIN primero)
     let customer: { id: string; name: string } | null = null
@@ -77,9 +128,9 @@ export async function GET(
     for (const oc of (opCustomers ?? []) as any[]) {
       if (!oc.customers) continue
       const cid = oc.customer_id as string
-      const invoicedToCustomer = invoicesList
-        .filter((inv) => inv.customer_id === cid && inv.status === "authorized")
-        .reduce((sum, inv) => sum + Number(inv.imp_total || 0), 0)
+      const invoicedToCustomer = sumInvoiced(
+        invoicesList.filter((inv) => inv.customer_id === cid && inv.status === "authorized")
+      )
       customersBreakdown.push({
         id: oc.customers.id,
         name: `${oc.customers.first_name || ""} ${oc.customers.last_name || ""}`.trim(),
@@ -103,10 +154,15 @@ export async function GET(
     const hasAfipConfig = !!afipSvc
 
     // Pasamos el customer_id resuelto (direct o M:N) a la pure function
-    const summary = calculateMarginSummary(
-      { margin_amount: operation.margin_amount, customer_id: resolvedCustomerId },
+    const summary = calculateInvoicingSummary(
+      {
+        sale_amount_total: operation.sale_amount_total,
+        customer_id: resolvedCustomerId,
+        sale_currency: saleCurrency,
+      },
       invoicesList,
-      hasAfipConfig
+      hasAfipConfig,
+      { rateFor }
     )
 
     return NextResponse.json({
@@ -115,6 +171,7 @@ export async function GET(
         file_code: operation.file_code,
         destination: operation.destination,
         sale_amount_total: Number(operation.sale_amount_total),
+        sale_currency: saleCurrency,
         operator_cost: Number(operation.operator_cost),
         margin_amount: Number(operation.margin_amount),
         customer,
@@ -128,6 +185,11 @@ export async function GET(
         pto_vta: i.pto_vta,
         cbte_tipo: i.cbte_tipo,
         imp_total: Number(i.imp_total),
+        moneda: i.moneda,
+        cotizacion: i.cotizacion === null || i.cotizacion === undefined ? null : Number(i.cotizacion),
+        // Ya facturado en la moneda de la venta: es lo que el front necesita
+        // para calcular el restante sin mezclar monedas.
+        imp_total_sale_currency: invoicedInSaleCurrency(i),
         fecha_emision: i.fecha_emision,
         status: i.status,
         verification_status: i.verification_status,

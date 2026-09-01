@@ -57,27 +57,30 @@ export async function createServerClient() {
 
   const cookieStore = await cookies()
   
+  // `getAll`/`setAll` y NO `get`/`set`/`remove`.
+  //
+  // El adapter viejo es deprecado y @supabase/ssr solo puede emular `getAll`
+  // adivinando: pide la cookie base mas 5 chunks tentativos por key. Con eso no
+  // ve el resto de las cookies, asi que al guardar una sesion nueva no puede
+  // limpiar los chunks viejos que sobran (`sb-...-auth-token.2` de una sesion
+  // mas grande queda colgado). El propio warning de la libreria nombra el
+  // sintoma: "random logouts, early session termination".
+  //
+  // `setAll` sigue tragando la excepcion porque en un Server Component las
+  // cookies son read-only; ahi el refresh lo escribe el middleware, que si
+  // puede (ver `redirectKeepingSession` en middleware.ts).
   return createSupabaseServerClient<Database>(supabaseUrl, supabaseAnonKey, {
     cookies: {
-      get(name: string) {
-        return cookieStore.get(name)?.value
+      getAll() {
+        return cookieStore.getAll()
       },
-      set(name: string, value: string, options: any) {
+      setAll(cookiesToSet) {
         try {
-          cookieStore.set({ name, value, ...options })
-        } catch (error) {
-          // The `set` method was called from a Server Component.
-          // This can be ignored if you have middleware refreshing
-          // user sessions.
-        }
-      },
-      remove(name: string, options: any) {
-        try {
-          cookieStore.set({ name, value: '', ...options })
-        } catch (error) {
-          // The `remove` method was called from a Server Component.
-          // This can be ignored if you have middleware refreshing
-          // user sessions.
+          for (const { name, value, options } of cookiesToSet) {
+            cookieStore.set(name, value, options)
+          }
+        } catch {
+          // Server Component: read-only. El middleware refresca la sesion.
         }
       },
     },

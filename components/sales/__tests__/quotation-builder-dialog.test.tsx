@@ -532,6 +532,45 @@ describe("QuotationBuilderDialog", () => {
     expect(patchPayload.options[0].items[0].flight_screenshot_url).toBe("https://example.com/quotation-flight.png")
   })
 
+  it("does not create a data URI fallback when screenshot upload fails", async () => {
+    const fetchMock = global.fetch as any
+    fetchMock.queueResponse({
+      ok: false,
+      json: async () => ({ error: "El contenido del archivo no es una imagen válida" }),
+    })
+
+    const { container } = render(
+      <QuotationBuilderDialog
+        open
+        onOpenChange={jest.fn()}
+        lead={{
+          ...baseLead,
+          id: "lead-new",
+          contact_name: "Agustina",
+          destination: "Punta Cana",
+          region: "CARIBE",
+        }}
+        operators={[]}
+        existingQuotationId={null}
+      />
+    )
+
+    const fileInput = await waitFor(() => {
+      const input = container.querySelector('[id^="flight-screenshot-"]') as HTMLInputElement | null
+      expect(input).toBeInTheDocument()
+      return input!
+    })
+    fireEvent.change(fileInput, {
+      target: { files: [new File(["flight"], "flight.png", { type: "image/png" })] },
+    })
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(
+      "El contenido del archivo no es una imagen válida"
+    ))
+    expect(toast.success).not.toHaveBeenCalledWith("Screenshot cargado")
+    expect(businessCalls(fetchMock)).toHaveLength(1)
+  })
+
   it("disables saving while a flight screenshot upload is still in progress", async () => {
     const fetchMock = global.fetch as any
     let resolveUpload: (value: any) => void = () => {}
@@ -706,5 +745,64 @@ describe("QuotationBuilderDialog", () => {
     )
     expect(window.open).not.toHaveBeenCalled()
     expect(businessCalls(fetchMock)).toHaveLength(0)
+  })
+
+  it("informa que la cotización quedó guardada cuando falla la emisión", async () => {
+    const user = userEvent.setup()
+    const fetchMock = global.fetch as any
+    const sendWindow = {
+      closed: false,
+      close: jest.fn(),
+      location: { href: "about:blank" },
+      opener: null,
+    }
+    window.open = jest.fn(() => sendWindow as unknown as Window)
+
+    fetchMock
+      .queueResponse({
+        ok: true,
+        json: async () => ({
+          data: {
+            id: "quote-saved",
+            updated_at: "2026-08-29T12:00:00.000Z",
+            public_token: "token-saved",
+            status: "DRAFT",
+          },
+        }),
+      })
+      .queueResponse({
+        ok: false,
+        json: async () => ({
+          code: "ASSET_INVALID",
+          error: "El logo institucional no es una imagen válida",
+        }),
+      })
+
+    const { container } = render(
+      <QuotationBuilderDialog
+        open
+        onOpenChange={jest.fn()}
+        lead={{
+          ...baseLead,
+          id: "lead-valid-phone",
+          contact_name: "Agustina",
+          destination: "Punta Cana",
+          region: "CARIBE",
+        }}
+        operators={[]}
+        existingQuotationId={null}
+      />
+    )
+
+    fireEvent.change(container.querySelectorAll('input[type="date"]')[0], {
+      target: { value: "2026-08-01" },
+    })
+    await user.click(screen.getByRole("button", { name: /guardar y enviar por whatsapp/i }))
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(
+      "La cotización quedó guardada, pero no se pudo emitir el documento: El logo institucional no es una imagen válida"
+    ))
+    expect(businessCalls(fetchMock)).toHaveLength(2)
+    expect(sendWindow.close).toHaveBeenCalledTimes(1)
   })
 })

@@ -21,11 +21,34 @@ export type JournalEntrySource =
   | "AUTO_COMMISSION"
   | "AUTO_FX"
 
+/** Los ajustes que genera el cierre mensual. Espeja el CHECK de la columna. */
+export type JournalCloseKind =
+  | "ANTICIPO_CLIENTE"
+  | "ANTICIPO_PROVEEDOR"
+  | "VENTA_SIN_FACTURAR"
+  | "FACTURA_A_RECIBIR"
+  | "REVALUACION"
+  // El asiento de apertura va con `close_period` en NULL: no pertenece a un mes,
+  // es el punto desde el que arrancan todos.
+  | "APERTURA"
+  // Los dos del cierre de ejercicio, también con `close_period` en NULL.
+  // REFUNDICION cancela las cuentas de resultado contra 3.1.04;
+  // TRASLADO_RESULTADO lleva ese saldo a 3.1.03.
+  | "REFUNDICION"
+  | "TRASLADO_RESULTADO"
+
 export interface JournalEntryLine {
   /** ID de la cuenta del plan de cuentas */
   chart_account_id: string
   /** ID de la cuenta financiera (puede ser null para cuentas sin financial_account vinculado) */
   financial_account_id?: string | null
+  /**
+   * Si esta línea debe impactar el saldo de la cuenta financiera.
+   * Default `false`: una línea de asiento es contabilidad, no movimiento de
+   * dinero. Solo tiene sentido en `true` si la línea representa además el
+   * movimiento real de una caja o banco (VIB-134/B0).
+   */
+  affects_balance?: boolean
   /** Monto en Debe */
   debit_amount?: number | null
   /** Monto en Haber */
@@ -48,6 +71,8 @@ export interface JournalEntryLine {
   notes?: string | null
 }
 
+export type JournalEntryKind = "SALE" | "COST" | "COMMISSION"
+
 export interface CreateJournalEntryParams {
   /** Fecha del asiento */
   entry_date: string
@@ -63,6 +88,48 @@ export interface CreateJournalEntryParams {
   currency?: "ARS" | "USD"
   /** Exchange rate (para USD) */
   exchange_rate?: number | null
+  /**
+   * Organización dueña del asiento.
+   *
+   * Normalmente NO hace falta: el trigger `auto_set_org_id_from_auth` lo
+   * resuelve desde la sesión. Pero con service role no hay `auth.uid()`, así
+   * que el trigger lo deja en NULL y —como el service role no pasa por RLS— el
+   * asiento se insertaría igual, huérfano de tenant. Los procesos sin sesión
+   * (backfills, crons) TIENEN que pasarlo.
+   */
+  org_id?: string | null
+  /**
+   * Clase del asiento automático de una operación. Es la CLAVE DE IDEMPOTENCIA
+   * (VIB-134/B3): la base tiene un índice único parcial sobre
+   * (operation_id, entry_kind), así que una operación no puede tener dos
+   * asientos de la misma clase ni aunque dos requests corran a la vez.
+   *
+   * Va en NULL para los asientos de pago, que son varios por operación.
+   */
+  entry_kind?: JournalEntryKind | null
+  /**
+   * Movimiento de plata que originó el asiento (VIB-142). Clave de idempotencia
+   * para los asientos que nacen de un cobro, un pago o un gasto: la base tiene
+   * un índice único parcial sobre esta columna.
+   */
+  source_movement_id?: string | null
+  /**
+   * Agencia del asiento (VIB-143). Una organización puede tener varias
+   * sucursales operando por separado. No parte los libros: es un filtro del
+   * reporte, que sigue siendo consolidado por defecto.
+   */
+  agency_id?: string | null
+  /**
+   * Período de cierre (AAAA-MM) y tipo de ajuste, para los asientos que genera
+   * el cierre mensual (VIB-141). Juntos son la clave de idempotencia: la base
+   * tiene un índice único sobre (org, agencia, período, tipo, operación), así
+   * que recalcular un mes no puede duplicar sus ajustes.
+   *
+   * Van en NULL en todo asiento que nazca de un hecho puntual.
+   */
+  close_period?: string | null
+  close_kind?: JournalCloseKind | null
+
   /** Usuario que crea */
   created_by?: string | null
   /** Notas del asiento */
@@ -113,7 +180,7 @@ export async function createJournalEntry(
   params: CreateJournalEntryParams,
   supabase: SupabaseClient<Database>
 ): Promise<JournalEntry> {
-  const { lines, entry_date, description, source, currency = "ARS", exchange_rate, created_by, operation_id, notes } = params
+  const { lines, entry_date, description, source, currency = "ARS", exchange_rate, created_by, operation_id, notes, org_id, entry_kind, source_movement_id, agency_id, close_period, close_kind } = params
 
   // Validar mínimo 2 líneas
   if (lines.length < 2) {
@@ -144,6 +211,89 @@ export async function createJournalEntry(
   // SaaS Pilar 2c: usar el client que recibe — RLS tenant_isolation acota por org.
   const adminClient = supabase
 
+  // VIB-134/B0: tipo de cambio de las líneas en USD.
+  //
+  // `createLedgerMovement` rechaza cualquier movimiento USD sin `exchange_rate`
+  // (es su primera validación). Los asientos automáticos de venta, costo y
+  // comisión nunca lo pasaban, así que en toda operación en USD el asiento
+  // moría en su PRIMERA línea, el rollback borraba el journal_entry recién
+  // creado y el caller se tragaba el error: cero asientos y cero rastro. Como
+  // la mayoría de las operaciones se venden en dólares, en la práctica el
+  // motor solo podía asentar operaciones en pesos.
+  //
+  // Se resuelve acá y no en cada función para que valga también para los
+  // asientos manuales y para cualquier caller futuro. La fuente es
+  // `exchange_rates` vía `getExchangeRateWithFallback`, que es la que valúa
+  // (ver docs/finance/TIPO-DE-CAMBIO-FUENTES.md) y nunca devuelve null.
+  //
+  // Es aditivo: el único caso que cambia es el que hoy lanza excepción. Los
+  // callers que ya mandan `exchange_rate` (los asientos de pago) siguen usando
+  // el suyo, que es el TC real del movimiento y le gana a la valuación.
+  let entryExchangeRate = exchange_rate ?? null
+  if (currency === "USD" && !entryExchangeRate) {
+    const { getExchangeRateWithFallback } = await import("./exchange-rates")
+    const resolved = await getExchangeRateWithFallback(
+      adminClient,
+      entry_date,
+      `journal-entry:${source}`
+    )
+    entryExchangeRate = resolved.rate
+  }
+
+  // VIB-134/B1-B2: el camino normal es una sola transacción en la base.
+  //
+  // Abajo sigue el camino viejo (N+1 escrituras sueltas con rollback manual en
+  // JS) porque el cliente de Supabase no tiene transacciones: si falla la
+  // tercera línea de un asiento de cuatro, lo anterior ya está escrito, y el
+  // rollback que lo compensa también puede fallar. Ahí queda un asiento
+  // DESBALANCEADO, que es peor que ninguno: descuadra el mayor en silencio.
+  //
+  // El fallback existe SOLO para la ventana de deploy —si el código sale antes
+  // que la migración, la función todavía no existe y PostgREST responde
+  // PGRST202—. Una vez aplicada en todos los ambientes se puede borrar junto
+  // con el bloque de abajo.
+  const rpcResult = await (adminClient.rpc as any)("create_journal_entry_atomic", {
+    p_entry_date: entry_date,
+    p_description: description,
+    p_source: source,
+    p_currency: currency,
+    p_lines: lines,
+    p_total_amount: balance.totalDebit,
+    p_exchange_rate: entryExchangeRate,
+    p_operation_id: operation_id || null,
+    p_org_id: org_id ?? null,
+    p_entry_kind: entry_kind ?? null,
+    p_source_movement_id: source_movement_id ?? null,
+    p_agency_id: agency_id ?? null,
+    p_close_period: close_period ?? null,
+    p_close_kind: close_kind ?? null,
+    p_created_by: created_by || null,
+    p_notes: notes || null,
+  })
+
+  if (!rpcResult.error) {
+    const r = rpcResult.data as any
+    return {
+      id: r.id,
+      entry_number: r.entry_number,
+      entry_date: r.entry_date,
+      description: r.description,
+      source: r.source as JournalEntrySource,
+      total_amount: r.total_amount,
+      currency: r.currency,
+      movement_ids: r.movement_ids ?? [],
+    }
+  }
+
+  // La función no existe todavía: seguimos por el camino viejo. Cualquier otro
+  // error SÍ se propaga — no queremos tapar un fallo real con el fallback.
+  if (rpcResult.error.code !== "PGRST202") {
+    throw new Error(`Error creando asiento contable: ${rpcResult.error.message}`)
+  }
+  console.warn(
+    "[createJournalEntry] create_journal_entry_atomic no está disponible; usando el camino no atómico. Aplicar la migración 20260825000001."
+  )
+
   // 1. Crear el journal_entry
   const { data: journalEntry, error: jeError } = await (adminClient.from("journal_entries") as any)
     .insert({
@@ -156,6 +306,14 @@ export async function createJournalEntry(
       currency,
       notes: notes || null,
       created_by: created_by || null,
+      // null deja actuar al trigger (comportamiento de siempre para requests
+      // con sesión); con valor, gana el explícito.
+      org_id: org_id ?? null,
+      entry_kind: entry_kind ?? null,
+      source_movement_id: source_movement_id ?? null,
+      agency_id: agency_id ?? null,
+      close_period: close_period ?? null,
+      close_kind: close_kind ?? null,
     })
     .select("id, entry_number, entry_date, description, source, total_amount, currency")
     .single()
@@ -183,39 +341,41 @@ export async function createJournalEntry(
       const legacyMethod = line.legacy_method || "OTHER"
 
       // Calcular ARS equivalent
-      const amountARS = currency === "USD" && exchange_rate
-        ? amount * exchange_rate
+      const amountARS = currency === "USD" && entryExchangeRate
+        ? amount * entryExchangeRate
         : amount
 
-      // account_id: usar financial_account_id si existe, sino buscar por chart_account_id
-      let accountId = line.financial_account_id
-      if (!accountId && line.chart_account_id) {
-        // Buscar financial_account vinculado a esta chart_account
-        const { data: fa } = await (adminClient.from("financial_accounts") as any)
-          .select("id")
-          .eq("chart_account_id", line.chart_account_id)
-          .eq("is_active", true)
-          .limit(1)
-          .maybeSingle()
-        accountId = fa?.id || null
-      }
-
-      if (!accountId) {
-        throw new Error(
-          `No se encontró cuenta financiera para chart_account_id: ${line.chart_account_id}. ` +
-          `Asegúrate de que la cuenta contable tenga una cuenta financiera vinculada.`
-        )
-      }
+      // account_id: SOLO si el caller lo pasó explícitamente.
+      //
+      // VIB-134/B0: antes se buscaba una financial_account vinculada al plan de
+      // cuentas y, si no la había, se lanzaba excepción. Eso hacía imposible
+      // asentar contra cuentas que por naturaleza NO tienen caja detrás —
+      // "Ventas de Viajes" (4.1.01) es una cuenta de resultado, no un banco—,
+      // y por eso el motor nunca generó un asiento de venta, costo ni comisión:
+      // el asiento entero moría en su segunda línea y el caller se tragaba el
+      // error. En Lozada, 49 de 75 cuentas del plan están en esa situación.
+      //
+      // `ledger_movements.account_id` es NULLABLE: la exigencia era del código,
+      // no del esquema. Es una condición heredada de cuando esta tabla era solo
+      // el registro de caja, y quedó cuando se la reusó como línea de asiento.
+      //
+      // Tampoco se vincula automáticamente por chart_account_id: cuentas como
+      // "Cuentas por Cobrar" SÍ tienen financial_account, y colgarles las
+      // líneas del asiento les alteraría el SALDO (varias pantallas suman
+      // ledger_movements por account_id). Una línea de asiento es contabilidad,
+      // no un movimiento de dinero.
+      const accountId = line.financial_account_id ?? null
 
       const { id: movId } = await createLedgerMovement(
         {
+          org_id: org_id ?? null,
           operation_id: line.operation_id || operation_id || null,
           lead_id: null,
           type: legacyType,
           concept: line.concept || description,
           currency,
           amount_original: amount,
-          exchange_rate: exchange_rate || null,
+          exchange_rate: entryExchangeRate,
           amount_ars_equivalent: amountARS,
           method: legacyMethod,
           account_id: accountId,
@@ -225,6 +385,13 @@ export async function createJournalEntry(
           notes: line.notes || null,
           created_by: created_by || null,
           movement_date: entry_date,
+          // VIB-134/B0: una línea de asiento es contabilidad, no un movimiento
+          // de dinero. `affects_balance = false` la deja fuera del cálculo de
+          // saldos de cuentas financieras (getAccountBalancesBatch filtra por
+          // esta bandera) y de los reportes que la respetan. La contrapartida
+          // en efectivo de un cobro ya existe como su propio movimiento; el
+          // asiento no debe volver a moverla.
+          affects_balance: line.affects_balance ?? false,
         },
         supabase
       )
@@ -470,14 +637,26 @@ export async function annotatePaymentAsJournalEntry(
 
     const financialChartAccountId = finAccount?.chart_account_id || null
 
+    // VIB-145: el plan de cuentas es por organización, así que estas búsquedas
+    // por código tienen que acotarse. Sin el filtro, con los mismos códigos en
+    // varias orgs, `maybeSingle()` fallaría por múltiples filas (o cruzaría
+    // tenants si el caller usara un admin client).
+    const chartOrgId = await resolveChartOrgId(adminClient, {
+      operationId: params.operation_id,
+      movementId: params.mainMovementId,
+    })
+    const scopedChart = () => {
+      const q = (adminClient.from("chart_of_accounts") as any).select("id")
+      return chartOrgId ? q.eq("org_id", chartOrgId) : q
+    }
+
     // Buscar chart_account_id para la cuenta contraparte
     let counterpartChartAccountId: string | null = null
     if (params.counterpartMovementId) {
       const counterpartCode = params.direction === "INCOME"
         ? ACCOUNT_CODES.CUENTAS_POR_COBRAR
         : ACCOUNT_CODES.CUENTAS_POR_PAGAR
-      const { data: cpChart } = await (adminClient.from("chart_of_accounts") as any)
-        .select("id")
+      const { data: cpChart } = await scopedChart()
         .eq("account_code", counterpartCode)
         .maybeSingle()
       counterpartChartAccountId = cpChart?.id || null
@@ -490,8 +669,7 @@ export async function annotatePaymentAsJournalEntry(
     } else {
       resultadoCode = ACCOUNT_CODES.COSTO_OPERADORES // 4.2.01
     }
-    const { data: resultadoChart } = await (adminClient.from("chart_of_accounts") as any)
-      .select("id")
+    const { data: resultadoChart } = await scopedChart()
       .eq("account_code", resultadoCode)
       .maybeSingle()
 
@@ -506,6 +684,54 @@ export async function annotatePaymentAsJournalEntry(
     const entryAmount = mainMovement
       ? parseFloat(mainMovement.amount_original || params.amount)
       : params.amount
+
+    // Un asiento necesita sus DOS lados.
+    //
+    // Si falta la contrapartida —porque el movimiento no existe o porque su
+    // cuenta del plan no se resuelve— antes se grababa igual y quedaba un
+    // asiento de UNA sola línea, encima marcado `is_balanced: true`, que es
+    // mentira. Medio asiento descuadra el mayor y nadie se entera: hay 928 así
+    // en producción, del 7/5 al 20/8, casi todos de las agencias que no tenían
+    // plan de cuentas hasta que se sembró.
+    //
+    // Ahora no se crea nada y el movimiento de plata queda sin anotar, que es
+    // exactamente el estado en el que quedaría si esta función no hubiera
+    // corrido. NO cambia ningún saldo: verificado sobre los 928 existentes, su
+    // debit/credit es idéntico a `amount_original` (y en pesos también a
+    // `amount_ars_equivalent`), así que la rama legacy de
+    // getAccountBalancesBatch calcula exactamente el mismo número que la de
+    // partida doble.
+    //
+    // El pago en sí no se toca: la plata ya se movió y el asiento es una capa
+    // paralela.
+    if (!financialChartAccountId || !params.counterpartMovementId || !counterpartChartAccountId) {
+      const faltante = !financialChartAccountId
+        ? "la cuenta financiera no está vinculada al plan de cuentas"
+        : !params.counterpartMovementId
+          ? "el movimiento de contrapartida no existe"
+          : "la cuenta de contrapartida no está en el plan de la organización"
+
+      console.error(
+        `[annotatePaymentAsJournalEntry] Sin asiento para el movimiento ${params.mainMovementId}: ${faltante}.`
+      )
+
+      // Regla del módulo: una falla contable no se silencia. El pago siguió su
+      // curso, pero queda una revisión manual pendiente.
+      try {
+        await (adminClient.from("alerts") as any).insert({
+          org_id: chartOrgId,
+          operation_id: params.operation_id || null,
+          type: "SYSTEM",
+          description: `Pago sin asiento contable: ${faltante}. Movimiento ${params.mainMovementId}. Revisar manualmente.`,
+          date_due: new Date().toISOString(),
+          status: "PENDING",
+        })
+      } catch {
+        // La alerta es best-effort: no puede romper el pago.
+      }
+
+      return null
+    }
 
     // Crear el journal_entry
     const { data: journalEntry, error: jeError } = await (adminClient.from("journal_entries") as any)
@@ -578,8 +804,7 @@ export async function annotatePaymentAsJournalEntry(
 
     // Anotar percepciones si las hay
     if (params.perceptionMovementIds && params.perceptionMovementIds.length > 0) {
-      const { data: percChart } = await (adminClient.from("chart_of_accounts") as any)
-        .select("id")
+      const { data: percChart } = await scopedChart()
         .eq("account_code", ACCOUNT_CODES.PERCEPCIONES_AFIP)
         .maybeSingle()
 
@@ -624,20 +849,61 @@ export async function annotatePaymentAsJournalEntry(
 /**
  * Resolver códigos de cuenta a IDs (batch)
  */
-async function resolveAccountIds(
+export async function resolveAccountIds(
   codes: string[],
-  adminClient: any
+  adminClient: any,
+  orgId: string | null
 ): Promise<Record<string, string>> {
-  const { data } = await (adminClient.from("chart_of_accounts") as any)
+  let query = (adminClient.from("chart_of_accounts") as any)
     .select("id, account_code")
     .in("account_code", codes)
     .eq("is_active", true)
+
+  // VIB-145: el plan de cuentas es por organización. Antes esta query no
+  // filtraba por org y se apoyaba solo en RLS; con un plan por org los mismos
+  // códigos existen en todas, así que sin el filtro la resolución es ambigua
+  // (y con un admin client, directamente cruzaría tenants).
+  if (orgId) query = query.eq("org_id", orgId)
+
+  const { data } = await query
 
   const map: Record<string, string> = {}
   for (const row of (data || [])) {
     map[row.account_code] = row.id
   }
   return map
+}
+
+/**
+ * Resolver la organización cuyo plan de cuentas hay que usar (VIB-145).
+ *
+ * Los asientos automáticos reciben objetos armados por el caller, que no
+ * siempre traen `org_id`. Se toma del objeto si está; si no, se deriva de la
+ * operación o del movimiento, que sí lo tienen en la base.
+ */
+async function resolveChartOrgId(
+  adminClient: any,
+  source: { orgId?: string | null; operationId?: string | null; movementId?: string | null }
+): Promise<string | null> {
+  if (source.orgId) return source.orgId
+
+  if (source.operationId) {
+    const { data } = await (adminClient.from("operations") as any)
+      .select("org_id")
+      .eq("id", source.operationId)
+      .maybeSingle()
+    if (data?.org_id) return data.org_id
+  }
+
+  if (source.movementId) {
+    const { data } = await (adminClient.from("ledger_movements") as any)
+      .select("org_id")
+      .eq("id", source.movementId)
+      .maybeSingle()
+    if (data?.org_id) return data.org_id
+  }
+
+  return null
 }
 
 /**
@@ -658,15 +924,25 @@ function getCostAccountCode(productType?: string | null): string {
 /**
  * Verificar si ya existen asientos automáticos para una operación con un source dado
  */
-async function hasExistingJournalEntry(
+/**
+ * ¿La operación ya tiene su asiento de esta clase?
+ *
+ * VIB-134/B3: antes el asiento de costo se buscaba por `ILIKE 'Costo%'` sobre la
+ * descripción, porque venta y costo comparten `source = 'AUTO_CONFIRMATION'` y
+ * el origen no los distingue. Eso fallaba en las dos direcciones: un asiento
+ * manual que empezara con "Costo" bloqueaba al automático para siempre, y
+ * cambiar la redacción lo duplicaba. Ahora la clase es una columna, y la base
+ * la hace cumplir con un índice único parcial.
+ */
+async function hasExistingJournalEntryOfKind(
   operationId: string,
-  source: JournalEntrySource,
+  kind: JournalEntryKind,
   adminClient: any
 ): Promise<boolean> {
   const { data } = await (adminClient.from("journal_entries") as any)
     .select("id")
     .eq("operation_id", operationId)
-    .eq("source", source)
+    .eq("entry_kind", kind)
     .limit(1)
     .maybeSingle()
   return !!data
@@ -701,13 +977,17 @@ export async function createSaleJournalEntry(
     if (saleAmount <= 0) return null
 
     // Idempotencia: no crear si ya existe
-    if (await hasExistingJournalEntry(operation.id, "AUTO_CONFIRMATION", adminClient)) {
+    if (await hasExistingJournalEntryOfKind(operation.id, "SALE", adminClient)) {
       return null
     }
 
     const currency = (operation.sale_currency || operation.currency || "USD") as "ARS" | "USD"
+    const chartOrgId = await resolveChartOrgId(adminClient, {
+      orgId: (operation as any).org_id,
+      operationId: operation.id,
+    })
     const codes = [ACCOUNT_CODES.CUENTAS_POR_COBRAR, ACCOUNT_CODES.VENTAS]
-    const accountIds = await resolveAccountIds(codes, adminClient)
+    const accountIds = await resolveAccountIds(codes, adminClient, chartOrgId)
 
     const cpcId = accountIds[ACCOUNT_CODES.CUENTAS_POR_COBRAR]
     const ventasId = accountIds[ACCOUNT_CODES.VENTAS]
@@ -727,6 +1007,10 @@ export async function createSaleJournalEntry(
       operation_id: operation.id,
       source: "AUTO_CONFIRMATION",
       currency,
+      org_id: chartOrgId,
+      entry_kind: "SALE" as const,
+      exchange_rate: (operation as any).exchange_rate ?? undefined,
+      agency_id: (operation as any).agency_id ?? null,
       lines: [
         {
           chart_account_id: cpcId,
@@ -792,25 +1076,51 @@ export async function createCostJournalEntry(
       effectiveOperators = [{ operator_id: "", cost: generalCost, product_type: null, operators: null }]
     }
 
-    // Idempotencia: verificar con un source distinto para no mezclar con el de venta
-    // Usamos el mismo AUTO_CONFIRMATION pero checkeamos la descripción
-    const { data: existingCost } = await (adminClient.from("journal_entries") as any)
-      .select("id")
-      .eq("operation_id", operation.id)
-      .eq("source", "AUTO_CONFIRMATION")
-      .ilike("description", "Costo%")
-      .limit(1)
-      .maybeSingle()
-    if (existingCost) return null
+    if (await hasExistingJournalEntryOfKind(operation.id, "COST", adminClient)) {
+      return null
+    }
 
     const currency = (operation.sale_currency || operation.currency || "USD") as "ARS" | "USD"
     const opCode = operation.file_code || operation.id.slice(0, 8)
     const entryDate = operation.operation_date || operation.created_at?.split("T")[0] || new Date().toISOString().split("T")[0]
 
     // Resolver todos los códigos de cuenta que necesitamos
+    const chartOrgId = await resolveChartOrgId(adminClient, {
+      orgId: (operation as any).org_id,
+      operationId: operation.id,
+    })
     const costCodes = Array.from(new Set(effectiveOperators.map(op => getCostAccountCode(op.product_type))))
     const allCodes = [...costCodes, ACCOUNT_CODES.CUENTAS_POR_PAGAR]
-    const accountIds = await resolveAccountIds(allCodes, adminClient)
+    const accountIds = await resolveAccountIds(allCodes, adminClient, chartOrgId)
+
+    // VIB-144/I2: un operador puede tener su propia cuenta de costo. Si no la
+    // tiene —que es el caso de todos hasta que alguien la configure— se sigue
+    // derivando del tipo de producto, exactamente como antes.
+    //
+    // El override se valida contra el plan de la MISMA organización: una cuenta
+    // de otra org no se usa, se ignora y se cae al default. Sin eso, un dato mal
+    // cargado imputaría el costo al plan de otra agencia.
+    const operatorIds = Array.from(
+      new Set(effectiveOperators.map((op) => op.operator_id).filter(Boolean))
+    )
+    const overridePorOperador = new Map<string, string>()
+    if (operatorIds.length > 0) {
+      const { data: opsConCuenta } = await (adminClient.from("operators") as any)
+        .select("id, cost_chart_account_id, chart_of_accounts:cost_chart_account_id(id, org_id)")
+        .in("id", operatorIds)
+        .not("cost_chart_account_id", "is", null)
+
+      for (const o of (opsConCuenta ?? []) as any[]) {
+        const cuenta = o.chart_of_accounts
+        if (cuenta?.id && (!chartOrgId || cuenta.org_id === chartOrgId)) {
+          overridePorOperador.set(o.id, cuenta.id)
+        }
+      }
+    }
+
+    /** Cuenta contable donde cae el costo de esta pata. */
+    const cuentaDeCosto = (op: any): string | null =>
+      overridePorOperador.get(op.operator_id) ?? accountIds[getCostAccountCode(op.product_type)] ?? null
 
     const cppId = accountIds[ACCOUNT_CODES.CUENTAS_POR_PAGAR]
     if (!cppId) {
@@ -821,19 +1131,20 @@ export async function createCostJournalEntry(
     // Construir líneas: una de Debe por cada tipo de costo, una de Haber por operador
     const totalCost = effectiveOperators.reduce((sum, op) => sum + Number(op.cost), 0)
 
-    // Agrupar costos por cuenta contable (por product_type)
+    // Agrupar por cuenta contable resuelta (override del operador o default por
+    // tipo de producto). Se agrupa por ID y no por código porque el override es
+    // una cuenta concreta, no un código canónico.
     const costByAccount: Record<string, number> = {}
     for (const op of effectiveOperators) {
-      const code = getCostAccountCode(op.product_type)
-      costByAccount[code] = (costByAccount[code] || 0) + Number(op.cost)
+      const chartId = cuentaDeCosto(op)
+      if (!chartId) continue
+      costByAccount[chartId] = (costByAccount[chartId] || 0) + Number(op.cost)
     }
 
     const lines: JournalEntryLine[] = []
 
-    // Líneas de Debe (costos agrupados por tipo)
-    for (const [code, amount] of Object.entries(costByAccount)) {
-      const chartId = accountIds[code]
-      if (!chartId) continue
+    // Líneas de Debe (costos agrupados por cuenta)
+    for (const [chartId, amount] of Object.entries(costByAccount)) {
       lines.push({
         chart_account_id: chartId,
         debit_amount: Math.round(amount * 100) / 100,
@@ -862,6 +1173,10 @@ export async function createCostJournalEntry(
       operation_id: operation.id,
       source: "AUTO_CONFIRMATION",
       currency,
+      org_id: chartOrgId,
+      entry_kind: "COST" as const,
+      exchange_rate: (operation as any).exchange_rate ?? undefined,
+      agency_id: (operation as any).agency_id ?? null,
       lines,
     }, supabase)
 
@@ -906,7 +1221,7 @@ export async function createCommissionJournalEntry(
     if (commissionData.totalCommission <= 0) return null
 
     // Idempotencia
-    if (await hasExistingJournalEntry(operation.id, "AUTO_COMMISSION", adminClient)) {
+    if (await hasExistingJournalEntryOfKind(operation.id, "COMMISSION", adminClient)) {
       return null
     }
 
@@ -914,8 +1229,12 @@ export async function createCommissionJournalEntry(
     const opCode = operation.file_code || operation.id.slice(0, 8)
     const entryDate = operation.operation_date || operation.created_at?.split("T")[0] || new Date().toISOString().split("T")[0]
 
+    const chartOrgId = await resolveChartOrgId(adminClient, {
+      orgId: (operation as any).org_id,
+      operationId: operation.id,
+    })
     const codes = [ACCOUNT_CODES.COMISIONES_VENDEDORES, ACCOUNT_CODES.CUENTAS_POR_PAGAR]
-    const accountIds = await resolveAccountIds(codes, adminClient)
+    const accountIds = await resolveAccountIds(codes, adminClient, chartOrgId)
 
     const comVentasId = accountIds[ACCOUNT_CODES.COMISIONES_VENDEDORES]
     const cppId = accountIds[ACCOUNT_CODES.CUENTAS_POR_PAGAR]
@@ -977,6 +1296,10 @@ export async function createCommissionJournalEntry(
       operation_id: operation.id,
       source: "AUTO_COMMISSION",
       currency,
+      org_id: chartOrgId,
+      entry_kind: "COMMISSION" as const,
+      exchange_rate: (operation as any).exchange_rate ?? undefined,
+      agency_id: (operation as any).agency_id ?? null,
       lines,
     }, supabase)
 

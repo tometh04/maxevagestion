@@ -1,5 +1,11 @@
 import type { AnalyticsEventName, AnalyticsEventParams } from "../events"
-import { DB_EVENT_NAMES, EVENT_SINKS, isDbEventName, sinksFor } from "../events"
+import {
+  DB_EVENT_NAMES,
+  EVENT_SINKS,
+  SERVER_ONLY_DB_EVENTS,
+  isDbEventName,
+  sinksFor,
+} from "../events"
 import { scrubParams } from "../ga/scrub"
 
 /**
@@ -46,6 +52,7 @@ const SAMPLES: { [K in AnalyticsEventName]: AnalyticsEventParams[K] } = {
   import_run: { entity: "operations", rows_bucket: "25+", result: "partial" },
   ai_query_submitted: { surface: "cerebro", has_context: true },
   module_viewed: { module: "operations" },
+  view_opened: { module: "reports", view_kind: "tab", view: "margins" },
   record_opened: { module: "crm", entity: "lead" },
   report_exported: { module: "reports", format: "pdf" },
 }
@@ -80,6 +87,17 @@ describe("ruteo por sink", () => {
     // Es el gate del endpoint publico de telemetria.
     expect(isDbEventName("evento_inventado")).toBe(false)
     expect(isDbEventName("")).toBe(false)
+  })
+
+  it("los eventos server-only declaran sink db y no son emitibles por el browser", () => {
+    // `login` ocurre en `/login`, que esta excluida de la telemetria de tenant,
+    // asi que el emisor del browser lo descartaria igual — pero por accidente.
+    // Este set lo hace explicito para que un cambio en NON_TENANT_PREFIXES no
+    // empiece a meter logins duplicados sin que nadie se entere.
+    expect(SERVER_ONLY_DB_EVENTS.has("login")).toBe(true)
+    for (const name of Array.from(SERVER_ONLY_DB_EVENTS)) {
+      expect(EVENT_SINKS[name]).toContain("db")
+    }
   })
 
   it("ningun evento que ya deja fila en una tabla va tambien a la DB", () => {

@@ -24,6 +24,12 @@ export interface ReferralCommissionRow {
   status: string
   /** Fecha de venta de la operación: define el período y el TC. */
   operationDate: string
+  /**
+   * Oficina de la OPERACIÓN, no la de la fila de comisión. Es la misma clave
+   * con la que se agrupan las ventas, así que el ratio comisión/margen por
+   * oficina reconcilia.
+   */
+  agencyId: string | null
 }
 
 export interface FetchReferralCommissionsParams {
@@ -82,6 +88,7 @@ export async function fetchReferralCommissions(
       currency: String(r.currency || "USD").toUpperCase(),
       status: String(r.status || "PENDING"),
       operationDate: op.operation_date,
+      agencyId: op.agency_id ?? null,
     })
   }
 

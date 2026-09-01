@@ -15,6 +15,7 @@ import {
   Bot,
   Megaphone,
   Library,
+  BookOpen,
 } from "lucide-react"
 import Link from "next/link"
 import { shouldShowInSidebar, type UserRole, type Module } from "@/lib/permissions"
@@ -50,6 +51,10 @@ interface NavSubItem {
     variant: 'warning' | 'error' | 'info'
     tooltip: string
   }
+  /** Micro logo de marca (ruta en /public), para integraciones de terceros. */
+  iconSrc?: string
+  /** Solo visible si la org tiene el embebido de Agente Blanco habilitado. */
+  requiresAgenteBlanco?: boolean
 }
 
 interface NavItem {
@@ -130,7 +135,11 @@ const allNavigation: NavItem[] = [
       { title: "Configuración", url: "/operations/settings" },
     ],
   },
-  // 5. Finanzas
+  // 5. Finanzas — la plata que se mueve hoy.
+  //
+  // El corte con Contabilidad es deliberado: acá vive lo operativo (cobrar,
+  // pagar, aprobar, ver cuánto hay) y en Contabilidad lo formal (cómo se
+  // registra y qué se informa). Un cajero necesita esto; un contador, lo otro.
   {
     title: "Finanzas",
     url: "/cash/summary",
@@ -140,14 +149,44 @@ const allNavigation: NavItem[] = [
       { title: "Caja y Bancos", url: "/cash/summary" },
       { title: "Aprobaciones", url: "/payments/pending-approvals" },
       { title: "Gastos", url: "/expenses" },
-      { title: "Contabilidad", url: "/accounting/ledger" },
-      { title: "Impuestos", url: "/accounting/iva" },
       { title: "Comisiones", url: "/commissions", module: "commissions" as const },
       // VIB-86: módulo propio. Colgado de `commissions` se le mostraba al
       // vendedor, que al entrar era redirigido al dashboard.
       { title: "Referidos", url: "/referrals", module: "referrals" as const },
       { title: "Reportes", url: "/reports", module: "reports" as const },
-      { title: "Configuración", url: "/finances/settings" },
+      { title: "Configuración", url: "/finances/settings", module: "cash" as const },
+    ],
+  },
+  // 5b. Contabilidad — cómo se registra y se informa.
+  //
+  // Antes eran dos ítems sueltos dentro de Finanzas ("Contabilidad" e
+  // "Impuestos") que llevaban a dos hubs de pestañas distintos. Con el módulo
+  // creciendo (cierre mensual, apertura, estados, libros) esa lista dejó de
+  // alcanzar.
+  //
+  // El grupo declara `module: "accounting"` y cada subítem lo repite. No es
+  // redundante: el filtrado del sidebar saltea el gate del padre cuando algún
+  // subítem trae módulo propio, así que sin declararlo en cada uno heredarían
+  // el del grupo por una vía que depende de que ningún hermano tenga módulo.
+  // Explicitarlo lo hace independiente de eso.
+  //
+  // Además arregla una incoherencia vieja: "Contabilidad" e "Impuestos" se
+  // mostraban según el módulo `cash` (heredado de Finanzas) mientras las
+  // páginas destino se gatean con `accounting`. Con los roles estáticos no se
+  // notaba porque CONTABLE tiene los dos, pero una agencia que otorgara
+  // `accounting` sin `cash` por la matriz dinámica perdía el acceso al menú
+  // teniendo el permiso.
+  {
+    title: "Contabilidad",
+    url: "/accounting/ledger",
+    icon: BookOpen,
+    module: "accounting",
+    items: [
+      { title: "Libros", url: "/accounting/ledger", module: "accounting" as const },
+      { title: "Estados Contables", url: "/accounting/ledger?tab=estados", module: "accounting" as const },
+      { title: "Cierre", url: "/accounting/ledger?tab=cierre", module: "accounting" as const },
+      { title: "Plan de Cuentas", url: "/accounting/ledger?tab=plan-cuentas", module: "accounting" as const },
+      { title: "Impuestos", url: "/accounting/iva", module: "accounting" as const },
     ],
   },
   // 6. Herramientas (Cerebro se removio de aqui — ahora es item top-level al final)
@@ -161,6 +200,15 @@ const allNavigation: NavItem[] = [
       { title: "Mensajes", url: "/messages" },
       { title: "Templates", url: "/resources/templates", module: "settings" as const },
       { title: "Tareas", url: "/tools/tasks" },
+      // Bandeja de Agente Blanco embebida. Solo aparece si la org tiene
+      // `agente_blanco_org_slug`: sin el campo la sección no existe.
+      {
+        title: "Agente Blanco",
+        url: "/conversaciones",
+        module: "leads" as const,
+        iconSrc: "/agente-blanco-icon.png",
+        requiresAgenteBlanco: true,
+      },
       { title: "WHA Control", url: "/tools/wha-control" },
       // Pendientes 3.2: el v2 import vivía sólo via URL directa. Lo colgamos
       // de Herramientas (admin task) en vez de Configuración para evitar
@@ -200,6 +248,7 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   userRole: UserRole
   resolvedPermissions?: ResolvedPermissionsMatrix | null
   growthStudioEnabled?: boolean
+  conversationsEnabled?: boolean
   user: {
     name: string
     email: string
@@ -211,6 +260,7 @@ export function AppSidebar({
   userRole,
   resolvedPermissions,
   growthStudioEnabled = false,
+  conversationsEnabled = false,
   user,
   ...props
 }: AppSidebarProps) {
@@ -361,6 +411,9 @@ export function AppSidebar({
       if (item.items) {
         const filteredItems = item.items
           .map((subItem) => {
+            if (subItem.requiresAgenteBlanco && !conversationsEnabled) {
+              return null
+            }
             // Si el subitem tiene módulo propio, verificar ese módulo
             // Si no, heredar el módulo del padre
             const moduleToCheck = subItem.module || item.module
@@ -457,7 +510,7 @@ export function AppSidebar({
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <NavMain items={navigation} pathname={pathname} />
+        <NavMain items={navigation} pathname={pathname} tabActivo={searchParams.get("tab")} />
       </SidebarContent>
       <SidebarFooter>
         <ThemeToggleSidebar />

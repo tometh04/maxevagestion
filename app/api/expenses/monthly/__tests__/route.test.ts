@@ -55,6 +55,16 @@ function makeSupabaseMock(dataByTable: Record<string, { data: any; error: any }>
         // movimientos revertidos.
         is: jest.fn(() => builder),
         order: jest.fn(() => builder),
+        // `fetchExpenses` pagina con `.range()` (VIB-160). Devuelve la porción
+        // pedida: si devolviera siempre el set completo, la paginación pediría
+        // páginas para siempre.
+        range: jest.fn((from: number, to: number) => ({
+          then: (resolve: any, reject: any) =>
+            Promise.resolve({
+              ...result,
+              data: Array.isArray(result?.data) ? result.data.slice(from, to + 1) : result?.data,
+            }).then(resolve, reject),
+        })),
         single: jest.fn(() => Promise.resolve(result)),
         maybeSingle: jest.fn(() => Promise.resolve(result)),
         then: (resolve: any, reject: any) => Promise.resolve(result).then(resolve, reject),

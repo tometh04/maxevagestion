@@ -52,10 +52,45 @@ export function NavUser({
   const { isMobile } = useSidebar()
   const router = useRouter()
 
+  /**
+   * `scope: "local"` y navegacion DURA. Las dos cosas importan.
+   *
+   * El default de `signOut()` es `scope: "global"`, que borra los refresh
+   * tokens de TODAS las sesiones del usuario, en todos sus dispositivos y
+   * pestañas. Medido contra nuestro propio proyecto: despues de un signOut
+   * global, el refresh de otra sesion viva devuelve
+   * `400 refresh_token_not_found`. Y peor: un signOut global que llega tarde
+   * mata incluso a una sesion creada DESPUES.
+   *
+   * Eso convierte cada pestaña abierta en una mina. Su cliente Supabase
+   * intenta refrescar, recibe un error no retryable, y `_recoverAndRefresh`
+   * llama `_removeSession()` — que borra la cookie de auth. La cookie es
+   * compartida entre pestañas, asi que si eso pasa despues de que volviste a
+   * entrar, se borra la sesion NUEVA. Sintoma: cerras sesion, entras de nuevo,
+   * y no tenes sesion en ninguna pantalla.
+   *
+   * Con `local` se revoca solo esta sesion: las demas siguen refrescando bien
+   * y nadie borra la cookie de nadie. Es tambien la semantica correcta para un
+   * boton "Cerrar sesion" del navegador.
+   *
+   * La navegacion dura completa el arreglo: recargar destruye el contexto JS,
+   * o sea el cliente singleton de `lib/supabase/client.ts`, sus timers de
+   * auto-refresh y cualquier request en vuelo. Con `router.push` todo eso
+   * sobrevivia a la navegacion.
+   */
   const handleLogout = async () => {
-    await supabase.auth.signOut()
-    router.push("/login")
-    router.refresh()
+    try {
+      const { error } = await supabase.auth.signOut({ scope: "local" })
+      if (error) console.warn("[auth] signOut devolvio error:", error.message)
+    } catch (error) {
+      console.error("[auth] signOut fallo:", error)
+    } finally {
+      // A `/logout` y no a `/login`: el server borra las cookies de auth de
+      // forma explicita (`lib/auth/logout.ts`). Hace falta porque `signOut()`
+      // corta antes de `_removeSession()` cuando la sesion ya estaba rota
+      // (GoTrueClient.js:1562), o sea justo cuando mas importa limpiarla.
+      window.location.assign("/logout")
+    }
   }
 
   return (

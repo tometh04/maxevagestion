@@ -60,7 +60,6 @@ interface RefreshPriceSnapshot {
   cost_basis?: "AGENCY_NET" | "PROVIDER_TOTAL" | "COMMISSIONABLE_GROSS" | "UNKNOWN"
   conditions?: unknown
 }
-
 interface RefreshCandidate {
   id: string
   label: string
@@ -70,7 +69,6 @@ interface RefreshCandidate {
   conditions?: unknown
   differences?: RefreshDifference[]
 }
-
 interface RefreshDifference {
   field: string
   before: unknown

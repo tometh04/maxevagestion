@@ -37,6 +37,15 @@ import {
 } from "@/lib/invoices/calculation"
 import type { ItemTaxTreatment } from "@/lib/invoices/calculation"
 import {
+  CONDICION_IVA_OPTIONS,
+  getCbteTipoForCondicion,
+  getCondicionForCbteTipo,
+  getCustomerAfipDocType,
+  getReceptorDefaults as getReceptorDefaultsFromDocument,
+  inferDocTipoFromDocNumber,
+  resolveDocTipoForCondicion,
+} from "@/lib/invoices/afip-fiscal-mapping"
+import {
   reconcileOperatorSaleBreakdown,
   distributeSaleByCost,
 } from "@/lib/operations/operator-sale-breakdown"
@@ -153,16 +162,8 @@ const getCustomerDocumentText = (customer: Customer) =>
     ? `${customer.document_type || 'Doc'} ${customer.document_number}`
     : ''
 
-const getCustomerAfipDocType = (customer: Pick<Customer, 'document_type' | 'document_number'>) => {
-  const docType = customer.document_type?.toUpperCase()
-  const hasDocument = Boolean(customer.document_number)
-
-  if (!hasDocument) return 99
-  if (docType === 'CUIT') return 80
-  if (docType === 'CUIL') return 86
-  if (docType === 'DNI') return 96
-  return 99
-}
+// El mapeo fiscal (condición IVA → letra de factura y tipo de documento) vive en
+// lib/invoices/afip-fiscal-mapping.ts para poder reutilizarlo y testearlo (VIB-135).
 
 export default function NewInvoicePage() {
   const router = useRouter()
@@ -454,43 +455,9 @@ export default function NewInvoicePage() {
   /**
    * Calcula automáticamente el tipo de comprobante y condición IVA
    * según el documento fiscal disponible del cliente.
-   * - CUIT presente → Factura A (RI), DocTipo 80, CondIVA 1
-   * - CUIL presente → Factura B (CF), DocTipo 86, CondIVA 5
-   * - DNI presente  → Factura B (CF), DocTipo 96, CondIVA 5
-   * - Sin documento → Factura B (CF), DocTipo 99, DocNro 0, CondIVA 5
+   * Ver lib/invoices/afip-fiscal-mapping.ts (VIB-135).
    */
-  const getReceptorDefaults = (customer: Customer) => {
-    const docType = customer.document_type?.toUpperCase()
-    const docNumber = customer.document_number || ''
-    const cuit = docType === 'CUIT' ? docNumber : ''
-    const cuil = docType === 'CUIL' ? docNumber : ''
-    const dni = docType === 'DNI' ? docNumber : ''
-
-    if (cuit) {
-      return {
-        cbte_tipo: 1,
-        receptor_doc_tipo: 80,
-        receptor_doc_nro: cuit,
-        receptor_condicion_iva: 1,
-      }
-    }
-
-    if (cuil) {
-      return {
-        cbte_tipo: 6,
-        receptor_doc_tipo: 86,
-        receptor_doc_nro: cuil,
-        receptor_condicion_iva: 5,
-      }
-    }
-
-    return {
-      cbte_tipo: 6,
-      receptor_doc_tipo: dni ? 96 : 99,
-      receptor_doc_nro: dni || '0',
-      receptor_condicion_iva: 5,
-    }
-  }
+  const getReceptorDefaults = (customer: Customer) => getReceptorDefaultsFromDocument(customer)
 
   const upsertCustomer = (customer: Customer) => {
     setCustomers(prev => {
@@ -707,11 +674,11 @@ export default function NewInvoicePage() {
             return
           }
 
-          const authorizedTotal = (summary.invoices || [])
-            .filter((invoice: any) => invoice.status === 'authorized')
-            .reduce((sum: number, invoice: any) => sum + Number(invoice.imp_total || 0), 0)
-          const operationSaleTotal = Number(summary.operation?.sale_amount_total || 0)
-          const remainingToInvoice = roundMoney(Math.max(0, operationSaleTotal - authorizedTotal))
+          // VIB-157: el restante lo calcula el endpoint con el mismo helper que el
+          // tope del servidor (venta total, neto de notas de crédito y valuado en la
+          // moneda de la VENTA, VIB-151). Recalcularlo acá sumando las autorizadas
+          // contaba las NC como facturado y achicaba el restante de más.
+          const remainingToInvoice = roundMoney(Number(summary.summary?.remaining ?? 0))
 
           if (remainingToInvoice <= 0) {
             toast({
@@ -1136,7 +1103,7 @@ export default function NewInvoicePage() {
                     onValueChange={(v) => {
                       const tipo = parseInt(v)
                       // Sincronizar condición IVA al cambiar tipo manualmente
-                      const condicion = tipo === 1 ? 1 : formData.receptor_condicion_iva === 1 ? 5 : formData.receptor_condicion_iva
+                      const condicion = getCondicionForCbteTipo(tipo, formData.receptor_condicion_iva)
                       setFormData({ ...formData, cbte_tipo: tipo, receptor_condicion_iva: condicion })
                     }}
                   >
@@ -1349,17 +1316,11 @@ export default function NewInvoicePage() {
                       // forzamos siempre 80, incluso si todavía no terminó
                       // de tipear los 11 dígitos.
                       const docNro = e.target.value || '0'
-                      const digits = docNro.replace(/\D/g, '')
-                      let receptor_doc_tipo = formData.receptor_doc_tipo
-                      if (formData.receptor_condicion_iva === 1) {
-                        receptor_doc_tipo = 80
-                      } else if (digits.length === 0) {
-                        receptor_doc_tipo = 99
-                      } else if (digits.length === 11) {
-                        receptor_doc_tipo = 80
-                      } else if (digits.length === 7 || digits.length === 8) {
-                        receptor_doc_tipo = 96
-                      }
+                      const receptor_doc_tipo = inferDocTipoFromDocNumber({
+                        docNro,
+                        condicion: formData.receptor_condicion_iva,
+                        currentDocTipo: formData.receptor_doc_tipo,
+                      })
                       setFormData({ ...formData, receptor_doc_nro: docNro, receptor_doc_tipo })
                     }}
                     placeholder={formData.receptor_condicion_iva === 1 ? "20123456789 (requerido)" : "Consumidor Final (opcional)"}
@@ -1375,31 +1336,17 @@ export default function NewInvoicePage() {
                     value={formData.receptor_condicion_iva.toString()}
                     onValueChange={(v) => {
                       const condicion = parseInt(v)
-                      // Mapear condición IVA → tipo de comprobante automáticamente
-                      const cbte_tipo = condicion === 1 ? 1 : 6 // RI → A, resto → B
-
+                      // Mapear condición IVA → tipo de comprobante automáticamente.
                       // Bug fix 2026-05-06: AFIP error 10013 — Factura A obliga
-                      // DocTipo=80 (CUIT). Si el cliente tenía guardado DNI o
-                      // CUIL y el user seleccionó Responsable Inscripto, la
-                      // versión vieja dejaba pasar DocTipo=96/86 → AFIP rechaza.
-                      // Ahora forzamos 80 cuando la condición es RI; el user
-                      // ya ve el warning "Factura A requiere CUIT" si el campo
-                      // está vacío.
-                      let receptor_doc_tipo: number
-                      if (condicion === 1) {
-                        receptor_doc_tipo = 80
-                      } else {
-                        const selectedCustomer = customers.find(customer => customer.id === formData.customer_id)
-                        const fallbackDocType = selectedCustomer
-                          ? getCustomerAfipDocType(selectedCustomer)
-                          : [80, 86, 96].includes(formData.receptor_doc_tipo)
-                            ? formData.receptor_doc_tipo
-                            : 96
-                        receptor_doc_tipo =
-                          formData.receptor_doc_nro && formData.receptor_doc_nro !== '0'
-                            ? fallbackDocType
-                            : 99
-                      }
+                      // DocTipo=80 (CUIT); resolveDocTipoForCondicion lo fuerza.
+                      // Ver lib/invoices/afip-fiscal-mapping.ts (VIB-135).
+                      const cbte_tipo = getCbteTipoForCondicion(condicion)
+                      const receptor_doc_tipo = resolveDocTipoForCondicion({
+                        condicion,
+                        customer: customers.find(customer => customer.id === formData.customer_id),
+                        currentDocTipo: formData.receptor_doc_tipo,
+                        currentDocNro: formData.receptor_doc_nro,
+                      })
                       setFormData({ ...formData, receptor_condicion_iva: condicion, cbte_tipo, receptor_doc_tipo })
                     }}
                   >
@@ -1407,10 +1354,11 @@ export default function NewInvoicePage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="5">Consumidor Final → Factura B</SelectItem>
-                      <SelectItem value="1">Responsable Inscripto → Factura A</SelectItem>
-                      <SelectItem value="4">Sujeto Exento → Factura B</SelectItem>
-                      <SelectItem value="6">Monotributista → Factura B</SelectItem>
+                      {CONDICION_IVA_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.id} value={opt.id.toString()}>
+                          {opt.label} → Factura {opt.letra}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground mt-1">

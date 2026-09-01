@@ -14,8 +14,8 @@ interface Ticket {
 }
 
 const STATUS_LABELS: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
-  open: { label: "Abierto", variant: "destructive" },
-  in_progress: { label: "En progreso", variant: "default" },
+  open: { label: "Sin responder", variant: "outline" },
+  in_progress: { label: "Lo estamos viendo", variant: "default" },
   resolved: { label: "Resuelto", variant: "secondary" },
   closed: { label: "Cerrado", variant: "outline" },
 }
@@ -60,12 +60,12 @@ export function SupportMyTickets({ onSelect }: SupportMyTicketsProps) {
       <div className="p-3">
         <div className="flex items-center gap-2 mb-3 px-1">
           <LifeBuoy className="h-4 w-4 text-muted-foreground" />
-          <h4 className="text-sm font-semibold">Mis tickets</h4>
+          <h4 className="text-sm font-semibold">Mis mensajes a soporte</h4>
         </div>
 
         {tickets.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-8">
-            No tenés tickets creados.
+            Todavía no le escribiste a soporte.
           </p>
         ) : (
           <div className="space-y-1">

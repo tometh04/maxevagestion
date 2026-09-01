@@ -41,6 +41,7 @@ import { DollarSign, CalendarIcon, FileText, Loader2, Wallet, CheckCircle, Recei
 import { toast } from "sonner"
 import { PAYMENT_METHODS } from "@/lib/payments/payment-methods"
 import { trackEvent } from "@/lib/analytics/track"
+import { useScreenView } from "@/hooks/use-screen-view"
 import {
   buildOpenOperationBasePayableOperators,
   type OperationOperatorPaymentLike,
@@ -117,6 +118,7 @@ function isInternationalDestination(destination?: string | null): boolean {
 }
 
 export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDialogProps) {
+  useScreenView("new-payment", open)
   const [isLoading, setIsLoading] = useState(false)
   const [operations, setOperations] = useState<Operation[]>([])
   const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([])

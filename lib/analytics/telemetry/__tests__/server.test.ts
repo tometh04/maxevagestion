@@ -4,7 +4,12 @@ jest.mock("@/lib/supabase/admin-scope", () => ({
   createOrgAdminScope: jest.fn(),
 }))
 
-import { clampOccurredAt, sanitizeUsageBatch } from "../server"
+import {
+  clampOccurredAt,
+  sanitizeScreen,
+  sanitizeSessionId,
+  sanitizeUsageBatch,
+} from "../server"
 
 const NOW = new Date("2026-08-13T12:00:00.000Z")
 
@@ -91,5 +96,71 @@ describe("sanitizeUsageBatch", () => {
     expect(sanitizeUsageBatch(null, NOW)).toEqual([])
     expect(sanitizeUsageBatch("no soy un array", NOW)).toEqual([])
     expect(sanitizeUsageBatch([null, 42, "x", {}], NOW)).toEqual([])
+  })
+
+  it("arrastra pantalla y sesion validadas", () => {
+    const out = sanitizeUsageBatch(
+      [
+        {
+          name: "view_opened",
+          params: { module: "reports", view_kind: "tab", view: "margins" },
+          screen: "/reports#tab:margins",
+          session_id: "0f9c1a4e-1111-4222-8333-444455556666",
+        },
+      ],
+      NOW
+    )
+    expect(out[0].screen).toBe("/reports#tab:margins")
+    expect(out[0].session_id).toBe("0f9c1a4e-1111-4222-8333-444455556666")
+  })
+
+  it("descarta pantalla y sesion invalidas sin tirar la fila", () => {
+    const out = sanitizeUsageBatch(
+      [{ name: "module_viewed", params: { module: "crm" }, screen: "javascript:alert(1)", session_id: "no-soy-uuid" }],
+      NOW
+    )
+    expect(out).toHaveLength(1)
+    expect(out[0].screen).toBeNull()
+    expect(out[0].session_id).toBeNull()
+  })
+})
+
+describe("sanitizeScreen", () => {
+  it("acepta el vocabulario del formato", () => {
+    expect(sanitizeScreen("/reports")).toBe("/reports")
+    expect(sanitizeScreen("/operations/:id")).toBe("/operations/:id")
+    expect(sanitizeScreen("/reports#tab:margins")).toBe("/reports#tab:margins")
+    expect(sanitizeScreen("/sales/leads#dlg:quotation-builder")).toBe(
+      "/sales/leads#dlg:quotation-builder"
+    )
+  })
+
+  it("rechaza lo que el cliente no deberia poder proponer", () => {
+    // El cliente propone, el server valida: un emisor propio o un cliente
+    // manipulado no puede inventar la dimension.
+    expect(sanitizeScreen("javascript:alert(1)")).toBeNull()
+    expect(sanitizeScreen("reports")).toBeNull() // sin barra inicial
+    expect(sanitizeScreen("/reports?q=Juan Perez")).toBeNull()
+    expect(sanitizeScreen("/reports#otra:cosa")).toBeNull()
+    expect(sanitizeScreen("/" + "a".repeat(80))).toBeNull()
+    expect(sanitizeScreen(42)).toBeNull()
+    expect(sanitizeScreen(null)).toBeNull()
+  })
+})
+
+describe("sanitizeSessionId", () => {
+  it("acepta un UUID y lo normaliza", () => {
+    expect(sanitizeSessionId("0F9C1A4E-1111-4222-8333-444455556666")).toBe(
+      "0f9c1a4e-1111-4222-8333-444455556666"
+    )
+  })
+
+  it("rechaza cualquier otra cosa", () => {
+    // La columna es UUID: un valor con otra forma haria fallar el INSERT del
+    // batch ENTERO de 50 eventos, no de la fila.
+    expect(sanitizeSessionId("no-soy-uuid")).toBeNull()
+    expect(sanitizeSessionId("")).toBeNull()
+    expect(sanitizeSessionId(123)).toBeNull()
+    expect(sanitizeSessionId(null)).toBeNull()
   })
 })

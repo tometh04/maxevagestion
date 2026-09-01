@@ -98,20 +98,37 @@ const PATH_RULES: readonly { prefix: string; module: ModuleKey }[] = [
   { prefix: "/accounting", module: "accounting" },
   { prefix: "/finances", module: "accounting" },
   { prefix: "/settings/commissions-monthly", module: "commissions" },
+  // `/commissions-monthly` y `/my/commissions-monthly` son pantallas propias, no
+  // subrutas de `/commissions`: el match es por limite de segmento, asi que sin
+  // estas dos reglas caian en `null` y no emitian nada.
+  { prefix: "/commissions-monthly", module: "commissions" },
+  { prefix: "/my/commissions-monthly", module: "commissions" },
+  { prefix: "/my/commissions", module: "commissions" },
+  { prefix: "/my/balance", module: "commissions" },
   { prefix: "/commissions", module: "commissions" },
   { prefix: "/referrals", module: "referrals" },
   { prefix: "/reports", module: "reports" },
   { prefix: "/alerts", module: "alerts" },
+  // Las notificaciones son el mismo trabajo que las alertas desde el punto de
+  // vista del usuario: revisar lo que el sistema le marco.
+  { prefix: "/notifications", module: "alerts" },
   { prefix: "/calendar", module: "calendar" },
   { prefix: "/tools/tasks", module: "tasks" },
   { prefix: "/tools/cerebro", module: "ai" },
   { prefix: "/tools/wha-control", module: "messages" },
+  // Va DESPUES de las tres rutas especificas de `/tools/*`, y antes que nada
+  // mas: `/tools/settings` es configuracion de herramientas.
+  { prefix: "/tools/settings", module: "settings" },
   { prefix: "/messages", module: "messages" },
   { prefix: "/eve", module: "messages" },
+  { prefix: "/emilia", module: "messages" },
   { prefix: "/growth-studio", module: "growth_studio" },
   { prefix: "/library", module: "library" },
   { prefix: "/resources", module: "library" },
   { prefix: "/ayuda", module: "support" },
+  // Los operadores son catalogo, igual que la tabla `operators` en la union de
+  // escrituras: mismo modulo en las dos señales o el mapa se contradice.
+  { prefix: "/operators", module: "settings" },
   { prefix: "/settings", module: "settings" },
   { prefix: "/dashboard", module: "dashboard" },
 ]

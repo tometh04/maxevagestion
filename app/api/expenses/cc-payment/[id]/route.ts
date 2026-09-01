@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { limpiarResiduosDePago } from "@/lib/accounting/payment-cleanup"
 import { createServerClient, createAdminClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canPerformAction } from "@/lib/permissions-api"
@@ -104,6 +105,22 @@ export async function DELETE(
         let del = adminDb.from("ledger_movements").delete().eq("id", payment.ledger_movement_id)
         if (group.org_id) del = del.eq("org_id", group.org_id)
         await del
+      }
+
+      // 3-bis. Los mismos residuos que limpia el DELETE de /api/payments.
+      // Esta ruta era una copia que se quedó en la versión previa: sin esto,
+      // borrar la liquidación de un resumen de tarjeta dejaba percepciones
+      // vivas —que además bloquean el borrado de la operación— y cabeceras de
+      // asiento sin líneas.
+      if (group.org_id) {
+        const residuos = await limpiarResiduosDePago(adminDb, {
+          paymentId: payment.id,
+          operationId: payment.operation_id,
+          orgId: group.org_id,
+        })
+        for (const err of residuos.errors) {
+          console.error(`Error limpiando residuos del pago ${payment.id}:`, err)
+        }
       }
 
       // 4. Borrar el payment (cash_movements.payment_id es ON DELETE SET NULL).

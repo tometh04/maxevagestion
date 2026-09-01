@@ -300,6 +300,117 @@ export function transformFlights(flights: ApiFlight[]): any[] {
   return flights.map(transformFlight)
 }
 
+function canonicalDate(value: unknown): string {
+  if (typeof value !== "string" || !value.trim()) return ""
+  return value.split("T")[0]
+}
+
+function canonicalTime(value: unknown): string {
+  if (typeof value !== "string" || !value.trim()) return ""
+  const time = value.includes("T") ? value.split("T")[1] : value
+  return time.slice(0, 5)
+}
+
+function canonicalPassengerCount(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : fallback
+}
+
+function canonicalLayovers(segments: any[]): TransformedFlightLeg["layovers"] {
+  if (segments.length < 2) return []
+  return segments.slice(0, -1).map((segment, index) => {
+    const next = segments[index + 1]
+    const arrivalDate = segment?.arrival?.date
+    const arrivalTime = segment?.arrival?.time
+    const departureDate = next?.departure?.date
+    const departureTime = next?.departure?.time
+    const arrival = arrivalDate && arrivalTime ? new Date(`${arrivalDate}T${arrivalTime}`) : null
+    const departure = departureDate && departureTime ? new Date(`${departureDate}T${departureTime}`) : null
+    const waitingMinutes = arrival && departure && !Number.isNaN(arrival.getTime()) && !Number.isNaN(departure.getTime())
+      ? Math.max(0, Math.round((departure.getTime() - arrival.getTime()) / 60_000))
+      : null
+    const code = segment?.arrival?.airport_code || segment?.arrival?.airportCode || ""
+
+    return {
+      destination_city: segment?.arrival?.city || getCityName(code),
+      destination_code: code,
+      waiting_time: waitingMinutes === null ? "" : formatMinutesToHours(waitingMinutes),
+    }
+  })
+}
+
+/** Convierte `emilia.flight-offer.v1` al view model histórico de las cards de Maxeva. */
+export function transformCanonicalFlights(flights: any[], query: any = {}): any[] {
+  return flights.map((flight) => {
+    const rawLegs = Array.isArray(flight?.legs) ? flight.legs : []
+    const transformedLegs = rawLegs.map((leg: any, index: number) => {
+      const segments = Array.isArray(leg?.segments) ? leg.segments : []
+      const firstSegment = segments[0]
+      const lastSegment = segments[segments.length - 1]
+      const departureCode = leg?.origin || firstSegment?.departure?.airport_code || ""
+      const arrivalCode = leg?.destination || lastSegment?.arrival?.airport_code || ""
+      const departureDate = firstSegment?.departure?.date || canonicalDate(leg?.departure_at)
+      const arrivalDate = lastSegment?.arrival?.date || canonicalDate(leg?.arrival_at)
+      const duration = typeof leg?.duration_minutes === "number"
+        ? formatMinutesToHours(Math.max(0, Math.round(leg.duration_minutes)))
+        : ""
+
+      return {
+        departure: {
+          city_code: departureCode,
+          city_name: firstSegment?.departure?.city || getCityName(departureCode),
+          time: firstSegment?.departure?.time || canonicalTime(leg?.departure_at),
+        },
+        arrival: {
+          city_code: arrivalCode,
+          city_name: lastSegment?.arrival?.city || getCityName(arrivalCode),
+          time: lastSegment?.arrival?.time || canonicalTime(leg?.arrival_at),
+        },
+        duration,
+        flight_type: index === 0 ? "outbound" as const : "inbound" as const,
+        stops: typeof leg?.stops === "number" ? Math.max(0, leg.stops) : Math.max(0, segments.length - 1),
+        layovers: canonicalLayovers(segments),
+        arrival_next_day: Boolean(departureDate && arrivalDate && departureDate !== arrivalDate),
+        options: [{
+          segments: [{
+            ...(flight?.baggage?.checked === null || flight?.baggage?.checked === undefined
+              ? {}
+              : { baggage: flight.baggage.checked ? "1PC" : "0PC" }),
+            ...(flight?.baggage?.carry_on === null || flight?.baggage?.carry_on === undefined
+              ? {}
+              : { carryOnBagInfo: { quantity: flight.baggage.carry_on ? "1" : "0" } }),
+          }],
+        }],
+      }
+    })
+    const firstLeg = rawLegs[0]
+    const returnLeg = rawLegs[1]
+
+    return {
+      id: flight.id,
+      airline: {
+        code: flight?.airline?.code || firstLeg?.segments?.[0]?.marketing_airline || "",
+        name: flight?.airline?.name || flight?.airline?.code || "Aerolínea",
+      },
+      price: {
+        amount: flight?.price?.amount,
+        currency: flight?.price?.currency || "USD",
+        basis: "GROUP_TOTAL" as const,
+      },
+      adults: canonicalPassengerCount(query?.adults, 1),
+      childrens: canonicalPassengerCount(query?.children, 0),
+      children: canonicalPassengerCount(query?.children, 0),
+      infants: canonicalPassengerCount(query?.infants, 0),
+      departure_date:
+        query?.departureDate || canonicalDate(firstLeg?.departure_at) || firstLeg?.segments?.[0]?.departure?.date || "",
+      return_date:
+        query?.returnDate || canonicalDate(returnLeg?.departure_at) || returnLeg?.segments?.[0]?.departure?.date || null,
+      cabin_class: flight?.cabin || firstLeg?.segments?.[0]?.cabin || null,
+      provider: flight?.provider || null,
+      legs: transformedLegs,
+    }
+  })
+}
+
 function truncateHotelPolicyFields(hotel: any): any {
   return {
     ...hotel,
@@ -345,6 +456,71 @@ export function transformHotels(hotels: any[]): any[] {
         ...room,
         occupancy_id: room.occupancy_id || `room-${hotel.id}-${idx}`,
       })),
+    }
+  })
+}
+
+function canonicalNights(checkIn: string, checkOut: string, value: unknown): number {
+  if (typeof value === "number" && Number.isInteger(value) && value >= 0) return value
+  if (!checkIn || !checkOut) return 0
+  const start = new Date(`${checkIn}T00:00:00Z`)
+  const end = new Date(`${checkOut}T00:00:00Z`)
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 0
+  return Math.max(0, Math.round((end.getTime() - start.getTime()) / 86_400_000))
+}
+
+/** Convierte `emilia.hotel-offer.v1` al view model cotizable de las cards de Maxeva. */
+export function transformCanonicalHotels(hotels: any[], query: any = {}): any[] {
+  return hotels.map((hotel) => {
+    const checkIn = hotel?.stay?.check_in || query?.checkinDate || ""
+    const checkOut = hotel?.stay?.check_out || query?.checkoutDate || ""
+    const nights = canonicalNights(checkIn, checkOut, hotel?.stay?.nights)
+    const rooms = (Array.isArray(hotel?.rooms) ? hotel.rooms : []).map((room: any, index: number) => {
+      const totalPrice = room?.price?.amount
+      const board = typeof room?.board === "string" ? room.board.trim() : ""
+      const name = typeof room?.name === "string" && room.name.trim() ? room.name.trim() : "Habitación"
+      return {
+        type: name,
+        description: [name, board].filter(Boolean).join(" · "),
+        price_per_night: typeof totalPrice === "number" && nights > 0 ? totalPrice / nights : totalPrice,
+        total_price: totalPrice,
+        currency: room?.price?.currency || hotel?.minimum_price?.currency || "USD",
+        // El contrato público no publica cupo numérico. `2` representa "consultar",
+        // evitando prometer disponibilidad que el proveedor no expuso.
+        availability: 2,
+        occupancy_id: room?.id || `room-${hotel?.id || "hotel"}-${index}`,
+        adults: canonicalPassengerCount(query?.adults, 1),
+        children: canonicalPassengerCount(query?.children, 0),
+        infants: canonicalPassengerCount(query?.infants, 0),
+        policy_cancellation: room?.cancellation_policy || "",
+        refundable: room?.refundable ?? null,
+        free_cancellation: room?.free_cancellation ?? null,
+        payment_at_property: room?.payment_at_property ?? null,
+      }
+    })
+
+    return {
+      id: hotel.id,
+      unique_id: hotel.id,
+      name: hotel.name,
+      category: typeof hotel?.stars === "number" ? `${hotel.stars} estrellas` : "",
+      city: hotel?.location?.city || query?.city || query?.destination || "",
+      address: hotel?.location?.address || "",
+      phone: "",
+      images: [],
+      check_in: checkIn,
+      check_out: checkOut,
+      nights,
+      rooms,
+      policy_cancellation: rooms[0]?.policy_cancellation || "",
+      policy_lodging: "",
+      search_adults: canonicalPassengerCount(query?.adults, 1),
+      search_children: canonicalPassengerCount(query?.children, 0),
+      provider: hotel?.provider || "",
+      amenities: Array.isArray(hotel?.amenities) ? hotel.amenities : [],
+      accessibility: Array.isArray(hotel?.accessibility) ? hotel.accessibility : [],
+      latitude: hotel?.location?.latitude ?? null,
+      longitude: hotel?.location?.longitude ?? null,
     }
   })
 }

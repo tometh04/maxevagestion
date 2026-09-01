@@ -2,6 +2,13 @@ import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { getCurrentUser } from "@/lib/auth"
 import { createServerClient } from "@/lib/supabase/server"
+import {
+  DOCUMENT_LOGO_MAX_SOURCE_BYTES,
+  DOCUMENT_LOGO_MAX_STORED_BYTES,
+  detectVisualImageMime,
+  materializeVisualImage,
+  VisualImageError,
+} from "@/lib/document-assets/visual-image-server"
 
 // POST — Subir el logo de la organización a Storage y guardarlo en
 // organization_settings.brand_logo.
@@ -24,17 +31,30 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Falta el archivo del logo" }, { status: 400 })
     }
 
-    const allowedTypes: Record<string, string> = {
-      "image/png": "png",
-      "image/svg+xml": "svg",
-      "image/webp": "webp",
-    }
-    const ext = allowedTypes[file.type]
-    if (!ext) {
-      return NextResponse.json({ error: "Solo se permiten archivos PNG, SVG o WEBP" }, { status: 400 })
-    }
-    if (file.size > 2 * 1024 * 1024) {
+    if (file.size > DOCUMENT_LOGO_MAX_SOURCE_BYTES) {
       return NextResponse.json({ error: "El archivo no puede superar 2MB" }, { status: 400 })
+    }
+
+    let visual
+    try {
+      const fileBytes = Buffer.from(await file.arrayBuffer())
+      const detectedMime = detectVisualImageMime(fileBytes)
+      if (!detectedMime || !["image/png", "image/jpeg", "image/webp", "image/svg+xml"].includes(detectedMime)) {
+        throw new VisualImageError("UNSUPPORTED_FORMAT", "Solo se permiten archivos PNG, JPG, SVG o WebP")
+      }
+      visual = await materializeVisualImage({
+        bytes: fileBytes,
+        declaredMime: file.type,
+        maxDimension: 4_096,
+        maxInputBytes: DOCUMENT_LOGO_MAX_SOURCE_BYTES,
+        maxOutputBytes: DOCUMENT_LOGO_MAX_STORED_BYTES,
+        maxPixels: 16_000_000,
+      })
+    } catch (error) {
+      if (error instanceof VisualImageError) {
+        return NextResponse.json({ error: error.message, code: error.code }, { status: 400 })
+      }
+      throw error
     }
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -50,11 +70,10 @@ export async function POST(request: Request) {
       auth: { autoRefreshToken: false, persistSession: false },
     })
 
-    const fileName = `logos/${user.org_id}-${Date.now()}.${ext}`
-    const fileBuffer = await file.arrayBuffer()
+    const fileName = `logos/${user.org_id}-${Date.now()}.${visual.extension}`
     const { error: uploadError } = await storageClient.storage
       .from("documents")
-      .upload(fileName, fileBuffer, { contentType: file.type, cacheControl: "3600", upsert: false })
+      .upload(fileName, visual.bytes, { contentType: visual.mime, cacheControl: "3600", upsert: false })
 
     if (uploadError) {
       console.error("Error subiendo logo a Storage:", uploadError)

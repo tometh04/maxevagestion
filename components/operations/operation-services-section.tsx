@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -64,6 +64,7 @@ import { downloadReceiptPdf } from "@/lib/pdf/receipt-pdf"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { PAYMENT_METHODS } from "@/lib/payments/payment-methods"
+import type { SellerOption } from "@/lib/sellers/seller-option"
 import {
   calculateAmountInSaleCurrency,
   coercePositiveNumber,
@@ -97,6 +98,8 @@ interface OperationService {
   operator_payment_id: string | null
   created_at: string
   operators: { id: string; name: string } | null
+  /** Vendedor que vendió el servicio; es quien cobra su comisión. */
+  seller_id: string | null
 }
 
 interface FinancialAccount {
@@ -139,6 +142,11 @@ interface OperationServicesSectionProps {
   operationId: string
   operationStatus: string
   operators: Operator[]
+  /**
+   * Vendedores elegibles para quedarse con la comisión del servicio. El servidor
+   * revalida la elección: acá sólo se ofrece.
+   */
+  sellers?: SellerOption[]
   userRole: string
   canAddServices?: boolean
   canEditServices?: boolean
@@ -162,6 +170,13 @@ const SERVICE_TYPE_OPTIONS: { value: ServiceType; label: string; commissions: bo
   { value: "LUGGAGE", label: "Equipaje", commissions: false },
   { value: "VISA", label: "Visa", commissions: false },
 ]
+
+/**
+ * Valor centinela del selector de vendedor: Radix no admite `value=""`, y el
+ * string vacío es justamente lo que significa "comisiona quien carga" para el
+ * servidor.
+ */
+const SELLER_SELF = "__self__"
 
 const SERVICE_LABELS: Record<ServiceType, string> = {
   HOTEL: "Hotel",
@@ -207,6 +222,8 @@ type ServicePaymentFormValues = z.infer<typeof servicePaymentSchema>
 const emptyServiceForm = () => ({
   service_type: "" as ServiceType | "",
   operator_id: "",
+  /** Vacío = comisiona quien está cargando el servicio (lo resuelve el servidor). */
+  seller_id: "",
   sale_amount: "",
   sale_currency: "ARS" as Currency,
   cost_amount: "",
@@ -238,6 +255,7 @@ export function OperationServicesSection({
   operationId,
   operationStatus,
   operators,
+  sellers = [],
   userRole,
   canAddServices = !["VIEWER", "CONTABLE"].includes(userRole),
   canEditServices = !["VIEWER", "CONTABLE"].includes(userRole),
@@ -258,6 +276,17 @@ export function OperationServicesSection({
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [form, setForm] = useState(emptyServiceForm())
+  /**
+   * Si el tipo elegido comisiona. Define si tiene sentido preguntar quién cobra:
+   * un asiento o un equipaje no generan comisión, así que el selector sobra.
+   */
+  const serviceTypeCommissions =
+    SERVICE_TYPE_OPTIONS.find((o) => o.value === form.service_type)?.commissions ?? false
+  /** Para mostrar en la tabla de quién es la comisión de cada servicio. */
+  const sellerNameById = useMemo(
+    () => new Map(sellers.map((s) => [s.id, s.name])),
+    [sellers]
+  )
   const [formError, setFormError] = useState<string | null>(null)
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null)
 
@@ -430,6 +459,7 @@ export function OperationServicesSection({
     setForm({
       service_type: s.service_type,
       operator_id: s.operator_id || "",
+      seller_id: s.seller_id || "",
       sale_amount: String(s.sale_amount),
       sale_currency: s.sale_currency,
       cost_amount: String(s.cost_amount),
@@ -495,6 +525,13 @@ export function OperationServicesSection({
         cost_amount: Number(form.cost_amount),
         cost_currency: form.cost_currency,
         description: form.description || null,
+      }
+
+      // Sólo en el alta: reasignar el vendedor de un servicio ya creado movería
+      // una comisión ya devengada de una persona a otra, que es otro problema.
+      // Vacío = comisiona quien lo carga, y eso lo resuelve el servidor.
+      if (!editingServiceId && form.seller_id) {
+        payload.seller_id = form.seller_id
       }
 
       // Add hotel-specific fields
@@ -828,7 +865,9 @@ export function OperationServicesSection({
                       )}
                       <TableCell>
                         {s.generates_commission ? (
-                          <Badge variant="secondary" className="text-xs bg-success/10 text-success border-0">Sí</Badge>
+                          <Badge variant="secondary" className="text-xs bg-success/10 text-success border-0">
+                            {(s.seller_id && sellerNameById.get(s.seller_id)) || "Sí"}
+                          </Badge>
                         ) : (
                           <span className="text-xs text-muted-foreground">No</span>
                         )}
@@ -1135,6 +1174,33 @@ export function OperationServicesSection({
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Vendedor del servicio: se ofrece sólo en el alta, y sólo si el
+                tipo elegido comisiona. Reasignarlo después movería una comisión
+                ya devengada de una persona a otra. */}
+            {!editingServiceId && sellers.length > 0 && serviceTypeCommissions && (
+              <div className="grid gap-1.5">
+                <Label>Comisiona</Label>
+                <Select
+                  value={form.seller_id || SELLER_SELF}
+                  onValueChange={(v) =>
+                    setForm({ ...form, seller_id: v === SELLER_SELF ? "" : v })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={SELLER_SELF}>Yo</SelectItem>
+                    {sellers.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             {/* Precio cliente */}
             <div className="grid gap-1.5">

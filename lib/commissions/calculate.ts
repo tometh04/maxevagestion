@@ -327,10 +327,18 @@ export async function applyCommissionPlan(
 
   // `operation_id` ya ancla el tenant (una operación pertenece a una sola org),
   // así que la lectura no necesita org_id para ser segura.
+  // Solo las filas que este plan posee. Las de `kind = 'SERVICE'` tienen su
+  // propio vendedor, su propio porcentaje y su propio mes, y no se derivan del
+  // margen de la operación: son las primeras filas de la tabla que NO produce
+  // este plan. Si entraran acá, el Map de abajo las haría desaparecer (colapsa
+  // por seller_id) y el barrido de huérfanas las borraría, porque su vendedor
+  // no figura en `plan.entries`. Y ese barrido corre con casi cualquier edición
+  // de la operación o de sus servicios.
   const { data: existingRows, error: readError } = await supabase
     .from("commission_records")
-    .select("id, seller_id, status, amount, amount_paid, percentage, settled_at")
+    .select("id, seller_id, status, amount, amount_paid, percentage, settled_at, kind")
     .eq("operation_id", operation.id)
+    .neq("kind", "SERVICE")
 
   if (readError) {
     result.errors.push(`No se pudieron leer las comisiones existentes: ${readError.message}`)
@@ -343,6 +351,14 @@ export async function applyCommissionPlan(
   }
 
   const now = new Date().toISOString()
+
+  /**
+   * Mes al que se imputa la comisión. Para las filas del plan es la fecha de la
+   * operación, que es el criterio que el Reporte de Comisiones ya venía usando
+   * (antes lo sacaba del join con `operations`); persistirlo en la fila deja el
+   * resultado idéntico y permite que una comisión de servicio lleve la suya.
+   */
+  const accrualDate = (operation.operation_date ?? now).slice(0, 10)
 
   /**
    * Columnas de VIB-102. Solo se mandan si la operación tiene alguna comisión
@@ -380,6 +396,7 @@ export async function applyCommissionPlan(
           percentage: entry.percentage,
           status: "PENDING",
           date_calculated: now,
+          accrual_date: accrualDate,
           updated_at: now,
           ...kindFieldsFor(entry),
         })
@@ -418,6 +435,7 @@ export async function applyCommissionPlan(
         percentage: entry.percentage,
         status: "PENDING",
         date_calculated: now,
+        accrual_date: accrualDate,
         updated_at: now,
         ...kindFieldsFor(entry),
       })

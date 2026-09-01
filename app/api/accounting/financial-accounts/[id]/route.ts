@@ -40,12 +40,20 @@ export async function PATCH(
     }
 
     const body = await request.json().catch(() => ({}))
-    const { name, target_balance, adjustment_reason, bank_tax_rate, credit_limit } = body as {
+    const {
+      name,
+      target_balance,
+      adjustment_reason,
+      bank_tax_rate,
+      credit_limit,
+      chart_account_id,
+    } = body as {
       name?: string
       target_balance?: number | string | null
       adjustment_reason?: string | null
       bank_tax_rate?: number | null
       credit_limit?: number | string | null
+      chart_account_id?: string | null
     }
 
     // Cargar cuenta y validar tenant isolation
@@ -87,6 +95,47 @@ export async function PATCH(
         return NextResponse.json({ error: "bank_tax_rate debe ser un número entre 0 y 100" }, { status: 400 })
       }
       simpleUpdate.bank_tax_rate = rate
+    }
+
+    // Cuenta del plan contra la que se asientan los movimientos de esta cuenta.
+    //
+    // El alta la asigna sola según el tipo, pero el tipo no siempre alcanza: en
+    // vibook hay cuentas financieras que no son plata de la agencia sino la
+    // cuenta corriente de un operador, y mapearlas a Bancos inflaría el saldo
+    // bancario de los libros. Esas las tiene que elegir alguien que sepa qué es
+    // cada cuenta.
+    //
+    // Sin este campo, una cuenta huérfana no tenía arreglo desde la aplicación:
+    // la pantalla mostraba el problema y no ofrecía ningún control.
+    if ("chart_account_id" in body) {
+      if (chart_account_id === null || chart_account_id === "") {
+        simpleUpdate.chart_account_id = null
+      } else {
+        // Se valida contra el plan de la MISMA organización. Sin esto se podría
+        // apuntar una cuenta a una del plan de otro tenant.
+        const { data: cuenta } = await (supabase.from("chart_of_accounts") as any)
+          .select("id, is_movement_account")
+          .eq("id", chart_account_id)
+          .eq("org_id", account.org_id)
+          .eq("is_active", true)
+          .maybeSingle()
+
+        if (!cuenta) {
+          return NextResponse.json(
+            { error: "La cuenta contable no existe en el plan de esta organización" },
+            { status: 400 }
+          )
+        }
+        // Un rubro no recibe movimientos: solo agrupa. Asentar contra él dejaría
+        // el mayor sin desglose.
+        if (cuenta.is_movement_account === false) {
+          return NextResponse.json(
+            { error: "Esa es una cuenta de agrupación. Elegí una cuenta imputable." },
+            { status: 400 }
+          )
+        }
+        simpleUpdate.chart_account_id = chart_account_id
+      }
     }
 
     // Línea de crédito / giro en descubierto. Debe ser >= 0. 0 = no permite negativo.

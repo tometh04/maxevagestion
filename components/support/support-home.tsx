@@ -107,7 +107,7 @@ export function SupportHome({ onNavigate }: SupportHomeProps) {
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Buscar en la ayuda..."
+            placeholder="Buscá ayuda: cobros, operaciones, clientes..."
             value={query}
             onChange={(e) => onInputChange(e.target.value)}
             className="pl-9 h-9"
@@ -169,8 +169,8 @@ export function SupportHome({ onNavigate }: SupportHomeProps) {
                     <Sparkles className="h-5 w-5 text-primary" />
                   </div>
                   <div className="text-left">
-                    <p className="text-sm font-medium">Chatear con IA</p>
-                    <p className="text-[11px] text-muted-foreground">Respuestas instantáneas 24/7</p>
+                    <p className="text-sm font-medium">Preguntarle al asistente</p>
+                    <p className="text-[11px] text-muted-foreground">Te responde al instante, a cualquier hora</p>
                   </div>
                   <ChevronRight className="h-4 w-4 ml-auto text-muted-foreground" />
                 </Button>
@@ -183,8 +183,8 @@ export function SupportHome({ onNavigate }: SupportHomeProps) {
                     <LifeBuoy className="h-4 w-4 text-orange-500" />
                   </div>
                   <div className="text-left">
-                    <p className="text-sm font-medium">Crear ticket</p>
-                    <p className="text-[11px] text-muted-foreground">Contactá al equipo de soporte</p>
+                    <p className="text-sm font-medium">Escribirle a soporte</p>
+                    <p className="text-[11px] text-muted-foreground">Te contesta una persona del equipo</p>
                   </div>
                   <ChevronRight className="h-4 w-4 ml-auto text-muted-foreground" />
                 </Button>
@@ -197,8 +197,8 @@ export function SupportHome({ onNavigate }: SupportHomeProps) {
                     <Clock className="h-4 w-4 text-blue-500" />
                   </div>
                   <div className="text-left">
-                    <p className="text-sm font-medium">Mis tickets</p>
-                    <p className="text-[11px] text-muted-foreground">Ver estado y respuestas</p>
+                    <p className="text-sm font-medium">Mis mensajes a soporte</p>
+                    <p className="text-[11px] text-muted-foreground">Ver en qué quedó cada uno</p>
                   </div>
                   <ChevronRight className="h-4 w-4 ml-auto text-muted-foreground" />
                 </Button>

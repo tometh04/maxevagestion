@@ -65,6 +65,7 @@ function makeSupabase(cashMovements: any[], extraTables: Record<string, any[]> =
   const eqCalls: Array<[string, any]> = []
   const likeCalls: Array<[string, any]> = []
   const notCalls: Array<[string, string, any]> = []
+  const ledgerNotCalls: Array<[string, string, any]> = []
   const selectedColumns: string[] = []
   const client = {
     from: jest.fn((table: string) => {
@@ -82,6 +83,7 @@ function makeSupabase(cashMovements: any[], extraTables: Record<string, any[]> =
         neq: jest.fn(() => builder),
         not: jest.fn((col: string, op: string, val: any) => {
           if (table === "cash_movements") notCalls.push([col, op, val])
+          if (table === "ledger_movements") ledgerNotCalls.push([col, op, val])
           return builder
         }),
         like: jest.fn((col: string, val: any) => {
@@ -96,12 +98,19 @@ function makeSupabase(cashMovements: any[], extraTables: Record<string, any[]> =
           if (table === "cash_movements") isCalls.push([col, val])
           return builder
         }),
+        // `fetchExpenses` pagina con `.range()`. El mock devuelve la porción
+        // pedida para que la paginación termine de verdad: si devolviera
+        // siempre el set completo, el helper pediría páginas para siempre.
+        range: jest.fn((from: number, to: number) => ({
+          then: (resolve: any) =>
+            Promise.resolve({ data: rows.slice(from, to + 1), error: null }).then(resolve),
+        })),
         then: (resolve: any) => Promise.resolve({ data: rows, error: null }).then(resolve),
       }
       return builder
     }),
   }
-  return { client, isCalls, eqCalls, likeCalls, notCalls, selectedColumns }
+  return { client, isCalls, eqCalls, likeCalls, notCalls, ledgerNotCalls, selectedColumns }
 }
 
 async function gastosVariables(
@@ -110,13 +119,13 @@ async function gastosVariables(
   extraTables: Record<string, any[]> = {}
 ) {
   const { client, isCalls, eqCalls, notCalls, selectedColumns } = makeSupabase(cashMovements, extraTables)
-  const { expenses, totals, excludedTouristic } = await fetchExpenses({
+  const { expenses, totals, excludedTouristic, truncated } = await fetchExpenses({
     supabase: client,
     orgId: "org-1",
     type: "variable",
     ...extra,
   })
-  return { expenses, totals, excludedTouristic, isCalls, eqCalls, notCalls, selectedColumns }
+  return { expenses, totals, excludedTouristic, truncated, isCalls, eqCalls, notCalls, selectedColumns }
 }
 
 describe("fetchExpenses — gastos variables", () => {
@@ -317,5 +326,170 @@ describe("fetchExpenses — retiros de socios", () => {
     })
     await fetchExpenses({ supabase: client, orgId: "org-1", type: "recurring" })
     expect(likeCalls).toContainEqual(["concept", "Gasto recurrente:%"])
+  })
+})
+
+// ==================================================================
+// VIB-142 — Las líneas de asiento no son gastos
+//
+// Reportado por Lozada: "tiré el reporte de gastos y hay muchísimos gastos
+// duplicados, vi 58 millones y dije qué pasó".
+//
+// Los gastos fijos se buscan en ledger_movements por type EXPENSE y concepto
+// "Gasto recurrente:%". Las líneas de asiento copian el concepto del
+// movimiento que las origina y llevan el mismo type, así que cada gasto real
+// sumaba además sus DOS líneas contables (el Debe del gasto y el Haber del
+// banco) y el reporte mostraba el triple: ARS 59.174.119 donde iban 20.250.040.
+//
+// El discriminador es el invariante del módulo: un movimiento de dinero
+// siempre tiene cuenta financiera, una línea de asiento nunca.
+// ==================================================================
+describe("fetchExpenses — gastos fijos vs líneas de asiento", () => {
+  it("le pide a la base excluir las líneas de asiento", async () => {
+    const { client, ledgerNotCalls } = makeSupabase([], {
+      ledger_movements: [recurrente()],
+    })
+
+    await fetchExpenses({ supabase: client, orgId: "org-1", type: "recurring" })
+
+    expect(ledgerNotCalls).toContainEqual(["account_id", "is", null])
+  })
+
+  it("el filtro va sobre la misma query que busca el concepto del gasto fijo", async () => {
+    // Si el filtro quedara en otra query, el duplicado vuelve.
+    const { client, likeCalls, ledgerNotCalls } = makeSupabase([], {
+      ledger_movements: [recurrente()],
+    })
+
+    await fetchExpenses({ supabase: client, orgId: "org-1", type: "recurring" })
+
+    expect(likeCalls).toContainEqual(["concept", "Gasto recurrente:%"])
+    expect(ledgerNotCalls.length).toBeGreaterThan(0)
+  })
+})
+
+// ==================================================================
+// La oficina que expone cada gasto es la SUYA, no la de la cuenta pagadora.
+//
+// El cierre por oficina del Reporte Societario pone en una fila aparte los
+// gastos sin oficina. Si acá viniera la oficina resuelta con fallback a la
+// cuenta, alquiler y sueldos sin clasificar aterrizarían en la oficina que
+// tiene la cuenta y esa fila quedaría vacía: el pendiente de clasificar se
+// volvería invisible.
+// ==================================================================
+describe("fetchExpenses — oficina propia del gasto", () => {
+  it("el gasto variable expone su agency_id", async () => {
+    const { expenses } = await gastosVariables([
+      movimiento({ id: "con-oficina", agency_id: "ag-1" }),
+      movimiento({ id: "sin-oficina", agency_id: null }),
+    ])
+    expect(expenses.find((e: any) => e.id === "con-oficina")!.agency_id).toBe("ag-1")
+    expect(expenses.find((e: any) => e.id === "sin-oficina")!.agency_id).toBeNull()
+  })
+
+  it("el recurrente sin oficina queda en null aunque la cuenta pagadora tenga una", async () => {
+    const { client } = makeSupabase([], {
+      ledger_movements: [
+        recurrente({ id: "alquiler", concept: "Gasto recurrente: Alquiler compartido" }),
+      ],
+      recurring_payments: [
+        { description: "Alquiler compartido", category_id: null, agency_id: null },
+      ],
+      financial_accounts: [{ id: "acc-1", agency_id: "ag-1" }],
+    })
+    const { expenses } = await fetchExpenses({
+      supabase: client,
+      orgId: "org-1",
+      type: "recurring",
+    })
+    expect(expenses).toHaveLength(1)
+    expect(expenses[0].agency_id).toBeNull()
+  })
+
+  it("el recurrente con oficina propia la expone", async () => {
+    const { client } = makeSupabase([], {
+      ledger_movements: [
+        recurrente({ id: "alq-rosario", concept: "Gasto recurrente: Alquiler Rosario" }),
+      ],
+      recurring_payments: [
+        { description: "Alquiler Rosario", category_id: null, agency_id: "ag-1" },
+      ],
+      financial_accounts: [{ id: "acc-1", agency_id: "ag-2" }],
+    })
+    const { expenses } = await fetchExpenses({
+      supabase: client,
+      orgId: "org-1",
+      type: "recurring",
+    })
+    expect(expenses[0].agency_id).toBe("ag-1")
+  })
+})
+
+// ==================================================================
+// VIB-160 — PostgREST corta en 1000 filas y no avisa.
+//
+// Era el único de los cinco fetchers del Reporte Societario sin paginar, así
+// que el total de gastos salía corto y se leía como completo. Lozada tiene
+// 1.376 gastos variables en 2026: el rango anual ya perdía ~376 filas.
+// ==================================================================
+describe("fetchExpenses — paginado", () => {
+  it("trae más de 1000 gastos variables, no los primeros 1000", async () => {
+    const muchos = Array.from({ length: 2350 }, (_, i) =>
+      movimiento({ id: `mov-${i}`, amount: 1, currency: "USD" })
+    )
+    const { expenses, totals } = await gastosVariables(muchos)
+
+    expect(expenses).toHaveLength(2350)
+    expect(totals.usd).toBe(2350)
+  })
+
+  it("trae más de 1000 gastos recurrentes", async () => {
+    const muchos = Array.from({ length: 1500 }, (_, i) =>
+      recurrente({ id: `rec-${i}`, concept: "Gasto recurrente: Alquiler" })
+    )
+    const { client } = makeSupabase([], {
+      ledger_movements: muchos,
+      recurring_payments: [{ description: "Alquiler", category_id: null, agency_id: "ag-1" }],
+    })
+    const { expenses } = await fetchExpenses({
+      supabase: client,
+      orgId: "org-1",
+      type: "recurring",
+    })
+    expect(expenses).toHaveLength(1500)
+  })
+
+  it("un dataset que entra en una página no queda marcado como truncado", async () => {
+    const { truncated } = await gastosVariables([movimiento({ amount: 100 })])
+    expect(truncated).toBe(false)
+  })
+
+  it("si la lectura falla, el total se marca incompleto en vez de pasar por completo", async () => {
+    // Antes el error se tragaba en silencio y el reporte mostraba los gastos
+    // que sí pudo leer como si fueran todos.
+    const client = {
+      from: () => ({
+        select: () => ({
+          eq: function () { return this },
+          neq: function () { return this },
+          not: function () { return this },
+          like: function () { return this },
+          gte: function () { return this },
+          lte: function () { return this },
+          in: function () { return this },
+          order: function () { return this },
+          is: function () { return this },
+          range: () => Promise.resolve({ data: null, error: { message: "boom" } }),
+          then: (r: any) => Promise.resolve({ data: [], error: null }).then(r),
+        }),
+      }),
+    }
+    const { truncated, expenses } = await fetchExpenses({
+      supabase: client as any,
+      orgId: "org-1",
+      type: "variable",
+    })
+    expect(truncated).toBe(true)
+    expect(expenses).toEqual([])
   })
 })

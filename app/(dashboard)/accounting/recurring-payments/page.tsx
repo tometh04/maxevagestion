@@ -1,12 +1,20 @@
+import { redirect } from "next/navigation"
 import { RecurringPaymentsPageClient } from "@/components/accounting/recurring-payments-page-client"
 import { getCurrentUser } from "@/lib/auth"
+import { canAccessModule } from "@/lib/permissions"
 import { createServerClient } from "@/lib/supabase/server"
 import { getScopedAgenciesForUser } from "@/lib/permissions-api"
 
 export default async function RecurringPaymentsPage() {
   const { user } = await getCurrentUser()
-  const supabase = await createServerClient()
 
+  // No validaba permiso de módulo. Es `cash` porque son pagos a proveedores:
+  // el mismo componente vive como pestaña dentro de Gastos.
+  if (!canAccessModule(user.role as any, "cash")) {
+    redirect("/dashboard")
+  }
+
+  const supabase = await createServerClient()
   const agencies = await getScopedAgenciesForUser(supabase, user)
 
   return (

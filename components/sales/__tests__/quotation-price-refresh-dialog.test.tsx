@@ -51,7 +51,6 @@ jest.mock("@/components/ui/radio-group", () => {
     },
   }
 })
-
 jest.mock("@/components/ui/checkbox", () => ({
   Checkbox: ({ id, checked, onCheckedChange, disabled }: any) => (
     <input

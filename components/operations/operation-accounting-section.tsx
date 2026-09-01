@@ -16,6 +16,7 @@ import {
   ArrowDown,
   Minus
 } from "lucide-react"
+import { calcularRentabilidad } from "@/lib/operations/operation-profitability"
 
 function formatCurrency(amount: number, currency: string = "ARS"): string {
   const prefix = currency === "USD" ? "US$" : "$"
@@ -42,7 +43,25 @@ interface OperationAccountingSectionProps {
   saleAmount?: number
   operatorCost?: number
   currency?: string
-  commissionPercent?: number
+  /**
+   * Comisión del vendedor, en porcentaje. `null` = la operación todavía no
+   * tiene comisión calculada.
+   *
+   * No tiene default numérico a propósito: antes caía a 10 y la pantalla
+   * mostraba una "ganancia neta" descontando una comisión que no existía.
+   */
+  commissionPercent?: number | null
+  /**
+   * Comisión al referidor de esta venta (VIB-62). Es plata que sale de la misma
+   * ganancia, así que sin ella la "Ganancia Neta" de esta pantalla queda
+   * inflada — que es justamente lo que reportó Lozada.
+   */
+  referralCommission?: {
+    amount: number
+    currency: string
+    status: string
+    partnerName?: string | null
+  } | null
   operationServices?: OperationService[]
 }
 
@@ -59,7 +78,8 @@ export function OperationAccountingSection({
   saleAmount = 0,
   operatorCost = 0,
   currency = "USD",
-  commissionPercent = 10,
+  commissionPercent = null,
+  referralCommission = null,
   operationServices = [],
 }: OperationAccountingSectionProps) {
   const [loading, setLoading] = useState(true)
@@ -100,26 +120,33 @@ export function OperationAccountingSection({
   const servicesCostInOp = servicesInOpCurrency.reduce((sum, s) => sum + Number(s.cost_amount), 0)
   const servicesMarginInOp = servicesSaleInOp - servicesCostInOp
 
-  // Comisión de servicios que la generan
-  const commissionableServicesInOp = servicesInOpCurrency.filter(s => s.generates_commission)
-  const servicesComissionInOp = commissionableServicesInOp.reduce(
-    (sum, s) => sum + (Number(s.sale_amount) - Number(s.cost_amount)) * (commissionPercent / 100),
-    0
-  )
-
   // Totales de servicios en moneda alternativa
   const otherCurrency = currency === "USD" ? "ARS" : "USD"
   const servicesSaleOther = servicesInOtherCurrency.reduce((sum, s) => sum + Number(s.sale_amount), 0)
   const servicesCostOther = servicesInOtherCurrency.reduce((sum, s) => sum + Number(s.cost_amount), 0)
 
-  // ── Cálculos de rentabilidad TOTAL (base + servicios misma moneda) ────────
-  const totalSale = saleAmount + servicesSaleInOp
-  const totalCost = operatorCost + servicesCostInOp
-  const totalMargin = totalSale - totalCost
-  const totalMarginPercent = totalSale > 0 ? (totalMargin / totalSale) * 100 : 0
-  const totalComision = (saleAmount - operatorCost) * (commissionPercent / 100) + servicesComissionInOp
-  const totalGanancia = totalMargin - totalComision
-  const totalGananciaPercent = totalSale > 0 ? (totalGanancia / totalSale) * 100 : 0
+  // ── Rentabilidad TOTAL (base + servicios misma moneda) ────────────────────
+  // El cálculo vive en lib/operations/operation-profitability.ts: es una regla
+  // de dominio (qué se descuenta de la ganancia y qué no), no presentación, y
+  // así se prueba sin montar el componente.
+  const rentabilidad = calcularRentabilidad({
+    saleAmount,
+    operatorCost,
+    currency,
+    commissionPercent,
+    referralCommission,
+    servicios: operationServices,
+  })
+  const totalSale = rentabilidad.venta
+  const totalCost = rentabilidad.costo
+  const totalMargin = rentabilidad.margen
+  const totalMarginPercent = rentabilidad.margenPct
+  const totalComision = rentabilidad.comisionVendedor
+  const comisionReferidor = rentabilidad.comisionReferidor
+  const referralEnOtraMoneda = rentabilidad.referidorEnOtraMoneda
+  const referidorNombre = rentabilidad.referidorNombre
+  const totalGanancia = rentabilidad.ganancia
+  const totalGananciaPercent = rentabilidad.gananciaPct
 
   const hasServices = operationServices.length > 0
 
@@ -250,9 +277,27 @@ export function OperationAccountingSection({
             <div className="text-lg font-bold lg:text-xl truncate">
               {formatCurrency(gananciaFinal, currency)}
             </div>
+            {/* Decir SIEMPRE qué se descontó. El número cambia según haya o no
+                referido, y sin la leyenda no hay forma de saber cuál se está
+                mirando. */}
             <p className="text-[10px] text-muted-foreground mt-0.5">
-              Después de comisión ({commissionPercent}%)
+              {commissionPercent == null && comisionReferidor === 0
+                ? "Sin comisiones cargadas"
+                : [
+                    commissionPercent != null ? `comisión ${commissionPercent}%` : null,
+                    comisionReferidor > 0
+                      ? `referido${referidorNombre ? ` (${referidorNombre})` : ""}`
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" y ")
+                    .replace(/^/, "Después de ")}
             </p>
+            {referralEnOtraMoneda && (
+              <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">
+                No incluye la comisión del referido, que está en otra moneda.
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -386,17 +431,35 @@ export function OperationAccountingSection({
 
                 <div className="p-3 rounded-lg border">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs text-muted-foreground">Comisión</span>
-                    <Badge variant="secondary" className="text-[10px] h-5">
-                      {commissionPercent}%
-                    </Badge>
+                    <span className="text-xs text-muted-foreground">
+                      {comisionReferidor > 0 ? "Comisiones" : "Comisión"}
+                    </span>
+                    {commissionPercent != null && (
+                      <Badge variant="secondary" className="text-[10px] h-5">
+                        {commissionPercent}%
+                      </Badge>
+                    )}
                   </div>
                   <p className="text-base font-bold text-accent-coral">
-                    -{formatCurrency(comisionEstimada, currency)}
+                    -{formatCurrency(comisionEstimada + comisionReferidor, currency)}
                   </p>
-                  <p className="text-[10px] text-muted-foreground mt-2">
-                    Sobre margen bruto
-                  </p>
+                  {/* Abrirlas: la del referidor es plata que se le paga a un
+                      tercero, no al vendedor. Verlas sumadas sin desglose fue
+                      justamente lo que hizo dudar del número. */}
+                  {comisionReferidor > 0 ? (
+                    <div className="text-[10px] text-muted-foreground mt-2 space-y-0.5">
+                      <p>Vendedor: {formatCurrency(comisionEstimada, currency)}</p>
+                      <p>
+                        Referido
+                        {referidorNombre ? ` (${referidorNombre})` : ""}:{" "}
+                        {formatCurrency(comisionReferidor, currency)}
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-[10px] text-muted-foreground mt-2">
+                      {commissionPercent == null ? "Sin comisión cargada" : "Sobre margen bruto"}
+                    </p>
+                  )}
                 </div>
 
                 <div className="p-3 rounded-lg border bg-muted/30">

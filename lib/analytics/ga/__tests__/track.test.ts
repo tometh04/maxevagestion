@@ -155,6 +155,49 @@ describe("trackPageView", () => {
   })
 })
 
+describe("page_title", () => {
+  /**
+   * El `<title>` de la app es "<nombre de la agencia> - Gestion de Agencia"
+   * (white-label). gtag recolecta `page_title` desde `document.title` en CADA
+   * hit, asi que si no se pisa, el nombre comercial de cada tenant se va a
+   * Google en cada evento — justo lo que el contrato dice que no se manda nunca.
+   */
+  beforeEach(() => {
+    document.title = "Lozada Viajes - Gestión de Agencia"
+  })
+
+  it("nunca deja pasar el title real de la app en un evento", () => {
+    trackEvent("login", { method: "password" })
+    const params = eventHits()[0].params
+    expect(params.page_title).toBeDefined()
+    expect(String(params.page_title)).not.toContain("Lozada")
+  })
+
+  it("nunca deja pasar el title real de la app en un page_view", () => {
+    trackPageView("/operations/" + UUID, "")
+    const view = eventHits().find((h) => h.name === "page_view")!
+    expect(String(view.params.page_title)).not.toContain("Lozada")
+  })
+
+  it("usa la etiqueta del modulo, que es vocabulario cerrado", () => {
+    goTo("/operations")
+    trackEvent("login", { method: "password" })
+    expect(eventHits()[0].params.page_title).toBe("Operaciones")
+  })
+
+  it("cae a la marca fuera del producto", () => {
+    goTo("/onboarding")
+    trackEvent("login", { method: "password" })
+    expect(eventHits()[0].params.page_title).toBe("Vibook")
+  })
+
+  it("el page_view lleva el modulo como dimension propia", () => {
+    trackPageView("/accounting/ledger", "")
+    const view = eventHits().find((h) => h.name === "page_view")!
+    expect(view.params.module).toBe("accounting")
+  })
+})
+
 describe("identidad", () => {
   it("setea user_id y user properties", () => {
     setAnalyticsUser({ user_id: "u1", org_id: "o1", role: "ADMIN", plan: "PRO" })

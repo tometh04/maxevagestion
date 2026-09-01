@@ -131,7 +131,7 @@ export function generateSocietarioReportPdf({
 }: SocietarioReportPdfParams): ArrayBuffer {
   const currency = report.currency
   const money = (amount: number) => fmtMoney(amount, currency)
-  const { resultado, ventas, gastos, financiero, comisiones, socios } = report
+  const { resultado, ventas, gastos, financiero, comisiones, socios, ventaNeta } = report
 
   const b = new ReportPdfBuilder({
     company,
@@ -150,8 +150,13 @@ export function generateSocietarioReportPdf({
   b.filtersLine([
     `Oficina: ${filters.agencyName || "Todas"}`,
     `IVA aplicado: ${fmtPct(filters.ivaRatePct)}`,
+    // Sin esto, "venta neta" es un número sin criterio: los dos modos difieren
+    // en un orden de magnitud y el lector no tendría cómo saber cuál está viendo.
+    `Venta neta: IVA sobre ${ventaNeta.criterio === "VENTA" ? "la venta" : "el margen"}`,
     filters.exchangeRate
-      ? `TC fijo: ${filters.exchangeRate.toLocaleString("es-AR")}`
+      ? `TC fijo: ${filters.exchangeRate.toLocaleString("es-AR")}${
+          filters.exchangeRateEsPromedio ? " (promedio del período)" : ""
+        }`
       : "TC de la fecha de cada movimiento",
     `Generado: ${fmtDateTime(generatedAt)}`,
   ])
@@ -185,7 +190,9 @@ export function generateSocietarioReportPdf({
     {
       label: "Ventas",
       value: money(ventas.total),
-      hint: `${ventas.count} operaciones`,
+      // Abreviado a propósito: con cinco KPIs el valor se corta, así que la
+      // venta neta viaja en el hint y desarrollada en la nota de abajo.
+      hint: `${ventas.count} ops · neto de IVA ${money(ventaNeta.neta)}`,
     },
     {
       label: "Ganancia bruta",
@@ -232,6 +239,16 @@ export function generateSocietarioReportPdf({
       `(suma de los márgenes positivos). Es un parámetro de este reporte: el sistema no guarda ` +
       `una alícuota por operación.`
   )
+  b.note(
+    ventaNeta.criterio === "VENTA"
+      ? `Venta neta de IVA: ${money(ventaNeta.neta)} = ${money(ventaNeta.bruta)} ÷ ` +
+          `${(1 + ventaNeta.ivaRate).toLocaleString("es-AR")}, tratando la venta como IVA incluido. ` +
+          `Ese IVA (${money(ventaNeta.iva)}) es el débito bruto: no netea el crédito fiscal del costo ` +
+          `del operador. La cascada de arriba NO usa este criterio, sigue con el IVA sobre el margen.`
+      : `Venta neta de IVA: ${money(ventaNeta.neta)} = ${money(ventaNeta.bruta)} − ` +
+          `${money(ventaNeta.iva)}, el débito fiscal sobre el margen. Es el criterio de una agencia ` +
+          `de intermediación: el IVA no se calcula sobre el total del paquete.`
+  )
   if (gastos.excludedTouristic > 0) {
     b.note(
       `Se excluyeron ${gastos.excludedTouristic} movimiento(s) turístico(s) —pagos a operador y ` +
@@ -245,6 +262,83 @@ export function generateSocietarioReportPdf({
         `la comisión de la financiera (${money(financiero.costos)}). No forma parte de los gastos ` +
         `operativos: es plata que entra y sale por la forma de pagar a los operadores, no por hacer ` +
         `funcionar la agencia.`
+    )
+  }
+
+  // ============================================== CIERRE POR OFICINA ======
+  // Va después de la cascada —que explica el total— y antes de los socios: la
+  // tabla abre ese mismo total por sucursal.
+  const porAgencia = report.porAgencia
+  const hayTruncado = report.warnings.some((w) => w.code === "TRUNCATED")
+  if (porAgencia.rows.length > 1 && !hayTruncado) {
+    b.ensure(30 + porAgencia.rows.length * 8)
+    b.sectionTitle(
+      "Cierre por oficina",
+      `Venta, venta neta, comisiones y gastos de cada oficina · ${currency}`
+    )
+
+    type Fila = (typeof porAgencia.rows)[number]
+    b.table({
+      columns: [
+        {
+          header: "Oficina",
+          x: MARGIN + 2,
+          width: 52,
+          cell: (row: Fila) => row.name,
+        },
+        {
+          header: "Venta bruta",
+          x: MARGIN + 92,
+          align: "right",
+          cell: (row: Fila) => money(row.ventaBruta),
+        },
+        {
+          header: "Venta neta",
+          x: MARGIN + 122,
+          align: "right",
+          cell: (row: Fila) => money(row.ventaNeta),
+        },
+        {
+          header: "Comisiones",
+          x: MARGIN + 152,
+          align: "right",
+          cell: (row: Fila) => money(row.comisiones),
+        },
+        {
+          header: "Gastos",
+          x: RIGHT - 2,
+          align: "right",
+          cell: (row: Fila) => money(row.gastos),
+        },
+      ],
+      rows: porAgencia.rows,
+      total: {
+        accent: true,
+        cells: [
+          { x: MARGIN + 2, text: "Total" },
+          { x: MARGIN + 92, align: "right", text: money(porAgencia.total.ventaBruta) },
+          { x: MARGIN + 122, align: "right", text: money(porAgencia.total.ventaNeta) },
+          { x: MARGIN + 152, align: "right", text: money(porAgencia.total.comisiones) },
+          { x: RIGHT - 2, align: "right", text: money(porAgencia.total.gastos) },
+        ],
+      },
+    })
+
+    b.note(
+      `La venta neta de cada oficina usa el IVA sobre ${
+        porAgencia.criterio === "VENTA" ? "la venta" : "el margen"
+      }, calculado con sus propios números y no repartiendo el IVA total.`
+    )
+    if (porAgencia.rows.some((r) => r.kind === "SIN_ASIGNAR")) {
+      b.note(
+        `Los gastos sin oficina asignada —alquiler, sueldos, contador— van en su propia fila y no ` +
+          `se prorratean entre las oficinas: cómo repartirlos es una decisión contable. Suman al total.`
+      )
+    }
+    b.note(
+      `La tabla llega hasta las cifras atribuibles a cada oficina. La ganancia neta a repartir no ` +
+        `se abre por sucursal porque los gastos sin asignar y el resultado financiero no registran ` +
+        `a cuál corresponden.`
     )
   }
 

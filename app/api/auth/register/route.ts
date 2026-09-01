@@ -206,7 +206,31 @@ export async function POST(req: Request) {
       agency_id: agency.id,
     })
 
-    // 9. (Opcional) Seed de listas CRM default. El user puede optar por esto
+    // 9. Plan de cuentas. Sin esto la org arranca con `chart_of_accounts`
+    //    vacia y la cadena se corta en silencio: al crear su primera caja o
+    //    banco, el alta busca la cuenta contable del tipo, no encuentra
+    //    ninguna, y la cuenta financiera queda sin vincular. Sin ese vinculo
+    //    el motor saltea todos sus movimientos y la agencia nunca genera un
+    //    asiento.
+    //
+    //    Esta es la ruta por la que se registran las agencias solas. El
+    //    sembrado se habia agregado a `/api/onboarding`, que es otro camino:
+    //    tres orgs creadas despues de ese arreglo siguieron sin plan. La
+    //    migracion 20260901000002 ademas lo cubre con un trigger, para el
+    //    caso de que aparezca un cuarto camino de alta.
+    //
+    //    No bloqueante: si falla, el registro sigue y el plan se puede sembrar
+    //    despues desde /admin/orgs.
+    try {
+      const { seedChartOfAccountsForOrg } = await import(
+        "@/lib/accounting/seed-chart-of-accounts"
+      )
+      await seedChartOfAccountsForOrg(org.id, admin)
+    } catch (e: any) {
+      console.warn(`[register] Seed del plan de cuentas fallo para org ${org.id}:`, e?.message)
+    }
+
+    // 10. (Opcional) Seed de listas CRM default. El user puede optar por esto
     //    en el form de signup para no arrancar con el CRM completamente vacío.
     //    Si falla, no es blocker — el tenant puede crearlas manualmente después.
     if (seedDefaultLists) {

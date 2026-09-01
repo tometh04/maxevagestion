@@ -58,6 +58,7 @@ app/admin/metrics/page.tsx                                               # PLATF
 app/admin/usage/page.tsx                                                 # PLATFORM_ADMIN — mapa de calor de uso; RPCs admin_usage_* cross-org (EXECUTE solo service_role).
 app/admin/audit/page.tsx                                                 # PLATFORM_ADMIN — security_audit_log reader.
 app/api/admin/orgs/route.ts                                              # PLATFORM_ADMIN — crear org nueva.
+app/api/admin/orgs/[id]/agente-blanco/route.ts                           # PLATFORM_ADMIN — setear el slug de Agente Blanco de un tenant.
 app/api/admin/orgs/[id]/cancel-subscription/route.ts                     # PLATFORM_ADMIN — cancelar suscripción de un tenant.
 app/api/admin/orgs/[id]/change-plan/route.ts                             # PLATFORM_ADMIN — cambiar plan (Ent↔PRO) + sync límites + reprice MP.
 app/api/admin/orgs/[id]/custom-plan/route.ts                             # PLATFORM_ADMIN — CRUD plan custom.
@@ -80,6 +81,7 @@ app/api/admin/support/tickets/[id]/replies/route.ts                      # PLATF
 # ─── CRON JOBS ─────────────────────────────────────────────────────────────────
 # Cross-tenant por diseño: procesan todos los orgs; insertos llevan org_id explícito.
 app/api/cron/alerts/route.ts                                             # CRON — generación de alertas.
+app/api/cron/accounting-close/route.ts                                    # CRON — cierre contable mensual; cross-tenant por diseño, todo write lleva org_id explícito.
 app/api/cron/apply-pricing-changes/route.ts                              # CRON — aplicar cambios de precio.
 app/api/cron/apply-pricing-changes/route.test.ts                         # TEST — tests del cron apply-pricing.
 app/api/billing/mp-webhook/route.test.ts                                 # TEST — mock de createAdminClient para tests del webhook MP.
@@ -89,7 +91,10 @@ app/api/admin/billing/plan-prices/route.test.ts                          # TEST 
 app/api/admin/orgs/[id]/change-plan/route.test.ts                        # TEST — mock de createAdminClient para tests de cambio de plan.
 app/api/reports/societario/__tests__/authorization.test.ts               # TEST — mock de createAdminClient para el test de permisos del reporte societario.
 app/api/cron/billing-reconcile/route.ts                                  # CRON — reconciliación de suscripciones MP.
+app/api/cron/past-due-reminders/route.ts                                 # CRON — dunning de orgs PAST_DUE (mail al cliente + escalada); cross-tenant, todo write lleva org_id.
+app/api/cron/past-due-reminders/__tests__/route.test.ts                  # TEST — mock de createAdminClient para el test del dunning.
 app/api/cron/usage-retention/route.ts                                    # CRON — purga usage_events > 90 días, cross-tenant por diseño.
+app/api/cron/sync-login-sessions/route.ts                                # CRON — snapshot de auth.sessions a login_sessions, cross-tenant por diseño.
 app/api/cron/billing-reconcile/route.test.ts                             # TEST — mock de createAdminClient para el test del reconcile.
 app/api/cron/callbell-reconcile/route.ts                                 # CRON — reconciliación Callbell.
 app/api/cron/classify-quotation-pdfs/route.ts                            # CRON — clasificación de PDFs de cotización.
@@ -184,4 +189,5 @@ app/api/public/quotations/[token]/__tests__/route.test.ts                 # TEST
 app/api/quotations/__tests__/id-route.test.ts                             # TEST — simula reemplazo/rollback service-role después de validar org, agencia y seller.
 app/api/quotations/[id]/convert/__tests__/route.test.ts                   # TEST — mock de conversión transaccional y alerta de revisión de comisiones.
 app/api/quotations/__tests__/route.test.ts                                # TEST — mock del alta atómica y su reload service-role post-gate.
+app/api/quotations/__tests__/document-projection-route.test.ts            # TEST — mock de lecturas scoped para verificar la proyección documental aditiva.
 app/api/quotations/upload-flight-screenshot/__tests__/route.test.ts       # TEST — mock de lectura scoped y Storage service-role.

@@ -57,6 +57,11 @@ export async function GET(request: Request) {
          users:created_by (name)`,
         { count: "exact" }
       )
+      // Las líneas de asiento no son movimientos de dinero: son la contabilidad
+      // de un movimiento que ya está en esta lista. Mostrarlas la duplicaría.
+      // Un movimiento de dinero siempre tiene cuenta financiera; una línea de
+      // asiento nunca.
+      .not("account_id", "is", null)
       // Cross-tenant fix: scopear ledger_movements por org del user.
       .eq("org_id", (user as any).org_id)
 

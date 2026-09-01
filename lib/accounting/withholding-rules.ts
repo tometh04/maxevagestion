@@ -34,6 +34,18 @@ export interface WithholdingRule {
   rate: number // percentage (e.g. 3 means 3%)
   min_amount: number // minimum amount threshold to apply
   exempt_cuits: string[] // CUITs that are exempt
+  /**
+   * Operadores exentos de esta percepción/retención, por id (VIB-136/G2).
+   *
+   * La exención por CUIT no alcanza: un operador puede no tener CUIT cargado,
+   * o la agencia puede querer eximir a un operador puntual sin depender de que
+   * el dato fiscal esté completo. Aptour resuelve esto con un flag por operador
+   * (`NO_3450`); acá se modela como lista en la regla, que es donde ya vive la
+   * configuración por agencia.
+   *
+   * Opcional: las reglas existentes que no lo tengan se comportan igual que antes.
+   */
+  exempt_operator_ids?: string[]
   is_active: boolean
   /** RG 5617: solo aplica a operaciones internacionales (destino fuera de Argentina) */
   requires_international_destination?: boolean
@@ -53,6 +65,13 @@ export interface CalculateWithholdingsParams {
   destination?: string
   /** Tipos de retención/percepción a excluir del cálculo */
   excluded_types?: WithholdingType[]
+  /**
+   * Operador de la contraparte, para evaluar `exempt_operator_ids` (VIB-136/G2).
+   *
+   * Ya viajaba en `AutoCreateWithholdingsParams`, que extiende esta interfaz,
+   * así que llegaba en runtime pero el cálculo no podía verlo.
+   */
+  operator_id?: string
 }
 
 export interface WithholdingResult {
@@ -178,7 +197,7 @@ export function calculateWithholdings(
   rules: WithholdingRule[],
   params: CalculateWithholdingsParams
 ): WithholdingResult[] {
-  const { amount, type, counterpart_cuit, payment_method, destination, excluded_types } = params
+  const { amount, type, counterpart_cuit, payment_method, destination, excluded_types, operator_id } = params
   const results: WithholdingResult[] = []
 
   for (const rule of rules) {
@@ -199,6 +218,17 @@ export function calculateWithholdings(
       counterpart_cuit &&
       rule.exempt_cuits.length > 0 &&
       rule.exempt_cuits.includes(counterpart_cuit)
+    ) {
+      continue
+    }
+
+    // Operadores exentos (VIB-136/G2). Complementa la exención por CUIT: sirve
+    // aunque el operador no tenga CUIT cargado.
+    if (
+      operator_id &&
+      rule.exempt_operator_ids &&
+      rule.exempt_operator_ids.length > 0 &&
+      rule.exempt_operator_ids.includes(operator_id)
     ) {
       continue
     }
@@ -341,6 +371,9 @@ export async function autoCreateWithholdings(
     payment_method: params.payment_method,
     destination: params.destination,
     excluded_types: params.excluded_types,
+    // VIB-136/G2: sin esto la exención por operador nunca se evaluaría — este
+    // objeto se arma campo por campo, así que lo que no se lista se pierde.
+    operator_id: params.operator_id,
   })
 
   if (withholdings.length === 0) return []

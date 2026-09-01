@@ -213,6 +213,53 @@ export async function POST(request: Request) {
       supabase
     )
 
+    // VIB-142: asiento del movimiento de caja.
+    //
+    // La contrapartida sale del tipo y la categoría, y en los tres casos de
+    // acá cancela una deuda que YA se devengó al confirmar la operación: el
+    // cobro cancela Cuentas por Cobrar, el pago a operador y la comisión
+    // cancelan Cuentas por Pagar. Volver a tocar la cuenta de resultado
+    // (Ventas, Costo, Comisiones) duplicaría el resultado del ejercicio.
+    //
+    // El resto de las salidas son gastos: se devengan y se pagan en el mismo
+    // acto, así que el Debe va contra la cuenta de resultado.
+    try {
+      const { createMovementJournalEntry, COUNTERPART_CODES } = await import(
+        "@/lib/accounting/movement-journal"
+      )
+
+      let counterpartCode: string | null = null
+      let direction: "IN" | "OUT" = "OUT"
+
+      if (ledgerType === "INCOME") {
+        counterpartCode = COUNTERPART_CODES.CUSTOMER_COLLECTION
+        direction = "IN"
+      } else if (category === "OPERATOR_PAYMENT") {
+        counterpartCode = COUNTERPART_CODES.OPERATOR_PAYMENT
+      } else if (category === "COMMISSION") {
+        counterpartCode = COUNTERPART_CODES.COMMISSION_PAYMENT
+      } else if (category === "CUSTOMER_REFUND") {
+        // Devolver plata al cliente no es un gasto: revierte un cobro, así que
+        // vuelve a cargar su cuenta corriente.
+        counterpartCode = COUNTERPART_CODES.CUSTOMER_COLLECTION
+      } else if (category === "Contra-movimiento") {
+        // La contrapartida de otro movimiento ya asentado. Asentarla de nuevo
+        // duplicaría el hecho económico.
+        counterpartCode = null
+      } else {
+        counterpartCode = COUNTERPART_CODES.EXPENSE
+      }
+
+      if (counterpartCode) {
+        await createMovementJournalEntry(
+          { movementId: ledgerMovementId, counterpartCode, direction },
+          supabase
+        )
+      }
+    } catch (journalError) {
+      console.error("Error asentando el movimiento de caja:", journalError)
+    }
+
     if (ledgerMovementId) {
       await (supabase.from("cash_movements") as any)
         .update({ ledger_movement_id: ledgerMovementId })
@@ -302,14 +349,16 @@ export async function GET(request: Request) {
     // range → paginación inconsistente (una página podía venir casi vacía con
     // total diciendo cientos). Ahora va en la query vía inner join en operations.
     const filterAgency = !!(agencyId && agencyId !== "ALL")
-    const opEmbed = filterAgency ? "operations:operation_id!inner" : "operations:operation_id"
+    const opEmbed = "operations:operation_id"
 
     let query = (supabase.from("cash_movements") as any)
       .select(
         `
         id, type, category, amount, currency, movement_date, notes, financial_account_id,
-        is_agency_expense,
+        is_agency_expense, agency_id,
+        agencies:agency_id (id, name),
         reversed_at, reverses_movement_id, reversed_by_movement_id, reversal_reason,
+        reconciliation_status, reconciled_at,
         ledger_movements:ledger_movement_id (affects_balance),
         users:user_id (id, name),
         ${opEmbed} (
@@ -398,10 +447,12 @@ export async function GET(request: Request) {
     if (user.role === "SELLER") {
       query = query.eq("user_id", user.id)
     }
-    // Filtro de agencia server-side (inner join en operations). Excluye los
-    // movimientos sin operación, igual que hacía el filtro en memoria previo.
+    // Filtro por la agencia DEL MOVIMIENTO, no la de su operación. Antes iba
+    // por `operations.agency_id` con un inner join, así que filtrar por oficina
+    // escondía todo lo que no cuelga de una venta: gastos, transferencias,
+    // ajustes. Justo lo que alguien busca cuando filtra Caja por oficina.
     if (filterAgency) {
-      query = query.eq("operations.agency_id", agencyId)
+      query = query.eq("agency_id", agencyId)
     }
 
     const { data: rawMovements, error: movError, count } = await query
@@ -428,6 +479,14 @@ export async function GET(request: Request) {
         reverses_movement_id: m.reverses_movement_id ?? null,
         reversed_by_movement_id: m.reversed_by_movement_id ?? null,
         reversal_reason: m.reversal_reason ?? null,
+        // Conciliación bancaria (VIB-137). null = sin marcar.
+        reconciliation_status: m.reconciliation_status ?? null,
+        reconciled_at: m.reconciled_at ?? null,
+        // Agencia PROPIA del movimiento. La tabla mostraba `operations.agencies.name`,
+        // que la API devolvía siempre en null: todos los movimientos se veían
+        // como "Sin agencia", incluidos 843 que sí la tenían cargada.
+        agency_id: m.agency_id ?? null,
+        agency_name: m.agencies?.name ?? null,
         operations: m.operations
           ? {
               id: m.operations.id,

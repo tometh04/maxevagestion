@@ -3,6 +3,10 @@ import React from "react"
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { toast } from "sonner"
 import { QuotationPdfPriceDialog } from "../quotation-pdf-price-dialog"
+import {
+  QuotationDocumentDownloadError,
+  type QuotationDocumentPayload,
+} from "@/lib/quotation-documents/client"
 
 jest.mock("lucide-react", () => new Proxy({ __esModule: true }, {
   get: (target, prop) => prop in target
@@ -61,6 +65,22 @@ const OPERATOR_ID = "44444444-4444-4444-8444-444444444444"
 const VERSION_1 = "2026-08-24T12:00:00.000Z"
 const VERSION_2 = "2026-08-24T12:01:00.000Z"
 const VERSION_3 = "2026-08-24T12:02:00.000Z"
+const VERSION_4 = "2026-08-24T12:03:00.000Z"
+
+function issuedDocument(): QuotationDocumentPayload {
+  return {
+    html: "<html><body>Cotización</body></html>",
+    filename: "cotizacion.pdf",
+    pageCount: 1,
+    layoutKey: "default",
+    layoutVersion: 1,
+    revisionId: null,
+    issuedDocumentId: "55555555-5555-4555-8555-555555555555",
+    contentHash: "issued-document-hash",
+    quotationStatus: "SENT",
+    quotationUpdatedAt: VERSION_3,
+  }
+}
 
 function quotationResponse() {
   return {
@@ -91,14 +111,17 @@ describe("QuotationPdfPriceDialog", () => {
     jest.clearAllMocks()
   })
 
-  it("reuses the CAS version returned by prepare when PDF generation must be retried", async () => {
+  it("retries with the committed quotation version preserved by a download error", async () => {
     const fetchMock = jest.fn()
       .mockResolvedValueOnce({ ok: true, json: async () => quotationResponse() })
       .mockResolvedValueOnce({ ok: true, json: async () => ({ data: { updated_at: VERSION_2 } }) })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ data: { updated_at: VERSION_3 } }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ data: { updated_at: VERSION_4 } }) })
     global.fetch = fetchMock as unknown as typeof fetch
     const onGenerate = jest.fn()
-      .mockRejectedValueOnce(new Error("descarga fallida"))
+      .mockRejectedValueOnce(new QuotationDocumentDownloadError(
+        "descarga fallida",
+        issuedDocument()
+      ))
       .mockResolvedValueOnce(undefined)
     const onClose = jest.fn()
 
@@ -125,8 +148,10 @@ describe("QuotationPdfPriceDialog", () => {
       .map(([, init]) => JSON.parse(String((init as RequestInit).body)))
     expect(putBodies).toHaveLength(2)
     expect(putBodies[0].expected_updated_at).toBe(VERSION_1)
-    expect(putBodies[1].expected_updated_at).toBe(VERSION_2)
-    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("descarga fallida"))
+    expect(putBodies[1].expected_updated_at).toBe(VERSION_3)
+    expect(toast.error).toHaveBeenCalledWith(
+      "La cotización quedó guardada, pero no se pudo completar la emisión o descarga: descarga fallida"
+    )
   })
 
   it("fails send preflight before preparing or opening a WhatsApp window", async () => {
@@ -154,6 +179,34 @@ describe("QuotationPdfPriceDialog", () => {
     expect(onSend).not.toHaveBeenCalled()
     expect(toast.error).toHaveBeenCalledWith("El lead no tiene un teléfono para WhatsApp")
     openSpy.mockRestore()
+  })
+
+  it("distinguishes a save failure from a later document failure", async () => {
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => quotationResponse() })
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: "La cotización cambió mientras la editabas" }),
+      })
+    global.fetch = fetchMock as unknown as typeof fetch
+    const onGenerate = jest.fn()
+
+    render(
+      <QuotationPdfPriceDialog
+        quotationId={QUOTATION_ID}
+        onClose={jest.fn()}
+        onGenerate={onGenerate}
+      />
+    )
+
+    const generate = await screen.findByRole("button", { name: "Generar PDF" })
+    await waitFor(() => expect(generate).not.toBeDisabled())
+    fireEvent.click(generate)
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(
+      "No se pudieron guardar los cambios de la cotización: La cotización cambió mientras la editabas"
+    ))
+    expect(onGenerate).not.toHaveBeenCalled()
   })
 
   it("exige operador para ítems Emilia y lo envía al prepare atómico", async () => {

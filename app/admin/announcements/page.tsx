@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
+import { ROLES_VALIDOS } from "@/lib/announcements/modal-payload"
 import {
   Select,
   SelectContent,
@@ -38,6 +40,13 @@ interface Announcement {
   published_at: string
   created_at: string
   updated_at: string
+  release_version: string | null
+  modal: boolean
+  modal_starts_at: string | null
+  modal_ends_at: string | null
+  modal_roles: string[] | null
+  modal_cta_label: string | null
+  modal_cta_href: string | null
 }
 
 const typeConfig: Record<AnnouncementType, { label: string; icon: typeof Sparkles; className: string }> = {
@@ -46,7 +55,22 @@ const typeConfig: Record<AnnouncementType, { label: string; icon: typeof Sparkle
   FIX: { label: "Corrección", icon: Wrench, className: "bg-orange-50 text-orange-700 border-orange-200" },
 }
 
-const emptyDraft = { id: "", title: "", body: "", type: "NEW" as AnnouncementType, published: true }
+const emptyDraft = {
+  id: "",
+  title: "",
+  body: "",
+  type: "NEW" as AnnouncementType,
+  published: true,
+  release_version: "",
+  // El modal arranca apagado: interrumpir a toda la base tiene que ser una
+  // decisión explícita, no lo que pasa si nadie toca nada.
+  modal: false,
+  modal_starts_at: "",
+  modal_ends_at: "",
+  modal_roles: [] as string[],
+  modal_cta_label: "",
+  modal_cta_href: "",
+}
 
 export default function AdminAnnouncementsPage() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([])
@@ -54,6 +78,7 @@ export default function AdminAnnouncementsPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [draft, setDraft] = useState(emptyDraft)
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const isEditing = draft.id !== ""
 
   const load = useCallback(async () => {
@@ -79,13 +104,28 @@ export default function AdminAnnouncementsPage() {
   }
 
   const openEdit = (a: Announcement) => {
-    setDraft({ id: a.id, title: a.title, body: a.body, type: a.type, published: a.published })
+    setDraft({
+      id: a.id,
+      title: a.title,
+      body: a.body,
+      type: a.type,
+      published: a.published,
+      release_version: a.release_version ?? "",
+      modal: a.modal ?? false,
+      // Los inputs de fecha trabajan con YYYY-MM-DD; la base guarda timestamps.
+      modal_starts_at: a.modal_starts_at?.slice(0, 10) ?? "",
+      modal_ends_at: a.modal_ends_at?.slice(0, 10) ?? "",
+      modal_roles: a.modal_roles ?? [],
+      modal_cta_label: a.modal_cta_label ?? "",
+      modal_cta_href: a.modal_cta_href ?? "",
+    })
     setDialogOpen(true)
   }
 
   const save = async () => {
     if (!draft.title.trim() || !draft.body.trim()) return
     setSaving(true)
+    setError(null)
     try {
       const url = isEditing ? `/api/admin/announcements/${draft.id}` : "/api/admin/announcements"
       const method = isEditing ? "PATCH" : "POST"
@@ -97,13 +137,26 @@ export default function AdminAnnouncementsPage() {
           body: draft.body,
           type: draft.type,
           published: draft.published,
+          release_version: draft.release_version || null,
+          modal: draft.modal,
+          modal_starts_at: draft.modal_starts_at || null,
+          modal_ends_at: draft.modal_ends_at || null,
+          modal_roles: draft.modal_roles,
+          modal_cta_label: draft.modal_cta_label || null,
+          modal_cta_href: draft.modal_cta_href || null,
         }),
       })
-      if (!res.ok) throw new Error("save failed")
+      if (!res.ok) {
+        // El backend explica qué está mal (destino externo, botón a medias,
+        // rol inexistente). Mostrarlo es más útil que "no se pudo guardar".
+        const json = await res.json().catch(() => ({}))
+        throw new Error(json?.error || "No se pudo guardar la novedad")
+      }
       setDialogOpen(false)
       await load()
-    } catch (e) {
+    } catch (e: any) {
       console.error("Error saving announcement:", e)
+      setError(e?.message ?? "No se pudo guardar la novedad")
     } finally {
       setSaving(false)
     }
@@ -202,11 +255,14 @@ export default function AdminAnnouncementsPage() {
       </DataTableShell>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
+        {/* Ancho y con el cuerpo scrolleable: con los campos del modal el
+            formulario pasó a ser largo y se cortaba contra el borde de la
+            pantalla, sin forma de llegar a los últimos campos. */}
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>{isEditing ? "Editar novedad" : "Nueva novedad"}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <div className="-mx-6 flex-1 space-y-4 overflow-y-auto px-6 py-2">
             <div className="space-y-1.5">
               <Label htmlFor="title">Título</Label>
               <Input
@@ -220,7 +276,8 @@ export default function AdminAnnouncementsPage() {
               <Label htmlFor="body">Descripción</Label>
               <Textarea
                 id="body"
-                rows={5}
+                rows={16}
+                className="min-h-[18rem] leading-relaxed"
                 value={draft.body}
                 onChange={(e) => setDraft((d) => ({ ...d, body: e.target.value }))}
                 placeholder="Contá qué cambió y cómo aprovecharlo…"
@@ -256,7 +313,141 @@ export default function AdminAnnouncementsPage() {
                 </Select>
               </div>
             </div>
+
+            {/* Mostrar como modal.
+                Se usa para releases grandes que además le piden algo al usuario.
+                Va apagado por defecto: interrumpir a toda la base tiene que ser
+                una decisión, no lo que pasa si nadie toca nada. */}
+            <div className="rounded-md border p-3.5 space-y-3">
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <Checkbox
+                  checked={draft.modal}
+                  onCheckedChange={(v) => setDraft((d) => ({ ...d, modal: v === true }))}
+                  className="mt-0.5"
+                />
+                <span className="space-y-0.5">
+                  <span className="block text-sm font-medium">Mostrar como modal al entrar</span>
+                  <span className="block text-xs text-muted-foreground">
+                    Además de aparecer en la campana, interrumpe una vez por ingreso hasta que el
+                    usuario lo descarte o venza.
+                  </span>
+                </span>
+              </label>
+
+              {draft.modal && (
+                <div className="space-y-3 border-t pt-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="release-version">Número de release</Label>
+                    <Input
+                      id="release-version"
+                      placeholder="2026.09"
+                      className="max-w-[10rem]"
+                      value={draft.release_version}
+                      onChange={(e) => setDraft((d) => ({ ...d, release_version: e.target.value }))}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Se muestra en el encabezado junto a la fecha, para que el usuario pueda ubicar
+                      qué cambió y cuándo. Opcional.
+                    </p>
+                  </div>
+
+                  <div className="rounded-md bg-muted/50 px-3 py-2.5 text-xs text-muted-foreground">
+                    <span className="font-medium text-foreground">Páginas.</span> Separá el texto con
+                    una línea que diga <code className="font-mono">---</code> y la primera línea de
+                    cada bloque será su título. Sin separadores el modal muestra una sola página.
+                    {(() => {
+                      const n = draft.body.split(/\r?\n/).filter((l) => /^[ \t]*---[ \t]*$/.test(l)).length + 1
+                      return n > 1 ? (
+                        <span className="mt-1 block text-foreground">Ahora mismo: {n} páginas.</span>
+                      ) : null
+                    })()}
+                  </div>
+
+                  <div className="flex gap-3">
+                    <div className="space-y-1.5 flex-1">
+                      <Label htmlFor="modal-from">Desde</Label>
+                      <Input
+                        id="modal-from"
+                        type="date"
+                        value={draft.modal_starts_at}
+                        onChange={(e) => setDraft((d) => ({ ...d, modal_starts_at: e.target.value }))}
+                      />
+                    </div>
+                    <div className="space-y-1.5 flex-1">
+                      <Label htmlFor="modal-until">Hasta</Label>
+                      <Input
+                        id="modal-until"
+                        type="date"
+                        value={draft.modal_ends_at}
+                        onChange={(e) => setDraft((d) => ({ ...d, modal_ends_at: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  {!draft.modal_ends_at && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400">
+                      Sin fecha de fin el modal no vence: va a seguir apareciendo hasta que cada
+                      usuario lo descarte.
+                    </p>
+                  )}
+
+                  <div className="space-y-1.5">
+                    <Label>Roles que lo ven</Label>
+                    <div className="flex flex-wrap gap-x-4 gap-y-2">
+                      {ROLES_VALIDOS.map((rol) => (
+                        <label key={rol} className="flex items-center gap-1.5 text-sm cursor-pointer">
+                          <Checkbox
+                            checked={draft.modal_roles.includes(rol)}
+                            onCheckedChange={(v) =>
+                              setDraft((d) => ({
+                                ...d,
+                                modal_roles:
+                                  v === true
+                                    ? [...d.modal_roles, rol]
+                                    : d.modal_roles.filter((r) => r !== rol),
+                              }))
+                            }
+                          />
+                          {rol}
+                        </label>
+                      ))}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Sin ninguno marcado lo ven todos. Esto restringe el modal, no la novedad: en
+                      la campana la sigue viendo cualquiera.
+                    </p>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <div className="space-y-1.5 flex-1">
+                      <Label htmlFor="cta-label">Texto del botón</Label>
+                      <Input
+                        id="cta-label"
+                        placeholder="Configurar contabilidad"
+                        value={draft.modal_cta_label}
+                        onChange={(e) => setDraft((d) => ({ ...d, modal_cta_label: e.target.value }))}
+                      />
+                    </div>
+                    <div className="space-y-1.5 flex-1">
+                      <Label htmlFor="cta-href">Destino</Label>
+                      <Input
+                        id="cta-href"
+                        placeholder="/finances/settings"
+                        value={draft.modal_cta_href}
+                        onChange={(e) => setDraft((d) => ({ ...d, modal_cta_href: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    El destino tiene que ser una ruta interna. Los dos campos van juntos o ninguno.
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
+
+          {error && (
+            <p className="text-sm text-destructive px-1">{error}</p>
+          )}
           <DialogFooter>
             <Button variant="ghost" onClick={() => setDialogOpen(false)}>Cancelar</Button>
             <Button onClick={save} disabled={saving || !draft.title.trim() || !draft.body.trim()}>

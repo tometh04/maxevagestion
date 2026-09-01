@@ -14,6 +14,15 @@ import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
 import { DateTypeFilter, type DateTypeOption } from "@/components/ui/date-type-filter"
 import { format, parseISO } from "date-fns"
 
+// VIB-157: se factura en dos veces (seña y saldo), así que hace falta poder
+// aislar las operaciones que quedaron a medio facturar.
+const invoiceStatusOptions = [
+  { value: "ALL", label: "Toda la facturación" },
+  { value: "NOT_INVOICED", label: "Sin facturar" },
+  { value: "PARTIAL", label: "Facturación parcial" },
+  { value: "INVOICED", label: "Facturado completo" },
+]
+
 const standardStatusOptions = [
   { value: "ALL", label: "Todos los estados" },
   { value: "RESERVED", label: "Reservado" },
@@ -42,6 +51,7 @@ interface OperationsFiltersProps {
     status: string
     sellerId: string
     agencyId: string
+    invoiceStatus: string
     dateFrom: string
     dateTo: string
     paymentDateFrom?: string
@@ -54,6 +64,7 @@ export function OperationsFilters({ sellers, agencies, customStatuses = [], onFi
   const [status, setStatus] = useState("ALL")
   const [sellerId, setSellerId] = useState("ALL")
   const [agencyId, setAgencyId] = useState("ALL")
+  const [invoiceStatus, setInvoiceStatus] = useState("ALL")
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined)
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined)
   const [paymentDateFrom, setPaymentDateFrom] = useState<Date | undefined>(undefined)
@@ -86,6 +97,7 @@ export function OperationsFilters({ sellers, agencies, customStatuses = [], onFi
       status,
       sellerId,
       agencyId,
+      invoiceStatus,
       dateFrom: formatDateString(dateFrom),
       dateTo: formatDateString(dateTo),
       paymentDateFrom: paymentDateType ? formatDateString(paymentDateFrom) : undefined,
@@ -98,6 +110,7 @@ export function OperationsFilters({ sellers, agencies, customStatuses = [], onFi
     setStatus("ALL")
     setSellerId("ALL")
     setAgencyId("ALL")
+    setInvoiceStatus("ALL")
     setDateFrom(undefined)
     setDateTo(undefined)
     setPaymentDateFrom(undefined)
@@ -107,6 +120,7 @@ export function OperationsFilters({ sellers, agencies, customStatuses = [], onFi
       status: "ALL",
       sellerId: "ALL",
       agencyId: "ALL",
+      invoiceStatus: "ALL",
       dateFrom: "",
       dateTo: "",
       paymentDateFrom: undefined,
@@ -119,6 +133,7 @@ export function OperationsFilters({ sellers, agencies, customStatuses = [], onFi
     status !== "ALL" ||
     sellerId !== "ALL" ||
     agencyId !== "ALL" ||
+    invoiceStatus !== "ALL" ||
     dateFrom !== undefined ||
     dateTo !== undefined ||
     (paymentDateType !== "" && (paymentDateFrom !== undefined || paymentDateTo !== undefined))
@@ -161,6 +176,19 @@ export function OperationsFilters({ sellers, agencies, customStatuses = [], onFi
           {agencies.map((agency) => (
             <SelectItem key={agency.id} value={agency.id}>
               {agency.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Select value={invoiceStatus} onValueChange={setInvoiceStatus}>
+        <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px] w-auto">
+          <SelectValue placeholder="Estado de facturación" />
+        </SelectTrigger>
+        <SelectContent>
+          {invoiceStatusOptions.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
             </SelectItem>
           ))}
         </SelectContent>

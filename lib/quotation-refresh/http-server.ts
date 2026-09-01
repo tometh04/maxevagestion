@@ -47,7 +47,6 @@ export async function quotationRefreshRequestContext(
     }),
   }
 }
-
 export function quotationRefreshHttpError(error: unknown) {
   if (!(error instanceof QuotationRefreshError)) {
     console.error("[quotation-price-refresh] unexpected error", error)

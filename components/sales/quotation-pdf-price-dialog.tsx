@@ -29,6 +29,10 @@ import {
   parseQuotationPresentationContent,
   type QuotationPresentationContent,
 } from "@/lib/quotation-documents/schemas"
+import {
+  QuotationDocumentDownloadError,
+  type QuotationDocumentPayload,
+} from "@/lib/quotation-documents/client"
 
 interface OptionEntry {
   id: string
@@ -58,13 +62,16 @@ interface Props {
   quotationId: string | null
   onClose: () => void
   /** Se llama después de guardar los precios, para abrir/descargar el PDF. */
-  onGenerate: (quotationId: string, expectedUpdatedAt: string) => void | Promise<void>
+  onGenerate: (
+    quotationId: string,
+    expectedUpdatedAt: string
+  ) => void | QuotationDocumentPayload | Promise<void | QuotationDocumentPayload>
   /** Si se informa, el mismo guardado puede emitir + marcar SENT de forma atómica. */
   onSend?: (
     quotationId: string,
     sendWindow: Window,
     expectedUpdatedAt: string
-  ) => void | Promise<void>
+  ) => void | QuotationDocumentPayload | Promise<void | QuotationDocumentPayload>
   /** Preflight conocido por el caller (token/teléfono) que debe fallar antes de persistir. */
   sendValidationError?: string
 }
@@ -285,6 +292,7 @@ export function QuotationPdfPriceDialog({
     if (sendWindow) sendWindow.opener = null
 
     setSaving(true)
+    let contentSaved = false
     try {
       if (!expectedUpdatedAt) throw new Error("La cotización no tiene versión de edición")
       const prepareRes = await fetch(`/api/quotations/${quotationId}/document`, {
@@ -320,19 +328,30 @@ export function QuotationPdfPriceDialog({
       // el envío posterior falla, el mismo modal debe poder reintentar sin
       // exigir una recarga y sin sobrescribir cambios concurrentes.
       setExpectedUpdatedAt(preparedUpdatedAt)
+      contentSaved = true
 
+      let completedDocument: void | QuotationDocumentPayload
       if (action === "send" && onSend) {
         if (!sendWindow || sendWindow.closed) {
           throw new Error("La ventana de WhatsApp se cerró antes de emitir la cotización")
         }
-        await onSend(quotationId, sendWindow, preparedUpdatedAt)
+        completedDocument = await onSend(quotationId, sendWindow, preparedUpdatedAt)
       } else {
-        await onGenerate(quotationId, preparedUpdatedAt)
+        completedDocument = await onGenerate(quotationId, preparedUpdatedAt)
+      }
+      if (completedDocument?.quotationUpdatedAt) {
+        setExpectedUpdatedAt(completedDocument.quotationUpdatedAt)
       }
       onClose()
     } catch (err: any) {
       if (sendWindow && !sendWindow.closed) sendWindow.close()
-      toast.error("No se pudo preparar el documento: " + (err?.message || ""))
+      if (err instanceof QuotationDocumentDownloadError && err.document.quotationUpdatedAt) {
+        setExpectedUpdatedAt(err.document.quotationUpdatedAt)
+      }
+      const detail = err?.message || "Error inesperado"
+      toast.error(contentSaved
+        ? `La cotización quedó guardada, pero no se pudo completar la emisión o descarga: ${detail}`
+        : `No se pudieron guardar los cambios de la cotización: ${detail}`)
     } finally {
       setSaving(false)
     }

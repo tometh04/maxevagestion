@@ -1,4 +1,6 @@
 import { createQuotationRefreshModule } from "@/lib/quotation-refresh/module"
+import { buildQuotationPayload } from "@/lib/emilia/quotation-mapper"
+import { canonicalOfferCards } from "@/lib/emilia/turn-result"
 import { getQuotationItemEffectiveUnitCost } from "@/lib/quotations/totals"
 import type { OfferRefreshPort } from "@/lib/quotation-refresh/offer-refresh-port"
 import { readFileSync } from "node:fs"
@@ -260,6 +262,105 @@ function moduleFor(db: FakeDb, port: OfferRefreshPort) {
 }
 
 describe("QuotationRefresh module", () => {
+  it("conserva el source exacto después del round-trip canónico a cotización", async () => {
+    const cards = canonicalOfferCards({
+      outcome: {
+        results: {
+          result_sets: [{
+            artifact_id: "66666666-6666-4666-8666-666666666666",
+            product: "flights",
+            query: {
+              origin: "EZE",
+              destination: "MAD",
+              departureDate: "2026-09-01",
+              returnDate: "2026-09-10",
+              adults: 2,
+              children: 0,
+              infants: 0,
+              cabin: "Y",
+            },
+            data: [{
+              id: "flight-canonical",
+              provider: "STARLING",
+              airline: { code: "AR", name: "Aerolíneas Argentinas" },
+              price: { amount: 950, currency: "USD", basis: "COMMISSIONABLE_GROSS" },
+              cabin: "Y",
+              baggage: { checked: true, carry_on: false },
+              refundable: true,
+              legs: [{
+                origin: "EZE",
+                destination: "MAD",
+                departure_at: "2026-09-01T12:00:00-03:00",
+                arrival_at: "2026-09-02T05:00:00+02:00",
+                segments: [{
+                  marketing_airline: "AR",
+                  flight_number: "1132",
+                  departure: { airport_code: "EZE", date: "2026-09-01", time: "12:00" },
+                  arrival: { airport_code: "MAD", date: "2026-09-02", time: "05:00" },
+                }],
+              }],
+            }],
+          }],
+        },
+      },
+    })
+    const payload = buildQuotationPayload({
+      lead: {
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        contact_name: "Ada",
+        destination: "Madrid",
+        region: "EUROPA",
+        agency_id: "33333333-3333-4333-8333-333333333333",
+      },
+      selectedFlight: cards.flights?.[0] ?? null,
+      selectedHotels: [],
+      generalData: {
+        departureDate: "2026-09-01",
+        returnDate: "2026-09-10",
+        adults: 2,
+        children: 0,
+        infants: 0,
+      },
+    })
+    const mapped = payload.options[0].items[0]
+    const line = item(91, {
+      ...mapped,
+      operator_id: "99999999-9999-4999-8999-999999999998",
+      commission_percentage: 0,
+    })
+    const source = quotation([line])
+    const db = new FakeDb(source)
+    const refresh = jest.fn(async (request: any) => ({
+      schema_version: "offer-refresh.v1" as const,
+      request_id: request.requestId,
+      status: "complete" as const,
+      checked_at: "2026-08-29T12:00:00.000Z",
+      items: [remoteItem(line)],
+    }))
+
+    await moduleFor(db, { refresh } as OfferRefreshPort).start({
+      quotationId: source.id,
+      orgId: source.org_id,
+      agencyId: source.agency_id,
+      actorId: source.seller_id,
+      expectedUpdatedAt: source.updated_at,
+      idempotencyKey: "91919191-9191-4191-8191-919191919191",
+    })
+
+    expect(mapped.flight_details.legs[0].segments[0]).toMatchObject({
+      marketing_airline: "AR",
+      flight_number: "1132",
+    })
+    expect(refresh).toHaveBeenCalledWith(expect.objectContaining({
+      items: [expect.objectContaining({
+        source: expect.objectContaining({
+          artifact_id: "66666666-6666-4666-8666-666666666666",
+          offer_id: "flight-canonical",
+        }),
+      })],
+    }))
+  })
+
   it("recupera una corrida creada por una carrera de idempotencia", async () => {
     const source = quotation([item(1)])
     const db = new FakeDb(source)
@@ -1245,7 +1346,7 @@ describe("QuotationRefresh module", () => {
 
   it("revalida valid_until dentro del RPC antes de reemplazar la estructura", () => {
     const sql = readFileSync(
-      join(process.cwd(), "supabase/migrations/20260829000001_quotation_price_refresh.sql"),
+      join(process.cwd(), "supabase/migrations/20260829000004_quotation_price_refresh.sql"),
       "utf8"
     )
     const expiryGuard = sql.indexOf("v_run.valid_until IS NULL OR v_run.valid_until <= clock_timestamp()")

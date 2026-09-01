@@ -116,6 +116,15 @@ export type AnalyticsEventParams = {
 
   /** Navegacion a un modulo. Lo emite `<AnalyticsPageView />`, no hay call sites. */
   module_viewed: { module: ModuleKey }
+  /**
+   * Vista sin URL propia: un tab o un dialog pesado.
+   *
+   * Existe porque el pathname no alcanza. `/reports` es UNA ruta con doce
+   * vistas atras, `/operations/:id` tiene nueve, y el builder de cotizaciones
+   * vive dos modales por debajo de `/sales/leads` — o sea que cotizar hoy se
+   * contabiliza como CRM.
+   */
+  view_opened: { module: ModuleKey; view_kind: "tab" | "dialog"; view: string }
   /** Apertura del detalle de una entidad (operacion, lead, cliente). */
   record_opened: { module: ModuleKey; entity: string }
   /** Export de datos. Nunca los filtros aplicados: pueden llevar nombres. */
@@ -139,7 +148,10 @@ export type AnalyticsSink = "ga" | "db"
  * el build en vez de perderse en silencio.
  */
 export const EVENT_SINKS: Record<AnalyticsEventName, readonly AnalyticsSink[]> = {
-  login: ["ga"],
+  // `login` no deja fila en ninguna tabla de dominio, asi que va tambien a la
+  // DB: sin esto, "cuanta gente entra por dia" no se puede responder. Se emite
+  // desde el SERVER (ver SERVER_ONLY_DB_EVENTS).
+  login: ["ga", "db"],
   sign_up: ["ga"],
   onboarding_org_created: ["ga"],
   plan_selected: ["ga"],
@@ -158,9 +170,27 @@ export const EVENT_SINKS: Record<AnalyticsEventName, readonly AnalyticsSink[]> =
   // sin esto, el uso de la IA es invisible por agencia.
   ai_query_submitted: ["ga", "db"],
   module_viewed: ["db"],
+  view_opened: ["db"],
   record_opened: ["db"],
   report_exported: ["db"],
 }
+
+/**
+ * Eventos con sink `db` que el BROWSER no debe emitir: los manda el server.
+ *
+ * Hoy solo `login`, y el motivo es concreto: el call site vive en
+ * `components/login-form.tsx`, y `canEmit()` descarta todo lo que ocurra en
+ * `/login` porque esa ruta no es uso de tenant. O sea que el evento ya se
+ * descarta — pero por accidente.
+ *
+ * Un comportamiento correcto por accidente es un bug esperando el refactor que
+ * lo rompa: el dia que alguien saque `/login` de `NON_TENANT_PREFIXES`,
+ * empezarian a entrar logins duplicados sin que nadie lo note. Este set lo hace
+ * explicito y hay un test que lo fija.
+ */
+export const SERVER_ONLY_DB_EVENTS: ReadonlySet<AnalyticsEventName> = new Set<AnalyticsEventName>([
+  "login",
+])
 
 /**
  * Modulo al que se imputa el evento cuando sus params no traen uno.

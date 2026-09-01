@@ -7,7 +7,10 @@
  * degrade a 'HALF' en vez de dejar a todos sin porcentaje.
  */
 
-import { resolveSellerCommissionProfiles } from "@/lib/commissions/seller-commission-profile"
+import {
+  resolveSellerCommissionProfiles,
+  resolveEffectivePercentage,
+} from "@/lib/commissions/seller-commission-profile"
 
 interface Call {
   method: string
@@ -387,5 +390,52 @@ describe("resolveSellerCommissionProfiles", () => {
 
     expect(queries).toHaveLength(0)
     expect(profiles.size).toBe(0)
+  })
+})
+
+/**
+ * La precedencia sola. Importa que este sea el UNICO lugar donde vive: la
+ * pantalla de Reglas de Comisiones muestra cuanto cobra hoy un vendedor sin
+ * regla propia, y si repitiera la regla por su cuenta podria decir un numero y
+ * el calculo pagar otro.
+ */
+describe("resolveEffectivePercentage", () => {
+  it("la regla del vendedor le gana a todo", () => {
+    expect(
+      resolveEffectivePercentage({ sellerRule: 45, userDefault: 35, orgRule: 20 })
+    ).toEqual({ percentage: 45, source: "SELLER_RULE" })
+  })
+
+  it("sin regla propia manda el default del usuario, no el de la org", () => {
+    // El caso de los 6 vendedores de Madero: tienen 50% cargado al crearlos y
+    // ninguna regla. Si cayera en la generica de Lozada cobrarian 20%.
+    expect(
+      resolveEffectivePercentage({ sellerRule: null, userDefault: 50, orgRule: 20 })
+    ).toEqual({ percentage: 50, source: "USER_DEFAULT" })
+  })
+
+  it("la generica de la org es el ultimo recurso", () => {
+    expect(
+      resolveEffectivePercentage({ sellerRule: null, userDefault: null, orgRule: 20 })
+    ).toEqual({ percentage: 20, source: "ORG_RULE" })
+  })
+
+  it("sin ninguna fuente devuelve null, no cero", () => {
+    // 0% es una decision; null es que nadie la tomo. El motor de reparto los
+    // trata distinto.
+    expect(
+      resolveEffectivePercentage({ sellerRule: null, userDefault: null, orgRule: null })
+    ).toEqual({ percentage: null, source: "NONE" })
+  })
+
+  it("un 0 explicito gana sobre las fuentes de abajo", () => {
+    // Alguien puso 0% a proposito: heredar el 20% de la org seria pagarle una
+    // comision que se decidio no pagar.
+    expect(
+      resolveEffectivePercentage({ sellerRule: null, userDefault: 0, orgRule: 20 })
+    ).toEqual({ percentage: 0, source: "USER_DEFAULT" })
+    expect(
+      resolveEffectivePercentage({ sellerRule: 0, userDefault: 50, orgRule: 20 })
+    ).toEqual({ percentage: 0, source: "SELLER_RULE" })
   })
 })

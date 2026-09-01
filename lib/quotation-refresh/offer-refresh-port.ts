@@ -11,7 +11,6 @@ export interface OfferRefreshRequestItem {
   source?: OfferSource
   fallback?: OfferRefreshFallback
 }
-
 export interface OfferRefreshPort {
   refresh(input: {
     apiKey: string
@@ -19,7 +18,6 @@ export interface OfferRefreshPort {
     items: OfferRefreshRequestItem[]
   }): Promise<RemoteOfferRefreshResponse>
 }
-
 export class OfferRefreshPortError extends Error {
   constructor(
     public readonly code:

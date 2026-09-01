@@ -1,14 +1,20 @@
 /**
  * Lectura de comisiones para el Reporte de Comisiones (VIB-65).
  *
- * `commission_records` no alcanza sola: no tiene moneda ni fecha de venta, así
- * que el join con `operations` es obligatorio y además es lo que define a qué mes
- * pertenece cada comisión (`operations.operation_date`, estable, en vez de
- * `date_calculated`, que se reescribe en cada recálculo masivo).
+ * `commission_records` no alcanza sola: no tiene moneda, así que el join con
+ * `operations` sigue siendo obligatorio.
  *
- * El embed va con `!inner` para que el filtro de fechas se aplique a la
- * operación. Eso deja afuera las comisiones de operaciones canceladas: se
- * cuentan aparte y se informan, no desaparecen en silencio.
+ * El mes de cada comisión sale de `accrual_date`, una fecha propia de la fila.
+ * Antes se derivaba de `operations.operation_date` a través del join, lo que
+ * metía toda comisión en el mes de la venta original — correcto para la venta
+ * base, pero no para un servicio vendido meses después, que se cobra en el mes
+ * en que se vendió. `date_calculated` no sirve para esto: se reescribe con now()
+ * en cada recálculo masivo. Para las filas de venta `accrual_date` vale
+ * `operation_date`, así que los períodos ya cerrados siguen dando idéntico.
+ *
+ * El embed va con `!inner` para poder filtrar por el estado de la operación. Eso
+ * deja afuera las comisiones de operaciones canceladas: se cuentan aparte y se
+ * informan, no desaparecen en silencio.
  */
 
 import { fetchAllRows } from "@/lib/supabase/fetch-all"
@@ -28,8 +34,17 @@ export interface CommissionRecordRow {
   kind?: string | null
   /** Solo en ADVISOR_MANAGER: el vendedor administrado que la generó. */
   source_seller_id?: string | null
+  /** Solo en SERVICE: el servicio que originó la comisión. */
+  operation_service_id?: string | null
   date_calculated: string
   date_paid: string | null
+  /**
+   * Mes al que se imputa la comisión. Para la venta base es
+   * `operations.operation_date`; para un servicio, la fecha en que se vendió.
+   * Opcional en el tipo para no obligar a las fixtures de tests a declararlo:
+   * quien lo consume cae a `operations.operation_date`.
+   */
+  accrual_date?: string | null
   operations: {
     id: string
     file_code: string | null
@@ -93,8 +108,8 @@ export interface FetchCommissionRecordsResult {
 const IN_CHUNK = 200
 
 const SELECT = `
-  id, operation_id, seller_id, agency_id, amount, amount_paid, percentage,
-  status, kind, source_seller_id, date_calculated, date_paid,
+  id, operation_id, operation_service_id, seller_id, agency_id, amount, amount_paid, percentage,
+  status, kind, source_seller_id, date_calculated, date_paid, accrual_date,
   operations!inner(
     id, file_code, destination, operation_date, departure_date,
     sale_amount_total, margin_amount, sale_currency, currency, status,
@@ -112,8 +127,8 @@ export async function fetchCommissionRecords(
   const applyFilters = (query: any) => {
     let q = query
       .eq("org_id", orgId)
-      .gte("operations.operation_date", dateFrom)
-      .lte("operations.operation_date", dateTo)
+      .gte("accrual_date", dateFrom)
+      .lte("accrual_date", dateTo)
     if (agencyId) {
       q = q.eq("operations.agency_id", agencyId)
     } else if (agencyIds.length > 0) {

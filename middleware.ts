@@ -7,6 +7,33 @@ import { redactSensitivePath } from '@/lib/security/redact-sensitive-path'
 // ============================================
 // RATE LIMITING (en memoria, por usuario autenticado o IP como fallback)
 // ============================================
+/**
+ * Redirect que se lleva las cookies de auth refrescadas.
+ *
+ * El `setAll` del client de Supabase (más abajo) escribe los tokens rotados en
+ * `response`. Un `NextResponse.redirect(url)` es un objeto NUEVO: no las lleva.
+ * Con `refresh_token_rotation_enabled` (está activada en el proyecto), eso
+ * significa que el server consumió el refresh token viejo y el browser nunca
+ * recibió el nuevo — el próximo request llega con un token ya usado y, pasado el
+ * intervalo de reuso de 10s, la sesión se cae sola.
+ *
+ * El síntoma es un deslogueo aleatorio que solo aparece cuando el refresh cae
+ * justo en un request que redirige (onboarding, paywall, gate de platform
+ * admin), o sea imposible de reproducir a mano.
+ */
+function redirectKeepingSession(
+  url: URL | string,
+  response: NextResponse,
+  status?: number
+): NextResponse {
+  const redirect =
+    status === undefined ? NextResponse.redirect(url) : NextResponse.redirect(url, status)
+  for (const cookie of response.cookies.getAll()) {
+    redirect.cookies.set(cookie)
+  }
+  return redirect
+}
+
 const RATE_LIMIT_WINDOW_MS = 60_000 // 1 minuto
 const RATE_LIMIT_MAX_REQUESTS = 300 // máx requests por ventana y por usuario
 const RATE_LIMIT_MAX_REQUESTS_ANON = 60  // límite más estricto para IPs sin sesión
@@ -61,6 +88,19 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next()
   }
 
+  // Las rutas de logout no pasan por auth. No es solo ahorro: refrescar una
+  // sesion que la ruta esta a punto de destruir hace que el middleware mande un
+  // `Set-Cookie` con el token rotado que compite con el `Set-Cookie` de borrado
+  // del handler. Segun el orden en que salgan, el browser se puede quedar con la
+  // cookie de una sesion ya revocada — y esa cookie es la que despues envenena
+  // el login siguiente.
+  if (
+    req.nextUrl.pathname === '/logout' ||
+    req.nextUrl.pathname === '/api/auth/logout'
+  ) {
+    return NextResponse.next()
+  }
+
   // Los endpoints públicos no resuelven sesión, pero sí deben tener un techo
   // por IP: sirven snapshots HTML grandes y el POST de aceptación toma locks.
   if (req.nextUrl.pathname.startsWith('/api/public/')) {
@@ -111,13 +151,23 @@ export async function middleware(req: NextRequest) {
   // [perf-instrumentation] Pasamos el reqId al layout/page via request headers
   // (los Server Components lo leen con `headers()`). También lo seteamos en
   // response headers para que el browser lo vea en DevTools → Network.
-  const __perfRequestHeaders = new Headers(req.headers)
-  __perfRequestHeaders.set('x-perf-req-id', __perfReqId)
-  __perfRequestHeaders.set('x-pathname', req.nextUrl.pathname)
+  //
+  // Se re-arman DENTRO de `setAll` y no una sola vez aca arriba. `new Headers()`
+  // es una copia: `req.cookies.set()` reescribe el header `cookie` del request
+  // original, pero no toca una copia tomada antes. Con el snapshot previo, el
+  // layout y las route handlers de ESTE mismo request leian el access token
+  // vencido y el refresh token que el middleware acababa de consumir, y con la
+  // rotacion activada pedian un refresh con un token ya usado.
+  const buildForwardedHeaders = () => {
+    const headers = new Headers(req.headers)
+    headers.set('x-perf-req-id', __perfReqId)
+    headers.set('x-pathname', req.nextUrl.pathname)
+    return headers
+  }
 
   let response = NextResponse.next({
     request: {
-      headers: __perfRequestHeaders,
+      headers: buildForwardedHeaders(),
     },
   })
   response.headers.set('x-perf-req-id', __perfReqId)
@@ -131,10 +181,21 @@ export async function middleware(req: NextRequest) {
           return req.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
+          // Primero el request: `req.cookies.set` reescribe su header `cookie`.
+          for (const { name, value } of cookiesToSet) {
             req.cookies.set(name, value)
-            response.cookies.set(name, value, options)
+          }
+          // Recien ahora se re-crea la response, para que el forward al render
+          // downstream lleve el header `cookie` con los tokens nuevos.
+          response = NextResponse.next({
+            request: {
+              headers: buildForwardedHeaders(),
+            },
           })
+          response.headers.set('x-perf-req-id', __perfReqId)
+          for (const { name, value, options } of cookiesToSet) {
+            response.cookies.set(name, value, options)
+          }
         },
       },
     }
@@ -229,7 +290,7 @@ export async function middleware(req: NextRequest) {
         if (!adminRow) {
           const url = req.nextUrl.clone()
           url.pathname = "/dashboard"
-          return NextResponse.redirect(url)
+          return redirectKeepingSession(url, response)
         }
       }
     }
@@ -316,7 +377,7 @@ export async function middleware(req: NextRequest) {
     if (userRow && !orgId) {
       const url = req.nextUrl.clone()
       url.pathname = "/onboarding"
-      return NextResponse.redirect(url)
+      return redirectKeepingSession(url, response)
     }
 
     // Paywall gate — lógica debe mantenerse alineada con lib/billing/guard.ts.
@@ -371,7 +432,7 @@ export async function middleware(req: NextRequest) {
         } else {
           url.pathname = "/onboarding/billing"
         }
-        return NextResponse.redirect(url)
+        return redirectKeepingSession(url, response)
       }
     }
   }

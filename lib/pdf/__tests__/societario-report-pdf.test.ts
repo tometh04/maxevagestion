@@ -32,6 +32,8 @@ const filters: SocietarioReportFilters = {
   agencyName: null,
   exchangeRate: null,
   ivaRatePct: 10.5,
+  netoIvaCriterio: "MARGEN",
+  exchangeRateEsPromedio: false,
 }
 
 function venta(over: Record<string, any> = {}) {
@@ -155,8 +157,78 @@ describe("generateSocietarioReportPdf", () => {
     expect(textOf(render({}, { ivaRatePct: 21 }))).toContain("21")
   })
 
+  it("deja escrito con qué criterio se calculó la venta neta", () => {
+    // Los dos criterios difieren en un orden de magnitud: un PDF que dice
+    // "venta neta" sin decir cuál usó no se puede auditar.
+    const sobreMargen = textOf(render({ netoIvaCriterio: "MARGEN" }, { netoIvaCriterio: "MARGEN" }))
+    expect(sobreMargen).toContain("IVA sobre el margen")
+
+    const sobreVenta = textOf(render({ netoIvaCriterio: "VENTA" }, { netoIvaCriterio: "VENTA" }))
+    expect(sobreVenta).toContain("IVA sobre la venta")
+    expect(sobreVenta).toContain("IVA incluido")
+  })
+
+  it("aclara cuando el TC fijo es el promedio del período", () => {
+    // La leyenda la decide el servidor comparando contra la sugerencia: si
+    // saliera de un query param, cualquiera podría estamparla sobre un TC
+    // inventado.
+    const conPromedio = textOf(
+      render({}, { exchangeRate: 1507.5, exchangeRateEsPromedio: true })
+    )
+    expect(conPromedio).toContain("promedio del")
+
+    const sinPromedio = textOf(
+      render({}, { exchangeRate: 1200, exchangeRateEsPromedio: false })
+    )
+    expect(sinPromedio).not.toContain("promedio del")
+  })
+
   it("genera un PDF para un período sin movimientos", () => {
     expect(isPdf(render({ operations: [], expenses: [] }))).toBe(true)
+  })
+
+  it("imprime el cierre por oficina cuando hay más de una", () => {
+    const bytes = render({
+      operations: [
+        venta({ id: "op-1", agency_id: "ag-1" }),
+        venta({ id: "op-2", agency_id: "ag-2", sale_amount_total: 5000, operator_cost: 4000 }),
+      ],
+      agencyNames: new Map([
+        ["ag-1", "Rosario"],
+        ["ag-2", "Madero"],
+      ]),
+    })
+    const text = textOf(bytes)
+    expect(isPdf(bytes)).toBe(true)
+    expect(text).toContain("Cierre por oficina")
+    expect(text).toContain("Rosario")
+    expect(text).toContain("Madero")
+  })
+
+  it("no imprime el cierre por oficina si el dataset vino cortado", () => {
+    // Una tabla parcial presentada como cierre de mes es peor que no ponerla.
+    const bytes = render({
+      operations: [
+        venta({ id: "op-1", agency_id: "ag-1" }),
+        venta({ id: "op-2", agency_id: "ag-2" }),
+      ],
+      salesTruncated: true,
+    })
+    expect(textOf(bytes)).not.toContain("Cierre por oficina")
+  })
+
+  it("deja escrito que los gastos sin oficina no se prorratean", () => {
+    const text = textOf(
+      render({
+        operations: [
+          venta({ id: "op-1", agency_id: "ag-1" }),
+          venta({ id: "op-2", agency_id: "ag-2" }),
+        ],
+        expenses: [gasto({ amount: 500, agency_id: null })],
+      })
+    )
+    expect(text).toContain("no")
+    expect(text).toContain("prorratean")
   })
 
   it("soporta un período con pérdida", () => {

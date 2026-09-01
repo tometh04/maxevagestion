@@ -1,11 +1,12 @@
 "use client"
 
 import { useState, useCallback } from "react"
+import { toast } from "sonner"
 import { CustomersFilters } from "./customers-filters"
 import { CustomersTable } from "./customers-table"
 import { NewCustomerDialog } from "./new-customer-dialog"
 import { Button } from "@/components/ui/button"
-import { Plus, HelpCircle } from "lucide-react"
+import { Plus, HelpCircle, Download, Loader2 } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -23,9 +24,50 @@ import {
 import Link from "next/link"
 
 export function CustomersPageClient() {
-  const [filters, setFilters] = useState({ search: "" })
+  const [filters, setFilters] = useState({ search: "", sellerId: "ALL" })
   const [newCustomerDialogOpen, setNewCustomerDialogOpen] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [exporting, setExporting] = useState(false)
+
+  // VIB-153: bajar la cartera con los filtros puestos, para recontacto.
+  // Manda los mismos parametros que el listado: si bajara otra cosa seria el
+  // bug que acabamos de arreglar en operaciones (VIB-152).
+  const handleExport = async () => {
+    setExporting(true)
+    try {
+      const params = new URLSearchParams()
+      if (filters.search) params.set("search", filters.search)
+      if (filters.sellerId && filters.sellerId !== "ALL") {
+        params.set("sellerId", filters.sellerId)
+      }
+
+      const res = await fetch(`/api/customers/export-csv?${params.toString()}`)
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body?.error ?? "Error al exportar")
+      }
+
+      const blob = await res.blob()
+      const cd = res.headers.get("Content-Disposition") || ""
+      const filename =
+        cd.match(/filename="?([^";]+)"?/i)?.[1] ??
+        `clientes-${new Date().toISOString().slice(0, 10)}.csv`
+
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      toast.success(`Descargado: ${filename}`)
+    } catch (error: any) {
+      toast.error(error?.message || "Error al exportar clientes")
+    } finally {
+      setExporting(false)
+    }
+  }
 
   const handleCustomerCreated = useCallback(() => {
     // Trigger refresh of customers table
@@ -68,10 +110,20 @@ export function CustomersPageClient() {
           </div>
           <p className="text-muted-foreground">Gestiona tu base de clientes</p>
         </div>
-        <Button onClick={() => setNewCustomerDialogOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Nuevo Cliente
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={handleExport} disabled={exporting}>
+            {exporting ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="mr-2 h-4 w-4" />
+            )}
+            Exportar CSV
+          </Button>
+          <Button onClick={() => setNewCustomerDialogOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Nuevo Cliente
+          </Button>
+        </div>
       </div>
 
       <CustomersFilters onFilterChange={setFilters} />

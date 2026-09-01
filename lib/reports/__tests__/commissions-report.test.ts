@@ -84,6 +84,41 @@ function build(records: CommissionRecordRow[], overrides: Partial<{ currency: st
 }
 
 describe("buildCommissionsReport", () => {
+  it("la comisión de un servicio cae en el mes en que se vendió, no en el de la venta original", () => {
+    // El caso que motivó el cambio: el paquete se vendió en marzo y ya se
+    // comisionó; en agosto otra persona le vendió una asistencia al mismo
+    // pasajero. Antes el mes salía de `operations.operation_date`, así que la
+    // comisión del servicio caía en marzo —un mes ya cerrado y cobrado— y no
+    // aparecía en el período en que realmente se ganó.
+    const report = build(
+      [
+        record({
+          amount: 40,
+          seller_id: "seller-b",
+          kind: "SERVICE",
+          accrual_date: "2026-08-14",
+          operations: { id: "op-marzo", operation_date: "2026-03-11" },
+        }),
+      ],
+      { dateFrom: "2026-08-01", dateTo: "2026-08-31" }
+    )
+
+    expect(report.summary.total).toBe(40)
+    expect(report.byMonth.find((m) => m.key === "2026-08")?.total).toBe(40)
+    expect(report.byMonth.find((m) => m.key === "2026-03")).toBeUndefined()
+  })
+
+  it("sin accrual_date cae a la fecha de la operación: el histórico no se mueve", () => {
+    // Backfill mediante, toda fila vieja tiene accrual_date = operation_date.
+    // El fallback cubre las lecturas que se hagan antes de eso y deja los
+    // períodos ya cerrados dando exactamente lo mismo que antes.
+    const report = build([
+      record({ amount: 1000, accrual_date: null, operations: { operation_date: "2026-07-10" } }),
+    ])
+
+    expect(report.byMonth.find((m) => m.key === "2026-07")?.total).toBe(1000)
+  })
+
   it("no mezcla monedas: agrega la pedida e informa la otra", () => {
     const report = build([
       record({ amount: 1000 }),

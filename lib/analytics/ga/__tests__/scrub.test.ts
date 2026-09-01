@@ -139,3 +139,33 @@ describe("bucketCount", () => {
     expect(bucketCount(Number.NaN)).toBe("0")
   })
 })
+
+describe("etiquetas escritas por el usuario", () => {
+  /**
+   * `from_stage`/`to_stage` son nombres de columna del tablero de ManyChat: los
+   * escribe cada agencia. Pasaban el denylist y llegaban crudos a Google, con
+   * texto libre del usuario y cardinalidad sin techo.
+   */
+  it("normaliza los nombres de etapa a un slug acotado", () => {
+    expect(
+      scrubParams({ from_stage: "Nuevo Contacto", to_stage: "Cotización Enviada" })
+    ).toEqual({ from_stage: "nuevo-contacto", to_stage: "cotizacion-enviada" })
+  })
+
+  it("acota el largo", () => {
+    const out = scrubParams({ to_stage: "a".repeat(80) })
+    expect((out.to_stage as string).length).toBeLessThanOrEqual(32)
+  })
+
+  it("limpia puntuacion y emojis sin quedarse con basura", () => {
+    expect(scrubParams({ to_stage: "🔥 URGENTE!! / cerrar hoy" }).to_stage).toBe(
+      "urgente-cerrar-hoy"
+    )
+  })
+
+  it("descarta la clave si no queda nada util", () => {
+    expect(scrubParams({ from_stage: "" })).toEqual({})
+    expect(scrubParams({ from_stage: "!!!" })).toEqual({})
+    expect(scrubParams({ from_stage: 42 })).toEqual({})
+  })
+})

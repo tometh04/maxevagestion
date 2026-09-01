@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { createServerClient, createAdminClient } from "@/lib/supabase/server"
 import { isPlatformAdmin } from "@/lib/auth/platform"
 import { logSecurityEvent } from "@/lib/security/audit"
+import { parsearCamposDelModal } from "@/lib/announcements/modal-payload"
 
 const VALID_TYPES = ["NEW", "IMPROVEMENT", "FIX"] as const
 
@@ -17,7 +18,7 @@ export async function GET() {
   const admin = createAdminClient() as any
   const { data, error } = await admin
     .from("announcements")
-    .select("id, title, body, type, published, published_at, created_at, updated_at")
+    .select("id, title, body, type, published, published_at, created_at, updated_at, release_version, modal, modal_starts_at, modal_ends_at, modal_roles, modal_cta_label, modal_cta_href")
     .order("published_at", { ascending: false })
 
   if (error) {
@@ -44,10 +45,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Título y texto son obligatorios" }, { status: 400 })
   }
 
+  const modal = parsearCamposDelModal(body)
+  if (!modal.ok) {
+    return NextResponse.json({ error: modal.error }, { status: 400 })
+  }
+
   const admin = createAdminClient() as any
   const { data, error } = await admin
     .from("announcements")
-    .insert({ title, body: text, type, published, created_by: user.id })
+    .insert({ title, body: text, type, published, created_by: user.id, ...modal.campos })
     .select("id, title, body, type, published, published_at")
     .single()
 

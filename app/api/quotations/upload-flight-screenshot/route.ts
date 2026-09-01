@@ -6,33 +6,15 @@ import {
   resolveAgencyPermissionScope,
 } from "@/lib/permissions/agency-scope-server"
 import { createAdminClient, createServerClient } from "@/lib/supabase/server"
+import {
+  detectVisualImageMime,
+  materializeVisualImage,
+  VisualImageError,
+} from "@/lib/document-assets/visual-image-server"
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
-const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"])
-const IMAGE_EXTENSIONS: Record<string, string> = {
-  "image/jpeg": "jpg",
-  "image/jpg": "jpg",
-  "image/png": "png",
-  "image/webp": "webp",
-}
+const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"])
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-
-async function matchesDeclaredImageSignature(file: File): Promise<boolean> {
-  const bytes = new Uint8Array(await file.slice(0, 12).arrayBuffer())
-  if (file.type === "image/jpeg" || file.type === "image/jpg") {
-    return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
-  }
-  if (file.type === "image/png") {
-    const png = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
-    return bytes.length >= png.length && png.every((byte, index) => bytes[index] === byte)
-  }
-  if (file.type === "image/webp") {
-    return bytes.length >= 12
-      && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46
-      && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50
-  }
-  return false
-}
 
 export async function POST(request: Request) {
   try {
@@ -54,13 +36,6 @@ export async function POST(request: Request) {
 
     if (file.size > MAX_FILE_SIZE_BYTES) {
       return NextResponse.json({ error: "File too large (max 10MB)" }, { status: 400 })
-    }
-
-    if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
-      return NextResponse.json({ error: "Invalid file type. Use JPG, PNG or WebP" }, { status: 400 })
-    }
-    if (!(await matchesDeclaredImageSignature(file))) {
-      return NextResponse.json({ error: "El contenido del archivo no coincide con una imagen válida" }, { status: 400 })
     }
 
     if (quotationId && !UUID_PATTERN.test(quotationId)) {
@@ -113,21 +88,40 @@ export async function POST(request: Request) {
       }
     }
 
+    let visual
+    try {
+      const fileBytes = Buffer.from(await file.arrayBuffer())
+      const detectedMime = detectVisualImageMime(fileBytes)
+      if (!detectedMime || !ALLOWED_IMAGE_TYPES.has(detectedMime)) {
+        throw new VisualImageError("UNSUPPORTED_FORMAT", "Invalid file type. Use JPG, PNG or WebP")
+      }
+      visual = await materializeVisualImage({
+        bytes: fileBytes,
+        declaredMime: file.type,
+        maxDimension: 16_384,
+        maxInputBytes: MAX_FILE_SIZE_BYTES,
+        maxOutputBytes: MAX_FILE_SIZE_BYTES,
+        maxPixels: 64_000_000,
+      })
+    } catch (error) {
+      if (error instanceof VisualImageError) {
+        return NextResponse.json({ error: error.message, code: error.code }, { status: 400 })
+      }
+      throw error
+    }
+
     // adminDb justificado: Supabase Storage upload requiere service_role para
     // saltear ACL del bucket "documents". Se crea recién después del gate de
     // permisos y el path queda acotado por org, agencia, actor y cotización.
     adminDb ??= createAdminClient()
-    const extension = IMAGE_EXTENSIONS[file.type]
     const fileName = `quotations/flight-screenshots/${user.org_id}/${agencyId}/${user.id}/${storageQuotationId}/${Date.now()}-${Math.random()
       .toString(36)
-      .slice(2, 10)}.${extension}`
-
-    const buffer = Buffer.from(await file.arrayBuffer())
+      .slice(2, 10)}.${visual.extension}`
 
     const { error: uploadError } = await adminDb.storage
       .from("documents")
-      .upload(fileName, buffer, {
-        contentType: file.type,
+      .upload(fileName, visual.bytes, {
+        contentType: visual.mime,
         upsert: false,
       })
 

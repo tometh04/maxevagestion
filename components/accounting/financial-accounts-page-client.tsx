@@ -3,6 +3,12 @@
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -34,7 +40,7 @@ import { Input } from "@/components/ui/input"
 import { DecimalInput } from "@/components/ui/decimal-input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Plus, Trash2, AlertTriangle, Building2, ArrowRightLeft, Pencil, ListFilter } from "lucide-react"
+import { Plus, Trash2, AlertTriangle, Building2, ArrowRightLeft, Pencil, ListFilter, Unlink } from "lucide-react"
 import Link from "next/link"
 import { TransferAccountDialog } from "./transfer-account-dialog"
 import { toast } from "sonner"
@@ -119,6 +125,12 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
   const [editReason, setEditReason] = useState("")
   const [editBankTaxRate, setEditBankTaxRate] = useState("")
   const [editCreditLimit, setEditCreditLimit] = useState("")
+  // Cuenta del plan contra la que se asientan los movimientos. El alta la
+  // asigna sola por tipo, pero el tipo no siempre alcanza: una "cuenta
+  // corriente" de operador no es un banco, y mapearla como tal inflaría el
+  // saldo bancario de los libros.
+  const [editChartAccountId, setEditChartAccountId] = useState("")
+  const [planDeCuentas, setPlanDeCuentas] = useState<any[]>([])
   const [isEditing, setIsEditing] = useState(false)
 
   const openEditAccount = (account: any) => {
@@ -128,6 +140,7 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
     setEditReason("")
     setEditBankTaxRate(account.bank_tax_rate != null ? String(account.bank_tax_rate) : "")
     setEditCreditLimit(account.credit_limit != null ? String(Number(account.credit_limit)) : "0")
+    setEditChartAccountId(account.chart_account_id ?? "")
     setEditAccountOpen(true)
   }
 
@@ -138,6 +151,23 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
       account.type?.includes("CHECKING") ||
       account.type?.includes("SAVINGS")
     )
+
+  // Se cargan solo las cuentas imputables: un rubro agrupa, no recibe
+  // movimientos, y asentar contra él dejaría el mayor sin desglose.
+  useEffect(() => {
+    if (!editAccountOpen || planDeCuentas.length > 0) return
+    fetch("/api/accounting/chart-of-accounts")
+      .then((r) => r.json())
+      .then((j) => {
+        const filas = (j.flat ?? []) as any[]
+        setPlanDeCuentas(
+          filas
+            .filter((c) => c.is_movement_account && c.is_active !== false)
+            .sort((a, b) => String(a.account_code).localeCompare(String(b.account_code)))
+        )
+      })
+      .catch(() => setPlanDeCuentas([]))
+  }, [editAccountOpen, planDeCuentas.length])
 
   const handleEditSave = async () => {
     if (!editingAccount) return
@@ -165,8 +195,16 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
       return
     }
     const creditLimitChanged = supportsCreditLimit && Math.abs(newCreditLimit - oldCreditLimit) > 0.001
+    const oldChartAccount = editingAccount.chart_account_id ?? ""
+    const chartAccountChanged = editChartAccountId !== oldChartAccount
 
-    if (!balanceChanged && !nameChanged && !taxRateChanged && !creditLimitChanged) {
+    if (
+      !balanceChanged &&
+      !nameChanged &&
+      !taxRateChanged &&
+      !creditLimitChanged &&
+      !chartAccountChanged
+    ) {
       toast.info("Sin cambios")
       setEditAccountOpen(false)
       return
@@ -185,6 +223,9 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
       }
       if (creditLimitChanged) {
         payload.credit_limit = newCreditLimit
+      }
+      if (chartAccountChanged) {
+        payload.chart_account_id = editChartAccountId || null
       }
       const res = await fetch(`/api/accounting/financial-accounts/${editingAccount.id}`, {
         method: "PATCH",
@@ -1030,7 +1071,44 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
                     <TableBody>
                       {data.accounts.map((account: any) => (
                         <TableRow key={account.id}>
-                          <TableCell className="font-medium">{getDisplayName(account)}</TableCell>
+                          <TableCell className="font-medium">
+                            <span className="inline-flex items-center gap-1.5">
+                              {getDisplayName(account)}
+                              {/*
+                                Sin vínculo al plan de cuentas los movimientos de
+                                esta cuenta no generan asiento. Antes esto no se
+                                veía en ningún lado: la contabilidad simplemente
+                                no aparecía y no había forma de saber por qué.
+                              */}
+                              {!account.chart_account_id && (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <button
+                                        type="button"
+                                        aria-label="Sin cuenta contable asociada"
+                                        className="text-muted-foreground hover:text-foreground"
+                                      >
+                                        <Unlink className="h-3.5 w-3.5" aria-hidden />
+                                      </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="max-w-xs">
+                                      <p className="font-medium">Sin cuenta contable asociada</p>
+                                      <p className="mt-1 text-muted-foreground">
+                                        Los movimientos de esta cuenta no generan asiento, así que
+                                        no aparecen en el Mayor por Cuenta. Suele pasar cuando la
+                                        cuenta se creó antes de que la agencia tuviera plan de
+                                        cuentas. Las que se crean ahora se asocian solas.
+                                      </p>
+                                      <p className="mt-1 text-muted-foreground">
+                                        Escribinos desde Soporte para vincularla.
+                                      </p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              )}
+                            </span>
+                          </TableCell>
                           <TableCell>
                             <Badge variant="outline">
                               {accountTypeLabels[account.type] || account.type}
@@ -1188,6 +1266,38 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
                 </p>
               </div>
             )}
+
+            {/*
+              Sin cuenta contable, los movimientos de esta cuenta no generan
+              asiento. Antes el listado mostraba el problema con un ícono y no
+              había ningún control para arreglarlo: la agencia veía que su
+              contabilidad no se generaba y dependía de nosotros.
+            */}
+            <div>
+              <Label htmlFor="edit-chart-account">Cuenta contable</Label>
+              <Select
+                value={editChartAccountId || "NINGUNA"}
+                onValueChange={(v) => setEditChartAccountId(v === "NINGUNA" ? "" : v)}
+                disabled={isEditing}
+              >
+                <SelectTrigger id="edit-chart-account">
+                  <SelectValue placeholder="Sin asignar" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="NINGUNA">Sin asignar</SelectItem>
+                  {planDeCuentas.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.account_code} — {c.account_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground mt-1">
+                {editChartAccountId
+                  ? "Contra esta cuenta del plan se registran los asientos de los movimientos de esta cuenta."
+                  : "Sin asignar, los movimientos de esta cuenta no generan asiento contable. Para una caja elegí Caja, para un banco Bancos; si en realidad es la cuenta corriente de un operador, elegí Cuentas por Pagar."}
+              </p>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditAccountOpen(false)} disabled={isEditing}>

@@ -138,3 +138,26 @@ export function computeCustomerDebtInSaleCurrency(input: {
   const sale = (Number(input.saleBase) || 0) + (input.includeServices ? Number(input.serviceExtra) || 0 : 0)
   return Math.max(0, roundMoney(sale - (Number(input.paidNet) || 0)))
 }
+
+/**
+ * El anticipo del cliente: lo que `computeCustomerDebtInSaleCurrency` descarta.
+ *
+ * Esa función clampea en cero —`max(0, sale − paidNet)`— porque una deuda
+ * negativa no se muestra. Pero esa parte descartada no es ruido: es plata que el
+ * cliente pagó de más y que la agencia le debe en servicios. Contablemente es un
+ * pasivo, no una cuenta por cobrar con saldo acreedor.
+ *
+ * Vive pegada a la fórmula de la deuda a propósito. Son las dos mitades del
+ * mismo número y tienen que moverse juntas: si alguien cambia el criterio de
+ * una, el test de complementariedad rompe.
+ */
+export function computeCustomerAdvanceInSaleCurrency(input: {
+  saleBase: number
+  serviceExtra: number
+  paidNet: number
+  includeServices: boolean
+}): number {
+  const sale =
+    (Number(input.saleBase) || 0) + (input.includeServices ? Number(input.serviceExtra) || 0 : 0)
+  return Math.max(0, roundMoney((Number(input.paidNet) || 0) - sale))
+}

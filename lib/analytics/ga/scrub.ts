@@ -113,6 +113,41 @@ const EMAIL_RE = /[^\s@]+@[^\s@]+\.[^\s@]+/
 const LONG_DIGIT_RUN_RE = /\d{7,}/
 
 /**
+ * Claves cuyo valor es una ETIQUETA que escribe el usuario del producto, no un
+ * enum nuestro.
+ *
+ * `from_stage` y `to_stage` son nombres de columna del tablero de ManyChat: los
+ * escribe cada agencia. Pasaban el denylist (ninguna de las dos matchea un
+ * fragmento prohibido) y el scrubber de strings solo recortaba a 100 chars, asi
+ * que llegaban a Google tal cual, con dos problemas: texto libre del usuario en
+ * una dimension, y cardinalidad sin techo.
+ *
+ * Se normalizan en vez de descartarse porque la metrica "de que etapa a que
+ * etapa se mueven los leads" es util; lo que no sirve es el texto exacto.
+ */
+const LABEL_KEYS: readonly string[] = ["from_stage", "to_stage"]
+
+/** Techo del slug. Una etapa de kanban no necesita mas. */
+const MAX_LABEL_LENGTH = 32
+
+/**
+ * Reduce una etiqueta escrita por el usuario a un slug acotado: sin acentos, sin
+ * espacios, sin puntuacion y con largo maximo.
+ */
+export function slugifyLabel(value: string): string {
+  return value
+    .normalize("NFD")
+    // Marcas diacriticas combinantes, escapadas: los literales son invisibles
+    // en un diff y se rompen con cualquier reencoding del archivo.
+    .replace(new RegExp("[\\u0300-\\u036f]", "g"), "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, MAX_LABEL_LENGTH)
+}
+
+/**
  * Filtra un objeto de parametros dejando solo lo que es seguro mandar a GA.
  * Nunca tira: ante cualquier valor raro, descarta la clave.
  */
@@ -130,6 +165,15 @@ export function scrubParams(raw: Record<string, unknown> | null | undefined): Ga
     // restringido a un enum cerrado, no puede llevar informacion.
     if (isSafeBucket(key, value)) {
       out[key] = value as string
+      continue
+    }
+
+    // Etiquetas escritas por el usuario: se normalizan en vez de pasar crudas.
+    // Va antes del denylist porque el punto es que el VALOR queda acotado.
+    if (LABEL_KEYS.includes(key)) {
+      if (typeof value !== "string") continue
+      const slug = slugifyLabel(value)
+      if (slug) out[key] = slug
       continue
     }
 

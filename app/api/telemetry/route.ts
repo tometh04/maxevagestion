@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { recordUsageEvents } from "@/lib/analytics/telemetry/server"
+import { resolveActorContext } from "@/lib/analytics/telemetry/actor-context"
 import { TELEMETRY_MAX_BATCH } from "@/lib/analytics/telemetry/config"
 
 /**
@@ -51,19 +52,16 @@ export async function POST(request: Request) {
 
   if (!authUser) return new NextResponse(null, { status: 204 })
 
-  const { data: userRow } = await supabase
-    .from("users")
-    .select("id, org_id")
-    .eq("auth_id", authUser.id)
-    .maybeSingle()
-
-  const user = userRow as { id: string; org_id: string | null } | null
-  if (!user?.org_id) return new NextResponse(null, { status: 204 })
+  // Rol y agencia salen de acá, nunca del payload. Memoizado 120 s: el batch
+  // llega cada 15 s por pestaña, así que en régimen no agrega queries.
+  const actor = await resolveActorContext(supabase, authUser.id)
+  if (!actor) return new NextResponse(null, { status: 204 })
 
   const accepted = await recordUsageEvents(
-    user.org_id,
-    user.id,
-    events.slice(0, TELEMETRY_MAX_BATCH)
+    actor.orgId,
+    actor.userId,
+    events.slice(0, TELEMETRY_MAX_BATCH),
+    { role: actor.role, agencyId: actor.agencyId }
   )
 
   return NextResponse.json({ accepted }, { status: 202 })

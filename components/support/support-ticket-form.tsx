@@ -17,10 +17,34 @@ interface SupportTicketFormProps {
 
 type TicketType = "question" | "bug" | "improvement"
 
-const TICKET_TYPES: { value: TicketType; label: string; icon: typeof Bug; placeholder: string }[] = [
-  { value: "question", label: "Consulta", icon: HelpCircle, placeholder: "Ej: ¿Cómo registro un cobro parcial?" },
-  { value: "bug", label: "Bug", icon: Bug, placeholder: "Ej: No puedo registrar un cobro, tira error" },
-  { value: "improvement", label: "Mejora", icon: Lightbulb, placeholder: "Ej: Me gustaría exportar operaciones a Excel" },
+const TICKET_TYPES: {
+  value: TicketType
+  label: string
+  hint: string
+  icon: typeof Bug
+  placeholder: string
+}[] = [
+  {
+    value: "question",
+    label: "Tengo una duda",
+    hint: "No sé cómo hacer algo en el sistema",
+    icon: HelpCircle,
+    placeholder: "Ej: ¿Cómo registro un cobro parcial?",
+  },
+  {
+    value: "bug",
+    label: "Algo no funciona",
+    hint: "Me da error, no carga o muestra datos mal",
+    icon: Bug,
+    placeholder: "Ej: No puedo registrar un cobro, me tira error",
+  },
+  {
+    value: "improvement",
+    label: "Se me ocurre una idea",
+    hint: "Algo que te gustaría que el sistema haga",
+    icon: Lightbulb,
+    placeholder: "Ej: Me gustaría exportar operaciones a Excel",
+  },
 ]
 
 interface Attachment {
@@ -51,7 +75,7 @@ export function SupportTicketForm({ conversationId, onBack }: SupportTicketFormP
 
     const room = MAX_ATTACHMENTS - attachments.length
     if (room <= 0) {
-      setError(`Máximo ${MAX_ATTACHMENTS} adjuntos.`)
+      setError(`Podés subir hasta ${MAX_ATTACHMENTS} archivos.`)
       return
     }
 
@@ -99,10 +123,10 @@ export function SupportTicketForm({ conversationId, onBack }: SupportTicketFormP
         }),
       })
 
-      if (!res.ok) throw new Error("Error al crear ticket")
+      if (!res.ok) throw new Error("Error al crear el mensaje de soporte")
       setSent(true)
     } catch {
-      setError("No pudimos crear el ticket. Intentá de nuevo.")
+      setError("No pudimos enviar tu mensaje. Probá de nuevo.")
     } finally {
       setSending(false)
     }
@@ -115,9 +139,10 @@ export function SupportTicketForm({ conversationId, onBack }: SupportTicketFormP
           <CheckCircle2 className="h-6 w-6 text-green-600" />
         </div>
         <div>
-          <h3 className="font-semibold text-sm mb-1">Ticket creado</h3>
+          <h3 className="font-semibold text-sm mb-1">Listo, recibimos tu mensaje</h3>
           <p className="text-xs text-muted-foreground">
-            Nuestro equipo va a revisarlo y te responde en el mismo ticket.
+            Nuestro equipo lo va a revisar y te responde acá. Podés seguirlo
+            desde &ldquo;Mis mensajes&rdquo;.
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={onBack}>
@@ -137,9 +162,9 @@ export function SupportTicketForm({ conversationId, onBack }: SupportTicketFormP
           <ArrowLeft className="h-3 w-3" />
           Volver
         </button>
-        <h3 className="text-sm font-semibold">Crear ticket de soporte</h3>
+        <h3 className="text-sm font-semibold">Escribile al equipo de soporte</h3>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Te respondemos en el mismo ticket.
+          Te contestamos acá mismo, en esta conversación.
         </p>
       </div>
 
@@ -148,9 +173,9 @@ export function SupportTicketForm({ conversationId, onBack }: SupportTicketFormP
         <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
         <div>
           <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-            Tipo *
+            ¿Qué querés contarnos? *
           </label>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="space-y-1.5">
             {TICKET_TYPES.map((t) => {
               const Icon = t.icon
               const selected = type === t.value
@@ -159,15 +184,33 @@ export function SupportTicketForm({ conversationId, onBack }: SupportTicketFormP
                   key={t.value}
                   type="button"
                   onClick={() => setType(t.value)}
+                  aria-pressed={selected}
                   className={cn(
-                    "flex flex-col items-center gap-1 rounded-md border py-2 text-xs transition-colors",
+                    "w-full flex items-start gap-2.5 rounded-md border px-3 py-2 text-left transition-colors",
                     selected
-                      ? "border-primary bg-primary/10 text-primary font-medium"
-                      : "border-input text-muted-foreground hover:bg-accent"
+                      ? "border-primary bg-primary/10"
+                      : "border-input hover:bg-accent"
                   )}
                 >
-                  <Icon className="h-4 w-4" />
-                  {t.label}
+                  <Icon
+                    className={cn(
+                      "h-4 w-4 mt-0.5 shrink-0",
+                      selected ? "text-primary" : "text-muted-foreground"
+                    )}
+                  />
+                  <span className="min-w-0">
+                    <span
+                      className={cn(
+                        "block text-xs font-medium",
+                        selected ? "text-primary" : "text-foreground"
+                      )}
+                    >
+                      {t.label}
+                    </span>
+                    <span className="block text-[11px] text-muted-foreground">
+                      {t.hint}
+                    </span>
+                  </span>
                 </button>
               )
             })}
@@ -176,7 +219,7 @@ export function SupportTicketForm({ conversationId, onBack }: SupportTicketFormP
 
         <div>
           <label className="text-xs font-medium text-muted-foreground mb-1 block">
-            Asunto *
+            En pocas palabras, ¿qué pasó? *
           </label>
           <Input
             value={subject}
@@ -190,12 +233,12 @@ export function SupportTicketForm({ conversationId, onBack }: SupportTicketFormP
 
         <div>
           <label className="text-xs font-medium text-muted-foreground mb-1 block">
-            Descripción
+            Contanos con más detalle
           </label>
           <Textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Contanos con más detalle qué necesitás..."
+            placeholder="¿En qué pantalla estabas? ¿Qué esperabas que pasara? Cuanto más nos cuentes, más rápido te ayudamos."
             className="min-h-[100px] text-sm resize-none"
             rows={4}
           />
@@ -203,7 +246,7 @@ export function SupportTicketForm({ conversationId, onBack }: SupportTicketFormP
 
         <div>
           <label className="text-xs font-medium text-muted-foreground mb-1 block">
-            Adjuntos <span className="font-normal">(opcional)</span>
+            Fotos o archivos <span className="font-normal">(opcional)</span>
           </label>
 
           {attachments.length > 0 && (
@@ -255,10 +298,10 @@ export function SupportTicketForm({ conversationId, onBack }: SupportTicketFormP
                 ) : (
                   <Paperclip className="h-3.5 w-3.5 mr-2" />
                 )}
-                {uploading ? "Subiendo..." : "Adjuntar captura o archivo"}
+                {uploading ? "Subiendo..." : "Subir una captura de pantalla o archivo"}
               </Button>
               <p className="text-[10px] text-muted-foreground mt-1">
-                JPG, PNG, WebP, GIF o PDF · hasta 10MB · máx {MAX_ATTACHMENTS}
+                Imágenes o PDF · hasta 10MB cada uno · máximo {MAX_ATTACHMENTS} archivos
               </p>
             </>
           )}
@@ -266,7 +309,8 @@ export function SupportTicketForm({ conversationId, onBack }: SupportTicketFormP
 
         {conversationId && (
           <p className="text-[11px] text-muted-foreground">
-            Se adjunta la conversación con el asistente de IA como referencia.
+            Le pasamos al equipo tu charla con el asistente, así no tenés que
+            repetir todo.
           </p>
         )}
         </div>
@@ -285,7 +329,7 @@ export function SupportTicketForm({ conversationId, onBack }: SupportTicketFormP
             ) : (
               <Send className="h-4 w-4 mr-2" />
             )}
-            Enviar ticket
+            Enviar a soporte
           </Button>
         </div>
       </form>

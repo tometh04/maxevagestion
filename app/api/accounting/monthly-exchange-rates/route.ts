@@ -31,9 +31,16 @@ export async function GET(request: Request) {
     const year = parseInt(searchParams.get("year") || new Date().getFullYear().toString())
     const month = parseInt(searchParams.get("month") || (new Date().getMonth() + 1).toString())
 
-    // Buscar TC guardado para este mes
+    const orgId = (user as any).org_id
+    if (!orgId) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
+    // Scope por organización: antes la tabla no tenía org_id y el UNIQUE era
+    // (year, month), así que había UNA cotización por mes para todo el sistema.
     const { data, error } = await (supabase.from("monthly_exchange_rates") as any)
       .select("*")
+      .eq("org_id", orgId)
       .eq("year", year)
       .eq("month", month)
       .maybeSingle()
@@ -42,7 +49,13 @@ export async function GET(request: Request) {
       console.error("Error fetching monthly exchange rate:", error)
     }
 
-    return NextResponse.json({ data })
+    // Sugerencia desde las cotizaciones diarias que ya baja el cron, para que
+    // nadie tenga que averiguarla. Se propone; la agencia confirma o la pisa.
+    const { sugerirCotizacionMensual } = await import("@/lib/accounting/monthly-rate-suggestion")
+    const criterio = (searchParams.get("criterio") || "CIERRE") as "CIERRE" | "PROMEDIO"
+    const sugerida = await sugerirCotizacionMensual(supabase, year, month, criterio)
+
+    return NextResponse.json({ data, sugerida })
   } catch (error: any) {
     console.error("Error in GET /api/accounting/monthly-exchange-rates:", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
@@ -66,6 +79,11 @@ export async function POST(request: Request) {
 
     const { year, month, usd_to_ars_rate } = body
 
+    const orgId = (user as any).org_id
+    if (!orgId) {
+      return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+    }
+
     if (!year || !month || !usd_to_ars_rate) {
       return NextResponse.json({ error: "Faltan campos requeridos" }, { status: 400 })
     }
@@ -78,13 +96,14 @@ export async function POST(request: Request) {
     const { data, error } = await (supabase.from("monthly_exchange_rates") as any)
       .upsert(
         {
+          org_id: orgId,
           year,
           month,
           usd_to_ars_rate: parseFloat(usd_to_ars_rate),
           updated_at: new Date().toISOString(),
         },
         {
-          onConflict: "year,month",
+          onConflict: "org_id,year,month",
         }
       )
       .select()
@@ -103,6 +122,7 @@ export async function POST(request: Request) {
 
       const { data: prevRate } = await (supabase.from("monthly_exchange_rates") as any)
         .select("usd_to_ars_rate")
+        .eq("org_id", orgId)
         .eq("year", prevYear)
         .eq("month", prevMonth)
         .maybeSingle()

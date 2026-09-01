@@ -4,11 +4,41 @@ import { getCurrentUser } from "@/lib/auth"
 import { getUserAgencyIds } from "@/lib/permissions-api"
 import { canAccessModule } from "@/lib/permissions"
 import { calculateInvoice } from "@/lib/invoices/calculation"
-import { isCreditNote, isCreditOrDebitNote, ledgerSign } from "@/lib/invoices/credit-note"
+import { isCreditNote, isCreditOrDebitNote } from "@/lib/invoices/credit-note"
+import {
+  buildExchangeRateMap,
+  getExchangeRateWithFallback,
+} from "@/lib/accounting/exchange-rates"
+import {
+  checkInvoiceCap,
+  getInvoiceSaleCurrency,
+  invoiceCurrencyToSupported,
+  invoiceTotalInSaleCurrency,
+  needsMarketRate,
+  sumInvoicedInSaleCurrency,
+  type InvoicedRow,
+} from "@/lib/invoices/currency"
+import {
+  coercePositiveNumber,
+  isExchangeRatePlausibleVsMarket,
+  type SupportedCurrency,
+} from "@/lib/payments/customer-income-fx"
 import { normalizeReceptorDoc } from "@/lib/afip/afip-config"
 import { z } from "zod"
 
 export const dynamic = 'force-dynamic'
+
+/**
+ * Importe con símbolo de moneda para los mensajes de error del tope. Sin esto el
+ * mensaje decía "$8050" sobre una venta en dólares.
+ */
+function formatInvoiceAmount(amount: number, currency: SupportedCurrency): string {
+  const formatted = amount.toLocaleString("es-AR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+  return currency === "USD" ? `USD ${formatted}` : "$" + formatted
+}
 
 function formatLocalDate(date = new Date()): string {
   const year = date.getFullYear()
@@ -230,9 +260,13 @@ export async function POST(request: Request) {
     // Las NC reducen lo facturado: no pueden exceder el total → se saltean el cap.
     // Las ND suman: el cap aplica normal. En la suma de "ya facturado", las NC
     // existentes restan (ledgerSign).
+    //
+    // VIB-151: todo se compara en la MONEDA DE LA VENTA. Antes se comparaban los
+    // importes crudos, así que facturar en pesos una venta de USD 8050 topeaba en
+    // $8050 y la agencia no podía emitir.
     if (validatedData.operation_id && !isCreditNote(validatedData.cbte_tipo)) {
       const { data: operation, error: opErr } = await (supabase.from("operations") as any)
-        .select("id, org_id, sale_amount_total")
+        .select("id, org_id, sale_amount_total, sale_currency, currency")
         .eq("id", validatedData.operation_id)
         .single()
 
@@ -251,26 +285,126 @@ export async function POST(request: Request) {
         )
       }
 
-      // Sum authorized invoices de esta operación (NC restan, ND/facturas suman)
+      const saleCurrency = getInvoiceSaleCurrency(operation)
+      const invoiceCurrency = invoiceCurrencyToSupported(validatedData.moneda)
+      if (!invoiceCurrency) {
+        return NextResponse.json(
+          { error: `Moneda ${validatedData.moneda} no soportada para facturar una operación. Usá PES o DOL.` },
+          { status: 400 }
+        )
+      }
+
+      // Facturas ya autorizadas de la operación (pueden estar en otra moneda).
       const { data: existingInvoices } = await (supabase.from("invoices") as any)
-        .select("imp_total, cbte_tipo")
+        .select("imp_total, cbte_tipo, moneda, cotizacion, fecha_emision")
         .eq("operation_id", validatedData.operation_id)
+        // Scope explícito por org (defense-in-depth): la operación ya se validó
+        // contra el org de la agencia, pero la tabla es tenant-scoped.
+        .eq("org_id", agency.org_id)
         .eq("status", "authorized")
 
-      const alreadyInvoiced = (existingInvoices ?? []).reduce(
-        (acc: number, i: any) => acc + ledgerSign(i.cbte_tipo) * Number(i.imp_total),
-        0
-      )
-      const saleTotal = Number(operation.sale_amount_total)
-      const remaining = Math.round((saleTotal - alreadyInvoiced) * 100) / 100
-      const newTotal = Number(calculatedInvoice.totals.imp_total)
+      const invoicedRows = (existingInvoices ?? []) as InvoicedRow[]
+      const capDate = formatLocalDate()
+      const needsRateForNew = invoiceCurrency !== saleCurrency
+      const needsRateForPast = invoicedRows.some((row) => needsMarketRate(row, saleCurrency))
 
-      // Tolerancia 1 cent para float precision
-      if (newTotal > remaining + 0.01) {
+      // TC de referencia (`exchange_rates`: fuente autoritativa de valuación
+      // según docs/finance/TIPO-DE-CAMBIO-FUENTES.md). Solo se consulta si hace falta.
+      let marketRate: number | null = null
+      if (needsRateForNew || needsRateForPast) {
+        const market = await getExchangeRateWithFallback(supabase, capDate, "invoices:cap")
+        marketRate = market.rate
+      }
+
+      let pastRateFor: (date: string | null | undefined) => number | null = () => marketRate
+      if (needsRateForPast) {
+        const rateMap = await buildExchangeRateMap(
+          supabase,
+          invoicedRows.map((row) => row.fecha_emision)
+        )
+        pastRateFor = (date) => rateMap(date) ?? marketRate
+      }
+
+      const { total: alreadyInvoiced, unconverted } = sumInvoicedInSaleCurrency({
+        invoices: invoicedRows,
+        saleCurrency,
+        rateFor: pastRateFor,
+      })
+
+      // No silenciar: sin TC el restante queda inflado y dejaría facturar de más.
+      if (unconverted.length > 0) {
+        console.error(
+          `[invoices:cap] Sin tipo de cambio para valuar ${unconverted.length} factura(s) de la operación ${validatedData.operation_id}`
+        )
         return NextResponse.json(
           {
-            error: `No se puede facturar $${newTotal.toFixed(2)}: el total vendido restante de la operación es $${remaining.toFixed(2)}`,
-            max_remaining: remaining,
+            error:
+              "No se puede validar el total facturado: falta el tipo de cambio de facturas anteriores de esta operación. Cargá el TC del día en Contabilidad y reintentá.",
+          },
+          { status: 400 }
+        )
+      }
+
+      // TC de ESTA factura. El front arma los ítems con el TC que muestra en
+      // pantalla (editable), así que se usa ese; el de referencia solo valida que
+      // no sea un disparate (banda amplia, igual que el guard de cobros: detecta
+      // errores de orden de magnitud, no diferencias de cotización).
+      let capRate: number | null = null
+      if (needsRateForNew) {
+        const informedRate = coercePositiveNumber(validatedData.cotizacion)
+        capRate = informedRate && informedRate > 1 ? informedRate : marketRate
+
+        if (!isExchangeRatePlausibleVsMarket(capRate, marketRate)) {
+          return NextResponse.json(
+            {
+              error: `El tipo de cambio informado (${capRate}) no es verosímil contra el de referencia (${marketRate}). Corregí la cotización.`,
+              suggested_rate: marketRate,
+            },
+            { status: 400 }
+          )
+        }
+      }
+
+      const saleTotal = Number(operation.sale_amount_total)
+      const newTotal = Number(calculatedInvoice.totals.imp_total)
+      const newTotalInSaleCurrency = invoiceTotalInSaleCurrency({
+        impTotal: newTotal,
+        moneda: validatedData.moneda,
+        saleCurrency,
+        exchangeRate: capRate,
+      })
+
+      if (newTotalInSaleCurrency === null) {
+        return NextResponse.json(
+          {
+            error: `No se pudo convertir el total de la factura (${validatedData.moneda}) a la moneda de la venta (${saleCurrency}).`,
+          },
+          { status: 400 }
+        )
+      }
+
+      const cap = checkInvoiceCap({ saleTotal, alreadyInvoiced, newTotalInSaleCurrency })
+
+      if (!cap.ok) {
+        // El restante se informa en la moneda de la venta y, si la factura va en
+        // otra, también convertido: sin eso el mensaje dice "$8050" sobre una
+        // venta en dólares y no hay forma de entenderlo.
+        const remainingInInvoiceCurrency =
+          needsRateForNew && capRate
+            ? saleCurrency === "USD"
+              ? cap.remaining * capRate
+              : cap.remaining / capRate
+            : cap.remaining
+        const equivalence = needsRateForNew
+          ? ` (≈ ${formatInvoiceAmount(remainingInInvoiceCurrency, invoiceCurrency)} al TC ${capRate})`
+          : ""
+
+        return NextResponse.json(
+          {
+            error: `No se puede facturar ${formatInvoiceAmount(newTotal, invoiceCurrency)}: el total vendido restante de la operación es ${formatInvoiceAmount(cap.remaining, saleCurrency)}${equivalence}`,
+            max_remaining: cap.remaining,
+            max_remaining_currency: saleCurrency,
+            max_remaining_invoice_currency: Math.round(remainingInInvoiceCurrency * 100) / 100,
           },
           { status: 400 }
         )

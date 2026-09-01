@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server"
+import { paymentLedgerType } from "@/lib/payments/ledger-type"
+import { limpiarResiduosDePago } from "@/lib/accounting/payment-cleanup"
 import { createAdminClient, createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
@@ -886,9 +888,7 @@ export async function POST(request: Request) {
         const ledgerMethod = mapPaymentMethodToLedgerMethod(method)
 
         // 6. Determinar tipo de ledger movement
-        const ledgerType = direction === "INCOME"
-          ? "INCOME"
-          : (payer_type === "OPERATOR" ? "OPERATOR_PAYMENT" : "EXPENSE")
+        const ledgerType = paymentLedgerType({ direction, payer_type })
 
         // 6.1. Obtener nombre del pasajero principal para el concepto
         const passengerName = operation_id ? await getMainPassengerName(operation_id, supabase) : null
@@ -1252,10 +1252,18 @@ export async function POST(request: Request) {
             )
 
             // 2. Crear cash_movement EXPENSE para que aparezca en vista de caja
-            await (supabase.from("cash_movements") as any)
+            //
+            // VIB-131: este insert fallaba SIEMPRE en silencio. El movimiento
+            // principal del pago ya ocupa el payment_id y el índice único de la
+            // migración 110 permitía uno solo, así que el impuesto pegaba en el
+            // ledger pero nunca en caja (153 casos entre 2026-06-02 y 2026-08-14).
+            // La migración 20260818000002 pasa el índice a (payment_id, category)
+            // y el error ya no se traga: si falla, queda alerta para revisión.
+            const { error: taxCashError } = await (supabase.from("cash_movements") as any)
               .insert({
                 operation_id: operation_id || null,
                 payment_id: payment.id, // Vincular al mismo payment para trazabilidad
+                ledger_movement_id: taxLedgerMovementId,
                 cash_box_id: null,
                 financial_account_id: accountId,
                 user_id: user.id,
@@ -1269,10 +1277,32 @@ export async function POST(request: Request) {
                 agency_id: agencyId,
               })
 
+            if (taxCashError) throw new Error(`cash_movement del impuesto: ${taxCashError.message}`)
+
             console.log(`✅ Bank tax Ley 25413: ${taxAmount} ${currency} (${taxRate}%) deducido para payment ${payment.id}`)
           } catch (bankTaxError) {
-            // No romper el flujo principal — el pago ya fue registrado
-            console.error("Error creando movimiento de impuesto bancario Ley 25413:", bankTaxError)
+            // No romper el flujo principal — el pago ya fue registrado — pero
+            // tampoco dejarlo pasar en silencio: el impuesto afecta el saldo y
+            // su ausencia en caja descuadra la vista contra el ledger.
+            console.error("❌ Error creando movimiento de impuesto bancario Ley 25413:", {
+              paymentId: payment.id,
+              operationId: operation_id,
+              error: bankTaxError instanceof Error ? bankTaxError.message : String(bankTaxError),
+            })
+            try {
+              await (supabase.from("alerts") as any).insert({
+                org_id: (user as any).org_id || null,
+                agency_id: agencyId || null,
+                user_id: user.id,
+                operation_id: operation_id || null,
+                type: "SYSTEM",
+                description: `Impuesto Ley 25413 no registrado en caja para el pago ${payment.id}. Revisar manualmente.`,
+                date_due: new Date().toISOString(),
+                status: "PENDING",
+              })
+            } catch (alertError) {
+              console.error("Error generando alerta de impuesto bancario:", alertError)
+            }
           }
         }
 
@@ -1779,13 +1809,41 @@ export async function DELETE(request: Request) {
       }
     }
 
+    // 2-bis. Eliminar el ledger_movement del impuesto Ley 25413 (VIB-138)
+    //
+    // El impuesto bancario genera su propio ledger_movement, que NO se
+    // identifica por payment_id (`ledger_movements` no tiene esa columna): el
+    // único vínculo es el marcador en las notas, el mismo que usa el cleanup
+    // del PATCH. Sin este borrado, al eliminar un pago su impuesto quedaba
+    // huérfano en el mayor con affects_balance = true, o sea restando del saldo
+    // un egreso de un pago que ya no existe.
+    //
+    // El movimiento de CAJA del impuesto ya se borra arriba, porque comparte
+    // payment_id con el principal.
+    const { data: deletedTaxLedger, error: taxLedgerError } = await (supabase.from("ledger_movements") as any)
+      .delete()
+      .eq("org_id", user.org_id)
+      .eq("type", "EXPENSE")
+      .ilike("notes", `%vinculado a payment ${paymentId}%`)
+      .select("id")
+
+    if (taxLedgerError) {
+      console.warn("Warning: no se pudo borrar el impuesto Ley 25413 del mayor:", taxLedgerError)
+    } else if (deletedTaxLedger?.length) {
+      console.log(`Impuesto Ley 25413 eliminado del mayor para el pago ${paymentId}`)
+    }
+
     // 3. Si hay ledger_movement_id, eliminar el movimiento del libro mayor
     let ledgerMovementId = payment.ledger_movement_id
 
     // Fallback: si no hay ledger_movement_id pero el pago era PAID con operation_id,
     // buscar ledger movement huérfano por operation_id + monto + tipo
     if (!ledgerMovementId && payment.status === "PAID" && payment.operation_id) {
-      const expectedType = payment.direction === "INCOME" ? "INCOME" : "OPERATOR_PAYMENT"
+      // El tipo sale del mismo helper que usa el alta. Esta línea tenía su
+      // propia copia de la regla, sin el caso de la devolución al cliente
+      // (EXPENSE + CUSTOMER): buscaba un OPERATOR_PAYMENT que no existía y
+      // dejaba el egreso vivo en el mayor.
+      const expectedType = paymentLedgerType(payment)
       const { data: orphaned } = await (supabase.from("ledger_movements") as any)
         .select("id")
         .eq("operation_id", payment.operation_id)
@@ -1900,6 +1958,27 @@ export async function DELETE(request: Request) {
       } catch (counterpartError) {
         console.warn("Warning: Could not delete counterpart CpC/CpP ledger movement:", counterpartError)
       }
+    }
+
+    // 3-bis. Residuos del pago: percepciones y cabeceras de asiento sin líneas.
+    // El criterio vive en lib/accounting/payment-cleanup.ts porque un pago se
+    // borra también desde el DELETE de operación y los dos tienen que limpiar
+    // lo mismo. Ver ahí por qué cada uno importa.
+    const residuos = await limpiarResiduosDePago(supabase, {
+      paymentId,
+      operationId: payment.operation_id,
+      orgId: user.org_id,
+    })
+    for (const err of residuos.errors) {
+      // No cortan el borrado —el pago tiene que poder eliminarse igual— pero
+      // dejan rastro, porque significan residuos que quedaron vivos.
+      console.error(`Error limpiando residuos del pago ${paymentId}:`, err)
+    }
+    if (residuos.withholdings > 0 || residuos.emptyJournalEntries > 0) {
+      console.log(
+        `🧹 Pago ${paymentId}: ${residuos.withholdings} percepción(es) y ` +
+          `${residuos.emptyJournalEntries} asiento(s) vacío(s) eliminados`
+      )
     }
 
     // 4. Eliminar el pago
@@ -2307,9 +2386,7 @@ export async function PATCH(request: Request) {
         // Mapear método
         const ledgerMethod = mapPaymentMethodToLedgerMethod(finalMethod)
 
-        const ledgerType = existingPayment.direction === "INCOME"
-          ? "INCOME"
-          : (existingPayment.payer_type === "OPERATOR" ? "OPERATOR_PAYMENT" : "EXPENSE")
+        const ledgerType = paymentLedgerType(existingPayment)
 
         const passengerName = existingPayment.operation_id
           ? await getMainPassengerName(existingPayment.operation_id, supabase)
@@ -2497,6 +2574,17 @@ export async function PATCH(request: Request) {
               .eq("type", "EXPENSE")
               .ilike("notes", `%vinculado a payment ${paymentId}%`)
 
+            // VIB-131: el cleanup anterior solo borraba el lado del ledger. El
+            // movimiento de caja del impuesto nunca llegaba a crearse (fallaba
+            // por el índice único), así que no molestaba. Ahora que sí se crea,
+            // hay que borrarlo también o la reinserción choca contra el índice
+            // (payment_id, category).
+            await (supabase.from("cash_movements") as any)
+              .delete()
+              .eq("org_id", user.org_id)
+              .eq("payment_id", paymentId)
+              .eq("category", "BANK_TAX")
+
             let taxAmountARS = taxAmount
             if (finalCurrency === "USD" && exchangeRate) {
               taxAmountARS = calculateARSEquivalent(taxAmount, "USD", exchangeRate)
@@ -2504,7 +2592,7 @@ export async function PATCH(request: Request) {
 
             // 1. ledger_movement EXPENSE del impuesto. Las notas llevan el
             //    marcador "vinculado a payment <id>" que usa el cleanup 2c-bis.
-            await createLedgerMovement(
+            const { id: taxLedgerMovementId } = await createLedgerMovement(
               {
                 operation_id: existingPayment.operation_id || null,
                 lead_id: null,
@@ -2524,11 +2612,14 @@ export async function PATCH(request: Request) {
             )
 
             // 2. cash_movement para que aparezca en Caja (mismo comportamiento
-            //    que el POST). Nota: comparte payment_id con el pago principal.
-            await (supabase.from("cash_movements") as any)
+            //    que el POST). Comparte payment_id con el pago principal, pero
+            //    con category distinta: el índice (payment_id, category) los
+            //    deja convivir (VIB-131).
+            const { error: taxCashError } = await (supabase.from("cash_movements") as any)
               .insert({
                 operation_id: existingPayment.operation_id || null,
                 payment_id: paymentId,
+                ledger_movement_id: taxLedgerMovementId,
                 cash_box_id: null,
                 financial_account_id: finalAccountId,
                 user_id: user.id,
@@ -2542,10 +2633,31 @@ export async function PATCH(request: Request) {
                 agency_id: agencyId,
               })
 
+            if (taxCashError) throw new Error(`cash_movement del impuesto: ${taxCashError.message}`)
+
             console.log(`✅ Bank tax Ley 25413 (edición): ${taxAmount} ${finalCurrency} (${taxRate}%) para payment ${paymentId}`)
           } catch (bankTaxError) {
-            // No romper la edición — el pago principal ya quedó actualizado.
-            console.error("Error recreando movimiento de impuesto bancario Ley 25413 (edición):", bankTaxError)
+            // No romper la edición — el pago principal ya quedó actualizado —
+            // pero dejar rastro: sin el movimiento en caja, la vista descuadra
+            // contra el ledger.
+            console.error("❌ Error recreando movimiento de impuesto bancario Ley 25413 (edición):", {
+              paymentId,
+              error: bankTaxError instanceof Error ? bankTaxError.message : String(bankTaxError),
+            })
+            try {
+              await (supabase.from("alerts") as any).insert({
+                org_id: user.org_id || null,
+                agency_id: agencyId || null,
+                user_id: user.id,
+                operation_id: existingPayment.operation_id || null,
+                type: "SYSTEM",
+                description: `Impuesto Ley 25413 no registrado en caja al editar el pago ${paymentId}. Revisar manualmente.`,
+                date_due: new Date().toISOString(),
+                status: "PENDING",
+              })
+            } catch (alertError) {
+              console.error("Error generando alerta de impuesto bancario:", alertError)
+            }
           }
         }
 

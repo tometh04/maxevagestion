@@ -47,7 +47,82 @@ export type UsageByOrgRow = {
 }
 
 export type UsageByHourRow = { dow: number; hour: number; events: number }
-export type UsageDailyRow = { day: string; events: number; active_orgs: number }
+export type UsageDailyRow = {
+  day: string
+  events: number
+  active_orgs: number
+  active_users: number
+}
+
+export type UsageScreenRow = {
+  screen: string
+  module: string | null
+  events: number
+  actors: number
+  orgs: number
+  last_event_at: string | null
+}
+
+/** Una sola fila, ya agregada al alcance elegido (org / agencia / rol). */
+export type UsageSessionsRow = {
+  sessions: number
+  actors: number
+  avg_screens: number | null
+  avg_duration_sec: number | null
+  median_duration_sec: number | null
+}
+
+export type UsageActiveUsersRow = { day: string; dau: number; wau: number; mau: number }
+
+export type UsageStickinessRow = {
+  org_id: string
+  active_days: number
+  dau_avg: number | null
+  mau: number
+  stickiness: number | null
+}
+
+export type UsageByAgencyRow = {
+  org_id: string
+  agency_id: string | null
+  agency_name: string
+  users: number
+  writes: number
+  reads: number
+  active_days: number
+  last_event_at: string | null
+}
+
+export type UsageByUserRow = {
+  user_id: string
+  name: string | null
+  email: string | null
+  role: string | null
+  is_active: boolean
+  is_platform_admin: boolean
+  agency_name: string | null
+  writes: number
+  reads: number
+  sessions: number
+  active_days: number
+  screens: number
+  last_event_at: string | null
+  last_login_at: string | null
+}
+
+export type UsageActivationRow = {
+  org_id: string
+  org_name: string | null
+  subscription_status: string | null
+  org_created_at: string | null
+  first_operation_at: string | null
+  first_payment_at: string | null
+  days_to_first_operation: number | null
+  days_to_first_payment: number | null
+  is_migrated: boolean
+}
+
+export type UsageLoginsRow = { day: string; logins: number; users: number; orgs: number }
 
 /**
  * Intensidad 0-5 para el color de la celda.
@@ -144,6 +219,50 @@ export function formatCount(n: number): string {
   if (n >= 10_000) return `${Math.round(n / 1000)}k`
   if (n >= 1000) return `${(n / 1000).toFixed(1).replace(".0", "")}k`
   return String(n)
+}
+
+export type ParsedScreen = {
+  /** Ruta base, ej. `/operations/:id`. */
+  path: string
+  /** Vista sin URL propia, si la hay. */
+  view: string | null
+  kind: "tab" | "dialog" | null
+}
+
+/**
+ * Parte una clave de pantalla en sus dos mitades.
+ *
+ * No traduce a lenguaje humano a proposito: mantener un mapa de 76 rutas ×
+ * 126 tabs a etiquetas lindas es deuda que se desincroniza al primer rename, y
+ * quien mira esta pantalla es platform admin — la ruta le dice mas que un
+ * titulo inventado. El modulo, que si tiene etiqueta, va al lado como contexto.
+ */
+export function parseScreen(screen: string): ParsedScreen {
+  const hash = screen.indexOf("#")
+  if (hash === -1) return { path: screen, view: null, kind: null }
+
+  const path = screen.slice(0, hash)
+  const rest = screen.slice(hash + 1)
+  const [rawKind, ...viewParts] = rest.split(":")
+  const view = viewParts.join(":")
+
+  if (!view) return { path, view: null, kind: null }
+  return { path, view, kind: rawKind === "dlg" ? "dialog" : "tab" }
+}
+
+/** Porcentaje de una barra de ranking, acotado para que lo minimo se vea. */
+export function barWidth(value: number, max: number): string {
+  if (max <= 0 || value <= 0) return "0%"
+  return `${Math.max(2, Math.round((value / max) * 100))}%`
+}
+
+/** Formatea segundos como "4 min" / "1 h 12 min". Para duraciones de sesion. */
+export function formatDuration(seconds: number | null | undefined): string {
+  if (!seconds || !Number.isFinite(seconds) || seconds <= 0) return "—"
+  const mins = Math.round(seconds / 60)
+  if (mins < 60) return `${mins} min`
+  const hours = Math.floor(mins / 60)
+  return `${hours} h ${mins % 60} min`
 }
 
 export function formatLastSeen(iso: string | null, now: Date = new Date()): string {

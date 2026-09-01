@@ -79,6 +79,56 @@ const JournalEntriesPageClient = dynamic(
   }
 )
 
+const GeneralLedgerPageClient = dynamic(
+  () =>
+    import("@/components/accounting/general-ledger-page-client").then((m) => ({
+      default: m.GeneralLedgerPageClient,
+    })),
+  {
+    loading: () => <Skeleton className="h-[400px] w-full" />,
+  }
+)
+
+const FinancialStatementsPageClient = dynamic(
+  () =>
+    import("@/components/accounting/financial-statements-page-client").then((m) => ({
+      default: m.FinancialStatementsPageClient,
+    })),
+  {
+    loading: () => <Skeleton className="h-[400px] w-full" />,
+  }
+)
+
+const MonthlyClosePageClient = dynamic(
+  () =>
+    import("@/components/accounting/monthly-close-page-client").then((m) => ({
+      default: m.MonthlyClosePageClient,
+    })),
+  {
+    loading: () => <Skeleton className="h-[400px] w-full" />,
+  }
+)
+
+const LibroDiarioPageClient = dynamic(
+  () =>
+    import("@/components/accounting/libro-diario-page-client").then((m) => ({
+      default: m.LibroDiarioPageClient,
+    })),
+  {
+    loading: () => <Skeleton className="h-[400px] w-full" />,
+  }
+)
+
+const CurrentAccountPageClient = dynamic(
+  () =>
+    import("@/components/accounting/current-account-page-client").then((m) => ({
+      default: m.CurrentAccountPageClient,
+    })),
+  {
+    loading: () => <Skeleton className="h-[400px] w-full" />,
+  }
+)
+
 const ChartOfAccountsTree = dynamic(
   () =>
     import("@/components/accounting/chart-of-accounts-tree").then((m) => ({
@@ -181,6 +231,21 @@ export default async function ContabilidadPage({
       initialTab={sp.tab}
       journalEntriesContent={
         <JournalEntriesPageClient />
+      }
+      generalLedgerContent={
+        <GeneralLedgerPageClient />
+      }
+      financialStatementsContent={
+        <FinancialStatementsPageClient agencies={agencies} />
+      }
+      monthlyCloseContent={
+        <MonthlyClosePageClient agencies={agencies} />
+      }
+      libroDiarioContent={
+        <LibroDiarioPageClient agencies={agencies} />
+      }
+      currentAccountContent={
+        <CurrentAccountPageClient operators={operators ?? []} />
       }
       chartOfAccountsContent={
         <ChartOfAccountsTree />

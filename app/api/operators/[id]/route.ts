@@ -106,7 +106,7 @@ export async function PATCH(
     const { id: operatorId } = await params
     const body = await request.json()
 
-    const { name, contact_name, contact_email, contact_phone, credit_limit, admin_fee_percentage, cost_calculation_mode, commission_percentage } = body
+    const { name, contact_name, contact_email, contact_phone, credit_limit, admin_fee_percentage, cost_calculation_mode, commission_percentage, iva_condition, cost_chart_account_id } = body
 
     // Validations
     const trimmedName = typeof name === "string" ? name.trim() : ""
@@ -137,6 +137,30 @@ export async function PATCH(
       updatePayload.admin_fee_percentage = admin_fee_percentage
     }
     updatePayload.cost_calculation_mode = cost_calculation_mode ?? null
+    // VIB-144: condición frente al IVA. null = sin definir, que mantiene el
+    // cálculo de crédito fiscal como estaba (alícuota general).
+    updatePayload.iva_condition = iva_condition ?? null
+    // VIB-144/I2: cuenta de costo propia. null = derivar del tipo de producto,
+    // que es el comportamiento por defecto y el de todos los operadores hasta
+    // que alguien configure esto a mano.
+    if (cost_chart_account_id !== undefined) {
+      // Solo del plan de la MISMA organización: una cuenta ajena imputaría el
+      // costo al plan de otra agencia.
+      if (cost_chart_account_id) {
+        const { data: cuenta } = await (supabase.from("chart_of_accounts") as any)
+          .select("id")
+          .eq("id", cost_chart_account_id)
+          .eq("org_id", (user as any).org_id)
+          .maybeSingle()
+        if (!cuenta) {
+          return NextResponse.json(
+            { error: "La cuenta contable no pertenece a tu organización" },
+            { status: 400 }
+          )
+        }
+      }
+      updatePayload.cost_chart_account_id = cost_chart_account_id || null
+    }
     if (typeof commission_percentage === "number") {
       updatePayload.commission_percentage = commission_percentage
     }

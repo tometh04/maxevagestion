@@ -105,6 +105,9 @@ export async function GET(request: Request) {
          operators:operator_id (name),
          operations:operation_id (id, file_code, agency_id, destination, agencies:agency_id(name), operation_customers(customers:customer_id(first_name, last_name)))`
       )
+      // Las líneas de asiento no son movimientos de dinero: son la
+      // contabilidad de un movimiento que ya está en esta exportación.
+      .not("account_id", "is", null)
       // Cross-tenant fix: filtro explícito, no confiar en RLS.
       .eq("org_id", (user as any).org_id)
 

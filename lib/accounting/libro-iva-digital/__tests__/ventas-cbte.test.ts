@@ -1,4 +1,5 @@
 import { generateVentasCbteRow, type VentaInput } from "../ventas-cbte"
+import { afipMonCotiz } from "@/lib/invoices/currency"
 
 describe("generateVentasCbteRow", () => {
   const baseInput: VentaInput = {
@@ -90,6 +91,20 @@ describe("generateVentasCbteRow", () => {
     const row = generateVentasCbteRow({ ...baseInput, moneda: "USD", cotizacion: 1234.5 })
     expect(row.slice(213, 216)).toBe("DOL")
     expect(row.slice(216, 226)).toBe("0012345000")
+  })
+
+  // VIB-151: el alta de facturas guarda en `invoices.cotizacion` el TC con el que
+  // convirtió una venta en USD a pesos. El "Tipo Cambio" del libro es la
+  // cotización de la moneda DEL COMPROBANTE, así que en un comprobante en pesos
+  // tiene que salir 1: la ruta normaliza con afipMonCotiz antes de armar la fila.
+  it("comprobante en pesos → tipo de cambio 1, aunque la venta fuera en USD", () => {
+    const row = generateVentasCbteRow({
+      ...baseInput,
+      moneda: "PES",
+      cotizacion: afipMonCotiz("PES", 1350),
+    })
+    expect(row.slice(213, 216)).toBe("PES")
+    expect(row.slice(216, 226)).toBe("0000010000")
   })
 
   it("cantidad_alicuotas (1 char) y codigo_operacion (1 char)", () => {

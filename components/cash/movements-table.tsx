@@ -17,6 +17,11 @@ import { ServerPagination } from "@/components/ui/server-pagination"
 import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
 import Link from "next/link"
 import { CashMovementReverseButton } from "@/components/cash/cash-movement-reverse-button"
+import { CashMovementExpenseFlagButton } from "@/components/cash/cash-movement-expense-flag-button"
+import {
+  CashMovementReconciliation,
+  type ReconciliationStatus,
+} from "@/components/cash/cash-movement-reconciliation"
 import { useCan } from "@/components/permissions/permissions-provider"
 import { Undo2, BookOpen } from "lucide-react"
 
@@ -47,6 +52,12 @@ export interface CashMovement {
   reversed_at?: string | null
   reverses_movement_id?: string | null
   reversed_by_movement_id?: string | null
+  /** Conciliación bancaria (VIB-137). null = sin marcar. */
+  reconciliation_status?: ReconciliationStatus
+  reconciled_at?: string | null
+  /** Oficina del movimiento. Los gastos de agencia la tienen y no cuelgan de ninguna operación. */
+  agency_id?: string | null
+  agency_name?: string | null
   operations?: MovementOperation | null
   users?: MovementUser | null
 }
@@ -168,6 +179,7 @@ export function MovementsTable({
               Usuario
             </SortableTableHead>
             <TableHead>Notas</TableHead>
+            <TableHead>Conciliación</TableHead>
             <TableHead className="text-right">Acciones</TableHead>
           </TableRow>
         </TableHeader>
@@ -175,14 +187,14 @@ export function MovementsTable({
           {isLoading ? (
             Array.from({ length: 5 }).map((_, index) => (
               <TableRow key={`skeleton-${index}`}>
-                <TableCell colSpan={8}>
+                <TableCell colSpan={9}>
                   <Skeleton className="h-6 w-full" />
                 </TableCell>
               </TableRow>
             ))
           ) : sortedData.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={8} className="text-center text-muted-foreground">
+              <TableCell colSpan={9} className="text-center text-muted-foreground">
                 {emptyMessage || "No hay movimientos"}
               </TableCell>
             </TableRow>
@@ -202,7 +214,7 @@ export function MovementsTable({
                     <p className="font-medium">{movement.category}</p>
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-xs text-muted-foreground">
-                        {movement.operations?.agencies?.name || "Sin agencia"}
+                        {movement.agency_name || movement.operations?.agencies?.name || "Sin agencia"}
                       </p>
                       {movement.affects_balance === false && (
                         <Badge variant="outline" className="text-[10px]">
@@ -255,6 +267,19 @@ export function MovementsTable({
                 </TableCell>
                 <TableCell>{movement.users?.name || "-"}</TableCell>
                 <TableCell>{movement.notes || "-"}</TableCell>
+                <TableCell>
+                  {/* Conciliación bancaria (VIB-137): informativo, no toca saldos.
+                      Un movimiento reversado no se concilia. */}
+                  {movement.reversed_at ? (
+                    <span className="text-xs text-muted-foreground">-</span>
+                  ) : (
+                    <CashMovementReconciliation
+                      movementId={movement.id}
+                      status={movement.reconciliation_status ?? null}
+                      disabled={!canReverse}
+                    />
+                  )}
+                </TableCell>
                 <TableCell className="text-right">
                   {movement.reversed_at ? (
                     <Badge variant="secondary">REVERSADO</Badge>
@@ -263,12 +288,24 @@ export function MovementsTable({
                       <Undo2 className="h-2.5 w-2.5 mr-1" /> Reverso
                     </Badge>
                   ) : (
-                    <CashMovementReverseButton
-                      movementId={movement.id}
-                      endpoint="cash-movements"
-                      movementLabel={movement.type === "INCOME" ? "ingreso" : "egreso"}
-                      disabled={!canReverse}
-                    />
+                    <div className="flex items-center justify-end gap-1">
+                      {/* Reclasificar sólo aplica a egresos: un ingreso nunca
+                          es un gasto de la agencia. */}
+                      {movement.type === "EXPENSE" && (
+                        <CashMovementExpenseFlagButton
+                          movementId={movement.id}
+                          isAgencyExpense={movement.is_agency_expense !== false}
+                          currentNotes={movement.notes}
+                          disabled={!canReverse}
+                        />
+                      )}
+                      <CashMovementReverseButton
+                        movementId={movement.id}
+                        endpoint="cash-movements"
+                        movementLabel={movement.type === "INCOME" ? "ingreso" : "egreso"}
+                        disabled={!canReverse}
+                      />
+                    </div>
                   )}
                 </TableCell>
               </TableRow>

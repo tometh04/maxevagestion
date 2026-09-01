@@ -518,6 +518,46 @@ export async function fetchAuthorizedPayment(authorizedPaymentId: string): Promi
 }
 
 /**
+ * Lista los intentos de cobro (authorized_payments) de un preapproval, del más
+ * nuevo al más viejo.
+ *
+ * Es la única forma de responder "¿MP va a volver a intentar el cobro que se
+ * cayó?": cada intento trae su `status` (scheduled/processed/recycling),
+ * `retry_attempt` y `next_retry_date`, además del `payment` con su
+ * `status_detail`. El preapproval solo expone `summarized`, que dice cuánto
+ * se cobró pero no qué pasó con lo que NO se cobró.
+ *
+ * OJO con los query params: este endpoint NO es como /preapproval/search.
+ * Rechaza con 400 "Invalid value for limit" el mismo `limit` que aquel acepta,
+ * así que pedimos la página default y ordenamos/recortamos acá. Ordenar del
+ * lado nuestro además no depende de que MP respete un `sort`.
+ */
+export async function searchAuthorizedPayments(
+  preapprovalId: string,
+  limit = 30
+): Promise<any[]> {
+  const url = new URL(`${MP_API}/authorized_payments/search`)
+  url.searchParams.set("preapproval_id", preapprovalId)
+
+  const res = await fetch(url.toString(), {
+    headers: { Authorization: `Bearer ${mpAccessToken()}` },
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`MP search authorized_payments failed (${res.status}): ${text}`)
+  }
+  const data = await res.json()
+  const results = (data?.results as any[]) ?? []
+
+  const ts = (ap: any) => {
+    const raw = ap?.debit_date || ap?.date_created
+    const t = raw ? new Date(raw).getTime() : NaN
+    return Number.isNaN(t) ? 0 : t
+  }
+  return [...results].sort((a, b) => ts(b) - ts(a)).slice(0, limit)
+}
+
+/**
  * Busca preapprovals asociados a un payer_email. Los preapprovals hijos
  * creados vía preapproval_plan NO traen external_reference, así que el
  * matching se hace por payer_email cuando llega un webhook tipo "payment".

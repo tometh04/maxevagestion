@@ -136,6 +136,25 @@ export async function settleOperatorDebtForStatement(
       supabase
     )
     ledgerMovementId = res.id
+
+    // VIB-142: asiento del pago (Debe Cuentas por Pagar / Haber cuenta
+    // financiera). No bloquea la liquidación.
+    try {
+      const { createMovementJournalEntry, COUNTERPART_CODES } = await import(
+        "./movement-journal"
+      )
+      await createMovementJournalEntry(
+        {
+          movementId: ledgerMovementId,
+          counterpartCode: COUNTERPART_CODES.OPERATOR_PAYMENT,
+          direction: "OUT",
+          orgId,
+        },
+        supabase
+      )
+    } catch (journalError) {
+      console.error("Error asentando el pago de deuda de operador:", journalError)
+    }
   } catch (err: any) {
     // Rollback del payment: aún no impactó saldo ni deuda.
     await (supabase.from("payments") as any).delete().eq("id", payment.id).eq("org_id", orgId)

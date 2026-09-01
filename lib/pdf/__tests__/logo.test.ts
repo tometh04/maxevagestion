@@ -9,11 +9,33 @@
  */
 
 import { resolveTenantLogo, toEmbeddableLogo } from "@/lib/pdf/logo"
+import { createCanvas } from "@napi-rs/canvas"
 
 const PNG_BYTES = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
   "base64"
 )
+const jpegCanvas = createCanvas(1, 1)
+jpegCanvas.getContext("2d").fillRect(0, 0, 1, 1)
+const JPEG_BYTES = jpegCanvas.toBuffer("image/jpeg")
+
+function largeValidPng(): Buffer {
+  const canvas = createCanvas(900, 900)
+  const context = canvas.getContext("2d")
+  const image = context.createImageData(900, 900)
+  let value = 0x12345678
+  for (let index = 0; index < image.data.length; index += 4) {
+    value ^= value << 13
+    value ^= value >>> 17
+    value ^= value << 5
+    image.data[index] = value & 0xff
+    image.data[index + 1] = (value >>> 8) & 0xff
+    image.data[index + 2] = (value >>> 16) & 0xff
+    image.data[index + 3] = 0xff
+  }
+  context.putImageData(image, 0, 0)
+  return canvas.toBuffer("image/png")
+}
 
 function mockFetch(response: {
   ok?: boolean
@@ -27,7 +49,8 @@ function mockFetch(response: {
         key.toLowerCase() === "content-type" ? (response.contentType ?? "image/png") : null,
     },
     arrayBuffer: async () => {
-      const buf = response.body ?? PNG_BYTES
+      const buf = response.body
+        ?? (/jpe?g/i.test(response.contentType || "") ? JPEG_BYTES : PNG_BYTES)
       return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
     },
   }))
@@ -65,10 +88,15 @@ describe("toEmbeddableLogo", () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it("descarta formatos que jsPDF no sabe dibujar", async () => {
-    mockFetch({ contentType: "image/svg+xml" })
-    expect(await toEmbeddableLogo("https://cdn.supabase.co/logo.svg")).toBe("")
-    expect(await toEmbeddableLogo("data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=")).toBe("")
+  it("normaliza SVG remoto y data URI al mismo PNG embebible", async () => {
+    const svg = Buffer.from(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="40"><rect width="120" height="40" fill="#0f766e"/></svg>'
+    )
+    mockFetch({ contentType: "image/svg+xml", body: svg })
+    expect(await toEmbeddableLogo("https://cdn.supabase.co/logo.svg"))
+      .toMatch(/^data:image\/png;base64,iVBOR/)
+    expect(await toEmbeddableLogo(`data:image/svg+xml;base64,${svg.toString("base64")}`))
+      .toMatch(/^data:image\/png;base64,iVBOR/)
   })
 
   it("descarta respuestas con error o vacías", async () => {
@@ -82,6 +110,28 @@ describe("toEmbeddableLogo", () => {
   it("descarta imágenes desproporcionadas", async () => {
     mockFetch({ body: Buffer.alloc(3_000_000, 1) })
     expect(await toEmbeddableLogo("https://cdn.supabase.co/enorme.png")).toBe("")
+  })
+
+  it("mantiene logos raster legacy sin imponerles un límite dimensional nuevo", async () => {
+    const canvas = createCanvas(9_000, 1)
+    const widePng = canvas.toBuffer("image/png")
+    mockFetch({ contentType: "image/png", body: widePng })
+
+    const result = await toEmbeddableLogo("https://cdn.supabase.co/logo-wide.png")
+
+    expect(result).toBe(`data:image/png;base64,${widePng.toString("base64")}`)
+  })
+
+  it("consume logos normalizados válidos de más de 2 MB aceptados por el upload", async () => {
+    const png = largeValidPng()
+    expect(png.byteLength).toBeGreaterThan(2_000_000)
+    expect(png.byteLength).toBeLessThan(5 * 1024 * 1024)
+    mockFetch({ contentType: "application/octet-stream", body: png })
+
+    const result = await resolveTenantLogo("https://cdn.supabase.co/logo-normalizado.png")
+
+    expect(result?.format).toBe("PNG")
+    expect(result?.bytes.byteLength).toBe(png.byteLength)
   })
 
   it("si la descarga falla, devuelve vacío en vez de romper el reporte", async () => {

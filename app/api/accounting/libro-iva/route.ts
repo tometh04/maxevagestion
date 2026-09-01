@@ -5,6 +5,7 @@ import { normalizeTaxTreatment } from "@/lib/invoices/calculation"
 import { ledgerSign } from "@/lib/invoices/credit-note"
 import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
 import { bundleLibroIvaDigital } from "@/lib/accounting/libro-iva-digital"
+import { afipMonCotiz } from "@/lib/invoices/currency"
 
 export async function GET(request: Request) {
   try {
@@ -325,7 +326,11 @@ function generateRG3683CSV(ventas: any[], compras: any[], year: number, month: n
     const docNro = String(inv.receptor_doc_nro || "0")
     const nombre = escapeCSVField(inv.receptor_nombre || "CONSUMIDOR FINAL")
     const moneda = MONEDA_MAP[(inv.moneda || "ARS").toUpperCase()] || "PES"
-    const tipoCambio = toFixed2(inv.cotizacion || 1)
+    // VIB-151: "Tipo Cambio" es la cotización de la moneda DEL COMPROBANTE
+    // contra el peso → 1 para PES. El alta de facturas guarda en `cotizacion` el
+    // TC con el que convirtió una venta en USD a pesos; sin normalizar, una
+    // factura en pesos exportaría "1350" en un archivo que AFIP lee.
+    const tipoCambio = toFixed2(afipMonCotiz(inv.moneda, inv.cotizacion))
 
     const ivaByRate = getIVAByRate(inv.invoice_items)
 
@@ -496,7 +501,7 @@ async function generateRG4597Zip(
       perc_municipales: 0,
       imp_internos: Number(inv.imp_trib) || 0,
       moneda: inv.moneda || "ARS",
-      cotizacion: Number(inv.cotizacion) || 1,
+      cotizacion: afipMonCotiz(inv.moneda, inv.cotizacion),
       cantidad_alicuotas: cantAlicuotas,
       codigo_operacion: " ",
       otros_tributos: 0,

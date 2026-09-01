@@ -21,18 +21,27 @@ import { calculateOperationBalances, roundMoney } from "@/lib/operations/operati
 import { getOrgFeatureFlag } from "@/lib/settings/org-features"
 import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
 import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
-import { ledgerSign } from "@/lib/invoices/credit-note"
-import { buildPassengerSearchOrGroups, sanitizeSearchTerm } from "@/lib/operations/passenger-search"
+import {
+  getInvoicedByOperation,
+  getInvoicingStatusByOperation,
+  invoiceStatusFor,
+  invoicedPctFor,
+} from "@/lib/operations/invoiced-by-operation"
+import { convertPaymentAmount } from "@/lib/operations/payment-conversion"
+import { buildOperationSearchConditions } from "@/lib/operations/search-conditions"
 import {
   normalizeOperationPassengers,
   findCustomersOutsideOrg,
 } from "@/lib/operations/operation-passengers"
 
+// VIB-157: tope de ids para el filtro por estado de facturación. Existe para no
+// armar una URL de PostgREST gigante con `id.in.(...)`; hoy la agencia con más
+// facturas está dos órdenes de magnitud por debajo.
+const MAX_INVOICE_STATUS_IDS = 2000
+
 // VIB-102: topes de la búsqueda por nombre de pasajero en GET /api/operations.
 // Existen para no armar una URL de PostgREST gigante con `id.in.(...)`; con el
 // match por AND de palabras una búsqueda real cae muy por debajo de estos topes.
-const CUSTOMER_SEARCH_CAP = 500
-const OPERATION_IDS_CAP = 500
 
 export async function POST(request: Request) {
   try {
@@ -103,8 +112,10 @@ export async function POST(request: Request) {
       commission_pct_secondary, // Override absoluto del % del vendedor secundario; suma ≤ principal pct
       reservation_code_air,
       reservation_code_hotel,
+      reservation_code_other, // VIB-115: código de reserva de servicios no aéreo/hotel
       airline_name,
       hotel_name,
+      other_provider_name, // VIB-115: proveedor/servicio asociado al código "otros"
       // Pedido VICO 2026-05-22: el campo itr_localizador ya existe en BD
       // (migration 128) pero el endpoint POST no lo aceptaba en create.
       // Solo se podía setear vía PATCH (edit). Ahora aceptamos en ambos.
@@ -409,8 +420,10 @@ export async function POST(request: Request) {
       billing_margin_percentage: billingMarginPercentage,
       reservation_code_air: reservation_code_air || null,
       reservation_code_hotel: reservation_code_hotel || null,
+      reservation_code_other: reservation_code_other || null,
       airline_name: airline_name || null,
       hotel_name: hotel_name || null,
+      other_provider_name: other_provider_name || null,
       itr_localizador: itr_localizador || null,
       customer_payment_deadline: customer_payment_deadline || null,
       passenger_notes: passenger_notes || null,
@@ -506,15 +519,23 @@ export async function POST(request: Request) {
     op.file_code = fileCode
 
     // Calcular comisiones automáticamente al crear la operación
+    let commissionData: { totalCommission: number; primaryCommission: number; secondaryCommission: number | null } | null = null
     try {
       const { recalculateOperationCommissions } = await import("@/lib/commissions/calculate")
-      await recalculateOperationCommissions(supabase, {
+      const { plan } = await recalculateOperationCommissions(supabase, {
         ...op,
         org_id: op.org_id || (user as any).org_id,
         seller_id: op.seller_id || seller_id,
         seller_secondary_id: op.seller_secondary_id || normalizedSecondaryId || null,
         margin_amount: Number(op.margin_amount) || marginAmount || 0,
       })
+
+      // Forma que espera el asiento contable de comisiones (igual que el PATCH).
+      commissionData = {
+        totalCommission: plan.totalCommission,
+        primaryCommission: plan.entries.find((e: any) => e.role === "PRIMARY")?.amount ?? 0,
+        secondaryCommission: plan.entries.find((e: any) => e.role === "SECONDARY")?.amount ?? null,
+      }
     } catch (error) {
       console.error("Error calculating commission for new operation:", error)
     }
@@ -1071,6 +1092,44 @@ export async function POST(request: Request) {
     // así que el porcentaje del body no hacía nada salvo ensuciar los logs.
     // La comisión la calcula ahora recalculateOperationCommissions, más arriba.
 
+    // ============================================
+    // ASIENTOS CONTABLES DE UNA OPERACIÓN QUE NACE CONFIRMADA (VIB-134)
+    // ============================================
+    // El hook de asientos vivía solo en el PATCH, condicionado a una TRANSICIÓN
+    // de estado (`isNewConfirmation`). Pero la mayoría de las operaciones se
+    // crean ya confirmadas desde este endpoint y nunca transicionan: al
+    // 2026-08-20, 179 de 241 de los últimos 30 días. Para esas, no se generaba
+    // ningún asiento de venta, costo ni comisión.
+    //
+    // Mismo patrón que el PATCH: no rompe el alta si falla.
+    if (operation.status === "CONFIRMED" || operation.status === "CLOSED") {
+      try {
+        const {
+          createSaleJournalEntry,
+          createCostJournalEntry,
+          createCommissionJournalEntry,
+        } = await import("@/lib/accounting/journal-entries")
+
+        // Asiento 1: Venta (Ds x Ventas / Ventas)
+        await createSaleJournalEntry(operation, supabase)
+
+        // Asiento 2: Costo (Costo Venta / Operadores a pagar)
+        const { data: opOperators } = await (supabase.from("operation_operators") as any)
+          .select("operator_id, cost, cost_currency, product_type, operators:operator_id(id, name)")
+          .eq("operation_id", operation.id)
+
+        await createCostJournalEntry(operation, opOperators || [], supabase)
+
+        // Asiento 3: Comisiones (Com x Ventas / Com vendedores a pagar)
+        if (commissionData && commissionData.totalCommission > 0) {
+          await createCommissionJournalEntry(operation, commissionData, supabase)
+        }
+      } catch (error) {
+        console.error("Error creando asientos contables al crear la operación:", error)
+        // No romper el alta de la operación
+      }
+    }
+
     // Invalidar caché del dashboard (los KPIs cambian al crear una operación)
     revalidateTag(CACHE_TAGS.DASHBOARD)
 
@@ -1175,91 +1234,22 @@ export async function GET(request: Request) {
 
     // Filtro de búsqueda por texto (file_code, destination, o nombre de cliente)
     const search = searchParams.get("search")
-    if (search && search.length >= 2) {
-      // Buscar también por nombre de pasajero (titular o acompañante).
-      //
-      // VIB-102: antes se armaba UN solo .or() con todas las palabras, así que
-      // "Maria Belen Olivera" matcheaba a CUALQUIER cliente llamado "Maria"
-      // (165 en Milla Cero) y el .limit(50) recortaba el listado de forma
-      // arbitraria: el titular real quedaba afuera y su operación no aparecía,
-      // aunque sí aparecía buscando por el apellido raro de una acompañante.
-      //
-      // Ahora cada palabra genera su propio .or() (PostgREST combina los `or=`
-      // repetidos con AND), o sea: cada palabra tiene que matchear nombre o
-      // apellido del MISMO cliente. Mismo criterio que /api/customers y
-      // /api/cash/movements. "Lo Bianco" sigue matcheando first_name="Lo" +
-      // last_name="Bianco".
-      let operationIdsByCustomer: string[] = []
-      try {
-        const orGroups = buildPassengerSearchOrGroups(search)
-        let customersQuery = (supabase.from("customers") as any).select("id")
-        // Defensa en profundidad además de la RLS tenant_isolation.
-        if ((user as any).org_id) {
-          customersQuery = customersQuery.eq("org_id", (user as any).org_id)
-        }
-        for (const group of orGroups) {
-          customersQuery = customersQuery.or(group)
-        }
-
-        const { data: matchingCustomers } = orGroups.length
-          ? await customersQuery.limit(CUSTOMER_SEARCH_CAP)
-          : { data: [] as any[] }
-
-        if (matchingCustomers && matchingCustomers.length > 0) {
-          if (matchingCustomers.length === CUSTOMER_SEARCH_CAP) {
-            console.warn(
-              `[operations][search] "${search}" alcanzó el tope de ${CUSTOMER_SEARCH_CAP} clientes; resultados posiblemente incompletos`
-            )
-          }
-          const customerIds = matchingCustomers.map((c: any) => c.id)
-          const { data: opCustomers } = await supabase
-            .from("operation_customers")
-            .select("operation_id")
-            .in("customer_id", customerIds)
-
-          // Dedup: una op con varios pasajeros que matchean repetía el mismo id
-          // en el filtro `id.in.(...)` e inflaba la URL de PostgREST.
-          operationIdsByCustomer = Array.from(
-            new Set((opCustomers || []).map((oc: any) => oc.operation_id).filter(Boolean))
-          )
-          if (operationIdsByCustomer.length > OPERATION_IDS_CAP) {
-            console.warn(
-              `[operations][search] "${search}" resolvió ${operationIdsByCustomer.length} operaciones por pasajero; se recortan a ${OPERATION_IDS_CAP}`
-            )
-            operationIdsByCustomer = operationIdsByCustomer.slice(0, OPERATION_IDS_CAP)
-          }
-        }
-      } catch (err) {
-        console.error("Error searching customers for operations:", err)
-      }
-
-      // Search también incluye airline_name + hotel_name (item 6 backlog Santi).
-      // RLS tenant_isolation acota a la org del user — no hay leak cross-org.
-      // El término va sanitizado: una coma o un paréntesis rompen la gramática
-      // de `or=` y tiraban toda la query del listado.
-      const safeSearch = sanitizeSearchTerm(search)
-      const textConditions: string[] = []
-      // Si el término queda vacío al sanitizar (ej. ",,,"), no agregamos
-      // `ilike.%%`: matchearía TODAS las operaciones en vez de ninguna.
-      if (safeSearch.length >= 2) {
-        textConditions.push(
-          `file_code.ilike.%${safeSearch}%`,
-          `destination.ilike.%${safeSearch}%`,
-          `airline_name.ilike.%${safeSearch}%`,
-          `hotel_name.ilike.%${safeSearch}%`
-        )
-      }
-      if (operationIdsByCustomer.length > 0) {
-        textConditions.push(`id.in.(${operationIdsByCustomer.join(",")})`)
-      }
-      if (textConditions.length > 0) {
-        query = query.or(textConditions.join(","))
-        countQuery = countQuery.or(textConditions.join(","))
-      } else {
-        // Búsqueda sin nada matcheable → resultado vacío explícito.
-        query = query.eq("id", NO_MATCH_UUID)
-        countQuery = countQuery.eq("id", NO_MATCH_UUID)
-      }
+    // VIB-152: la busqueda vive en lib/operations/search-conditions para que el
+    // listado y el export filtren EXACTAMENTE lo mismo. Antes cada ruta tenia su
+    // propia version y divergieron: el export no buscaba por nombre de pasajero.
+    const searchConditions = await buildOperationSearchConditions(
+      supabase,
+      search,
+      (user as any).org_id
+    )
+    if (searchConditions.kind === "match") {
+      const joined = searchConditions.conditions.join(",")
+      query = query.or(joined)
+      countQuery = countQuery.or(joined)
+    } else if (searchConditions.kind === "no-match") {
+      // Busqueda sin nada matcheable -> resultado vacio explicito.
+      query = query.eq("id", NO_MATCH_UUID)
+      countQuery = countQuery.eq("id", NO_MATCH_UUID)
     }
 
     // Filtros por fecha de cobro/pago/operación
@@ -1335,6 +1325,65 @@ export async function GET(request: Request) {
             }
           })
         }
+      }
+    }
+
+    // VIB-157: filtro por estado de facturación (Facturado / Parcial / No
+    // facturado). El estado no es una columna: sale de comparar los comprobantes
+    // autorizados contra la venta total, así que hay que resolver los ids ANTES
+    // de paginar — si no, filtraríamos solo la página actual.
+    const invoiceStatusFilter = searchParams.get("invoiceStatus")
+    if (
+      invoiceStatusFilter &&
+      invoiceStatusFilter !== "ALL" &&
+      ["INVOICED", "PARTIAL", "NOT_INVOICED"].includes(invoiceStatusFilter)
+    ) {
+      const statuses = await getInvoicingStatusByOperation(supabase, (user as any).org_id)
+      const withInvoices = Object.entries(statuses)
+
+      if (invoiceStatusFilter === "NOT_INVOICED") {
+        // Las que NO tienen nada facturado son "todas menos estas". La lista de
+        // ops con comprobantes es chica (una agencia real ronda las centenas),
+        // pero si crece hay que mover el filtro a SQL: una URL de PostgREST con
+        // miles de UUIDs se rompe en silencio.
+        const excluded = withInvoices
+          .filter(([, info]) => info.status !== "NOT_INVOICED")
+          .map(([id]) => id)
+        if (excluded.length > MAX_INVOICE_STATUS_IDS) {
+          return NextResponse.json(
+            {
+              error:
+                "Demasiadas operaciones facturadas para filtrar por estado de facturación. Acotá con otros filtros (agencia, fechas) e intentá de nuevo.",
+            },
+            { status: 400 }
+          )
+        }
+        if (excluded.length > 0) {
+          const list = `(${excluded.join(",")})`
+          query = query.not("id", "in", list)
+          countQuery = countQuery.not("id", "in", list)
+        }
+      } else {
+        const matching = withInvoices
+          .filter(([, info]) => info.status === invoiceStatusFilter)
+          .map(([id]) => id)
+        if (matching.length === 0) {
+          return NextResponse.json({
+            operations: [],
+            pagination: { total: 0, page: 1, limit: 50, totalPages: 0, hasMore: false },
+          })
+        }
+        if (matching.length > MAX_INVOICE_STATUS_IDS) {
+          return NextResponse.json(
+            {
+              error:
+                "Demasiadas operaciones para filtrar por estado de facturación. Acotá con otros filtros (agencia, fechas) e intentá de nuevo.",
+            },
+            { status: 400 }
+          )
+        }
+        query = query.in("id", matching)
+        countQuery = countQuery.in("id", matching)
       }
     }
 
@@ -1466,36 +1515,9 @@ export async function GET(request: Request) {
       }
     }
 
-    // Función para convertir monto de pago a la moneda de la operación
-    const convertPaymentAmount = (payment: any, targetCurrency: string): number => {
-      const paymentAmount = Number(payment.amount) || 0
-      const paymentCurrency = payment.currency || "ARS"
-
-      // Si coinciden las monedas, devolver directo
-      if (paymentCurrency === targetCurrency) return paymentAmount
-
-      // Si la operación es USD y el pago es ARS → convertir ARS a USD
-      if (targetCurrency === "USD" && paymentCurrency === "ARS") {
-        // Usar amount_usd si está disponible
-        if (payment.amount_usd && Number(payment.amount_usd) > 0) {
-          return Number(payment.amount_usd)
-        }
-        // Si no, usar exchange_rate del pago
-        const rate = Number(payment.exchange_rate) || 0
-        if (rate > 0) return paymentAmount / rate
-        // Fallback: no podemos convertir sin TC, devolver 0 para no inflar
-        return 0
-      }
-
-      // Si la operación es ARS y el pago es USD → convertir USD a ARS
-      if (targetCurrency === "ARS" && paymentCurrency === "USD") {
-        const rate = Number(payment.exchange_rate) || 0
-        if (rate > 0) return paymentAmount * rate
-        return 0
-      }
-
-      return paymentAmount
-    }
+    // La conversión vive en lib/operations/payment-conversion.ts: el cierre
+    // contable usa la MISMA función, para que no pueda calcular lo cobrado
+    // con un criterio distinto al que el cliente ve en este listado.
 
     // Agrupar pagos por operación y calcular montos (convertidos a moneda de la operación)
     const paymentsByOperation: Record<string, {
@@ -1577,26 +1599,16 @@ export async function GET(request: Request) {
     }
 
     // Facturación (2026-07-16): estado de facturado por operación para mostrar
-    // una columna en el listado sin tener que abrir op x op. Una operación está
-    // facturada si tiene facturas AFIP con status="authorized" asociadas. Sumamos
-    // con signo contable (NC restan, ND/facturas suman) igual que el guard de
-    // POST /api/invoices, para reflejar cancelaciones por nota de crédito.
+    // una columna en el listado sin tener que abrir op x op.
+    // VIB-157: la suma vive en lib/operations/invoiced-by-operation, el mismo
+    // helper que usan el detalle y el tope del servidor — netea notas de crédito
+    // y valúa cada comprobante en la moneda de la VENTA.
     // Cross-tenant: filtro explícito por org_id (no confiar en RLS).
-    const invoicedByOp: Record<string, number> = {}
-    if (operationIds.length > 0) {
-      const { data: authInvoices } = await supabase
-        .from("invoices")
-        .select("operation_id, imp_total, cbte_tipo")
-        .eq("org_id", (user as any).org_id)
-        .eq("status", "authorized")
-        .in("operation_id", operationIds)
-      for (const inv of (authInvoices || []) as any[]) {
-        const opId = inv.operation_id
-        if (!opId) continue
-        invoicedByOp[opId] =
-          (invoicedByOp[opId] || 0) + ledgerSign(inv.cbte_tipo) * (Number(inv.imp_total) || 0)
-      }
-    }
+    const invoicedByOp = await getInvoicedByOperation(
+      supabase,
+      (user as any).org_id,
+      (operations || []) as any[]
+    )
 
     // Servicios adicionales: si la flag está ON, sumar su venta a sale_amount_total
     // para que "A cobrar" (pending_amount) refleje servicios impagos del cliente.
@@ -1636,22 +1648,19 @@ export async function GET(request: Request) {
       })
       
       // Estado de facturación: comparamos lo facturado (neto de NC) contra la
-      // venta total. Total vs Parcial vs No facturado. Mismo criterio de
-      // comparación que el guard de creación de facturas (imp_total comparable
-      // a sale_amount_total).
+      // venta total. Total vs Parcial vs No facturado. Mismo criterio que el
+      // guard de creación de facturas y que el detalle de la operación.
       const invoicedAmount = invoicedByOp[op.id] || 0
       const saleTotalForInvoice = Number(op.sale_amount_total) || 0
-      let invoice_status: "INVOICED" | "PARTIAL" | "NOT_INVOICED" = "NOT_INVOICED"
-      if (invoicedAmount > 0.01) {
-        invoice_status =
-          invoicedAmount >= saleTotalForInvoice - 0.01 ? "INVOICED" : "PARTIAL"
-      }
+      const invoice_status = invoiceStatusFor(invoicedAmount, saleTotalForInvoice)
 
       return {
         ...op,
         customer_name: customerName,
         invoice_status,
         invoiced_amount: roundMoney(invoicedAmount),
+        // VIB-157: % del paquete ya facturado, para leerlo sin abrir la operación.
+        invoiced_pct: invoicedPctFor(invoicedAmount, saleTotalForInvoice),
         paid_amount: paymentData.customer_paid, // Monto Cobrado
         scheduled_pending_amount: paymentData.customer_pending,
         pending_amount: balances.customerPending, // A cobrar

@@ -22,12 +22,17 @@ import {
   isTelemetryEnabled,
 } from "./config"
 import { isTenantUsagePath } from "../modules"
+import { SERVER_ONLY_DB_EVENTS, type AnalyticsEventName } from "../events"
+import { screenFromPath, screenForView } from "../screens"
+import { getUsageSessionId } from "../session"
 import { scrubParams } from "../ga/scrub"
 
 export type QueuedUsageEvent = {
   name: string
   params: Record<string, string | number | boolean>
   occurred_at: string
+  screen: string | null
+  session_id: string | null
 }
 
 let queue: QueuedUsageEvent[] = []
@@ -42,6 +47,29 @@ function canEmit(): boolean {
   if (!isTelemetryEnabled()) return false
   // Defensa en profundidad: nada de `/admin`, `/cotizacion` ni pantallas de auth.
   return isTenantUsagePath(window.location.pathname)
+}
+
+/**
+ * La pantalla es CONTEXTO de todos los eventos, no un parametro de algunos.
+ *
+ * Resolverla aca — en el transporte — y no en cada call site es lo que hace que
+ * la dimension salga gratis: `ai_query_submitted`, `report_exported` y todo lo
+ * que se agregue despues traen su pantalla sin tocar una sola linea del
+ * componente que los emite.
+ *
+ * `view_opened` es la excepcion: su pantalla no es la ruta sino la vista que se
+ * abrio, y esa la sabe el emisor.
+ */
+function currentScreen(params: Record<string, unknown>): string | null {
+  const base = screenFromPath(window.location.pathname)
+
+  const kind = params?.view_kind
+  const view = params?.view
+  if ((kind === "tab" || kind === "dialog") && typeof view === "string") {
+    return screenForView(base, kind === "tab" ? "tab" : "dlg", view)
+  }
+
+  return base
 }
 
 /**
@@ -77,11 +105,16 @@ function scheduleFlush(): void {
  */
 export function enqueueUsageEvent(name: string, params: Record<string, unknown>): void {
   if (!canEmit()) return
+  // Estos los emite el server, con la sesion ya resuelta. Ver el comentario de
+  // `SERVER_ONLY_DB_EVENTS`.
+  if (SERVER_ONLY_DB_EVENTS.has(name as AnalyticsEventName)) return
 
   queue.push({
     name,
     params: scrubParams(params),
     occurred_at: new Date().toISOString(),
+    screen: currentScreen(params),
+    session_id: getUsageSessionId(),
   })
 
   // Se descartan los mas viejos: en una cola que no drena, los ultimos eventos

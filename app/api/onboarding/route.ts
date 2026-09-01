@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { logSecurityEvent } from "@/lib/security/audit"
 import { sendWelcomeEmail } from "@/lib/email/email-service"
+import { seedLeadRegionsForOrg } from "@/lib/leads/seed-lead-regions"
 
 const PLAN_LIMITS: Record<string, { max_users: number; max_agencies: number; max_operations_per_month: number }> = {
   STARTER: { max_users: 3, max_agencies: 1, max_operations_per_month: 50 },
@@ -106,6 +107,36 @@ export async function POST(request: Request) {
       status: "ACTIVE",
     })
     .throwOnError?.()
+
+  // Regiones default del CRM. Sin esto la org queda con 0 filas en
+  // `lead_regions` y POST /api/leads rechaza TODO con "Región inválida para
+  // tu organización" — el select del front muestra un fallback hardcodeado,
+  // así que el bug se ve como "no me deja crear el lead" y nada más.
+  // No bloqueante: si falla, el owner las puede crear desde Settings.
+  try {
+    await seedLeadRegionsForOrg(org.id, admin)
+  } catch (e: any) {
+    console.warn("onboarding: seed lead_regions failed", { orgId: org.id, error: e?.message })
+  }
+
+  // Plan de cuentas. Sin esto la org arranca con 0 filas en `chart_of_accounts`
+  // y la cadena se corta en silencio: al crear su primera caja o banco, el alta
+  // busca la cuenta contable que corresponde al tipo, no encuentra nada, y la
+  // cuenta financiera queda sin vincular. Sin esa vinculación el motor saltea
+  // todos sus movimientos y la agencia nunca genera un asiento.
+  //
+  // Se sembraba SOLO desde el alta por platform admin, así que ninguna agencia
+  // que se registró sola tenía contabilidad: las 8 creadas entre el 11 y el 21
+  // de agosto quedaron con el plan vacío.
+  //
+  // No bloqueante, igual que las regiones: si falla, el alta sigue y se puede
+  // sembrar después desde /admin/orgs.
+  try {
+    const { seedChartOfAccountsForOrg } = await import("@/lib/accounting/seed-chart-of-accounts")
+    await seedChartOfAccountsForOrg(org.id, admin)
+  } catch (e: any) {
+    console.warn("onboarding: seed chart_of_accounts failed", { orgId: org.id, error: e?.message })
+  }
 
   // Nota: NO seedeamos commission_rules default acá. Si lo hiciéramos,
   // cualquier tenant nuevo empezaría a generar comisiones automáticas

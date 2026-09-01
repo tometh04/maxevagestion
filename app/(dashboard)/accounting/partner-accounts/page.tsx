@@ -1,25 +1,16 @@
 import { redirect } from "next/navigation"
-import { PartnerAccountsClient } from "@/components/accounting/partner-accounts-client"
-import { canPerformAction, getScopedAgenciesForUser } from "@/lib/permissions-api"
-import { getRequestPermissions } from "@/lib/permissions/request"
 
-export default async function PartnerAccountsPage() {
-  // Gate por la matriz de permisos, no por user.role: el set hardcodeado
-  // [SUPER_ADMIN, ADMIN, CONTABLE] mandaba al dashboard al ORG_OWNER (el dueño
-  // del tenant) y a quien tuviera el rol contable como rol adicional.
-  const { user, supabase, matrix } = await getRequestPermissions()
-
-  if (!canPerformAction(user, "accounting", "read", matrix ?? undefined)) {
-    redirect("/dashboard")
-  }
-
-  const agencies = await getScopedAgenciesForUser(supabase, user)
-
-  return (
-    <PartnerAccountsClient
-      canWrite={canPerformAction(user, "accounting", "write", matrix ?? undefined)}
-      canDelete={canPerformAction(user, "accounting", "delete", matrix ?? undefined)}
-      agencies={agencies}
-    />
-  )
+/**
+ * Cuentas de Socios — redirección a su pestaña.
+ *
+ * Esta pantalla existía dos veces: como ruta suelta y como pestaña de
+ * Contabilidad, con el mismo componente y las mismas props. Dos fuentes para lo
+ * mismo significa que un arreglo puede aplicarse a una sola.
+ *
+ * La ruta no se borra porque hay links internos que apuntan acá (el semáforo de
+ * pagos del dashboard, el diálogo de distribución de ganancias, el reporte
+ * societario). Redirigir los mantiene funcionando y deja una sola pantalla real.
+ */
+export default function Page() {
+  redirect("/accounting/ledger?tab=partners")
 }

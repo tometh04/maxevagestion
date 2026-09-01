@@ -34,6 +34,7 @@ import { Loader2, Upload, FileText, X, CheckCircle, User } from "lucide-react"
 import { useCustomerSettings } from "@/hooks/use-customer-settings"
 import { CustomFieldsForm } from "./custom-fields-form"
 import { ReferralPartnerSelect, type ReferralValue } from "./referral-partner-select"
+import { useScreenView } from "@/hooks/use-screen-view"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -143,6 +144,7 @@ export function NewCustomerDialog({
   operationId,
   prefillData,
 }: NewCustomerDialogProps) {
+  useScreenView("new-customer", open)
   const [isLoading, setIsLoading] = useState(false)
   const [isProcessingOCR, setIsProcessingOCR] = useState(false)
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)

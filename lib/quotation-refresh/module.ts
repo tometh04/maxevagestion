@@ -61,7 +61,6 @@ export class QuotationRefreshError extends Error {
     this.name = "QuotationRefreshError"
   }
 }
-
 export interface QuotationRefreshStartInput {
   quotationId: string
   orgId: string
@@ -70,7 +69,6 @@ export interface QuotationRefreshStartInput {
   expectedUpdatedAt: string
   idempotencyKey: string
 }
-
 export interface QuotationRefreshReadInput {
   quotationId: string
   runId: string

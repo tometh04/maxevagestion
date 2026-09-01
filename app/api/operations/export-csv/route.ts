@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { getUserAgencyIds, applyOperationsFilters } from "@/lib/permissions-api"
+import { getUserAgencyIds, applyOperationsFilters, NO_MATCH_UUID } from "@/lib/permissions-api"
+import { getInvoicingStatusByOperation } from "@/lib/operations/invoiced-by-operation"
+import { buildOperationSearchConditions } from "@/lib/operations/search-conditions"
+import { resolveOperationIdsByPaymentDate } from "@/lib/operations/payment-date-filter"
 
 export const dynamic = "force-dynamic"
 
@@ -41,11 +44,18 @@ export async function GET(request: Request) {
     const status = searchParams.get("status")
     const agencyIdParam = searchParams.get("agencyId")
     const sellerIdParam = searchParams.get("sellerId")
+    const invoiceStatusParam = searchParams.get("invoiceStatus")
     const operatorIdParam = searchParams.get("operatorId")
     const typeParam = searchParams.get("type")
     const dateFrom = searchParams.get("dateFrom")
     const dateTo = searchParams.get("dateTo")
     const dateType = (searchParams.get("dateType") ?? "OPERATION").toUpperCase()
+    // VIB-152: el listado filtra por fecha de cobro/pago/vencimiento y el export
+    // los ignoraba, asi que el CSV traia operaciones que no estaban en pantalla.
+    const paymentDateFrom = searchParams.get("paymentDateFrom")
+    const paymentDateTo = searchParams.get("paymentDateTo")
+    const paymentDateType = searchParams.get("paymentDateType")
+
 
     // Columnas reales según lib/supabase/types.ts.
     // 2026-05-19 fix: la versión inicial pedía exchange_rate / notes /
@@ -87,6 +97,32 @@ export async function GET(request: Request) {
     if (sellerIdParam && sellerIdParam !== "ALL") query = query.eq("seller_id", sellerIdParam)
     if (operatorIdParam && operatorIdParam !== "ALL") query = query.eq("operator_id", operatorIdParam)
 
+    // VIB-157: mismo filtro por estado de facturación que el listado. Sin esto
+    // el CSV salía con TODAS las operaciones aunque en pantalla se estuvieran
+    // viendo solo las parciales (la divergencia que arregló VIB-152 para el
+    // buscador).
+    if (
+      invoiceStatusParam &&
+      invoiceStatusParam !== "ALL" &&
+      ["INVOICED", "PARTIAL", "NOT_INVOICED"].includes(invoiceStatusParam)
+    ) {
+      const statuses = await getInvoicingStatusByOperation(supabase, userOrgId)
+      const entries = Object.entries(statuses)
+      if (invoiceStatusParam === "NOT_INVOICED") {
+        const excluded = entries
+          .filter(([, info]) => info.status !== "NOT_INVOICED")
+          .map(([id]) => id)
+        if (excluded.length > 0) query = query.not("id", "in", `(${excluded.join(",")})`)
+      } else {
+        const matching = entries
+          .filter(([, info]) => info.status === invoiceStatusParam)
+          .map(([id]) => id)
+        query = matching.length > 0
+          ? query.in("id", matching)
+          : query.eq("id", NO_MATCH_UUID)
+      }
+    }
+
     if (dateFrom || dateTo) {
       const column =
         dateType === "DEPARTURE" ? "departure_date" :
@@ -96,15 +132,39 @@ export async function GET(request: Request) {
       if (dateTo) query = query.lte(column, dateTo)
     }
 
-    if (searchTerm) {
-      const ilike = `%${searchTerm}%`
-      query = query.or(
-        [
-          `file_code.ilike.${ilike}`,
-          `destination.ilike.${ilike}`,
-          `origin.ilike.${ilike}`,
-        ].join(",")
-      )
+    // Misma busqueda que /api/operations (incluye nombre de pasajero). Antes
+    // esta ruta miraba solo file_code/destination/origin, asi que buscar un
+    // apellido en pantalla y exportar daba resultados distintos.
+    const searchConditions = await buildOperationSearchConditions(
+      supabase,
+      searchTerm,
+      userOrgId
+    )
+    if (searchConditions.kind === "no-match") {
+      // Filtro imposible en vez de cortar antes: el CSV se arma por el camino
+      // normal y sale con los encabezados solos, con el mismo formato.
+      query = query.eq("id", NO_MATCH_UUID)
+    }
+    if (searchConditions.kind === "match") {
+      query = query.or(searchConditions.conditions.join(","))
+    }
+
+    if (paymentDateType === "OPERACION") {
+      if (paymentDateFrom) query = query.gte("operation_date", paymentDateFrom)
+      if (paymentDateTo) query = query.lte("operation_date", paymentDateTo)
+    } else if (paymentDateFrom || paymentDateTo) {
+      const opIds = await resolveOperationIdsByPaymentDate(supabase, userOrgId, {
+        paymentDateType,
+        paymentDateFrom,
+        paymentDateTo,
+      })
+      if (opIds === null) {
+        // Tipo de fecha desconocido: no se filtra, igual que el listado.
+      } else if (opIds.length === 0) {
+        query = query.eq("id", NO_MATCH_UUID)
+      } else {
+        query = query.in("id", opIds)
+      }
     }
 
     query = query.order("created_at", { ascending: false }).limit(LIMIT_HARD)

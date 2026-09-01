@@ -31,6 +31,7 @@ import { PurchaseInvoicesSection } from "@/components/operations/purchase-invoic
 import { OperationSaleInvoicesSection } from "@/components/operations/operation-invoices-section"
 import { OperationFacturacionSection } from "@/components/operations/operation-facturacion-section"
 import { OperationPaymentsSection } from "@/components/operations/operation-payments-section"
+import { OperationReceiptsSection } from "@/components/operations/operation-receipts-section"
 import { SendStatementButton } from "@/components/operations/send-statement-button"
 import { PassengerBalancesSection } from "@/components/operations/passenger-balances-section"
 import {
@@ -241,6 +242,19 @@ export function OperationDetailClient({
   // igual validan cash.write, así que esto solo destapa el acceso legítimo.
   const canViewOperationPayments =
     canViewFinancialTabs || (paymentsAllowedHere && (canReadCash || canWriteCashForServices))
+  // VIB-129: el vendedor no ve el tab de Pagos (no tiene cash.read) pero SI
+  // tiene que poder bajar el recibo de sus propias ventas, para controlar que
+  // el cobro se haya aplicado. Es una vista aparte, de solo lectura: el pedido
+  // fue explicito en que no pueda generar pagos ni cobros.
+  //
+  // Solo sobre operaciones propias. El servidor ya lo valida por su cuenta
+  // (buildReceiptPdfData corta con 403 si el SELLER no es el vendedor), asi que
+  // esto no puede filtrar recibos ajenos aunque el gate de UI se equivoque.
+  // `operationAccessScope === "own"` lo calcula el servidor en
+  // resolveOperationAccessScope y significa exactamente "este SELLER es el
+  // vendedor de esta operacion". Es el mismo criterio que usa el endpoint del
+  // recibo para autorizar, asi que la UI y el server no pueden desalinearse.
+  const canViewOwnReceipts = !canViewOperationPayments && operationAccessScope === "own"
   const canManageAlerts = !isAgencyScopedReadonly && userRole !== "VIEWER"
   const operatorNameMap = useMemo(
     () => new Map(operators.map((operator) => [operator.id, operator.name])),
@@ -430,6 +444,12 @@ export function OperationDetailClient({
               Pagos Operación ({operationBasePayments.length})
             </TabsTrigger>
           )}
+          {canViewOwnReceipts && (
+            <TabsTrigger value="receipts" className="gap-1.5">
+              <Receipt className="h-3.5 w-3.5" />
+              Recibos
+            </TabsTrigger>
+          )}
           <TabsTrigger value="services" className="gap-1.5" data-tour="operation.tab-services">
             <Wrench className="h-3.5 w-3.5" />
             Servicios
@@ -512,6 +532,17 @@ export function OperationDetailClient({
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">ITR Localizador</p>
                     <p className="text-sm font-medium mt-0.5">{(operation as any).itr_localizador || "-"}</p>
                   </div>
+                  {((operation as any).reservation_code_other || (operation as any).other_provider_name) && (
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Reserva Otros</p>
+                      <p className="text-sm font-medium mt-0.5">
+                        {(operation as any).reservation_code_other || "-"}
+                        {(operation as any).other_provider_name && (
+                          <span className="text-muted-foreground"> · {(operation as any).other_provider_name}</span>
+                        )}
+                      </p>
+                    </div>
+                  )}
                   {operationLegs.length > 0 && (
                     <div className="col-span-full mt-2">
                       <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Tramos del viaje</p>
@@ -711,6 +742,40 @@ export function OperationDetailClient({
             </Card>
           )}
 
+          {/*
+            Info adicional para el pasajero (VIB-120).
+
+            `operations.passenger_notes` se carga al final del alta/edicion y
+            hasta aca solo se veia en el PDF del detalle de la operacion
+            (lib/operations/statement-data.ts). Milla Cero lo reporto justo
+            despues de VIB-111: ven el detalle de cada servicio en pantalla,
+            pero esta nota habia que ir a buscarla al PDF.
+
+            Solo se muestra si hay algo cargado: la mayoria de las operaciones
+            no la usan y una tarjeta vacia en todas seria ruido.
+          */}
+          {typeof operation.passenger_notes === "string" &&
+            operation.passenger_notes.trim().length > 0 && (
+            <Card className="rounded-xl border border-border/40">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  📝 Info adicional para el pasajero
+                </CardTitle>
+                <CardDescription>
+                  Se incluye en el PDF del detalle de la operación
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {/* whitespace-pre-line respeta los saltos de linea que cargo la
+                    agencia; break-words evita que un texto largo sin espacios
+                    desborde la tarjeta en mobile. */}
+                <p className="whitespace-pre-line break-words text-sm text-foreground/90">
+                  {operation.passenger_notes}
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
           {/* ── Row 2: Financiero (full width) ── */}
           {canViewFinancialTabs && (() => {
             const serviceSaleTotal = operationServices
@@ -903,6 +968,12 @@ export function OperationDetailClient({
           />
         </TabsContent>
 
+        {canViewOwnReceipts && (
+          <TabsContent value="receipts" className="space-y-4">
+            <OperationReceiptsSection payments={operationBasePayments} />
+          </TabsContent>
+        )}
+
         <TabsContent value="payments" className="space-y-4">
           <OperationPaymentsSection
             operationId={operation.id}
@@ -949,9 +1020,25 @@ export function OperationDetailClient({
               operatorCost={operation.operator_cost || 0}
               currency={operationCurrency}
               commissionPercent={
+                // Sin comisión calculada va `null`, NO un 10% inventado: antes
+                // la pantalla descontaba una comisión que no existía.
                 commissionRecords.length > 0 && commissionRecords[0]?.percentage
                   ? commissionRecords[0].percentage
-                  : 10
+                  : null
+              }
+              // La comisión del referidor sale de la MISMA ganancia. Sin esto,
+              // la "Ganancia Neta" de esta pestaña quedaba inflada (reportado
+              // por Lozada: una venta de margen USD 1.218 mostraba ~1.035
+              // cuando lo real eran 826).
+              referralCommission={
+                referralCommission
+                  ? {
+                      amount: referralCommission.amount,
+                      currency: referralCommission.currency,
+                      status: referralCommission.status,
+                      partnerName: referralCommission.referral_partners?.name ?? null,
+                    }
+                  : null
               }
               operationServices={operationServices}
             />
@@ -1047,6 +1134,7 @@ export function OperationDetailClient({
             operationId={operation.id}
             operationStatus={operation.status}
             operators={operators}
+            sellers={sellers}
             userRole={userRole}
             canAddServices={canAddServices}
             canEditServices={canManageExistingServices}

@@ -47,6 +47,14 @@ export interface EmiliaFlightLeg {
     waiting_time: string
   }>
   arrival_next_day?: boolean
+  stops?: number
+  options?: Array<{
+    segments?: Array<{
+      baggage?: string
+      carryOnBagInfo?: { quantity: string }
+    }>
+  }>
+  segments?: Array<Record<string, unknown>>
 }
 
 export interface EmiliaFlight {
@@ -237,7 +245,8 @@ function mapFlightToItem(flight: EmiliaFlight) {
   // distintos según proveedor (TVC, etc.). Defaults razonables si falta algo.
   // Escalas: el shape transformado no trae `stops`; las contamos desde los
   // layovers del leg de ida.
-  const stops = outboundLeg(flight)?.layovers?.length ?? 0
+  const outbound = outboundLeg(flight)
+  const stops = outbound?.stops ?? outbound?.layovers?.length ?? 0
   const route = buildFlightRoute(flight)
   const airlineName = flight.airline?.name ?? null
   // Descripción legible para el editor/PDF: aerolínea · ruta · escalas.

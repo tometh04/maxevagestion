@@ -95,6 +95,68 @@ export function MpSnapshot({ orgId }: { orgId: string }) {
                 </pre>
               </div>
               <div>
+                <div className="font-semibold mb-1">Intentos de cobro:</div>
+                {Array.isArray(data.charge_attempts) ? (
+                  data.charge_attempts.length === 0 ? (
+                    <div className="text-muted-foreground">
+                      MP no reporta intentos de cobro para este preapproval.
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      {(data.charge_attempts as any[]).map((a) => (
+                        <div key={a.id} className="border-b last:border-0 py-1">
+                          <div className="flex flex-wrap items-center gap-x-2">
+                            <span className="text-muted-foreground">
+                              {a.debit_date || a.date_created
+                                ? new Date(a.debit_date || a.date_created).toLocaleString("es-AR")
+                                : "sin fecha"}
+                            </span>
+                            <code
+                              className={
+                                a.payment_status === "approved"
+                                  ? "text-green-700 dark:text-green-400"
+                                  : a.payment_status === "rejected"
+                                    ? "text-red-700 dark:text-red-400"
+                                    : ""
+                              }
+                            >
+                              {a.payment_status ?? a.status}
+                            </code>
+                            {a.transaction_amount != null && (
+                              <span>${Number(a.transaction_amount).toLocaleString("es-AR")}</span>
+                            )}
+                            {a.retry_attempt != null && <span>intento #{a.retry_attempt}</span>}
+                          </div>
+                          {a.reason_label ? (
+                            <div className="text-muted-foreground">
+                              Motivo: {a.reason_label}
+                              {a.reason_retryable === false && " — no sirve reintentar el mismo medio"}
+                              {a.reason_action ? ` → ${a.reason_action}` : ""}
+                            </div>
+                          ) : a.status_detail ? (
+                            <div className="text-muted-foreground">Detalle MP: {a.status_detail}</div>
+                          ) : !a.has_payment ? (
+                            <div className="text-muted-foreground">
+                              Sin cobro ejecutado — MP dejó el intento agendado.
+                            </div>
+                          ) : null}
+                          {a.next_retry_date && (
+                            <div className="text-muted-foreground">
+                              Próximo reintento de MP:{" "}
+                              {new Date(a.next_retry_date).toLocaleString("es-AR")}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )
+                ) : (
+                  <div className="text-red-700 dark:text-red-400">
+                    No se pudo consultar MP: {(data.charge_attempts as any)?.error}
+                  </div>
+                )}
+              </div>
+              <div>
                 <div className="font-semibold mb-1">Últimos eventos:</div>
                 {(data.recent_events as any[]).length === 0 ? (
                   <div className="text-muted-foreground">Sin eventos.</div>

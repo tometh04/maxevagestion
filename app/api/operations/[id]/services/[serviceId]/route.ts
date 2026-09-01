@@ -2,11 +2,16 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canPerformAction, getUserAgencyIds, resolveOperationAccessScope, isAgencyReadonlyScope } from "@/lib/permissions-api"
-import { recalculateOperationCommissions } from "@/lib/commissions/calculate"
+import { recalculateOperationCommissions, getSellerPercentage } from "@/lib/commissions/calculate"
+import {
+  serviceCommissionAmount,
+  serviceGeneratesCommission,
+} from "@/lib/commissions/service-commission"
 import { getOpenOperatorPaymentStatus } from "@/lib/accounting/operator-payment-settlement"
 import { getOrgFeatureFlag } from "@/lib/settings/org-features"
 import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
 import { shouldSkipOperatorModelRecalc } from "@/lib/operations/recalc-guard"
+import { getExchangeRate } from "@/lib/accounting/exchange-rates"
 
 // Epsilon monetario para comparar montos (evita falsos negativos por float).
 const MONEY_EPSILON = 0.005
@@ -169,7 +174,9 @@ export async function PATCH(
 
     // Verificar operación
     const { data: operation, error: opError } = await (supabase.from("operations") as any)
-      .select("id, seller_id, status, agency_id, file_code, destination, departure_date")
+      // `sale_currency`/`currency`: la comision del servicio se guarda en la
+      // moneda de la OPERACION (ver service-commission.ts).
+      .select("id, seller_id, status, agency_id, file_code, destination, departure_date, sale_currency, currency")
       .eq("id", operationId)
       .eq("org_id", (user as any).org_id)
       .single()
@@ -235,6 +242,14 @@ export async function PATCH(
     if (updateData.nights !== undefined) updateData.nights = updateData.nights ? Number(updateData.nights) : null
     if (updateData.rooms !== undefined) updateData.rooms = updateData.rooms ? Number(updateData.rooms) : null
     if (updateData.flight_stops !== undefined) updateData.flight_stops = updateData.flight_stops != null ? Number(updateData.flight_stops) : 0
+
+    // `generates_commission` se deriva del tipo, así que tiene que seguirlo.
+    // `service_type` es editable, pero el flag se calculaba sólo en el alta y
+    // después quedaba congelado: un SEAT convertido a HOTEL no comisionaba
+    // nunca, y un HOTEL convertido a VISA seguía comisionando para siempre.
+    if (updateData.service_type !== undefined) {
+      updateData.generates_commission = serviceGeneratesCommission(updateData.service_type)
+    }
 
     updateData.updated_at = new Date().toISOString()
 
@@ -329,6 +344,129 @@ export async function PATCH(
               .eq("id", serviceId)
           }
         }
+      }
+    }
+
+    // ── Resincronizar la comisión propia del servicio ──
+    //
+    // La comisión de un servicio es una fila aparte (`kind = 'SERVICE'`) que el
+    // recálculo de la operación deliberadamente no toca —tiene su propio
+    // vendedor, su propio porcentaje y su propio mes—, así que si no se
+    // actualiza acá se queda con el monto viejo para siempre. Antes esto no se
+    // notaba porque la comisión del servicio vivía sumada a la de la venta.
+    //
+    // El mes (`accrual_date`) NO se toca: editar un importe no cambia cuándo se
+    // vendió el servicio, y moverlo correría la comisión de período.
+    const typeChanged =
+      updateData.service_type !== undefined &&
+      updateData.service_type !== currentService.service_type
+
+    if (saleChanged || costChanged || typeChanged) {
+      try {
+        const stillCommissions = updatedService.generates_commission === true
+        const sellerId = updatedService.seller_id
+
+        const { data: existingCommission } = await (supabase.from("commission_records") as any)
+          .select("id, status, amount_paid, percentage")
+          .eq("operation_id", operationId)
+          .eq("operation_service_id", serviceId)
+          .eq("kind", "SERVICE")
+          .maybeSingle()
+
+        const locked =
+          existingCommission &&
+          ((existingCommission.status ?? "PENDING") !== "PENDING" ||
+            Number(existingCommission.amount_paid ?? 0) > 0)
+
+        if (locked) {
+          // Bajarle el monto a una comisión ya cobrada dejaría el asiento sin
+          // respaldo; subírsela habilitaría un doble pago. Se avisa y se deja
+          // para ajuste manual.
+          warnings.push(
+            "La comisión de este servicio ya fue pagada: el monto no se actualizó automáticamente."
+          )
+        } else if (sellerId) {
+          const sellerPct = Number(
+            existingCommission?.percentage ??
+              (await getSellerPercentage(supabase, (user as any).org_id, sellerId))
+          )
+
+          // La comisión se expresa en la moneda de la OPERACIÓN. Si el servicio
+          // está cargado en otra, hay que convertir: `commission_records` no
+          // guarda moneda y el importe se lee asumiendo la de la operación.
+          const svcSaleCurrency = String(updatedService.sale_currency ?? "ARS")
+          const operationCurrency = String(operation.sale_currency || operation.currency || "USD")
+          let serviceRate: number | null = null
+          if (svcSaleCurrency !== operationCurrency) {
+            serviceRate = await getExchangeRate(supabase, new Date())
+          }
+
+          const commissionAmount = serviceCommissionAmount({
+            saleAmount: Number(updatedService.sale_amount ?? 0),
+            costAmount: Number(updatedService.cost_amount ?? 0),
+            saleCurrency: svcSaleCurrency,
+            costCurrency: String(updatedService.cost_currency ?? "ARS"),
+            sellerPercentage: sellerPct,
+            operationCurrency,
+            exchangeRate: serviceRate,
+          })
+
+          if (commissionAmount === null) {
+            // Hacía falta convertir y no hay tipo de cambio. Se avisa y NO se
+            // toca la comisión existente: dejarla como está es mejor que
+            // pisarla con un importe que no se pudo valuar.
+            warnings.push(
+              "No se pudo actualizar la comisión del servicio: falta el tipo de cambio para convertirla a la moneda de la operación."
+            )
+          } else if (!stillCommissions || commissionAmount <= 0) {
+            // Dejó de comisionar (cambió a un tipo sin comisión, o el margen se
+            // fue a cero o a pérdida): la fila no debe quedar viva.
+            if (existingCommission) {
+              await (supabase.from("commission_records") as any)
+                .delete()
+                .eq("id", existingCommission.id)
+              await (supabase.from("operation_services") as any)
+                .update({ commission_record_id: null })
+                .eq("id", serviceId)
+            }
+          } else if (existingCommission) {
+            await (supabase.from("commission_records") as any)
+              .update({
+                amount: commissionAmount,
+                percentage: sellerPct,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", existingCommission.id)
+          } else {
+            // Pasó a comisionar recién ahora (p. ej. VISA → HOTEL).
+            const nowIso = new Date().toISOString()
+            const { data: created } = await (supabase.from("commission_records") as any)
+              .insert({
+                operation_id: operationId,
+                operation_service_id: serviceId,
+                seller_id: sellerId,
+                org_id: (user as any).org_id,
+                agency_id: operation.agency_id,
+                kind: "SERVICE",
+                amount: commissionAmount,
+                percentage: sellerPct,
+                status: "PENDING",
+                date_calculated: nowIso,
+                accrual_date: nowIso.slice(0, 10),
+              })
+              .select("id")
+              .single()
+
+            if (created?.id) {
+              await (supabase.from("operation_services") as any)
+                .update({ commission_record_id: created.id })
+                .eq("id", serviceId)
+            }
+          }
+        }
+      } catch (err) {
+        console.error("[Services PATCH] Error resincronizando la comisión del servicio:", err)
+        warnings.push("No se pudo actualizar la comisión de este servicio automáticamente")
       }
     }
 
@@ -470,21 +608,27 @@ export async function DELETE(
         .eq("id", service.ledger_expense_id)
     }
 
-    // ── Revertir comisión si existe y está PENDING ──
+    // ── Revertir la comisión DEL SERVICIO si existe y está PENDING ──
+    //
+    // El `kind = 'SERVICE'` del filtro es la parte importante: antes se borraba
+    // el registro apuntado por `commission_record_id` sin más, y ese registro
+    // era la comisión de (operación, vendedor) — o sea que borrar un servicio le
+    // volaba al vendedor TODA la comisión de la operación, incluida la de la
+    // venta base y la de los demás servicios. Ahora cada servicio tiene su
+    // propia fila y sólo se lleva la suya.
     if (service.commission_record_id && service.generates_commission) {
       const { data: commRecord } = await (supabase.from("commission_records") as any)
-        .select("id, status, amount")
+        .select("id, status, amount, amount_paid, kind")
         .eq("id", service.commission_record_id)
-        .single()
+        .eq("kind", "SERVICE")
+        .maybeSingle()
 
-      if (commRecord?.status === "PAID") {
+      if (commRecord && ((commRecord.status ?? "PENDING") !== "PENDING" || Number(commRecord.amount_paid ?? 0) > 0)) {
         warnings.push("La comisión del vendedor ya fue pagada y no se puede revertir automáticamente.")
       } else if (commRecord) {
-        // Si la comisión tiene monto acumulado de otros servicios,
-        // lo más seguro es eliminar el registro (se recalculará si hay otros)
         await (supabase.from("commission_records") as any)
           .delete()
-          .eq("id", service.commission_record_id)
+          .eq("id", commRecord.id)
       }
     }
 

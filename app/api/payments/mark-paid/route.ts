@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { paymentLedgerType } from "@/lib/payments/ledger-type"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
@@ -8,7 +9,8 @@ import {
   validateSufficientBalance,
   getMainPassengerName,
 } from "@/lib/accounting/ledger"
-import { autoCalculateFXForPayment } from "@/lib/accounting/fx"
+import { getOperationExchangeRate } from "@/lib/accounting/fx"
+import { registrarDiferenciaPorCobro } from "@/lib/accounting/fx-journal"
 import { getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
 import {
   applyOperatorPaymentSettlement,
@@ -22,6 +24,13 @@ import { createPaymentReceivedMessage } from "@/lib/whatsapp/whatsapp-service"
 import { upsertSellerReceiptMessage } from "@/lib/whatsapp/seller-receipt-message"
 import { autoCreateWithholdings, type WithholdingType } from "@/lib/accounting/withholding-rules"
 import { enforceUserRateLimit } from "@/lib/rate-limit"
+import {
+  requiresCustomerIncomeExchangeRate,
+  getCustomerIncomeReferenceCurrency,
+  isExchangeRatePlausibleVsMarket,
+  coercePositiveNumber,
+} from "@/lib/payments/customer-income-fx"
+import { getCurrentArsPerUsd } from "@/lib/payments/load-rules"
 
 export async function POST(request: Request) {
   try {
@@ -150,6 +159,40 @@ export async function POST(request: Request) {
         error: "Este pago ya fue marcado como pagado anteriormente",
         already_paid: true
       }, { status: 409 }) // 409 Conflict
+    }
+
+    // ============================================
+    // GUARD DE SANIDAD DEL TIPO DE CAMBIO (VIB-132)
+    // ============================================
+    // El mismo guard que ya corre en POST y PATCH de /api/payments: un cobro
+    // ARS↔USD con un TC absurdo (ej. 1) hace amount_usd = monto en ARS y
+    // destruye la deuda del cliente (caso real op #17955bf1: USD 1.270 →
+    // USD -1.948.180). mark-paid era la única vía de cobro sin esta validación.
+    //
+    // Deliberadamente conservador para ser ADITIVO: solo valida cuando el
+    // request trae un exchange_rate. No exige el TC cuando antes no se exigía
+    // (a diferencia del POST), así que no rompe flujos que hoy funcionan.
+    const providedRate = coercePositiveNumber(exchange_rate)
+    if (providedRate) {
+      const needsRateCheck = requiresCustomerIncomeExchangeRate({
+        payerType: paymentData.payer_type,
+        direction: paymentData.direction,
+        paymentCurrency: paymentData.currency,
+        saleCurrency: getCustomerIncomeReferenceCurrency({ operation }),
+      })
+
+      if (needsRateCheck) {
+        const marketRate = await getCurrentArsPerUsd(supabase)
+        if (!isExchangeRatePlausibleVsMarket(providedRate, marketRate)) {
+          return NextResponse.json(
+            {
+              error: `El tipo de cambio ingresado (${providedRate}) parece incorrecto. El de referencia es ~${Math.round(marketRate)} ARS por USD. Revisalo.`,
+              code: "IMPLAUSIBLE_EXCHANGE_RATE",
+            },
+            { status: 400 }
+          )
+        }
+      }
     }
 
     // Calcular amount_usd si hay exchange_rate proporcionado
@@ -368,12 +411,7 @@ export async function POST(request: Request) {
     }
 
     // Determinar tipo de ledger movement
-    const ledgerType =
-      paymentData.direction === "INCOME"
-        ? "INCOME"
-        : paymentData.payer_type === "OPERATOR"
-        ? "OPERATOR_PAYMENT"
-        : "EXPENSE"
+    const ledgerType = paymentLedgerType(paymentData)
 
     // Obtener nombre del pasajero principal para el concepto
     const passengerName = paymentData.operation_id 
@@ -411,7 +449,31 @@ export async function POST(request: Request) {
       },
       supabase
     )
-    
+
+    // Vincular el pago con su movimiento del mayor (VIB-167).
+    //
+    // El UPDATE a PAID de más arriba no puede incluirlo porque corre ANTES de
+    // crear el movimiento; hace falta este segundo update. Sin él, el pago
+    // queda con `ledger_movement_id` en NULL y el borrado cae a un fallback que
+    // busca por `operation_id` + tipo + monto + moneda con `.limit(1)`: con dos
+    // cuotas del mismo importe se lleva el movimiento de la otra. Eran 282
+    // pagos en producción, y es también la causa de los huérfanos que venía
+    // detectando `/api/payments/orphans`.
+    //
+    // No corta el flujo si falla: el cobro ya está registrado y revertirlo acá
+    // sería peor. Pero se loguea, porque deja un pago sin vínculo.
+    const { error: linkError } = await paymentsTable
+      .update({ ledger_movement_id: ledgerMovementId })
+      .eq("id", paymentId)
+
+    if (linkError) {
+      console.error(
+        `❌ mark-paid ${paymentId}: no se pudo vincular el ledger_movement ${ledgerMovementId}. ` +
+          `El pago queda sin vínculo y su borrado dependerá del fallback por convención.`,
+        linkError
+      )
+    }
+
     // Si es un pago a operador, marcar operator_payment como PAID
     if (paymentData.payer_type === "OPERATOR" && linkedOperatorPaymentId) {
       try {
@@ -472,27 +534,67 @@ export async function POST(request: Request) {
       // No romper el flujo principal
     }
 
-    // Calcular FX automáticamente si hay diferencia de moneda
-    // NOTA: autoCalculateFXForPayment no es transaccional — si falla, el pago
-    // queda registrado pero sin su movimiento FX correlativo. Generamos alerta
-    // visible para revisión manual.
-    // TODO: migrar a RPC atómico (payment + ledger + FX en una sola transacción).
-    if (paymentData.operation_id) {
+    // Diferencia de cambio del cobro (VIB-141 / D1 y D2).
+    //
+    // Se registra como ASIENTO, no como movimiento de plata: la diferencia es
+    // nocional, no entró ni salió un peso de ninguna caja. El mecanismo
+    // anterior creaba un movimiento contra la Caja ARS que habría inflado su
+    // saldo con dinero inexistente.
+    //
+    // Y se calcula POR COBRO, comparando lo que entró contra el valor en libros
+    // de la porción de deuda que cancela. El anterior comparaba la venta total
+    // contra los pagos acumulados, así que un cobro parcial generaba una
+    // "diferencia" del tamaño del saldo impago.
+    //
+    // La idempotencia la da el movimiento del cobro, con su índice único.
+    if (paymentData.operation_id && operation?.sale_currency) {
       try {
-        await autoCalculateFXForPayment(
-          supabase,
-          paymentData.operation_id,
-          paymentData.currency as "ARS" | "USD",
-          parseFloat(paymentData.amount),
-          paymentData.currency === "USD" ? exchangeRate : null,
-          user.id
-        )
+        const monedaDeuda = operation.sale_currency as "ARS" | "USD"
+        const monedaCobro = paymentData.currency as "ARS" | "USD"
 
-        // Si se generó un FX_LOSS, verificar si debemos generar alerta
-        // (la alerta se generará automáticamente en generateAllAlerts)
+        // Sin diferencia de moneda no hay nada que reconocer, que es el caso
+        // más común. Se corta antes de pedirle cotizaciones a la base.
+        if (monedaDeuda !== monedaCobro) {
+          const { data: settingsFx } = await (supabase as any)
+            .from("financial_settings")
+            .select("primary_currency")
+            .eq("org_id", (user as any).org_id)
+            .eq("agency_id", agencyId)
+            .maybeSingle()
+
+          const cotizacionReconocimiento = await getOperationExchangeRate(
+            supabase,
+            paymentData.operation_id,
+            monedaDeuda
+          )
+          // El mismo tipo de cambio con el que se registró el movimiento del
+          // cobro, para que el asiento y la plata cuenten la misma historia.
+          const cotizacionCobro = exchangeRate
+
+          // Sin las dos cotizaciones no se puede medir la diferencia, y
+          // suponerla sería inventar un resultado.
+          if (cotizacionReconocimiento && cotizacionCobro) {
+            await registrarDiferenciaPorCobro(
+              {
+                movementId: ledgerMovementId,
+                orgId: (user as any).org_id,
+                agencyId: agencyId || null,
+                operationId: paymentData.operation_id,
+                fecha: String(paymentData.date_paid || new Date().toISOString()).slice(0, 10),
+                montoCobrado: parseFloat(paymentData.amount),
+                monedaCobro,
+                cotizacionCobro,
+                monedaDeuda,
+                cotizacionReconocimiento,
+                monedaFuncional: (settingsFx?.primary_currency as "ARS" | "USD") || "ARS",
+              },
+              supabase
+            )
+          }
+        }
       } catch (error) {
         console.error(
-          `⚠️ CRITICAL: Error calculando FX para payment ${paymentId} (op ${paymentData.operation_id}). Pago quedó sin FX correlativo. Revisar manualmente.`,
+          `⚠️ Error asentando la diferencia de cambio del pago ${paymentId} (op ${paymentData.operation_id}). El cobro quedó bien registrado; falta su asiento.`,
           error
         )
         // Crear alerta de sistema para revisión manual
@@ -503,7 +605,7 @@ export async function POST(request: Request) {
             user_id: user.id,
             operation_id: paymentData.operation_id,
             type: "SYSTEM",
-            description: `FX no calculado para pago ${paymentId}. Revisar manualmente diferencia de cambio.`,
+            description: `Falta el asiento de diferencia de cambio del pago ${paymentId}. El cobro está bien registrado.`,
             date_due: new Date().toISOString(),
             status: "PENDING",
           })

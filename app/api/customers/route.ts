@@ -6,6 +6,7 @@ import { applyCustomersFilters, getUserAgencyIds, canPerformAction } from "@/lib
 import { resolveUserPermissions } from "@/lib/permissions-agency"
 import { checkDuplicateCustomer, sendCustomerNotifications } from "@/lib/customers/customer-service"
 import { getOrgFeatureFlag } from "@/lib/settings/org-features"
+import { resolveLastOperation } from "@/lib/customers/last-operation"
 import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
 import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
 
@@ -41,7 +42,11 @@ export async function GET(request: Request) {
             sale_amount_total,
             sale_currency,
             currency,
-            status
+            status,
+            operation_date,
+            destination,
+            seller_id,
+            sellers:seller_id(id, name)
           )
         )
       `)
@@ -136,12 +141,29 @@ export async function GET(request: Request) {
           totalSpentByCurrency[cur] = (totalSpentByCurrency[cur] || 0) + amt
         })
 
+      // VIB-153: "cartera" para recontacto. El vendedor de un cliente es el de
+      // su ULTIMA operacion, no todos los que alguna vez le vendieron: si no,
+      // el mismo pasajero le aparece a dos vendedores y recibe dos llamados de
+      // la misma agencia ofreciendole lo mismo.
       return {
         ...customer,
         trips,
         totalSpentByCurrency,
+        last_operation: resolveLastOperation(operations),
       }
     })
+
+    // Filtro por vendedor de la cartera. Se aplica despues de resolver la ultima
+    // operacion porque el dato no vive en `customers`: no se puede pedir a la base.
+    // El scope por rol/agencia ya lo aplico applyCustomersFilters — esto solo
+    // acota dentro de lo que el usuario YA podia ver, nunca lo amplia.
+    const sellerIdFilter = searchParams.get("sellerId")
+    const customersFiltered =
+      sellerIdFilter && sellerIdFilter !== "ALL"
+        ? customersWithStats.filter(
+            (c: any) => c.last_operation?.seller_id === sellerIdFilter
+          )
+        : customersWithStats
 
     // Get total count for pagination — .select() FIRST for chaining
     let countSelectQuery = supabase
@@ -173,9 +195,14 @@ export async function GET(request: Request) {
     const { count } = await countSelectQuery
 
     return NextResponse.json({ 
-      customers: customersWithStats,
+      customers: customersFiltered,
       pagination: {
-        total: count || 0,
+        // Con filtro de vendedor el total sale de la lista ya filtrada: el count
+        // de la base no puede saber de la ultima operacion.
+        total:
+          sellerIdFilter && sellerIdFilter !== "ALL"
+            ? customersFiltered.length
+            : count || 0,
         limit,
         offset,
         hasMore: (count || 0) > offset + limit
