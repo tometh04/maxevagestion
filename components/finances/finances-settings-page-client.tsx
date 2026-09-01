@@ -9,6 +9,8 @@ import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { DecimalInput } from "@/components/ui/decimal-input"
+import { DEFAULT_COMMISSION_SERVICE_TYPES, ALL_SERVICE_TYPES } from "@/lib/commissions/service-commission"
+
 import { DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
 import { Badge } from "@/components/ui/badge"
 import { Save, Loader2, Info, AlertTriangle } from "lucide-react"
@@ -29,6 +31,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+
+/** Etiquetas de los tipos de servicio, tal como se ven en la operación. */
+const SERVICE_TYPE_LABELS: Record<string, string> = {
+  HOTEL: "Hotel",
+  FLIGHT: "Vuelo / Aéreo",
+  TRANSFER: "Traslado / Transfer",
+  EXCURSION: "Excursión",
+  ASSISTANCE: "Asistencia",
+  SEAT: "Asiento",
+  LUGGAGE: "Equipaje",
+  VISA: "Visa",
+}
 
 interface FinancialSettings {
   id?: string
@@ -63,10 +77,22 @@ interface FinancialSettings {
   commission_base_net_of_iva: boolean
   commission_iva_rate: number
   commission_net_from: string | null
+  /** Tipos de servicio que comisionan por defecto en esta oficina. */
+  commission_service_types: string[]
 }
 
-export function FinancesSettingsPageClient() {
+interface FinancesSettingsPageClientProps {
+  /** Oficinas que el usuario puede configurar. Con una sola, el selector no aparece. */
+  agencies: Array<{ id: string; name: string }>
+}
+
+export function FinancesSettingsPageClient({ agencies }: FinancesSettingsPageClientProps) {
   const { toast } = useToast()
+  /**
+   * Qué oficina se está configurando. `financial_settings` es por agencia, así
+   * que sin esto la segunda oficina no tenía cómo llegar a su propia fila.
+   */
+  const [agencyId, setAgencyId] = useState<string>(agencies[0]?.id ?? "")
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   // Flag per-org (organization_settings, separado de financial_settings):
@@ -92,17 +118,20 @@ export function FinancesSettingsPageClient() {
     commission_base_net_of_iva: false,
     commission_iva_rate: 0.105,
     commission_net_from: null,
+    commission_service_types: [...DEFAULT_COMMISSION_SERVICE_TYPES],
   })
 
   useEffect(() => {
     loadSettings()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [agencyId])
 
   const loadSettings = async () => {
     try {
       setLoading(true)
-      const response = await fetch("/api/finances/settings")
+      const response = await fetch(
+        agencyId ? `/api/finances/settings?agencyId=${agencyId}` : "/api/finances/settings"
+      )
 
       if (!response.ok) {
         throw new Error("Error al cargar configuración")
@@ -145,7 +174,7 @@ export function FinancesSettingsPageClient() {
       const response = await fetch("/api/finances/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(settings),
+        body: JSON.stringify(agencyId ? { ...settings, agencyId } : settings),
       })
 
       if (!response.ok) {
@@ -256,19 +285,36 @@ export function FinancesSettingsPageClient() {
           <h1 className="text-2xl font-semibold tracking-tight">Configuración Financiera</h1>
           <p className="text-muted-foreground">Personaliza monedas e impuestos</p>
         </div>
-        <Button onClick={saveSettings} disabled={saving}>
-          {saving ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Guardando...
-            </>
-          ) : (
-            <>
-              <Save className="mr-2 h-4 w-4" />
-              Guardar Cambios
-            </>
+        <div className="flex items-center gap-3">
+          {/* Con una sola oficina el selector sobra: la config es la de siempre. */}
+          {agencies.length > 1 && (
+            <Select value={agencyId} onValueChange={setAgencyId}>
+              <SelectTrigger className="w-[200px]" aria-label="Oficina a configurar">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {agencies.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
-        </Button>
+          <Button onClick={saveSettings} disabled={saving}>
+            {saving ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Guardando...
+              </>
+            ) : (
+              <>
+                <Save className="mr-2 h-4 w-4" />
+                Guardar Cambios
+              </>
+            )}
+          </Button>
+        </div>
       </div>
 
       <Tabs defaultValue="currencies" className="space-y-4">
@@ -679,6 +725,57 @@ export function FinancesSettingsPageClient() {
                   }
                 />
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Qué servicios comisionan. Antes era una lista fija en el código:
+              asiento, equipaje y visa no comisionaban nunca, porque nacieron
+              como cargos que se trasladan al pasajero sin margen. No es cierto
+              en todas las agencias, así que ahora lo decide cada oficina. */}
+          <Card className="rounded-xl border-border/40">
+            <CardHeader>
+              <CardTitle>Servicios que comisionan</CardTitle>
+              <CardDescription>
+                Qué tipos de servicio adicional generan comisión para el vendedor.
+                Es el valor por defecto al cargar un servicio: en cada uno se
+                puede prender o apagar a mano.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {ALL_SERVICE_TYPES.map((type) => {
+                  const checked = settings.commission_service_types.includes(type)
+                  return (
+                    <div
+                      key={type}
+                      className="flex items-center justify-between rounded-lg border border-border/40 bg-muted/10 px-3 py-2.5"
+                    >
+                      <Label
+                        htmlFor={`commission_service_type_${type}`}
+                        className="text-sm font-medium"
+                      >
+                        {SERVICE_TYPE_LABELS[type]}
+                      </Label>
+                      <Switch
+                        id={`commission_service_type_${type}`}
+                        checked={checked}
+                        onCheckedChange={(value) =>
+                          setSettings({
+                            ...settings,
+                            commission_service_types: value
+                              ? [...settings.commission_service_types, type]
+                              : settings.commission_service_types.filter((t) => t !== type),
+                          })
+                        }
+                      />
+                    </div>
+                  )
+                })}
+              </div>
+              <p className="mt-3 text-xs text-muted-foreground">
+                Cambiar esto no toca las comisiones ya calculadas: aplica a los
+                servicios que se carguen de acá en adelante.
+              </p>
             </CardContent>
           </Card>
 

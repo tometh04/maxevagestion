@@ -502,3 +502,66 @@ describe("buildCommissionsReport", () => {
     expect(report.summary.truncated).toBe(true)
   })
 })
+
+describe("buildCommissionsReport — oficina en el detalle", () => {
+  /**
+   * El agregado por oficina (`byAgency`) existía desde el principio, pero cada
+   * fila del detalle no decía de dónde venía. En una org con dos oficinas y
+   * vendedores que trabajan para las dos, el PDF que se le manda al vendedor
+   * mezclaba Rosario y Madero sin ninguna marca.
+   */
+  it("cada fila del detalle dice de qué oficina es la venta", () => {
+    const report = build([
+      record({ id: "c-ros", amount: 1000, operations: { id: "op-ros", agency_id: "ag-1" } }),
+      record({ id: "c-mad", amount: 2000, operations: { id: "op-mad", agency_id: "ag-2" } }),
+    ])
+
+    const byId = new Map(report.detail.map((r) => [r.id, r]))
+    expect(byId.get("c-ros")!.agencyId).toBe("ag-1")
+    expect(byId.get("c-ros")!.agencyName).toBe("Rosario")
+    expect(byId.get("c-mad")!.agencyName).toBe("Madero")
+  })
+
+  it("una operación sin oficina no rompe la fila", () => {
+    const report = build([record({ amount: 1000, operations: { agency_id: null } })])
+
+    expect(report.detail[0].agencyId).toBeNull()
+    expect(report.detail[0].agencyName).toBe("Sin agencia")
+  })
+
+  it("una oficina desconocida cae al mismo cartel, no a un UUID en pantalla", () => {
+    const report = build([record({ amount: 1000, operations: { agency_id: "ag-borrada" } })])
+
+    expect(report.detail[0].agencyName).toBe("Sin agencia")
+  })
+
+  /**
+   * Candado: el desglose por oficina y el total tienen que cerrar. Si dejaran
+   * de cerrar, la pantalla de pago y el reporte dirían números distintos para
+   * el mismo período, que es exactamente lo que se vino a evitar.
+   */
+  it("la suma de las oficinas es el total del reporte", () => {
+    const report = build([
+      record({ id: "c-1", amount: 1000, operations: { id: "op-1", agency_id: "ag-1" } }),
+      record({ id: "c-2", amount: 2500, operations: { id: "op-2", agency_id: "ag-2" } }),
+      record({ id: "c-3", amount: 500, operations: { id: "op-3", agency_id: null } }),
+    ])
+
+    const suma = report.byAgency.reduce((acc, a) => acc + a.total, 0)
+    expect(suma).toBeCloseTo(report.summary.total, 2)
+    expect(report.byAgency).toHaveLength(3)
+  })
+
+  it("cada fila del detalle coincide con la oficina que la agrupó", () => {
+    const report = build([
+      record({ id: "c-1", amount: 1000, operations: { id: "op-1", agency_id: "ag-1" } }),
+      record({ id: "c-2", amount: 2500, operations: { id: "op-2", agency_id: "ag-2" } }),
+    ])
+
+    for (const agency of report.byAgency) {
+      const filas = report.detail.filter((r) => r.agencyId === agency.agencyId)
+      const suma = filas.reduce((acc, r) => acc + r.amount, 0)
+      expect(suma).toBeCloseTo(agency.total, 2)
+    }
+  })
+})

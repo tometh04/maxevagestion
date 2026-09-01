@@ -7,10 +7,8 @@ import {
   getUserAgencyIds,
   resolveOperationAccessScope,
   isAgencyReadonlyScope,
-  isSellerWithinUserAgencies,
 } from "@/lib/permissions-api"
-import { isIndependentAdvisor } from "@/lib/permissions"
-import { SELLER_OPTION_ROLES } from "@/lib/sellers/seller-option"
+import { resolveServiceSeller } from "@/lib/sellers/resolve-service-seller"
 import { createLedgerMovement, calculateARSEquivalent } from "@/lib/accounting/ledger"
 import { createOperatorPayment } from "@/lib/accounting/operator-payments"
 import { getExchangeRate, getLatestExchangeRate, getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
@@ -18,6 +16,7 @@ import { getSellerPercentage } from "@/lib/commissions/calculate"
 import {
   serviceCommissionAmount,
   serviceGeneratesCommission,
+  getServiceCommissionTypesConfig,
 } from "@/lib/commissions/service-commission"
 
 // Labels para conceptos contables
@@ -82,7 +81,16 @@ export async function GET(
       return NextResponse.json({ error: "Error al obtener servicios" }, { status: 500 })
     }
 
-    return NextResponse.json({ services: services || [] })
+    // Qué tipos comisionan por defecto en la oficina de esta operación. Viaja
+    // con la lista para que el formulario no tenga que conocer la regla ni
+    // pedirla aparte: es el valor inicial del switch "Comisiona" al elegir un
+    // tipo, no una restricción — el usuario puede prenderlo o apagarlo igual.
+    const svcTypesConfig = await getServiceCommissionTypesConfig(supabase, operation.agency_id)
+
+    return NextResponse.json({
+      services: services || [],
+      commissionServiceTypes: Array.from(svcTypesConfig.types),
+    })
   } catch (error: any) {
     console.error("[Services GET] Error inesperado:", error)
     return NextResponse.json({ error: error.message || "Error" }, { status: 500 })
@@ -182,61 +190,28 @@ export async function POST(
     }
 
     // ── Vendedor del servicio ────────────────────────────────
-    // Quien vende el servicio es quien cobra su comisión, y no es
-    // necesariamente el vendedor de la operación: cualquiera puede cargar un
-    // servicio sobre una venta ajena (una asistencia, una reprogramación). Por
-    // defecto comisiona quien lo carga, y se puede elegir a otro.
-    let serviceSellerId: string = user.id
-    const requestedSellerId = typeof rawSellerId === "string" ? rawSellerId.trim() : ""
-
-    if (requestedSellerId && requestedSellerId !== user.id) {
-      // El asesor independiente sólo ve y cobra lo suyo: no puede desviarle la
-      // comisión a otra persona.
-      if (isIndependentAdvisor(user as any)) {
-        return NextResponse.json(
-          { error: "No puede asignar el servicio a otro vendedor" },
-          { status: 403 }
-        )
-      }
-
-      // Filtro por org: sin esto se podría imputar la comisión a un usuario de
-      // otro tenant.
-      const { data: targetSeller } = await (supabase.from("users") as any)
-        .select("id, role, is_active")
-        .eq("id", requestedSellerId)
-        .eq("org_id", (user as any).org_id)
-        .maybeSingle()
-
-      if (
-        !targetSeller ||
-        targetSeller.is_active === false ||
-        !SELLER_OPTION_ROLES.includes(targetSeller.role)
-      ) {
-        return NextResponse.json({ error: "Vendedor inválido" }, { status: 400 })
-      }
-
-      // Un SELLER sólo puede asignarle el servicio a alguien de sus mismas
-      // agencias. Mismo criterio que el alta de operaciones.
-      if (user.role === "SELLER") {
-        const withinAgency = await isSellerWithinUserAgencies(
-          supabase,
-          requestedSellerId,
-          agencyIds
-        )
-        if (!withinAgency) {
-          return NextResponse.json(
-            { error: "El vendedor no pertenece a sus agencias" },
-            { status: 403 }
-          )
-        }
-      }
-
-      serviceSellerId = requestedSellerId
+    // Ver `lib/sellers/resolve-service-seller.ts`: misma regla y mismos gates
+    // que usa el PATCH al cambiar quién comisiona.
+    const sellerResult = await resolveServiceSeller(supabase, {
+      user: user as any,
+      agencyIds,
+      requestedSellerId: rawSellerId,
+      fallbackSellerId: user.id,
+    })
+    if (!sellerResult.ok) {
+      return NextResponse.json({ error: sellerResult.error }, { status: sellerResult.status })
     }
+    const serviceSellerId = sellerResult.sellerId
 
     const saleAmount = Number(sale_amount)
     const costAmount = Number(cost_amount)
-    const generatesCommission = serviceGeneratesCommission(service_type)
+    // El switch "Comisiona" del formulario manda siempre el booleano explícito.
+    // Cuando no viene (clientes de API), se deriva de lo que configuró la oficina.
+    const svcTypesConfig = await getServiceCommissionTypesConfig(supabase, operation.agency_id)
+    const generatesCommission =
+      typeof body.generates_commission === "boolean"
+        ? body.generates_commission
+        : serviceGeneratesCommission(service_type, svcTypesConfig)
     const serviceLabel = SERVICE_TYPE_LABELS[service_type] || service_type
     const fileCode = operation.file_code || operationId.slice(0, 8)
     const departureDate = operation.departure_date

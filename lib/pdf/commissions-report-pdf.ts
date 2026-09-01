@@ -411,6 +411,13 @@ export function generateCommissionsReportPdf({
   }
   const widths = { passenger: 46, destination: 32, type: 32 }
 
+  /**
+   * Con dos oficinas, cada fila del detalle dice de cuál salió. Es el pedido de
+   * Lozada: el PDF se le manda a cada vendedor para que sepa de dónde viene su
+   * comisión, y la mayoría vende para las dos.
+   */
+  const showAgencyPerRow = report.byAgency.length > 1
+
   const drawDetailHeader = () => {
     b.setFill(LIGHT)
     doc.rect(MARGIN, b.y, CONTENT_W, 7, "F")
@@ -466,6 +473,9 @@ export function generateCommissionsReportPdf({
       // vez de sumar columnas: con seis columnas fijas más dos importes no queda
       // ancho para el destino, y el reporte volvería a ser una pared de números.
       const subline = [
+        // La oficina sólo cuando hay más de una: en una agencia de una sola
+        // sede, repetirla en cada fila es ruido.
+        showAgencyPerRow ? row.agencyName : "",
         row.saleAmount != null ? `Venta ${money(row.saleAmount)}` : "",
         row.marginAmount != null ? `Ganancia ${money(row.marginAmount)}` : "",
         row.referralPartnerName ? `Cliente referido por ${row.referralPartnerName}` : "",

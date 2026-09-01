@@ -38,6 +38,7 @@ import {
 } from "@/lib/quotation-documents/schemas"
 import { fetchQuotationDocumentForUser } from "@/lib/quotation-documents/client"
 import type { QuotationOperatorOption } from "@/lib/operators/quotation-option"
+import { DEFAULT_COMMISSION_SERVICE_TYPES } from "@/lib/commissions/service-commission"
 
 interface QuotationBuilderProps {
   open: boolean
@@ -133,7 +134,10 @@ const ITEM_TYPES = [
   { value: "OTHER", label: "Otro", icon: MapPin },
 ]
 
-const COMMISSION_TYPES = new Set(["HOTEL", "FLIGHT", "TRANSFER", "EXCURSION", "ASSISTANCE"])
+// Las cotizaciones usan el set histórico global, no la config por oficina: son
+// otro contexto (`quotation_items.generates_commission`) y todavía no tienen a
+// mano la agencia. Se comparte la constante para que no vuelvan a divergir.
+const COMMISSION_TYPES = new Set<string>(DEFAULT_COMMISSION_SERVICE_TYPES)
 
 const REFRESH_IDENTITY_FIELDS = new Set([
   "item_type",

@@ -48,6 +48,8 @@ import {
 import { Input } from "@/components/ui/input"
 import { DecimalInput } from "@/components/ui/decimal-input"
 import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
+import { DEFAULT_COMMISSION_SERVICE_TYPES } from "@/lib/commissions/service-commission"
 import { Textarea } from "@/components/ui/textarea"
 import { Separator } from "@/components/ui/separator"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -160,15 +162,17 @@ interface OperationServicesSectionProps {
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
-const SERVICE_TYPE_OPTIONS: { value: ServiceType; label: string; commissions: boolean }[] = [
-  { value: "HOTEL", label: "Hotel", commissions: true },
-  { value: "FLIGHT", label: "Vuelo / Aéreo", commissions: true },
-  { value: "TRANSFER", label: "Traslado / Transfer", commissions: true },
-  { value: "EXCURSION", label: "Excursión", commissions: true },
-  { value: "ASSISTANCE", label: "Asistencia", commissions: true },
-  { value: "SEAT", label: "Asiento", commissions: false },
-  { value: "LUGGAGE", label: "Equipaje", commissions: false },
-  { value: "VISA", label: "Visa", commissions: false },
+// Qué tipos comisionan ya no vive acá: lo decide cada oficina y viaja en el GET
+// de servicios (`commissionServiceTypes`).
+const SERVICE_TYPE_OPTIONS: { value: ServiceType; label: string }[] = [
+  { value: "HOTEL", label: "Hotel" },
+  { value: "FLIGHT", label: "Vuelo / Aéreo" },
+  { value: "TRANSFER", label: "Traslado / Transfer" },
+  { value: "EXCURSION", label: "Excursión" },
+  { value: "ASSISTANCE", label: "Asistencia" },
+  { value: "SEAT", label: "Asiento" },
+  { value: "LUGGAGE", label: "Equipaje" },
+  { value: "VISA", label: "Visa" },
 ]
 
 /**
@@ -224,6 +228,8 @@ const emptyServiceForm = () => ({
   operator_id: "",
   /** Vacío = comisiona quien está cargando el servicio (lo resuelve el servidor). */
   seller_id: "",
+  /** Switch "Comisiona". Se inicializa con el default de la oficina al elegir el tipo. */
+  generates_commission: false,
   sale_amount: "",
   sale_currency: "ARS" as Currency,
   cost_amount: "",
@@ -277,11 +283,17 @@ export function OperationServicesSection({
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [form, setForm] = useState(emptyServiceForm())
   /**
-   * Si el tipo elegido comisiona. Define si tiene sentido preguntar quién cobra:
-   * un asiento o un equipaje no generan comisión, así que el selector sobra.
+   * Qué tipos comisionan por defecto en la oficina de esta operación. Lo manda
+   * el GET de servicios: la regla dejó de estar hardcodeada acá porque ahora
+   * cada agencia elige la suya en Finanzas → Configuración.
+   *
+   * Arranca con el set histórico y no vacío: mientras carga, el dropdown diría
+   * "no comisiona" para todo. Se usa sólo para el valor inicial del switch al elegir
+   * un tipo, así que un render de más no toca nada de lo ya guardado.
    */
-  const serviceTypeCommissions =
-    SERVICE_TYPE_OPTIONS.find((o) => o.value === form.service_type)?.commissions ?? false
+  const [commissionServiceTypes, setCommissionServiceTypes] = useState<string[]>(
+    DEFAULT_COMMISSION_SERVICE_TYPES
+  )
   /** Para mostrar en la tabla de quién es la comisión de cada servicio. */
   const sellerNameById = useMemo(
     () => new Map(sellers.map((s) => [s.id, s.name])),
@@ -396,6 +408,9 @@ export function OperationServicesSection({
       if (!res.ok) throw new Error("Error al cargar servicios")
       const data = await res.json()
       setServices(data.services || [])
+      if (Array.isArray(data.commissionServiceTypes)) {
+        setCommissionServiceTypes(data.commissionServiceTypes)
+      }
     } catch {
       toast.error("Error al cargar los servicios")
     } finally {
@@ -460,6 +475,7 @@ export function OperationServicesSection({
       service_type: s.service_type,
       operator_id: s.operator_id || "",
       seller_id: s.seller_id || "",
+      generates_commission: s.generates_commission === true,
       sale_amount: String(s.sale_amount),
       sale_currency: s.sale_currency,
       cost_amount: String(s.cost_amount),
@@ -527,10 +543,15 @@ export function OperationServicesSection({
         description: form.description || null,
       }
 
-      // Sólo en el alta: reasignar el vendedor de un servicio ya creado movería
-      // una comisión ya devengada de una persona a otra, que es otro problema.
-      // Vacío = comisiona quien lo carga, y eso lo resuelve el servidor.
-      if (!editingServiceId && form.seller_id) {
+      // El switch va siempre explícito, en alta y en edición: es una decisión
+      // del usuario sobre esta fila y tiene que ganarle al default de la
+      // oficina, también cuando lo apaga sobre un tipo que sí comisiona.
+      payload.generates_commission = form.generates_commission
+
+      // Quién comisiona. Vacío = quien lo carga, y eso lo resuelve el servidor.
+      // En edición el servidor rechaza el cambio (409) si esa comisión ya se
+      // pagó o se saldó, y el error se muestra dentro del diálogo.
+      if (form.seller_id) {
         payload.seller_id = form.seller_id
       }
 
@@ -1115,6 +1136,9 @@ export function OperationServicesSection({
                 value={form.service_type}
                 onValueChange={(v) => {
                   const newForm = { ...form, service_type: v as ServiceType }
+                  // El switch arranca con lo que configuró la oficina para ese tipo.
+                  // Es sólo el valor inicial: el usuario lo puede dar vuelta.
+                  newForm.generates_commission = commissionServiceTypes.includes(v)
                   // Auto-fill from operation data
                   if (operationData) {
                     if (v === "HOTEL") {
@@ -1147,7 +1171,7 @@ export function OperationServicesSection({
                     <SelectItem key={opt.value} value={opt.value}>
                       <span>{opt.label}</span>
                       <span className="ml-2 text-xs text-muted-foreground">
-                        {opt.commissions ? "· comisiona" : "· no comisiona"}
+                        {commissionServiceTypes.includes(opt.value) ? "· comisiona" : "· no comisiona"}
                       </span>
                     </SelectItem>
                   ))}
@@ -1175,10 +1199,34 @@ export function OperationServicesSection({
               </Select>
             </div>
 
-            {/* Vendedor del servicio: se ofrece sólo en el alta, y sólo si el
-                tipo elegido comisiona. Reasignarlo después movería una comisión
-                ya devengada de una persona a otra. */}
-            {!editingServiceId && sellers.length > 0 && serviceTypeCommissions && (
+            {/* ¿Comisiona? Antes se derivaba del tipo y no se podía tocar, así
+                que un asiento vendido con margen propio no comisionaba nunca.
+                Ahora el tipo sólo define el valor inicial (según lo que haya
+                configurado la oficina) y esto lo puede dar vuelta. */}
+            <div className="flex items-center justify-between rounded-lg border border-border/60 px-3 py-2.5">
+              <div className="grid gap-0.5">
+                <Label htmlFor="svc-generates-commission" className="text-sm font-medium">
+                  Comisiona
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  {form.generates_commission
+                    ? "Genera comisión para el vendedor elegido"
+                    : "No genera comisión"}
+                </p>
+              </div>
+              <Switch
+                id="svc-generates-commission"
+                checked={form.generates_commission}
+                onCheckedChange={(checked) =>
+                  setForm({ ...form, generates_commission: checked })
+                }
+              />
+            </div>
+
+            {/* Quién comisiona. Se puede cambiar también en la edición: el
+                servidor rechaza el cambio si esa comisión ya se pagó o se
+                saldó, que era el motivo real para bloquearlo acá. */}
+            {sellers.length > 0 && form.generates_commission && (
               <div className="grid gap-1.5">
                 <Label>Comisiona</Label>
                 <Select
@@ -1191,7 +1239,11 @@ export function OperationServicesSection({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={SELLER_SELF}>Yo</SelectItem>
+                    {(!editingServiceId || !form.seller_id) && (
+                      <SelectItem value={SELLER_SELF}>
+                        {editingServiceId ? "Sin asignar" : "Yo"}
+                      </SelectItem>
+                    )}
                     {sellers.map((s) => (
                       <SelectItem key={s.id} value={s.id}>
                         {s.name}

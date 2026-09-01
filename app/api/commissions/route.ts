@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server"
 import { getRequestPermissions } from "@/lib/permissions/request"
-import { canPerformAction, isOwnDataOnlyResolved } from "@/lib/permissions-api"
+import {
+  canPerformAction,
+  getScopedAgenciesForUser,
+  isOwnDataOnlyResolved,
+} from "@/lib/permissions-api"
 import {
   emptyTotalsByCurrency,
   getCommissionCurrency,
@@ -104,6 +108,7 @@ export async function GET(request: Request) {
     const periodStart = searchParams.get("periodStart")
     const periodEnd = searchParams.get("periodEnd")
     const month = searchParams.get("month") // Para filtrar por mes (YYYY-MM)
+    const agencyId = searchParams.get("agencyId")
 
     // Sobre qué fecha corren los filtros de período. El criterio (y el porqué de
     // no usar `date_calculated`) vive en `lib/commissions/date-filter.ts`.
@@ -137,6 +142,7 @@ export async function GET(request: Request) {
         *,
         operations!inner(
           id,
+          agency_id,
           file_code,
           destination,
           operation_date,
@@ -159,6 +165,30 @@ export async function GET(request: Request) {
       query = query.eq("seller_id", sellerId)
     }
     // Si es admin y no hay sellerId o sellerId=ALL, no filtra → trae todos
+
+    // ── Oficina ────────────────────────────────────────────────────────────
+    //
+    // La agencia sale de `operations.agency_id`, no del vendedor: en una org con
+    // dos oficinas la mayoría de los vendedores pertenece a las dos, así que
+    // seller → agencia no distingue nada. Es la misma fuente que usa el Reporte
+    // de Comisiones.
+    //
+    // `commission_records.agency_id` existe y hoy coincide, pero es nullable y
+    // no tiene backfill: sirve como dato de salida, no como filtro.
+    const scopedAgencies = await getScopedAgenciesForUser(supabase, user as any)
+    const scopedAgencyIds = scopedAgencies.map((a) => a.id)
+
+    if (agencyId && agencyId !== "ALL") {
+      if (!scopedAgencyIds.includes(agencyId)) {
+        return NextResponse.json({ error: "No tiene acceso a esa agencia" }, { status: 403 })
+      }
+      query = query.eq("operations.agency_id", agencyId)
+    } else if (scopedAgencyIds.length > 0) {
+      // Sin filtro explícito, sólo las oficinas que el usuario ve. Es la misma
+      // invariante que `fetchCommissionRecords` ya aplicaba en el reporte; que
+      // las dos pantallas dijeran cosas distintas era peor que alinearlas.
+      query = query.in("operations.agency_id", scopedAgencyIds)
+    }
 
     // Comisiones saldadas en un cierre administrativo (VIB-94): quedan fuera por
     // defecto. No son deuda ni pago, y si aparecieran acá volverían a sumar en
@@ -270,6 +300,8 @@ export async function GET(request: Request) {
       }
     }
 
+    const agencyNameById = new Map(scopedAgencies.map((a) => [a.id, a.name]))
+
     // Transformar commission_records a formato Commission
     const commissions = filteredRecords.map((cr: any) => {
       const seller = sellersMap[cr.seller_id]
@@ -284,7 +316,12 @@ export async function GET(request: Request) {
         seller_name: seller?.name || "Sin vendedor",
         seller_email: seller?.email || "",
         sellers: seller ? { id: cr.seller_id, name: seller.name } : null,
-        agency_id: cr.agency_id,
+        // La oficina de la comisión es la de la OPERACIÓN: es donde se hizo la
+        // venta y de dónde sale la plata. `cr.agency_id` queda de respaldo para
+        // filas viejas (la columna es nullable y nunca se backfilleó).
+        agency_id: cr.operations?.agency_id ?? cr.agency_id ?? null,
+        agency_name:
+          agencyNameById.get(cr.operations?.agency_id ?? cr.agency_id ?? "") ?? "",
         amount: parseFloat(cr.amount || 0),
         percentage: cr.percentage ? parseFloat(cr.percentage) : null,
         status: cr.status as "PENDING" | "PAID",

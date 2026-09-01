@@ -5,30 +5,97 @@
  * que se puede fijar sin una base de datos, y es la que corre en dos rutas
  * distintas (alta y edición del servicio).
  */
-
 import {
+  ALL_SERVICE_TYPES,
+  DEFAULT_COMMISSION_SERVICE_TYPES,
+  DEFAULT_SERVICE_COMMISSION_TYPES_CONFIG,
+  parseCommissionServiceTypes,
   serviceCommissionAmount,
   serviceCommissionBase,
   serviceGeneratesCommission,
 } from "@/lib/commissions/service-commission"
 
+const DEFAULTS = DEFAULT_SERVICE_COMMISSION_TYPES_CONFIG
+
 describe("serviceGeneratesCommission", () => {
-  it("comisionan los servicios con margen para la agencia", () => {
+  it("con la config por defecto, comisionan los servicios con margen para la agencia", () => {
     for (const type of ["TRANSFER", "ASSISTANCE", "HOTEL", "FLIGHT", "EXCURSION"]) {
-      expect(serviceGeneratesCommission(type)).toBe(true)
+      expect(serviceGeneratesCommission(type, DEFAULTS)).toBe(true)
     }
   })
 
-  it("no comisionan los cargos administrativos que se trasladan al pasajero", () => {
+  it("con la config por defecto no comisionan los cargos administrativos", () => {
     for (const type of ["SEAT", "LUGGAGE", "VISA"]) {
-      expect(serviceGeneratesCommission(type)).toBe(false)
+      expect(serviceGeneratesCommission(type, DEFAULTS)).toBe(false)
     }
   })
 
   it("un tipo desconocido o vacío no comisiona", () => {
-    expect(serviceGeneratesCommission(null)).toBe(false)
-    expect(serviceGeneratesCommission(undefined)).toBe(false)
-    expect(serviceGeneratesCommission("CUALQUIERA")).toBe(false)
+    expect(serviceGeneratesCommission(null, DEFAULTS)).toBe(false)
+    expect(serviceGeneratesCommission(undefined, DEFAULTS)).toBe(false)
+    expect(serviceGeneratesCommission("CUALQUIERA", DEFAULTS)).toBe(false)
+  })
+
+  it("una oficina puede hacer comisionar el asiento", () => {
+    const config = { types: new Set(["SEAT", "ASSISTANCE"]) }
+    expect(serviceGeneratesCommission("SEAT", config)).toBe(true)
+    expect(serviceGeneratesCommission("ASSISTANCE", config)).toBe(true)
+    // Y deja de comisionar lo que sacó de su lista.
+    expect(serviceGeneratesCommission("HOTEL", config)).toBe(false)
+  })
+
+  it("sin config cae al set histórico, nunca a 'no comisiona nada'", () => {
+    // Es la diferencia que importa: un error de lectura no puede dejar de
+    // pagarle a alguien en silencio.
+    expect(serviceGeneratesCommission("HOTEL", null)).toBe(true)
+    expect(serviceGeneratesCommission("HOTEL", undefined)).toBe(true)
+    expect(serviceGeneratesCommission("SEAT", null)).toBe(false)
+  })
+
+  /**
+   * Candado: recorre el catálogo entero y fija que el default reproduce
+   * exactamente el comportamiento anterior a que esto fuera configurable.
+   * Si alguien cambia `DEFAULT_COMMISSION_SERVICE_TYPES`, todas las agencias que
+   * no configuraron nada cambian de conducta; que se entere acá.
+   */
+  it("el default reproduce el comportamiento histórico para los 8 tipos", () => {
+    const historico: Record<string, boolean> = {
+      SEAT: false,
+      LUGGAGE: false,
+      VISA: false,
+      TRANSFER: true,
+      ASSISTANCE: true,
+      HOTEL: true,
+      FLIGHT: true,
+      EXCURSION: true,
+    }
+    expect(ALL_SERVICE_TYPES.length).toBe(Object.keys(historico).length)
+    for (const type of ALL_SERVICE_TYPES) {
+      expect(serviceGeneratesCommission(type, DEFAULTS)).toBe(historico[type])
+    }
+    expect(Array.from(DEFAULT_COMMISSION_SERVICE_TYPES).sort()).toEqual(
+      ["ASSISTANCE", "EXCURSION", "FLIGHT", "HOTEL", "TRANSFER"]
+    )
+  })
+})
+
+describe("parseCommissionServiceTypes", () => {
+  it("normaliza a mayúsculas y descarta lo que no es un tipo conocido", () => {
+    const parsed = parseCommissionServiceTypes(["seat", "HOTEL", "INVENTADO", 7, null])
+    expect(parsed).not.toBeNull()
+    expect(Array.from(parsed!.types).sort()).toEqual(["HOTEL", "SEAT"])
+  })
+
+  it("devuelve null si no es un array, para que el caller caiga al default", () => {
+    expect(parseCommissionServiceTypes(null)).toBeNull()
+    expect(parseCommissionServiceTypes("HOTEL")).toBeNull()
+    expect(parseCommissionServiceTypes({ types: ["HOTEL"] })).toBeNull()
+  })
+
+  it("un array vacío es una decisión válida: no comisiona ningún servicio", () => {
+    const parsed = parseCommissionServiceTypes([])
+    expect(parsed).not.toBeNull()
+    expect(serviceGeneratesCommission("HOTEL", parsed)).toBe(false)
   })
 })
 

@@ -161,3 +161,37 @@ describe("buildReferralsReport", () => {
     expect(report.byAgency.find((a) => a.agencyId === "ag-2")?.total).toBe(400)
   })
 })
+
+describe("buildReferralsReport — oficina en el detalle", () => {
+  /**
+   * Espejo del reporte de comisiones: el cliente mira los dos lado a lado y
+   * dejar uno con oficina y el otro sin ella se reporta como bug.
+   */
+  it("cada fila del detalle dice de qué oficina es la venta", () => {
+    const report = build([
+      record({ amount: 800, operations: { id: "op-ros", agency_id: "ag-1" } }),
+      record({ amount: 900, operations: { id: "op-mad", agency_id: "ag-2" } }),
+    ])
+
+    const byOp = new Map(report.detail.map((r) => [r.operationId, r]))
+    expect(byOp.get("op-ros")!.agencyName).toBe("Rosario")
+    expect(byOp.get("op-mad")!.agencyName).toBe("Madero")
+  })
+
+  it("una operación sin oficina no rompe la fila", () => {
+    const report = build([record({ amount: 500, operations: { id: "op-x", agency_id: null } })])
+
+    expect(report.detail[0].agencyId).toBeNull()
+    expect(report.detail[0].agencyName).toBe("Sin agencia")
+  })
+
+  it("la suma de las oficinas es el total del reporte", () => {
+    const report = build([
+      record({ amount: 800, operations: { id: "op-1", agency_id: "ag-1" } }),
+      record({ amount: 1200, operations: { id: "op-2", agency_id: "ag-2" } }),
+    ])
+
+    const suma = report.byAgency.reduce((acc, a) => acc + a.total, 0)
+    expect(suma).toBeCloseTo(report.summary.total, 2)
+  })
+})

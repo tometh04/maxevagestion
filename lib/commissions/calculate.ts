@@ -298,7 +298,7 @@ export interface ApplyCommissionResult {
  * este candado, editar la operación la recalcularía y volvería a nacer como
  * deuda — que es exactamente lo que el cierre vino a evitar.
  */
-function isLocked(record: {
+export function isLocked(record: {
   status?: string | null
   amount_paid?: number | null
   settled_at?: string | null

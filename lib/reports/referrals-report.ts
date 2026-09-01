@@ -77,6 +77,9 @@ export interface ReferralsReportDetailRow {
   operationId: string
   fileCode: string
   destination: string
+  /** Oficina de la venta: de dónde sale la plata de esta comisión. */
+  agencyId: string | null
+  agencyName: string
   month: string
   operationDate: string
   partnerId: string
@@ -332,6 +335,10 @@ export function buildReferralsReport({
         operationId: r.operation_id,
         fileCode: op?.file_code || "-",
         destination: op?.destination || "-",
+        agencyId: op?.agency_id ?? null,
+        agencyName: op?.agency_id
+          ? agencyNames.get(op.agency_id) || "Sin agencia"
+          : "Sin agencia",
         month: operationDate.slice(0, 7),
         operationDate,
         partnerId: r.referral_partner_id,

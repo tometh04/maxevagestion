@@ -1,6 +1,6 @@
 import { getCurrentUser } from "@/lib/auth"
 import { createServerClient } from "@/lib/supabase/server"
-import { getUserAgencyIds } from "@/lib/permissions-api"
+import { getUserAgencyIds, getScopedAgenciesForUser } from "@/lib/permissions-api"
 import { resolveUserPermissions, assertPermission } from "@/lib/permissions-agency"
 import { FinancesSettingsPageClient } from "@/components/finances/finances-settings-page-client"
 
@@ -31,6 +31,11 @@ export default async function FinancesSettingsPage() {
     )
   }
 
-  return <FinancesSettingsPageClient />
+  // Una org con dos oficinas tiene DOS filas de `financial_settings`. Hasta
+  // ahora la pantalla escribía siempre la primera y la otra quedaba con los
+  // defaults para siempre, sin ningún cartel que lo dijera.
+  const agencies = await getScopedAgenciesForUser(supabase, user as any)
+
+  return <FinancesSettingsPageClient agencies={agencies} />
 }
 

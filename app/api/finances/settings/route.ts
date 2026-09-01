@@ -5,6 +5,7 @@ import { getUserAgencyIds } from "@/lib/permissions-api"
 import { resolveUserPermissions, assertPermission } from "@/lib/permissions-agency"
 import { z } from "zod"
 import { DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
+import { ALL_SERVICE_TYPES } from "@/lib/commissions/service-commission"
 
 export const dynamic = 'force-dynamic'
 
@@ -76,8 +77,37 @@ const financialSettingsSchema = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida (YYYY-MM-DD)")
     .nullable()
     .optional(),
+  // Qué tipos de servicio comisionan por defecto en esta oficina. Es sólo el
+  // default del switch "Comisiona" de cada servicio, no una restricción: la
+  // verdad de cada fila vive en `operation_services.generates_commission`.
+  commission_service_types: z.array(z.enum(ALL_SERVICE_TYPES)).optional(),
 })
 
+
+/**
+ * Qué oficina se está configurando.
+ *
+ * Hasta ahora los dos verbos pegaban siempre contra `agencyIds[0]`, así que una
+ * agencia con dos oficinas sólo podía configurar la primera y la otra quedaba
+ * con los defaults para siempre — sin ningún cartel que lo dijera. Con el
+ * parámetro explícito, la pantalla puede elegir; sin él se conserva el
+ * comportamiento de antes.
+ *
+ * `agencyId` NO es columna de `financial_settings`: se saca del body antes del
+ * `parse` de Zod. Un campo de más en el payload de PostgREST rompe la escritura
+ * entera con un 500 genérico.
+ */
+function resolveTargetAgency(
+  requested: unknown,
+  agencyIds: string[]
+): { ok: true; agencyId: string } | { ok: false; status: number; error: string } {
+  const wanted = typeof requested === "string" ? requested.trim() : ""
+  if (!wanted) return { ok: true, agencyId: agencyIds[0] }
+  if (!agencyIds.includes(wanted)) {
+    return { ok: false, status: 403, error: "No tiene acceso a esa agencia" }
+  }
+  return { ok: true, agencyId: wanted }
+}
 // GET - Obtener configuración financiera
 export async function GET(request: Request) {
   try {
@@ -111,11 +141,20 @@ export async function GET(request: Request) {
       )
     }
 
+    const target = resolveTargetAgency(
+      new URL(request.url).searchParams.get("agencyId"),
+      agencyIds
+    )
+    if (!target.ok) {
+      return NextResponse.json({ error: target.error }, { status: target.status })
+    }
+    const targetAgencyId = target.agencyId
+
     // Obtener configuración existente
     const { data: existing, error } = await supabase
       .from("financial_settings")
       .select("*")
-      .eq("agency_id", agencyIds[0])
+      .eq("agency_id", targetAgencyId)
       .maybeSingle()
 
     if (error && error.code !== 'PGRST116') {
@@ -129,7 +168,7 @@ export async function GET(request: Request) {
     // Si no existe, crear configuración por defecto
     if (!existing) {
       const defaultSettings = {
-        agency_id: agencyIds[0],
+        agency_id: targetAgencyId,
         primary_currency: 'USD',
         enabled_currencies: ['ARS', 'USD'],
         exchange_rate_config: {
@@ -227,16 +266,22 @@ export async function PUT(request: Request) {
       )
     }
 
-    const body = await request.json()
-    
+    const { agencyId: requestedAgencyId, ...settingsBody } = await request.json()
+
+    const target = resolveTargetAgency(requestedAgencyId, agencyIds)
+    if (!target.ok) {
+      return NextResponse.json({ error: target.error }, { status: target.status })
+    }
+    const targetAgencyId = target.agencyId
+
     // Validar datos
-    const validatedData = financialSettingsSchema.parse(body)
+    const validatedData = financialSettingsSchema.parse(settingsBody)
 
     // Verificar si existe configuración
     const { data: existing } = await supabase
       .from("financial_settings")
       .select("id")
-      .eq("agency_id", agencyIds[0])
+      .eq("agency_id", targetAgencyId)
       .single()
 
     const updateData = {
@@ -269,7 +314,7 @@ export async function PUT(request: Request) {
       // Crear nueva
       const { data, error } = await (supabase.from("financial_settings") as any)
         .insert({
-          agency_id: agencyIds[0],
+          agency_id: targetAgencyId,
           ...updateData,
           created_by: user.id,
         })

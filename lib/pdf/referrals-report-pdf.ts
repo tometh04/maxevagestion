@@ -369,6 +369,9 @@ export function generateReferralsReportPdf({
   }
   const widths = { file: 26, destination: 52, customer: 46 }
 
+  /** Con dos oficinas, cada fila dice de cuál salió la comisión. */
+  const showAgencyPerRow = report.byAgency.length > 1
+
   const drawDetailHeader = () => {
     b.setFill(LIGHT)
     doc.rect(MARGIN, b.y, CONTENT_W, 7, "F")
@@ -417,6 +420,9 @@ export function generateReferralsReportPdf({
       // El %/base van en una sublínea gris en vez de sumar columnas: mantiene la
       // fila legible y hace que el destino y el cliente sigan entrando.
       const subline = [
+        // La oficina sólo cuando hay más de una, igual que en el reporte de
+        // comisiones: en una agencia de una sola sede sería ruido en cada fila.
+        showAgencyPerRow ? row.agencyName : "",
         row.percentage != null ? `${row.percentage}%` : "",
         row.baseAmount != null ? `sobre ${money(row.baseAmount)}` : "",
       ]

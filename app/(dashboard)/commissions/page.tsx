@@ -2,10 +2,14 @@ import { redirect } from "next/navigation"
 import { AdminCommissionsView } from "@/components/commissions/admin-commissions-view"
 import { SellerCommissionsView } from "@/components/commissions/seller-commissions-view"
 import { getRequestPermissions } from "@/lib/permissions/request"
-import { canPerformAction, isOwnDataOnlyResolved } from "@/lib/permissions-api"
+import {
+  canPerformAction,
+  getScopedAgenciesForUser,
+  isOwnDataOnlyResolved,
+} from "@/lib/permissions-api"
 
 export default async function CommissionsPage() {
-  const { user, matrix } = await getRequestPermissions()
+  const { user, supabase, matrix } = await getRequestPermissions()
   if (!user) redirect("/login")
 
   // Vista "admin" (todas las comisiones) vs "vendedor" (solo las propias) según
@@ -14,6 +18,10 @@ export default async function CommissionsPage() {
   const isAdmin =
     canPerformAction(user, "commissions", "read", matrix ?? undefined) &&
     !isOwnDataOnlyResolved(user, "commissions", matrix ?? undefined)
+
+  // Oficinas visibles: alimentan el filtro y el agrupamiento por oficina de la
+  // pantalla de pago. Se resuelven en el server para no volver a pedirlas.
+  const agencies = isAdmin ? await getScopedAgenciesForUser(supabase, user as any) : []
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-6">
@@ -26,7 +34,7 @@ export default async function CommissionsPage() {
         </p>
       </div>
       {isAdmin ? (
-        <AdminCommissionsView userId={user.id} userRole={user.role} />
+        <AdminCommissionsView userId={user.id} userRole={user.role} agencies={agencies} />
       ) : (
         <SellerCommissionsView userId={user.id} userRole={user.role} />
       )}

@@ -90,6 +90,8 @@ interface ReportPayload {
       agencyId: string | null
       agencyName: string
       total: number
+      pending: number
+      paid: number
       count: number
       share: number
     }>
@@ -99,6 +101,9 @@ interface ReportPayload {
       operationId: string
       fileCode: string
       destination: string
+      /** Oficina de la venta. Es de dónde sale la plata de esta comisión. */
+      agencyId: string | null
+      agencyName: string
       operationDate: string
       partnerId: string
       partnerName: string
@@ -251,6 +256,8 @@ export function ReferralsReport({ agencies }: ReferralsReportProps) {
   const detail = useMemo(() => report?.detail ?? [], [report])
   const visibleDetail = useMemo(() => detail.slice(0, detailLimit), [detail, detailLimit])
   const months = report?.byMonth ?? []
+  /** Igual que en el reporte de comisiones: sólo con más de una oficina. */
+  const showAgencyBreakdown = (report?.byAgency?.length ?? 0) > 1
 
   // El detalle se agrupa por referidor, en el mismo orden que la tabla de arriba.
   // El total del grupo es el del período completo (viene de `byPartner`), así que
@@ -778,9 +785,12 @@ export function ReferralsReport({ agencies }: ReferralsReportProps) {
                             <TableCell className="font-medium">{row.fileCode}</TableCell>
                             <TableCell>
                               <span>{row.destination}</span>
-                              {(row.percentage != null || row.baseAmount != null) && (
+                              {(showAgencyBreakdown ||
+                                row.percentage != null ||
+                                row.baseAmount != null) && (
                                 <span className="block text-xs text-muted-foreground">
                                   {[
+                                    showAgencyBreakdown ? row.agencyName : "",
                                     row.percentage != null ? `${row.percentage}%` : "",
                                     row.baseAmount != null ? `sobre ${money(row.baseAmount)}` : "",
                                   ]

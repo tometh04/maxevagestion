@@ -15,22 +15,119 @@
  */
 
 /**
- * Tipos de servicio que generan comisión al vendedor.
+ * Catálogo completo de tipos de servicio (el enum `operation_service_type`).
  *
- * Los que faltan (SEAT, LUGGAGE, VISA) son cargos administrativos que se
- * trasladan al pasajero sin margen para la agencia.
+ * Es la única copia del catálogo del lado del servidor: la ruta de servicios lo
+ * usa para validar el payload y el CHECK de
+ * `financial_settings.commission_service_types` repite el mismo literal en SQL.
  */
-export const COMMISSION_SERVICE_TYPES = new Set([
+export const ALL_SERVICE_TYPES = [
+  "SEAT",
+  "LUGGAGE",
+  "VISA",
   "TRANSFER",
   "ASSISTANCE",
   "HOTEL",
   "FLIGHT",
   "EXCURSION",
-])
+] as const
 
-/** Si un tipo de servicio comisiona. Deriva `operation_services.generates_commission`. */
-export function serviceGeneratesCommission(serviceType: string | null | undefined): boolean {
-  return COMMISSION_SERVICE_TYPES.has(String(serviceType ?? "").toUpperCase())
+export type ServiceType = (typeof ALL_SERVICE_TYPES)[number]
+
+/**
+ * Tipos que comisionan cuando la agencia no configuró nada.
+ *
+ * Es el set histórico: SEAT, LUGGAGE y VISA quedaron afuera porque nacieron como
+ * cargos administrativos que se trasladan al pasajero sin margen. Resultó no ser
+ * cierto para todas las agencias —en Lozada los asientos se venden con margen
+ * propio y el vendedor los comisiona—, así que dejó de ser una regla del dominio
+ * y pasó a ser una perilla por oficina (`financial_settings.commission_service_types`).
+ * Esta constante sobrevive como el default que preserva el comportamiento de siempre.
+ */
+export const DEFAULT_COMMISSION_SERVICE_TYPES: ServiceType[] = [
+  "TRANSFER",
+  "ASSISTANCE",
+  "HOTEL",
+  "FLIGHT",
+  "EXCURSION",
+]
+
+export interface ServiceCommissionTypesConfig {
+  /** Tipos que comisionan por defecto en esta agencia, en MAYÚSCULAS. */
+  types: Set<string>
+}
+
+export const DEFAULT_SERVICE_COMMISSION_TYPES_CONFIG: ServiceCommissionTypesConfig = {
+  types: new Set<string>(DEFAULT_COMMISSION_SERVICE_TYPES),
+}
+
+/**
+ * Si un tipo de servicio comisiona por defecto en una agencia.
+ *
+ * Es solo el DEFAULT al cargar el servicio o al cambiarle el tipo: la verdad de
+ * cada fila vive en `operation_services.generates_commission`, que el switch de
+ * la UI puede pisar en cualquier dirección.
+ *
+ * `config` es requerido en el tipo pero tolera `null` en runtime, a propósito.
+ * Requerido para que al cambiar la firma el compilador señale todos los call
+ * sites en vez de dejar alguno leyendo el set histórico en silencio; tolerante
+ * porque un `null` tiene que caer en "comisionan los de siempre" y nunca en "no
+ * comisiona nada", que sería dejar de pagarle a alguien por un error de lectura.
+ */
+export function serviceGeneratesCommission(
+  serviceType: string | null | undefined,
+  config: ServiceCommissionTypesConfig | null | undefined,
+): boolean {
+  const types = config?.types ?? DEFAULT_SERVICE_COMMISSION_TYPES_CONFIG.types
+  return types.has(String(serviceType ?? "").toUpperCase())
+}
+
+/** Normaliza lo que venga de la columna jsonb a un set de tipos conocidos. */
+export function parseCommissionServiceTypes(
+  raw: unknown,
+): ServiceCommissionTypesConfig | null {
+  if (!Array.isArray(raw)) return null
+  const known = new Set<string>(ALL_SERVICE_TYPES)
+  const types = new Set<string>()
+  for (const item of raw) {
+    const value = String(item ?? "").toUpperCase()
+    if (known.has(value)) types.add(value)
+  }
+  return { types }
+}
+
+/**
+ * Lee de `financial_settings` qué tipos comisionan en una agencia.
+ *
+ * Best-effort igual que `getCommissionBaseConfig`: sin agencia, sin fila, con un
+ * jsonb que no es array, o con un error de lectura, cae al set histórico. Que la
+ * columna todavía no exista (deploy adelantado a la migración) entra por el
+ * mismo camino: PostgREST devuelve error y el alta de servicios sigue andando
+ * como venía.
+ */
+export async function getServiceCommissionTypesConfig(
+  supabase: any,
+  agencyId: string | null | undefined,
+): Promise<ServiceCommissionTypesConfig> {
+  if (!agencyId) return DEFAULT_SERVICE_COMMISSION_TYPES_CONFIG
+
+  try {
+    const { data, error } = await supabase
+      .from("financial_settings")
+      .select("commission_service_types")
+      .eq("agency_id", agencyId)
+      .maybeSingle()
+
+    if (error || !data) return DEFAULT_SERVICE_COMMISSION_TYPES_CONFIG
+
+    return (
+      parseCommissionServiceTypes((data as any).commission_service_types) ??
+      DEFAULT_SERVICE_COMMISSION_TYPES_CONFIG
+    )
+  } catch (err) {
+    console.error("[Commissions] No se pudo leer qué servicios comisionan:", err)
+    return DEFAULT_SERVICE_COMMISSION_TYPES_CONFIG
+  }
 }
 
 export interface ServiceCommissionInput {

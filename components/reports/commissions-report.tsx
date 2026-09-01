@@ -99,6 +99,8 @@ interface ReportPayload {
       agencyId: string | null
       agencyName: string
       total: number
+      pending: number
+      paid: number
       count: number
       share: number
     }>
@@ -109,6 +111,9 @@ interface ReportPayload {
       fileCode: string
       passengerName: string
       destination: string
+      /** Oficina de la venta. Es de dónde sale la plata de esta comisión. */
+      agencyId: string | null
+      agencyName: string
       operationDate: string
       sellerId: string
       sellerName: string
@@ -257,6 +262,12 @@ export function CommissionsReport({ sellers, agencies }: CommissionsReportProps)
   const detail = useMemo(() => report?.detail ?? [], [report])
   const visibleDetail = useMemo(() => detail.slice(0, detailLimit), [detail, detailLimit])
   const months = report?.byMonth ?? []
+  /**
+   * Con una sola oficina, decir de qué oficina viene cada comisión no aporta
+   * nada y sólo agrega ruido a una tabla ya densa. Con dos, es el dato que pidió
+   * Lozada para saber al pagar si sale de Rosario o de Madero.
+   */
+  const showAgencyBreakdown = (report?.byAgency?.length ?? 0) > 1
 
   // El detalle se agrupa por vendedor, en el mismo orden que la tabla de arriba:
   // el reporte se le muestra a cada vendedor y lo suyo tiene que leerse junto.
@@ -725,6 +736,69 @@ export function CommissionsReport({ sellers, agencies }: CommissionsReportProps)
             </CardContent>
           </Card>
 
+          {/* Por oficina. El PDF ya lo imprimía; en pantalla no estaba. */}
+          {showAgencyBreakdown && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Comisiones por oficina</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  La oficina es la de la venta, no la del vendedor: la mayoría
+                  trabaja para las dos.
+                </p>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Oficina</TableHead>
+                        <TableHead className="text-right w-[70px]">Ops</TableHead>
+                        <TableHead className="text-right">Por pagar</TableHead>
+                        <TableHead className="text-right">Pagadas</TableHead>
+                        <TableHead className="text-right">Total</TableHead>
+                        <TableHead className="w-[160px]">% del total</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {report!.byAgency.map((agency) => (
+                        <TableRow key={agency.agencyId ?? "sin-agencia"}>
+                          <TableCell className="text-sm font-medium">
+                            {agency.agencyName}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums text-muted-foreground">
+                            {agency.count}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {money(agency.pending)}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums text-success">
+                            {money(agency.paid)}
+                          </TableCell>
+                          <TableCell className="text-right font-medium tabular-nums">
+                            {money(agency.total)}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <div className="h-1.5 flex-1 rounded-full bg-muted overflow-hidden">
+                                <div
+                                  className="h-full rounded-full bg-primary"
+                                  style={{ width: `${Math.max(agency.share, 1)}%` }}
+                                />
+                              </div>
+                              <span className="text-xs tabular-nums text-muted-foreground w-11 text-right">
+                                {agency.share.toFixed(1)}%
+                              </span>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {months.length > 1 && (
             <Card>
               <CardHeader>
@@ -846,11 +920,16 @@ export function CommissionsReport({ sellers, agencies }: CommissionsReportProps)
                                 columnas nuevas: mantiene la fila legible y hace
                                 que tildar un checkbox no reacomode la tabla.
                               */}
-                              {(row.saleAmount != null ||
+                              {(showAgencyBreakdown ||
+                                row.saleAmount != null ||
                                 row.marginAmount != null ||
                                 row.referralPartnerName) && (
                                 <span className="block text-xs text-muted-foreground">
                                   {[
+                                    // La oficina va primera: con dos, es lo que
+                                    // ordena la lectura de un vendedor que
+                                    // trabaja para las dos.
+                                    showAgencyBreakdown ? row.agencyName : "",
                                     row.saleAmount != null ? `Venta ${money(row.saleAmount)}` : "",
                                     row.marginAmount != null
                                       ? `Ganancia ${money(row.marginAmount)}`

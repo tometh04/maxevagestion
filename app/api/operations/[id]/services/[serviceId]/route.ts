@@ -2,11 +2,13 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canPerformAction, getUserAgencyIds, resolveOperationAccessScope, isAgencyReadonlyScope } from "@/lib/permissions-api"
-import { recalculateOperationCommissions, getSellerPercentage } from "@/lib/commissions/calculate"
+import { recalculateOperationCommissions, getSellerPercentage, isLocked } from "@/lib/commissions/calculate"
 import {
   serviceCommissionAmount,
   serviceGeneratesCommission,
+  getServiceCommissionTypesConfig,
 } from "@/lib/commissions/service-commission"
+import { resolveServiceSeller } from "@/lib/sellers/resolve-service-seller"
 import { getOpenOperatorPaymentStatus } from "@/lib/accounting/operator-payment-settlement"
 import { getOrgFeatureFlag } from "@/lib/settings/org-features"
 import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
@@ -76,7 +78,7 @@ async function recalculateOperationTotals(supabase: any, operationId: string) {
 
   // Sumar todos los servicios activos de la operación, separando por moneda.
   const { data: services } = await (supabase.from("operation_services") as any)
-    .select("sale_amount, sale_currency, cost_amount, cost_currency")
+    .select("sale_amount, sale_currency, cost_amount, cost_currency, generates_commission")
     .eq("operation_id", operationId)
 
   if (!services) return
@@ -125,11 +127,39 @@ async function recalculateOperationTotals(supabase: any, operationId: string) {
     .eq("id", operationId)
     .single()
 
+  // Doble conteo de la comisión de los servicios.
+  //
+  // Este camino pisa los totales de la operación con la suma de sus servicios,
+  // así que `margin_amount` pasa a INCLUIR el margen de cada servicio. Pero cada
+  // servicio comisionable ya tiene su propia fila `kind = 'SERVICE'` en
+  // `commission_records` por ese mismo margen. Recalcular la comisión base sobre
+  // el margen completo la pagaría dos veces: una en la fila del vendedor de la
+  // operación y otra en la del vendedor del servicio.
+  //
+  // Se resta sólo de la BASE DE COMISIÓN, no de los totales: `sale_amount_total`,
+  // `operator_cost` y `margin_amount` tienen que seguir siendo los reales porque
+  // los leen la deuda del cliente, los reportes y el estado de cuenta.
+  //
+  // El filtro por moneda replica el de las sumas de arriba: un servicio en otra
+  // moneda no entró en el total, así que tampoco hay que descontarlo.
+  const commissionableServiceMargin = (services as any[])
+    .filter(
+      (s: any) =>
+        s.generates_commission === true &&
+        s.sale_currency === opSaleCurrency &&
+        s.cost_currency === opCostCurrency
+    )
+    .reduce(
+      (sum: number, s: any) =>
+        sum + (Number(s.sale_amount) || 0) - (Number(s.cost_amount) || 0),
+      0
+    )
+
   if (updatedOp && updatedOp.seller_id) {
     try {
       await recalculateOperationCommissions(supabase, {
         ...updatedOp,
-        margin_amount: Number(updatedOp.margin_amount) || 0,
+        margin_amount: (Number(updatedOp.margin_amount) || 0) - commissionableServiceMargin,
       })
     } catch (err) {
       console.warn("[Services] Error recalculando comisiones:", err)
@@ -217,7 +247,14 @@ export async function PATCH(
       }
     }
 
-    if (Object.keys(updateData).length === 0) {
+    // Ni `seller_id` ni `generates_commission` entran en la whitelist, a
+    // propósito: los dos pueden mover o borrar una fila de `commission_records`
+    // y necesitan validación propia, así que no pueden viajar en el loop de
+    // arriba (que copia `body[field]` crudo). Se resuelven aparte, más abajo.
+    const sellerRequested = typeof body.seller_id === "string" && body.seller_id.trim() !== ""
+    const commissionFlagRequested = typeof body.generates_commission === "boolean"
+
+    if (Object.keys(updateData).length === 0 && !sellerRequested && !commissionFlagRequested) {
       return NextResponse.json({ error: "No se proporcionaron campos para actualizar" }, { status: 400 })
     }
 
@@ -243,13 +280,89 @@ export async function PATCH(
     if (updateData.rooms !== undefined) updateData.rooms = updateData.rooms ? Number(updateData.rooms) : null
     if (updateData.flight_stops !== undefined) updateData.flight_stops = updateData.flight_stops != null ? Number(updateData.flight_stops) : 0
 
-    // `generates_commission` se deriva del tipo, así que tiene que seguirlo.
-    // `service_type` es editable, pero el flag se calculaba sólo en el alta y
-    // después quedaba congelado: un SEAT convertido a HOTEL no comisionaba
-    // nunca, y un HOTEL convertido a VISA seguía comisionando para siempre.
-    if (updateData.service_type !== undefined) {
-      updateData.generates_commission = serviceGeneratesCommission(updateData.service_type)
+    // ── ¿Comisiona? ────────────────────────────────────────────────────────
+    //
+    // Tres fuentes, en este orden:
+    //   1. El switch del formulario, si mandó un booleano explícito. Gana
+    //      siempre: es una decisión del usuario sobre esta fila puntual.
+    //   2. Si cambió el tipo y no hay switch, se re-deriva del default de la
+    //      oficina. El flag se calculaba sólo en el alta y quedaba congelado:
+    //      un SEAT convertido a HOTEL no comisionaba nunca, y un HOTEL
+    //      convertido a VISA seguía comisionando para siempre.
+    //   3. Si no, queda como estaba.
+    if (typeof body.generates_commission === "boolean") {
+      updateData.generates_commission = body.generates_commission
+    } else if (updateData.service_type !== undefined) {
+      const svcTypesConfig = await getServiceCommissionTypesConfig(supabase, operation.agency_id)
+      updateData.generates_commission = serviceGeneratesCommission(
+        updateData.service_type,
+        svcTypesConfig
+      )
     }
+
+    // ── Quién comisiona ────────────────────────────────────────────────────
+    const sellerResult = await resolveServiceSeller(supabase, {
+      user: user as any,
+      agencyIds,
+      requestedSellerId: body.seller_id,
+      fallbackSellerId: currentService.seller_id,
+    })
+    if (!sellerResult.ok) {
+      return NextResponse.json({ error: sellerResult.error }, { status: sellerResult.status })
+    }
+    const nextSellerId = sellerResult.sellerId
+    const sellerChanged = nextSellerId !== currentService.seller_id
+
+    const willCommission =
+      updateData.generates_commission !== undefined
+        ? updateData.generates_commission === true
+        : currentService.generates_commission === true
+    const commissionTurnedOff = currentService.generates_commission === true && !willCommission
+    const commissionFlagChanged =
+      (currentService.generates_commission === true) !== willCommission
+
+    // ── Candado, ANTES de escribir nada ────────────────────────────────────
+    //
+    // La comisión del servicio se lee acá arriba y no dentro del bloque de
+    // resincronización de más abajo a propósito: si el rechazo llegara después
+    // del UPDATE del servicio, el usuario se quedaría con medio formulario
+    // guardado y un error en pantalla. Mover a otra persona —o borrar— una
+    // comisión con plata atrás deja el asiento contable sin respaldo, así que
+    // para estos dos campos el PATCH es todo o nada.
+    const { data: existingServiceCommission } = await (supabase.from("commission_records") as any)
+      .select("id, seller_id, status, amount_paid, percentage, settled_at")
+      .eq("operation_id", operationId)
+      .eq("operation_service_id", serviceId)
+      .eq("kind", "SERVICE")
+      .maybeSingle()
+
+    if ((sellerChanged || commissionTurnedOff) && existingServiceCommission) {
+      const lockedReason = isLocked(existingServiceCommission)
+      if (lockedReason) {
+        const { data: lockedSeller } = await (supabase.from("users") as any)
+          .select("name")
+          .eq("id", existingServiceCommission.seller_id)
+          .eq("org_id", (user as any).org_id)
+          .maybeSingle()
+        const quien = lockedSeller?.name || "el vendedor actual"
+        const queYaPaso =
+          lockedReason === "settled"
+            ? `la comisión de este servicio ya fue saldada a ${quien}`
+            : `la comisión de este servicio ya se le pagó a ${quien}`
+
+        return NextResponse.json(
+          {
+            error: sellerChanged
+              ? `No se puede cambiar quién comisiona: ${queYaPaso}. Anulá ese pago y volvé a intentar.`
+              : `No se puede quitar la comisión de este servicio: ${queYaPaso}. Anulá ese pago y volvé a intentar.`,
+            code: "SERVICE_COMMISSION_LOCKED",
+          },
+          { status: 409 }
+        )
+      }
+    }
+
+    if (sellerChanged) updateData.seller_id = nextSellerId
 
     updateData.updated_at = new Date().toISOString()
 
@@ -361,34 +474,33 @@ export async function PATCH(
       updateData.service_type !== undefined &&
       updateData.service_type !== currentService.service_type
 
-    if (saleChanged || costChanged || typeChanged) {
+    if (saleChanged || costChanged || typeChanged || sellerChanged || commissionFlagChanged) {
       try {
         const stillCommissions = updatedService.generates_commission === true
         const sellerId = updatedService.seller_id
 
-        const { data: existingCommission } = await (supabase.from("commission_records") as any)
-          .select("id, status, amount_paid, percentage")
-          .eq("operation_id", operationId)
-          .eq("operation_service_id", serviceId)
-          .eq("kind", "SERVICE")
-          .maybeSingle()
+        // Ya se leyó arriba, antes de escribir nada, para poder rechazar el
+        // cambio de vendedor sobre una comisión con plata atrás.
+        const existingCommission = existingServiceCommission
 
-        const locked =
-          existingCommission &&
-          ((existingCommission.status ?? "PENDING") !== "PENDING" ||
-            Number(existingCommission.amount_paid ?? 0) > 0)
+        const locked = existingCommission && isLocked(existingCommission)
 
         if (locked) {
           // Bajarle el monto a una comisión ya cobrada dejaría el asiento sin
           // respaldo; subírsela habilitaría un doble pago. Se avisa y se deja
-          // para ajuste manual.
+          // para ajuste manual. Los cambios de vendedor y el apagado del switch
+          // no llegan hasta acá: se rechazan con 409 antes de escribir.
           warnings.push(
             "La comisión de este servicio ya fue pagada: el monto no se actualizó automáticamente."
           )
         } else if (sellerId) {
+          // Con cambio de vendedor hay que re-resolver el porcentaje sí o sí:
+          // conservar el guardado le aplicaría al nuevo la tasa del anterior.
           const sellerPct = Number(
-            existingCommission?.percentage ??
-              (await getSellerPercentage(supabase, (user as any).org_id, sellerId))
+            sellerChanged
+              ? await getSellerPercentage(supabase, (user as any).org_id, sellerId)
+              : existingCommission?.percentage ??
+                  (await getSellerPercentage(supabase, (user as any).org_id, sellerId))
           )
 
           // La comisión se expresa en la moneda de la OPERACIÓN. Si el servicio
@@ -430,8 +542,12 @@ export async function PATCH(
                 .eq("id", serviceId)
             }
           } else if (existingCommission) {
+            // `accrual_date` y `date_calculated` no se tocan ni cuando cambia el
+            // vendedor: el servicio se vendió cuando se vendió, y moverle el mes
+            // correría la comisión a otro período, posiblemente ya cerrado.
             await (supabase.from("commission_records") as any)
               .update({
+                seller_id: sellerId,
                 amount: commissionAmount,
                 percentage: sellerPct,
                 updated_at: new Date().toISOString(),
@@ -618,12 +734,14 @@ export async function DELETE(
     // propia fila y sólo se lleva la suya.
     if (service.commission_record_id && service.generates_commission) {
       const { data: commRecord } = await (supabase.from("commission_records") as any)
-        .select("id, status, amount, amount_paid, kind")
+        .select("id, status, amount, amount_paid, settled_at, kind")
         .eq("id", service.commission_record_id)
         .eq("kind", "SERVICE")
         .maybeSingle()
 
-      if (commRecord && ((commRecord.status ?? "PENDING") !== "PENDING" || Number(commRecord.amount_paid ?? 0) > 0)) {
+      if (commRecord && isLocked(commRecord)) {
+        // `isLocked` incluye `settled_at`: una comisión saldada en un cierre
+        // administrativo también está cerrada, aunque no tenga plata atrás.
         warnings.push("La comisión del vendedor ya fue pagada y no se puede revertir automáticamente.")
       } else if (commRecord) {
         await (supabase.from("commission_records") as any)

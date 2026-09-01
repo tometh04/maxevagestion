@@ -64,6 +64,7 @@ interface Commission {
   operation_id: string
   seller_id: string
   agency_id: string | null
+  agency_name?: string
   amount: number
   amount_paid?: number
   percentage: number | null
@@ -97,6 +98,14 @@ interface Commission {
 interface SellerGroup {
   sellerId: string
   sellerName: string
+  /**
+   * Oficina de las comisiones del grupo. Con más de una agencia el mismo
+   * vendedor aparece una vez por oficina: el pago sale de UNA cuenta financiera
+   * y las cuentas son por agencia, así que un grupo mixto invita a pagar Madero
+   * desde la caja de Rosario.
+   */
+  agencyId: string | null
+  agencyName: string
   commissions: Commission[]
   totalPending: number
   totalPendingUSD: number
@@ -116,6 +125,8 @@ interface FinancialAccount {
 interface AdminCommissionsViewProps {
   userId: string
   userRole: string
+  /** Oficinas visibles para el usuario. Con una sola, el filtro no se muestra. */
+  agencies: Array<{ id: string; name: string }>
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -127,14 +138,14 @@ const fmtCurrency = (value: number, currency = "USD") =>
     minimumFractionDigits: 2,
   }).format(value)
 
-/**
+  /**
  * Delega en `lib/commissions/currency.ts`: la regla de qué moneda es una
  * comisión vive en un solo lugar, compartida con el endpoint, la tarjeta del
  * dashboard y el reporte de comisiones.
  */
 const getCommCurrency = (c: Commission): string => getCommissionCurrency(c as any)
 
-/**
+  /**
  * Cómo se identifica una comisión en pantalla: por el pasajero, no por el
  * código de operación (pedido de Lozada, el vendedor reconoce al pasajero).
  * El código queda de respaldo cuando la operación no tiene pasajero principal
@@ -179,12 +190,18 @@ function getRemaining(c: Commission): number {
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewProps) {
+export function AdminCommissionsView({ userId, userRole, agencies }: AdminCommissionsViewProps) {
   const { toast } = useToast()
   const monthOptions = useMemo(() => generateMonthOptions(), [])
 
   // ── Shared state ──
   const [activeTab, setActiveTab] = useState("por-pagar")
+  /**
+   * Oficina que se está mirando. Es UN estado para toda la pantalla, no uno por
+   * pestaña: el usuario piensa "estoy mirando Rosario", no "Rosario en por
+   * pagar y Madero en el historial".
+   */
+  const [agencyFilter, setAgencyFilter] = useState("ALL")
 
   // ── Por Pagar state ──
   const [pendingCommissions, setPendingCommissions] = useState<Commission[]>([])
@@ -228,6 +245,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
       if (pendingMonth !== "ALL") params.set("month", pendingMonth)
       if (pendingDateFrom) params.set("periodStart", pendingDateFrom)
       if (pendingDateTo) params.set("periodEnd", pendingDateTo)
+      if (agencyFilter !== "ALL") params.set("agencyId", agencyFilter)
 
       const res = await fetch(`/api/commissions?${params.toString()}`)
       const data = await res.json()
@@ -242,7 +260,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
     } finally {
       setPendingLoading(false)
     }
-  }, [pendingMonth, pendingDateFrom, pendingDateTo, toast])
+  }, [pendingMonth, pendingDateFrom, pendingDateTo, agencyFilter, toast])
 
   // ── Fetch paid commissions ──
   const fetchPaidCommissions = useCallback(async () => {
@@ -256,6 +274,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
       if (paidDateFrom) params.set("periodStart", paidDateFrom)
       if (paidDateTo) params.set("periodEnd", paidDateTo)
       if (paidSellerFilter !== "ALL") params.set("sellerId", paidSellerFilter)
+      if (agencyFilter !== "ALL") params.set("agencyId", agencyFilter)
 
       const res = await fetch(`/api/commissions?${params.toString()}`)
       const data = await res.json()
@@ -270,7 +289,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
     } finally {
       setPaidLoading(false)
     }
-  }, [paidMonth, paidDateFrom, paidDateTo, paidSellerFilter, toast])
+  }, [paidMonth, paidDateFrom, paidDateTo, paidSellerFilter, agencyFilter, toast])
 
   // ── Fetch paid-this-month total (separated by currency) ──
   const fetchPaidThisMonth = useCallback(async () => {
@@ -285,6 +304,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
         month: currentMonth,
         dateBasis: "paid",
       })
+      if (agencyFilter !== "ALL") params.set("agencyId", agencyFilter)
       const res = await fetch(`/api/commissions?${params.toString()}`)
       const data = await res.json()
       const totals = calcTotalsByCurrency(data.commissions || [])
@@ -293,7 +313,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
     } catch {
       // silent
     }
-  }, [])
+  }, [agencyFilter])
 
   // ── Fetch financial accounts ──
   const fetchFinancialAccounts = useCallback(async () => {
@@ -324,15 +344,30 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
   }, [activeTab, fetchPaidCommissions])
 
   // ── Group pending by seller (with per-currency totals) ──
+  /**
+   * Grupos de la pestaña "Por Pagar".
+   *
+   * Con más de una oficina se agrupa por (vendedor × oficina) y no sólo por
+   * vendedor: el pago se ejecuta contra UNA cuenta financiera y las cuentas son
+   * por agencia, así que un grupo mixto lleva a pagar las comisiones de una
+   * oficina desde la caja de la otra. Un subtotal dentro del grupo no alcanzaba:
+   * quedaría escondido detrás del chevron, justo donde está el botón "Pagar".
+   * Con una sola oficina se conserva el agrupamiento de siempre.
+   */
+  const groupByAgency = agencies.length > 1
   const sellerGroups = useMemo((): SellerGroup[] => {
     const map = new Map<string, SellerGroup>()
     for (const c of pendingCommissions) {
       const sid = c.seller_id
       const sname = c.sellers?.name || "Vendedor desconocido"
-      if (!map.has(sid)) {
-        map.set(sid, {
+      const aid = groupByAgency ? c.agency_id ?? null : null
+      const key = groupByAgency ? `${sid}::${aid ?? "sin-oficina"}` : sid
+      if (!map.has(key)) {
+        map.set(key, {
           sellerId: sid,
           sellerName: sname,
+          agencyId: aid,
+          agencyName: groupByAgency ? c.agency_name || "Sin oficina" : "",
           commissions: [],
           totalPending: 0,
           totalPendingUSD: 0,
@@ -340,7 +375,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
           count: 0,
         })
       }
-      const group = map.get(sid)!
+      const group = map.get(key)!
       group.commissions.push(c)
       group.totalPending += c.amount
       const cur = getCommCurrency(c)
@@ -349,7 +384,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
       group.count += 1
     }
     return Array.from(map.values()).sort((a, b) => b.totalPending - a.totalPending)
-  }, [pendingCommissions])
+  }, [pendingCommissions, groupByAgency])
 
   // ── KPI for pending tab (separated by currency) ──
   const pendingTotals = useMemo(
@@ -382,11 +417,19 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
   }, [paidCommissions])
 
   // ── Expand / collapse seller rows ──
-  const toggleSeller = (sellerId: string) => {
+  /**
+   * Clave del grupo. Con dos oficinas el mismo vendedor tiene dos filas, así que
+   * el `sellerId` solo ya no identifica una: expandir Rosario abriría también
+   * Madero.
+   */
+  const groupKey = (group: SellerGroup) =>
+    groupByAgency ? `${group.sellerId}::${group.agencyId ?? "sin-oficina"}` : group.sellerId
+
+  const toggleSeller = (key: string) => {
     setExpandedSellers((prev) => {
       const next = new Set(prev)
-      if (next.has(sellerId)) next.delete(sellerId)
-      else next.add(sellerId)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
       return next
     })
   }
@@ -456,8 +499,18 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
     if (selectedCurrency) {
       accts.sort((a, b) => (a.currency === selectedCurrency ? -1 : 0) - (b.currency === selectedCurrency ? -1 : 0))
     }
+    // Primero las cuentas de la oficina que se está pagando. Se ORDENA, no se
+    // filtra: hay cuentas sin agencia asignada y esconderlas dejaría a alguien
+    // sin poder pagar.
+    const payingAgencyId = payingSeller?.agencyId
+    if (payingAgencyId) {
+      accts.sort(
+        (a, b) =>
+          (a.agencies?.id === payingAgencyId ? -1 : 0) - (b.agencies?.id === payingAgencyId ? -1 : 0)
+      )
+    }
     return accts
-  }, [financialAccounts, selectedCurrency])
+  }, [financialAccounts, selectedCurrency, payingSeller])
 
   // Cuenta elegida y si requiere TC (su moneda difiere de la moneda de la comisión).
   const selectedPayAccount = useMemo(
@@ -682,6 +735,25 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
 
           {/* Filters */}
           <div className="flex items-center gap-2 flex-wrap" data-tour="commissions.period-selector">
+            {/* Con una sola oficina el filtro sobra. */}
+            {agencies.length > 1 && (
+              <>
+                <span className="text-xs text-muted-foreground">Oficina</span>
+                <Select value={agencyFilter} onValueChange={setAgencyFilter}>
+                  <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
+                    <SelectValue placeholder="Oficina" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">Todas las oficinas</SelectItem>
+                    {agencies.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>
+                        {a.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </>
+            )}
             <span className="text-xs text-muted-foreground">Mes de venta</span>
             <Select value={pendingMonth} onValueChange={setPendingMonth}>
               <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
@@ -748,13 +820,14 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
                     </TableRow>
                   ) : (
                     sellerGroups.map((group) => {
-                      const isExpanded = expandedSellers.has(group.sellerId)
+                      const key = groupKey(group)
+                      const isExpanded = expandedSellers.has(key)
                       return (
                         <>
                           <TableRow
-                            key={group.sellerId}
+                            key={key}
                             className="cursor-pointer hover:bg-muted/40"
-                            onClick={() => toggleSeller(group.sellerId)}
+                            onClick={() => toggleSeller(key)}
                           >
                             <TableCell className="w-8">
                               {isExpanded ? (
@@ -763,7 +836,17 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
                                 <ChevronRight className="h-4 w-4 text-muted-foreground" />
                               )}
                             </TableCell>
-                            <TableCell className="font-medium">{group.sellerName}</TableCell>
+                            <TableCell className="font-medium">
+                              {group.sellerName}
+                              {groupByAgency && (
+                                <Badge
+                                  variant="outline"
+                                  className="ml-2 border-border/60 text-[10px] font-normal text-muted-foreground"
+                                >
+                                  {group.agencyName}
+                                </Badge>
+                              )}
+                            </TableCell>
                             <TableCell className="text-center">
                               <Badge className="bg-accent-coral/10 text-accent-coral border-0">
                                 {group.count}

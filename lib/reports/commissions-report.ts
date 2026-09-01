@@ -110,6 +110,12 @@ export interface CommissionsReportDetailRow {
    */
   passengerName: string
   destination: string
+  /**
+   * Oficina donde se hizo la venta (`operations.agency_id`). Es de dónde sale la
+   * plata, y lo que necesita ver un vendedor que trabaja para las dos.
+   */
+  agencyId: string | null
+  agencyName: string
   month: string
   operationDate: string
   sellerId: string
@@ -487,6 +493,10 @@ export function buildCommissionsReport({
         fileCode: op?.file_code || "-",
         passengerName: (op && mainPassengers?.get(op.id)) || "",
         destination: op?.destination || "-",
+        agencyId: op?.agency_id ?? null,
+        agencyName: op?.agency_id
+          ? agencyNames.get(op.agency_id) || "Sin agencia"
+          : "Sin agencia",
         month: operationDate.slice(0, 7),
         operationDate,
         sellerId: r.seller_id,

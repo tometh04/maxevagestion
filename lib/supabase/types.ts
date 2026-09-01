@@ -2893,6 +2893,7 @@ export type Database = {
           commission_base_net_of_iva: boolean
           commission_iva_rate: number
           commission_net_from: string | null
+          commission_service_types: Json
           created_at: string | null
           created_by: string | null
           default_accounts: Json | null
@@ -2936,6 +2937,7 @@ export type Database = {
           commission_base_net_of_iva?: boolean
           commission_iva_rate?: number
           commission_net_from?: string | null
+          commission_service_types?: Json
           created_at?: string | null
           created_by?: string | null
           default_accounts?: Json | null
@@ -2979,6 +2981,7 @@ export type Database = {
           commission_base_net_of_iva?: boolean
           commission_iva_rate?: number
           commission_net_from?: string | null
+          commission_service_types?: Json
           created_at?: string | null
           created_by?: string | null
           default_accounts?: Json | null
