@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { canAccessModule } from "@/lib/permissions"
+import { canAccessModule, hasAdminRole } from "@/lib/permissions"
 import { getUserAgencyIds } from "@/lib/permissions-api"
 import { z } from "zod"
 
@@ -145,9 +145,15 @@ export async function PUT(request: Request) {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
 
-    // Verificar permiso de acceso (solo ADMIN y SUPER_ADMIN)
-    if (!canAccessModule(user.role as any, "customers") ||
-        (user.role !== "ADMIN" && user.role !== "SUPER_ADMIN")) {
+    // Verificar permiso de acceso (solo roles de nivel admin).
+    //
+    // Antes comparaba los strings literales "ADMIN" y "SUPER_ADMIN", así que
+    // dejaba afuera a ORG_OWNER —el dueño del tenant— e ignoraba
+    // `additional_roles`. La pantalla de Configuración sí lo deja entrar, con lo
+    // cual veía el tab y comía un 403 al guardar. `hasAdminRole` resuelve las
+    // dos cosas.
+    const roles = (user as any).roles ?? [user.role]
+    if (!canAccessModule(user.role as any, "customers") || !hasAdminRole(roles)) {
       return NextResponse.json(
         { error: "No tiene permiso para editar la configuración de clientes" },
         { status: 403 }

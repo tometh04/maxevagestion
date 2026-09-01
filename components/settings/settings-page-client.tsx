@@ -14,6 +14,7 @@ import { LeadRegionsSettings } from "@/components/settings/lead-regions-settings
 import { AfipSettings } from "@/components/settings/afip-settings"
 import { InterfaceSettings } from "@/components/settings/interface-settings"
 import { AuditSettings } from "@/components/settings/audit-settings"
+import { CustomersSettings } from "@/components/settings/customers-settings"
 import { AgencyApprovalRulesForm } from "@/components/settings/agency-approval-rules-form"
 import { PermissionsMatrix } from "@/components/settings/permissions-matrix"
 import { OperatorsTable, Operator } from "@/components/operators/operators-table"
@@ -100,6 +101,7 @@ export function SettingsPageClient({ defaultTab, agencies, firstAgencyId, userRo
         <TabsTrigger value="users" data-tour="settings.tab-users">Usuarios</TabsTrigger>
         <TabsTrigger value="operadores">Operadores</TabsTrigger>
         <TabsTrigger value="agencies">Agencias</TabsTrigger>
+        <TabsTrigger value="clientes">Clientes</TabsTrigger>
         {/* Hidden tabs - kept for future use
         <TabsTrigger value="commissions">Comisiones</TabsTrigger>
         <TabsTrigger value="ai">AI</TabsTrigger>
@@ -146,6 +148,9 @@ export function SettingsPageClient({ defaultTab, agencies, firstAgencyId, userRo
         <AISettings />
       </TabsContent>
       {/* End hidden tab contents */}
+      <TabsContent value="clientes" className="mt-6">
+        <CustomersSettings />
+      </TabsContent>
       <TabsContent value="requirements" className="mt-6">
         <DestinationRequirementsClient />
       </TabsContent>

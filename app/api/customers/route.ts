@@ -275,10 +275,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No tiene agencias asignadas" }, { status: 403 })
     }
 
+    // El `.eq("org_id", ...)` es redundante con la agencia (una agencia
+    // pertenece a una sola org) pero deja la lectura scopeada explícitamente,
+    // igual que en GET/PUT de /api/customers/settings.
     const { data: settings } = await supabase
       .from("customer_settings")
       .select("*")
       .eq("agency_id", agencyIds[0])
+      .eq("org_id", (user as any).org_id)
       .maybeSingle()
 
     const settingsData = settings as any
