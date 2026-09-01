@@ -2,6 +2,8 @@
 -- El cupo es compartido por organización, se fotografía por ciclo de billing y
 -- los paquetes/extensiones vencen junto con ese ciclo.
 
+BEGIN;
+
 CREATE TABLE IF NOT EXISTS public.quotation_quota_plan_configs (
   plan_id TEXT PRIMARY KEY,
   included_documents INTEGER NOT NULL CHECK (included_documents >= 0),
@@ -539,3 +541,5 @@ COMMENT ON TABLE public.quotation_quota_periods IS
   'Snapshot del cupo de PDFs por ciclo de facturación. No se recalcula retroactivamente.';
 COMMENT ON TABLE public.quotation_credit_movements IS
   'Ledger inmutable de créditos extra; el consumo canónico sigue siendo issued_quotation_documents READY.';
+
+COMMIT;
