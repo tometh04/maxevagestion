@@ -70,3 +70,36 @@ describe("paymentMethodOptionsFor", () => {
     expect(options.filter((o) => o.value === "PayPal")).toHaveLength(1)
   })
 })
+
+describe("e-cheque y billeteras virtuales", () => {
+  it("están en el catálogo", () => {
+    expect(PAYMENT_METHOD_VALUES).toContain("E-cheque")
+    expect(PAYMENT_METHOD_VALUES).toContain("Billetera virtual")
+  })
+
+  // Genérica a propósito: una entrada por marca convierte el desplegable en una
+  // lista que hay que mantener cada vez que aparece una billetera nueva.
+  it("no enumera marcas de billetera", () => {
+    for (const marca of ["MODO", "Ualá", "Uala", "Personal Pay", "Cuenta DNI", "Naranja X"]) {
+      expect(PAYMENT_METHOD_VALUES).not.toContain(marca)
+    }
+  })
+})
+
+describe("compatibilidad con el ledger", () => {
+  // `ledger_movements.method` tiene un CHECK que solo admite CASH, BANK, MP,
+  // USD y OTHER (migración 005). Una forma de pago del catálogo que no mapee a
+  // uno de esos cinco no falla al elegirla: falla al guardar el cobro, con un
+  // error de base que no dice cuál fue el problema.
+  //
+  // Este test es la guarda: agregar una forma de pago nueva no puede romper el
+  // asiento.
+  const LEDGER_VALIDOS = ["CASH", "BANK", "MP", "USD", "OTHER"]
+
+  it("toda forma de pago del catálogo mapea a un método válido del ledger", () => {
+    const { mapPaymentMethodToLedgerMethod } = require("@/lib/accounting/payment-counterparts")
+    for (const v of PAYMENT_METHOD_VALUES) {
+      expect(LEDGER_VALIDOS).toContain(mapPaymentMethodToLedgerMethod(v))
+    }
+  })
+})

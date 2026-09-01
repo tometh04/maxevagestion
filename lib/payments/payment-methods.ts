@@ -30,7 +30,18 @@ export const PAYMENT_METHODS: PaymentMethodOption[] = [
   { value: "Tarjeta Crédito", label: "Tarjeta de Crédito" },
   { value: "Tarjeta Débito", label: "Tarjeta de Débito" },
   { value: "Cheque", label: "Cheque" },
+  { value: "E-cheque", label: "E-cheque" },
   { value: "MercadoPago", label: "MercadoPago" },
+  // Genérica a propósito, en vez de una entrada por marca.
+  //
+  // MODO, Ualá, Personal Pay, Cuenta DNI y Naranja X aparecen y desaparecen, y
+  // una por una convertirían este desplegable en una lista larga que hay que
+  // mantener. Cuál fue va en el campo de referencia del cobro, que es donde el
+  // dato sirve para conciliar.
+  //
+  // MercadoPago queda aparte porque ya tenía su propia entrada y su propia
+  // cuenta en el plan.
+  { value: "Billetera virtual", label: "Billetera virtual" },
   { value: "PayPal", label: "PayPal" },
   { value: "Otro", label: "Otro" },
 ]
