@@ -255,11 +255,14 @@ export default function AdminAnnouncementsPage() {
       </DataTableShell>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
+        {/* Ancho y con el cuerpo scrolleable: con los campos del modal el
+            formulario pasó a ser largo y se cortaba contra el borde de la
+            pantalla, sin forma de llegar a los últimos campos. */}
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>{isEditing ? "Editar novedad" : "Nueva novedad"}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <div className="-mx-6 flex-1 space-y-4 overflow-y-auto px-6 py-2">
             <div className="space-y-1.5">
               <Label htmlFor="title">Título</Label>
               <Input
@@ -273,7 +276,8 @@ export default function AdminAnnouncementsPage() {
               <Label htmlFor="body">Descripción</Label>
               <Textarea
                 id="body"
-                rows={5}
+                rows={16}
+                className="min-h-[18rem] leading-relaxed"
                 value={draft.body}
                 onChange={(e) => setDraft((d) => ({ ...d, body: e.target.value }))}
                 placeholder="Contá qué cambió y cómo aprovecharlo…"
