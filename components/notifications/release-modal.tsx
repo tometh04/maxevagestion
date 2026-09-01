@@ -153,10 +153,13 @@ export function ReleaseModal() {
 
   return (
     <Dialog open={abierto} onOpenChange={(v) => !v && cerrar()}>
-      <DialogContent className="max-w-xl gap-0 p-0">
+      {/* Sin `p-0`: DialogContent ya trae el `px-6` del cuerpo y Header/Footer
+          usan `-mx-6` para que sus divisores lleguen a los bordes. Anularlo
+          hacía que el header se saliera 24px por lado y dibujara un marco. */}
+      <DialogContent className="max-w-xl">
         {/* Encabezado: identidad del release. Se mantiene en todas las páginas
             porque el usuario tiene que saber siempre qué está leyendo. */}
-        <DialogHeader className="space-y-2.5 border-b px-6 pb-4 pt-6">
+        <DialogHeader className="space-y-2.5">
           <div className="flex flex-wrap items-center gap-2">
             <span
               className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${t.className}`}
@@ -176,32 +179,42 @@ export function ReleaseModal() {
           </DialogTitle>
         </DialogHeader>
 
-        {/* Dónde estoy y cuánto falta. Con los títulos, no con puntos: un punto
-            no dice si lo que viene vale la pena quedarse a leerlo. */}
+        {/* Progreso sin texto.
+            La versión anterior repetía el título de la sección en la barra y
+            otra vez como encabezado del cuerpo, a cuatro centímetros de
+            distancia. Y con cinco columnas, "Clientes y operadores" se partía en
+            dos líneas y desalineaba la fila entera.
+            Las barras dicen dónde estás y cuánto falta; el título lo dice el
+            encabezado del cuerpo, una sola vez. */}
         {paginado && (
-          <div className="flex gap-1 border-b px-6 py-3" role="tablist" aria-label="Secciones">
-            {etiquetas.map((etiqueta, i) => (
-              <button
-                key={i}
-                role="tab"
-                type="button"
-                aria-selected={i === pagina}
-                onClick={() => setPagina(i)}
-                className={`flex-1 border-t-2 pt-2 text-left text-[11px] leading-tight transition-colors duration-150 ${
-                  i === pagina
-                    ? "border-primary font-medium text-foreground"
-                    : i < pagina
-                      ? "border-primary/30 text-muted-foreground hover:text-foreground"
-                      : "border-border text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {etiqueta}
-              </button>
-            ))}
+          <div className="-mx-6 flex items-center gap-3 border-b border-border/30 px-6 pb-3 pt-3">
+            <div className="flex flex-1 gap-1.5">
+              {paginas.map((_, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setPagina(i)}
+                  aria-label={`Ir a ${etiquetas[i]}`}
+                  aria-current={i === pagina ? "step" : undefined}
+                  className="group flex-1 py-1.5"
+                >
+                  <span
+                    className={`block h-1 rounded-full transition-colors duration-200 ${
+                      i <= pagina
+                        ? "bg-primary"
+                        : "bg-border group-hover:bg-muted-foreground/40"
+                    }`}
+                  />
+                </button>
+              ))}
+            </div>
+            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+              {pagina + 1} de {paginas.length}
+            </span>
           </div>
         )}
 
-        <div className="min-h-[13rem] px-6 py-5">
+        <div className="min-h-[12rem] py-4">
           {actual.titulo && paginado && (
             <h3 className="mb-2 text-base font-semibold leading-snug">{actual.titulo}</h3>
           )}
@@ -210,7 +223,7 @@ export function ReleaseModal() {
           </DialogDescription>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-muted/40 px-6 py-4">
+        <div className="-mx-6 flex flex-wrap items-center justify-between gap-3 border-t border-border/30 bg-muted/30 px-6 py-4">
           {/* Visible desde la primera página. Esconderlo hasta el final obliga a
               leer todo para poder salir, y eso genera rechazo. */}
           <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
