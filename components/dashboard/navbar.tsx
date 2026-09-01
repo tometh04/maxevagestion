@@ -64,13 +64,16 @@ export function Navbar({ user, agencies = [], currentAgencyId }: NavbarProps) {
    */
   const handleLogout = async () => {
     try {
-      await supabase.auth.signOut({ scope: "local" })
+      const { error } = await supabase.auth.signOut({ scope: "local" })
+      if (error) console.warn("[auth] signOut devolvio error:", error.message)
     } catch (error) {
-      // Si el signOut no sale (red caida), igual hay que sacar al usuario de
-      // la app. El `finally` navega siempre.
-      console.error("[auth] signOut fallo, se sale igual:", error)
+      console.error("[auth] signOut fallo:", error)
     } finally {
-      window.location.assign("/login")
+      // A `/logout` y no a `/login`: el server borra las cookies de auth de
+      // forma explicita (`lib/auth/logout.ts`). Hace falta porque `signOut()`
+      // corta antes de `_removeSession()` cuando la sesion ya estaba rota
+      // (GoTrueClient.js:1562), o sea justo cuando mas importa limpiarla.
+      window.location.assign("/logout")
     }
   }
 

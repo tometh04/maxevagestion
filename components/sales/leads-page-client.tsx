@@ -25,7 +25,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { toast } from "sonner"
-import { createBrowserClient } from "@supabase/ssr"
+import { supabase as sharedSupabase } from "@/lib/supabase/client"
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js"
 import {
   Breadcrumb,
@@ -88,7 +88,7 @@ export function LeadsPageClient({
   const [refreshing, setRefreshing] = useState(false)
   const [realtimeConnected, setRealtimeConnected] = useState(false)
   const [initialLeadId, setInitialLeadId] = useState<string | null>(null)
-  const supabaseRef = useRef<ReturnType<typeof createBrowserClient> | null>(null)
+  const supabaseRef = useRef<typeof sharedSupabase | null>(null)
 
   // Leer leadId de query params y abrir dialog automáticamente
   useEffect(() => {
@@ -104,13 +104,21 @@ export function LeadsPageClient({
     }
   }, [searchParams, router])
 
-  // Inicializar Supabase client para Realtime
+  // Cliente compartido de `lib/supabase/client.ts`.
+  //
+  // Antes esto instanciaba el suyo, y cada instancia es un GoTrueClient
+  // completo: su propio ticker de auto-refresh, su propio handler de
+  // visibilitychange y su propio `_removeSession()` — todos sobre la MISMA
+  // cookie. Es el caso que la libreria avisa con "Multiple GoTrueClient
+  // instances detected in the same browser context ... may produce undefined
+  // behavior when used concurrently under the same storage key": dos
+  // instancias refrescando en paralelo, y cualquiera de las dos borrando la
+  // cookie de auth si su refresh falla.
+  //
+  // Para Realtime alcanza con el cliente compartido, que ya esta autenticado.
   useEffect(() => {
     if (!supabaseRef.current) {
-      supabaseRef.current = createBrowserClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-      )
+      supabaseRef.current = sharedSupabase
     }
   }, [])
 
