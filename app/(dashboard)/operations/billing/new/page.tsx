@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { DecimalInput } from "@/components/ui/decimal-input"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Loader2, ArrowLeft, Plus, Trash2, Calculator, ExternalLink, AlertTriangle } from "lucide-react"
 import {
@@ -25,7 +26,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { productTypeLabel } from "@/lib/operations/product-types"
+import {
+  buildFullSaleItems,
+  buildLegInvoiceItems,
+  createDefaultItem as createDefaultInvoiceItem,
+  getLegLabel,
+  roundMoney,
+} from "@/lib/invoices/operation-invoice-items"
 import { COMPROBANTE_LABELS } from "@/lib/afip/types"
 import { translateAfipError } from "@/lib/afip/error-translator"
 import {
@@ -96,36 +103,6 @@ interface Operation {
     sale_amount?: number | string | null
     operators?: { id?: string; name?: string } | null
   }>
-}
-
-// Etiquetas ES para el tipo de producto de cada pata (operation_operators.product_type).
-// Espejo de BASE_PRODUCT_LABELS en lib/operations/purchase-summary.ts.
-// Los tipos personalizados por agencia (operation_settings.custom_product_types) no
-// están acá: caen en productTypeLabel(), que los muestra legibles en vez del valor
-// crudo con guiones bajos ("ALOJAMIENTO_Y_TRASLADOS" → "Alojamiento y traslados").
-const PRODUCT_TYPE_LABELS: Record<string, string> = {
-  FLIGHT: "Aéreo",
-  HOTEL: "Hotel",
-  PACKAGE: "Paquete",
-  CRUISE: "Crucero",
-  TRANSFER: "Transfer",
-  MIXED: "Mixto",
-  ASSISTANCE: "Asistencia",
-}
-
-// Nombre legible de una pata para mostrar en el selector y en la descripción del item.
-const getLegLabel = (
-  leg: NonNullable<Operation["operation_operators"]>[number],
-  index: number
-): string => {
-  const typeLabel = leg.product_type
-    ? PRODUCT_TYPE_LABELS[leg.product_type] || productTypeLabel(leg.product_type)
-    : null
-  const operatorName = leg.operators?.name?.trim() || null
-  if (typeLabel && operatorName) return `${typeLabel} - ${operatorName}`
-  if (typeLabel) return typeLabel
-  if (operatorName) return operatorName
-  return `Servicio ${index + 1}`
 }
 
 interface OperationResponse {
@@ -221,9 +198,10 @@ export default function NewInvoicePage() {
   const [cotizacionAfip, setCotizacionAfip] = useState<number | null>(null)
   const [cotizacionLoading, setCotizacionLoading] = useState(false)
   const [invoiceRemaining, setInvoiceRemaining] = useState<number | null>(null)
-  // Fase 1 "facturar por servicio": 'FULL' = venta completa (comportamiento
-  // clásico), o el índice (como string) de una pata de operation_operators.
-  const [selectedServiceKey, setSelectedServiceKey] = useState<string>('FULL')
+  // Qué se factura de la operación. Lista vacía = venta completa (comportamiento
+  // clásico). Con uno o más índices de `operation_operators`, se facturan esos
+  // servicios juntos, un par de ítems por cada uno (VIB-112 fase 1 → VIB-121).
+  const [selectedLegIndexes, setSelectedLegIndexes] = useState<number[]>([])
   const amountEntryMode = getRecommendedAmountEntryMode(formData.cbte_tipo, formData.receptor_condicion_iva)
   const calculatedInvoice = calculateInvoice(items, amountEntryMode)
   const shouldHideTaxBreakdown = shouldHideInvoiceTaxBreakdown({
@@ -233,147 +211,43 @@ export default function NewInvoicePage() {
   })
   const activeCurrency = invoiceCurrency === 'DOL' ? 'DOL' : 'PES'
   const formatMoney = (value: number) => formatInvoiceMoney(value, activeCurrency)
-  const getDefaultTaxTreatment = (cbteTipo: number): ItemTaxTreatment => cbteTipo === 19 ? 'EXENTO' : 'GRAVADO'
-  const roundMoney = (value: number) => Math.round(value * 100) / 100
-  const createDefaultItem = (cbteTipo: number): InvoiceItem => {
-    const taxTreatment = getDefaultTaxTreatment(cbteTipo)
-    return {
-      descripcion: '',
-      cantidad: 1,
-      precio_unitario: 0,
-      iva_porcentaje: taxTreatment === 'GRAVADO' ? 21 : 0,
-      tax_treatment: taxTreatment,
-    }
-  }
-  const buildOperationInvoiceItems = (summary: any, cbteTipo: number): InvoiceItem[] => {
-    const operation = summary.operation || {}
-    const saleTotal = Number(operation.sale_amount_total || 0)
-    const operatorCost = Number(operation.operator_cost || 0)
-    const taxableDifference = roundMoney(Math.max(0, saleTotal - operatorCost))
-    const destinationLabel = operation.destination || selectedOperation?.destination || 'Operacion'
-    const fileCode = operation.file_code || selectedOperation?.file_code || ''
-    const suffix = fileCode ? ` - ${destinationLabel} (${fileCode})` : ` - ${destinationLabel}`
+  const createDefaultItem = (cbteTipo: number): InvoiceItem => createDefaultInvoiceItem(cbteTipo)
 
-    const nextItems: InvoiceItem[] = []
-
-    if (operatorCost > 0) {
-      nextItems.push({
-        descripcion: `Costo de venta no gravado${suffix}`,
-        cantidad: 1,
-        precio_unitario: roundMoney(Math.min(operatorCost, saleTotal || operatorCost)),
-        iva_porcentaje: 0,
-        tax_treatment: 'NO_GRAVADO',
-      })
-    }
-
-    if (taxableDifference > 0) {
-      nextItems.push({
-        descripcion: `Diferencia gravada 10.5%${suffix}`,
-        cantidad: 1,
-        precio_unitario: taxableDifference,
-        iva_porcentaje: 10.5,
-        tax_treatment: 'GRAVADO',
-      })
-    }
-
-    return nextItems.length > 0 ? nextItems : [createDefaultItem(cbteTipo)]
-  }
-
-  // Facturar UNA pata (vuelo/hotel/etc.) de la operación.
-  //
-  // El precio de venta de la pata (`share`) sale de:
-  //   1. VIB-112: `sale_amount` cargado en la operación, si el desglose de todas
-  //      las patas CUADRA con sale_amount_total. Es lo que la agencia definió
-  //      para controlar la base gravada de IVA.
-  //   2. Si no hay desglose (o no cuadra): reparto proporcional al costo, el
-  //      default histórico. Así la suma de las patas sigue reconciliando con el
-  //      total. Todos los montos quedan editables por el usuario igual.
-  // De ese `share` salen el ítem no gravado (costo de la pata) y la diferencia
-  // gravada al 10,5%.
-  const buildServiceInvoiceItems = (
-    operation: Operation,
-    legIndex: number,
-    cbteTipo: number
-  ): InvoiceItem[] => {
-    const legs = operation.operation_operators || []
-    const leg = legs[legIndex]
-    if (!leg) return buildOperationInvoiceItems({ operation }, cbteTipo)
-
-    const saleCurrency = operation.sale_currency === 'USD' ? 'USD' : 'ARS'
-    // exchangeRate está en USD→ARS (1 para ops en ARS).
-    const rate = exchangeRate > 1 ? exchangeRate : 1
-    const saleTotal = Number(operation.sale_amount_total || 0)
-
-    // Costo de cada pata expresado en la moneda de venta (para el ratio y el passthrough).
-    const costInSaleCurrency = (l: typeof leg): number => {
-      const c = Number(l.cost || 0)
-      const cc = l.cost_currency === 'USD' ? 'USD' : 'ARS'
-      if (cc === saleCurrency) return c
-      return saleCurrency === 'USD' ? c / rate : c * rate
-    }
-
-    const legCost = costInSaleCurrency(leg)
-
-    // ¿Usar la venta cargada por la agencia o el reparto por costo?
-    const breakdown = reconcileOperatorSaleBreakdown({
-      legs,
-      saleAmountTotal: saleTotal,
-    })
-    const share = breakdown.status === 'BALANCED'
-      ? Number(leg.sale_amount || 0)
-      : distributeSaleByCost({
-          legs,
-          saleAmountTotal: saleTotal,
-          saleCurrency,
-          exchangeRate: rate,
-        })[legIndex] ?? 0
-
-    const nonGravado = roundMoney(Math.min(legCost, share))
-    const taxableDifference = roundMoney(Math.max(0, share - nonGravado))
-
-    const label = getLegLabel(leg, legIndex)
-    const fileCode = operation.file_code || selectedOperation?.file_code || ''
-    const suffix = fileCode ? ` (${fileCode})` : ''
-
-    const nextItems: InvoiceItem[] = []
-    if (nonGravado > 0) {
-      nextItems.push({
-        descripcion: `Costo de venta no gravado - ${label}${suffix}`,
-        cantidad: 1,
-        precio_unitario: nonGravado,
-        iva_porcentaje: 0,
-        tax_treatment: 'NO_GRAVADO',
-      })
-    }
-    if (taxableDifference > 0) {
-      nextItems.push({
-        descripcion: `Diferencia gravada 10.5% - ${label}${suffix}`,
-        cantidad: 1,
-        precio_unitario: taxableDifference,
-        iva_porcentaje: 10.5,
-        tax_treatment: 'GRAVADO',
-      })
-    }
-
-    return nextItems.length > 0 ? nextItems : [createDefaultItem(cbteTipo)]
-  }
-
-  // Cambia qué se factura: 'FULL' (venta completa) o una pata puntual. Rearma los
-  // items en la moneda nativa de la operación y los convierte a la moneda de la
-  // factura igual que handleOperationChange (USD→PES con el TC vigente).
-  const handleServiceChange = (key: string) => {
-    setSelectedServiceKey(key)
+  // Rearma los ítems según lo que esté seleccionado y los deja en la moneda de la
+  // factura. Los builders trabajan en la moneda NATIVA de la operación (USD para
+  // ops en USD); si la factura se emite en pesos hay que convertir con el TC
+  // vigente, igual que hace handleOperationChange.
+  const rebuildItemsForSelection = (legIndexes: number[]) => {
     if (!selectedOperation) return
 
-    const builtItems = key === 'FULL'
-      ? buildOperationInvoiceItems({ operation: selectedOperation }, formData.cbte_tipo)
-      : buildServiceInvoiceItems(selectedOperation, Number(key), formData.cbte_tipo)
+    const builtItems = legIndexes.length === 0
+      ? buildFullSaleItems(selectedOperation, formData.cbte_tipo)
+      : buildLegInvoiceItems({
+          operation: selectedOperation,
+          legIndexes,
+          cbteTipo: formData.cbte_tipo,
+          exchangeRate,
+        })
 
     const itemsInInvoiceCurrency =
       selectedOperation.sale_currency === 'USD' && invoiceCurrency === 'PES' && exchangeRate > 1
         ? builtItems.map(it => ({ ...it, precio_unitario: roundMoney(it.precio_unitario * exchangeRate) }))
         : builtItems
     setItems(itemsInInvoiceCurrency)
+  }
+
+  // Tildar o destildar un servicio. Sin ninguno tildado se vuelve a la venta completa.
+  const toggleLeg = (legIndex: number, checked: boolean) => {
+    const next = checked
+      ? Array.from(new Set([...selectedLegIndexes, legIndex])).sort((a, b) => a - b)
+      : selectedLegIndexes.filter(i => i !== legIndex)
+    setSelectedLegIndexes(next)
+    rebuildItemsForSelection(next)
+  }
+
+  const selectFullSale = () => {
+    setSelectedLegIndexes([])
+    rebuildItemsForSelection([])
   }
 
   useEffect(() => {
@@ -691,8 +565,8 @@ export default function NewInvoicePage() {
 
           setInvoiceRemaining(remainingToInvoice)
           // Cada operación nueva arranca en "Venta completa"; el usuario puede
-          // luego elegir facturar una pata puntual (vuelo/hotel).
-          setSelectedServiceKey('FULL')
+          // luego elegir uno o varios servicios (vuelo, hotel, transfer...).
+          setSelectedLegIndexes([])
           // Los items se arman en la moneda nativa de la operación (USD para ops USD).
           // La factura por defecto se emite en PES, así que si la op es USD hay que
           // convertir los precios a ARS con el TC recién traído. Sin esto los items
@@ -701,7 +575,18 @@ export default function NewInvoicePage() {
           // ("convierte raro" / doble conversión). El resto de los handlers
           // (handleInvoiceCurrencyChange / handleExchangeRateChange) ya asumen que
           // items está en la moneda mostrada, así que acá lo dejamos consistente.
-          const builtItems = buildOperationInvoiceItems(summary, formData.cbte_tipo)
+          // `destination` y `file_code` salen de fullOperation cuando el summary
+          // no los trae: antes se caía a `selectedOperation`, que en este punto
+          // todavía tiene la operación ANTERIOR (setSelectedOperation no es
+          // síncrono), así que la descripción podía nombrar otro file.
+          const builtItems = buildFullSaleItems(
+            {
+              ...(summary.operation || {}),
+              destination: summary.operation?.destination || fullOperation?.destination,
+              file_code: summary.operation?.file_code || fullOperation?.file_code,
+            },
+            formData.cbte_tipo
+          )
           // Si la operación ya tiene facturas autorizadas, el restante (remainingToInvoice)
           // es menor que la venta total. Los ítems se arman con la venta completa, así que
           // escalamos su imp_total al restante para no arrancar por encima del tope (que
@@ -737,7 +622,7 @@ export default function NewInvoicePage() {
     } else {
       setSelectedOperation(null)
       setInvoiceRemaining(null)
-      setSelectedServiceKey('FULL')
+      setSelectedLegIndexes([])
       setFormData(prev => ({
         ...prev,
         operation_id: '',
@@ -1489,33 +1374,53 @@ export default function NewInvoicePage() {
               </Button>
             </div>
 
-            {/* Fase 1 — facturar por servicio: solo si la operación tiene ≥2 patas.
-                Permite emitir en 2 momentos (ej: primero el vuelo, después el hotel). */}
+            {/* Facturar por servicio: solo si la operación tiene ≥2 patas.
+                Permite emitir en varios momentos (ej: primero el vuelo, después el
+                hotel) o unificar varios servicios en una sola factura (VIB-121). */}
             {selectedOperation && (selectedOperation.operation_operators?.length || 0) >= 2 && (
-              <div className="rounded-lg border border-border/40 bg-muted/30 p-3 space-y-1.5">
-                <Label className="text-xs font-medium">Servicio a facturar</Label>
-                <Select value={selectedServiceKey} onValueChange={handleServiceChange}>
-                  <SelectTrigger className="h-9">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="FULL">Venta completa</SelectItem>
-                    {(selectedOperation.operation_operators || []).map((leg, i) => (
-                      <SelectItem key={i} value={String(i)}>
+              <div className="rounded-lg border border-border/40 bg-muted/30 p-3 space-y-2">
+                <Label className="text-xs font-medium">Servicios a facturar</Label>
+
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="scope-full"
+                      checked={selectedLegIndexes.length === 0}
+                      onCheckedChange={(checked) => {
+                        if (checked === true) selectFullSale()
+                      }}
+                    />
+                    <Label htmlFor="scope-full" className="text-sm font-normal cursor-pointer">
+                      Venta completa
+                    </Label>
+                  </div>
+
+                  {(selectedOperation.operation_operators || []).map((leg, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <Checkbox
+                        id={`scope-leg-${i}`}
+                        checked={selectedLegIndexes.includes(i)}
+                        onCheckedChange={(checked) => toggleLeg(i, checked === true)}
+                      />
+                      <Label
+                        htmlFor={`scope-leg-${i}`}
+                        className="text-sm font-normal cursor-pointer"
+                      >
                         {getLegLabel(leg, i)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+
                 <p className="text-xs text-muted-foreground">
-                  {selectedServiceKey === 'FULL'
-                    ? 'Se factura el total de la venta. Elegí un servicio para facturar solo esa parte.'
+                  {selectedLegIndexes.length === 0
+                    ? 'Se factura el total de la venta. Marcá uno o varios servicios para facturar solo esa parte.'
                     : reconcileOperatorSaleBreakdown({
                         legs: selectedOperation.operation_operators || [],
                         saleAmountTotal: selectedOperation.sale_amount_total,
                       }).status === 'BALANCED'
-                      ? 'Precio de venta cargado en el servicio. Ajustá los importes si hace falta.'
-                      : 'Monto estimado repartiendo la venta según el costo de cada servicio. Ajustá los importes si hace falta.'}
+                      ? `${selectedLegIndexes.length} ${selectedLegIndexes.length === 1 ? 'servicio' : 'servicios'} en esta factura, con el precio de venta cargado en cada uno. Ajustá los importes si hace falta.`
+                      : `${selectedLegIndexes.length} ${selectedLegIndexes.length === 1 ? 'servicio' : 'servicios'} en esta factura. Los montos se estiman repartiendo la venta según el costo de cada uno. Ajustá los importes si hace falta.`}
                 </p>
               </div>
             )}
