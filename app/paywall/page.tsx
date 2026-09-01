@@ -109,7 +109,11 @@ export default async function PaywallPage() {
             <Link href="mailto:hola@vibook.ai" className="text-primary underline-offset-4 hover:underline">Escribinos</Link>
           </p>
           <p>
-            <Link href="/logout" className="underline-offset-4 hover:underline">Cerrar sesión</Link>
+            {/* Form POST y no `<Link>`: el prefetch de Next dispara el GET y cierra
+                la sesion sin que nadie toque nada. */}
+            <form action="/api/auth/logout" method="POST" className="inline">
+              <button type="submit" className="underline-offset-4 hover:underline">Cerrar sesión</button>
+            </form>
           </p>
         </div>
       </div>

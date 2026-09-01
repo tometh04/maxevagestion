@@ -67,13 +67,18 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         </nav>
 
         <div className="px-3 py-4 border-t border-border space-y-1">
-          <Link
-            href="/logout"
-            className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-foreground/80 hover:bg-accent hover:text-foreground transition"
-          >
-            <LogOut className="h-4 w-4" />
-            Cerrar sesión
-          </Link>
+          {/* Un `<Link>` NO: Next lo prefetchea al entrar en viewport y el prefetch
+              es un GET real. Con `/logout` eso cerraba la sesion sola apenas el
+              sidebar scrolleaba lo suficiente. Un form POST no se prefetchea. */}
+          <form action="/api/auth/logout" method="POST">
+            <button
+              type="submit"
+              className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-foreground/80 hover:bg-accent hover:text-foreground transition"
+            >
+              <LogOut className="h-4 w-4" />
+              Cerrar sesión
+            </button>
+          </form>
         </div>
 
         <div className="px-5 py-4 border-t border-border bg-background-alt/40">
