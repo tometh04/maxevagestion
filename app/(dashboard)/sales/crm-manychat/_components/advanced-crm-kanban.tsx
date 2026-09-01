@@ -1,8 +1,8 @@
 import {
   SELLER_OPTION_ROLES,
   SELLER_OPTION_SELECT,
-  toSellerOptions,
 } from "@/lib/sellers/seller-option"
+import { resolveEffectiveSellerOptions } from "@/lib/sellers/effective-seller-options"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { getScopedAgenciesForUser } from "@/lib/permissions-api"
@@ -73,6 +73,8 @@ export async function AdvancedCRMKanban({ orgId }: AdvancedCRMKanbanProps) {
   const rawCategories = categoriesResult.data ?? []
   const agencies = scopedAgencies
   const sellers = sellersResult.data ?? []
+  // Porcentaje EFECTIVO (VIB-173): mismo criterio que Operaciones.
+  const sellerOptions = await resolveEffectiveSellerOptions(supabase, orgId, sellers)
   const operators = operatorsResult.data ?? []
 
   const categories = rawCategories.map((c) => ({
@@ -88,7 +90,7 @@ export async function AdvancedCRMKanban({ orgId }: AdvancedCRMKanbanProps) {
       funnels={allFunnels}
       orgId={orgId}
       agencies={agencies as Array<{ id: string; name: string }>}
-      sellers={toSellerOptions(sellers)}
+      sellers={sellerOptions}
       operators={
         operators as QuotationOperatorOption[]
       }

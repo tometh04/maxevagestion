@@ -12,9 +12,9 @@ import { makeTimer } from "@/lib/perf-log"
 import {
   SELLER_OPTION_ROLES,
   SELLER_OPTION_SELECT,
-  toSellerOptions,
   type SellerOption,
 } from "@/lib/sellers/seller-option"
+import { resolveEffectiveSellerOptions } from "@/lib/sellers/effective-seller-options"
 
 export default async function OperationsPage() {
   const __perfReqId = (await headers()).get("x-perf-req-id") || undefined
@@ -89,7 +89,13 @@ export default async function OperationsPage() {
   // VIB-69: al asesor independiente ni siquiera le mandamos la lista de
   // vendedores de la agencia — solo ve operaciones propias, así que el filtro no
   // le sirve para nada y los nombres del equipo no son información suya.
-  const allSellerOptions: SellerOption[] = toSellerOptions(sellers)
+  // Con el porcentaje EFECTIVO (regla propia → ficha → regla de la org): el tope
+  // de la venta compartida tiene que coincidir con el que valida el servidor.
+  const allSellerOptions: SellerOption[] = await resolveEffectiveSellerOptions(
+    supabase,
+    (user as any).org_id,
+    sellers
+  )
   const sellerOptions: SellerOption[] = isIndependentAdvisor(user)
     ? allSellerOptions.filter((s) => s.id === user.id)
     : allSellerOptions

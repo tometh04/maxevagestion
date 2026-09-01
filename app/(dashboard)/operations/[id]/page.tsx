@@ -8,9 +8,9 @@ import { getOperationVisibleDocuments } from "@/lib/documents/operation-document
 import {
   SELLER_OPTION_ROLES,
   SELLER_OPTION_SELECT,
-  toSellerOptions,
   type SellerOption,
 } from "@/lib/sellers/seller-option"
+import { resolveEffectiveSellerOptions } from "@/lib/sellers/effective-seller-options"
 
 export default async function OperationDetailPage({
   params,
@@ -221,7 +221,13 @@ export default async function OperationDetailPage({
     .eq("is_active", true)
     .eq("org_id", (user as any).org_id)
     .order("name")
-  const sellers: SellerOption[] = toSellerOptions(sellersData)
+  // Porcentaje EFECTIVO, no la columna cruda: el tope del reparto compartido
+  // tiene que decir lo mismo que valida el servidor (VIB-173).
+  const sellers: SellerOption[] = await resolveEffectiveSellerOptions(
+    supabase,
+    (user as any).org_id,
+    sellersData
+  )
 
   // Get operators for edit dialog.
   // 🔴 CROSS-TENANT FIX (2026-05-21): filtro explícito por org_id.

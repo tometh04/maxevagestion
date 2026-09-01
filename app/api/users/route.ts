@@ -78,6 +78,32 @@ export async function GET(request: Request) {
       )
     }
     
+    // Porcentaje EFECTIVO, aparte del de la ficha (VIB-173).
+    //
+    // Se agrega en vez de pisar `default_commission_percentage` a propósito: la
+    // pantalla de Reglas de Comisiones necesita el valor CRUDO de la ficha para
+    // poder decir "hoy cobra X y sale de tal lado". Los diálogos de operación,
+    // en cambio, necesitan el efectivo, porque con él calculan el tope de las
+    // ventas compartidas y ese tope lo valida el servidor con el efectivo.
+    const { resolveSellerCommissionProfiles } = await import(
+      "@/lib/commissions/seller-commission-profile"
+    )
+    let effectiveById = new Map<string, number | null>()
+    try {
+      const profiles = await resolveSellerCommissionProfiles(
+        supabase,
+        (user as any).org_id,
+        (usersData || []).map((u: any) => u.id)
+      )
+      effectiveById = new Map(
+        Array.from(profiles.entries()).map(([id, p]) => [id, p.percentage])
+      )
+    } catch (err) {
+      // Best-effort: sin esto los diálogos caen al valor de la ficha, que es el
+      // comportamiento de antes, no una pantalla rota.
+      console.error("[users] No se pudo resolver el porcentaje efectivo:", err)
+    }
+
     // Transformar los datos para compatibilidad con el frontend
     const users = (usersData || []).map((u: any) => {
       const nameParts = (u.name || '').split(' ')
@@ -92,6 +118,10 @@ export async function GET(request: Request) {
         // pantalla de Reglas de Comisiones para mostrar, al elegir un vendedor,
         // qué porcentaje tiene hoy y qué le va a quedar tapado (VIB-124).
         default_commission_percentage: u.default_commission_percentage ?? null,
+        // El que manda para el reparto de una venta compartida.
+        effective_commission_percentage: effectiveById.has(u.id)
+          ? effectiveById.get(u.id) ?? null
+          : u.default_commission_percentage ?? null,
         // Campos derivados para compatibilidad
         first_name: nameParts[0] || '',
         last_name: nameParts.slice(1).join(' ') || '',

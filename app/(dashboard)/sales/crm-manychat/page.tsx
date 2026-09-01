@@ -9,8 +9,9 @@ import { resolveUserPermissions, assertPermission } from "@/lib/permissions-agen
 import {
   SELLER_OPTION_ROLES,
   SELLER_OPTION_SELECT,
-  toSellerOptions,
+  type SellerOption,
 } from "@/lib/sellers/seller-option"
+import { resolveEffectiveSellerOptions } from "@/lib/sellers/effective-seller-options"
 import {
   QUOTATION_OPERATOR_SELECT,
   type QuotationOperatorOption,
@@ -79,6 +80,9 @@ export default async function CRMManychatPage() {
     sellersQuery = sellersQuery.eq("id", user.id)
   }
   const { data: sellers } = await sellersQuery
+  // Porcentaje EFECTIVO: los diálogos del CRM comparten el cálculo del reparto
+  // con los de Operaciones (VIB-173).
+  const sellerOptions = await resolveEffectiveSellerOptions(supabase, (user as any).org_id, sellers)
 
   // Get operators for conversion dialog
   // Cast a any: types.ts está stale; admin_fee_percentage agregada en migration
@@ -115,7 +119,7 @@ export default async function CRMManychatPage() {
       <EmiliaCrmDiscovery />
       <CRMManychatPageClient
         agencies={(agencies || []) as Array<{ id: string; name: string }>}
-        sellers={toSellerOptions(sellers)}
+        sellers={sellerOptions}
         operators={(operators || []) as QuotationOperatorOption[]}
         defaultAgencyId={agencyIds[0] || undefined}
         defaultSellerId={user.role === "SELLER" ? user.id : undefined}

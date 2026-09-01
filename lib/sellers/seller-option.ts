@@ -23,7 +23,19 @@
 export interface SellerOption {
   id: string
   name: string
-  /** Porcentaje de comisión. `null` = sin configurar, distinto de 0. */
+  /**
+   * Porcentaje de comisión EFECTIVO: el que el servidor va a usar de verdad.
+   *
+   * El nombre viene de la columna `users.default_commission_percentage`, pero
+   * esa columna es sólo la segunda de tres fuentes: una regla propia en
+   * `commission_rules` le hace shadowing, y como la columna es write-once
+   * (sólo se escribe al dar de alta al usuario) queda vieja apenas alguien
+   * toca Reglas de Comisiones. Quien arme esta lista tiene que pasarla por
+   * `resolveEffectiveSellerOptions`, o el tope de las ventas compartidas va a
+   * mostrar un número que el servidor no comparte (VIB-173).
+   *
+   * `null` = sin configurar en ninguna fuente, distinto de 0.
+   */
   default_commission_percentage: number | null
 }
 
@@ -33,8 +45,17 @@ export const SELLER_OPTION_SELECT = "id, name, default_commission_percentage"
 /** Roles que pueden figurar como vendedor de una operación. */
 export const SELLER_OPTION_ROLES = ["SELLER", "ADMIN", "SUPER_ADMIN", "POST_VENTA"]
 
+/**
+ * `effective_commission_percentage` le gana a la columna de la ficha cuando
+ * viene: es lo que devuelve `/api/users` ya resuelto contra `commission_rules`
+ * (VIB-173). Las filas crudas de `users` no lo traen y caen a la columna, que
+ * es el comportamiento de siempre.
+ */
 export function toSellerOption(row: any): SellerOption {
-  const raw = row?.default_commission_percentage
+  const raw =
+    row?.effective_commission_percentage !== undefined
+      ? row.effective_commission_percentage
+      : row?.default_commission_percentage
   const value = raw == null ? null : Number(raw)
   return {
     id: row?.id,
