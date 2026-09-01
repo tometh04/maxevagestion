@@ -14,6 +14,21 @@
 
 const MAX_OPTIONS = 4
 
+export interface EmiliaOfferSource {
+  artifact_id: string
+  product: "flights" | "hotels"
+  offer_id: string
+  selection_id?: string
+}
+
+export interface EmiliaOfferRefreshFallback {
+  product: "flights" | "hotels"
+  query: Record<string, unknown>
+  identity: Record<string, unknown>
+}
+
+export type EmiliaCostBasis = "AGENCY_NET" | "PROVIDER_TOTAL" | "COMMISSIONABLE_GROSS" | "UNKNOWN"
+
 // =============================================================================
 // Tipos de input — basados en EmiliaFlight (TVC) y EurovipsHotel server-side
 // =============================================================================
@@ -44,6 +59,7 @@ export interface EmiliaFlight {
     // no un precio unitario. Opcional para conversaciones históricas guardadas
     // antes de explicitar el contrato.
     basis?: "GROUP_TOTAL"
+    cost_basis?: EmiliaCostBasis
   }
   adults: number
   // El transformer emite `childrens` (typo histórico) y ahora también `children`.
@@ -53,6 +69,11 @@ export interface EmiliaFlight {
   return_date?: string | null
   cabin_class?: string | null
   legs: EmiliaFlightLeg[]
+  provider?: string | null
+  baggage?: { carry_on: boolean | null; checked: boolean | null }
+  refundable?: boolean | null
+  offer_source?: EmiliaOfferSource
+  offer_refresh_fallback?: EmiliaOfferRefreshFallback
 }
 
 export interface EurovipsHotel {
@@ -82,12 +103,16 @@ export interface EurovipsHotel {
     adults?: number
     children?: number
     infants?: number
+    id?: string
+    offer_source?: EmiliaOfferSource
+    offer_refresh_fallback?: EmiliaOfferRefreshFallback
+    cost_basis?: EmiliaCostBasis
   }>
   policy_cancellation: string
   policy_lodging: string
   search_adults: number
   search_children: number
-  provider: "EUROVIPS"
+  provider?: string | null
 }
 
 export interface GeneralData {
@@ -226,7 +251,7 @@ function mapFlightToItem(flight: EmiliaFlight) {
   return {
     item_type: "FLIGHT" as const,
     description,
-    provider: flight.airline?.code ?? null,
+    provider: flight.provider ?? null,
     // `price.amount` ya es el total para todos los pasajeros de la búsqueda.
     // Los pax viven en el header de la cotización; quantity=1 evita volver a
     // multiplicar el total grupal en persistence/totals.
@@ -237,6 +262,10 @@ function mapFlightToItem(flight: EmiliaFlight) {
     // operador nunca debe degradarse a cero por venir desde Emilia.
     cost_amount: flight.price?.amount ?? 0,
     gross_price: flight.price?.amount ?? 0,
+    cost_basis: flight.price?.cost_basis ?? "UNKNOWN",
+    cost_calculation_mode: flight.price?.cost_basis === "COMMISSIONABLE_GROSS"
+      ? "COMMISSIONABLE"
+      : "SIMPLE",
     cost_currency: flight.price?.currency ?? "USD",
     admin_fee_percentage: 0,
     operator_id: null,
@@ -251,7 +280,11 @@ function mapFlightToItem(flight: EmiliaFlight) {
     // quotation_items.flight_details (jsonb). Permite renderizar ida/regreso
     // con escalas y horarios en la cotización pública.
     flight_details:
-      Array.isArray(flight.legs) && flight.legs.length > 0 ? { legs: flight.legs } : null,
+      Array.isArray(flight.legs) && flight.legs.length > 0
+        ? { legs: flight.legs, baggage: flight.baggage ?? null, refundable: flight.refundable ?? null }
+        : null,
+    offer_source: flight.offer_source ?? null,
+    offer_refresh_fallback: flight.offer_refresh_fallback ?? null,
   }
 }
 
@@ -269,6 +302,10 @@ function mapHotelToItem(sel: SelectedHotel) {
     unit_price: room?.total_price ?? 0,
     cost_amount: room?.total_price ?? 0,
     gross_price: room?.total_price ?? 0,
+    cost_basis: room?.cost_basis ?? "UNKNOWN",
+    cost_calculation_mode: room?.cost_basis === "COMMISSIONABLE_GROSS"
+      ? "COMMISSIONABLE"
+      : "SIMPLE",
     cost_currency: room?.currency ?? "USD",
     admin_fee_percentage: 0,
     operator_id: null,
@@ -284,6 +321,8 @@ function mapHotelToItem(sel: SelectedHotel) {
     checkin_date: sel.hotel.check_in,
     checkout_date: sel.hotel.check_out,
     nights: sel.hotel.nights,
+    offer_source: room?.offer_source ?? null,
+    offer_refresh_fallback: room?.offer_refresh_fallback ?? null,
   }
 }
 
@@ -304,6 +343,23 @@ export function buildQuotationPayload(input: BuildQuotationInput) {
 
   // Defensa: clampear a MAX_OPTIONS hoteles aunque el UI ya lo limita
   const hotels = selectedHotels.slice(0, MAX_OPTIONS)
+  const currencies = [
+    selectedFlight?.price?.currency,
+    ...hotels.map(selection => (
+      selection.hotel.rooms?.[selection.roomIndex]
+      ?? selection.hotel.rooms?.[0]
+    )?.currency),
+  ].filter((currency): currency is string => (
+    typeof currency === "string" && /^[A-Z]{3}$/.test(currency)
+  ))
+  const distinctCurrencies = Array.from(new Set(currencies))
+  if (distinctCurrencies.length !== 1) {
+    throw new Error(
+      distinctCurrencies.length === 0
+        ? "Las ofertas seleccionadas no tienen una moneda válida."
+        : "Las ofertas seleccionadas usan monedas distintas. Convertí los importes antes de cotizar."
+    )
+  }
   const numOptions = Math.max(hotels.length, 1)
 
   const options = []
@@ -337,7 +393,7 @@ export function buildQuotationPayload(input: BuildQuotationInput) {
     adults: generalData.adults,
     children: generalData.children,
     infants: generalData.infants,
-    currency: "USD",
+    currency: distinctCurrencies[0],
     // Tanto vuelos como habitaciones llegan con un total grupal/de estadía.
     // La presentación puede derivar el valor por persona desde este total.
     pricing_mode: "GROUP_TOTAL",

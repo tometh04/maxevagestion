@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
-import { ExternalLink, MapPin, Users, Phone, Mail, Instagram, Calendar, FileText, Edit, Trash2, ArrowRight, AlertTriangle, UserPlus, Loader2, CheckCircle2, User, Briefcase, Save, X, MessageSquare, Send, Archive, ArchiveRestore, ClipboardList, Clock, DollarSign, Eye, Download, MoreHorizontal, Upload, Paperclip } from "lucide-react"
+import { ExternalLink, MapPin, Users, Phone, Mail, Instagram, Calendar, FileText, Edit, Trash2, ArrowRight, AlertTriangle, UserPlus, Loader2, CheckCircle2, User, Briefcase, Save, X, MessageSquare, Send, Archive, ArchiveRestore, ClipboardList, Clock, DollarSign, Eye, Download, MoreHorizontal, Upload, Paperclip, RefreshCw } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -47,6 +47,7 @@ import { getPublicQuotationPath } from "@/lib/quotations/public-links"
 import { downloadQuotationPdfFromPriceDialog } from "@/lib/pdf/quotation-pdf-html"
 import { fetchQuotationDocumentForUser } from "@/lib/quotation-documents/client"
 import { QuotationPdfPriceDialog } from "@/components/sales/quotation-pdf-price-dialog"
+import { QuotationPriceRefreshDialog } from "@/components/sales/quotation-price-refresh-dialog"
 import { LeadEmiliaChat } from "@/components/sales/lead-emilia-chat"
 import { LeadOutcomeBadge } from "@/components/sales/lead-outcome-badge"
 import { detectBrowserOriginCity } from "@/lib/emilia/browser-geolocation"
@@ -258,6 +259,7 @@ export function LeadDetailDialog({
     active_document_id?: string | null
     status: string
   } | null>(null)
+  const [priceRefreshQuotationId, setPriceRefreshQuotationId] = useState<string | null>(null)
   const [mode, setMode] = useState<"detail" | "emilia">("detail")
   // Conversación que ya trajo el gate de "Cotizar" (perf: el chat evita re-fetchear).
   const [emiliaConversation, setEmiliaConversation] = useState<{ id: string } | null | undefined>(undefined)
@@ -644,6 +646,15 @@ export function LeadDetailDialog({
     setOpeningQuotation(true)
 
     try {
+      const quotaResponse = await fetch("/api/quotation-quota", { cache: "no-store" })
+      if (quotaResponse.ok) {
+        const quota = await quotaResponse.json().catch(() => null)
+        if (quota?.usage?.enforcement_enabled && quota?.usage?.at_limit) {
+          toast.error("La organización alcanzó el límite de cotizaciones. Un administrador debe ampliar el cupo.")
+          return
+        }
+      }
+
       const response = await fetch(`/api/leads/${lead.id}/emilia`)
       const json = await response.json().catch(() => ({}))
 
@@ -968,6 +979,7 @@ export function LeadDetailDialog({
                     const statusConfig: Record<string, { label: string; color: string }> = {
                       DRAFT: { label: "Borrador", color: "bg-muted text-muted-foreground" },
                       SENT: { label: "Enviada", color: "bg-accent-teal/10 text-accent-teal" },
+                      PENDING_APPROVAL: { label: "Pendiente", color: "bg-accent-coral/10 text-accent-coral" },
                       APPROVED: { label: "Aprobada", color: "bg-success/10 text-success" },
                       REJECTED: { label: "Rechazada", color: "bg-destructive/10 text-destructive" },
                       EXPIRED: { label: "Vencida", color: "bg-accent-coral/10 text-accent-coral" },
@@ -975,6 +987,7 @@ export function LeadDetailDialog({
                     }
                     const sc = statusConfig[q.status] || statusConfig.DRAFT
                     const isExpired = q.valid_until && new Date(q.valid_until) < new Date() && q.status === "SENT"
+                    const canRefreshPrices = ["DRAFT", "SENT", "PENDING_APPROVAL"].includes(q.status)
 
                     return (
                       <div
@@ -1005,6 +1018,21 @@ export function LeadDetailDialog({
                           </div>
                         </div>
                         <div className="flex items-center gap-1 ml-2">
+                          {canRefreshPrices && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setPriceRefreshQuotationId(q.id)
+                              }}
+                              title="Actualizar precio y disponibilidad"
+                              aria-label={"Actualizar precio y disponibilidad de " + q.quotation_number}
+                            >
+                              <RefreshCw className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
                           {/* El lápiz vuelve a abrir la estructura completa del borrador. */}
                           {q.status === "DRAFT" && (
                             <Button
@@ -1486,6 +1514,12 @@ export function LeadDetailDialog({
           }}
         />
       )}
+
+      <QuotationPriceRefreshDialog
+        quotationId={priceRefreshQuotationId}
+        onClose={() => setPriceRefreshQuotationId(null)}
+        onApplied={loadQuotations}
+      />
 
       {/* Mismo modal Generar PDF que Emilia: precio, adicionales y descarga */}
       <QuotationPdfPriceDialog

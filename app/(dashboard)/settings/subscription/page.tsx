@@ -16,6 +16,7 @@ import { DowngradeDialog, UndoDowngradeButton } from "@/components/billing/downg
 import { fetchPreapproval } from "@/lib/billing/mercadopago"
 import { MpSandboxBanner } from "@/components/admin/mp-sandbox-banner"
 import { CheckoutOutcomeTracker } from "@/components/analytics/checkout-outcome-tracker"
+import { QuotationQuotaCard } from "@/components/sales/quotation-quota-card"
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING_PAYMENT: "Pendiente de pago",
@@ -134,13 +135,16 @@ export default async function SubscriptionPage({
       }
 
       return (
-        <CustomPlanOwnerView
-          plan={customPlan as any}
-          org={org as any}
-          checkoutUrl={checkoutUrl}
-          canManageBilling={canManageBilling}
-          proPriceArs={await resolvePlanPrice(admin, "PRO")}
-        />
+        <div className="space-y-6">
+          <CustomPlanOwnerView
+            plan={customPlan as any}
+            org={org as any}
+            checkoutUrl={checkoutUrl}
+            canManageBilling={canManageBilling}
+            proPriceArs={await resolvePlanPrice(admin, "PRO")}
+          />
+          <QuotationQuotaCard />
+        </div>
       )
     }
   }
@@ -312,6 +316,8 @@ export default async function SubscriptionPage({
       )}
 
       {/* Historial */}
+      <QuotationQuotaCard />
+
       <Card>
         <CardHeader><CardTitle>Historial de pagos</CardTitle></CardHeader>
         <CardContent>

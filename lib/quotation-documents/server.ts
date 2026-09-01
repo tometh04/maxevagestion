@@ -78,6 +78,7 @@ export class QuotationDocumentServerError extends Error {
       | "INVALID_STATE"
       | "INVALID_CONTENT"
       | "QUOTATION_CHANGED"
+      | "QUOTA_EXHAUSTED"
       | "PERSISTENCE_FAILED",
     message: string,
     public readonly causeValue?: unknown
@@ -324,6 +325,23 @@ async function buildCurrentDocument(
   }
 }
 
+/**
+ * Prepara un documento completo desde una estructura staged. No persiste nada:
+ * QuotationRefresh lo entrega luego al RPC que intercambia estructura y
+ * active_document_id en una sola transacción.
+ */
+export async function prepareQuotationDocumentForAtomicIssue(input: {
+  supabase: DbClient
+  quotation: Record<string, unknown>
+}): Promise<ResolvedQuotationDocument> {
+  return prepareDocumentForIssue(
+    await buildCurrentDocument(
+      input.supabase,
+      input.quotation as QuotationSourceRow
+    )
+  )
+}
+
 async function issueDocument(
   supabase: DbClient,
   quotation: QuotationSourceRow,
@@ -348,15 +366,20 @@ async function issueDocument(
     const isConcurrent = error?.code === "40001"
     const isInvalidState = error?.code === "55000"
     const isInvalidContent = error?.code === "22023" || error?.code === "23514"
+    const isQuotaExhausted = error?.code === "P4201"
     throw new QuotationDocumentServerError(
-      isConcurrent
+      isQuotaExhausted
+        ? "QUOTA_EXHAUSTED"
+        : isConcurrent
         ? "QUOTATION_CHANGED"
         : isInvalidState
           ? "INVALID_STATE"
           : isInvalidContent
             ? "INVALID_CONTENT"
           : "PERSISTENCE_FAILED",
-      isConcurrent
+      isQuotaExhausted
+        ? "La organización alcanzó el límite de cotizaciones de este ciclo. Comprá más créditos para emitir otro PDF."
+        : isConcurrent
         ? "La cotización cambió mientras se generaba el documento. Volvé a intentarlo."
         : isInvalidState
           ? "La cotización ya no admite una nueva emisión"

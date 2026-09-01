@@ -41,6 +41,9 @@ app/api/billing/reactivate/route.ts                                      # BILLI
 app/api/billing/status/route.ts                                          # BILLING — lee estado de suscripción; scoped por user.org_id.
 app/api/billing/sync/route.ts                                            # BILLING — sincroniza estado MP ↔ DB; scoped por orgId.
 app/api/billing/update-card-link/route.ts                                # BILLING — actualiza link de tarjeta; scoped por user.org_id.
+app/api/billing/quotation-credits/checkout/route.ts                      # BILLING — crea una preferencia de pago para un paquete habilitado y la vincula a user.org_id.
+app/api/billing/quotation-credits/webhook/route.ts                       # WEBHOOK_S2S — acredita pagos MP firmados mediante un RPC idempotente acotado por la orden.
+app/api/quotation-quota/route.ts                                         # BILLING — uso, emisiones y paquetes acotados por user.org_id y su scope de agencias.
 app/(dashboard)/settings/subscription/page.tsx                           # BILLING — page de suscripción del tenant; scoped por user.org_id.
 lib/billing/guard.ts                                                     # BILLING — lee org via user.org_id para billing guard.
 
@@ -48,6 +51,7 @@ lib/billing/guard.ts                                                     # BILLI
 # Todos protegidos por isPlatformAdmin() — acceso cross-org por diseño.
 app/admin/billing/page.tsx                                               # PLATFORM_ADMIN — panel de billing global.
 app/api/admin/billing/plan-prices/route.ts                               # PLATFORM_ADMIN — editar precios de planes estándar (tabla plan_prices).
+app/api/admin/billing/quotation-quota/route.ts                           # PLATFORM_ADMIN — configurar cupos y paquetes globales, por plan u organización.
 app/admin/orgs/page.tsx                                                  # PLATFORM_ADMIN — listar todas las orgs.
 app/admin/orgs/[id]/page.tsx                                             # PLATFORM_ADMIN — detalle de org cualquiera.
 app/admin/metrics/page.tsx                                               # PLATFORM_ADMIN — métricas globales.
@@ -65,6 +69,7 @@ app/api/admin/orgs/[id]/mp-relink/route.ts                               # PLATF
 app/api/admin/orgs/[id]/mp-preapproval-link/route.ts                     # PLATFORM_ADMIN — generar preapproval per-org con payer_email real (mejor aprobación antifraude MP).
 app/api/admin/orgs/[id]/mrr-override/route.ts                            # PLATFORM_ADMIN — override MRR manual.
 app/api/admin/orgs/[id]/profile/route.ts                                 # PLATFORM_ADMIN — editar perfil de org.
+app/api/admin/orgs/[id]/quotation-quota/route.ts                         # PLATFORM_ADMIN — consultar overrides y otorgar créditos manuales a una organización.
 app/api/admin/orgs/[id]/seed-chart-of-accounts/route.ts                  # PLATFORM_ADMIN — seedear plan de cuentas de un tenant.
 app/api/admin/orgs/[id]/seed-manychat-lists/route.ts                     # PLATFORM_ADMIN — seedear listas Manychat de un tenant.
 app/api/admin/orgs/[id]/suspend/route.ts                                 # PLATFORM_ADMIN — suspender tenant.
@@ -153,6 +158,8 @@ app/api/quotations/[id]/route.ts                                         # WRITE
 app/api/quotations/[id]/convert/route.ts                                 # WRITE_VALIDATED — conversión RPC atómica tras validar org, agencia, seller y permisos de operación.
 app/api/quotations/route.ts                                              # WRITE_VALIDATED — alta atómica tras permisos, org, agencia, seller y lead scope.
 app/api/quotations/cost-settings/route.ts                                # WRITE_VALIDATED — proyección mínima de costos tras leads.write per-agency; query exacta por agencia.
+app/api/emilia/chat/route.ts                                             # WRITE_VALIDATED — agencia validada por lead/scope antes de resolver su key Emilia server-only.
+app/api/emilia/chat/jobs/[jobId]/route.ts                                # WRITE_VALIDATED — polling con la misma agencia validada y su key Emilia server-only.
 app/api/analytics/quotations/route.ts                                    # WRITE_VALIDATED — analytics readonly tras permisos y scope org/agencia/seller.
 app/api/quotation-document-models/route.ts                               # WRITE_VALIDATED — modelos tras settings.write y agencia explícita dentro de la org.
 app/api/templates/route.ts                                               # WRITE_VALIDATED — legacy documents tras settings.write; org y agencia validados antes del admin write.
@@ -170,6 +177,7 @@ lib/accounting/seed-chart-of-accounts.ts                                 # LIB �
 lib/security/audit.ts                                                    # LIB — security_audit_log fire-and-forget (Pilar 8). Legítimo.
 lib/auth/platform.ts                                                     # LIB — verifica platform_admins; no requiere org context.
 lib/growth-studio/source-service.ts                                      # LIB/WRITE_VALIDATED — cotizaciones readonly tras entitlement y scope org/agencia/seller.
+lib/quotation-refresh/http-server.ts                                    # LIB/WRITE_VALIDATED — scope org/agencia/seller antes del modulo transaccional de refresh.
 
 # ─── TESTS DE REGRESIÓN ───────────────────────────────────────────────────────
 app/api/public/quotations/[token]/__tests__/route.test.ts                 # TEST — verifica que GET público no emita con service role y que POST use el RPC acotado por token.

@@ -80,6 +80,28 @@ export function mpNotificationUrl(): string | undefined {
   return parsed.toString()
 }
 
+/** URL dedicada a pagos únicos de paquetes de cotizaciones. */
+export function mpQuotationCreditsNotificationUrl(): string | undefined {
+  const raw = (process.env.NEXT_PUBLIC_APP_URL || "").trim()
+  if (!raw) return undefined
+  const withScheme = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`
+  try {
+    const parsed = new URL(
+      `${withScheme.replace(/\/+$/, "")}/api/billing/quotation-credits/webhook`
+    )
+    const host = parsed.hostname
+    if (
+      parsed.protocol !== "https:" ||
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host.endsWith(".local")
+    ) return undefined
+    return parsed.toString()
+  } catch {
+    return undefined
+  }
+}
+
 /**
  * True si la integración MP está corriendo contra sandbox (test mode).
  * Útil para que la UI muestre un banner y no se confundan tokens reales con
@@ -420,6 +442,61 @@ export async function fetchPayment(paymentId: string): Promise<any> {
     throw new Error(`MP fetch payment failed (${res.status}): ${text}`)
   }
   return await res.json()
+}
+
+export interface CreatePaymentPreferenceParams {
+  orderId: string
+  title: string
+  units: number
+  amountArs: number
+  payerEmail: string
+  backUrl: string
+  expiresAt: string
+}
+
+/** Checkout Pro para una compra única de créditos de cotizaciones. */
+export async function createPaymentPreference(
+  params: CreatePaymentPreferenceParams
+): Promise<{ id: string; init_point: string; sandbox_init_point?: string }> {
+  const notificationUrl = mpQuotationCreditsNotificationUrl()
+  const returnBase = params.backUrl.replace(/\/+$/, "")
+  const body: Record<string, any> = {
+    items: [{
+      id: `quotation-credits-${params.units}`,
+      title: params.title,
+      description: `${params.units} cotizaciones adicionales en Vibook`,
+      quantity: 1,
+      currency_id: "ARS",
+      unit_price: params.amountArs,
+    }],
+    payer: { email: params.payerEmail },
+    external_reference: `quotation-credit-order:${params.orderId}`,
+    metadata: { quotation_credit_order_id: params.orderId },
+    back_urls: {
+      success: `${returnBase}?quotationCredits=approved&orderId=${params.orderId}`,
+      pending: `${returnBase}?quotationCredits=pending&orderId=${params.orderId}`,
+      failure: `${returnBase}?quotationCredits=failed&orderId=${params.orderId}`,
+    },
+    auto_return: "approved",
+    expires: true,
+    expiration_date_to: params.expiresAt,
+  }
+  if (notificationUrl) body.notification_url = notificationUrl
+
+  const res = await fetch(`${MP_API}/checkout/preferences`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${mpAccessToken()}`,
+      "Content-Type": "application/json",
+      "X-Idempotency-Key": params.orderId,
+    },
+    body: JSON.stringify(body),
+  })
+  const rawText = await res.text()
+  if (!res.ok) {
+    throw new Error(`MP preference failed (${res.status}): ${rawText}`)
+  }
+  return JSON.parse(rawText)
 }
 
 /**

@@ -15,6 +15,12 @@ import {
   resolveAgencyPermissionScope,
 } from "@/lib/permissions/agency-scope-server"
 import { quotationPresentationContentSchema } from "@/lib/quotation-documents/schemas"
+import {
+  assertQuotationCreationAvailable,
+} from "@/lib/quotation-quota/server"
+import {
+  QuotationQuotaExhaustedError,
+} from "@/lib/quotation-quota/types"
 
 export const dynamic = "force-dynamic"
 
@@ -202,6 +208,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Se requiere al menos una opción válida" }, { status: 400 })
     }
 
+    const admin = createAdminClient() as any
+    try {
+      await assertQuotationCreationAvailable(admin, user.org_id, scope.agencyIds)
+    } catch (error) {
+      if (error instanceof QuotationQuotaExhaustedError) {
+        return NextResponse.json({
+          error: "La organización alcanzó el límite de cotizaciones de este ciclo. Comprá más créditos para crear una nueva.",
+          code: error.code,
+          usage: error.usage,
+        }, { status: 409 })
+      }
+      throw error
+    }
+
     // Calcular vencimiento (24hs desde ahora)
     const validUntil = new Date()
     validUntil.setHours(validUntil.getHours() + 24)
@@ -211,7 +231,6 @@ export async function POST(request: Request) {
 
     const quotationId = randomUUID()
     let quotation: any
-    const admin = createAdminClient() as any
     try {
       quotation = await createQuotationWithStructure({
         supabase: admin,

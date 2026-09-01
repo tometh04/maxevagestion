@@ -86,6 +86,7 @@ const allNavigation: NavItem[] = [
     items: [
       // { title: "Leads", url: "/sales/leads" }, // OCULTO temporalmente
       { title: "CRM Ventas", url: "/sales/crm-manychat" },
+      { title: "Cotizaciones", url: "/sales/quotations" },
       { title: "Estadísticas", url: "/sales/statistics" },
     ],
   },

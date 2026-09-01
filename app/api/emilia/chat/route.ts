@@ -1,5 +1,5 @@
 import { getCurrentUser } from "@/lib/auth"
-import { createServerClient } from "@/lib/supabase/server"
+import { createAdminClient, createServerClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 import { generateClientId, generateRequestIdFromClientId } from "@/lib/emilia/utils"
 import { persistEmiliaTurnFailure, persistEmiliaTurnResult } from "@/lib/emilia/turn-result"
@@ -11,6 +11,8 @@ import {
 import { enforceUserRateLimit } from "@/lib/rate-limit"
 import { z } from "zod"
 import { withDefaultOrigin } from "@/lib/emilia/origin-context"
+import { resolveAgencyEmiliaCredential } from "@/lib/emilia/agency-credential"
+import { resolveAgencyPermissionScope } from "@/lib/permissions/agency-scope-server"
 
 const chatRequestSchema = z.object({
   message: z.string().trim().min(1).max(4000),
@@ -62,6 +64,7 @@ export async function POST(request: Request) {
     }
 
     const leadId = (conversation as any).lead_id as string | null | undefined
+    let agencyId: string
     if (leadId) {
       const leadAccess = await resolveLeadEmiliaAccess(supabase, user)
       if (!leadAccess.allowed) {
@@ -83,6 +86,7 @@ export async function POST(request: Request) {
       )) {
         return NextResponse.json({ error: "Lead no encontrado" }, { status: 404 })
       }
+      agencyId = (lead as any).agency_id
     } else {
       const organizationAccess = await resolveEmiliaOrganizationAccess(supabase, user)
       if (!organizationAccess.allowed) {
@@ -91,6 +95,19 @@ export async function POST(request: Request) {
           { status: organizationAccess.status }
         )
       }
+      const agencyScope = await resolveAgencyPermissionScope(supabase, user, "leads", "write")
+      if (agencyScope.agencyIds.length !== 1) {
+        return NextResponse.json(
+          {
+            error: agencyScope.agencyIds.length === 0
+              ? "No tiene una agencia habilitada para usar Emilia."
+              : "Elegí una agencia antes de iniciar un chat general con Emilia.",
+            code: "emilia_agency_required",
+          },
+          { status: 409 }
+        )
+      }
+      agencyId = agencyScope.agencyIds[0]
     }
 
     const userClientId = clientId || generateClientId()
@@ -114,10 +131,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Error al guardar mensaje" }, { status: 500 })
     }
 
-    const apiKey = process.env.EMILIA_API_KEY
-    if (!apiKey) {
+    let apiKey: string
+    try {
+      apiKey = (await resolveAgencyEmiliaCredential({
+        admin: createAdminClient(),
+        orgId: user.org_id,
+        agencyId,
+      })).apiKey
+    } catch (error) {
       return NextResponse.json(
-        { error: "Emilia no está configurada. Contactá al administrador para configurar EMILIA_API_KEY." },
+        {
+          error: error instanceof Error ? error.message : "La agencia no tiene una credencial válida de Emilia.",
+          code: "emilia_agency_credential_unavailable",
+        },
         { status: 503 }
       )
     }

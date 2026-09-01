@@ -46,9 +46,6 @@ import {
 import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
 import { Label } from "@/components/ui/label"
 import { format, subDays } from "date-fns"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { QuotationsDashboard } from "@/components/sales/quotations-dashboard"
-import { supabase as supabaseClient } from "@/lib/supabase/client"
 
 interface SalesStatistics {
   overview: {
@@ -159,55 +156,6 @@ const getSourceIcon = (source: string) => {
     default:
       return null
   }
-}
-
-function QuotationsTab() {
-  const [sellers, setSellers] = useState<Array<{ id: string; name: string }>>([])
-  const [agencies, setAgencies] = useState<Array<{ id: string; name: string }>>([])
-  const [userInfo, setUserInfo] = useState<{ role: string; id: string }>({ role: "SELLER", id: "" })
-  const [ready, setReady] = useState(false)
-
-  useEffect(() => {
-    async function load() {
-      try {
-        const { data: { user } } = await supabaseClient.auth.getUser()
-        const [sellersRes, agenciesRes] = await Promise.all([
-          supabaseClient.from("users").select("id, name").in("role", ["SELLER", "POST_VENTA"]).order("name"),
-          supabaseClient.from("agencies").select("id, name").order("name"),
-        ])
-        setSellers((sellersRes.data as any) || [])
-        setAgencies((agenciesRes.data as any) || [])
-        if (user) {
-          const { data: userData } = await supabaseClient.from("users").select("id, role").eq("auth_id", user.id).single()
-          if (userData) {
-            setUserInfo({ role: (userData as any).role, id: (userData as any).id })
-          }
-        }
-      } catch (err) {
-        console.error("Error loading quotation filters:", err)
-      } finally {
-        setReady(true)
-      }
-    }
-    load()
-  }, [])
-
-  if (!ready) {
-    return (
-      <div className="flex items-center justify-center min-h-[300px]">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    )
-  }
-
-  return (
-    <QuotationsDashboard
-      sellers={sellers}
-      agencies={agencies}
-      currentUserRole={userInfo.role}
-      currentUserId={userInfo.id}
-    />
-  )
 }
 
 export function SalesStatisticsPageClient() {
@@ -350,13 +298,7 @@ export function SalesStatisticsPageClient() {
         <h1 className="text-xl font-semibold">Estadísticas</h1>
       </div>
 
-      <Tabs defaultValue="leads" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="leads">Leads</TabsTrigger>
-          <TabsTrigger value="cotizaciones">Cotizaciones</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="leads" className="space-y-4">
+      <div className="space-y-4">
           {/* Filtros de fecha */}
           <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
             <p className="text-xs text-muted-foreground">Métricas de ventas en USD</p>
@@ -674,12 +616,7 @@ export function SalesStatisticsPageClient() {
             <span>{stats.overview.activeLeads} activos • {stats.overview.realSales} ventas reales • {stats.overview.manualSales} ventas s/op • {stats.overview.discardedLeads} descartados</span>
             <span>Total depósitos: {formatFullCurrency(stats.overview.totalDeposits)}</span>
           </div>
-        </TabsContent>
-
-        <TabsContent value="cotizaciones">
-          <QuotationsTab />
-        </TabsContent>
-      </Tabs>
+      </div>
     </div>
   )
 }

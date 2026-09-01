@@ -34,6 +34,7 @@ interface FlightLeg {
     waiting_time: string
   }>
   arrival_next_day?: boolean
+  baggage?: { carry_on: boolean | null; checked: boolean | null }
   options?: Array<{
     segments?: Array<{
       baggage?: string
@@ -314,6 +315,16 @@ function FlightLegCard({ leg, airlineCode, departureDate }: FlightLegCardProps) 
 }
 
 function getBaggageText(leg: FlightLeg, airlineCode: string): string {
+  if (leg.baggage) {
+    const included: string[] = []
+    if (leg.baggage.checked === true) included.push("1 despachada")
+    if (leg.baggage.carry_on === true) included.push("1 de mano")
+    if (included.length > 0) return `(${included.join(" + ")})`
+    if (leg.baggage.checked === false && leg.baggage.carry_on === false) {
+      return "(Sin equipaje incluido)"
+    }
+    return "(Equipaje a confirmar)"
+  }
   const segment = leg.options?.[0]?.segments?.[0]
   const baggage = segment?.baggage
   const carryOn = segment?.carryOnBagInfo?.quantity

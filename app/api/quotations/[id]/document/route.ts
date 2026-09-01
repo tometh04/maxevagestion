@@ -65,7 +65,7 @@ function errorResponse(error: unknown) {
         ? 403
         : error.code === "INVALID_CONTENT"
           ? 400
-        : error.code === "QUOTATION_CHANGED" || error.code === "INVALID_STATE"
+        : error.code === "QUOTATION_CHANGED" || error.code === "INVALID_STATE" || error.code === "QUOTA_EXHAUSTED"
           ? 409
           : error.code === "TEMPLATE_INVALID"
             ? 422

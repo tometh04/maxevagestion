@@ -45,6 +45,7 @@ interface ApiFlight {
   price: {
     amount: number
     currency: string
+    cost_basis?: "AGENCY_NET" | "PROVIDER_TOTAL" | "COMMISSIONABLE_GROSS" | "UNKNOWN"
   }
   adults: number
   children: number
@@ -53,6 +54,17 @@ interface ApiFlight {
   legs: ApiFlightLeg[]
   duration?: {
     formatted: string
+  }
+  offer_source?: {
+    artifact_id: string
+    product: "flights"
+    offer_id: string
+    selection_id?: string
+  }
+  offer_refresh_fallback?: {
+    product: "flights"
+    query: Record<string, unknown>
+    identity: Record<string, unknown>
   }
 }
 
@@ -276,6 +288,10 @@ export function transformFlight(flight: ApiFlight): any {
     return_date: flight.return_date,
     cabin_class: cabinClass,
     provider,
+    baggage: (flight as any).baggage,
+    refundable: (flight as any).refundable ?? null,
+    offer_source: flight.offer_source,
+    offer_refresh_fallback: flight.offer_refresh_fallback,
     legs: transformedLegs,
   }
 }

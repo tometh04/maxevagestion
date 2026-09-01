@@ -80,7 +80,13 @@ describe("POST /api/quotations", () => {
       if (table === "leads") return leadQuery
       return fullQuery
     })
-    const admin = { rpc: jest.fn(), from: jest.fn(() => fullQuery) }
+    const admin = {
+      rpc: jest.fn().mockResolvedValue({
+        data: { configured: false, at_limit: false, enforcement_enabled: false, agencies: [] },
+        error: null,
+      }),
+      from: jest.fn(() => fullQuery),
+    }
     ;(createServerClient as jest.Mock).mockResolvedValue({ from })
     ;(createAdminClient as jest.Mock).mockReturnValue(admin)
     ;(createQuotationWithStructure as jest.Mock).mockResolvedValue({
@@ -104,6 +110,10 @@ describe("POST /api/quotations", () => {
     expect(leadQuery.eq).toHaveBeenCalledWith("agency_id", "agency-1")
     expect(leadQuery.eq).toHaveBeenCalledWith("assigned_seller_id", "seller-1")
     expect(createQuotationWithStructure).toHaveBeenCalledTimes(1)
+    expect(admin.rpc).toHaveBeenCalledWith("get_quotation_quota_usage", {
+      p_org_id: "org-1",
+      p_agency_ids: ["agency-1"],
+    })
     expect(createQuotationWithStructure).toHaveBeenCalledWith(expect.objectContaining({
       supabase: admin,
       orgId: "org-1",
@@ -133,6 +143,45 @@ describe("POST /api/quotations", () => {
 
     expect(response.status).toBe(404)
     expect(createAdminClient).not.toHaveBeenCalled()
+    expect(createQuotationWithStructure).not.toHaveBeenCalled()
+  })
+
+  it("rechaza una nueva cotización cuando el cupo organizacional está agotado", async () => {
+    const agencyQuery = queryWith({ data: { id: "agency-1" } })
+    const leadQuery = queryWith({ data: { id: "lead-1" } })
+    ;(createServerClient as jest.Mock).mockResolvedValue({
+      from: jest.fn((table: string) => table === "agencies" ? agencyQuery : leadQuery),
+    })
+    ;(createAdminClient as jest.Mock).mockReturnValue({
+      rpc: jest.fn().mockResolvedValue({
+        data: {
+          configured: true,
+          period_id: "period-1",
+          included: 10,
+          limit: 10,
+          used: 10,
+          remaining: 0,
+          at_limit: true,
+          enforcement_enabled: true,
+          agencies: [],
+        },
+        error: null,
+      }),
+    })
+
+    const { Request, Response, Headers } = require("undici")
+    global.Request = Request
+    global.Response = Response
+    global.Headers = Headers
+    const { POST } = require("../route")
+    const response = await POST(new Request("http://localhost/api/quotations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(validBody()),
+    }))
+
+    expect(response.status).toBe(409)
+    await expect(response.json()).resolves.toMatchObject({ code: "QUOTATION_QUOTA_EXHAUSTED" })
     expect(createQuotationWithStructure).not.toHaveBeenCalled()
   })
 

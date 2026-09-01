@@ -75,6 +75,18 @@ interface QuotationItem {
   commission_percentage: number
   operator_id: string | null
   generates_commission: boolean
+  cost_basis?: "AGENCY_NET" | "PROVIDER_TOTAL" | "COMMISSIONABLE_GROSS" | "UNKNOWN"
+  offer_source?: {
+    artifact_id: string
+    product: "flights" | "hotels"
+    offer_id: string
+    selection_id?: string
+  } | null
+  offer_refresh_fallback?: {
+    product: "flights" | "hotels"
+    query: Record<string, unknown>
+    identity: Record<string, unknown>
+  } | null
   // Hotel
   destination_city?: string
   hotel_name?: string
@@ -121,6 +133,26 @@ const ITEM_TYPES = [
 
 const COMMISSION_TYPES = new Set(["HOTEL", "FLIGHT", "TRANSFER", "EXCURSION", "ASSISTANCE"])
 
+const REFRESH_IDENTITY_FIELDS = new Set([
+  "item_type",
+  "provider",
+  "quantity",
+  "destination_city",
+  "hotel_name",
+  "room_type",
+  "meal_plan",
+  "checkin_date",
+  "checkout_date",
+  "rooms",
+  "airline",
+  "flight_route",
+  "flight_date",
+  "flight_return_date",
+  "flight_stops",
+  "flight_class",
+  "flight_details",
+])
+
 const MEAL_PLANS = [
   { value: "SOLO_ALOJAMIENTO", label: "Solo alojamiento" },
   { value: "DESAYUNO", label: "Desayuno" },
@@ -140,6 +172,15 @@ const PRICING_MODES: Array<{ value: QuotationPricingMode; label: string }> = [
   { value: "PER_PERSON", label: "Por persona" },
   { value: "GROUP_TOTAL", label: "Grupo familiar" },
 ]
+
+function isCostBasisModeCompatible(
+  basis: QuotationItem["cost_basis"],
+  mode: string
+) {
+  if (basis === "AGENCY_NET" || basis === "PROVIDER_TOTAL") return mode === "SIMPLE"
+  if (basis === "COMMISSIONABLE_GROSS") return mode === "COMMISSIONABLE"
+  return false
+}
 
 function generateId() {
   return Math.random().toString(36).substring(2, 9)
@@ -406,6 +447,17 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators: al
     setOptions((current) => syncLinkedFlights(updater(current)))
   }, [syncLinkedFlights])
 
+  const invalidateRefreshReferences = useCallback(() => {
+    applyOptionsUpdate((current) => current.map((option) => ({
+      ...option,
+      items: option.items.map((item) => (
+        item.offer_source || item.offer_refresh_fallback
+          ? { ...item, offer_source: null, offer_refresh_fallback: null }
+          : item
+      )),
+    })))
+  }, [applyOptionsUpdate])
+
   const resetFormForNewQuotation = useCallback((nextLead: QuotationBuilderProps["lead"]) => {
     const draft = createNewQuotationDraft(nextLead)
     setActiveQuotationId(null)
@@ -511,6 +563,9 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators: al
                 admin_fee_percentage: Number(item.admin_fee_percentage) || 0,
                 operator_id: item.operator_id || null,
                 generates_commission: item.generates_commission || false,
+                offer_source: item.offer_source || null,
+                offer_refresh_fallback: item.offer_refresh_fallback || null,
+                cost_basis: item.cost_basis || "UNKNOWN",
                 destination_city: item.destination_city || undefined,
                 hotel_name: item.hotel_name || undefined,
                 hotel_stars: item.hotel_stars || undefined,
@@ -872,6 +927,18 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators: al
               items: o.items.map((i) => {
                 if (i.id !== itemId) return i
                 const updated = { ...i, [field]: value }
+                if (REFRESH_IDENTITY_FIELDS.has(field) && !Object.is(i[field as keyof QuotationItem], value)) {
+                  updated.offer_source = null
+                  updated.offer_refresh_fallback = null
+                  if (field === "item_type" || field === "provider") updated.cost_basis = "UNKNOWN"
+                }
+                if (["cost_amount", "gross_price", "cost_currency"].includes(field)) {
+                  updated.cost_basis = "UNKNOWN"
+                }
+                if (
+                  field === "cost_calculation_mode"
+                  && !isCostBasisModeCompatible(i.cost_basis, String(value))
+                ) updated.cost_basis = "UNKNOWN"
                 if (field === "item_type") {
                   updated.generates_commission = COMMISSION_TYPES.has(value)
                 }
@@ -888,8 +955,14 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators: al
                   const resolvedMode = op?.cost_calculation_mode ?? agencyDefaultMode ?? 'SIMPLE'
                   updated.cost_calculation_mode = resolvedMode
                   updated.commission_percentage = Number(op?.commission_percentage) || agencyDefaultCommission || 0
-                  // Al cambiar de operador, limpiar gross_price previo
-                  updated.gross_price = null
+                  if (!isCostBasisModeCompatible(i.cost_basis, resolvedMode)) {
+                    updated.cost_basis = "UNKNOWN"
+                  }
+                  // Un bruto confirmado sigue siendo el mismo raw al elegir un
+                  // operador comisionable; los demás modos no reutilizan gross.
+                  if (!(resolvedMode === "COMMISSIONABLE" && i.cost_basis === "COMMISSIONABLE_GROSS")) {
+                    updated.gross_price = null
+                  }
                 }
                 // Auto-fill hotel data when hotel is selected from search
                 if (field === "hotel_name" && value) {
@@ -943,7 +1016,12 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators: al
                 if (stops[stopIndex]) {
                   stops[stopIndex] = { ...stops[stopIndex], [field]: value }
                 }
-                return { ...i, stopovers: stops }
+                return {
+                  ...i,
+                  stopovers: stops,
+                  offer_source: null,
+                  offer_refresh_fallback: null,
+                }
               }),
             }
           : o
@@ -1262,6 +1340,9 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators: al
             cost_calculation_mode: item.cost_calculation_mode || 'SIMPLE',
             gross_price: item.gross_price ?? null,
             commission_percentage: Number(item.commission_percentage) || 0,
+            offer_source: item.offer_source || null,
+            offer_refresh_fallback: item.offer_refresh_fallback || null,
+            cost_basis: item.cost_basis || "UNKNOWN",
           })),
         })),
       }
@@ -1403,7 +1484,10 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators: al
                 <Label className="text-xs">Destino *</Label>
                 <SearchableCombobox
                   value={destination}
-                  onChange={setDestination}
+                  onChange={(value) => {
+                    if (value !== destination) invalidateRefreshReferences()
+                    setDestination(value)
+                  }}
                   placeholder="Buscar destino..."
                   searchPlaceholder="Escribi el destino..."
                   emptyMessage="No se encontraron resultados"
@@ -1415,7 +1499,10 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators: al
                 <Label className="text-xs">Origen</Label>
                 <SearchableCombobox
                   value={origin}
-                  onChange={setOrigin}
+                  onChange={(value) => {
+                    if (value !== origin) invalidateRefreshReferences()
+                    setOrigin(value)
+                  }}
                   placeholder="Ciudad de origen..."
                   searchPlaceholder="Buscar ciudad..."
                   emptyMessage="No se encontraron resultados"
@@ -1443,7 +1530,11 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators: al
                 <Label className="text-xs">Salida *</Label>
                 <DateInputWithCalendar
                   value={toDate(departureDate)}
-                  onChange={(d) => setDepartureDate(toStr(d))}
+                  onChange={(d) => {
+                    const value = toStr(d)
+                    if (value !== departureDate) invalidateRefreshReferences()
+                    setDepartureDate(value)
+                  }}
                   placeholder="dd/mm/aaaa"
                   className="h-9 rounded-md"
                 />
@@ -1452,7 +1543,11 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators: al
                 <Label className="text-xs">Regreso</Label>
                 <DateInputWithCalendar
                   value={toDate(returnDate)}
-                  onChange={(d) => setReturnDate(toStr(d))}
+                  onChange={(d) => {
+                    const value = toStr(d)
+                    if (value !== returnDate) invalidateRefreshReferences()
+                    setReturnDate(value)
+                  }}
                   placeholder="dd/mm/aaaa"
                   minDate={toDate(departureDate)}
                   className="h-9 rounded-md"
@@ -1460,11 +1555,19 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators: al
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Adultos</Label>
-                <Input type="number" min={1} value={adults} onChange={(e) => setAdults(Number(e.target.value))} />
+                <Input type="number" min={1} value={adults} onChange={(e) => {
+                  const value = Number(e.target.value)
+                  if (value !== adults) invalidateRefreshReferences()
+                  setAdults(value)
+                }} />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Menores</Label>
-                <Input type="number" min={0} value={children} onChange={(e) => setChildren(Number(e.target.value))} />
+                <Input type="number" min={0} value={children} onChange={(e) => {
+                  const value = Number(e.target.value)
+                  if (value !== children) invalidateRefreshReferences()
+                  setChildren(value)
+                }} />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Moneda</Label>
