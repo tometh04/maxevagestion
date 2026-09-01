@@ -39,6 +39,16 @@ const OperatorPaymentsPageClient = dynamic(
   }
 )
 
+const OperatorAdjustmentsReportClient = dynamic(
+  () =>
+    import("@/components/accounting/operator-adjustments-report").then((m) => ({
+      default: m.OperatorAdjustmentsReportClient,
+    })),
+  {
+    loading: () => <Skeleton className="h-[400px] w-full" />,
+  }
+)
+
 const PartnerAccountsClient = dynamic(
   () =>
     import("@/components/accounting/partner-accounts-client").then((m) => ({
@@ -271,6 +281,7 @@ export default async function ContabilidadPage({
           operators={(operators || []).map((o: any) => ({ id: o.id, name: o.name }))}
         />
       }
+      operatorAdjustmentsContent={<OperatorAdjustmentsReportClient agencies={agencies} />}
       partnerAccountsContent={
         showPartnerAccounts
           ? <PartnerAccountsClient

@@ -75,6 +75,8 @@ interface FinancialSettings {
   default_commission_percentage: number
   // Base de comisiones neta de IVA (VIB-95). La alícuota se guarda como fracción.
   commission_base_net_of_iva: boolean
+  /** VIB-174: repartir el ajuste de liquidación con el vendedor y el referidor. */
+  operator_adjustment_split_with_seller: boolean
   commission_iva_rate: number
   commission_net_from: string | null
   /** Tipos de servicio que comisionan por defecto en esta oficina. */
@@ -116,6 +118,8 @@ export function FinancesSettingsPageClient({ agencies }: FinancesSettingsPageCli
     default_cost_calculation_mode: "SIMPLE",
     default_commission_percentage: 0,
     commission_base_net_of_iva: false,
+    // Default true, igual que la columna: es el criterio más común.
+    operator_adjustment_split_with_seller: true,
     commission_iva_rate: 0.105,
     commission_net_from: null,
     commission_service_types: [...DEFAULT_COMMISSION_SERVICE_TYPES],
@@ -865,6 +869,49 @@ export function FinancesSettingsPageClient({ agencies }: FinancesSettingsPageCli
                     al equipo técnico que corra el script de recálculo.
                   </p>
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* VIB-174 */}
+          <Card className="rounded-xl border-border/40">
+            <CardHeader>
+              <CardTitle>Ajustes de liquidación de operador</CardTitle>
+              <CardDescription>
+                Qué pasa cuando la liquidación definitiva de un operador llega por un monto
+                distinto al que se estimó al vender, y la comisión ya se pagó sobre esa
+                estimación.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-start justify-between gap-4 rounded-lg border border-border/40 bg-muted/10 p-4">
+                <div className="space-y-1">
+                  <Label
+                    htmlFor="operator_adjustment_split_with_seller"
+                    className="text-sm font-medium"
+                  >
+                    Repartir la diferencia con el vendedor
+                  </Label>
+                  <p className="max-w-xl text-xs text-muted-foreground">
+                    Con esto activo, la diferencia se reparte según el porcentaje con el que
+                    se le liquidó la comisión original. Ejemplo: el hotel salió 50 más caro y
+                    el vendedor cobra 20% → 40 los absorbe la agencia y 10 se le descuentan de
+                    la próxima liquidación. Apagado, la agencia se come sola la diferencia.
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    El ajuste contable se registra siempre: esto solo decide a quién le toca.
+                  </p>
+                </div>
+                <Switch
+                  id="operator_adjustment_split_with_seller"
+                  checked={settings.operator_adjustment_split_with_seller}
+                  onCheckedChange={(checked) =>
+                    setSettings({
+                      ...settings,
+                      operator_adjustment_split_with_seller: checked,
+                    })
+                  }
+                />
               </div>
             </CardContent>
           </Card>

@@ -34,6 +34,7 @@
 
 import { logAudit } from "@/lib/audit"
 import { roundMoney } from "@/lib/currency"
+import { KINDS_FUERA_DEL_PLAN_FILTER } from "@/lib/commissions/kinds"
 import { createServerClient } from "@/lib/supabase/server"
 import {
   resolveSellerCommissionProfiles,
@@ -327,18 +328,18 @@ export async function applyCommissionPlan(
 
   // `operation_id` ya ancla el tenant (una operación pertenece a una sola org),
   // así que la lectura no necesita org_id para ser segura.
-  // Solo las filas que este plan posee. Las de `kind = 'SERVICE'` tienen su
+  // Solo las filas que este plan posee. Las de `KINDS_FUERA_DEL_PLAN` tienen su
   // propio vendedor, su propio porcentaje y su propio mes, y no se derivan del
-  // margen de la operación: son las primeras filas de la tabla que NO produce
-  // este plan. Si entraran acá, el Map de abajo las haría desaparecer (colapsa
-  // por seller_id) y el barrido de huérfanas las borraría, porque su vendedor
-  // no figura en `plan.entries`. Y ese barrido corre con casi cualquier edición
-  // de la operación o de sus servicios.
+  // margen de la operación: son las filas de la tabla que NO produce este plan.
+  // Si entraran acá, el Map de abajo las haría desaparecer (colapsa por
+  // seller_id) y el barrido de huérfanas las borraría, porque su vendedor no
+  // figura en `plan.entries`. Y ese barrido corre con casi cualquier edición de
+  // la operación o de sus servicios.
   const { data: existingRows, error: readError } = await supabase
     .from("commission_records")
     .select("id, seller_id, status, amount, amount_paid, percentage, settled_at, kind")
     .eq("operation_id", operation.id)
-    .neq("kind", "SERVICE")
+    .not("kind", "in", KINDS_FUERA_DEL_PLAN_FILTER)
 
   if (readError) {
     result.errors.push(`No se pudieron leer las comisiones existentes: ${readError.message}`)

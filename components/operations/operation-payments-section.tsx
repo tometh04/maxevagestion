@@ -49,7 +49,8 @@ import { Input } from "@/components/ui/input"
 import { DecimalInput } from "@/components/ui/decimal-input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
-import { CalendarIcon, Plus, Loader2, Trash2, FileText, Download, MessageSquare, Pencil, CheckCircle2, CreditCard, Banknote, Landmark, StickyNote, Receipt, Mail } from "lucide-react"
+import { CalendarIcon, Plus, Loader2, Trash2, FileText, Download, MessageSquare, Pencil, CheckCircle2, CreditCard, Banknote, Landmark, StickyNote, Receipt, Mail, Scale } from "lucide-react"
+import { OperatorCostAdjustmentDialog } from "@/components/accounting/operator-cost-adjustment-dialog"
 import { SendDocumentEmailDialog } from "@/components/shared/send-document-email-dialog"
 import { Switch } from "@/components/ui/switch"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -236,6 +237,8 @@ export function OperationPaymentsSection({
   const [isRepairing, setIsRepairing] = useState(false)
   // VIB-38: edición inline de due_date por operator_payment
   const [editingDueDateId, setEditingDueDateId] = useState<string | null>(null)
+  // VIB-174: qué deuda se está ajustando por liquidación.
+  const [adjustPaymentId, setAdjustPaymentId] = useState<string | null>(null)
   const [savingDueDateId, setSavingDueDateId] = useState<string | null>(null)
   // Optimistic: due_date override por id para reflejar el cambio antes de router.refresh()
   const [dueDateOverrides, setDueDateOverrides] = useState<Record<string, string | null>>({})
@@ -1352,6 +1355,21 @@ export function OperationPaymentsSection({
                           )}
                         </PopoverContent>
                       </Popover>
+                    )}
+                    {/* VIB-174: la liquidación definitiva llegó por otro monto.
+                        El costo estimado de la operación no se toca; la
+                        diferencia se imputa al mes en que llegó. */}
+                    {canWriteCash && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                        onClick={() => setAdjustPaymentId(opId)}
+                        title="Ajustar por liquidación"
+                      >
+                        <Scale className="h-3 w-3" />
+                        <span className="sr-only">Ajustar por liquidación</span>
+                      </Button>
                     )}
                   </div>
                 </div>
@@ -3047,6 +3065,16 @@ export function OperationPaymentsSection({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Ajuste por liquidación de operador (VIB-174) */}
+      <OperatorCostAdjustmentDialog
+        operatorPaymentId={adjustPaymentId}
+        open={adjustPaymentId !== null}
+        onOpenChange={(open) => {
+          if (!open) setAdjustPaymentId(null)
+        }}
+        onSuccess={() => router.refresh()}
+      />
     </>
   )
 }

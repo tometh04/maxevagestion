@@ -13,6 +13,7 @@
 import { buildExchangeRateMap } from "@/lib/accounting/exchange-rates"
 import { sugerirCotizacionEnRango } from "@/lib/accounting/monthly-rate-suggestion"
 import { fetchFinancialResults } from "@/lib/accounting/fetch-financial-results"
+import { fetchOperatorAdjustments } from "@/lib/accounting/fetch-operator-adjustments"
 import { fetchCommissionRecords } from "@/lib/commissions/fetch-commission-records"
 import { fetchReferralCommissions } from "@/lib/commissions/fetch-referral-commissions"
 import { fetchExpenses } from "@/lib/expenses/fetch-expenses"
@@ -112,8 +113,16 @@ export async function buildSocietarioReportData(
   const agencyIds = params.agencyIds ?? []
 
   // Las siete lecturas son independientes entre sí.
-  const [sales, expensesResult, financial, commissions, referrals, orgPartners, sugerida] =
-    await Promise.all([
+  const [
+    sales,
+    expensesResult,
+    financial,
+    commissions,
+    referrals,
+    orgPartners,
+    sugerida,
+    operatorAdjustments,
+  ] = await Promise.all([
     fetchSalesOperations({ supabase, orgId, dateFrom, dateTo, agencyId, agencyIds }),
     fetchExpenses({
       supabase,
@@ -138,6 +147,9 @@ export async function buildSocietarioReportData(
     // una sugerencia: si `exchange_rates` falla, el reporte tiene que salir
     // igual, así que no puede tumbar el Promise.all.
     sugerirCotizacionEnRango(supabase, dateFrom, dateTo, "PROMEDIO").catch(() => null),
+    // VIB-174: la diferencia entre el costo estimado del operador y su
+    // liquidación definitiva, imputada al mes en que llegó.
+    fetchOperatorAdjustments({ supabase, orgId, dateFrom, dateTo, agencyId, agencyIds }),
   ])
 
   const monthKeys = monthKeysBetween(dateFrom, dateTo)
@@ -198,6 +210,7 @@ export async function buildSocietarioReportData(
       cancelled: commissions.cancelledRecords,
     },
     commissionsTruncated: commissions.truncated || referrals.truncated,
+    operatorAdjustments: operatorAdjustments.adjustments,
     financialTruncated: financial.truncated,
     expensesTruncated: expensesResult.truncated,
     partners: orgPartners.partners,

@@ -369,10 +369,17 @@ function createSupabase(existing: FakeRecord[]) {
   const deletes: string[] = []
 
   const from = () => {
-    // `notFilters` modela `.neq()`. Sin esto el fake devolvía TODA la tabla y
-    // un test sobre el filtrado de filas pasaría aunque el código de producción
-    // no filtrara nada.
-    const state: any = { filters: {}, notFilters: {}, op: "select", values: null }
+    // `notFilters` modela `.neq()` y `notInFilters` modela
+    // `.not(col, "in", "(A,B)")`. Sin esto el fake devolvía TODA la tabla y un
+    // test sobre el filtrado de filas pasaría aunque el código de producción no
+    // filtrara nada.
+    const state: any = {
+      filters: {},
+      notFilters: {},
+      notInFilters: {},
+      op: "select",
+      values: null,
+    }
 
     const builder: any = new Proxy(
       {},
@@ -390,10 +397,15 @@ function createSupabase(existing: FakeRecord[]) {
                 deletes.push(state.filters.id)
                 resolve({ data: null, error: null })
               } else {
-                const rows = existing.filter((row) =>
-                  Object.entries(state.notFilters).every(
-                    ([column, value]) => (row as any)[column] !== value
-                  )
+                const rows = existing.filter(
+                  (row) =>
+                    Object.entries(state.notFilters).every(
+                      ([column, value]) => (row as any)[column] !== value
+                    ) &&
+                    Object.entries(state.notInFilters).every(
+                      ([column, values]) =>
+                        !(values as string[]).includes(String((row as any)[column] ?? "SELLER"))
+                    )
                 )
                 resolve({ data: rows, error: null })
               }
@@ -407,6 +419,11 @@ function createSupabase(existing: FakeRecord[]) {
             }
             if (name === "eq") state.filters[args[0]] = args[1]
             if (name === "neq") state.notFilters[args[0]] = args[1]
+            if (name === "not" && args[1] === "in") {
+              state.notInFilters[args[0]] = String(args[2])
+                .replace(/^\(|\)$/g, "")
+                .split(",")
+            }
             return builder
           }
         },
@@ -439,9 +456,8 @@ const planOf = (entries: Array<[string, PlanRole, number, number, string?]>) => 
 
 describe("applyCommissionPlan", () => {
   it("no toca las comisiones de servicio: ni las pisa ni las borra", async () => {
-    // Las filas kind='SERVICE' son las únicas de la tabla que este plan NO
-    // produce: llevan su propio vendedor, su propio porcentaje y su propio mes,
-    // y no se derivan del margen de la operación.
+    // Las filas kind='SERVICE' llevan su propio vendedor, su propio porcentaje
+    // y su propio mes, y no se derivan del margen de la operación.
     //
     // Sin aislarlas pasaban dos cosas, las dos silenciosas: el Map por seller_id
     // las hacía desaparecer, y el barrido de huérfanas las borraba, porque el
@@ -451,6 +467,31 @@ describe("applyCommissionPlan", () => {
     const { client, updates, inserts, deletes } = createSupabase([
       { id: "cr-venta", seller_id: "jose", status: "PENDING", amount: 100 },
       { id: "cr-servicio", seller_id: "melani", status: "PENDING", amount: 40, kind: "SERVICE" },
+    ])
+
+    await applyCommissionPlan(client, baseOp(), planOf([["jose", "PRIMARY", 10, 120]]))
+
+    expect(deletes).toEqual([])
+    expect(updates.map((u) => u.id)).toEqual(["cr-venta"])
+    expect(inserts).toEqual([])
+  })
+
+  it("no toca las comisiones de ajuste por liquidación de operador (VIB-174)", async () => {
+    // Mismo riesgo que las de servicio, y peor consecuencia. Un ajuste puede ser
+    // del MISMO vendedor que la venta: si entrara a la lectura del plan, el Map
+    // por seller_id se quedaría con una sola de las dos filas y la otra
+    // desaparecería del balance del vendedor.
+    //
+    // Y si el ajuste es de otro vendedor —o el vendedor salió de la operación—
+    // el barrido de huérfanas lo borra físicamente. En cualquiera de los dos
+    // casos se pierde una corrección de plata ya contabilizada y asentada, en
+    // silencio, con solo editar la operación.
+    const { client, updates, inserts, deletes } = createSupabase([
+      { id: "cr-venta", seller_id: "jose", status: "PENDING", amount: 100 },
+      // Ajuste NEGATIVO del mismo vendedor: José tiene que devolver 10.
+      { id: "cr-ajuste-jose", seller_id: "jose", status: "PENDING", amount: -10, kind: "ADJUSTMENT" },
+      // Ajuste de alguien que ya no participa de la operación.
+      { id: "cr-ajuste-ex", seller_id: "melani", status: "PENDING", amount: -4, kind: "ADJUSTMENT" },
     ])
 
     await applyCommissionPlan(client, baseOp(), planOf([["jose", "PRIMARY", 10, 120]]))

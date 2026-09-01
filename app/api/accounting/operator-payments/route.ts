@@ -450,7 +450,14 @@ export async function POST(request: Request) {
   }
 }
 
-// PATCH - Actualizar pago a operador (moneda, monto, fecha de vencimiento)
+// PATCH - Actualizar pago a operador (moneda, fecha de vencimiento, notas)
+//
+// El `amount` YA NO se acepta acá (VIB-174). Este endpoint editaba el monto de
+// la deuda a pelo: sin auditoría, sin asiento y sin tocar las comisiones que se
+// habían liquidado sobre el costo viejo. Nunca tuvo un caller en la UI, así que
+// era un arma cargada esperando a que alguien la usara. Cambiar el monto de una
+// deuda es un ajuste de liquidación y va por
+// POST /api/accounting/operator-payments/[id]/adjust, que deja el rastro.
 export async function PATCH(request: Request) {
   try {
     const { user, supabase, matrix } = await getRequestPermissions()
@@ -462,10 +469,21 @@ export async function PATCH(request: Request) {
     }
 
     const body = await request.json()
-    const { id, currency, amount, due_date, notes } = body
+    const { id, currency, due_date, notes } = body
 
     if (!id) {
       return NextResponse.json({ error: "Se requiere el ID del pago" }, { status: 400 })
+    }
+
+    if (body.amount !== undefined) {
+      return NextResponse.json(
+        {
+          error:
+            "El monto de una deuda no se edita directamente. Registrá un ajuste de liquidación para que quede el rastro contable y se corrijan las comisiones.",
+          code: "USE_ADJUSTMENT_ENDPOINT",
+        },
+        { status: 400 },
+      )
     }
 
     // Cross-tenant fix (2026-05-18): exigir org_id y scopear el update.
@@ -475,7 +493,6 @@ export async function PATCH(request: Request) {
 
     const updateData: Record<string, any> = {}
     if (currency) updateData.currency = currency
-    if (amount !== undefined) updateData.amount = parseFloat(amount)
     if (due_date) updateData.due_date = due_date
     if (notes !== undefined) updateData.notes = notes
 

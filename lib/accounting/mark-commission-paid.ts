@@ -4,6 +4,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/lib/supabase/types"
+import { KINDS_FUERA_DEL_PLAN_FILTER } from "@/lib/commissions/kinds"
 
 export interface MarkCommissionsOptions {
   /**
@@ -68,10 +69,14 @@ export async function markCommissionsAsPaidIfLedgerExists(
   } else {
     // Sin fila concreta no hay manera de saber a cuál de las comisiones del
     // vendedor corresponde el movimiento, así que se conserva el barrido
-    // histórico por vendedor, pero se excluyen las de servicio: esas se cobran
-    // por su propio circuito y no deben saldarse como efecto colateral del pago
-    // de otra comisión.
-    query = query.in("seller_id", sellerIds).neq("kind", "SERVICE")
+    // histórico por vendedor, pero se excluyen las de servicio y las de ajuste:
+    // esas se cobran por su propio circuito y no deben saldarse como efecto
+    // colateral del pago de otra comisión. Una fila de ajuste puede además ser
+    // NEGATIVA: marcarla pagada de rebote le perdonaría al vendedor una
+    // devolución que nadie descontó.
+    query = query
+      .in("seller_id", sellerIds)
+      .not("kind", "in", KINDS_FUERA_DEL_PLAN_FILTER)
   }
 
   const { data: updated, error } = await query.select("id")

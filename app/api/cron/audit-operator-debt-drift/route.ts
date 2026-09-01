@@ -69,6 +69,50 @@ export async function POST(request: Request) {
     registered[key] = Number(row.registered_total) || 0
   }
 
+  // ─── 2b. Descontar los ajustes de liquidación (VIB-174) ─────────────
+  // Un ajuste corrige `operator_payments.amount` al costo real que liquidó el
+  // operador y NO toca `operation_operators.cost`, que conserva el estimado con
+  // el que se calcularon margen y comisiones. Esa diferencia es deliberada: es
+  // toda la feature. Sin restarla acá, cada ajuste legítimo dispararía una
+  // alerta de drift y el cron se volvería ruido que nadie mira.
+  const adjustments: Record<string, number> = {}
+  const PAGE = 1000
+  for (let from = 0; ; from += PAGE) {
+    const { data: adjRows, error: adjErr } = await admin
+      .from("operator_cost_adjustments")
+      .select("org_id, operator_id, currency, delta_amount")
+      .is("reversed_at", null)
+      .order("id")
+      .range(from, from + PAGE - 1)
+
+    if (adjErr) {
+      // No se degrada en silencio: sin esta resta el reporte de drift es
+      // incorrecto, y prefiero un 500 visible a alertas falsas todas las noches.
+      console.error("[audit-drift] Error leyendo operator_cost_adjustments:", adjErr)
+      return NextResponse.json(
+        { error: "No se pudieron leer los ajustes de liquidación", detail: adjErr.message },
+        { status: 500 },
+      )
+    }
+
+    for (const row of (adjRows || []) as Array<{
+      org_id: string
+      operator_id: string
+      currency: string
+      delta_amount: number
+    }>) {
+      if (!row.org_id || !row.operator_id) continue
+      const key = `${row.org_id}::${row.operator_id}::${row.currency || "ARS"}`
+      adjustments[key] = (adjustments[key] || 0) + (Number(row.delta_amount) || 0)
+    }
+
+    if (!adjRows || adjRows.length < PAGE) break
+  }
+
+  for (const [key, delta] of Object.entries(adjustments)) {
+    if (registered[key] !== undefined) registered[key] -= delta
+  }
+
   // ─── 3. Detectar drift material
   type DriftRow = {
     org_id: string

@@ -1202,3 +1202,56 @@ describe("cierre por oficina", () => {
     expect(r.porAgencia.total.ventaBruta).toBe(0)
   })
 })
+
+describe("ajustes de liquidación de operador (VIB-174)", () => {
+  // El costo que trae `operations` es el ESTIMADO con el que se vendió. Cuando
+  // la liquidación definitiva llega por otro monto, la diferencia se imputa al
+  // mes en que llegó, no al de la venta.
+  const ajuste = (over: Partial<any> = {}) => ({
+    deltaAmount: 50,
+    currency: "USD",
+    accrualDate: "2026-07-15",
+    agencyId: "ag-1",
+    ...over,
+  })
+
+  it("una liquidación más cara baja la ganancia neta", () => {
+    // delta +50 (el operador cobró más) → resultado −50.
+    const sin = build()
+    const con = build({ operatorAdjustments: [ajuste()] })
+
+    expect(con.resultado.gananciaNeta).toBeCloseTo(sin.resultado.gananciaNeta - 50, 2)
+  })
+
+  it("una liquidación más barata la sube", () => {
+    const sin = build()
+    const con = build({ operatorAdjustments: [ajuste({ deltaAmount: -50 })] })
+
+    expect(con.resultado.gananciaNeta).toBeCloseTo(sin.resultado.gananciaNeta + 50, 2)
+  })
+
+  it("aparece como línea propia de signo variable, no como deducción", () => {
+    const r = build({ operatorAdjustments: [ajuste({ deltaAmount: -50 })] })
+    const linea = r.resultado.waterfall.find((s) => s.key === "ajustes")!
+
+    expect(linea).toBeDefined()
+    expect(linea.kind).toBe("adjustment")
+    expect(linea.amount).toBe(50)
+  })
+
+  it("sin ajustes no agrega una fila en cero", () => {
+    const r = build()
+    expect(r.resultado.waterfall.find((s) => s.key === "ajustes")).toBeUndefined()
+  })
+
+  it("separa ganancias de pérdidas en el desglose", () => {
+    const r = build({
+      operatorAdjustments: [ajuste({ deltaAmount: 80 }), ajuste({ deltaAmount: -30 })],
+    })
+    const linea = r.resultado.waterfall.find((s) => s.key === "ajustes")!
+
+    expect(linea.amount).toBeCloseTo(-50, 2) // −80 + 30
+    expect(linea.breakdown!.find((b) => b.key === "ganancia")!.amount).toBe(30)
+    expect(linea.breakdown!.find((b) => b.key === "perdida")!.amount).toBe(-80)
+  })
+})

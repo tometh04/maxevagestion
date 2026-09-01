@@ -81,6 +81,10 @@ const financialSettingsSchema = z.object({
   // default del switch "Comisiona" de cada servicio, no una restricción: la
   // verdad de cada fila vive en `operation_services.generates_commission`.
   commission_service_types: z.array(z.enum(ALL_SERVICE_TYPES)).optional(),
+  // Si el ajuste por liquidación de operador se reparte con el vendedor y el
+  // referidor según el porcentaje de su comisión original (VIB-174). El ajuste
+  // contable se registra siempre; esto decide a quién le toca la diferencia.
+  operator_adjustment_split_with_seller: z.boolean().optional(),
 })
 
 

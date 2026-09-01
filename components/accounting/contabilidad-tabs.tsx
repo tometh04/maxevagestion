@@ -15,6 +15,7 @@ interface ContabilidadTabsProps {
   chartOfAccountsContent: React.ReactNode
   debtsSalesContent: React.ReactNode
   operatorPaymentsContent: React.ReactNode
+  operatorAdjustmentsContent: React.ReactNode
   partnerAccountsContent: React.ReactNode
   monthlyPositionContent: React.ReactNode
   facturasComprasContent: React.ReactNode
@@ -34,6 +35,7 @@ export function ContabilidadTabs({
   chartOfAccountsContent,
   debtsSalesContent,
   operatorPaymentsContent,
+  operatorAdjustmentsContent,
   partnerAccountsContent,
   monthlyPositionContent,
   facturasComprasContent,
@@ -48,6 +50,7 @@ export function ContabilidadTabs({
     "estados",
     "cierre",
     "operators",
+    "ajustes",
     "debts",
     "ctacte",
     "partners",
@@ -93,6 +96,10 @@ export function ContabilidadTabs({
           <TabsTrigger value="operators" className="gap-1.5">
             <Plane className="h-3.5 w-3.5" />
             Pagos a Operadores
+          </TabsTrigger>
+          <TabsTrigger value="ajustes" className="gap-1.5">
+            <Scale className="h-3.5 w-3.5" />
+            Ajustes de Liquidación
           </TabsTrigger>
           <TabsTrigger value="debts" className="gap-1.5">
             <Users className="h-3.5 w-3.5" />
@@ -148,6 +155,10 @@ export function ContabilidadTabs({
 
         <TabsContent value="operators" className="mt-6">
           {operatorPaymentsContent}
+        </TabsContent>
+
+        <TabsContent value="ajustes" className="mt-6">
+          {operatorAdjustmentsContent}
         </TabsContent>
 
         <TabsContent value="debts" className="mt-6">

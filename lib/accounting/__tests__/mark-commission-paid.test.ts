@@ -53,6 +53,8 @@ function createSupabase(ledgerRows: Array<{ id: string; seller_id: string | null
             if (name === "update") state.op = "update"
             if (name === "eq") state.filters[args[0]] = args[1]
             if (name === "neq") state.notFilters[args[0]] = args[1]
+            // `.not(col, op, value)` — el filtro que excluye varias clases de golpe.
+            if (name === "not") state.notFilters[args[0]] = { op: args[1], value: args[2] }
             if (name === "in") state.inFilters[args[0]] = args[1]
             return builder
           }
@@ -82,18 +84,23 @@ describe("markCommissionsAsPaidIfLedgerExists", () => {
     expect(updateCalls[0].inFilters.seller_id).toBeUndefined()
   })
 
-  it("sin fila concreta conserva el barrido por vendedor, pero nunca toca las de servicio", async () => {
+  it("sin fila concreta conserva el barrido por vendedor, pero nunca toca las de servicio ni las de ajuste", async () => {
     // Camino heredado: sin saber qué fila corresponde al movimiento, se sigue
     // marcando por vendedor —comportamiento histórico— pero se excluyen las
-    // comisiones de servicio, que se cobran por su propio circuito y no deben
-    // saldarse como efecto colateral del pago de otra.
+    // comisiones de servicio, que se cobran por su propio circuito, y las de
+    // ajuste por liquidación de operador (VIB-174), que además pueden ser
+    // NEGATIVAS: marcarlas pagadas de rebote le perdonaría al vendedor una
+    // devolución que nadie descontó.
     const { client, updateCalls } = createSupabase([{ id: "lm-1", seller_id: "jose" }])
 
     await markCommissionsAsPaidIfLedgerExists(client, "op-1")
 
     expect(updateCalls).toHaveLength(1)
     expect(updateCalls[0].inFilters.seller_id).toEqual(["jose"])
-    expect(updateCalls[0].notFilters.kind).toBe("SERVICE")
+    expect(updateCalls[0].notFilters.kind).toEqual({
+      op: "in",
+      value: "(SERVICE,ADJUSTMENT)",
+    })
   })
 
   it("sin movimientos COMMISSION no marca nada", async () => {

@@ -86,6 +86,13 @@ function setup({ rule = REGLA_SANTI, records = [], orgId = ORG_ID, role = "ADMIN
           if (table === "commission_records") filtrosRecords.push({ op: "neq", column, value })
           return builder
         },
+        // `.not(col, op, value)` — excluye varias clases de comisión de una.
+        not: (column: string, op: string, value: unknown) => {
+          if (table === "commission_records") {
+            filtrosRecords.push({ op: `not.${op}`, column, value })
+          }
+          return builder
+        },
         gte: (column: string, value: unknown) => {
           filtrosRecords.push({ op: "gte", column, value })
           return builder
@@ -132,13 +139,19 @@ describe("GET /api/settings/commissions/[id]/apply — alcance", () => {
     expect(filtrosRecords.some((f) => f.column === "date_calculated")).toBe(false)
   })
 
-  it("deja afuera las comisiones de servicios", async () => {
+  it("deja afuera las comisiones de servicios y las de ajuste", async () => {
     // Las escribe otro flujo con su propio porcentaje: recalcular la operación
     // no las toca, así que contarlas prometería un cambio que no va a pasar.
+    // Las de ajuste por liquidación (VIB-174) tampoco salen del margen: son una
+    // corrección puntual y arrastrar la regla no debería moverlas.
     setup({ records: [] })
     await GET(req, params)
 
-    expect(filtrosRecords).toContainEqual({ op: "neq", column: "kind", value: "SERVICE" })
+    expect(filtrosRecords).toContainEqual({
+      op: "not.in",
+      column: "kind",
+      value: "(SERVICE,ADJUSTMENT)",
+    })
   })
 
   it("scopea por org y por el vendedor de la regla", async () => {

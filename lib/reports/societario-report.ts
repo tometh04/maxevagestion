@@ -63,6 +63,21 @@ import { monthKeysBetween, monthLabel, safeDiv, toArgentinaDateKey } from "@/lib
  */
 const MARGIN_DRIFT_TOLERANCE = 1
 
+/**
+ * Un ajuste de liquidación de operador (VIB-174), visto por el societario.
+ *
+ * Solo entra la parte de COSTO: el reparto con el vendedor viaja por
+ * `commissionRecords` y ya se cuenta en la línea "Comisiones".
+ */
+export interface OperatorAdjustmentInput {
+  /** actual − estimado. Positivo = el operador cobró más = pérdida. */
+  deltaAmount: number
+  currency: string
+  /** Fecha de imputación: el mes en que se conoció la diferencia. */
+  accrualDate: string
+  agencyId: string | null
+}
+
 /** Diferencia aceptable al validar que las participaciones sumen 100. */
 const PERCENTAGE_TOLERANCE = 0.01
 
@@ -341,6 +356,17 @@ export interface BuildSocietarioReportParams {
   referralCommissions: ReferralCommissionRow[]
   commissionsExcluded?: { settled: number; cancelled: number }
   commissionsTruncated?: boolean
+  // ── ajustes de liquidación de operador (VIB-174)
+  //
+  // El costo del operador que trae `operations` es el ESTIMADO con el que se
+  // vendió; cuando la liquidación definitiva llega por otro monto, la diferencia
+  // se imputa al mes en que llegó y vive en `operator_cost_adjustments`.
+  //
+  // Sin esta línea el reporte quedaría a mitad de camino: las comisiones de
+  // corrección YA entran solas a la línea "Comisiones" (fetch-commission-records
+  // no filtra por kind), así que el mes mostraría el reparto con el vendedor
+  // pero no la diferencia de costo que lo originó.
+  operatorAdjustments?: OperatorAdjustmentInput[]
   // ── socios
   partners: OrgPartner[]
   allocations?: PartnerAllocationRow[]
@@ -461,6 +487,7 @@ export function buildSocietarioReport(params: BuildSocietarioReportParams): Soci
     referralCommissions,
     commissionsExcluded = { settled: 0, cancelled: 0 },
     commissionsTruncated = false,
+    operatorAdjustments = [],
     partners,
     allocations,
     agencyNames,
@@ -482,6 +509,7 @@ export function buildSocietarioReport(params: BuildSocietarioReportParams): Soci
   const fxVentas = createMoneyConverter(fxParams)
   const fxComisiones = createMoneyConverter(fxParams)
   const fxFinanciero = createMoneyConverter(fxParams)
+  const fxAjustes = createMoneyConverter(fxParams)
   const fxAllocations = createMoneyConverter(fxParams)
 
   const warnings: SocietarioWarning[] = []
@@ -677,13 +705,55 @@ export function buildSocietarioReport(params: BuildSocietarioReportParams): Soci
 
   const comisionesTotal = comisionesVendedores + comisionesReferidos
 
+  // ──────────────── Ajustes de liquidación de operador ──────────────────
+  //
+  // Sólo la parte de COSTO. El reparto con el vendedor no se suma acá: esas
+  // filas son `commission_records` y ya entraron arriba, en "Comisiones". Si se
+  // sumaran las dos cosas, el reparto se contaría dos veces.
+  //
+  // Se valúa con la fecha de imputación del ajuste, no con la de la venta: la
+  // diferencia se conoció en ese momento y ese es el mes al que pertenece.
+  let ajustesResultado = 0
+  let ajustesGanancia = 0
+  let ajustesPerdida = 0
+  const ajustePorAgencia = new Map<string, number>()
+
+  for (const adj of operatorAdjustments) {
+    // −delta: un costo más alto es una pérdida.
+    const monto = fxAjustes.take(-Number(adj.deltaAmount) || 0, adj.currency, adj.accrualDate)
+    ajustesResultado += monto
+    if (monto >= 0) ajustesGanancia += monto
+    else ajustesPerdida += monto
+
+    const agKey = adj.agencyId || SIN_OFICINA
+    ajustePorAgencia.set(agKey, (ajustePorAgencia.get(agKey) || 0) + monto)
+  }
+
+  ajustesResultado = roundMoney(ajustesResultado)
+
+  const ajustesBreakdown: SocietarioBreakdownRow[] = []
+  if (roundMoney(ajustesGanancia) !== 0) {
+    ajustesBreakdown.push({
+      key: "ganancia",
+      label: "Liquidaciones más baratas de lo estimado",
+      amount: roundMoney(ajustesGanancia),
+    })
+  }
+  if (roundMoney(ajustesPerdida) !== 0) {
+    ajustesBreakdown.push({
+      key: "perdida",
+      label: "Liquidaciones más caras de lo estimado",
+      amount: roundMoney(ajustesPerdida),
+    })
+  }
+
   // ──────────────────────────── Resultado ───────────────────────────────
   const rate = Number.isFinite(ivaRate) && ivaRate > 0 ? ivaRate : 0
   const iva = roundMoney(ivaBase * rate)
   const gananciaBruta = roundMoney(margenTotal)
   const margenNetoIva = roundMoney(gananciaBruta - iva)
   const gananciaNeta = roundMoney(
-    margenNetoIva - comisionesTotal - gastosTotal + resultadoFinanciero
+    margenNetoIva - comisionesTotal - gastosTotal + resultadoFinanciero + ajustesResultado
   )
 
   // ───────────────────────── Venta neta de IVA ──────────────────────────
@@ -944,6 +1014,19 @@ export function buildSocietarioReport(params: BuildSocietarioReportParams): Soci
       kind: "deduction",
       breakdown: gastosBreakdown,
     },
+    // Igual que el resultado financiero: sólo si hubo. Una agencia que nunca
+    // ajustó una liquidación no necesita ver la fila en cero.
+    ...(ajustesBreakdown.length > 0
+      ? [
+          {
+            key: "ajustes",
+            label: "Ajustes de liquidación de operadores",
+            amount: ajustesResultado,
+            kind: "adjustment" as const,
+            breakdown: ajustesBreakdown,
+          },
+        ]
+      : []),
     // Sólo si hubo movimientos: la mayoría de las agencias no usa financiera y
     // una fila en cero es ruido, igual que un tipo de gasto sin importe.
     ...(financieroBreakdown.length > 0

@@ -108,6 +108,9 @@ export function BulkPaymentDialog({
   // Paso 3: Deudas
   const [pendingPayments, setPendingPayments] = useState<OperatorPayment[]>([])
   const [selectedPayments, setSelectedPayments] = useState<Set<string>>(new Set())
+  // VIB-174: declarar que lo que se paga de menos es la liquidación final.
+  const [finalSettlement, setFinalSettlement] = useState(false)
+  const [settlementReason, setSettlementReason] = useState("")
   const [paymentAmounts, setPaymentAmounts] = useState<Record<string, number>>({})
   const [loadingPayments, setLoadingPayments] = useState(false)
   const [debtSearch, setDebtSearch] = useState("")
@@ -318,6 +321,35 @@ export function BulkPaymentDialog({
     }))
   }
 
+  /**
+   * Deudas seleccionadas que se están pagando por MENOS de lo pendiente
+   * (VIB-174). Si el usuario declara que esa es la liquidación final, la
+   * diferencia no es deuda: es una ganancia contra el costo estimado.
+   *
+   * `actualCost` es el costo real que resulta: lo que ya se había pagado más lo
+   * que se paga ahora. Es lo que va a quedar como monto de la deuda.
+   */
+  const shortPayments = Array.from(selectedPayments)
+    .map((paymentId) => {
+      const payment = pendingPayments.find((p) => p.id === paymentId)
+      if (!payment) return null
+
+      const paidBefore = payment.paid_amount || 0
+      const pendingAmount = payment.amount - paidBefore
+      const amountToPay = paymentAmounts[paymentId] || 0
+
+      if (amountToPay <= 0 || amountToPay >= pendingAmount - 0.01) return null
+
+      return {
+        id: paymentId,
+        label: payment.operators?.name || payment.operations?.file_code || "Deuda",
+        difference: Math.round((pendingAmount - amountToPay) * 100) / 100,
+        actualCost: Math.round((paidBefore + amountToPay) * 100) / 100,
+        currency: payment.currency || "ARS",
+      }
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null)
+
   // Calcular total del pago
   const calculateTotal = (): number => {
     let total = 0
@@ -450,6 +482,47 @@ export function BulkPaymentDialog({
         console.warn("[BulkPayment] Errores parciales:", responseData.errors)
       } else {
         toast.success(`Se procesaron ${payments.length} pago(s) correctamente`)
+      }
+
+      // VIB-174 — "esto es la liquidación final": lo que quedó sin pagar no es
+      // deuda, es una diferencia contra el costo estimado. Se registra como
+      // ajuste DESPUÉS del pago; si alguno falla se avisa cuál, porque la plata
+      // ya se movió y el ajuste se puede cargar a mano desde la fila.
+      if (finalSettlement && shortPayments.length > 0) {
+        const failed: string[] = []
+
+        for (const short of shortPayments) {
+          try {
+            const adjustResponse = await fetch(
+              `/api/accounting/operator-payments/${short.id}/adjust`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  actual_amount: short.actualCost,
+                  reason: settlementReason.trim() || "Liquidación final del operador",
+                  source: "OPERATOR_PAYMENT",
+                }),
+              },
+            )
+            if (!adjustResponse.ok) {
+              const payload = await adjustResponse.json()
+              failed.push(`${short.label}: ${payload?.error || "error"}`)
+            }
+          } catch (adjustError: any) {
+            failed.push(`${short.label}: ${adjustError?.message || "error"}`)
+          }
+        }
+
+        if (failed.length > 0) {
+          toast.warning(
+            `El pago se registró, pero ${failed.length} ajuste(s) no: ${failed.join(" · ")}. Cargalos desde "Ajustar por liquidación".`,
+          )
+        } else {
+          toast.success(
+            `${shortPayments.length} diferencia(s) registradas como ajuste de liquidación`,
+          )
+        }
       }
 
       // Cerrar dialog y refrescar
@@ -981,6 +1054,49 @@ export function BulkPaymentDialog({
                     )
                   })}
                 </div>
+
+                {/* VIB-174 — Se paga menos de lo pendiente: ¿es un pago parcial
+                    o el operador liquidó por menos de lo estimado? Solo el
+                    usuario sabe la diferencia, así que se pregunta. */}
+                {shortPayments.length > 0 && (
+                  <div className="border-t pt-3 space-y-3">
+                    <div className="flex items-start gap-2.5">
+                      <Checkbox
+                        id="final-settlement"
+                        checked={finalSettlement}
+                        onCheckedChange={(checked) => setFinalSettlement(checked === true)}
+                        className="mt-0.5"
+                      />
+                      <div className="space-y-1">
+                        <Label
+                          htmlFor="final-settlement"
+                          className="text-sm font-medium leading-snug"
+                        >
+                          Esta es la liquidación final del operador
+                        </Label>
+                        <p className="text-xs text-muted-foreground">
+                          {shortPayments.length === 1
+                            ? `Quedan ${formatCurrency(shortPayments[0].difference, shortPayments[0].currency)} sin pagar. Marcá esto si el operador liquidó por menos: se registra como ganancia del mes y se reparte con el vendedor, en vez de quedar como deuda.`
+                            : `Hay ${shortPayments.length} deudas que se pagan por menos de lo pendiente. Marcá esto si esas son sus liquidaciones finales: las diferencias se registran como ganancia del mes en vez de quedar como deuda.`}
+                        </p>
+                      </div>
+                    </div>
+
+                    {finalSettlement && (
+                      <div className="space-y-1.5 pl-7">
+                        <Label htmlFor="settlement-reason" className="text-xs">
+                          Motivo del ajuste
+                        </Label>
+                        <Input
+                          id="settlement-reason"
+                          value={settlementReason}
+                          onChange={(event) => setSettlementReason(event.target.value)}
+                          placeholder="Ej: liquidación final, el hotel salió más barato"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {needsExchangeRate() && exchangeRate && (
                   <div className="flex justify-between items-center text-sm text-muted-foreground border-t pt-3">

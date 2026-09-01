@@ -8,7 +8,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { BulkPaymentDialog } from "./bulk-payment-dialog"
 import { ManualOperatorPaymentDialog } from "./manual-operator-payment-dialog"
-import { CreditCard, Download, Plus, HelpCircle, MoreHorizontal, Info } from "lucide-react"
+import { OperatorCostAdjustmentDialog } from "./operator-cost-adjustment-dialog"
+import { CreditCard, Download, Plus, HelpCircle, MoreHorizontal, Info, Scale } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -114,6 +115,7 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
   const [bulkPaymentOpen, setBulkPaymentOpen] = useState(false)
   const [manualPaymentOpen, setManualPaymentOpen] = useState(false)
   const [infoDialogOpen, setInfoDialogOpen] = useState(false)
+  const [adjustPaymentId, setAdjustPaymentId] = useState<string | null>(null)
   const [selectedPayment, setSelectedPayment] = useState<any>(null)
   
   // Refs para los timeouts de debounce
@@ -706,6 +708,13 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                               <Info className="h-4 w-4 mr-2" />
                               Ver info
                             </DropdownMenuItem>
+                            {/* VIB-174: el monto de una deuda solo se cambia por
+                                acá, que deja ajuste, asiento y corrección de
+                                comisiones. */}
+                            <DropdownMenuItem onClick={() => setAdjustPaymentId(payment.id)}>
+                              <Scale className="h-4 w-4 mr-2" />
+                              Ajustar por liquidación
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -736,6 +745,18 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
           fetchPayments()
         }}
         operators={operators}
+      />
+
+      {/* Ajuste por liquidación de operador (VIB-174) */}
+      <OperatorCostAdjustmentDialog
+        operatorPaymentId={adjustPaymentId}
+        open={adjustPaymentId !== null}
+        onOpenChange={(open) => {
+          if (!open) setAdjustPaymentId(null)
+        }}
+        onSuccess={() => {
+          fetchPayments()
+        }}
       />
 
       {/* Payment Info Dialog */}

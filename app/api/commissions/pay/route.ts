@@ -14,6 +14,7 @@ import {
   validateSufficientBalance,
 } from "@/lib/accounting/ledger"
 import { getExchangeRate, getLatestExchangeRate, getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
+import { getCommissionCurrency } from "@/lib/commissions/currency"
 
 async function fetchBcraRate(): Promise<number | null> {
   try {
@@ -111,6 +112,86 @@ export async function POST(request: Request) {
     const commissionCur = currency as "ARS" | "USD"
     const applyAmount = parseFloat(amount) // en moneda de la comisión (reduce el saldo pendiente)
 
+    // ── Ajustes negativos que se netean contra este pago (VIB-174) ──────────
+    // Cuando la liquidación del operador llega más cara de lo estimado, el
+    // vendedor cobró comisión sobre una ganancia que no fue y le queda una fila
+    // NEGATIVA. No se puede "pagar" sola: se descuenta de lo próximo que se le
+    // pague, que es exactamente lo que hace este bloque. Sale menos plata de la
+    // cuenta y las dos filas quedan saldadas.
+    const offsetIds: string[] = Array.isArray(body.offsetIds) ? body.offsetIds : []
+    let offsets: any[] = []
+    let offsetTotal = 0
+
+    if (offsetIds.length > 0) {
+      const { data: offsetRows, error: offsetError } = await (supabase.from("commission_records") as any)
+        .select("id, seller_id, amount, amount_paid, status, kind, settled_at, operations:operation_id(currency, sale_currency)")
+        .in("id", offsetIds)
+        .eq("org_id", (user as any).org_id)
+
+      if (offsetError) {
+        return NextResponse.json({ error: "Error al leer los ajustes a descontar" }, { status: 500 })
+      }
+
+      offsets = offsetRows || []
+
+      if (offsets.length !== offsetIds.length) {
+        return NextResponse.json(
+          { error: "Alguno de los ajustes a descontar no existe o no es de esta organización" },
+          { status: 404 }
+        )
+      }
+
+      for (const offset of offsets) {
+        if (offset.kind !== "ADJUSTMENT") {
+          return NextResponse.json(
+            { error: "Solo se pueden descontar ajustes de liquidación, no otras comisiones" },
+            { status: 400 }
+          )
+        }
+        if (offset.seller_id !== commission.seller_id) {
+          return NextResponse.json(
+            { error: "El ajuste a descontar es de otro vendedor" },
+            { status: 400 }
+          )
+        }
+        if (Number(offset.amount) >= 0) {
+          return NextResponse.json(
+            { error: "Solo se descuentan ajustes en contra del vendedor" },
+            { status: 400 }
+          )
+        }
+        if (offset.status !== "PENDING" || Number(offset.amount_paid || 0) !== 0 || offset.settled_at) {
+          return NextResponse.json(
+            { error: "El ajuste a descontar ya fue liquidado" },
+            { status: 409 }
+          )
+        }
+        // ARS y USD no se suman: descontar un ajuste en pesos de una comisión en
+        // dólares daría un neto que no significa nada.
+        if (getCommissionCurrency({ amount: 0, operation: offset.operations }) !== commissionCur) {
+          return NextResponse.json(
+            { error: "El ajuste a descontar está en otra moneda que la comisión que se está pagando" },
+            { status: 400 }
+          )
+        }
+
+        offsetTotal += Number(offset.amount) // negativo
+      }
+    }
+
+    // Lo que realmente sale de la cuenta: la comisión menos los ajustes.
+    const netApplyAmount = Math.round((applyAmount + offsetTotal) * 100) / 100
+
+    if (offsets.length > 0 && netApplyAmount <= 0) {
+      return NextResponse.json(
+        {
+          error: `Los ajustes en contra (${Math.abs(offsetTotal).toFixed(2)}) igualan o superan la comisión a pagar (${applyAmount.toFixed(2)}). Pagá una comisión mayor o descontá menos ajustes: el saldo en contra queda pendiente para la próxima liquidación.`,
+          code: "OFFSET_EXCEEDS_PAYMENT",
+        },
+        { status: 400 }
+      )
+    }
+
     // Determinar el movimiento de caja en la MONEDA DE LA CUENTA.
     // Permite pagar una comisión en USD desde una cuenta en ARS (o viceversa)
     // ingresando tipo de cambio, igual que en cobros/pagos de servicios.
@@ -118,8 +199,10 @@ export async function POST(request: Request) {
     let cashAmount: number // monto que sale de la cuenta, en accountCur
     let amountARS: number // equivalente en ARS para el ledger
 
+    // Se convierte el NETO (comisión menos ajustes en contra): es la plata que
+    // efectivamente sale de la cuenta.
     if (accountCur === commissionCur) {
-      cashAmount = applyAmount
+      cashAmount = netApplyAmount
       if (commissionCur === "USD") {
         // Cuenta USD: TC solo para el equivalente ARS del ledger.
         if (!exchangeRate) {
@@ -140,11 +223,11 @@ export async function POST(request: Request) {
         )
       }
       if (commissionCur === "USD" && accountCur === "ARS") {
-        cashAmount = Math.round(applyAmount * exchangeRate * 100) / 100
+        cashAmount = Math.round(netApplyAmount * exchangeRate * 100) / 100
         amountARS = cashAmount
       } else if (commissionCur === "ARS" && accountCur === "USD") {
-        cashAmount = Math.round((applyAmount / exchangeRate) * 100) / 100
-        amountARS = applyAmount
+        cashAmount = Math.round((netApplyAmount / exchangeRate) * 100) / 100
+        amountARS = netApplyAmount
       } else {
         return NextResponse.json({ error: "Combinación de monedas no soportada" }, { status: 400 })
       }
@@ -242,6 +325,31 @@ export async function POST(request: Request) {
       .eq("id", commissionId)
       .eq("org_id", (user as any).org_id)
 
+    // Los ajustes descontados quedan saldados con este mismo pago: el vendedor
+    // ya devolvió su parte, cobrando menos. Se marcan con CAS sobre el estado
+    // que se validó arriba, para que un pago concurrente no los sadle dos veces.
+    const offsetsSettled: string[] = []
+    for (const offset of offsets) {
+      const { data: settled } = await (supabase.from("commission_records") as any)
+        .update({
+          amount_paid: Number(offset.amount),
+          status: "PAID",
+          date_paid: datePaid,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", offset.id)
+        .eq("org_id", (user as any).org_id)
+        .eq("status", "PENDING")
+        .select("id")
+
+      if (settled && settled.length > 0) offsetsSettled.push(offset.id)
+      else {
+        console.error(
+          `[VIB-174] El ajuste ${offset.id} cambió de estado durante el pago de la comisión ${commissionId}: se descontó de la plata pero quedó PENDING.`
+        )
+      }
+    }
+
     // Registrar en audit trail
     try {
       await (supabase.rpc as any)('log_audit_action', {
@@ -260,6 +368,9 @@ export async function POST(request: Request) {
       ledgerMovementId,
       isFullyPaid,
       amountPaid: totalPaid,
+      offsetsSettled,
+      offsetTotal: Math.round(offsetTotal * 100) / 100,
+      cashPaid: cashAmount,
       remaining: Math.max(0, commissionTotal - totalPaid),
       message: isFullyPaid ? "Comisión pagada completamente" : `Pago parcial registrado. Restante: ${(commissionTotal - totalPaid).toFixed(2)}`,
     })

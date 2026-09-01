@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { hasAdminRole } from "@/lib/permissions"
 import { processCommissionsForOperations } from "@/lib/commissions/calculate"
 import { ruleApplicability, previewApplication } from "@/lib/commissions/rule-application"
+import { KINDS_FUERA_DEL_PLAN_FILTER } from "@/lib/commissions/kinds"
 import { logAccountingAction } from "@/lib/accounting/audit"
 
 /**
@@ -57,11 +58,11 @@ async function cargarAlcance(ruleId: string, orgId: string) {
     .select("id, operation_id, status, amount_paid, settled_at, percentage")
     .eq("org_id", orgId)
     .eq("seller_id", alcance.sellerId)
-    // Las de servicio no las produce el plan de la operación: tienen su propio
-    // vendedor, su propio porcentaje y su propio mes, y recalcular la operación
-    // no las toca (ver `applyCommissionPlan`). Contarlas acá prometería un
-    // cambio que no va a pasar.
-    .neq("kind", "SERVICE")
+    // Las de servicio y las de ajuste no las produce el plan de la operación:
+    // tienen su propio vendedor, su propio porcentaje y su propio mes, y
+    // recalcular la operación no las toca (ver `applyCommissionPlan`).
+    // Contarlas acá prometería un cambio que no va a pasar.
+    .not("kind", "in", KINDS_FUERA_DEL_PLAN_FILTER)
     // `accrual_date` y no `date_calculated`: el segundo se reescribe en cada
     // recálculo, así que el período se movería solo.
     .gte("accrual_date", alcance.window.from)
