@@ -54,6 +54,7 @@ import { getQuotationStatusColors } from "@/lib/vibook-status-colors"
 import { fetchQuotationDocumentForUser } from "@/lib/quotation-documents/client"
 import { QuotationPdfPriceDialog } from "@/components/sales/quotation-pdf-price-dialog"
 import { QuotationPriceRefreshDialog } from "@/components/sales/quotation-price-refresh-dialog"
+import { QuotationBookingDialog } from "@/components/sales/quotation-booking-dialog"
 import { LeadEmiliaChat } from "@/components/sales/lead-emilia-chat"
 import { LeadOutcomeBadge } from "@/components/sales/lead-outcome-badge"
 import { useScreenView } from "@/hooks/use-screen-view"
@@ -313,6 +314,7 @@ export function LeadDetailDialog({
     document?: { status: "NONE" | "READY"; active_document_id: string | null }
     quotation_options?: Array<{ id: string; title: string; total_amount: number }>
   }>>([])
+  const [bookingQuotation, setBookingQuotation] = useState<(typeof quotations)[number] | null>(null)
   const [loadingQuotations, setLoadingQuotations] = useState(false)
   // Cotizaciones hechas con otra app: se suben como archivo adjunto (type QUOTATION).
   const [quotationFiles, setQuotationFiles] = useState<Array<{
@@ -1046,6 +1048,20 @@ export function LeadDetailDialog({
                               <RefreshCw className="h-3.5 w-3.5" />
                             </Button>
                           )}
+                          {canWriteLeads && q.status === "APPROVED" && (
+                            <Button
+                              variant="default"
+                              size="sm"
+                              className="h-7 text-xs bg-success hover:bg-success/90"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                setBookingQuotation(q)
+                              }}
+                            >
+                              <Briefcase className="mr-1 h-3.5 w-3.5" />
+                              Convertir y reservar
+                            </Button>
+                          )}
                           {/* El lápiz vuelve a abrir la estructura completa del borrador. */}
                           {q.status === "DRAFT" && (
                             <Button
@@ -1538,6 +1554,26 @@ export function LeadDetailDialog({
         onClose={() => setPriceRefreshQuotationId(null)}
         onApplied={loadQuotations}
       />
+
+      {bookingQuotation && (
+        <QuotationBookingDialog
+          quotation={{
+            ...bookingQuotation,
+            lead: {
+              contact_name: lead.contact_name,
+              contact_email: lead.contact_email,
+              contact_phone: lead.contact_phone,
+            },
+          }}
+          open
+          onOpenChange={(isOpen) => {
+            if (!isOpen) setBookingQuotation(null)
+          }}
+          onQueued={() => {
+            void loadQuotations({ silent: true })
+          }}
+        />
+      )}
 
       {/* Mismo modal Generar PDF que Emilia: precio, adicionales y descarga */}
       <QuotationPdfPriceDialog

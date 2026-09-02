@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen } from "@testing-library/react"
 import { PermissionsProvider } from "@/components/permissions/permissions-provider"
 import { buildDefaultMatrix } from "@/lib/permissions/resolved"
 import { LeadDetailDialog } from "../lead-detail-dialog"
@@ -78,5 +78,63 @@ describe("permisos para cotizar desde el detalle del lead", () => {
     )
 
     expect(screen.getByRole("menuitem", { name: "Cotizar" })).toBeInTheDocument()
+  })
+
+  it("ofrece convertir y reservar únicamente la cotización aprobada", async () => {
+    const matrix = buildDefaultMatrix("SELLER")
+    global.fetch = jest.fn(async input => {
+      const url = String(input)
+      if (url.startsWith("/api/quotations?lead_id=")) {
+        return {
+          ok: true,
+          json: async () => ({ data: [
+            {
+              id: "quotation-approved",
+              quotation_number: "COT-APPROVED",
+              status: "APPROVED",
+              total_amount: 4000,
+              currency: "USD",
+              destination: "Cancún",
+              created_at: "2026-09-01T12:00:00.000Z",
+              valid_until: null,
+              public_token: "approved-token",
+              active_document_id: "document-approved",
+              adults: 2,
+              children: 0,
+              infants: 0,
+            },
+            {
+              id: "quotation-draft",
+              quotation_number: "COT-DRAFT",
+              status: "DRAFT",
+              total_amount: 4000,
+              currency: "USD",
+              destination: "Cancún",
+              created_at: "2026-09-01T12:00:00.000Z",
+              valid_until: null,
+              public_token: "draft-token",
+              active_document_id: "document-draft",
+            },
+          ] }),
+        } as Response
+      }
+      return new Promise<Response>(() => {})
+    }) as typeof fetch
+
+    render(
+      <PermissionsProvider role="SELLER" matrix={matrix}>
+        <LeadDetailDialog
+          lead={LEAD}
+          open
+          onOpenChange={jest.fn()}
+        />
+      </PermissionsProvider>
+    )
+
+    const convert = await screen.findByRole("button", { name: "Convertir y reservar" })
+    expect(screen.getAllByRole("button", { name: "Convertir y reservar" })).toHaveLength(1)
+    expect(screen.getAllByText("COT-DRAFT")).toHaveLength(1)
+    fireEvent.click(convert)
+    expect(await screen.findByRole("heading", { name: "Convertir y reservar con Delfos" })).toBeInTheDocument()
   })
 })

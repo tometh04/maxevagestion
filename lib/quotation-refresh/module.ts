@@ -1119,6 +1119,7 @@ function runView(row: Record<string, any>): QuotationRefreshRunView {
     requested_at: row.created_at,
     completed_at: row.completed_at,
     applied_at: row.applied_at,
+    document_issued: Boolean(row.issued_document_id),
     valid_until: row.valid_until || null,
     summary: row.summary || {
       currency: "USD",
@@ -1656,7 +1657,7 @@ export function createQuotationRefreshModule(deps: {
 
     async apply(input: QuotationRefreshApplyInput): Promise<QuotationRefreshRunView> {
       const run = await loadRun(input)
-      if (run.status === "APPLIED" && run.issued_document_id) {
+      if (run.status === "APPLIED") {
         return runView(run)
       }
       if (reviewExpired(run, now().getTime())) {
@@ -1733,6 +1734,34 @@ export function createQuotationRefreshModule(deps: {
         if (option.manual_total_requires_confirmation && !(Number(decision.sale_total) > 0)) {
           throw new QuotationRefreshError("INVALID_INPUT", `Ingresá el precio al pasajero para ${option.option_title}.`)
         }
+      }
+
+      const changesAnItem = input.decisions.some(decision => decision.action !== "KEEP_CURRENT")
+      const changesCustomerTotal = summaryOptions.some(option => {
+        const saleTotal = optionDecisions.get(option.option_id)?.sale_total
+        return saleTotal != null && Number(saleTotal) !== Number(option.current_customer_total)
+      })
+      if (!changesAnItem && !changesCustomerTotal) {
+        const { data, error } = await deps.db
+          .from("quotation_price_refresh_runs")
+          .update({
+            status: "APPLIED",
+            applied_at: now().toISOString(),
+            applied_by: input.actorId,
+            error_code: null,
+            error_message: null,
+          })
+          .eq("id", input.runId)
+          .eq("quotation_id", input.quotationId)
+          .eq("org_id", input.orgId)
+          .eq("agency_id", input.agencyId)
+          .eq("status", "REVIEW_REQUIRED")
+          .eq("updated_at", input.expectedRunUpdatedAt)
+          .select("*")
+          .maybeSingle()
+        if (error) throw mapDatabaseError(error, "No se pudo confirmar la actualización de precios.")
+        if (!data) throw new QuotationRefreshError("RUN_CHANGED", "La propuesta cambió. Recargala antes de confirmar.")
+        return runView(data)
       }
 
       const options = Array.isArray(quotation.quotation_options)

@@ -806,6 +806,48 @@ describe("QuotationRefresh module", () => {
     expect(getQuotationItemEffectiveUnitCost(commissionWritten)).toBe(99)
   })
 
+  it("confirma una actualización sin cambios sin emitir otro documento", async () => {
+    const original = canonicalFlight(1)
+    const db = new FakeDb(quotation([original]))
+    const refreshModule = moduleFor(db, {
+      refresh: jest.fn(async (request: any) => ({
+        schema_version: "offer-refresh.v1",
+        request_id: request.requestId,
+        status: "complete",
+        checked_at: "2026-08-29T12:00:00.000Z",
+        items: [remoteItem(original)],
+      })),
+    } as OfferRefreshPort)
+
+    const started = await refreshModule.start({
+      quotationId: db.tables.quotations[0].id,
+      orgId: db.tables.quotations[0].org_id,
+      agencyId: db.tables.quotations[0].agency_id,
+      actorId: db.tables.quotations[0].seller_id,
+      expectedUpdatedAt: db.tables.quotations[0].updated_at,
+      idempotencyKey: "cdcdcdcd-cdcd-4dcd-8dcd-cdcdcdcdcdcd",
+    })
+
+    const applied = await refreshModule.apply({
+      quotationId: db.tables.quotations[0].id,
+      runId: started.id,
+      orgId: db.tables.quotations[0].org_id,
+      agencyId: db.tables.quotations[0].agency_id,
+      actorId: db.tables.quotations[0].seller_id,
+      expectedUpdatedAt: started.quotation_updated_at,
+      expectedRunUpdatedAt: started.updated_at,
+      decisions: [],
+      optionDecisions: [{
+        option_id: db.tables.quotations[0].quotation_options[0].id,
+        sale_total: null,
+        confirmed: true,
+      }],
+    })
+
+    expect(applied).toMatchObject({ status: "APPLIED", document_issued: false })
+    expect(db.appliedArgs).toBeUndefined()
+  })
+
   it("no ofrece aplicar un precio que no fue repriced exactamente por el mismo proveedor", async () => {
     const original = canonicalFlight(1)
     const db = new FakeDb(quotation([original]))

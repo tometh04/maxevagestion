@@ -118,6 +118,7 @@ interface RefreshRun {
   requested_at?: string
   completed_at?: string | null
   applied_at?: string | null
+  document_issued?: boolean
   valid_until?: string | null
   summary: {
     currency: string
@@ -501,6 +502,20 @@ export function QuotationPriceRefreshDialog({
     && (run?.apply_blockers?.length || 0) === 0
     && decisionsValid
     && optionDecisionsValid
+  const hasUndecidedRequiredItems = requiredItems.some(item => !decisions[item.line_id])
+  const hasSelectedCommercialChanges = Boolean(run) && (
+    (hasUndecidedRequiredItems && (
+      Number(run?.summary.price_changed_count || 0)
+      + Number(run?.summary.replacement_count || 0)
+      + Number(run?.summary.unavailable_count || 0) > 0
+    ))
+    || Object.values(decisions).some(action => action !== "KEEP_CURRENT")
+    || (run?.summary.options || []).some(option => {
+      if (!option.manual_total_requires_confirmation) return false
+      const saleTotal = Number(saleTotals[option.option_id])
+      return Number.isFinite(saleTotal) && saleTotal !== Number(option.current_customer_total)
+    })
+  )
 
   const applyRefresh = async () => {
     if (!quotationId || !run || !canApply) return
@@ -542,8 +557,11 @@ export function QuotationPriceRefreshDialog({
           }),
         }
       )
-      await requestPayload(response)
-      toast.success("Precios actualizados. Se generó una nueva versión del documento.")
+      const payload = await requestPayload(response)
+      const documentIssued = payload?.data?.run?.document_issued !== false
+      toast.success(documentIssued
+        ? "Precios actualizados. Se generó una nueva versión del documento."
+        : "Precio y disponibilidad confirmados. Se conserva el documento actual.")
       try {
         await onApplied()
       } catch {
@@ -1067,7 +1085,9 @@ export function QuotationPriceRefreshDialog({
               {decisionsValid && optionDecisionsValid && (
                 <p className="flex items-center gap-2 text-xs text-success" aria-live="polite">
                   <CheckCircle2 className="h-3.5 w-3.5" />
-                  La revisión está lista para aplicar.
+                  {hasSelectedCommercialChanges
+                    ? "La revisión está lista para aplicar."
+                    : "La revisión está lista para confirmar."}
                 </p>
               )}
             </div>
@@ -1091,7 +1111,11 @@ export function QuotationPriceRefreshDialog({
               ) : (
                 <FileCheck2 className="mr-2 h-4 w-4" />
               )}
-              {phase === "applying" ? "Aplicando…" : "Aplicar y emitir nueva versión"}
+              {phase === "applying"
+                ? (hasSelectedCommercialChanges ? "Aplicando…" : "Confirmando…")
+                : (hasSelectedCommercialChanges
+                    ? "Aplicar y emitir nueva versión"
+                    : "Continuar con la cotización actual")}
             </Button>
           )}
         </DialogFooter>

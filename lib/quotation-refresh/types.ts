@@ -105,6 +105,7 @@ export interface QuotationRefreshRunView {
   requested_at: string
   completed_at: string | null
   applied_at: string | null
+  document_issued: boolean
   valid_until: string | null
   summary: RefreshSummary
   items: RefreshItemView[]

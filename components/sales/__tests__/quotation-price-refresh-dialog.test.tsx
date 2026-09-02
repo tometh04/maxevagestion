@@ -183,6 +183,56 @@ describe("QuotationPriceRefreshDialog", () => {
     expect(screen.getByTestId("dialog-footer")).toHaveClass("gap-2", "sm:flex-wrap")
   })
 
+  it("conserva el documento actual cuando proveedor y precio no cambiaron", async () => {
+    const run = reviewRun({
+      summary: {
+        ...reviewRun().summary,
+        unchanged_count: 1,
+        price_changed_count: 0,
+        options: [{
+          ...(reviewRun().summary as any).options[0],
+          proposed_cost_total: 1000,
+          suggested_customer_total: 1250,
+          manual_total_requires_confirmation: false,
+        }],
+      },
+      items: [{
+        ...(reviewRun().items as any[])[0],
+        outcome: "UNCHANGED",
+        refreshed: { cost_amount: 1000, currency: "USD" },
+        delta_amount: 0,
+        condition_changes: [],
+        differences: [],
+        allowed_actions: ["KEEP_CURRENT"],
+        requires_decision: false,
+      }],
+    })
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(response({
+        data: { quotation_number: "COT-2026-0080", updated_at: SOURCE_VERSION },
+      }))
+      .mockResolvedValueOnce(response({ data: { run } }))
+      .mockResolvedValueOnce(response({
+        data: { run: { ...run, status: "APPLIED", document_issued: false } },
+      }))
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    render(
+      <QuotationPriceRefreshDialog
+        quotationId={QUOTATION_ID}
+        onClose={jest.fn()}
+        onApplied={jest.fn()}
+      />
+    )
+
+    const confirm = await screen.findByRole("button", { name: "Continuar con la cotización actual" })
+    fireEvent.click(confirm)
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(
+      "Precio y disponibilidad confirmados. Se conserva el documento actual."
+    ))
+  })
+
   it("consulta sin datos de proveedor y aplica las decisiones comerciales confirmadas", async () => {
     const run = reviewRun()
     const fetchMock = jest.fn()
