@@ -48,6 +48,9 @@ interface ApiFlight {
     basis?: "AGENCY_NET" | "PROVIDER_TOTAL" | "COMMISSIONABLE_GROSS" | "UNKNOWN" | "GROUP_TOTAL"
     cost_basis?: "AGENCY_NET" | "PROVIDER_TOTAL" | "COMMISSIONABLE_GROSS" | "UNKNOWN"
   }
+  providerMeta?: {
+    priceBasis?: "AGENCY_NET" | "PROVIDER_TOTAL" | "COMMISSIONABLE_GROSS" | "UNKNOWN"
+  }
   adults: number
   children: number
   departure_date: string
@@ -286,7 +289,9 @@ export function transformFlight(flight: ApiFlight): any {
     // consumidor vuelva a tratar el monto como precio unitario por pasajero.
     price: {
       ...flight.price,
-      cost_basis: providerCostBasis(flight.price.cost_basis ?? flight.price.basis),
+      cost_basis: providerCostBasis(
+        flight.price.cost_basis ?? flight.price.basis ?? flight.providerMeta?.priceBasis
+      ),
       basis: "GROUP_TOTAL" as const,
     },
     adults: flight.adults,

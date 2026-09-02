@@ -254,6 +254,76 @@ describe("canonicalOfferCards", () => {
     })
   })
 
+  it("preserva la base Delfos expuesta en providerMeta por la respuesta web", () => {
+    const normalized = normalizeEmiliaTurnPayload({
+      status: "completed",
+      results: {
+        flights: {
+          items: [{
+            id: "delfos-flight-web-1",
+            provider: "DELFOS",
+            providerOfferId: "delfos-flight-web-1",
+            providerMeta: {
+              searchArtifactId: "11111111-1111-4111-8111-111111111111",
+              priceBasis: "PROVIDER_TOTAL",
+            },
+            airline: { code: "CM", name: "Copa Airlines" },
+            price: { amount: 1076.5, currency: "USD" },
+            adults: 1,
+            children: 0,
+            departure_date: "2026-10-01",
+            legs: [{
+              legNumber: 1,
+              options: [{
+                optionId: "delfos-option-web-1",
+                duration: 540,
+                segments: [{
+                  airline: "CM",
+                  flightNumber: 348,
+                  departure: { airportCode: "EZE", date: "2026-10-01", time: "02:00" },
+                  arrival: { airportCode: "AUA", date: "2026-10-01", time: "13:00" },
+                  duration: 540,
+                  cabinClass: "Y",
+                }],
+              }],
+            }],
+            offer_source: {
+              artifact_id: "11111111-1111-4111-8111-111111111111",
+              product: "flights",
+              offer_id: "delfos-flight-web-1",
+            },
+          }],
+        },
+      },
+    })
+
+    const payload = buildQuotationPayload({
+      lead: {
+        id: "33333333-3333-4333-8333-333333333333",
+        contact_name: "Ada",
+        destination: "Aruba",
+        region: "CARIBE",
+        agency_id: "44444444-4444-4444-8444-444444444444",
+      },
+      selectedFlight: normalized.flights!.items[0],
+      selectedHotels: [],
+      generalData: {
+        departureDate: "2026-10-01",
+        returnDate: null,
+        adults: 1,
+        children: 0,
+        infants: 0,
+      },
+    })
+
+    expect(payload.options[0].items[0]).toMatchObject({
+      provider: "DELFOS",
+      cost_amount: 1076.5,
+      cost_basis: "PROVIDER_TOTAL",
+      offer_source: { offer_id: "delfos-flight-web-1" },
+    })
+  })
+
   it("preserva la base y los IDs de la habitación Delfos en el contrato legacy", () => {
     const normalized = normalizeEmiliaTurnPayload({
       status: "completed",
