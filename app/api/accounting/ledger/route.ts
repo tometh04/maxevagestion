@@ -47,7 +47,7 @@ export async function GET(request: Request) {
     let query = (supabase
       .from("ledger_movements") as any)
       .select(
-        `id, type, concept, currency, amount_original, amount_ars_equivalent, exchange_rate, movement_date, created_at, method, receipt_number, notes, seller_id, operation_id, affects_balance,
+        `id, type, concept, currency, amount_original, amount_ars_equivalent, exchange_rate, movement_date, movement_day, created_at, method, receipt_number, notes, seller_id, operation_id, affects_balance,
          reversed_at, reverses_movement_id, reversed_by_movement_id, reversal_reason,
          financial_accounts:account_id (name, type, currency),
          sellers:seller_id (name),

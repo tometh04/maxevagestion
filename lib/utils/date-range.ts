@@ -56,6 +56,40 @@ export function endOfDayAR(dateStr: string): string {
  * Un "YYYY-MM-DD" se devuelve tal cual —es la fecha que alguien eligió— y un
  * instante real se convierte a la fecha que era en Argentina.
  */
+/**
+ * La fecha de un movimiento como se muestra y como se concilia: dd/MM/yyyy.
+ *
+ * Existe porque el patrón `format(new Date(movement_date), "dd/MM/yyyy")`
+ * está mal para estas filas: renderiza el instante en hora local y, como la
+ * mayoría guarda una fecha sin hora (medianoche UTC), muestra el día ANTERIOR
+ * a las 21:00. Yamil lo vio filtrando el 27 y leyendo "26/08 21:00".
+ *
+ * Prefiere `movement_day`, que ya viene resuelta de la base, y cae a derivarla
+ * del instante para cualquier fila que todavía no la tenga.
+ */
+export function movementDayLabel(
+  movementDay: string | null | undefined,
+  movementDate?: string | null,
+): string {
+  const day = movementDay || businessDayOf(movementDate)
+  if (!day) return ""
+  const [y, m, d] = day.split("-")
+  return `${d}/${m}/${y}`
+}
+
+/**
+ * ¿Ese timestamp guarda una fecha sin hora? (VIB-178)
+ *
+ * Sirve para decidir si mostrar la hora. Una fila a medianoche UTC es una fecha
+ * que alguien eligió en un calendario: renderizarla con `new Date(...)` la
+ * muestra como "26/08 21:00", que es la misma fecha corrida un día y una hora
+ * que nadie cargó. Sin hora que mostrar, se muestra sólo el día.
+ */
+export function isDateOnlyTimestamp(value: string | null | undefined): boolean {
+  if (!value) return false
+  return /^\d{4}-\d{2}-\d{2}([T ]00:00:00(\.000)?(Z|\+00:00)?)?$/.test(value)
+}
+
 export function businessDayOf(value: string | Date | null | undefined): string | null {
   if (!value) return null
 

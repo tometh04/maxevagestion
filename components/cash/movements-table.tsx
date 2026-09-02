@@ -12,6 +12,16 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
+import { isDateOnlyTimestamp, movementDayLabel } from "@/lib/utils/date-range"
+
+/** Fecha de negocio y, sólo si existe de verdad, la hora (VIB-178). */
+function formatMovementDate(movementDay: string | null | undefined, movementDate: string): string {
+  const fecha = movementDayLabel(movementDay, movementDate)
+  if (!fecha) return ""
+  // Sin hora real que mostrar, mostrar una sería inventarla.
+  if (isDateOnlyTimestamp(movementDate)) return fecha
+  return `${fecha} ${format(new Date(movementDate), "HH:mm", { locale: es })}`
+}
 import { Skeleton } from "@/components/ui/skeleton"
 import { ServerPagination } from "@/components/ui/server-pagination"
 import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
@@ -46,6 +56,8 @@ export interface CashMovement {
   amount: number
   currency: string
   movement_date: string
+  /** Fecha de negocio (VIB-178). Es la que se filtra y la que se muestra. */
+  movement_day?: string | null
   notes: string | null
   affects_balance?: boolean
   is_agency_expense?: boolean
@@ -202,7 +214,13 @@ export function MovementsTable({
             sortedData.map((movement) => (
               <TableRow key={movement.id}>
                 <TableCell className="whitespace-nowrap">
-                  {format(new Date(movement.movement_date), "dd/MM/yyyy HH:mm", { locale: es })}
+                  {/* VIB-178: la fecha que se muestra es la de negocio. Pasar el
+                      timestamp por `new Date(...)` renderiza en hora local, y
+                      como la mayoría de los movimientos guarda una fecha sin
+                      hora (medianoche UTC) salían como "26/08 21:00": el día
+                      anterior, a una hora que nadie cargó. La hora se muestra
+                      sólo cuando existe de verdad. */}
+                  {formatMovementDate(movement.movement_day, movement.movement_date)}
                 </TableCell>
                 <TableCell>
                   <Badge variant="secondary" className={movement.type === "INCOME" ? "bg-success/10 text-success border-success/20" : "bg-destructive/10 text-destructive border-destructive/20"}>

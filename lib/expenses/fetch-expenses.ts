@@ -33,6 +33,8 @@ export interface ExpenseRow {
   amount: number
   currency: string
   movement_date: string
+  /** Fecha de negocio (VIB-178). Es la que se filtra y la que se muestra. */
+  movement_day?: string | null
   notes: string | null
   financial_accounts: { id: string; name: string; currency: string } | null
   users: { id: string; name: string } | null
@@ -191,7 +193,7 @@ export async function fetchExpenses(
     let recQuery = (supabase.from("ledger_movements") as any)
       .select(`
         id, type, concept, currency, amount_original, category_id,
-        movement_date, created_at, account_id, notes, receipt_number,
+        movement_date, movement_day, created_at, account_id, notes, receipt_number,
         financial_accounts:account_id (id, name, currency),
         users:created_by (id, name)
       `)
@@ -270,6 +272,7 @@ export async function fetchExpenses(
           amount: Number(e.amount_original),
           currency: e.currency,
           movement_date: e.movement_date,
+          movement_day: e.movement_day ?? null,
           notes: e.notes,
           financial_accounts: e.financial_accounts,
           users: e.users,
@@ -287,7 +290,7 @@ export async function fetchExpenses(
     let varQuery = (supabase.from("cash_movements") as any)
       .select(`
         id, type, category, amount, currency,
-        movement_date, created_at, notes,
+        movement_date, movement_day, created_at, notes,
         financial_account_id, category_id, ledger_movement_id,
         agency_id, is_touristic,
         financial_accounts:financial_account_id (id, name, currency),
@@ -387,6 +390,7 @@ export async function fetchExpenses(
           amount: Number(v.amount),
           currency: v.currency,
           movement_date: v.movement_date,
+          movement_day: v.movement_day ?? null,
           notes: v.notes,
           financial_accounts: v.financial_accounts,
           users: v.users,

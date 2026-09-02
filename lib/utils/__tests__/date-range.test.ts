@@ -7,7 +7,7 @@
  * el equipo: "egresos no aparecen al filtrar por fechas").
  */
 
-import { startOfDayAR, endOfDayAR, businessDayOf } from "../date-range"
+import { startOfDayAR, endOfDayAR, businessDayOf, movementDayLabel, isDateOnlyTimestamp } from "../date-range"
 
 describe("startOfDayAR", () => {
   it("formatea YYYY-MM-DD como inicio de día con offset -03:00", () => {
@@ -117,6 +117,25 @@ describe("businessDayOf — día contra día, sin ventanas (VIB-178)", () => {
     const del28 = businessDayOf("2026-08-28T00:00:00Z")!
     expect(del27 >= "2026-08-27" && del27 <= "2026-08-27").toBe(true)
     expect(del28 >= "2026-08-27" && del28 <= "2026-08-27").toBe(false)
+  })
+
+  it("movementDayLabel muestra la fecha de negocio, no el instante en hora local", () => {
+    // El caso de la captura de Yamil: la fila se veía como "26/08/2026 21:00"
+    // porque `new Date("2026-08-27T00:00:00Z")` renderizado en hora argentina
+    // da el día anterior a las 21. Es del 27.
+    expect(movementDayLabel("2026-08-27", "2026-08-27T00:00:00+00:00")).toBe("27/08/2026")
+    // Sin la columna todavía cargada, se deriva del instante.
+    expect(movementDayLabel(null, "2026-08-27T00:00:00+00:00")).toBe("27/08/2026")
+    expect(movementDayLabel(null, "2026-08-27T19:28:00+00:00")).toBe("27/08/2026")
+    expect(movementDayLabel(null, null)).toBe("")
+  })
+
+  it("isDateOnlyTimestamp distingue una fecha de un instante", () => {
+    expect(isDateOnlyTimestamp("2026-08-27T00:00:00+00:00")).toBe(true)
+    expect(isDateOnlyTimestamp("2026-08-27T00:00:00.000Z")).toBe(true)
+    expect(isDateOnlyTimestamp("2026-08-27")).toBe(true)
+    // 16:28 hora argentina: hora real, se muestra.
+    expect(isDateOnlyTimestamp("2026-08-27T19:28:00+00:00")).toBe(false)
   })
 
   it("acepta Date y devuelve null para lo que no es fecha", () => {

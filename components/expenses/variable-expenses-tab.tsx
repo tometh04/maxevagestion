@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
+import { movementDayLabel } from "@/lib/utils/date-range"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -73,6 +74,8 @@ interface Expense {
   amount: number
   currency: string
   movement_date: string
+  /** Fecha de negocio (VIB-178). Es la que se muestra y con la que se filtra. */
+  movement_day?: string | null
   notes: string | null
   receipt_count: number
   financial_account: { id: string; name: string; currency: string } | null
@@ -370,7 +373,7 @@ export function VariableExpensesTab({ agencies }: VariableExpensesTabProps) {
               {sortedExpenses.map((expense) => (
                 <TableRow key={expense.id}>
                   <TableCell className="text-sm">
-                    {new Date(expense.movement_date).toLocaleDateString("es-AR")}
+                    {movementDayLabel(expense.movement_day, expense.movement_date)}
                   </TableCell>
                   <TableCell>
                     <div>

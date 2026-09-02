@@ -21,6 +21,7 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart"
 import { format, parseISO } from "date-fns"
+import { movementDayLabel } from "@/lib/utils/date-range"
 import { es } from "date-fns/locale"
 import {
   Table,
@@ -76,6 +77,8 @@ interface LedgerMovement {
   affects_balance?: boolean
   created_at: string
   movement_date?: string
+  /** Fecha de negocio (VIB-178). Es la que se muestra y con la que se filtra. */
+  movement_day?: string | null
   financial_accounts?: {
     id: string
     name: string
@@ -680,7 +683,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo, cu
                                   }).map((movement) => (
                                     <TableRow key={movement.id}>
                                       <TableCell className="text-sm">
-                                        {format(new Date(movement.movement_date ?? movement.created_at), "dd/MM/yyyy", { locale: es })}
+                                        {movementDayLabel(movement.movement_day, movement.movement_date ?? movement.created_at)}
                                       </TableCell>
                                       <TableCell>
                                         <Badge variant="secondary" className={movement.type === "INCOME" ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"}>
@@ -868,7 +871,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo, cu
                                   }).map((movement) => (
                                     <TableRow key={movement.id}>
                                       <TableCell className="text-sm">
-                                        {format(new Date(movement.movement_date ?? movement.created_at), "dd/MM/yyyy", { locale: es })}
+                                        {movementDayLabel(movement.movement_day, movement.movement_date ?? movement.created_at)}
                                       </TableCell>
                                       <TableCell>
                                         <Badge variant="secondary" className={movement.type === "INCOME" ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"}>

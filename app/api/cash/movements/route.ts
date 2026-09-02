@@ -353,7 +353,7 @@ export async function GET(request: Request) {
     let query = (supabase.from("cash_movements") as any)
       .select(
         `
-        id, type, category, amount, currency, movement_date, notes, financial_account_id,
+        id, type, category, amount, currency, movement_date, movement_day, notes, financial_account_id,
         is_agency_expense, agency_id,
         agencies:agency_id (id, name),
         reversed_at, reverses_movement_id, reversed_by_movement_id, reversal_reason,
