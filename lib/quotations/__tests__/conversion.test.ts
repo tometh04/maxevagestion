@@ -1,5 +1,8 @@
 /** @jest-environment node */
 
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
+
 import {
   convertQuotationToOperation,
 } from "@/lib/quotations/conversion"
@@ -7,6 +10,20 @@ import {
 const COMMISSION_SNAPSHOT = { schema_version: 1 }
 
 describe("convertQuotationToOperation", () => {
+  it("promotes a confirmed draft through the allowed lifecycle before conversion", () => {
+    const sql = readFileSync(
+      join(process.cwd(), "supabase/migrations/20260902000005_fix_draft_price_confirmed_conversion.sql"),
+      "utf8"
+    )
+    const pendingApproval = sql.indexOf("SET status = 'PENDING_APPROVAL'")
+    const approved = sql.indexOf("SET status = 'APPROVED'")
+    const conversion = sql.indexOf("RETURN public.convert_quotation_to_operation", approved)
+
+    expect(pendingApproval).toBeGreaterThan(-1)
+    expect(approved).toBeGreaterThan(pendingApproval)
+    expect(conversion).toBeGreaterThan(approved)
+  })
+
   it("returns the verified result from the single transactional RPC", async () => {
     const rpc = jest.fn().mockResolvedValue({
       data: {
