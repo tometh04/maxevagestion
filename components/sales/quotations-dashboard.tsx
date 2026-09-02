@@ -233,7 +233,7 @@ export function QuotationsDashboard({ sellers, agencies, currentUserRole, curren
                     const statusClasses = `${statusColors.bg} ${statusColors.text} ${statusColors.border}`
                     const documentReady = hasReadyQuotationDocument(q)
                     const quotationEditable = isQuotationContentEditable(q.status)
-                    const canConvert = q.status === "APPROVED"
+                    const canConvert = q.status === "APPROVED" || q.price_confirmation?.confirmed === true
                     const canRefreshPrices = ["DRAFT", "SENT", "PENDING_APPROVAL"].includes(q.status)
                     const displayAmount = getQuotationDisplayAmount(q)
 

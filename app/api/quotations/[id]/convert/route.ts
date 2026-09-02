@@ -22,8 +22,14 @@ import {
   bookingItemsFromQuotation,
   enqueueProviderBooking,
 } from "@/lib/provider-booking/booking"
+import { z } from "zod"
 
 export const dynamic = "force-dynamic"
+
+const priceConfirmationSchema = z.object({
+  price_refresh_run_id: z.string().uuid(),
+  option_id: z.string().uuid(),
+})
 
 // POST — convierte el snapshot aceptado en una operación, de forma atómica.
 export async function POST(
@@ -35,6 +41,7 @@ export async function POST(
       ? await (request as any).json().catch(() => null)
       : null
     const bookingForm = rawBody?.booking ? bookingFormSchema.safeParse(rawBody.booking) : null
+    const priceConfirmation = priceConfirmationSchema.safeParse(rawBody || {})
     if (bookingForm && !bookingForm.success) {
       return NextResponse.json({ error: "Los datos de titular y pasajeros no son válidos", details: bookingForm.error.flatten() }, { status: 400 })
     }
@@ -74,28 +81,33 @@ export async function POST(
       return NextResponse.json({ error: "Cotización no encontrada" }, { status: 404 })
     }
 
-    if (!quotation.agency_id || !["APPROVED", "CONVERTED"].includes(quotation.status)) {
+    const isDirectPriceConfirmation = ["DRAFT", "SENT", "PENDING_APPROVAL"].includes(quotation.status)
+      && bookingForm?.success === true
+      && priceConfirmation.success
+    if (!quotation.agency_id || (!["APPROVED", "CONVERTED"].includes(quotation.status) && !isDirectPriceConfirmation)) {
       return NextResponse.json(
         { error: `La cotización no se puede convertir desde el estado ${quotation.status}` },
         { status: 409 }
       )
     }
 
-    const providerItems = bookingForm?.success ? bookingItemsFromQuotation(quotation) : []
+    const providerItems = bookingForm?.success
+      ? bookingItemsFromQuotation(quotation, priceConfirmation.success ? priceConfirmation.data.option_id : undefined)
+      : []
     if (bookingForm?.success && providerItems.length === 0) {
       return NextResponse.json({ error: "La opción aceptada no contiene ofertas Delfos reservables con su referencia original" }, { status: 422 })
     }
 
     // Una repetición idempotente no consume una segunda operación ni debe ser
     // bloqueada por un límite alcanzado después de la primera conversión.
-    if (quotation.status === "APPROVED") {
+    if (quotation.status !== "CONVERTED") {
       const limit = await checkLimit(supabase, user.org_id, "max_operations_per_month")
       if (!limit.ok) {
         return NextResponse.json({ error: limit.message }, { status: 403 })
       }
     }
 
-    const commissionSnapshot = quotation.status === "APPROVED"
+    const commissionSnapshot = quotation.status !== "CONVERTED"
       ? await captureQuotationCommissionSnapshot({
           supabase: admin,
           orgId: user.org_id,
@@ -112,6 +124,10 @@ export async function POST(
       actorId: user.id,
       fileCode: generateFileCode(),
       commissionSnapshot,
+      ...(priceConfirmation.success ? {
+        priceRefreshRunId: priceConfirmation.data.price_refresh_run_id,
+        selectedOptionId: priceConfirmation.data.option_id,
+      } : {}),
     })
 
     const warnings: string[] = []

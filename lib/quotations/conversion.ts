@@ -39,6 +39,8 @@ interface ConvertQuotationArgs {
   actorId: string
   fileCode: string
   commissionSnapshot: Json | null
+  priceRefreshRunId?: string
+  selectedOptionId?: string
 }
 
 function asObject(value: Json | null): Record<string, unknown> | null {
@@ -70,6 +72,13 @@ function mapConversionDatabaseError(error: { code?: string; message?: string }) 
     return new QuotationConversionError(
       "El documento aceptado cambió o ya no está disponible. Volvé a emitir la cotización.",
       "document_changed",
+      409
+    )
+  }
+  if (message.includes("price confirmation")) {
+    return new QuotationConversionError(
+      "La confirmación de precio venció o la cotización cambió. Volvé a actualizar precio y disponibilidad.",
+      "invalid_state",
       409
     )
   }
@@ -115,15 +124,24 @@ export async function convertQuotationToOperation({
   actorId,
   fileCode,
   commissionSnapshot,
+  priceRefreshRunId,
+  selectedOptionId,
 }: ConvertQuotationArgs): Promise<QuotationConversionResult> {
-  const { data, error } = await (supabase as any).rpc("convert_quotation_to_operation", {
-    p_quotation_id: quotationId,
-    p_org_id: orgId,
-    p_agency_id: agencyId,
-    p_actor_id: actorId,
-    p_file_code: fileCode,
-    p_commission_snapshot: commissionSnapshot,
-  })
+  const directPriceConfirmation = Boolean(priceRefreshRunId && selectedOptionId)
+  const { data, error } = await (supabase as any).rpc(
+    directPriceConfirmation ? "convert_price_confirmed_quotation_to_operation" : "convert_quotation_to_operation",
+    {
+      p_quotation_id: quotationId,
+      p_org_id: orgId,
+      p_agency_id: agencyId,
+      p_actor_id: actorId,
+      p_file_code: fileCode,
+      p_commission_snapshot: commissionSnapshot,
+      ...(directPriceConfirmation ? {
+        p_price_refresh_run_id: priceRefreshRunId,
+        p_selected_option_id: selectedOptionId,
+      } : {}),
+    })
 
   if (error) throw mapConversionDatabaseError(error)
 

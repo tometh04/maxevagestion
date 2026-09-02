@@ -65,7 +65,7 @@ const fullScope = {
   permissionsByAgency: {},
 }
 
-function quotationQueryWith(status: "APPROVED" | "CONVERTED" = "APPROVED") {
+function quotationQueryWith(status: "DRAFT" | "SENT" | "PENDING_APPROVAL" | "APPROVED" | "CONVERTED" = "APPROVED") {
   const query: any = {
     select: jest.fn(() => query),
     eq: jest.fn(() => query),
@@ -274,6 +274,34 @@ describe("POST /api/quotations/[id]/convert", () => {
     expect(enqueueProviderBooking).toHaveBeenCalledWith(expect.objectContaining({ quotationId: "quotation-1", operationId: "operation-1", form: booking }))
     expect(upsert).toHaveBeenCalledWith(expect.objectContaining({ quotation_id: "quotation-1", remote_job_id: "22222222-2222-4222-8222-222222222222", status: "QUEUED" }), { onConflict: "quotation_id" })
     expect(body.data.provider_booking).toEqual(expect.objectContaining({ job_id: "22222222-2222-4222-8222-222222222222" }))
+  })
+
+  it("convierte un borrador cuando la agencia confirmó un refresco de precio", async () => {
+    const query = quotationQueryWith("DRAFT")
+    const upsert = jest.fn().mockResolvedValue({ error: null })
+    const admin = { from: jest.fn((table: string) => table === "quotation_provider_bookings" ? { upsert } : query), rpc: jest.fn() }
+    ;(createServerClient as jest.Mock).mockResolvedValue({ from: jest.fn(() => query) })
+    ;(createAdminClient as jest.Mock).mockReturnValue(admin)
+    const booking = {
+      holder: { name: "Ada", surnames: ["Lovelace"], contact: { mails: ["ada@example.com"], phones: [{ country_pref: "+54", number: "1112345678" }] } },
+      travellers: [{ type: "ADT", title: "Ms", name: "Ada", surnames: ["Lovelace"] }],
+    }
+    const priceRefreshRunId = "33333333-3333-4333-8333-333333333333"
+    const optionId = "44444444-4444-4444-8444-444444444444"
+
+    const response = await POST(
+      { json: jest.fn().mockResolvedValue({ booking, price_refresh_run_id: priceRefreshRunId, option_id: optionId }), headers: { get: jest.fn().mockReturnValue(null) } } as any,
+      { params: Promise.resolve({ id: "quotation-1" }) }
+    )
+
+    expect(response.status).toBe(200)
+    expect(bookingItemsFromQuotation).toHaveBeenCalledWith(expect.anything(), optionId)
+    expect(convertQuotationToOperation).toHaveBeenCalledWith(expect.objectContaining({
+      quotationId: "quotation-1",
+      priceRefreshRunId,
+      selectedOptionId: optionId,
+      commissionSnapshot: expect.objectContaining({ schema_version: 1 }),
+    }))
   })
 
   it("rechaza una reserva sin referencias Delfos antes de convertir la cotización", async () => {

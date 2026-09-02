@@ -1742,26 +1742,24 @@ export function createQuotationRefreshModule(deps: {
         return saleTotal != null && Number(saleTotal) !== Number(option.current_customer_total)
       })
       if (!changesAnItem && !changesCustomerTotal) {
-        const { data, error } = await deps.db
-          .from("quotation_price_refresh_runs")
-          .update({
-            status: "APPLIED",
-            applied_at: now().toISOString(),
-            applied_by: input.actorId,
-            error_code: null,
-            error_message: null,
-          })
-          .eq("id", input.runId)
-          .eq("quotation_id", input.quotationId)
-          .eq("org_id", input.orgId)
-          .eq("agency_id", input.agencyId)
-          .eq("status", "REVIEW_REQUIRED")
-          .eq("updated_at", input.expectedRunUpdatedAt)
-          .select("*")
-          .maybeSingle()
-        if (error) throw mapDatabaseError(error, "No se pudo confirmar la actualización de precios.")
-        if (!data) throw new QuotationRefreshError("RUN_CHANGED", "La propuesta cambió. Recargala antes de confirmar.")
-        return runView(data)
+        const { data, error } = await deps.db.rpc("confirm_quotation_price_refresh", {
+          p_run_id: input.runId,
+          p_quotation_id: input.quotationId,
+          p_org_id: input.orgId,
+          p_agency_id: input.agencyId,
+          p_actor_id: input.actorId,
+          p_expected_quotation_updated_at: input.expectedUpdatedAt,
+          p_expected_run_updated_at: input.expectedRunUpdatedAt,
+        })
+        if (error || !data) throw mapDatabaseError(error, "No se pudo confirmar la actualización de precios.")
+        const result = Array.isArray(data) ? data[0] : data
+        if (result?.stale === true) {
+          throw new QuotationRefreshError("QUOTATION_CHANGED", "La cotización cambió. Volvé a actualizar los precios.")
+        }
+        if (result?.expired === true) {
+          throw new QuotationRefreshError("INVALID_STATE", "La propuesta de precios venció. Volvé a consultarla antes de confirmar.")
+        }
+        return runView(await loadRun(input))
       }
 
       const options = Array.isArray(quotation.quotation_options)

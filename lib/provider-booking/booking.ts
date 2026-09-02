@@ -60,8 +60,10 @@ export async function enqueueProviderBooking(input: {
   return { requestId, jobId: payload.job_id, status: payload.status as string }
 }
 
-export function bookingItemsFromQuotation(quotation: any) {
-  const selected = (quotation.quotation_options || []).find((option: any) => option.is_selected)
+export function bookingItemsFromQuotation(quotation: any, selectedOptionId?: string) {
+  const selected = (quotation.quotation_options || []).find((option: any) => selectedOptionId
+    ? option.id === selectedOptionId
+    : option.is_selected)
   const items = (quotation.quotation_items || []).filter((item: any) => item.option_id === selected?.id)
   return items.flatMap((item: any) => {
     const source = item.offer_source

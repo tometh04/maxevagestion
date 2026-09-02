@@ -48,6 +48,7 @@ class Query {
 class FakeDb {
   tables: Record<string, any[]>
   appliedArgs: any
+  appliedName?: string
   runInsertRace: any = null
   private sequence = 0
 
@@ -57,9 +58,25 @@ class FakeDb {
   tick() { this.sequence += 1; return `2026-08-29T12:00:${String(this.sequence).padStart(2, "0")}.000Z` }
   from(table: string) { return new Query(this, table) }
   async rpc(name: string, args: any) {
-    expect(name).toBe("apply_quotation_price_refresh")
+    this.appliedName = name
     this.appliedArgs = args
     const run = this.tables.quotation_price_refresh_runs.find(row => row.id === args.p_run_id)
+    if (name === "confirm_quotation_price_refresh") {
+      const quote = this.tables.quotations.find(row => row.id === args.p_quotation_id)
+      Object.assign(quote, {
+        last_price_refresh_at: run.completed_at,
+        last_price_refresh_run_id: run.id,
+        updated_at: this.tick(),
+      })
+      Object.assign(run, {
+        status: "APPLIED",
+        applied_at: this.tick(),
+        source_quotation_updated_at: quote.updated_at,
+        updated_at: this.tick(),
+      })
+      return { data: { run_id: run.id, quotation_updated_at: quote.updated_at }, error: null }
+    }
+    expect(name).toBe("apply_quotation_price_refresh")
     Object.assign(run, {
       status: "APPLIED",
       applied_at: this.tick(),
@@ -845,7 +862,8 @@ describe("QuotationRefresh module", () => {
     })
 
     expect(applied).toMatchObject({ status: "APPLIED", document_issued: false })
-    expect(db.appliedArgs).toBeUndefined()
+    expect(db.appliedName).toBe("confirm_quotation_price_refresh")
+    expect(db.tables.quotations[0].last_price_refresh_run_id).toBe(started.id)
   })
 
   it("no ofrece aplicar un precio que no fue repriced exactamente por el mismo proveedor", async () => {

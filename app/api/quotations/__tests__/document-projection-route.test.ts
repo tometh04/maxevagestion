@@ -60,6 +60,8 @@ describe("quotation document projection in reads", () => {
           status: "DRAFT",
           active_document_id: null,
           public_token: "public-token-1",
+          updated_at: "2026-09-02T12:00:00.000Z",
+          last_price_refresh_run_id: "refresh-1",
         },
         {
           id: "quotation-2",
@@ -70,8 +72,20 @@ describe("quotation document projection in reads", () => {
       ],
       error: null,
     })
+    const refreshQuery = resolvedQuery({
+      data: [{
+        id: "refresh-1",
+        quotation_id: "quotation-1",
+        status: "APPLIED",
+        applied_at: "2026-09-02T12:00:00.000Z",
+        valid_until: "2099-09-02T12:15:00.000Z",
+        issued_document_id: null,
+        source_quotation_updated_at: "2026-09-02T12:00:00.000Z",
+      }],
+      error: null,
+    })
     ;(createAdminClient as jest.Mock).mockReturnValue({
-      from: jest.fn(() => listQuery),
+      from: jest.fn((table: string) => table === "quotations" ? listQuery : refreshQuery),
     })
 
     const { GET } = require("../route")
@@ -85,12 +99,18 @@ describe("quotation document projection in reads", () => {
         active_document_id: null,
         public_token: "public-token-1",
         document: { status: "NONE", active_document_id: null },
+        price_confirmation: expect.objectContaining({
+          confirmed: true,
+          run_id: "refresh-1",
+          valid_until: "2099-09-02T12:15:00.000Z",
+        }),
       }),
       expect.objectContaining({
         status: "SENT",
         active_document_id: "document-2",
         public_token: "public-token-2",
         document: { status: "READY", active_document_id: "document-2" },
+        price_confirmation: { confirmed: false, run_id: null, valid_until: null, applied_at: null },
       }),
     ])
   })

@@ -72,6 +72,58 @@ describe("convertQuotationToOperation", () => {
     })
   })
 
+  it("uses the price-confirmed transaction with the exact run and option", async () => {
+    const rpc = jest.fn().mockResolvedValue({
+      data: {
+        operation_id: "operation-1",
+        file_code: "OP-20260824-ABC12345",
+        services_created: 1,
+        already_converted: false,
+        operation: { id: "operation-1" },
+      },
+      error: null,
+    })
+
+    await convertQuotationToOperation({
+      supabase: { rpc } as any,
+      quotationId: "quotation-1",
+      orgId: "org-1",
+      agencyId: "agency-1",
+      actorId: "user-1",
+      fileCode: "OP-20260824-ABC12345",
+      commissionSnapshot: COMMISSION_SNAPSHOT,
+      priceRefreshRunId: "refresh-1",
+      selectedOptionId: "option-1",
+    })
+
+    expect(rpc).toHaveBeenCalledWith("convert_price_confirmed_quotation_to_operation", expect.objectContaining({
+      p_price_refresh_run_id: "refresh-1",
+      p_selected_option_id: "option-1",
+    }))
+  })
+
+  it("maps a stale price confirmation to a refreshable conflict", async () => {
+    await expect(convertQuotationToOperation({
+      supabase: {
+        rpc: jest.fn().mockResolvedValue({
+          data: null,
+          error: { code: "55000", message: "price confirmation is missing, stale or expired" },
+        }),
+      } as any,
+      quotationId: "quotation-1",
+      orgId: "org-1",
+      agencyId: "agency-1",
+      actorId: "user-1",
+      fileCode: "OP-20260824-ABC12345",
+      commissionSnapshot: COMMISSION_SNAPSHOT,
+      priceRefreshRunId: "refresh-1",
+      selectedOptionId: "option-1",
+    })).rejects.toMatchObject({
+      code: "invalid_state",
+      status: 409,
+    })
+  })
+
   it("maps the transactional monthly limit to a billing response", async () => {
     await expect(convertQuotationToOperation({
       supabase: {

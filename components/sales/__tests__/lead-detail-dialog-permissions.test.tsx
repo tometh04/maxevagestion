@@ -80,7 +80,7 @@ describe("permisos para cotizar desde el detalle del lead", () => {
     expect(screen.getByRole("menuitem", { name: "Cotizar" })).toBeInTheDocument()
   })
 
-  it("ofrece convertir y reservar únicamente la cotización aprobada", async () => {
+  it("ofrece convertir y reservar al aprobarla o confirmar su precio", async () => {
     const matrix = buildDefaultMatrix("SELLER")
     global.fetch = jest.fn(async input => {
       const url = String(input)
@@ -104,8 +104,8 @@ describe("permisos para cotizar desde el detalle del lead", () => {
               infants: 0,
             },
             {
-              id: "quotation-draft",
-              quotation_number: "COT-DRAFT",
+              id: "quotation-price-confirmed",
+              quotation_number: "COT-PRICE-CONFIRMED",
               status: "DRAFT",
               total_amount: 4000,
               currency: "USD",
@@ -114,6 +114,29 @@ describe("permisos para cotizar desde el detalle del lead", () => {
               valid_until: null,
               public_token: "draft-token",
               active_document_id: "document-draft",
+              adults: 2,
+              children: 0,
+              infants: 0,
+              price_confirmation: {
+                confirmed: true,
+                run_id: "33333333-3333-4333-8333-333333333333",
+                valid_until: "2099-09-01T12:15:00.000Z",
+                applied_at: "2026-09-01T12:00:00.000Z",
+              },
+              quotation_options: [{ id: "44444444-4444-4444-8444-444444444444", title: "Opción 1", total_amount: 4000 }],
+            },
+            {
+              id: "quotation-unconfirmed",
+              quotation_number: "COT-UNCONFIRMED",
+              status: "DRAFT",
+              total_amount: 4000,
+              currency: "USD",
+              destination: "Cancún",
+              created_at: "2026-09-01T12:00:00.000Z",
+              valid_until: null,
+              public_token: "unconfirmed-token",
+              active_document_id: "document-unconfirmed",
+              price_confirmation: { confirmed: false, run_id: null, valid_until: null, applied_at: null },
             },
           ] }),
         } as Response
@@ -131,10 +154,11 @@ describe("permisos para cotizar desde el detalle del lead", () => {
       </PermissionsProvider>
     )
 
-    const convert = await screen.findByRole("button", { name: "Convertir y reservar" })
-    expect(screen.getAllByRole("button", { name: "Convertir y reservar" })).toHaveLength(1)
-    expect(screen.getAllByText("COT-DRAFT")).toHaveLength(1)
-    fireEvent.click(convert)
+    await screen.findAllByRole("button", { name: "Convertir y reservar" })
+    const convert = screen.getAllByRole("button", { name: "Convertir y reservar" })
+    expect(convert).toHaveLength(2)
+    expect(screen.getAllByText("COT-UNCONFIRMED")).toHaveLength(1)
+    fireEvent.click(convert[1])
     expect(await screen.findByRole("heading", { name: "Convertir y reservar con Delfos" })).toBeInTheDocument()
   })
 })

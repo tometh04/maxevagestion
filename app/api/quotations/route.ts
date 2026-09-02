@@ -37,6 +37,34 @@ function getQuotationPersistenceLogContext(error: unknown) {
   return {}
 }
 
+const missingPriceConfirmation = {
+  confirmed: false,
+  run_id: null,
+  valid_until: null,
+  applied_at: null,
+}
+
+function withPriceConfirmation(quotation: any, refreshRun: any) {
+  const issuedDocumentMatches = refreshRun?.issued_document_id
+    ? quotation.active_document_id === refreshRun.issued_document_id
+    : quotation.updated_at === refreshRun?.source_quotation_updated_at
+  const confirmed = refreshRun?.status === "APPLIED"
+    && refreshRun?.id === quotation.last_price_refresh_run_id
+    && Boolean(refreshRun?.applied_at)
+    && Date.parse(refreshRun?.valid_until || "") > Date.now()
+    && issuedDocumentMatches
+
+  return {
+    ...quotation,
+    price_confirmation: confirmed ? {
+      confirmed: true,
+      run_id: refreshRun.id,
+      valid_until: refreshRun.valid_until,
+      applied_at: refreshRun.applied_at,
+    } : missingPriceConfirmation,
+  }
+}
+
 // GET — Listar cotizaciones con filtros
 export async function GET(request: Request) {
   try {
@@ -108,10 +136,31 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
+    if (!Array.isArray(data)) return NextResponse.json({ data })
+
+    const refreshRunIds = data
+      .map((quotation: any) => quotation.last_price_refresh_run_id)
+      .filter((id: unknown): id is string => typeof id === "string" && id.length > 0)
+    let refreshRuns: any[] = []
+    if (refreshRunIds.length > 0) {
+      const { data: runs, error: refreshError } = await dataSupabase
+        .from("quotation_price_refresh_runs")
+        .select("id, quotation_id, status, applied_at, valid_until, issued_document_id, source_quotation_updated_at")
+        .in("id", refreshRunIds)
+        .eq("org_id", user.org_id)
+      if (refreshError) {
+        console.error("Error fetching quotation price confirmations:", refreshError)
+      } else if (Array.isArray(runs)) {
+        refreshRuns = runs
+      }
+    }
+    const refreshById = new Map(refreshRuns.map(run => [run.id, run]))
+
     return NextResponse.json({
-      data: Array.isArray(data)
-        ? data.map(withQuotationDocumentProjection)
-        : data,
+      data: data.map((quotation: any) => withPriceConfirmation(
+        withQuotationDocumentProjection(quotation),
+        refreshById.get(quotation.last_price_refresh_run_id)
+      )),
     })
   } catch (error: any) {
     if (error?.digest === "NEXT_REDIRECT") throw error

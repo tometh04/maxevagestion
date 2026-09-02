@@ -312,7 +312,13 @@ export function LeadDetailDialog({
     public_token: string | null
     active_document_id?: string | null
     document?: { status: "NONE" | "READY"; active_document_id: string | null }
-    quotation_options?: Array<{ id: string; title: string; total_amount: number }>
+    quotation_options?: Array<{ id: string; title: string; total_amount: number; is_selected?: boolean }>
+    price_confirmation?: {
+      confirmed: boolean
+      run_id: string | null
+      valid_until: string | null
+      applied_at: string | null
+    }
   }>>([])
   const [bookingQuotation, setBookingQuotation] = useState<(typeof quotations)[number] | null>(null)
   const [loadingQuotations, setLoadingQuotations] = useState(false)
@@ -1048,7 +1054,7 @@ export function LeadDetailDialog({
                               <RefreshCw className="h-3.5 w-3.5" />
                             </Button>
                           )}
-                          {canWriteLeads && q.status === "APPROVED" && (
+                          {canWriteLeads && (q.status === "APPROVED" || q.price_confirmation?.confirmed === true) && (
                             <Button
                               variant="default"
                               size="sm"

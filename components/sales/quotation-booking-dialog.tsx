@@ -24,6 +24,7 @@ export function QuotationBookingDialog({ quotation, open, onOpenChange, onQueued
   const [countryPref, setCountryPref] = useState("+54")
   const [phone, setPhone] = useState("")
   const [travellers, setTravellers] = useState<Traveller[]>([])
+  const [selectedOptionId, setSelectedOptionId] = useState("")
 
   useEffect(() => {
     if (!open || !quotation) return
@@ -38,21 +39,32 @@ export function QuotationBookingDialog({ quotation, open, onOpenChange, onQueued
     setEmail(quotation.lead?.contact_email || "")
     setPhone(String(quotation.lead?.contact_phone || "").replace(/\D/g, ""))
     setTravellers(Array.from({ length: total }, (_, index) => ({ type: types[index] || "ADT", title: "Mr", name: "", surname: "", birth_date: "" })))
+    const options = Array.isArray(quotation.quotation_options) ? quotation.quotation_options : []
+    setSelectedOptionId(options.find((option: any) => option.is_selected)?.id || (options.length === 1 ? options[0].id : ""))
   }, [open, quotation])
 
   const updateTraveller = (index: number, patch: Partial<Traveller>) => setTravellers(current => current.map((entry, position) => position === index ? { ...entry, ...patch } : entry))
 
   async function submit() {
     if (!quotation) return
+    const priceConfirmation = quotation.price_confirmation?.confirmed === true
+      ? {
+          price_refresh_run_id: quotation.price_confirmation.run_id,
+          option_id: selectedOptionId,
+        }
+      : {}
     setSubmitting(true)
     try {
       const response = await fetch(`/api/quotations/${quotation.id}/convert`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ booking: {
-          holder: { name: holderName, surnames: [holderSurname], contact: { mails: [email], phones: [{ country_pref: countryPref, number: phone }] } },
-          travellers: travellers.map(entry => ({ type: entry.type, title: entry.title, name: entry.name, surnames: [entry.surname], ...(entry.type !== "ADT" || entry.birth_date ? { birth_date: entry.birth_date } : {}) })),
-        } }),
+        body: JSON.stringify({
+          ...priceConfirmation,
+          booking: {
+            holder: { name: holderName, surnames: [holderSurname], contact: { mails: [email], phones: [{ country_pref: countryPref, number: phone }] } },
+            travellers: travellers.map(entry => ({ type: entry.type, title: entry.title, name: entry.name, surnames: [entry.surname], ...(entry.type !== "ADT" || entry.birth_date ? { birth_date: entry.birth_date } : {}) })),
+          },
+        }),
       })
       const payload = await response.json()
       if (!response.ok) throw new Error(payload.error || "No se pudo convertir y reservar")
@@ -71,6 +83,19 @@ export function QuotationBookingDialog({ quotation, open, onOpenChange, onQueued
         <DialogTitle>Convertir y reservar con Delfos</DialogTitle>
         <DialogDescription>La operación se creará ahora y la reserva continuará en segundo plano aunque cierres esta ventana.</DialogDescription>
       </DialogHeader>
+      {Array.isArray(quotation?.quotation_options) && quotation.quotation_options.length > 1 && (
+        <div className="space-y-1.5">
+          <Label htmlFor="booking-option">Opción a reservar</Label>
+          <Select value={selectedOptionId} onValueChange={setSelectedOptionId}>
+            <SelectTrigger id="booking-option"><SelectValue placeholder="Seleccioná una opción" /></SelectTrigger>
+            <SelectContent>
+              {quotation.quotation_options.map((option: any) => (
+                <SelectItem key={option.id} value={option.id}>{option.title}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Nombre del titular"><Input value={holderName} onChange={event => setHolderName(event.target.value)} /></Field>
         <Field label="Apellido del titular"><Input value={holderSurname} onChange={event => setHolderSurname(event.target.value)} /></Field>
@@ -89,7 +114,7 @@ export function QuotationBookingDialog({ quotation, open, onOpenChange, onQueued
           </div>
         </div>)}
       </div>
-      <DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>Cancelar</Button><Button onClick={submit} disabled={submitting}>{submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Convertir y reservar</Button></DialogFooter>
+      <DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>Cancelar</Button><Button onClick={submit} disabled={submitting || (quotation?.price_confirmation?.confirmed === true && (!quotation.price_confirmation.run_id || !selectedOptionId))}>{submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Convertir y reservar</Button></DialogFooter>
     </DialogContent>
   </Dialog>
 }
