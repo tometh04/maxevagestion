@@ -192,6 +192,8 @@ describe("QuotationPriceRefreshDialog", () => {
     )
 
     expect(await screen.findByText("Precio actualizado")).toBeInTheDocument()
+    expect(screen.getAllByText("Precio original de Emilia").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("Precio actual del proveedor").length).toBeGreaterThan(0)
     expect(screen.getByText("Equipaje despachado: sí → no")).toBeInTheDocument()
 
     const startCall = fetchMock.mock.calls[1]
@@ -389,5 +391,62 @@ describe("QuotationPriceRefreshDialog", () => {
       expected_run_updated_at: RUN_VERSION,
     })
     expect(await screen.findByRole("button", { name: "Aplicar y emitir nueva versión" })).toBeInTheDocument()
+  })
+
+  it("explica un costo no comparable sin afirmar que no cambió", async () => {
+    const run = reviewRun({
+      summary: {
+        ...reviewRun().summary,
+        price_changed_count: 0,
+        not_refreshable_count: 1,
+        options: [{
+          ...(reviewRun().summary as any).options[0],
+          proposed_cost_total: 1000,
+          suggested_customer_total: 1250,
+          manual_total_requires_confirmation: false,
+        }],
+      },
+      items: [{
+        line_id: "line-flight",
+        option_id: OPTION_ID,
+        option_title: "Opción Caribe",
+        quotation_item_id: "item-flight",
+        item_type: "FLIGHT",
+        label: "Copa Airlines · EZE → AUA",
+        outcome: "NOT_REFRESHABLE",
+        current: { cost_amount: 1000, sale_amount: 1250, currency: "USD" },
+        error: {
+          code: "PRICE_BASIS_UNCONFIRMED",
+          message: "El costo guardado no identifica si es neto, total proveedor o bruto comisionable.",
+          retryable: false,
+        },
+        allowed_actions: ["KEEP_CURRENT"],
+        requires_decision: true,
+      }],
+    })
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce(response({
+        data: { quotation_number: "COT-2026-0011", updated_at: SOURCE_VERSION },
+      }))
+      .mockResolvedValueOnce(response({ data: { run } })) as unknown as typeof fetch
+
+    render(
+      <QuotationPriceRefreshDialog
+        quotationId={QUOTATION_ID}
+        onClose={jest.fn()}
+        onApplied={jest.fn()}
+      />
+    )
+
+    expect(await screen.findByText("No pudimos verificar 1 servicio")).toBeInTheDocument()
+    expect(screen.getByText(/Esto no significa que el precio siga igual/)).toBeInTheDocument()
+    expect(screen.getByText("Falta información del costo original")).toBeInTheDocument()
+    expect(screen.getByText(/no quedó registrado qué incluía el costo del proveedor/)).toBeInTheDocument()
+    expect(screen.queryByText("Costo sin cambios")).not.toBeInTheDocument()
+    expect(screen.getAllByText("Precio original de Emilia").length).toBeGreaterThan(0)
+    expect(screen.queryByText("Precio actual del proveedor")).not.toBeInTheDocument()
+    expect(screen.getByText("No pudimos consultar el precio actual del proveedor.")).toBeInTheDocument()
+    expect(screen.getByLabelText("Conservar el precio guardado")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Consultar nuevamente" })).not.toBeInTheDocument()
   })
 })

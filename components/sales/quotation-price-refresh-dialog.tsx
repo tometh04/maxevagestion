@@ -167,7 +167,7 @@ const OUTCOME_PRESENTATION: Record<RefreshOutcome, {
     className: "border-accent-violet/20 bg-accent-violet/10 text-accent-violet",
   },
   NOT_REFRESHABLE: {
-    label: "No revalidable",
+    label: "No se pudo verificar",
     className: "border-border bg-muted text-muted-foreground",
   },
   FAILED: {
@@ -272,9 +272,22 @@ function actionLabel(action: RefreshAction, outcome: RefreshOutcome) {
   if (action === "USE_REFRESHED") return "Usar actualizado"
   if (action === "USE_REPLACEMENT") return "Usar reemplazo"
   if (outcome === "UNAVAILABLE" || outcome === "NOT_REFRESHABLE" || outcome === "FAILED") {
-    return "Mantener sin validar"
+    return "Conservar el precio guardado"
   }
   return "Mantener actual"
+}
+
+function refreshErrorCopy(error: RefreshItem["error"]) {
+  if (error?.code === "PRICE_BASIS_UNCONFIRMED") {
+    return {
+      title: "Falta información del costo original",
+      description: "Cuando se creó esta cotización no quedó registrado qué incluía el costo del proveedor. Por seguridad, no podemos compararlo con un nuevo resultado.",
+    }
+  }
+  return {
+    title: "No se pudo verificar este servicio",
+    description: error?.message || "La consulta no produjo un resultado que se pueda comparar.",
+  }
 }
 
 function itemTypeLabel(itemType: string) {
@@ -584,6 +597,13 @@ export function QuotationPriceRefreshDialog({
     item => decisions[item.line_id] === "KEEP_CURRENT"
   ).length
   const summary = run?.summary
+  const unverifiedCount = summary
+    ? summary.not_refreshable_count + summary.failed_count
+    : 0
+  const canDiscardAndRetry = Boolean(run?.items.some(item => (
+    item.error?.retryable
+    || (item.outcome !== "NOT_REFRESHABLE" && item.outcome !== "FAILED")
+  )))
 
   return (
     <Dialog
@@ -608,7 +628,7 @@ export function QuotationPriceRefreshDialog({
             </span>
           </DialogTitle>
           <DialogDescription>
-            Revisá lo que cambió antes de emitir una nueva versión para el pasajero.
+            Revisá el resultado de la consulta antes de emitir una nueva versión para el pasajero.
           </DialogDescription>
         </DialogHeader>
 
@@ -648,6 +668,32 @@ export function QuotationPriceRefreshDialog({
 
           {(phase === "review" || phase === "applying") && run && summary && (
             <div className="space-y-4">
+              {unverifiedCount > 0 ? (
+                <Alert className="border-amber-500/30 bg-amber-500/5">
+                  <AlertTriangle className="h-4 w-4 text-amber-500" />
+                  <AlertTitle>
+                    No pudimos verificar {unverifiedCount} {unverifiedCount === 1 ? "servicio" : "servicios"}
+                  </AlertTitle>
+                  <AlertDescription>
+                    Esto no significa que el precio siga igual: no hubo una comparación confiable. Revisá el motivo antes de continuar.
+                  </AlertDescription>
+                </Alert>
+              ) : summary.price_changed_count + summary.replacement_count > 0 ? (
+                <Alert className="border-primary/25 bg-primary/5">
+                  <CircleDollarSign className="h-4 w-4 text-primary" />
+                  <AlertTitle>Encontramos cambios en la cotización</AlertTitle>
+                  <AlertDescription>
+                    Compará los valores anteriores con los nuevos y elegí cómo continuar.
+                  </AlertDescription>
+                </Alert>
+              ) : (
+                <Alert className="border-success/25 bg-success/5">
+                  <CheckCircle2 className="h-4 w-4 text-success" />
+                  <AlertTitle>Precios y disponibilidad verificados</AlertTitle>
+                  <AlertDescription>No encontramos cambios respecto de la cotización guardada.</AlertDescription>
+                </Alert>
+              )}
+
               <div className="grid grid-cols-3 divide-x rounded-xl border border-border/60 bg-muted/25">
                 <div className="px-3 py-2.5">
                   <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Servicios</p>
@@ -674,9 +720,13 @@ export function QuotationPriceRefreshDialog({
 
               {(summary.options || []).map(option => {
                 const optionItems = run.items.filter(item => item.option_id === option.option_id)
+                const optionWasNotCompared = optionItems.length > 0 && optionItems.every(item => (
+                  !item.refreshed && (item.outcome === "NOT_REFRESHABLE" || item.outcome === "FAILED")
+                ))
                 const selectedCostTotal = selectedOptionCosts[option.option_id]
                   ?? Number(option.current_cost_total)
-                const costDelta = selectedCostTotal - Number(option.current_cost_total)
+                const providerCostTotal = Number(option.proposed_cost_total)
+                const costDelta = providerCostTotal - Number(option.current_cost_total)
                 const saleValue = Number(saleTotals[option.option_id])
                 const suggestedSaleTotal = Math.max(
                   selectedCostTotal,
@@ -707,36 +757,62 @@ export function QuotationPriceRefreshDialog({
                               ? "text-success"
                               : "text-muted-foreground")
                         }>
-                          {costDelta === 0
-                            ? "Costo sin cambios"
+                          {optionWasNotCompared
+                            ? "Proveedor no verificado"
+                            : costDelta === 0
+                              ? "Precio del proveedor sin cambios"
                             : (costDelta > 0 ? "+" : "−")
                               + formatMoney(Math.abs(costDelta), summary.currency)}
                         </span>
                       </div>
                       <div className="mt-3 grid gap-2 sm:grid-cols-3">
                         <div className="rounded-lg bg-background/80 px-3 py-2">
-                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Costo efectivo</p>
-                          <div className="mt-1 flex items-center gap-1.5 text-sm font-medium tabular-nums">
-                            <span>{formatMoney(option.current_cost_total, summary.currency)}</span>
-                            <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                            <span>{formatMoney(selectedCostTotal, summary.currency)}</span>
+                          <div className="grid gap-2 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
+                            <div>
+                              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Precio original de Emilia</p>
+                              <p className="mt-1 text-sm font-medium tabular-nums">
+                                {formatMoney(option.current_cost_total, summary.currency)}
+                              </p>
+                            </div>
+                            {!optionWasNotCompared && <ArrowRight className="hidden h-3 w-3 text-muted-foreground sm:block" />}
+                            {!optionWasNotCompared && (
+                              <div>
+                                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Precio actual del proveedor</p>
+                                <p className="mt-1 text-sm font-medium tabular-nums">
+                                  {formatMoney(providerCostTotal, summary.currency)}
+                                </p>
+                              </div>
+                            )}
                           </div>
+                          {optionWasNotCompared && (
+                            <p className="mt-1 text-[11px] text-muted-foreground">No pudimos consultar el precio actual del proveedor.</p>
+                          )}
                         </div>
                         <div className="rounded-lg bg-background/80 px-3 py-2">
-                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Precio pasajero</p>
+                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Precio al pasajero</p>
                           <div className="mt-1 flex items-center gap-1.5 text-sm font-medium tabular-nums">
                             <span>{formatMoney(option.current_customer_total, summary.currency)}</span>
-                            <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                            <span>{formatMoney(selectedSaleTotal, summary.currency)}</span>
+                            {!optionWasNotCompared && (
+                              <>
+                                <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                                <span>{formatMoney(selectedSaleTotal, summary.currency)}</span>
+                              </>
+                            )}
                           </div>
+                          <p className="mt-1 text-[11px] text-muted-foreground">Lo que paga el pasajero.</p>
                         </div>
                         <div className="rounded-lg bg-background/80 px-3 py-2">
-                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Margen</p>
+                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Ganancia estimada</p>
                           <div className="mt-1 flex items-center gap-1.5 text-sm font-medium tabular-nums">
                             <span>{formatMoney(option.current_margin, summary.currency)}</span>
-                            <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                            <span>{formatMoney(selectedSaleTotal - selectedCostTotal, summary.currency)}</span>
+                            {!optionWasNotCompared && (
+                              <>
+                                <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                                <span>{formatMoney(selectedSaleTotal - selectedCostTotal, summary.currency)}</span>
+                              </>
+                            )}
                           </div>
+                          <p className="mt-1 text-[11px] text-muted-foreground">Precio de venta menos costo.</p>
                         </div>
                       </div>
                     </div>
@@ -771,17 +847,22 @@ export function QuotationPriceRefreshDialog({
                               </Badge>
                             </div>
 
-                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-                              <span className="text-muted-foreground">Costo efectivo:</span>
-                              <span className="font-medium tabular-nums">
-                                {formatMoney(item.current.cost_amount, item.current.currency || summary.currency)}
-                              </span>
+                            <div className="flex flex-wrap items-end gap-x-3 gap-y-2 text-xs">
+                              <div>
+                                <span className="block text-[10px] uppercase tracking-wide text-muted-foreground">Precio original de Emilia</span>
+                                <span className="font-medium tabular-nums">
+                                  {formatMoney(item.current.cost_amount, item.current.currency || summary.currency)}
+                                </span>
+                              </div>
                               {item.refreshed && (
                                 <>
                                   <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                                  <span className="font-medium tabular-nums">
-                                    {formatMoney(item.refreshed.cost_amount, costCurrency)}
-                                  </span>
+                                  <div>
+                                    <span className="block text-[10px] uppercase tracking-wide text-muted-foreground">Precio actual del proveedor</span>
+                                    <span className="font-medium tabular-nums">
+                                      {formatMoney(item.refreshed.cost_amount, costCurrency)}
+                                    </span>
+                                  </div>
                                   {itemDelta !== null && Number(itemDelta) !== 0 && (
                                     <span className={
                                       "font-medium tabular-nums "
@@ -820,10 +901,13 @@ export function QuotationPriceRefreshDialog({
                             {item.error?.message && (
                               <div className="flex gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-foreground/80">
                                 <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-destructive" />
-                                <span>
-                                  {item.error.message}
-                                  {item.error.retryable ? " Podés volver a intentar la consulta." : ""}
-                                </span>
+                                <div>
+                                  <p className="font-medium">{refreshErrorCopy(item.error).title}</p>
+                                  <p className="mt-0.5 text-muted-foreground">
+                                    {refreshErrorCopy(item.error).description}
+                                    {item.error.retryable ? " Podés volver a intentar la consulta." : ""}
+                                  </p>
+                                </div>
                               </div>
                             )}
 
@@ -994,7 +1078,7 @@ export function QuotationPriceRefreshDialog({
           <Button variant="outline" onClick={onClose} disabled={phase === "applying"}>
             Cerrar
           </Button>
-          {phase === "review" && (
+          {phase === "review" && canDiscardAndRetry && (
             <Button variant="outline" onClick={() => void discardAndRetry()}>
               <RefreshCw className="mr-2 h-4 w-4" />
               Descartar y volver a consultar

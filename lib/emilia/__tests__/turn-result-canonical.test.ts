@@ -1,5 +1,5 @@
 import { buildQuotationPayload } from "@/lib/emilia/quotation-mapper"
-import { canonicalOfferCards } from "@/lib/emilia/turn-result"
+import { canonicalOfferCards, normalizeEmiliaTurnPayload } from "@/lib/emilia/turn-result"
 
 function terminalResult() {
   return {
@@ -182,5 +182,148 @@ describe("canonicalOfferCards", () => {
       selectedHotels: [{ hotel: cards.hotels![0] as any, roomIndex: 0 }],
       generalData: { departureDate: "2026-09-01", returnDate: "2026-09-04", adults: 2, children: 0, infants: 0 },
     })).toThrow("monedas distintas")
+  })
+
+  it("preserva la base y el ID del precio Delfos cuando el turno llega en el contrato legacy", () => {
+    const normalized = normalizeEmiliaTurnPayload({
+      status: "completed",
+      results: {
+        flights: {
+          items: [{
+            id: "delfos-flight-1",
+            provider: "DELFOS",
+            airline: { code: "CM", name: "Copa Airlines" },
+            price: { amount: 1022.5, currency: "USD", basis: "PROVIDER_TOTAL" },
+            adults: 1,
+            children: 0,
+            departure_date: "2026-10-01",
+            legs: [{
+              legNumber: 1,
+              options: [{
+                optionId: "delfos-option-1",
+                duration: 540,
+                segments: [{
+                  airline: "CM",
+                  flightNumber: 348,
+                  departure: { airportCode: "EZE", date: "2026-10-01", time: "02:00" },
+                  arrival: { airportCode: "AUA", date: "2026-10-01", time: "13:00" },
+                  duration: 540,
+                  cabinClass: "Y",
+                }],
+              }],
+            }],
+            offer_source: {
+              artifact_id: "11111111-1111-4111-8111-111111111111",
+              product: "flights",
+              offer_id: "delfos-flight-1",
+            },
+            offer_refresh_fallback: {
+              product: "flights",
+              query: { origin: "EZE", destination: "AUA" },
+              identity: { kind: "flight" },
+            },
+          }],
+        },
+      },
+    })
+
+    const payload = buildQuotationPayload({
+      lead: {
+        id: "33333333-3333-4333-8333-333333333333",
+        contact_name: "Ada",
+        destination: "Aruba",
+        region: "CARIBE",
+        agency_id: "44444444-4444-4444-8444-444444444444",
+      },
+      selectedFlight: normalized.flights!.items[0],
+      selectedHotels: [],
+      generalData: {
+        departureDate: "2026-10-01",
+        returnDate: null,
+        adults: 1,
+        children: 0,
+        infants: 0,
+      },
+    })
+
+    expect(payload.options[0].items[0]).toMatchObject({
+      provider: "DELFOS",
+      cost_amount: 1022.5,
+      cost_basis: "PROVIDER_TOTAL",
+      offer_source: { offer_id: "delfos-flight-1" },
+    })
+  })
+
+  it("preserva la base y los IDs de la habitación Delfos en el contrato legacy", () => {
+    const normalized = normalizeEmiliaTurnPayload({
+      status: "completed",
+      results: {
+        hotels: {
+          items: [{
+            id: "delfos-hotel-1",
+            unique_id: "delfos-hotel-1",
+            provider: "DELFOS",
+            name: "Hotel Aruba",
+            category: "4 estrellas",
+            city: "Oranjestad",
+            address: "Palm Beach",
+            images: [],
+            check_in: "2026-10-01",
+            check_out: "2026-10-05",
+            nights: 4,
+            rooms: [{
+              id: "delfos-room-1",
+              occupancy_id: "delfos-room-1",
+              type: "Doble",
+              description: "Doble · Desayuno",
+              total_price: 800,
+              price_per_night: 200,
+              currency: "USD",
+              price_basis: "PROVIDER_TOTAL",
+              offer_source: {
+                artifact_id: "22222222-2222-4222-8222-222222222222",
+                product: "hotels",
+                offer_id: "delfos-hotel-1",
+                selection_id: "delfos-room-1",
+              },
+              offer_refresh_fallback: {
+                product: "hotels",
+                query: { city: "Oranjestad" },
+                identity: { kind: "hotel_room" },
+              },
+            }],
+          }],
+        },
+      },
+    })
+
+    const payload = buildQuotationPayload({
+      lead: {
+        id: "33333333-3333-4333-8333-333333333333",
+        contact_name: "Ada",
+        destination: "Aruba",
+        region: "CARIBE",
+        agency_id: "44444444-4444-4444-8444-444444444444",
+      },
+      selectedFlight: null,
+      selectedHotels: [{ hotel: normalized.hotels!.items[0], roomIndex: 0 }],
+      generalData: {
+        departureDate: "2026-10-01",
+        returnDate: "2026-10-05",
+        adults: 2,
+        children: 0,
+        infants: 0,
+      },
+    })
+
+    expect(payload.options[0].items[0]).toMatchObject({
+      provider: "DELFOS",
+      cost_amount: 800,
+      cost_basis: "PROVIDER_TOTAL",
+      offer_source: {
+        offer_id: "delfos-hotel-1",
+        selection_id: "delfos-room-1",
+      },
+    })
   })
 })

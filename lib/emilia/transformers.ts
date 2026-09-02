@@ -45,6 +45,7 @@ interface ApiFlight {
   price: {
     amount: number
     currency: string
+    basis?: "AGENCY_NET" | "PROVIDER_TOTAL" | "COMMISSIONABLE_GROSS" | "UNKNOWN" | "GROUP_TOTAL"
     cost_basis?: "AGENCY_NET" | "PROVIDER_TOTAL" | "COMMISSIONABLE_GROSS" | "UNKNOWN"
   }
   adults: number
@@ -66,6 +67,12 @@ interface ApiFlight {
     query: Record<string, unknown>
     identity: Record<string, unknown>
   }
+}
+
+function providerCostBasis(value: unknown) {
+  return ["AGENCY_NET", "PROVIDER_TOTAL", "COMMISSIONABLE_GROSS"].includes(String(value))
+    ? value as "AGENCY_NET" | "PROVIDER_TOTAL" | "COMMISSIONABLE_GROSS"
+    : "UNKNOWN" as const
 }
 
 interface TransformedFlightLeg {
@@ -279,6 +286,7 @@ export function transformFlight(flight: ApiFlight): any {
     // consumidor vuelva a tratar el monto como precio unitario por pasajero.
     price: {
       ...flight.price,
+      cost_basis: providerCostBasis(flight.price.cost_basis ?? flight.price.basis),
       basis: "GROUP_TOTAL" as const,
     },
     adults: flight.adults,
@@ -454,6 +462,7 @@ export function transformHotels(hotels: any[]): any[] {
       ...safeHotel,
       rooms: safeHotel.rooms?.map((room: any, idx: number) => ({
         ...room,
+        cost_basis: providerCostBasis(room.cost_basis ?? room.price_basis ?? room.price?.basis),
         occupancy_id: room.occupancy_id || `room-${hotel.id}-${idx}`,
       })),
     }
