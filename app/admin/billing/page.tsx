@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/admin/empty-state"
 import { EnterpriseWithoutPriceAlert } from "@/components/admin/enterprise-without-price-alert"
 import { PlanPricesCard } from "@/components/admin/plan-prices-card"
 import { QuotationQuotaAdminCard } from "@/components/admin/quotation-quota-admin-card"
+import { AddonsAdminCard } from "@/components/admin/addons-admin-card"
 import { getPlanPricing } from "@/lib/billing/plan-pricing"
 import {
   DataTableShell,
@@ -136,6 +137,8 @@ export default async function AdminBillingPage() {
       <MpSandboxBanner />
 
       <PlanPricesCard prices={planPrices} />
+
+      <AddonsAdminCard />
 
       <QuotationQuotaAdminCard />
 

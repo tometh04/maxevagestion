@@ -21,6 +21,7 @@ import { OrgHealthCard } from "@/components/admin/org-health-card"
 import { PageHeader } from "@/components/admin/page-header"
 import { MrrOverrideCard } from "@/components/admin/mrr-override-card"
 import { OrgQuotationQuotaCard } from "@/components/admin/org-quotation-quota-card"
+import { OrgAddonsCard } from "@/components/admin/org-addons-card"
 import { resolveOrgAddons } from "@/lib/addons/server"
 import { computeSubscriptionTotalArs } from "@/lib/addons/pricing"
 import { getPlanPricing } from "@/lib/billing/plan-pricing"
@@ -166,6 +167,8 @@ export default async function AdminOrgDetailPage({ params }: { params: Promise<{
       <TenantMetrics orgId={id} />
 
       <OrgQuotationQuotaCard orgId={id} />
+
+      <OrgAddonsCard orgId={id} />
 
       {/* Diagnóstico — vista única para soporte. Insertado arriba de
           Billing porque es lo PRIMERO que querés ver al abrir un tenant

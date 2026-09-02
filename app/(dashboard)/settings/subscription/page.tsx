@@ -17,6 +17,7 @@ import { fetchPreapproval } from "@/lib/billing/mercadopago"
 import { MpSandboxBanner } from "@/components/admin/mp-sandbox-banner"
 import { CheckoutOutcomeTracker } from "@/components/analytics/checkout-outcome-tracker"
 import { QuotationQuotaCard } from "@/components/sales/quotation-quota-card"
+import { AddonsSummaryCard } from "@/components/billing/addons-summary-card"
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING_PAYMENT: "Pendiente de pago",
@@ -143,6 +144,8 @@ export default async function SubscriptionPage({
             canManageBilling={canManageBilling}
             proPriceArs={await resolvePlanPrice(admin, "PRO")}
           />
+          {/* También acá: una agencia con contrato propio contrata adicionales igual. */}
+          <AddonsSummaryCard supabase={admin} orgId={user.org_id ?? null} />
           <QuotationQuotaCard />
         </div>
       )
@@ -314,6 +317,8 @@ export default async function SubscriptionPage({
           </CardContent>
         </Card>
       )}
+
+      <AddonsSummaryCard supabase={admin} orgId={user.org_id ?? null} />
 
       {/* Historial */}
       <QuotationQuotaCard />
