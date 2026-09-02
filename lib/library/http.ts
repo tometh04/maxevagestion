@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { assertAddonEnabledApi } from "@/lib/addons/guard"
 import { getRequestPermissions } from "@/lib/permissions/request"
 import { canPerformAction } from "@/lib/permissions-api"
 import {
@@ -52,6 +53,16 @@ export async function resolveLibraryRequest(): Promise<
       response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
     }
   }
+
+  // Complemento contratado. Después del permiso y con 404: el permiso dice si
+  // este usuario puede, el complemento si la agencia lo tiene. Acá cubre de una
+  // todas las routes de la Biblioteca.
+  const addonDenied = await assertAddonEnabledApi(
+    supabase,
+    (user as any).org_id,
+    "library"
+  )
+  if (addonDenied) return { ok: false, response: addonDenied }
 
   const ctx = buildLibraryContext({ supabase, user: user as any })
   const canManage = canPerformAction(user, "library", "write", matrix ?? undefined)

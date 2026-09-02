@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
 import { createServerClient } from "@/lib/supabase/server"
-import { getOrgFeatureFlag } from "@/lib/settings/org-features"
+import { checkAddon } from "@/lib/addons/guard"
 import { buildDefaultRule } from "@/lib/commissions/monthly/calculator"
 
-const FEATURE_FLAG = "features.monthly_commissions_module"
 
 async function assertModuleEnabled(supabase: any, orgId: string) {
-  const enabled = await getOrgFeatureFlag(supabase, orgId, FEATURE_FLAG)
+  const enabled = (await checkAddon(supabase, orgId, "monthly_commissions")).allowed
   if (!enabled) {
     return NextResponse.json(
       { error: "Módulo de comisiones mensuales no habilitado para esta organización" },

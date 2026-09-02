@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
 import { createServerClient, createAdminClient } from "@/lib/supabase/server"
-import { getOrgFeatureFlag } from "@/lib/settings/org-features"
+import { checkAddon } from "@/lib/addons/guard"
 import { buildCalculationInputs } from "@/lib/commissions/monthly/fetcher"
 import { calculateMonthlyCommission } from "@/lib/commissions/monthly/calculator"
 
-const FEATURE_FLAG = "features.monthly_commissions_module"
 
 /**
  * POST /api/commissions/monthly/settlements/generate/[year_month]
@@ -31,7 +30,7 @@ export async function POST(
   }
 
   const supabase: any = await createServerClient()
-  const enabled = await getOrgFeatureFlag(supabase, user.org_id, FEATURE_FLAG)
+  const enabled = (await checkAddon(supabase, user.org_id, "monthly_commissions")).allowed
   if (!enabled) {
     return NextResponse.json({ error: "Módulo no habilitado" }, { status: 404 })
   }

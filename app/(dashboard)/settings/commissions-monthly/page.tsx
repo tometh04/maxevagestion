@@ -1,6 +1,6 @@
 import { getCurrentUser } from "@/lib/auth"
 import { createServerClient } from "@/lib/supabase/server"
-import { getOrgFeatureFlag } from "@/lib/settings/org-features"
+import { assertAddonEnabledPage } from "@/lib/addons/guard"
 import { notFound } from "next/navigation"
 import { CommissionsMonthlyRulesClient } from "@/components/commissions-monthly/rules-client"
 
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic"
 /**
  * Admin: configuración de reglas de comisión mensual per vendedora.
  * Solo accesible si:
- *   - Org tiene `features.monthly_commissions_module` ON
+ *   - La agencia tiene contratado el complemento `monthly_commissions`
  *   - User es ADMIN o SUPER_ADMIN
  */
 export default async function CommissionsMonthlyRulesPage() {
@@ -18,12 +18,7 @@ export default async function CommissionsMonthlyRulesPage() {
   if (user.role !== "ADMIN" && user.role !== "SUPER_ADMIN") notFound()
 
   const supabase: any = await createServerClient()
-  const enabled = await getOrgFeatureFlag(
-    supabase,
-    user.org_id,
-    "features.monthly_commissions_module"
-  )
-  if (!enabled) notFound()
+  await assertAddonEnabledPage(supabase, user.org_id, "monthly_commissions")
 
   // 🔴 CROSS-TENANT FIX: scoping explícito por org_id (regla de oro).
   const [{ data: rules }, { data: sellers }] = await Promise.all([

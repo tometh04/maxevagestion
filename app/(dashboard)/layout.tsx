@@ -27,9 +27,8 @@ import { createServerClient } from "@/lib/supabase/server"
 import { getUserAgencyIds } from "@/lib/permissions-api"
 import { resolveUserPermissions, type ResolvedPermissionsMatrix } from "@/lib/permissions-agency"
 import { getEffectiveAgencyScopeRole } from "@/lib/permissions"
-import { resolveGrowthStudioOrganizationAccess } from "@/lib/growth-studio/access"
-import { getAgenteBlancoOrgSlug } from "@/lib/agente-blanco/org"
-import { isAgenteBlancoSoftLaunchUser } from "@/lib/agente-blanco/config"
+import { resolveOrgAddons } from "@/lib/addons/server"
+import { enabledAddonKeys } from "@/lib/addons/entitlements"
 
 export default async function DashboardLayout({
   children,
@@ -66,10 +65,10 @@ export default async function DashboardLayout({
   // determinar qué agencias son visibles; luego la resolución fusiona todos los roles.
   const effectiveRole = getEffectiveAgencyScopeRole((user as any).roles ?? [user.role as any])
   const agencyIds = await getUserAgencyIds(supabase, user.id, effectiveRole)
-  // El slug de Agente Blanco decide si existe la sección "Conversaciones".
-  // Es un SELECT de una columna sobre la propia org: va en el mismo
-  // Promise.all para no sumar un round-trip por navegación.
-  const [resolvedPermissions, growthStudioAccess, agenteBlancoOrgSlug] = await Promise.all([
+  // Los complementos contratados deciden qué secciones existen para esta org.
+  // Reemplazan a las consultas sueltas que había antes (acceso a Growth Studio
+  // y slug de Agente Blanco), que hacían lo mismo con un canal distinto cada una.
+  const [resolvedPermissions, addonEntitlements] = await Promise.all([
     user.org_id
       ? resolveUserPermissions(
           supabase as any, user.id, user.org_id,
@@ -77,9 +76,9 @@ export default async function DashboardLayout({
           agencyIds
         )
       : Promise.resolve<ResolvedPermissionsMatrix | null>(null),
-    resolveGrowthStudioOrganizationAccess(supabase, user),
-    getAgenteBlancoOrgSlug(supabase, user.org_id),
+    resolveOrgAddons(supabase, user.org_id),
   ])
+  const enabledAddons = enabledAddonKeys(addonEntitlements)
   t.mark("resolvePermissions")
 
   const agencies = (userAgencies || []).map((ua: any) => ({
@@ -133,10 +132,7 @@ export default async function DashboardLayout({
               collapsible="icon"
               userRole={user.role as any}
               resolvedPermissions={resolvedPermissions}
-              growthStudioEnabled={growthStudioAccess.allowed}
-              conversationsEnabled={
-                agenteBlancoOrgSlug !== null && isAgenteBlancoSoftLaunchUser(user.email)
-              }
+              enabledAddons={enabledAddons}
               user={{
                 name: user.name,
                 email: user.email,

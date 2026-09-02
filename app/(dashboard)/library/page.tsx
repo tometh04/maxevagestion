@@ -1,3 +1,4 @@
+import { assertAddonEnabledPage } from "@/lib/addons/guard"
 import { getRequestPermissions } from "@/lib/permissions/request"
 import { canPerformAction } from "@/lib/permissions-api"
 import { buildLibraryContext } from "@/lib/library/access"
@@ -31,6 +32,10 @@ export default async function LibraryPage() {
   if (!canPerformAction(user, "library", "read", matrix ?? undefined)) {
     return <Denied />
   }
+
+  // Complemento contratado. Va después del permiso: sin permiso el usuario ve
+  // el mismo "sin acceso" de siempre; sin complemento, la sección no existe.
+  await assertAddonEnabledPage(supabase, (user as any).org_id, "library")
 
   const ctx = buildLibraryContext({ supabase, user: user as any })
   const canManage = canPerformAction(user, "library", "write", matrix ?? undefined)

@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
 import { createServerClient } from "@/lib/supabase/server"
-import { getOrgFeatureFlag } from "@/lib/settings/org-features"
+import { checkAddon } from "@/lib/addons/guard"
 
-const FEATURE_FLAG = "features.monthly_commissions_module"
 
 async function gate(supabase: any, user: any) {
   if (!user.org_id) {
@@ -12,7 +11,7 @@ async function gate(supabase: any, user: any) {
   if (user.role !== "ADMIN" && user.role !== "SUPER_ADMIN") {
     return { error: NextResponse.json({ error: "Acceso denegado" }, { status: 403 }), userOrgId: null }
   }
-  const enabled = await getOrgFeatureFlag(supabase, user.org_id, FEATURE_FLAG)
+  const enabled = (await checkAddon(supabase, user.org_id, "monthly_commissions")).allowed
   if (!enabled) {
     return { error: NextResponse.json({ error: "Módulo no habilitado" }, { status: 404 }), userOrgId: null }
   }

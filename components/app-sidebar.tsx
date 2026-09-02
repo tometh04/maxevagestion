@@ -19,6 +19,7 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { shouldShowInSidebar, type UserRole, type Module } from "@/lib/permissions"
+import type { AddonKey } from "@/lib/addons/catalog"
 import { checkResolvedPermission, type ResolvedPermissionsMatrix } from "@/lib/permissions-agency"
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
@@ -53,8 +54,12 @@ interface NavSubItem {
   }
   /** Micro logo de marca (ruta en /public), para integraciones de terceros. */
   iconSrc?: string
-  /** Solo visible si la org tiene el embebido de Agente Blanco habilitado. */
-  requiresAgenteBlanco?: boolean
+  /**
+   * Complemento facturable que habilita esta sección. Canal genérico: antes
+   * había un prop distinto por cada caso (`requiresAgenteBlanco`,
+   * `requiresGrowthStudio`) y cada uno traía su propia query en el layout.
+   */
+  addon?: AddonKey
 }
 
 interface NavItem {
@@ -64,7 +69,13 @@ interface NavItem {
   items?: NavSubItem[]
   module?: Module
   collapsible?: boolean
-  requiresGrowthStudio?: boolean
+  addon?: AddonKey
+  /**
+   * Propaga `?agencyId=` a este ítem y a sus hijos. NO es un gate: es solo
+   * reescritura de URL. Antes viajaba pegado a `requiresGrowthStudio`, que
+   * hacía las dos cosas a la vez.
+   */
+  propagatesAgencyId?: boolean
 }
 
 // Feature flag temporal: el módulo "Agente IA / Eve" solo aparece en el sidebar
@@ -100,7 +111,8 @@ const allNavigation: NavItem[] = [
     title: "Growth Studio",
     url: "/growth-studio",
     icon: Megaphone,
-    requiresGrowthStudio: true,
+    addon: "growth_studio",
+    propagatesAgencyId: true,
     items: [
       { title: "Inicio", url: "/growth-studio" },
       { title: "Campañas", url: "/growth-studio/campaigns" },
@@ -153,7 +165,7 @@ const allNavigation: NavItem[] = [
       { title: "Comisiones", url: "/commissions", module: "commissions" as const },
       // VIB-86: módulo propio. Colgado de `commissions` se le mostraba al
       // vendedor, que al entrar era redirigido al dashboard.
-      { title: "Referidos", url: "/referrals", module: "referrals" as const },
+      { title: "Referidos", url: "/referrals", module: "referrals" as const, addon: "referrals" as const },
       { title: "Reportes", url: "/reports", module: "reports" as const },
       { title: "Configuración", url: "/finances/settings", module: "cash" as const },
     ],
@@ -201,16 +213,17 @@ const allNavigation: NavItem[] = [
       { title: "Mensajes", url: "/messages" },
       { title: "Templates", url: "/resources/templates", module: "settings" as const },
       { title: "Tareas", url: "/tools/tasks" },
-      // Bandeja de Agente Blanco embebida. Solo aparece si la org tiene
-      // `agente_blanco_org_slug`: sin el campo la sección no existe.
+      // Bandeja de Agente Blanco embebida. Es un complemento contratable: sin
+      // él la sección no existe. El slug sigue haciendo falta para el embebido
+      // y lo valida la propia página.
       {
         title: "Agente Blanco",
         url: "/conversaciones",
         module: "leads" as const,
         iconSrc: "/agente-blanco-icon.png",
-        requiresAgenteBlanco: true,
+        addon: "agente_blanco",
       },
-      { title: "WHA Control", url: "/tools/wha-control" },
+      { title: "WHA Control", url: "/tools/wha-control", addon: "wha_control" as const },
       // Pendientes 3.2: el v2 import vivía sólo via URL directa. Lo colgamos
       // de Herramientas (admin task) en vez de Configuración para evitar
       // duplicación con el tab "Importación" del legacy en /settings.
@@ -235,12 +248,14 @@ const allNavigation: NavItem[] = [
     url: "/library",
     icon: Library,
     module: "library",
+    addon: "library",
     collapsible: false,
   },
   // 9. Cerebro
   {
     title: "🧠 Cerebro",
     url: "/tools/cerebro",
+    addon: "cerebro",
     collapsible: false,
   },
 ]
@@ -248,8 +263,13 @@ const allNavigation: NavItem[] = [
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   userRole: UserRole
   resolvedPermissions?: ResolvedPermissionsMatrix | null
-  growthStudioEnabled?: boolean
-  conversationsEnabled?: boolean
+  /**
+   * Complementos habilitados para la org. Viaja como lista de claves y no como
+   * el mapa completo: menos payload y los precios no llegan al bundle.
+   * `undefined` = no se resolvió, se muestran todos (falla abierto, igual que
+   * `hasAddon`).
+   */
+  enabledAddons?: AddonKey[]
   user: {
     name: string
     email: string
@@ -260,8 +280,7 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
 export function AppSidebar({
   userRole,
   resolvedPermissions,
-  growthStudioEnabled = false,
-  conversationsEnabled = false,
+  enabledAddons,
   user,
   ...props
 }: AppSidebarProps) {
@@ -377,9 +396,18 @@ export function AppSidebar({
     return shouldShowInSidebar(userRole, module as any)
   }
 
+  // Complemento contratado. Sin lista resuelta se muestran todos: el gate real
+  // vive en las páginas y las rutas de API, y esconder un ítem no es
+  // autorización.
+  function canShowAddon(addon?: AddonKey): boolean {
+    if (!addon) return true
+    if (!enabledAddons) return true
+    return enabledAddons.includes(addon)
+  }
+
   // Filtrar navegación según permisos
   const contextualNavigation = allNavigation.map((item) => {
-    if (!item.requiresGrowthStudio || !selectedAgencyId) return item
+    if (!item.propagatesAgencyId || !selectedAgencyId) return item
     const query = `?agencyId=${encodeURIComponent(selectedAgencyId)}`
     return {
       ...item,
@@ -393,7 +421,10 @@ export function AppSidebar({
 
   const navigation = contextualNavigation
     .map((item) => {
-      if (item.requiresGrowthStudio && !growthStudioEnabled) {
+      // El complemento del padre se chequea SIEMPRE, sin la excepción de "algún
+      // hijo declara módulo propio" que aplica abajo: no comprar un adicional no
+      // es un permiso más fino, es que la sección no existe.
+      if (!canShowAddon(item.addon)) {
         return null
       }
       // Filtrar items principales por módulo
@@ -412,7 +443,9 @@ export function AppSidebar({
       if (item.items) {
         const filteredItems = item.items
           .map((subItem) => {
-            if (subItem.requiresAgenteBlanco && !conversationsEnabled) {
+            // El complemento del hijo va ANTES del chequeo de módulo y no se
+            // hereda del padre, para no ocultar de más.
+            if (!canShowAddon(subItem.addon)) {
               return null
             }
             // Si el subitem tiene módulo propio, verificar ese módulo

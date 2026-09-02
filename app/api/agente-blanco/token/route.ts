@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server"
 
+import { assertAddonEnabledApi } from "@/lib/addons/guard"
 import {
   getAgenteBlancoClientId,
   getAgenteBlancoKeyId,
   getAgenteBlancoSecret,
-  isAgenteBlancoSoftLaunchUser,
 } from "@/lib/agente-blanco/config"
 import {
   getAgenteBlancoNetworks,
@@ -54,11 +54,11 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403, headers: NO_STORE })
   }
 
-  // Soft-launch. Va acá y no solo en el sidebar: esconder el ítem sin cerrar
-  // este endpoint dejaría el embebido abierto para toda la org habilitada.
-  if (!isAgenteBlancoSoftLaunchUser(user.email)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403, headers: NO_STORE })
-  }
+  // Complemento contratado. Va acá y no solo en el sidebar: esconder el ítem
+  // sin cerrar este endpoint dejaría el embebido abierto. Esta es la puerta
+  // real, porque acá se firma el JWT que abre la bandeja.
+  const addonDenied = await assertAddonEnabledApi(supabase, user.org_id, "agente_blanco")
+  if (addonDenied) return addonDenied
 
   const orgSlug = await getAgenteBlancoOrgSlug(supabase, user.org_id)
   if (!orgSlug) {

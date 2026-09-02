@@ -33,14 +33,36 @@ export async function POST(request: Request) {
   const month = lastOfPrevMonth.getMonth() + 1
   const yearMonth = `${year}-${String(month).padStart(2, "0")}`
 
-  // ─── 2. Encontrar orgs con el feature flag activo ───────────────────
+  // ─── 2. Encontrar orgs que tienen el módulo contratado ──────────────
+  //
+  // Se consulta `organization_addons` directamente y NO la resolución de
+  // entitlements: esa falla abierto y trata `enforcement: OFF` como "habilitado
+  // para todos", lo que acá significaría generar liquidaciones para tenants que
+  // nunca contrataron el módulo.
+  //
+  // SCHEDULED_CANCEL cuenta igual: si la agencia lo tuvo durante el mes que se
+  // está liquidando, ese mes se genera. La baja recién aplica después.
+  const { data: contratado } = await admin
+    .from("organization_addons")
+    .select("org_id")
+    .eq("addon_key", "monthly_commissions")
+    .in("status", ["ACTIVE", "SCHEDULED_CANCEL"])
+
+  // Transición: mientras haya orgs que sigan marcadas solo con el flag viejo,
+  // se toman también, para que a nadie se le corte la generación. Se puede
+  // sacar cuando el backfill de organization_addons esté aplicado y verificado.
   const { data: orgsWithFlag } = await admin
     .from("organization_settings")
     .select("org_id")
     .eq("key", "features.monthly_commissions_module")
     .in("value", ["true", "1", "yes"])
 
-  const orgIds = ((orgsWithFlag || []) as any[]).map((r) => r.org_id)
+  const orgIds = Array.from(
+    new Set([
+      ...((contratado || []) as any[]).map((r) => r.org_id),
+      ...((orgsWithFlag || []) as any[]).map((r) => r.org_id),
+    ])
+  )
   if (orgIds.length === 0) {
     return NextResponse.json({ year_month: yearMonth, orgs_processed: 0, message: "No hay orgs con el módulo activo" })
   }

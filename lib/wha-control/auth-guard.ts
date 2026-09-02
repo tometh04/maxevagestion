@@ -1,4 +1,6 @@
+import { assertAddonEnabledApi } from "@/lib/addons/guard"
 import { getCurrentUser } from "@/lib/auth"
+import { createServerClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 
 const ALLOWED_ROLES = ["SUPER_ADMIN", "ORG_OWNER", "ADMIN"]
@@ -31,6 +33,15 @@ export async function whaControlAuthGuard() {
       user: null,
       orgId: null,
     }
+  }
+
+  // Complemento contratado. Va DESPUÉS del rol y del tenant, y devuelve 404:
+  // el permiso decide si este usuario puede, el complemento si la agencia lo
+  // tiene. Acá cubre de una las ~15 rutas de /api/wha-control.
+  const supabase = await createServerClient()
+  const addonDenied = await assertAddonEnabledApi(supabase, orgId, "wha_control")
+  if (addonDenied) {
+    return { authorized: false as const, response: addonDenied, user: null, orgId: null }
   }
 
   return { authorized: true as const, response: null, user, orgId }

@@ -1,10 +1,8 @@
 import { notFound, redirect } from "next/navigation"
 
 import { AgenteBlancoInbox } from "@/components/conversations/agente-blanco-inbox"
-import {
-  getAgenteBlancoClientId,
-  isAgenteBlancoSoftLaunchUser,
-} from "@/lib/agente-blanco/config"
+import { assertAddonEnabledPage } from "@/lib/addons/guard"
+import { getAgenteBlancoClientId } from "@/lib/agente-blanco/config"
 import {
   getAgenteBlancoNetworks,
   getAgenteBlancoOrgSlug,
@@ -28,9 +26,9 @@ export default async function ConversacionesPage() {
     redirect("/dashboard")
   }
 
-  // Soft-launch: mismo 404 que una org sin slug — para el resto la sección
-  // todavía no existe.
-  if (!isAgenteBlancoSoftLaunchUser(user.email)) notFound()
+  // Complemento contratado. Mismo 404 que una org sin slug: si no lo tiene, la
+  // sección no existe para ella. Va después del permiso, nunca en su lugar.
+  await assertAddonEnabledPage(supabase, user.org_id, "agente_blanco")
 
   const [orgSlug, networks] = await Promise.all([
     getAgenteBlancoOrgSlug(supabase, user.org_id),

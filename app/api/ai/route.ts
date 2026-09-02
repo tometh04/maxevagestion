@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { assertAddonEnabledApi } from "@/lib/addons/guard"
 import { getCurrentUser } from "@/lib/auth"
 import OpenAI from "openai"
 import { createServerClient } from "@/lib/supabase/server"
@@ -865,6 +866,11 @@ export async function POST(request: Request) {
         response: "No podemos procesar tu consulta porque tu usuario no está asociado a una organización. Contactá a soporte.",
       })
     }
+
+    // Complemento contratado. Va después de resolver el tenant y antes de
+    // gastar un token de OpenAI.
+    const addonDenied = await assertAddonEnabledApi(supabase, userOrgId, "cerebro")
+    if (addonDenied) return addonDenied
 
     // Fetch user's agencies (scopeadas a su org) for mandatory filtering
     const { data: orgAgencies } = await (supabase.from("agencies") as any)

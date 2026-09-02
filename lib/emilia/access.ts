@@ -1,3 +1,4 @@
+import { checkAddon } from "@/lib/addons/access"
 import { isAccessAllowed, type BillingOrg } from "@/lib/billing/guard"
 import {
   canAccessAgencyResource,
@@ -30,6 +31,7 @@ export type EmiliaAccessDeniedCode =
   | "organization_not_found"
   | "subscription_inactive"
   | "emilia_plan_required"
+  | "addon_required"
   | "permission_denied"
   | "access_check_failed"
 
@@ -144,6 +146,22 @@ export async function resolveEmiliaOrganizationAccess(
 
   const promotionEndsAt = getEmiliaPromotionEndAt()
   const promotionActive = isEmiliaPromotionActive(Date.now(), promotionEndsAt)
+
+  // La promoción sigue siendo un OR por encima del complemento: mientras esté
+  // vigente nadie pierde el acceso, aunque no lo tenga contratado. Sacar este
+  // OR antes del 11/11/2026 le cortaría Emilia a todos los tenants de golpe.
+  if (!promotionActive) {
+    const addonAccess = await checkAddon(supabase, user.org_id, "emilia")
+    if (!addonAccess.allowed && !isEnterpriseEmiliaPlan(organization)) {
+      return {
+        allowed: false,
+        status: addonAccess.status,
+        code: "addon_required",
+        message: addonAccess.message,
+      }
+    }
+  }
+
   if (!hasEmiliaPlanAccess(organization, Date.now(), promotionEndsAt)) {
     return {
       allowed: false,

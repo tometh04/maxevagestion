@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation"
+import { assertAddonEnabledPage } from "@/lib/addons/guard"
 import { getRequestPermissions } from "@/lib/permissions/request"
 import { canPerformAction } from "@/lib/permissions-api"
 import { ReferralsView } from "@/components/referrals/referrals-view"
@@ -14,12 +15,17 @@ export const dynamic = "force-dynamic"
  * el ítem en el sidebar para que al entrar lo redirigieran.
  */
 export default async function ReferralsPage() {
-  const { user, matrix } = await getRequestPermissions()
+  const { user, supabase, matrix } = await getRequestPermissions()
   if (!user) redirect("/login")
 
   if (!canPerformAction(user, "referrals", "read", matrix ?? undefined)) {
     redirect("/dashboard")
   }
+
+  // Complemento contratado. Ojo: se gatea la PANTALLA y el alta de referidores,
+  // pero no la lectura de comisiones ya devengadas ni las liquidaciones. Dar de
+  // baja el complemento no puede dejar plata que ya se debe sin poder pagarse.
+  await assertAddonEnabledPage(supabase, (user as any).org_id, "referrals")
 
   // Liquidar saca plata de una cuenta, así que además de ver al referidor hace
   // falta poder mover caja. Se resuelve en el servidor y se pasa como prop: la

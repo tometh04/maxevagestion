@@ -7,6 +7,7 @@ import {
 } from "@/lib/permissions"
 import type { Database } from "@/lib/supabase/types"
 import { hasGrowthStudioEntitlement } from "@/lib/growth-studio/access-rules"
+import { checkAddon } from "@/lib/addons/access"
 
 export {
   canAccessGrowthStudioAgency,
@@ -33,6 +34,7 @@ export type GrowthStudioAccessDeniedCode =
   | "missing_organization"
   | "organization_not_found"
   | "subscription_inactive"
+  | "addon_required"
   | "access_check_failed"
 
 export type GrowthStudioOrganizationAccessResult =
@@ -103,6 +105,18 @@ export async function resolveGrowthStudioOrganizationAccess(
       status: 403,
       code: "subscription_inactive",
       message: "La suscripción no permite usar Growth Studio",
+    }
+  }
+
+  // Complemento contratado. 404 y no 403: si la agencia no lo tiene, la sección
+  // no existe para ella.
+  const addonAccess = await checkAddon(supabase, user.org_id, "growth_studio")
+  if (!addonAccess.allowed) {
+    return {
+      allowed: false,
+      status: addonAccess.status,
+      code: "addon_required",
+      message: addonAccess.message,
     }
   }
 

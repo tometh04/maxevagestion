@@ -4,15 +4,19 @@
 
 jest.mock("@/lib/permissions/request", () => ({ getRequestPermissions: jest.fn() }))
 jest.mock("@/lib/permissions-api", () => ({ canPerformAction: jest.fn() }))
+jest.mock("@/lib/addons/guard", () => ({ assertAddonEnabledApi: jest.fn() }))
 
 import crypto from "crypto"
+import { NextResponse } from "next/server"
 
 import { GET } from "../route"
+import { assertAddonEnabledApi } from "@/lib/addons/guard"
 import { canPerformAction } from "@/lib/permissions-api"
 import { getRequestPermissions } from "@/lib/permissions/request"
 
 const mockPerms = getRequestPermissions as jest.Mock
 const mockCan = canPerformAction as jest.Mock
+const mockAssertAddonEnabledApi = assertAddonEnabledApi as jest.Mock
 
 const SECRET = "secreto-de-prueba"
 
@@ -91,6 +95,8 @@ beforeEach(() => {
   delete process.env.AGENTE_BLANCO_CLIENT_ID
   delete process.env.AGENTE_BLANCO_KEY_ID
   mockCan.mockReturnValue(true)
+  // null = complemento habilitado (el guard devuelve la respuesta de corte o null).
+  mockAssertAddonEnabledApi.mockResolvedValue(null)
   session()
 })
 
@@ -131,10 +137,21 @@ describe("GET /api/agente-blanco/token", () => {
     expect(res.status).toBe(403)
   })
 
-  it("403 si el usuario no está en el soft-launch", async () => {
+  it("404 si la org no tiene el complemento contratado", async () => {
+    // Reemplaza al viejo gate por email (soft-launch). Es la puerta real: acá se
+    // firma el JWT que abre la bandeja, así que cerrar solo el sidebar dejaría
+    // el embebido accesible.
+    mockAssertAddonEnabledApi.mockResolvedValueOnce(
+      NextResponse.json({ error: "no contratado", code: "addon_required" }, { status: 404 })
+    )
+    const res = await GET(req())
+    expect(res.status).toBe(404)
+  })
+
+  it("el email del usuario ya no decide el acceso", async () => {
     session({ user: { ...USER, email: "otro@lozada.com" } })
     const res = await GET(req())
-    expect(res.status).toBe(403)
+    expect(res.status).toBe(200)
   })
 
   it("400 si el usuario no tiene org", async () => {
