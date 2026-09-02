@@ -21,7 +21,8 @@ import { OrgHealthCard } from "@/components/admin/org-health-card"
 import { PageHeader } from "@/components/admin/page-header"
 import { MrrOverrideCard } from "@/components/admin/mrr-override-card"
 import { OrgQuotationQuotaCard } from "@/components/admin/org-quotation-quota-card"
-import { computePotentialMrrArs } from "@/lib/admin/metrics"
+import { resolveOrgAddons } from "@/lib/addons/server"
+import { computeSubscriptionTotalArs } from "@/lib/addons/pricing"
 import { getPlanPricing } from "@/lib/billing/plan-pricing"
 import { daysOverdue } from "@/lib/billing/period-extension"
 
@@ -99,25 +100,38 @@ export default async function AdminOrgDetailPage({ params }: { params: Promise<{
   const manualPayments: any[] = manualPaymentsData ?? []
 
   // Monto sugerido para el pago manual: mismo orden de precedencia que el MRR
-  // del dashboard (override → custom plan → precio del plan).
-  const planPrices = await getPlanPricing(admin)
-  const suggestedAmountArs = computePotentialMrrArs(
-    {
+  // del dashboard (override → custom plan → precio del plan) MÁS los
+  // complementos contratados.
+  //
+  // Sumar los complementos acá no es cosmético: la mayoría de las orgs activas
+  // no cobra por Mercado Pago, así que este número es el que un humano termina
+  // facturando. Sin ellos se factura de menos todos los meses, en silencio.
+  const [planPrices, addonEntitlements] = await Promise.all([
+    getPlanPricing(admin),
+    resolveOrgAddons(admin, id),
+  ])
+  const suggestedTotal = computeSubscriptionTotalArs({
+    org: {
       plan: org.plan ?? null,
       subscription_status: org.subscription_status ?? "",
       custom_plan_id: org.custom_plan_id ?? null,
       manual_mrr_override_ars:
         org.manual_mrr_override_ars != null ? Number(org.manual_mrr_override_ars) : null,
     },
-    customPlan
+    customPlan: customPlan
       ? {
           base_price_ars: Number(customPlan.base_price_ars),
           discount_percent: Number(customPlan.discount_percent ?? 0),
           discount_ends_at: customPlan.discount_ends_at ?? null,
         }
       : null,
-    planPrices
-  )
+    planPrices,
+    entitlements: addonEntitlements,
+    // "Lo que pagaría si estuviera activa": no se estima Enterprise sin precio,
+    // igual que hacía computePotentialMrrArs.
+    useEnterpriseFallback: false,
+  })
+  const suggestedAmountArs = suggestedTotal.totalArs
 
   const overdueDays = daysOverdue(org.current_period_ends_at ?? null)
 

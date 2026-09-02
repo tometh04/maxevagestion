@@ -40,6 +40,7 @@ app/api/billing/cancel/route.ts                                          # BILLI
 app/api/billing/reactivate/route.ts                                      # BILLING — reactiva suscripción; scoped por user.org_id.
 app/api/billing/status/route.ts                                          # BILLING — lee estado de suscripción; scoped por user.org_id.
 app/api/billing/sync/route.ts                                            # BILLING — sincroniza estado MP ↔ DB; scoped por orgId.
+app/api/billing/addons/route.ts                                          # BILLING — alta/baja de complementos del propio tenant; organization_addons no tiene policy de write a propósito. Valida rol, y el org_id sale de la sesión.
 app/api/billing/update-card-link/route.ts                                # BILLING — actualiza link de tarjeta; scoped por user.org_id.
 app/api/billing/quotation-credits/checkout/route.ts                      # BILLING — crea una preferencia de pago para un paquete habilitado y la vincula a user.org_id.
 app/api/billing/quotation-credits/webhook/route.ts                       # WEBHOOK_S2S — acredita pagos MP firmados mediante un RPC idempotente acotado por la orden.
@@ -52,6 +53,7 @@ lib/billing/guard.ts                                                     # BILLI
 app/admin/billing/page.tsx                                               # PLATFORM_ADMIN — panel de billing global.
 app/api/admin/billing/plan-prices/route.ts                               # PLATFORM_ADMIN — editar precios de planes estándar (tabla plan_prices).
 app/api/admin/billing/quotation-quota/route.ts                           # PLATFORM_ADMIN — configurar cupos y paquetes globales, por plan u organización.
+app/api/admin/billing/addons/route.ts                                    # PLATFORM_ADMIN — catálogo global de complementos: precio, disponibilidad, enforcement e inclusiones por plan.
 app/admin/orgs/page.tsx                                                  # PLATFORM_ADMIN — listar todas las orgs.
 app/admin/orgs/[id]/page.tsx                                             # PLATFORM_ADMIN — detalle de org cualquiera.
 app/admin/metrics/page.tsx                                               # PLATFORM_ADMIN — métricas globales.
@@ -71,6 +73,7 @@ app/api/admin/orgs/[id]/mp-preapproval-link/route.ts                     # PLATF
 app/api/admin/orgs/[id]/mrr-override/route.ts                            # PLATFORM_ADMIN — override MRR manual.
 app/api/admin/orgs/[id]/profile/route.ts                                 # PLATFORM_ADMIN — editar perfil de org.
 app/api/admin/orgs/[id]/quotation-quota/route.ts                         # PLATFORM_ADMIN — consultar overrides y otorgar créditos manuales a una organización.
+app/api/admin/orgs/[id]/addons/route.ts                                  # PLATFORM_ADMIN — alta/baja y precio de complementos de una organización; organization_addons no tiene policy de write a propósito.
 app/api/admin/orgs/[id]/seed-chart-of-accounts/route.ts                  # PLATFORM_ADMIN — seedear plan de cuentas de un tenant.
 app/api/admin/orgs/[id]/seed-manychat-lists/route.ts                     # PLATFORM_ADMIN — seedear listas Manychat de un tenant.
 app/api/admin/orgs/[id]/suspend/route.ts                                 # PLATFORM_ADMIN — suspender tenant.
