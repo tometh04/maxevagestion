@@ -125,6 +125,12 @@ export interface CreateLedgerMovementParams {
   /** Categoría del gasto (recurring_payment_categories). Sólo aplica a gastos
    *  recurrentes/variables; alimenta el resumen por categoría. */
   category_id?: string | null
+  /**
+   * Gasto fijo que originó el movimiento (VIB-179). Es lo que permite borrar el
+   * pago y devolver la recurrencia al período borrado: sin este vínculo, lo
+   * único que une el movimiento con su gasto fijo es el texto del concepto.
+   */
+  recurring_payment_id?: string | null
   /** Fecha efectiva del movimiento (puede ser retroactiva). Si no se provee, usa NOW(). */
   movement_date?: string | Date | null
   /**
@@ -241,6 +247,7 @@ export async function createLedgerMovement(
       created_by: params.created_by || null,
       affects_balance: params.affects_balance ?? true,
       category_id: params.category_id || null,
+      recurring_payment_id: params.recurring_payment_id || null,
       org_id: orgId,
       // Fecha efectiva del movimiento: puede ser retroactiva (ej. 13/02).
       // Si no se provee, usa la fecha actual como fallback.

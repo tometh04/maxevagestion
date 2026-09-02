@@ -21,7 +21,25 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Loader2, DollarSign, Repeat, Receipt, TrendingDown } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { Loader2, DollarSign, Repeat, Receipt, TrendingDown, MoreHorizontal, Trash2 } from "lucide-react"
+import { toast } from "sonner"
 import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
 // Fix UTC shift en fechas DATE (VICO 2026-05-22)
 import { formatDateOnlyLocal } from "@/lib/utils/date-only"
@@ -84,6 +102,13 @@ interface MonthlyExpensesTabProps {
 
 export function MonthlyExpensesTab({ agencies }: MonthlyExpensesTabProps) {
   const [expenses, setExpenses] = useState<Expense[]>([])
+  // VIB-179: borrar el pago de un gasto fijo, sin depender de que lo haga
+  // alguien por atrás.
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; expense: Expense | null }>({
+    open: false,
+    expense: null,
+  })
+  const [deleting, setDeleting] = useState(false)
   const [totals, setTotals] = useState<Totals>({ ars: 0, usd: 0, count: 0, countRecurring: 0, countVariable: 0, arsRecurring: 0, arsVariable: 0, usdRecurring: 0, usdVariable: 0 })
   const [loading, setLoading] = useState(true)
 
@@ -138,6 +163,42 @@ export function MonthlyExpensesTab({ agencies }: MonthlyExpensesTabProps) {
   useEffect(() => {
     fetchExpenses()
   }, [fetchExpenses])
+
+  /**
+   * Borra el pago de un gasto fijo (VIB-179).
+   *
+   * El backend también devuelve la recurrencia al período borrado, así que
+   * después de esto el gasto vuelve a figurar como pendiente y se puede volver
+   * a pagar con la fecha correcta. Es el caso que lo motivó.
+   */
+  const handleDelete = async () => {
+    if (!deleteDialog.expense) return
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/expenses/monthly/${deleteDialog.expense.id}`, {
+        method: "DELETE",
+      })
+      const payload = await res.json().catch(() => ({}))
+
+      if (!res.ok) {
+        toast.error(payload?.error || "No se pudo eliminar el gasto")
+        return
+      }
+
+      toast.success(
+        payload?.recurrence
+          ? "Gasto eliminado. El gasto fijo vuelve a figurar como pendiente."
+          : "Gasto eliminado"
+      )
+      setDeleteDialog({ open: false, expense: null })
+      fetchExpenses()
+    } catch (err) {
+      console.error("Error eliminando el gasto fijo:", err)
+      toast.error("No se pudo eliminar el gasto")
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   // Cargar categorías para el filtro (mismas que /gastos tab Variables)
   useEffect(() => {
@@ -361,6 +422,7 @@ export function MonthlyExpensesTab({ agencies }: MonthlyExpensesTabProps) {
                 <SortableTableHead sortKey="amount" sortConfig={sortConfig} onSort={requestSort} className="text-right">Monto</SortableTableHead>
                 <SortableTableHead sortKey="financial_accounts.name" sortConfig={sortConfig} onSort={requestSort}>Cuenta</SortableTableHead>
                 <SortableTableHead sortKey="users.name" sortConfig={sortConfig} onSort={requestSort}>Usuario</SortableTableHead>
+                <TableHead className="w-[50px]" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -406,6 +468,30 @@ export function MonthlyExpensesTab({ agencies }: MonthlyExpensesTabProps) {
                   <TableCell className="text-sm text-muted-foreground">
                     {expense.users?.name || "—"}
                   </TableCell>
+                  <TableCell>
+                    {/* VIB-179: sólo los fijos. Un gasto variable se borra
+                        desde su propia pestaña, que además permite editarlo y
+                        dividirlo entre oficinas. */}
+                    {expense.expense_type === "recurring" && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <MoreHorizontal className="h-4 w-4" />
+                            <span className="sr-only">Acciones</span>
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={() => setDeleteDialog({ open: true, expense })}
+                            className="text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Eliminar
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -413,6 +499,59 @@ export function MonthlyExpensesTab({ agencies }: MonthlyExpensesTabProps) {
           </div>
         </div>
       )}
+
+      <AlertDialog
+        open={deleteDialog.open}
+        onOpenChange={(open) =>
+          setDeleteDialog({ open, expense: open ? deleteDialog.expense : null })
+        }
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar el pago de este gasto fijo</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                {deleteDialog.expense && (
+                  <p>
+                    Vas a eliminar <strong>{deleteDialog.expense.description}</strong> por{" "}
+                    <strong>
+                      {formatCurrency(deleteDialog.expense.amount, deleteDialog.expense.currency)}
+                    </strong>{" "}
+                    del{" "}
+                    {movementDayLabel(
+                      deleteDialog.expense.movement_day,
+                      deleteDialog.expense.movement_date
+                    )}
+                    .
+                  </p>
+                )}
+                <p>
+                  Se revierte el movimiento y su asiento contable, y el gasto fijo vuelve a
+                  figurar como pendiente para que puedas volver a pagarlo con la fecha
+                  correcta. No se borra el gasto fijo en sí: el mes que viene vence igual.
+                </p>
+                <p>Esta acción no se puede deshacer.</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                // Sin esto el diálogo se cierra antes de que termine el borrado
+                // y el usuario no ve si falló.
+                event.preventDefault()
+                handleDelete()
+              }}
+              className="bg-destructive hover:bg-destructive"
+              disabled={deleting}
+            >
+              {deleting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

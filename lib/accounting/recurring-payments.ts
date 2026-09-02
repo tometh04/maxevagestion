@@ -5,7 +5,7 @@
  * Los pagos recurrentes se generan automáticamente según su frecuencia.
  */
 
-import { addDays, addMonths, addYears } from "date-fns"
+
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/lib/supabase/types"
 
@@ -31,6 +31,57 @@ export interface RecurringPayment {
   created_by: string | null
 }
 
+/** Días de un mes, para poder clampear sin depender de la zona del servidor. */
+function daysInMonthUTC(year: number, monthIndex: number): number {
+  return new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate()
+}
+
+/**
+ * Corre una fecha de vencimiento `steps` períodos (negativo = hacia atrás).
+ *
+ * ⚠️ Trabaja sobre los números del calendario, NO sobre un `Date` local.
+ * La versión anterior hacía `new Date("2026-10-01")` —que es medianoche UTC— y
+ * la corría con date-fns, que opera en la zona del proceso. En un servidor en
+ * UTC daba bien; en cualquier otra zona devolvía el día anterior. Es la misma
+ * clase de bug que VIB-178: una fecha sin hora tratada como un instante.
+ *
+ * Se conserva el clampeo de fin de mes que traía date-fns: 31/01 + 1 mes es
+ * 28/02, no 03/03.
+ */
+function shiftDueDate(
+  dateStr: string,
+  frequency: RecurringPaymentFrequency,
+  steps: number
+): string {
+  const [year, month, day] = dateStr.slice(0, 10).split("-").map(Number)
+
+  const shiftDays = (n: number) => {
+    const d = new Date(Date.UTC(year, month - 1, day + n))
+    return d.toISOString().slice(0, 10)
+  }
+
+  const shiftMonths = (n: number) => {
+    const total = (month - 1) + n
+    const targetYear = year + Math.floor(total / 12)
+    const targetMonth = ((total % 12) + 12) % 12
+    const clamped = Math.min(day, daysInMonthUTC(targetYear, targetMonth))
+    return new Date(Date.UTC(targetYear, targetMonth, clamped)).toISOString().slice(0, 10)
+  }
+
+  switch (frequency) {
+    case "WEEKLY":
+      return shiftDays(7 * steps)
+    case "BIWEEKLY":
+      return shiftDays(14 * steps)
+    case "MONTHLY":
+      return shiftMonths(steps)
+    case "QUARTERLY":
+      return shiftMonths(3 * steps)
+    case "YEARLY":
+      return shiftMonths(12 * steps)
+  }
+}
+
 /**
  * Calcular la próxima fecha de vencimiento según la frecuencia
  */
@@ -38,30 +89,28 @@ export function calculateNextDueDate(
   lastDate: string,
   frequency: RecurringPaymentFrequency
 ): string {
-  // date-fns addMonths/addYears clampean al ultimo dia del mes destino:
-  // Jan 31 + 1 mes → Feb 28/29 (no Mar 3 como hace setMonth nativo).
-  const date = new Date(lastDate)
-  let nextDate: Date
+  return shiftDueDate(lastDate, frequency, 1)
+}
 
-  switch (frequency) {
-    case "WEEKLY":
-      nextDate = addDays(date, 7)
-      break
-    case "BIWEEKLY":
-      nextDate = addDays(date, 14)
-      break
-    case "MONTHLY":
-      nextDate = addMonths(date, 1)
-      break
-    case "QUARTERLY":
-      nextDate = addMonths(date, 3)
-      break
-    case "YEARLY":
-      nextDate = addYears(date, 1)
-      break
-  }
-
-  return nextDate.toISOString().split("T")[0]
+/**
+ * La fecha de vencimiento ANTERIOR (VIB-179).
+ *
+ * Se usa al borrar el pago de un gasto fijo: si el pago desaparece, la
+ * recurrencia tiene que volver a quedar pendiente del período que se borró. Sin
+ * esto, borrar el pago de septiembre dejaría `next_due_date` en octubre y el
+ * gasto se saltearía un mes entero sin que nadie lo note.
+ *
+ * ⚠️ No es el inverso exacto de `calculateNextDueDate` en los fines de mes:
+ * addMonths(31/01) da 28/02, y subMonths(28/02) da 28/01, no 31/01. Es la misma
+ * limitación que tiene el cálculo hacia adelante y se prefiere aceptarla antes
+ * que inventar un día que la recurrencia nunca tuvo. Para un gasto fijo, que
+ * casi siempre vence a principio de mes, no se manifiesta.
+ */
+export function calculatePreviousDueDate(
+  nextDate: string,
+  frequency: RecurringPaymentFrequency
+): string {
+  return shiftDueDate(nextDate, frequency, -1)
 }
 
 /**

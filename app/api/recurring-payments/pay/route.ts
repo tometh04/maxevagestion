@@ -149,6 +149,9 @@ export async function POST(request: Request) {
         notes: reference || null,
         created_by: user.id,
         category_id: recurringPayment.category_id || null,
+        // El vínculo con la recurrencia (VIB-179): sin él, borrar este pago no
+        // sabría a qué gasto fijo devolverle el período.
+        recurring_payment_id: recurring_payment_id,
         movement_date: payment_date || new Date().toISOString(),
       },
       supabase
