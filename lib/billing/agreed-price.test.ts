@@ -107,3 +107,65 @@ describe("clearAgreedPriceUpdate", () => {
     })
   })
 })
+
+describe("buildAgreedPriceUpdate — complementos facturables", () => {
+  const base = {
+    plan: "PRO",
+    eventType: "PAYMENT_APPROVED",
+    hasCustomPlan: false,
+    source: "mp_webhook" as const,
+  }
+
+  it("sin complementos se comporta exactamente igual que antes", () => {
+    const sinCampo = buildAgreedPriceUpdate({ ...base, transactionAmount: 139000 })
+    const conCero = buildAgreedPriceUpdate({
+      ...base,
+      transactionAmount: 139000,
+      addonsAmountArs: 0,
+    })
+    expect(sinCampo).toEqual(conCero)
+    expect(sinCampo?.agreed_plan_price_ars).toBe(139000)
+  })
+
+  it("descuenta los complementos para guardar el precio del PLAN BASE", () => {
+    // MP debita 154.000 = 139.000 de plan + 15.000 de complementos.
+    const update = buildAgreedPriceUpdate({
+      ...base,
+      transactionAmount: 154000,
+      addonsAmountArs: 15000,
+    })
+    expect(update?.agreed_plan_price_ars).toBe(139000)
+  })
+
+  it("no se cuentan dos veces al recalcular el total del mes siguiente", () => {
+    // El bug que esto previene: si se guardara el total, el "plan base" del mes
+    // siguiente ya traería los complementos y se les sumarían otra vez
+    // (139k → 154k → 169k → …).
+    const guardado = buildAgreedPriceUpdate({
+      ...base,
+      transactionAmount: 154000,
+      addonsAmountArs: 15000,
+    })?.agreed_plan_price_ars as number
+    expect(guardado + 15000).toBe(154000)
+  })
+
+  it("si el monto no alcanza a cubrir los complementos no escribe nada", () => {
+    // Modo de falla benigno: cae al precio de lista en vez de congelar un
+    // número inventado.
+    expect(
+      buildAgreedPriceUpdate({ ...base, transactionAmount: 10000, addonsAmountArs: 15000 })
+    ).toBeNull()
+    expect(
+      buildAgreedPriceUpdate({ ...base, transactionAmount: 15000, addonsAmountArs: 15000 })
+    ).toBeNull()
+  })
+
+  it("un addonsAmountArs inválido se ignora y guarda el monto de MP", () => {
+    const update = buildAgreedPriceUpdate({
+      ...base,
+      transactionAmount: 139000,
+      addonsAmountArs: Number.NaN,
+    })
+    expect(update?.agreed_plan_price_ars).toBe(139000)
+  })
+})

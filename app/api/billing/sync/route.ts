@@ -60,7 +60,9 @@ export async function POST(request: Request) {
     .from("organizations")
     .select(
       "subscription_status, current_period_ends_at, mp_last_synced_at, plan, " +
-      "mp_preapproval_id, trial_ends_at, custom_plan_id"
+      "mp_preapproval_id, trial_ends_at, custom_plan_id, " +
+      // Complementos ya incluidos en el importe de MP: se descuentan abajo.
+      "addons_mp_synced_amount_ars"
     )
     .eq("id", orgId)
     .maybeSingle()
@@ -228,6 +230,7 @@ export async function POST(request: Request) {
     eventType: transition.event_type,
     hasCustomPlan: !!(org as any).custom_plan_id,
     source: "checkout_sync",
+    addonsAmountArs: Number((org as any).addons_mp_synced_amount_ars ?? 0),
   })
   if (agreedPatch) Object.assign(updates, agreedPatch)
 

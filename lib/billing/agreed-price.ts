@@ -64,6 +64,24 @@ export interface BuildAgreedPriceUpdateInput {
   /** Si la org tiene custom plan, ese contrato es dueño del precio. */
   hasCustomPlan: boolean
   source: "mp_webhook" | "checkout_sync" | "admin"
+  /**
+   * Suma de complementos YA incluida en `transactionAmount`.
+   *
+   * Desde que existen los complementos facturables, MP debita `plan + addons`.
+   * Esta columna, en cambio, significa "precio del PLAN BASE": la leen el
+   * checkout de regularización, `/settings/subscription` y `computeBaseMrrArs`,
+   * y todos ellos le suman los complementos encima. Si acá guardáramos el total,
+   * el mes siguiente el "plan base" ya incluiría los addons y se volverían a
+   * sumar: doble cobro compuesto y silencioso (139k → 154k → 169k → …).
+   *
+   * Restarlo mantiene el significado original de la columna. El valor sale de
+   * `organizations.addons_mp_synced_amount_ars`, que se escribe en el mismo
+   * instante en que se empuja el importe a MP, así que es consistente por
+   * construcción.
+   *
+   * Default 0 ⇒ todos los callers y tests previos se comportan igual que antes.
+   */
+  addonsAmountArs?: number
 }
 
 /**
@@ -89,7 +107,15 @@ export function buildAgreedPriceUpdate(
   if (!input.plan) return null
   if (!input.eventType || !PRICE_ESTABLISHING_EVENTS.has(input.eventType)) return null
 
-  const amount = Number(input.transactionAmount)
+  const total = Number(input.transactionAmount)
+  if (!Number.isFinite(total) || total <= 0) return null
+
+  // Descontar los complementos deja el precio del plan base solo. Si el número
+  // no da (addons mal sincronizados, o un monto de MP menor al esperado), no se
+  // escribe nada: es preferible caer al precio de lista —el modo de falla
+  // benigno que ya tenía esta columna— antes que congelar un precio inventado.
+  const addons = Number(input.addonsAmountArs ?? 0)
+  const amount = Number.isFinite(addons) && addons > 0 ? total - addons : total
   if (!Number.isFinite(amount) || amount <= 0) return null
 
   return {

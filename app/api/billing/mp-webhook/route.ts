@@ -300,7 +300,10 @@ export async function POST(request: Request) {
     .from("organizations")
     .select(
       "id, name, plan, custom_plan_id, subscription_status, " +
-      "current_period_ends_at, mp_last_synced_at, trial_ends_at"
+      "current_period_ends_at, mp_last_synced_at, trial_ends_at, " +
+      // Complementos ya incluidos en el importe que debita MP: se descuentan
+      // abajo para que agreed_plan_price_ars siga siendo el precio del plan base.
+      "addons_mp_synced_amount_ars"
     )
     .eq("id", orgId)
     .maybeSingle()
@@ -407,6 +410,7 @@ export async function POST(request: Request) {
     eventType: transition.event_type,
     hasCustomPlan: !!org.custom_plan_id,
     source: "mp_webhook",
+    addonsAmountArs: Number((org as any).addons_mp_synced_amount_ars ?? 0),
   })
   if (agreedPatch) Object.assign(updates, agreedPatch)
 
