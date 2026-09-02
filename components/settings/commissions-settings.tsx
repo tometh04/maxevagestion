@@ -47,7 +47,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Percent, Plus, Info, Settings2, Calendar, Wallet, Users } from "lucide-react"
+import { Percent, Plus, Info, Settings2, Calendar, Wallet, Users, AlertTriangle } from "lucide-react"
 import { toast } from "sonner"
 // Fix UTC shift en fechas DATE (VICO 2026-05-22)
 import { parseDateOnlyLocal, formatDateOnlyLocal } from "@/lib/utils/date-only"
@@ -260,6 +260,71 @@ export function CommissionsSettings() {
       }))
       .sort((a, b) => (a.seller.name || "").localeCompare(b.seller.name || "", "es"))
   }, [sellers, rules, reglaGeneralPct])
+
+  /**
+   * Vendedores con regla para alguna oficina pero SIN una que valga en las
+   * demás (VIB-175).
+   *
+   * Es la trampa de esta pantalla: quien quiere poner "25 en Madero y 45 en
+   * Rosario" edita la regla que ya existe en vez de agregar una segunda, y sin
+   * darse cuenta deja las otras oficinas cayendo al porcentaje de la ficha
+   * —otro número— en silencio. Pasó apenas se publicó: Santiago Nader quedó con
+   * 25% en Madero y 35% en Rosario, cuando debía cobrar 45%.
+   *
+   * No se bloquea el guardado, porque tener una sola oficina cubierta puede ser
+   * legítimo. Se muestra qué está rigiendo en las demás, con el número.
+   */
+  const oficinasSinCubrir = useMemo(() => {
+    const porVendedor = new Map<string, { conOficina: CommissionRule[]; general: boolean }>()
+
+    for (const rule of rules) {
+      if (rule.type !== "SELLER" || !rule.seller_id) continue
+      const entry = porVendedor.get(rule.seller_id) ?? { conOficina: [], general: false }
+      if (rule.agency_id) entry.conOficina.push(rule)
+      else entry.general = true
+      porVendedor.set(rule.seller_id, entry)
+    }
+
+    const avisos: Array<{
+      sellerId: string
+      sellerName: string
+      cubiertas: string[]
+      restantes: string[]
+      percentage: number | null
+      source: SellerPercentageSource
+    }> = []
+
+    for (const [sellerId, entry] of Array.from(porVendedor.entries())) {
+      if (entry.general || entry.conOficina.length === 0) continue
+
+      const cubiertasIds = new Set(entry.conOficina.map((r: CommissionRule) => r.agency_id))
+      const restantes = agencies.filter((a) => !cubiertasIds.has(a.id))
+      if (restantes.length === 0) continue
+
+      const seller = sellers.find((s) => s.id === sellerId)
+      const { percentage, source } = resolveEffectivePercentage({
+        sellerRule: null,
+        userDefault: seller?.default_commission_percentage ?? null,
+        orgRule: reglaGeneralPct,
+      })
+
+      avisos.push({
+        sellerId,
+        sellerName: entry.conOficina[0].seller_name || seller?.name || "Vendedor",
+        cubiertas: entry.conOficina
+          .map(
+            (r: CommissionRule) =>
+              agencies.find((a) => a.id === r.agency_id)?.name || "otra oficina"
+          )
+          .sort((a: string, b: string) => a.localeCompare(b, "es")),
+        restantes: restantes.map((a) => a.name).sort((a, b) => a.localeCompare(b, "es")),
+        percentage,
+        source,
+      })
+    }
+
+    return avisos.sort((a, b) => a.sellerName.localeCompare(b.sellerName, "es"))
+  }, [rules, agencies, sellers, reglaGeneralPct])
 
   const fetchThreshold = async () => {
     try {
@@ -610,6 +675,42 @@ export function CommissionsSettings() {
           </div>
           <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Reglas Activas</h4>
         </div>
+
+        {/* VIB-175: una regla de oficina no cubre a las demás. Sin este aviso,
+            editar la regla general para ponerle una oficina deja las otras
+            cayendo a otro número sin que nadie se entere. */}
+        {oficinasSinCubrir.length > 0 && (
+          <Alert>
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription className="text-sm space-y-2">
+              <p>
+                Estas personas tienen porcentaje para una oficina pero no para las demás. En
+                las que faltan rige lo que dice su ficha, que puede ser otro número:
+              </p>
+              <ul className="space-y-1">
+                {oficinasSinCubrir.map((aviso) => (
+                  <li key={aviso.sellerId}>
+                    <strong>{aviso.sellerName}</strong>: {aviso.cubiertas.join(", ")} con su
+                    regla · en {aviso.restantes.join(", ")}{" "}
+                    {aviso.percentage != null ? (
+                      <>
+                        cobra <strong>{aviso.percentage}%</strong> (
+                        {ORIGEN_PORCENTAJE[aviso.source].toLowerCase()})
+                      </>
+                    ) : (
+                      <>no tiene porcentaje configurado</>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              <p className="text-muted-foreground">
+                Si querés otro porcentaje ahí, agregá una regla más para esa oficina en vez
+                de editar la que ya existe.
+              </p>
+            </AlertDescription>
+          </Alert>
+        )}
+
         {loading ? (
           <div className="text-center py-8 text-muted-foreground text-sm">Cargando...</div>
         ) : rules.length === 0 ? (
