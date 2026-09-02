@@ -612,8 +612,8 @@ export function QuotationPriceRefreshDialog({
         if (!open && phase !== "applying") onClose()
       }}
     >
-      <DialogContent className="flex max-h-[92vh] max-w-[95vw] flex-col overflow-hidden p-0 sm:max-w-[820px]">
-        <DialogHeader className="border-b border-border/60 px-5 pb-4 pt-5">
+      <DialogContent className="flex max-h-[92vh] max-w-[95vw] flex-col overflow-hidden sm:max-w-[820px]">
+        <DialogHeader className="border-b border-border/60 pb-4 pt-5">
           <DialogTitle className="flex items-center gap-2">
             <span className="grid h-8 w-8 place-items-center rounded-lg bg-primary/10 text-primary">
               <CircleDollarSign className="h-4 w-4" />
@@ -632,7 +632,7 @@ export function QuotationPriceRefreshDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+        <div className="min-h-0 flex-1 overflow-y-auto py-4">
           {(phase === "loading" || phase === "running") && (
             <div
               className="flex min-h-[300px] flex-col items-center justify-center text-center"
@@ -1074,7 +1074,7 @@ export function QuotationPriceRefreshDialog({
           )}
         </div>
 
-        <DialogFooter className="border-t border-border/60 bg-muted/15 px-5 py-3">
+        <DialogFooter className="gap-2 border-t border-border/60 bg-muted/15 py-3 sm:flex-wrap">
           <Button variant="outline" onClick={onClose} disabled={phase === "applying"}>
             Cerrar
           </Button>

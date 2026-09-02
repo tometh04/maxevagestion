@@ -20,9 +20,9 @@ jest.mock("sonner", () => ({
 
 jest.mock("@/components/ui/dialog", () => ({
   Dialog: ({ open, children }: any) => open ? <div>{children}</div> : null,
-  DialogContent: ({ children }: any) => <div>{children}</div>,
+  DialogContent: ({ children, className }: any) => <div data-testid="dialog-content" className={className}>{children}</div>,
   DialogDescription: ({ children }: any) => <p>{children}</p>,
-  DialogFooter: ({ children }: any) => <div>{children}</div>,
+  DialogFooter: ({ children, className }: any) => <div data-testid="dialog-footer" className={className}>{children}</div>,
   DialogHeader: ({ children }: any) => <div>{children}</div>,
   DialogTitle: ({ children }: any) => <h2>{children}</h2>,
 }))
@@ -160,6 +160,27 @@ function reviewRun(overrides: Record<string, unknown> = {}) {
 describe("QuotationPriceRefreshDialog", () => {
   beforeEach(() => {
     jest.clearAllMocks()
+  })
+
+  it("conserva el padding del diálogo y permite envolver las acciones", async () => {
+    const run = reviewRun()
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce(response({
+        data: { quotation_number: "COT-2026-0007", updated_at: SOURCE_VERSION },
+      }))
+      .mockResolvedValueOnce(response({ data: { run } })) as unknown as typeof fetch
+
+    render(
+      <QuotationPriceRefreshDialog
+        quotationId={QUOTATION_ID}
+        onClose={jest.fn()}
+        onApplied={jest.fn()}
+      />
+    )
+
+    expect(await screen.findByText("Precio actualizado")).toBeInTheDocument()
+    expect(screen.getByTestId("dialog-content")).not.toHaveClass("p-0")
+    expect(screen.getByTestId("dialog-footer")).toHaveClass("gap-2", "sm:flex-wrap")
   })
 
   it("consulta sin datos de proveedor y aplica las decisiones comerciales confirmadas", async () => {
