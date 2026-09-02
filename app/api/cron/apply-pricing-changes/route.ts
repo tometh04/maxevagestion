@@ -20,18 +20,24 @@ export async function POST(request: Request) {
   // Pasada 1: descuentos vencidos
   const { data: expiredRows } = await admin
     .from("custom_plans")
-    .select("*, organizations!inner(id, mp_preapproval_id, billing_email)")
+    .select(
+      "*, organizations!inner(id, mp_preapproval_id, billing_email, addons_mp_synced_amount_ars)"
+    )
     .lte("discount_ends_at", now.toISOString())
     .gt("discount_percent", 0)
 
   for (const cp of expiredRows ?? []) {
     try {
       const orgRow = cp.organizations
-      const currentEffective = calculateEffectivePrice(
-        Number(cp.base_price_ars),
-        cp.discount_percent
-      )
-      const newAmount = Number(cp.base_price_ars)
+      // Los complementos que ya están reflejados en el importe de MP tienen que
+      // viajar en los DOS montos. Si no, al expirar el descuento este cron
+      // empujaría solo el precio del plan y dejaríamos de cobrar los
+      // complementos en silencio; y además el porcentaje del umbral del 20% se
+      // mediría contra una base equivocada.
+      const addonsArs = Number(orgRow.addons_mp_synced_amount_ars ?? 0)
+      const currentEffective =
+        calculateEffectivePrice(Number(cp.base_price_ars), cp.discount_percent) + addonsArs
+      const newAmount = Number(cp.base_price_ars) + addonsArs
 
       let mpResult: any = null
       if (cp.billing_method === "MP" && orgRow.mp_preapproval_id) {
@@ -81,7 +87,7 @@ export async function POST(request: Request) {
         targetOrgId: orgRow.id,
         targetEntity: "custom_plans",
         targetEntityId: cp.id,
-        details: { currentEffective, newAmount, mpResult },
+        details: { currentEffective, newAmount, addonsArs, mpResult },
       })
       summary.expired++
     } catch (err: any) {
