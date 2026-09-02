@@ -32,10 +32,11 @@ describe("onboarding de Emilia en CRM", () => {
     })
     expect(tour!.launchHint).toMatch(/lead.*Más.*Cotizar/i)
     expect(tour!.steps.map((step) => step.target)).toEqual([
-      "emilia.prompt-guide",
+      "emilia.prompt",
       "emilia.prompt",
       "emilia.send",
     ])
+    expect(tour!.steps[0].target).toBe(tour!.steps[1].target)
     expect(
       tour!.steps.every(
         (step) =>
@@ -56,6 +57,9 @@ describe("onboarding de Emilia en CRM", () => {
     expect(copy).toMatch(/fecha/i)
     expect(copy).toMatch(/pasajer/i)
     expect(copy).toMatch(/preferencia/i)
-    expect(copy).toMatch(/Ejemplo: “Quiero un vuelo/i)
+    expect(copy).toMatch(/Vuelo: “Cotizá vuelos/i)
+    expect(copy).toMatch(/Hotel: “Cotizá hotel/i)
+    expect(copy).toMatch(/Vuelo \+ hotel: “Cotizá vuelo y hotel/i)
+    expect(copy).not.toMatch(/presupuesto|carry on/i)
   })
 })

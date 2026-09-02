@@ -470,6 +470,6 @@ describe("onboarding contextual de Emilia", () => {
       expect(screen.getByTestId("dialog-tour-step")).toHaveTextContent("enviar-y-refinar")
     )
     expect(screen.getByTestId("contextual-dialog-open")).toHaveTextContent("yes")
-    expect(screen.getByText("Enviá y refiná los resultados")).toBeVisible()
+    expect(screen.getByText("Filtrá, elegí y generá")).toBeVisible()
   })
 })

@@ -15,14 +15,23 @@ export function EmiliaPromptGuide() {
         <div className="min-w-0 space-y-2">
           <p className="text-sm font-semibold text-foreground">Cómo pedirle una cotización a Emilia</p>
           <p className="text-sm leading-relaxed text-muted-foreground">
-            Emilia prepara un borrador con los datos del lead. Revisá que incluya origen, destino,
-            fechas o noches, pasajeros y las preferencias que cambian la búsqueda.
+            Podés buscar vuelos, hoteles o ambos. Incluí origen, destino, fechas y pasajeros;
+            para hoteles también podés indicar régimen y categoría.
           </p>
-          <p className="rounded-lg bg-background/70 px-3 py-2 text-xs leading-relaxed text-foreground/80">
-            <span className="font-medium text-foreground">Ejemplo: </span>
-            Quiero un vuelo ida y vuelta de Buenos Aires a Cancún, del 10 al 17 de octubre, para 2 adultos
-            con carry on; hotel all inclusive de 4 estrellas o más.
-          </p>
+          <ul className="space-y-1.5 rounded-lg bg-background/70 px-3 py-2 text-xs leading-relaxed text-foreground/80">
+            <li>
+              <span className="font-medium text-foreground">Vuelo: </span>
+              Cotizá vuelos ida y vuelta de Buenos Aires a Cancún del 10 al 17 de octubre para 2 adultos.
+            </li>
+            <li>
+              <span className="font-medium text-foreground">Hotel: </span>
+              Cotizá hotel en Cancún del 10 al 17 de octubre para 2 adultos, all inclusive, de 4 estrellas o más.
+            </li>
+            <li>
+              <span className="font-medium text-foreground">Vuelo + hotel: </span>
+              Cotizá vuelo y hotel a Aruba saliendo desde Buenos Aires el 5 de diciembre y volviendo el 20, para 2 adultos.
+            </li>
+          </ul>
         </div>
       </div>
     </section>

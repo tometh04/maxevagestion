@@ -14,12 +14,13 @@ export const cotizarEmiliaTour: TourDefinition = {
   steps: [
     {
       id: "pedido-completo",
-      target: "emilia.prompt-guide",
+      target: "emilia.prompt",
       title: "Empezá con el viaje completo",
-      body: "Emilia prepara una sugerencia con los datos del lead. Usala como base y completá lo que falte antes de buscar.",
+      body: "Emilia puede buscar vuelos, hoteles o ambos. Revisá origen, destino, fechas, pasajeros y, para hoteles, preferencias como régimen y categoría.",
       details: [
-        "Un buen pedido incluye origen, destino, fechas o noches, pasajeros y las preferencias que cambian la búsqueda: equipaje, escalas, régimen, categoría o presupuesto.",
-        "Ejemplo: “Quiero un vuelo ida y vuelta de Buenos Aires a Cancún del 10 al 17 de octubre para 2 adultos, con carry on, y hotel all inclusive de 4 estrellas o más”.",
+        "Vuelo: “Cotizá vuelos ida y vuelta de Buenos Aires a Cancún del 10 al 17 de octubre para 2 adultos”.",
+        "Hotel: “Cotizá hotel en Cancún del 10 al 17 de octubre para 2 adultos, all inclusive, de 4 estrellas o más”.",
+        "Vuelo + hotel: “Cotizá vuelo y hotel a Aruba saliendo desde Buenos Aires el 5 de diciembre y volviendo el 20, para 2 adultos”.",
       ],
       requirePermission: CAN_QUOTE,
       placement: "top",
@@ -40,9 +41,11 @@ export const cotizarEmiliaTour: TourDefinition = {
     {
       id: "enviar-y-refinar",
       target: "emilia.send",
-      title: "Enviá y refiná los resultados",
-      body: "Después de la primera búsqueda podés pedir cambios en lenguaje natural, por ejemplo vuelos directos, otro presupuesto o una zona de hotel diferente.",
+      title: "Filtrá, elegí y generá",
+      body: "Cuando lleguen los resultados, usá los filtros, elegí un vuelo y las habitaciones que quieras cotizar, y después generá la cotización.",
       details: [
+        "Vuelos: podés filtrar por precio máximo, escalas, aerolínea y mayorista.",
+        "Hoteles: podés filtrar por total de habitación, categoría, régimen y mayorista.",
         "Revisá fechas, pasajeros y condiciones antes de generar la cotización. La selección final siempre queda bajo tu control.",
       ],
       requirePermission: CAN_QUOTE,
