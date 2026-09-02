@@ -7,7 +7,7 @@
  * el equipo: "egresos no aparecen al filtrar por fechas").
  */
 
-import { startOfDayAR, endOfDayAR } from "../date-range"
+import { startOfDayAR, endOfDayAR, businessDayOf } from "../date-range"
 
 describe("startOfDayAR", () => {
   it("formatea YYYY-MM-DD como inicio de día con offset -03:00", () => {
@@ -72,5 +72,57 @@ describe("comparación como timestamps reales (no strings)", () => {
     const movementUtc = new Date("2026-02-13T03:30:00Z").getTime()
     const rangeStart = new Date(startOfDayAR("2026-02-13")).getTime()
     expect(movementUtc >= rangeStart).toBe(true)
+  })
+
+  /**
+   * Por qué la ventana NO sirve para una fecha sin hora (VIB-178).
+   *
+   * Yamil filtró 27/08 → 27/08 y le trajo del 28. Estos dos tests fijan el
+   * mecanismo, para que nadie "arregle" el helper y reintroduzca el problema.
+   */
+  it("una fecha del 28 guardada a medianoche UTC cae DENTRO de la ventana del 27", () => {
+    const fila28 = new Date("2026-08-28T00:00:00Z").getTime()
+    expect(fila28 >= new Date(startOfDayAR("2026-08-27")).getTime()).toBe(true)
+    expect(fila28 <= new Date(endOfDayAR("2026-08-27")).getTime()).toBe(true)
+  })
+
+  it("y una del 27 guardada igual queda AFUERA de su propia ventana", () => {
+    const fila27 = new Date("2026-08-27T00:00:00Z").getTime()
+    expect(fila27 < new Date(startOfDayAR("2026-08-27")).getTime()).toBe(true)
+  })
+})
+
+describe("businessDayOf — día contra día, sin ventanas (VIB-178)", () => {
+  it("una fecha pura es su propio día", () => {
+    expect(businessDayOf("2026-08-27")).toBe("2026-08-27")
+  })
+
+  it("un timestamp a medianoche UTC es la fecha que alguien eligió, no la de AR", () => {
+    // Es el caso del 86% de los movimientos de caja. Convertirlo a hora
+    // argentina lo correría al 26, que es exactamente el bug.
+    expect(businessDayOf("2026-08-27T00:00:00Z")).toBe("2026-08-27")
+    expect(businessDayOf("2026-08-27T00:00:00.000Z")).toBe("2026-08-27")
+    expect(businessDayOf("2026-08-27T00:00:00+00:00")).toBe("2026-08-27")
+  })
+
+  it("un instante real se lleva al día que era en Argentina", () => {
+    // 28/08 01:00 UTC = 27/08 22:00 AR → es del 27.
+    expect(businessDayOf("2026-08-28T01:00:00Z")).toBe("2026-08-27")
+    // 27/08 15:00 UTC = 27/08 12:00 AR → es del 27.
+    expect(businessDayOf("2026-08-27T15:00:00Z")).toBe("2026-08-27")
+  })
+
+  it("resuelve el caso que rompía: el 27 entra y el 28 no", () => {
+    const del27 = businessDayOf("2026-08-27T00:00:00Z")!
+    const del28 = businessDayOf("2026-08-28T00:00:00Z")!
+    expect(del27 >= "2026-08-27" && del27 <= "2026-08-27").toBe(true)
+    expect(del28 >= "2026-08-27" && del28 <= "2026-08-27").toBe(false)
+  })
+
+  it("acepta Date y devuelve null para lo que no es fecha", () => {
+    expect(businessDayOf(new Date("2026-08-27T15:00:00Z"))).toBe("2026-08-27")
+    expect(businessDayOf(null)).toBeNull()
+    expect(businessDayOf("")).toBeNull()
+    expect(businessDayOf("cualquier cosa")).toBeNull()
   })
 })

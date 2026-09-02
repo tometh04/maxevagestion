@@ -26,7 +26,6 @@ import {
   FINANCIAL_INCOME_LIKE,
 } from "@/lib/accounting/financial-result"
 import { fetchAllRows } from "@/lib/supabase/fetch-all"
-import { endOfDayAR, startOfDayAR } from "@/lib/utils/date-range"
 
 export type FinancialResultKind = "INCOME" | "COST"
 
@@ -83,8 +82,8 @@ export async function fetchFinancialResults(
         // "Contra-movimiento", así que nunca matchea el LIKE.
         .is("reversed_at", null)
 
-      if (dateFrom) q = q.gte("movement_date", startOfDayAR(dateFrom))
-      if (dateTo) q = q.lte("movement_date", endOfDayAR(dateTo))
+      if (dateFrom) q = q.gte("movement_day", dateFrom)
+      if (dateTo) q = q.lte("movement_day", dateTo)
 
       return q.order("id", { ascending: true }).range(from, to)
     })

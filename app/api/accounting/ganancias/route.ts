@@ -108,8 +108,8 @@ export async function GET(request: Request) {
       // la base al 2026-08-20: los 14.284 movimientos existentes tienen cuenta,
       // así que este filtro NO cambia ningún número actual del reporte.
       .not("account_id", "is", null)
-      .gte("movement_date", startOfDayAR(startDate))
-      .lte("movement_date", endOfDayAR(endDate))
+      .gte("movement_day", startDate)
+      .lte("movement_day", endDate)
 
     if (expensesError) {
       console.error("Error querying expenses for ganancias:", expensesError)

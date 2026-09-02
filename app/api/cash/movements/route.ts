@@ -9,7 +9,6 @@ import {
 } from "@/lib/accounting/ledger"
 import { getExchangeRate, getLatestExchangeRate, getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
 import { roundMoney } from "@/lib/currency"
-import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
 
 export async function POST(request: Request) {
   try {
@@ -424,13 +423,13 @@ export async function GET(request: Request) {
     } else {
       // Default MOVIMIENTO: filtrar por movement_date con timezone AR
       if (dateFrom) {
-        query = query.gte("movement_date", startOfDayAR(dateFrom))
+        query = query.gte("movement_day", dateFrom)
       }
       if (dateTo) {
         // Incluir el día completo hasta las 23:59:59 en hora AR (fix bug
         // "egresos no aparecen al filtrar fechas": antes se usaba UTC y se
         // perdían movimientos cargados después de las 21h hora local)
-        query = query.lte("movement_date", endOfDayAR(dateTo))
+        query = query.lte("movement_day", dateTo)
       }
     }
     if (typeParam && typeParam !== "ALL") {

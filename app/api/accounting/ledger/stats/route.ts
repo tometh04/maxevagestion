@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
 import { getUserAgencyIds } from "@/lib/permissions-api"
 import { resolveUserPermissions, assertPermission } from "@/lib/permissions-agency"
 
@@ -76,17 +75,20 @@ export async function GET(request: Request) {
       accountFilter = `AND account_id IN (${ids.map(id => `'${id}'`).join(",")})`
     }
 
-    // Construir filtro de fechas con offset AR (fix bug "movimientos fuera de rango")
+    // Filtro por FECHA DE NEGOCIO (VIB-178). Antes se armaba una ventana de
+    // instantes en hora argentina, y como la mayoría de los movimientos guarda
+    // una fecha sin hora —medianoche UTC— la ventana se comía el día siguiente
+    // y perdía el propio. Comparar fecha contra fecha no tiene ese problema.
     let dateFilter = ""
-    if (dateFrom) dateFilter += ` AND movement_date >= '${startOfDayAR(dateFrom)}'`
-    if (dateTo) dateFilter += ` AND movement_date <= '${endOfDayAR(dateTo)}'`
+    if (dateFrom) dateFilter += ` AND movement_day >= '${dateFrom}'`
+    if (dateTo) dateFilter += ` AND movement_day <= '${dateTo}'`
 
     // SQL con aggregation — devuelve máximo N_cuentas × 2 filas en vez de miles.
     // Fix bug monedas (2026-04-20): sumamos SOLO rows con currency = currency
     // de la cuenta. Sin este filtro, rows con currency mismatch (p.ej.
     // OPERATOR_PAYMENT en USD asignado a una cuenta "Costo de Operadores" en
     // ARS) contaminan el total.
-    const sqlQuery = `SELECT lm.account_id, SUM(CASE WHEN lm.type IN ('INCOME','FX_GAIN') THEN lm.amount_original::numeric ELSE 0 END) as income, SUM(CASE WHEN lm.type NOT IN ('INCOME','FX_GAIN') THEN lm.amount_original::numeric ELSE 0 END) as expenses FROM ledger_movements lm INNER JOIN financial_accounts fa ON fa.id = lm.account_id WHERE lm.affects_balance = true AND lm.currency = fa.currency ${accountFilter.replace(/account_id/g, 'lm.account_id')} ${dateFilter.replace(/movement_date/g, 'lm.movement_date')} GROUP BY lm.account_id`
+    const sqlQuery = `SELECT lm.account_id, SUM(CASE WHEN lm.type IN ('INCOME','FX_GAIN') THEN lm.amount_original::numeric ELSE 0 END) as income, SUM(CASE WHEN lm.type NOT IN ('INCOME','FX_GAIN') THEN lm.amount_original::numeric ELSE 0 END) as expenses FROM ledger_movements lm INNER JOIN financial_accounts fa ON fa.id = lm.account_id WHERE lm.affects_balance = true AND lm.currency = fa.currency ${accountFilter.replace(/account_id/g, 'lm.account_id')} ${dateFilter.replace(/movement_day/g, 'lm.movement_day')} GROUP BY lm.account_id`
 
     const { data: aggData, error: aggError } = await admin.rpc("execute_readonly_query", {
       query_text: sqlQuery

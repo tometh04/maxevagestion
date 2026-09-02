@@ -117,13 +117,17 @@ describe("fetchFinancialResults — filtros pedidos a la base", () => {
     expect(eqCalls).toContainEqual(["affects_balance", true])
   })
 
-  it("usa los bordes del día argentino para el rango", async () => {
+  it("filtra por fecha de negocio, no por una ventana de instantes (VIB-178)", async () => {
+    // Antes se comparaba `movement_date` contra los bordes del día argentino.
+    // Como la mayoría de los movimientos guarda una fecha sin hora —medianoche
+    // UTC— esa ventana se comía el primer día del mes siguiente y perdía el
+    // primero del propio: agosto traía 117 movimientos de septiembre.
     const { gteCalls, lteCalls } = await leer(
       { INCOME: [asiento()] },
       { dateFrom: "2026-06-01", dateTo: "2026-06-30" }
     )
-    expect(gteCalls).toContainEqual(["movement_date", "2026-06-01T00:00:00-03:00"])
-    expect(lteCalls).toContainEqual(["movement_date", "2026-06-30T23:59:59-03:00"])
+    expect(gteCalls).toContainEqual(["movement_day", "2026-06-01"])
+    expect(lteCalls).toContainEqual(["movement_day", "2026-06-30"])
   })
 })
 

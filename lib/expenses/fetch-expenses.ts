@@ -19,7 +19,6 @@
  */
 
 import { roundMoney } from "@/lib/currency"
-import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
 import { fetchAllRows } from "@/lib/supabase/fetch-all"
 
 export type ExpenseType = "recurring" | "variable"
@@ -209,8 +208,8 @@ export async function fetchExpenses(
       .order("movement_date", { ascending: false })
       .order("id", { ascending: true })
 
-    if (dateFrom) recQuery = recQuery.gte("movement_date", startOfDayAR(dateFrom))
-    if (dateTo) recQuery = recQuery.lte("movement_date", endOfDayAR(dateTo))
+    if (dateFrom) recQuery = recQuery.gte("movement_day", dateFrom)
+    if (dateTo) recQuery = recQuery.lte("movement_day", dateTo)
     if (currency && currency !== "ALL") recQuery = recQuery.eq("currency", currency)
     // El filtro por agencia se resuelve abajo, en memoria, atribuyendo cada
     // pago a la oficina del gasto (no a la de la cuenta pagadora).
@@ -314,8 +313,8 @@ export async function fetchExpenses(
       .order("movement_date", { ascending: false })
       .order("id", { ascending: true })
 
-    if (dateFrom) varQuery = varQuery.gte("movement_date", startOfDayAR(dateFrom))
-    if (dateTo) varQuery = varQuery.lte("movement_date", endOfDayAR(dateTo))
+    if (dateFrom) varQuery = varQuery.gte("movement_day", dateFrom)
+    if (dateTo) varQuery = varQuery.lte("movement_day", dateTo)
     if (currency && currency !== "ALL") varQuery = varQuery.eq("currency", currency)
     if (categoryIdFilter && categoryIdFilter !== "all") varQuery = varQuery.eq("category_id", categoryIdFilter)
     // Modo "office": el gasto variable ya guarda la oficina a la que se cargó

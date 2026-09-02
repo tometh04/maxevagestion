@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
 import { getUserAgencyIds } from "@/lib/permissions-api"
 import { resolveUserPermissions, assertPermission } from "@/lib/permissions-agency"
 
@@ -93,8 +92,8 @@ export async function GET(request: Request) {
       query = query.in("operation_id", opIds)
     } else {
       // Filtros de fecha con offset de AR: evita perder movimientos por desfasaje UTC
-      if (dateFrom) query = query.gte("movement_date", startOfDayAR(dateFrom))
-      if (dateTo)   query = query.lte("movement_date", endOfDayAR(dateTo))
+      if (dateFrom) query = query.gte("movement_day", dateFrom)
+      if (dateTo)   query = query.lte("movement_day", dateTo)
     }
     if (currency && currency !== "ALL") query = query.eq("currency", currency)
     if (accountId && accountId !== "ALL") query = query.eq("account_id", accountId)

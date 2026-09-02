@@ -5,7 +5,7 @@ import { resolveUserPermissions, assertPermission } from "@/lib/permissions-agen
 import { getUserAgencyIds } from "@/lib/permissions-api"
 import { applyCustomersFilters } from "@/lib/permissions-api"
 import { buildExchangeRateMap, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
-import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
+import { businessDayOf } from "@/lib/utils/date-range"
 import { getOrgFeatureFlag } from "@/lib/settings/org-features"
 import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
 import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
@@ -318,20 +318,14 @@ export async function GET(request: Request) {
         const opDate = dateType === "CREACION"
           ? operation.created_at
           : (operation.departure_date || operation.created_at)
-        if (opDate) {
-          const opDateMs = new Date(opDate).getTime()
-          if (dateFromFilter) {
-            const fromMs = new Date(startOfDayAR(dateFromFilter)).getTime()
-            if (Number.isFinite(opDateMs) && Number.isFinite(fromMs) && opDateMs < fromMs) {
-              continue
-            }
-          }
-          if (dateToFilter) {
-            const toMs = new Date(endOfDayAR(dateToFilter)).getTime()
-            if (Number.isFinite(opDateMs) && Number.isFinite(toMs) && opDateMs > toMs) {
-              continue
-            }
-          }
+        // Día contra día (VIB-178). `departure_date` es una columna DATE, así
+        // que compararla contra una ventana de instantes en hora argentina la
+        // corría un día: una salida del 27 quedaba antes del arranque de las
+        // 03:00Z del 27 y desaparecía del filtro.
+        const opDay = businessDayOf(opDate)
+        if (opDay) {
+          if (dateFromFilter && opDay < dateFromFilter) continue
+          if (dateToFilter && opDay > dateToFilter) continue
         }
 
         const opId = operation.id
