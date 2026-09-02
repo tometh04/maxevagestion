@@ -11,6 +11,27 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 type Traveller = { type: "ADT" | "CHD" | "INF"; title: "Mr" | "Mrs" | "Ms" | "Miss"; name: string; surname: string; birth_date: string }
 
+async function pollProviderBooking(quotationId: string, onUpdated: () => void) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    if (attempt > 0) await new Promise(resolve => window.setTimeout(resolve, 1500))
+    try {
+      const response = await fetch(`/api/quotations/${quotationId}/provider-booking`)
+      const payload = await response.json()
+      if (!response.ok) throw new Error(payload.error || "No se pudo consultar la reserva")
+      const status = payload.data?.status
+      if (status === "QUEUED" || status === "PROCESSING") continue
+      onUpdated()
+      if (status === "CONFIRMED") toast.success("Reserva confirmada en Delfos.")
+      else if (status === "PRICE_CHANGED") toast.error("Delfos informó un cambio de precio. Revisá la cotización antes de reservar.")
+      else if (status === "PARTIAL") toast.error("Delfos confirmó solo una parte de la reserva. Requiere revisión.")
+      else toast.error("Delfos no pudo confirmar la reserva.")
+      return
+    } catch {
+      if (attempt === 39) toast.error("La reserva continúa en segundo plano, pero no pudimos actualizar su estado.")
+    }
+  }
+}
+
 export function QuotationBookingDialog({ quotation, open, onOpenChange, onQueued }: {
   quotation: any
   open: boolean
@@ -72,6 +93,7 @@ export function QuotationBookingDialog({ quotation, open, onOpenChange, onQueued
       toast.success(`Operación ${payload.data.file_code} creada. Reserva en proceso.`)
       onQueued()
       onOpenChange(false)
+      void pollProviderBooking(quotation.id, onQueued)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo convertir y reservar")
     } finally { setSubmitting(false) }

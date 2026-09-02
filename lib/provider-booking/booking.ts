@@ -16,6 +16,17 @@ const traveller = z.object({
   documents: z.array(document).min(1).max(4).optional(),
 }).strict()
 
+const providerBookingJobSchema = z.object({
+  schema_version: z.literal("provider-booking-job.v1"),
+  job_id: z.string().uuid(),
+  status: z.enum(["queued", "processing", "completed", "failed"]),
+  stage: z.string(),
+  result: z.object({
+    status: z.enum(["confirmed", "price_changed", "partial", "failed"]),
+  }).passthrough().optional(),
+  error: z.record(z.unknown()).optional(),
+}).passthrough()
+
 export const bookingFormSchema = z.object({
   holder: z.object({
     name: z.string().min(1).max(80), surnames: z.array(z.string().min(1).max(80)).min(1).max(4),
@@ -58,6 +69,41 @@ export async function enqueueProviderBooking(input: {
   const payload = await response.json().catch(() => ({}))
   if (response.status !== 202 || typeof payload?.job_id !== "string") throw new Error(payload?.error?.message || "No se pudo encolar la reserva con el proveedor")
   return { requestId, jobId: payload.job_id, status: payload.status as string }
+}
+
+export async function syncProviderBooking(input: {
+  admin: any
+  orgId: string
+  agencyId: string
+  booking: { id: string; remote_job_id: string }
+}) {
+  const credential = await resolveAgencyEmiliaCredential({ admin: input.admin, orgId: input.orgId, agencyId: input.agencyId })
+  const response = await fetch(`${bookingUrl()}/${input.booking.remote_job_id}`, {
+    headers: { authorization: `Bearer ${credential.apiKey}` },
+    signal: AbortSignal.timeout(15_000),
+  })
+  const raw = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error("No se pudo consultar el estado de la reserva")
+  const parsed = providerBookingJobSchema.safeParse(raw)
+  if (!parsed.success) throw new Error("El estado de la reserva no cumple el contrato esperado")
+
+  const terminalStatus = parsed.data.status === "completed" ? parsed.data.result?.status : null
+  const status = parsed.data.status === "queued" ? "QUEUED"
+    : parsed.data.status === "processing" ? "PROCESSING"
+      : parsed.data.status === "failed" ? "FAILED"
+        : terminalStatus === "confirmed" ? "CONFIRMED"
+          : terminalStatus === "price_changed" ? "PRICE_CHANGED"
+            : terminalStatus === "partial" ? "PARTIAL"
+              : "FAILED"
+  const result = parsed.data.result ?? parsed.data.error ?? null
+  const { error } = await input.admin
+    .from("quotation_provider_bookings")
+    .update({ status, result, updated_at: new Date().toISOString() })
+    .eq("id", input.booking.id)
+    .eq("org_id", input.orgId)
+    .eq("agency_id", input.agencyId)
+  if (error) throw new Error("No se pudo guardar el estado de la reserva")
+  return { status, result }
 }
 
 export function bookingItemsFromQuotation(quotation: any, selectedOptionId?: string) {
