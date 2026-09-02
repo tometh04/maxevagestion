@@ -2,36 +2,17 @@ import {
   defaultPlanPriceCatalog,
   type PlanPriceCatalog,
 } from "@/lib/billing/plan-pricing"
-import type { PlanId } from "@/lib/billing/plans"
-import { agreedPriceFor } from "@/lib/billing/agreed-price"
+// La precedencia de precio (override → custom → agreed → plan → fallback) vive
+// en `lib/billing/effective-price.ts`: es una regla de facturación y la comparten
+// el MRR, el monto sugerido de pago manual y el motor de complementos.
+import {
+  computeBaseMrrArs,
+  PAYING_STATUSES,
+  type MrrCustomPlan,
+  type MrrOrg,
+} from "@/lib/billing/effective-price"
 
-export type MrrOrg = {
-  plan: string | null
-  subscription_status: string
-  custom_plan_id: string | null
-  manual_mrr_override_ars: number | null
-  /**
-   * Precio congelado de la org (grandfathering). Opcionales para que los
-   * callers/fixtures que no los pasan sigan comportándose igual que antes.
-   */
-  agreed_plan_price_ars?: number | string | null
-  agreed_plan_id?: string | null
-}
-
-export type MrrCustomPlan = {
-  base_price_ars: number
-  discount_percent: number
-  discount_ends_at: string | null
-}
-
-const PAYING_STATUSES = new Set(["ACTIVE", "PAST_DUE"])
-
-// Bug #4: ENTERPRISE tiene precio null porque el precio real depende del deal.
-// Cuando una org ACTIVE/PAST_DUE quedó como ENTERPRISE sin custom_plan y sin
-// override, el cálculo daba 0 → MRR/ARR aparentaban ser $0 aunque la org sí está
-// pagando. Usamos PRO como fallback conservador (asumimos que un Enterprise paga
-// al menos lo de un Pro) y exponemos el flag para que la página avise al admin.
-const ENTERPRISE_FALLBACK_PLAN: PlanId = "PRO"
+export type { MrrOrg, MrrCustomPlan }
 
 /**
  * Los precios de planes estándar ahora son editables desde admin (tabla
@@ -72,7 +53,11 @@ export function computeMrrArsDetailed(
   planPrices: PlanPriceCatalog = defaultPlanPriceCatalog(),
 ): { amount: number; estimated: boolean } {
   if (!PAYING_STATUSES.has(org.subscription_status)) return { amount: 0, estimated: false }
-  return computeBaseMrrArs(org, customPlan, { planPrices })
+  // Se devuelven solo `amount` y `estimated`: `computeBaseMrrArs` además expone
+  // `source` para la UI de admin, pero el contrato de esta función es el par y
+  // hay callers/tests que lo comparan con toEqual.
+  const { amount, estimated } = computeBaseMrrArs(org, customPlan, { planPrices })
+  return { amount, estimated }
 }
 
 /**
@@ -103,46 +88,4 @@ export function computePotentialMrrArs(
   planPrices: PlanPriceCatalog = defaultPlanPriceCatalog(),
 ): number {
   return computeBaseMrrArs(org, customPlan, { useEnterpriseFallback: false, planPrices }).amount
-}
-
-// Lógica compartida: override → custom → plan → (opcional) enterprise-fallback.
-// NO chequea status. Devuelve `estimated: true` si tuvo que usar fallback.
-function computeBaseMrrArs(
-  org: MrrOrg,
-  customPlan: MrrCustomPlan | null,
-  opts: { useEnterpriseFallback?: boolean; planPrices?: PlanPriceCatalog } = {},
-): { amount: number; estimated: boolean } {
-  const useEnterpriseFallback = opts.useEnterpriseFallback !== false
-  const planPrices = opts.planPrices ?? defaultPlanPriceCatalog()
-
-  if (org.manual_mrr_override_ars && org.manual_mrr_override_ars > 0) {
-    return { amount: Math.round(Number(org.manual_mrr_override_ars)), estimated: false }
-  }
-  if (org.custom_plan_id && customPlan) {
-    const discountActive =
-      customPlan.discount_ends_at != null &&
-      new Date(customPlan.discount_ends_at).getTime() > Date.now()
-    const factor = discountActive ? 1 - customPlan.discount_percent / 100 : 1
-    return { amount: Math.round(customPlan.base_price_ars * factor), estimated: false }
-  }
-  // Precio congelado de la org (grandfathering): va DESPUÉS del override manual
-  // y del custom plan —esos son decisiones humanas explícitas de un platform
-  // admin y le ganan a un snapshot automático— pero ANTES del precio de lista.
-  // Sin esto, subir el precio de un plan infla el MRR de todas las orgs viejas
-  // sin que entre un peso: MP les sigue cobrando el monto anterior.
-  const agreed = agreedPriceFor(org, org.plan)
-  if (agreed !== null && agreed > 0) {
-    return { amount: Math.round(agreed), estimated: false }
-  }
-
-  const planPrice = org.plan ? planPrices[org.plan as PlanId] : null
-  if (planPrice && planPrice > 0) {
-    return { amount: Math.round(planPrice), estimated: false }
-  }
-  // ENTERPRISE sin precio definido: usar fallback PRO estimado solo si lo pidieron.
-  if (org.plan === "ENTERPRISE" && useEnterpriseFallback) {
-    const fallback = planPrices[ENTERPRISE_FALLBACK_PLAN] ?? 0
-    return { amount: Math.round(fallback), estimated: true }
-  }
-  return { amount: 0, estimated: false }
 }
