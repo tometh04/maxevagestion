@@ -37,6 +37,7 @@ describe("onboarding de Emilia en CRM", () => {
       "emilia.send",
     ])
     expect(tour!.steps[0].target).toBe(tour!.steps[1].target)
+    expect(tour!.steps.every((step) => step.cardPlacement === "center")).toBe(true)
     expect(
       tour!.steps.every(
         (step) =>

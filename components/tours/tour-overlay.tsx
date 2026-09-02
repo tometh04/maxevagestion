@@ -160,6 +160,7 @@ export function TourOverlay() {
   // parece que la app se colgó, sobre todo si la pantalla tarda en cargar.
   const showCard = phase === "ready" || phase === "centered" || phase === "missing"
   const anchored = phase === "ready"
+  const centerCard = activeStep.cardPlacement === "center"
 
   return (
     <>
@@ -184,7 +185,9 @@ export function TourOverlay() {
           stepIndex={stepIndex}
           totalSteps={visibleSteps.length}
           tourTitle={activeTour.title}
-          rect={anchored ? rect : null}
+          // La tarjeta puede centrarse sin perder el rect del spotlight. Son
+          // decisiones visuales distintas: dónde se explica y qué se resalta.
+          rect={anchored && !centerCard ? rect : null}
           onChain={startChained}
           onNext={next}
           onPrev={prev}

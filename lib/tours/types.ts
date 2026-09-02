@@ -51,6 +51,8 @@ export interface TourStep {
   details?: string[]
   /** "warning" marca el paso como advertencia. Default "info". */
   tone?: "info" | "warning"
+  /** Ubicación de la tarjeta. Default "anchor": junto al elemento iluminado. */
+  cardPlacement?: "anchor" | "center"
   placement?: "top" | "bottom" | "left" | "right"
   align?: "start" | "center" | "end"
   /** Padding del hueco alrededor del target, en px. Default 8. */

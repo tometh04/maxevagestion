@@ -415,6 +415,9 @@ describe("onboarding contextual de Emilia", () => {
     )
 
     expect(await screen.findByText("Empezá con el viaje completo")).toBeVisible()
+    expect(
+      screen.getByText("Empezá con el viaje completo").closest('[data-tour-card]')?.parentElement
+    ).toHaveClass("max-w-[400px]")
     await user.click(screen.getByRole("button", { name: "Siguiente" }))
 
     await waitFor(() =>
