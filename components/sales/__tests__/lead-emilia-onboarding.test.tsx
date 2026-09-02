@@ -14,14 +14,19 @@ jest.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
 }))
 
+let mockStepTargetResult: {
+  rect: { top: number; left: number; width: number; height: number; radius: number } | null
+  phase: "ready" | "centered"
+} = {
+  rect: { top: 360, left: 420, width: 420, height: 120, radius: 12 },
+  phase: "ready",
+}
+
 jest.mock("@/components/tours/use-target-rect", () => {
   const actual = jest.requireActual("@/components/tours/use-target-rect")
   return {
     ...actual,
-    useStepTarget: () => ({
-      rect: { top: 360, left: 420, width: 420, height: 120, radius: 12 },
-      phase: "ready",
-    }),
+    useStepTarget: () => mockStepTargetResult,
   }
 })
 
@@ -127,6 +132,10 @@ describe("onboarding contextual de Emilia", () => {
 
   afterEach(() => {
     global.fetch = originalFetch
+    mockStepTargetResult = {
+      rect: { top: 360, left: 420, width: 420, height: 120, radius: 12 },
+      phase: "ready",
+    }
   })
 
   it("no ofrece ni inicia la guía contextual fuera del chat de Emilia", () => {
@@ -413,5 +422,54 @@ describe("onboarding contextual de Emilia", () => {
     )
     expect(screen.getByTestId("contextual-dialog-open")).toHaveTextContent("yes")
     expect(screen.getByText("Revisá el pedido sugerido")).toBeVisible()
+  })
+
+  it("mantiene abierto el diálogo contextual cuando la tarjeta se centra", async () => {
+    global.fetch = jest.fn(async () => new Response("{}", { status: 200 })) as typeof fetch
+    mockStepTargetResult = { rect: null, phase: "centered" }
+    const user = userEvent.setup()
+
+    render(
+      <PermissionsProvider role="SELLER" matrix={null}>
+        <SidebarProvider>
+          <ToursProvider
+            initialUserState={{
+              version: 1,
+              seenTours: {
+                "crm-kanban": {
+                  status: "completed",
+                  lastStepIndex: 5,
+                  startedAt: "2026-08-01T10:00:00.000Z",
+                  completedAt: "2026-08-01T10:05:00.000Z",
+                  dismissedAt: null,
+                },
+              },
+              toursDisabled: false,
+            }}
+            initialOrgSetupState={null}
+            roles={["SELLER"]}
+            canRunSetup={false}
+          >
+            <ContextualDialogHarness />
+          </ToursProvider>
+        </SidebarProvider>
+      </PermissionsProvider>
+    )
+
+    expect(await screen.findByText("Empezá con el viaje completo")).toBeVisible()
+    await user.click(screen.getByRole("button", { name: "Siguiente" }))
+
+    await waitFor(() =>
+      expect(screen.getByTestId("dialog-tour-step")).toHaveTextContent("revisar-prompt")
+    )
+    expect(screen.getByTestId("contextual-dialog-open")).toHaveTextContent("yes")
+    expect(screen.getByText("Revisá el pedido sugerido")).toBeVisible()
+
+    await user.click(screen.getByRole("button", { name: "Siguiente" }))
+    await waitFor(() =>
+      expect(screen.getByTestId("dialog-tour-step")).toHaveTextContent("enviar-y-refinar")
+    )
+    expect(screen.getByTestId("contextual-dialog-open")).toHaveTextContent("yes")
+    expect(screen.getByText("Enviá y refiná los resultados")).toBeVisible()
   })
 })

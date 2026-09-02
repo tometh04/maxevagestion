@@ -7,6 +7,8 @@
 // intro/cierre): la misma tarjeta centrada.
 
 import { useEffect, useId, useRef, useState } from "react"
+import { createPortal } from "react-dom"
+import { DismissableLayerBranch } from "@radix-ui/react-dismissable-layer"
 import { AlertTriangle, ChevronDown, ChevronLeft, ChevronRight, Sparkles, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
@@ -29,19 +31,25 @@ interface TourCardProps {
 
 /** Sin ancla, o con un ancla que no deja lugar en ningún lado. */
 function CenteredCard(props: TourCardProps) {
-  return (
+  return createPortal(
     // El contenedor NO puede comerse los clicks: ocupa la pantalla entera y en
     // un paso interactivo dejaría el formulario inutilizable. Solo la tarjeta
     // recibe puntero.
-    <div
-      className="pointer-events-none fixed inset-0 z-[100] flex items-center justify-center p-4"
-    >
+    <DismissableLayerBranch asChild>
       <div
-        className="pointer-events-auto max-h-[calc(100vh-32px)] w-full max-w-[400px] overflow-y-auto rounded-2xl border border-border/50 bg-card shadow-2xl animate-in fade-in zoom-in-95 duration-200"
+        className="pointer-events-none fixed inset-0 z-[100] flex items-center justify-center p-4"
       >
-        <TourCardBody {...props} />
+        <div
+          className="pointer-events-auto max-h-[calc(100vh-32px)] w-full max-w-[400px] overflow-y-auto rounded-2xl border border-border/50 bg-card shadow-2xl animate-in fade-in zoom-in-95 duration-200"
+          // Un Dialog modal pone pointer-events:none en body. El valor inline
+          // mantiene la tarjeta clickeable aun cuando se portalea fuera de él.
+          style={{ pointerEvents: "auto" }}
+        >
+          <TourCardBody {...props} />
+        </div>
       </div>
-    </div>
+    </DismissableLayerBranch>,
+    document.body
   )
 }
 
