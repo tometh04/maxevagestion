@@ -8,9 +8,14 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { ArrowDown, ArrowLeft, History, Loader2, MessageSquare, Paperclip, Search, Send, Smile, User, Users, X } from "lucide-react"
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { ArrowDown, ArrowLeft, FileCheck2, History, Loader2, MessageSquare, MessageSquarePlus, Paperclip, Search, Send, Smile, Timer, User, Users, X } from "lucide-react"
+import { phoneSearchFragment } from "@/lib/wha-control/phone"
 import { formatDistanceToNow } from "date-fns"
 import { es } from "date-fns/locale"
+import { toast } from "sonner"
 
 interface Agency {
   id: string
@@ -26,6 +31,13 @@ interface Device {
   agencies: { id: string; name: string } | null
 }
 
+interface ChatFollowup {
+  id: string
+  status: "PENDING" | "PROCESSING" | "SENT"
+  scheduled_for: string | null
+  sent_at: string | null
+}
+
 interface Chat {
   id: string
   remote_jid: string
@@ -37,6 +49,7 @@ interface Chat {
   last_message_at: string | null
   last_message_preview: string | null
   _chatIds?: string[] // merged conversation IDs
+  followup?: ChatFollowup | null
 }
 
 interface Message {
@@ -52,6 +65,9 @@ interface Message {
 
 interface InboxViewProps {
   agencies: Agency[]
+  quoteFollowupEnabled?: boolean
+  /** Teléfono para abrir directo el chat (link desde un lead). */
+  initialPhone?: string
 }
 
 const MEDIA_TYPES = new Set(["image", "sticker", "video", "audio", "voice", "document"])
@@ -126,7 +142,7 @@ function mergeById(a: Message[], b: Message[]): Message[] {
   return Array.from(map.values()).sort((x, y) => x.sent_at.localeCompare(y.sent_at))
 }
 
-export function InboxView({ agencies }: InboxViewProps) {
+export function InboxView({ agencies, quoteFollowupEnabled = false, initialPhone }: InboxViewProps) {
   const [devices, setDevices] = useState<Device[]>([])
   const [selectedAgencyId, setSelectedAgencyId] = useState<string>("all")
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>("")
@@ -149,6 +165,19 @@ export function InboxView({ agencies }: InboxViewProps) {
     mimeType: string
     preview: string
   } | null>(null)
+  const [attachedDoc, setAttachedDoc] = useState<{
+    base64: string
+    mimeType: string
+    fileName: string
+  } | null>(null)
+  const [followupBusy, setFollowupBusy] = useState(false)
+  // "Nuevo chat": enviar a un número sin conversación previa.
+  const [composeOpen, setComposeOpen] = useState(false)
+  const [composePhone, setComposePhone] = useState("")
+  const [composeText, setComposeText] = useState("")
+  const [composeSending, setComposeSending] = useState(false)
+  const initialPhoneApplied = useRef(false)
+  const initialPhoneAutoSelected = useRef(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -268,6 +297,8 @@ export function InboxView({ agencies }: InboxViewProps) {
     setMessageInput("")
     setSendError(null)
     setBackfillNote(null)
+    setAttachedImage(null)
+    setAttachedDoc(null)
     fetchMessages()
     if (!selectedChat) return
     const interval = setInterval(fetchMessages, 30000)
@@ -316,13 +347,15 @@ export function InboxView({ agencies }: InboxViewProps) {
   const handleSend = useCallback(async () => {
     if (!selectedChat || sending) return
     const text = messageInput.trim()
-    if (!text && !attachedImage) return
+    if (!text && !attachedImage && !attachedDoc) return
     setSending(true)
     setSendError(null)
     try {
       const body = attachedImage
         ? { imageBase64: attachedImage.base64, mimeType: attachedImage.mimeType, caption: text || undefined }
-        : { text }
+        : attachedDoc
+          ? { documentBase64: attachedDoc.base64, fileName: attachedDoc.fileName, mimeType: attachedDoc.mimeType, caption: text || undefined }
+          : { text }
       const res = await fetch(`/api/wha-control/chats/${selectedChat.id}/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -331,6 +364,7 @@ export function InboxView({ agencies }: InboxViewProps) {
       if (res.ok) {
         setMessageInput("")
         setAttachedImage(null)
+        setAttachedDoc(null)
         setTimeout(() => {
           fetchMessages().then(scrollToBottom)
         }, 1200)
@@ -345,22 +379,33 @@ export function InboxView({ agencies }: InboxViewProps) {
       // Mantener el foco en el input para poder seguir escribiendo/enviando.
       inputRef.current?.focus()
     }
-  }, [selectedChat, sending, messageInput, attachedImage, fetchMessages, scrollToBottom])
+  }, [selectedChat, sending, messageInput, attachedImage, attachedDoc, fetchMessages, scrollToBottom])
 
-  // Adjuntar imagen desde el disco (se lee como base64 para mandarla al connector).
+  // Adjuntar archivo desde el disco (se lee como base64 para mandarlo al
+  // connector). Imágenes van como imagen de WhatsApp; el resto, como documento.
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     e.target.value = "" // permitir re-seleccionar el mismo archivo
-    if (!file || !file.type.startsWith("image/")) return
+    if (!file) return
     if (file.size > 16 * 1024 * 1024) {
-      setSendError("La imagen supera los 16 MB")
+      setSendError("El archivo supera los 16 MB")
       return
     }
     const reader = new FileReader()
     reader.onload = () => {
       const dataUrl = reader.result as string
       const base64 = dataUrl.split(",")[1] || ""
-      setAttachedImage({ base64, mimeType: file.type, preview: dataUrl })
+      if (file.type.startsWith("image/")) {
+        setAttachedDoc(null)
+        setAttachedImage({ base64, mimeType: file.type, preview: dataUrl })
+      } else {
+        setAttachedImage(null)
+        setAttachedDoc({
+          base64,
+          mimeType: file.type || "application/octet-stream",
+          fileName: file.name,
+        })
+      }
     }
     reader.readAsDataURL(file)
   }, [])
@@ -423,6 +468,72 @@ export function InboxView({ agencies }: InboxViewProps) {
     }
   }, [selectedChat, syncing, loadOlder])
 
+  // Seguimiento post-cotización: marcar el chat / cancelar el mensaje agendado.
+  const handleMarkQuoted = useCallback(async () => {
+    if (!selectedChat || followupBusy) return
+    setFollowupBusy(true)
+    try {
+      const res = await fetch(
+        `/api/wha-control/chats/${selectedChat.id}/quote-followup`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chatIds: selectedChat._chatIds || [selectedChat.id] }),
+        }
+      )
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(data.error || "No se pudo agendar el seguimiento")
+        return
+      }
+      toast.success("Seguimiento agendado")
+      fetchChats()
+    } catch {
+      toast.error("Error de conexión")
+    } finally {
+      setFollowupBusy(false)
+    }
+  }, [selectedChat, followupBusy, fetchChats])
+
+  const handleCancelFollowup = useCallback(
+    async (followupId: string) => {
+      if (!selectedChat || followupBusy) return
+      setFollowupBusy(true)
+      try {
+        const res = await fetch(
+          `/api/wha-control/chats/${selectedChat.id}/quote-followup`,
+          {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ followupId }),
+          }
+        )
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          toast.error(data.error || "No se pudo cancelar el seguimiento")
+          return
+        }
+        toast.success("Seguimiento cancelado")
+        fetchChats()
+      } catch {
+        toast.error("Error de conexión")
+      } finally {
+        setFollowupBusy(false)
+      }
+    },
+    [selectedChat, followupBusy, fetchChats]
+  )
+
+  // Countdown corto para el badge ("en 22h" / "en 45m").
+  const formatFollowupEta = (scheduledFor: string | null) => {
+    if (!scheduledFor) return ""
+    const diffMs = new Date(scheduledFor).getTime() - Date.now()
+    if (diffMs <= 0) return "en breve"
+    const mins = Math.round(diffMs / 60_000)
+    if (mins < 60) return `en ${mins}m`
+    return `en ${Math.round(mins / 60)}h`
+  }
+
   const getChatName = (chat: Chat) => {
     if (chat.is_group) {
       // For groups: use group name (contact_name) or show "Grupo" + JID
@@ -459,6 +570,72 @@ export function InboxView({ agencies }: InboxViewProps) {
     setShowThread(true)
   }
 
+  // Link desde un lead (?phone=...): buscar por los últimos dígitos y, si hay
+  // un único match, abrir el hilo directo.
+  useEffect(() => {
+    if (!initialPhone || initialPhoneApplied.current) return
+    initialPhoneApplied.current = true
+    const fragment = phoneSearchFragment(initialPhone)
+    if (fragment) setSearch(fragment)
+  }, [initialPhone])
+
+  useEffect(() => {
+    if (!initialPhone || !initialPhoneApplied.current || initialPhoneAutoSelected.current) return
+    if (loadingChats || !search) return
+    if (chats.length === 1) {
+      initialPhoneAutoSelected.current = true
+      setSelectedChat(chats[0])
+      setShowThread(true)
+    } else if (chats.length === 0) {
+      // No hay chat con ese número: dejar listo el compose para escribirle.
+      initialPhoneAutoSelected.current = true
+      setComposePhone(initialPhone)
+      setComposeOpen(true)
+    }
+  }, [initialPhone, chats, loadingChats, search])
+
+  // Enviar a un número sin chat previo. El connector persiste el chat con el
+  // echo de Baileys; refetcheamos y lo seleccionamos por el número.
+  const handleComposeSend = useCallback(async () => {
+    if (composeSending || !selectedDeviceId) return
+    if (!composePhone.trim() || !composeText.trim()) return
+    setComposeSending(true)
+    try {
+      const res = await fetch("/api/wha-control/send-to-number", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          deviceId: selectedDeviceId,
+          phone: composePhone,
+          text: composeText,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(data.error || "No se pudo enviar el mensaje")
+        return
+      }
+      toast.success("Mensaje enviado")
+      setComposeOpen(false)
+      setComposeText("")
+      const fragment = phoneSearchFragment(composePhone)
+      setComposePhone("")
+      if (fragment) setSearch(fragment)
+      // Darle tiempo al echo del connector a persistir el chat.
+      setTimeout(fetchChats, 1500)
+    } catch {
+      toast.error("Error de conexión")
+    } finally {
+      setComposeSending(false)
+    }
+  }, [composeSending, selectedDeviceId, composePhone, composeText, fetchChats])
+
+  // El followup del header se lee de la lista fresca (el polling de 30s la
+  // actualiza); selectedChat es un snapshot al momento del click.
+  const selectedFollowup = selectedChat
+    ? (chats.find((c) => c.id === selectedChat.id) ?? selectedChat).followup ?? null
+    : null
+
   return (
     <div className="flex h-[calc(100vh-240px)] min-h-[500px] gap-4">
       {/* Chat List Panel */}
@@ -490,15 +667,27 @@ export function InboxView({ agencies }: InboxViewProps) {
           </SelectContent>
         </Select>
 
-        {/* Search */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar conversación..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 h-8 text-xs rounded-full border-border/60"
-          />
+        {/* Search + nuevo chat */}
+        <div className="flex items-center gap-1.5">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar conversación o número..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9 h-8 text-xs rounded-full border-border/60"
+            />
+          </div>
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-8 w-8 flex-shrink-0 rounded-full border-border/60"
+            title="Nuevo chat: enviar a un número"
+            onClick={() => setComposeOpen(true)}
+            disabled={!selectedDeviceId}
+          >
+            <MessageSquarePlus className="h-4 w-4" />
+          </Button>
         </div>
 
         {/* Chat list */}
@@ -541,6 +730,21 @@ export function InboxView({ agencies }: InboxViewProps) {
                           </Badge>
                         )}
                       </div>
+                      {quoteFollowupEnabled && chat.followup && (
+                        <div className="mt-1">
+                          {chat.followup.status === "SENT" ? (
+                            <Badge variant="outline" className="h-5 gap-1 px-1.5 text-[10px] text-success border-success/40">
+                              <FileCheck2 className="h-3 w-3" />
+                              Seguimiento enviado
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="h-5 gap-1 px-1.5 text-[10px] text-accent-coral border-accent-coral/40">
+                              <Timer className="h-3 w-3" />
+                              Cotizada · seg. {formatFollowupEta(chat.followup.scheduled_for)}
+                            </Badge>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </button>
@@ -572,6 +776,48 @@ export function InboxView({ agencies }: InboxViewProps) {
                   {selectedChat.is_group ? "Grupo" : (selectedChat.contact_phone || selectedChat.remote_jid.split("@")[0])}
                 </p>
               </div>
+              {quoteFollowupEnabled && !selectedChat.is_group && (
+                selectedFollowup?.status === "PENDING" || selectedFollowup?.status === "PROCESSING" ? (
+                  <div className="flex items-center gap-1">
+                    <Badge variant="outline" className="gap-1 text-xs text-accent-coral border-accent-coral/40">
+                      <Timer className="h-3 w-3" />
+                      Seguimiento {formatFollowupEta(selectedFollowup.scheduled_for)}
+                    </Badge>
+                    {selectedFollowup.status === "PENDING" && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-muted-foreground"
+                        title="Cancelar seguimiento"
+                        onClick={() => handleCancelFollowup(selectedFollowup.id)}
+                        disabled={followupBusy}
+                      >
+                        {followupBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
+                      </Button>
+                    )}
+                  </div>
+                ) : selectedFollowup?.status === "SENT" ? (
+                  <Badge variant="outline" className="gap-1 text-xs text-success border-success/40">
+                    <FileCheck2 className="h-3 w-3" />
+                    Seguimiento enviado
+                  </Badge>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5"
+                    onClick={handleMarkQuoted}
+                    disabled={followupBusy}
+                  >
+                    {followupBusy ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <FileCheck2 className="h-3.5 w-3.5" />
+                    )}
+                    <span className="hidden sm:inline text-xs">Cotización enviada</span>
+                  </Button>
+                )
+              )}
               <Button
                 variant="outline"
                 size="sm"
@@ -715,6 +961,22 @@ export function InboxView({ agencies }: InboxViewProps) {
                   <span className="text-xs text-muted-foreground">Imagen lista para enviar</span>
                 </div>
               )}
+              {attachedDoc && (
+                <div className="flex items-center gap-2 px-3 pt-2">
+                  <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/40 px-2.5 py-1.5">
+                    <span className="text-base">📄</span>
+                    <span className="max-w-[240px] truncate text-xs">{attachedDoc.fileName}</span>
+                    <button
+                      type="button"
+                      onClick={() => setAttachedDoc(null)}
+                      className="rounded-full p-0.5 text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                  <span className="text-xs text-muted-foreground">Documento listo para enviar</span>
+                </div>
+              )}
               <form
                 onSubmit={(e) => {
                   e.preventDefault()
@@ -762,7 +1024,7 @@ export function InboxView({ agencies }: InboxViewProps) {
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="image/*"
+                  accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip"
                   className="hidden"
                   onChange={handleFileSelect}
                 />
@@ -782,7 +1044,7 @@ export function InboxView({ agencies }: InboxViewProps) {
                   type="submit"
                   size="icon"
                   className="h-9 w-9 rounded-full flex-shrink-0"
-                  disabled={sending || (!messageInput.trim() && !attachedImage)}
+                  disabled={sending || (!messageInput.trim() && !attachedImage && !attachedDoc)}
                 >
                   {sending ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -802,6 +1064,55 @@ export function InboxView({ agencies }: InboxViewProps) {
           </CardContent>
         )}
       </Card>
+
+      {/* Nuevo chat: enviar a un número sin conversación previa */}
+      <Dialog open={composeOpen} onOpenChange={(open) => { if (!composeSending) setComposeOpen(open) }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Nuevo chat</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="compose-phone">Número de teléfono</Label>
+              <Input
+                id="compose-phone"
+                placeholder="Ej: 341 555 1234 o +54 9 341 555 1234"
+                value={composePhone}
+                onChange={(e) => setComposePhone(e.target.value)}
+                autoComplete="off"
+              />
+              <p className="text-xs text-muted-foreground">
+                Si no tiene código de país se asume Argentina (+54 9).
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="compose-text">Mensaje</Label>
+              <Textarea
+                id="compose-text"
+                rows={3}
+                maxLength={4096}
+                placeholder="Escribí el mensaje…"
+                value={composeText}
+                onChange={(e) => setComposeText(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              onClick={handleComposeSend}
+              disabled={composeSending || !composePhone.trim() || !composeText.trim() || !selectedDeviceId}
+              className="gap-1.5"
+            >
+              {composeSending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+              Enviar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

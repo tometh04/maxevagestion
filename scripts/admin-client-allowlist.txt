@@ -138,6 +138,10 @@ app/api/wha-control/devices/[id]/disconnect/route.ts                     # WHA_C
 app/api/wha-control/devices/[id]/reconnect/route.ts                      # WHA_CONTROL — tablas no existen en prod.
 app/api/wha-control/metrics/summary/route.ts                             # WHA_CONTROL — tablas no existen en prod.
 app/api/wha-control/metrics/timeseries/route.ts                          # WHA_CONTROL — tablas no existen en prod.
+app/api/wha-control/chats/[chatId]/quote-followup/route.ts               # WHA_CONTROL — pre-valida chat y followup por org antes de escribir wa_quote_followups.
+app/api/wha-control/send-to-number/route.ts                              # WHA_CONTROL — pre-valida el device por org antes de enviar a un número arbitrario.
+app/api/wha-control/followup-settings/route.ts                           # WHA_CONTROL — lee/upserta wa_followup_settings con org_id inyectado del caller.
+app/api/cron/wha-quote-followups/route.ts                                # CRON — seguimientos post-cotización cross-tenant; solo actualiza filas ya scopeadas por org.
 
 # ─── RPC_BLOCKED ───────────────────────────────────────────────────────────────
 # Routes que llaman `execute_readonly_query` (SECURITY DEFINER); Pilar 2c + mig 141.

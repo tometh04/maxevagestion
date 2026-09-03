@@ -2,17 +2,25 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 import { createAdminClient } from "@/lib/supabase/server"
 import { whaControlAuthGuard } from "@/lib/wha-control/auth-guard"
-import { callConnector } from "@/lib/wha-control/connector-client"
+import { sendWhaMessage } from "@/lib/wha-control/send-message"
 
 const sendSchema = z
   .object({
     text: z.string().trim().max(4096).optional(),
     imageBase64: z.string().min(1).optional(),
+    documentBase64: z.string().min(1).optional(),
+    fileName: z.string().max(255).optional(),
     mimeType: z.string().max(100).optional(),
     caption: z.string().max(4096).optional(),
   })
-  .refine((d) => (d.text && d.text.trim()) || d.imageBase64, {
-    message: "Falta texto o imagen",
+  .refine((d) => (d.text && d.text.trim()) || d.imageBase64 || d.documentBase64, {
+    message: "Falta texto, imagen o documento",
+  })
+  .refine((d) => !(d.imageBase64 && d.documentBase64), {
+    message: "Adjuntá imagen o documento, no ambos",
+  })
+  .refine((d) => !d.documentBase64 || (d.fileName && d.fileName.trim()), {
+    message: "El documento necesita un nombre de archivo",
   })
 
 export async function POST(
@@ -54,18 +62,16 @@ export async function POST(
     return NextResponse.json({ error: "Chat no encontrado" }, { status: 404 })
   }
 
-  const result = await callConnector(
-    `/devices/${chat.device_id}/send`,
-    "POST",
-    {
-      to: chat.remote_jid,
-      text: parsed.text,
-      imageBase64: parsed.imageBase64,
-      mimeType: parsed.mimeType,
-      caption: parsed.caption,
-    },
-    parsed.imageBase64 ? 30000 : 15000
-  )
+  const result = await sendWhaMessage({
+    deviceId: chat.device_id,
+    remoteJid: chat.remote_jid,
+    text: parsed.text,
+    imageBase64: parsed.imageBase64,
+    documentBase64: parsed.documentBase64,
+    fileName: parsed.fileName,
+    mimeType: parsed.mimeType,
+    caption: parsed.caption,
+  })
 
   if (!result.ok) {
     return NextResponse.json(
@@ -76,6 +82,6 @@ export async function POST(
 
   return NextResponse.json({
     ok: true,
-    wa_message_id: result.data?.wa_message_id ?? null,
+    wa_message_id: result.waMessageId,
   })
 }

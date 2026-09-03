@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { whaControlAuthGuard } from "@/lib/wha-control/auth-guard"
+import { getOrgFeatureFlag } from "@/lib/settings/org-features"
+import { FEATURE_FLAG_WHA_QUOTE_FOLLOWUP } from "@/lib/feature-flags"
+
+const SENT_BADGE_DAYS = 7
 
 export async function GET(request: Request) {
   const auth = await whaControlAuthGuard()
@@ -56,7 +60,60 @@ export async function GET(request: Request) {
   // We detect and merge these pairs.
   const mergedChats = await mergeConversationPairs(supabase, chats || [], deviceId)
 
+  // Seguimiento post-cotización: anexar el followup activo/reciente por chat
+  // para pintar badge y countdown en el inbox (solo con el flag ON).
+  await attachQuoteFollowups(supabase, mergedChats, auth.orgId)
+
   return NextResponse.json({ chats: mergedChats })
+}
+
+async function attachQuoteFollowups(supabase: any, chats: any[], orgId: string) {
+  if (chats.length === 0) return
+  const flagOn = await getOrgFeatureFlag(
+    supabase,
+    orgId,
+    FEATURE_FLAG_WHA_QUOTE_FOLLOWUP
+  )
+  if (!flagOn) return
+
+  const allChatIds = chats.flatMap((c: any) => c._chatIds ?? [c.id])
+  const { data: followups } = await supabase
+    .from("wa_quote_followups")
+    .select("id, chat_id, status, scheduled_for, sent_at, created_at")
+    .in("chat_id", allChatIds)
+    .eq("org_id", orgId)
+    .in("status", ["PENDING", "PROCESSING", "SENT"])
+    .order("created_at", { ascending: false })
+
+  if (!followups || followups.length === 0) return
+
+  const sentCutoff = Date.now() - SENT_BADGE_DAYS * 24 * 60 * 60 * 1000
+  const byChatId: Record<string, any> = {}
+  for (const f of followups) {
+    // El más reciente por chat gana (vienen ordenados desc).
+    if (!byChatId[f.chat_id]) byChatId[f.chat_id] = f
+  }
+
+  for (const chat of chats) {
+    const ids: string[] = chat._chatIds ?? [chat.id]
+    let best: any = null
+    for (const id of ids) {
+      const f = byChatId[id]
+      if (!f) continue
+      if (!best || new Date(f.created_at) > new Date(best.created_at)) best = f
+    }
+    if (!best) continue
+    // El badge de "enviado" caduca para no quedar eterno.
+    if (best.status === "SENT" && (!best.sent_at || new Date(best.sent_at).getTime() < sentCutoff)) {
+      continue
+    }
+    chat.followup = {
+      id: best.id,
+      status: best.status,
+      scheduled_for: best.scheduled_for,
+      sent_at: best.sent_at,
+    }
+  }
 }
 
 async function mergeConversationPairs(supabase: any, chats: any[], deviceId: string) {

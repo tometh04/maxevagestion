@@ -37,3 +37,25 @@
  *     sobre la venta base).
  */
 export const FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL = "features.include_services_in_sale_total"
+
+/**
+ * Seguimiento automático post-cotización en WHA Control (pedido Lozada).
+ *
+ * Con el flag ON, el inbox de WHA Control muestra el botón "Cotización
+ * enviada": marca el chat y agenda UN mensaje de seguimiento automático
+ * (tabla wa_quote_followups) que el cron wha-quote-followups envía por el
+ * connector si el cliente no respondió. La config (espera, texto, ventana
+ * horaria) vive en wa_followup_settings, editable desde el tab Seguimientos
+ * de WHA Control.
+ *
+ * Touchpoints:
+ *   UI: app/(dashboard)/tools/wha-control/page.tsx (lee el flag y lo pasa
+ *     como prop), components/tools/wha-control/{wha-control-page,inbox-view,
+ *     followup-settings-form}.tsx.
+ *   API: app/api/wha-control/chats/[chatId]/quote-followup (marca/cancela),
+ *     app/api/wha-control/followup-settings, app/api/wha-control/chats
+ *     (anexa followup al listado).
+ *   Cron: app/api/cron/wha-quote-followups (re-verifica el flag al disparo:
+ *     si la org lo apagó, cancela en vez de enviar).
+ */
+export const FEATURE_FLAG_WHA_QUOTE_FOLLOWUP = "features.wha_quote_followup"

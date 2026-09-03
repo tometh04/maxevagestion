@@ -8,7 +8,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
-import { ExternalLink, MapPin, Users, Phone, Mail, Instagram, Calendar, FileText, Edit, Trash2, ArrowRight, AlertTriangle, UserPlus, Loader2, CheckCircle2, User, Briefcase, Save, X, MessageSquare, Send, Archive, ArchiveRestore, ClipboardList, Clock, DollarSign, Eye, Download, MoreHorizontal, Upload, Paperclip, RefreshCw } from "lucide-react"
+import { ExternalLink, MapPin, Users, Phone, Mail, Instagram, Calendar, FileText, Edit, Trash2, ArrowRight, AlertTriangle, UserPlus, Loader2, CheckCircle2, User, Briefcase, Save, X, MessageSquare, Send, Archive, ArchiveRestore, ClipboardList, Clock, DollarSign, Eye, Download, MoreHorizontal, Upload, Paperclip, RefreshCw, MessageCircle } from "lucide-react"
+import { useWhaControlAvailable } from "@/hooks/use-wha-control-available"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -258,6 +259,7 @@ export function LeadDetailDialog({
 }: LeadDetailDialogProps) {
   useScreenView("lead-detail", open)
   const canWriteLeads = useCan("leads", "write")
+  const whaControlAvailable = useWhaControlAvailable()
   const [convertDialogOpen, setConvertDialogOpen] = useState(false)
   const [quotationDialogOpen, setQuotationDialogOpen] = useState(false)
   const [editingQuotationId, setEditingQuotationId] = useState<string | null>(null)
@@ -799,9 +801,20 @@ export function LeadDetailDialog({
                 {lead.contact_phone && (
                   <div className="flex items-center gap-2.5">
                     <Phone className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-                    <a href={`tel:${lead.contact_phone}`} className="text-sm hover:underline truncate">
-                      {lead.contact_phone}
-                    </a>
+                    {whaControlAvailable ? (
+                      <a
+                        href={`/tools/wha-control?phone=${encodeURIComponent(lead.contact_phone)}`}
+                        className="flex items-center gap-1.5 text-sm hover:underline truncate"
+                        title="Abrir el chat en WHA Control"
+                      >
+                        {lead.contact_phone}
+                        <MessageCircle className="h-3.5 w-3.5 text-success flex-shrink-0" />
+                      </a>
+                    ) : (
+                      <a href={`tel:${lead.contact_phone}`} className="text-sm hover:underline truncate">
+                        {lead.contact_phone}
+                      </a>
+                    )}
                   </div>
                 )}
                 {lead.contact_email && (

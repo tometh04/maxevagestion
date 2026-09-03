@@ -5,7 +5,8 @@ import { PasswordGate } from "./password-gate"
 import { DeviceList } from "./device-list"
 import { InboxView } from "./inbox-view"
 import { MetricsDashboard } from "./metrics-dashboard"
-import { Smartphone, MessageSquare, BarChart3 } from "lucide-react"
+import { FollowupSettingsForm } from "./followup-settings-form"
+import { Smartphone, MessageSquare, BarChart3, Timer } from "lucide-react"
 
 interface Agency {
   id: string
@@ -16,9 +17,18 @@ interface WhaControlPageProps {
   userId: string
   userName: string
   agencies: Agency[]
+  quoteFollowupEnabled?: boolean
+  /** Teléfono para aterrizar directo en Conversaciones (link desde un lead). */
+  initialPhone?: string
 }
 
-export function WhaControlPage({ userId, userName, agencies }: WhaControlPageProps) {
+export function WhaControlPage({
+  userId,
+  userName,
+  agencies,
+  quoteFollowupEnabled = false,
+  initialPhone,
+}: WhaControlPageProps) {
   return (
     <PasswordGate>
       <div className="flex flex-1 flex-col">
@@ -29,7 +39,7 @@ export function WhaControlPage({ userId, userName, agencies }: WhaControlPagePro
           </p>
         </div>
 
-        <Tabs defaultValue="devices" className="flex flex-1 flex-col">
+        <Tabs defaultValue={initialPhone ? "inbox" : "devices"} className="flex flex-1 flex-col">
           <TabsList className="w-fit rounded-full">
             <TabsTrigger value="devices" className="gap-2 rounded-full">
               <Smartphone className="h-4 w-4" />
@@ -43,6 +53,12 @@ export function WhaControlPage({ userId, userName, agencies }: WhaControlPagePro
               <BarChart3 className="h-4 w-4" />
               Métricas
             </TabsTrigger>
+            {quoteFollowupEnabled && (
+              <TabsTrigger value="followups" className="gap-2 rounded-full">
+                <Timer className="h-4 w-4" />
+                Seguimientos
+              </TabsTrigger>
+            )}
           </TabsList>
 
           <TabsContent value="devices" className="flex-1 mt-4">
@@ -50,12 +66,18 @@ export function WhaControlPage({ userId, userName, agencies }: WhaControlPagePro
           </TabsContent>
 
           <TabsContent value="inbox" className="flex-1 mt-4">
-            <InboxView agencies={agencies} />
+            <InboxView agencies={agencies} quoteFollowupEnabled={quoteFollowupEnabled} initialPhone={initialPhone} />
           </TabsContent>
 
           <TabsContent value="metrics" className="flex-1 mt-4">
             <MetricsDashboard agencies={agencies} />
           </TabsContent>
+
+          {quoteFollowupEnabled && (
+            <TabsContent value="followups" className="flex-1 mt-4">
+              <FollowupSettingsForm />
+            </TabsContent>
+          )}
         </Tabs>
       </div>
     </PasswordGate>
