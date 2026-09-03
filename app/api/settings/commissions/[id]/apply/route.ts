@@ -159,7 +159,18 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     // venta compartida el reparto se define entre los dos y tocar uno solo
     // dejaría la suma inconsistente. Las comisiones con plata atrás las saltea
     // `applyCommissionPlan`.
-    await processCommissionsForOperations(operationIds, user.org_id)
+    // La vigencia se mide DENTRO de la ventana de la regla, no hoy (VIB-181).
+    //
+    // `valid_from`/`valid_to` significan "rige hoy". Una regla del 01/08 al
+    // 31/08 deja de existir el 1 de septiembre, así que arrastrarla recalculaba
+    // con el porcentaje vigente hoy —el de la ficha— y no cambiaba nada: las
+    // comisiones volvían a quedar en su valor anterior y la pantalla seguía
+    // ofreciendo recalcular las mismas N, para siempre. Reportado por Yamil con
+    // la regla del 14% de Victoria, que dejó sus 11 comisiones de agosto en 13%.
+    //
+    // Se usa `valid_from` porque siempre cae dentro de la ventana y es la fecha
+    // en que esta regla pasó a ser la más específica del vendedor.
+    await processCommissionsForOperations(operationIds, user.org_id, alcance.rule.valid_from)
 
     logAccountingAction({
       userId: user.id,

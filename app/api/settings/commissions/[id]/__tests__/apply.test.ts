@@ -235,7 +235,27 @@ describe("POST /api/settings/commissions/[id]/apply — aplicar", () => {
     })
     await POST(req, params)
 
-    expect(processCommissionsForOperations).toHaveBeenCalledWith(["op-1", "op-2"], ORG_ID)
+    // La tercera es la fecha de vigencia (VIB-181): se mide DENTRO de la
+    // ventana de la regla, no hoy. Sin eso, arrastrar una regla que ya venció
+    // recalcula con el porcentaje de hoy y no cambia nada.
+    expect(processCommissionsForOperations).toHaveBeenCalledWith(
+      ["op-1", "op-2"],
+      ORG_ID,
+      REGLA_SANTI.valid_from
+    )
+  })
+
+  it("arrastra una regla vencida con la fecha de SU período, no la de hoy (VIB-181)", async () => {
+    // El caso de Victoria: regla del 01/08 al 31/08 aplicada el 3 de
+    // septiembre. Si se recalculara con la vigencia de hoy, el motor no vería
+    // la regla y volvería a escribir el porcentaje viejo.
+    setup({
+      rule: { ...REGLA_SANTI, value: 14, valid_from: "2026-08-01", valid_to: "2026-08-31" },
+      records: [pendiente(13, "op-1")],
+    })
+    await POST(req, params)
+
+    expect(processCommissionsForOperations).toHaveBeenCalledWith(["op-1"], ORG_ID, "2026-08-01")
   })
 
   it("no llama al recálculo si no hay nada en el período", async () => {

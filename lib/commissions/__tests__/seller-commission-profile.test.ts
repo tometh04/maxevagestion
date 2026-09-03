@@ -556,6 +556,49 @@ describe("porcentaje por oficina (VIB-175)", () => {
     expect(profiles.get("santi")?.source).toBe("USER_DEFAULT")
   })
 
+  it("una regla que ya venció se puede aplicar a su propio período (VIB-181)", async () => {
+    /**
+     * El caso de Yamil: Victoria pasó a 14% del 01/08 al 31/08. El 3 de
+     * septiembre esa regla ya no rige, así que arrastrarla a las comisiones de
+     * agosto las recalculaba con el 13% de su ficha y no cambiaba nada — y la
+     * pantalla seguía ofreciendo recalcular las mismas 11, para siempre.
+     *
+     * El fake filtra por vigencia igual que PostgREST: `lte(valid_from, fecha)`
+     * y `valid_to >= fecha`.
+     */
+    const client = createClient((table, calls) => {
+      if (table === "users") {
+        return {
+          data: [{ id: "victoria", name: "Victoria", default_commission_percentage: 13 }],
+          error: null,
+        }
+      }
+      if (table === "commission_rules" && !isGenericRuleQuery(calls)) {
+        const fecha = arg(calls, "lte", "valid_from")?.[1] as string
+        const vigente = fecha >= "2026-08-01" && fecha <= "2026-08-31"
+        return {
+          data: vigente
+            ? [{ seller_id: "victoria", value: 14, valid_from: "2026-08-01", agency_id: null }]
+            : [],
+          error: null,
+        }
+      }
+      return { data: [], error: null }
+    }).client
+
+    // Sin fecha: hoy es septiembre, la regla venció y cae al 13 de la ficha.
+    const hoy = await resolveSellerCommissionProfiles(client, ORG, ["victoria"], null, "2026-09-03")
+    expect(hoy.get("victoria")?.percentage).toBe(13)
+    expect(hoy.get("victoria")?.source).toBe("USER_DEFAULT")
+
+    // Arrastrando la regla a su propio período, se ve el 14.
+    const enAgosto = await resolveSellerCommissionProfiles(
+      client, ORG, ["victoria"], null, "2026-08-01"
+    )
+    expect(enAgosto.get("victoria")?.percentage).toBe(14)
+    expect(enAgosto.get("victoria")?.source).toBe("SELLER_RULE")
+  })
+
   it("con dos reglas de la misma oficina gana la vigente más reciente", async () => {
     const profiles = await resolveSellerCommissionProfiles(
       clientConReglas([

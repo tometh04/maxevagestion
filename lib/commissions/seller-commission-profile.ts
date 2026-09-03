@@ -192,7 +192,18 @@ export async function resolveSellerCommissionProfiles(
    * oficina, que es el comportamiento de siempre: un caller que no sabe en qué
    * sucursal está no puede elegir entre dos porcentajes.
    */
-  agencyId?: string | null
+  agencyId?: string | null,
+  /**
+   * Fecha contra la que se mide la vigencia de las reglas (VIB-181). Sin ella,
+   * hoy.
+   *
+   * Existe porque `valid_from`/`valid_to` significan "rige hoy", no "aplica
+   * desde": una regla del 01/08 al 31/08 deja de existir para este resolver el
+   * 1 de septiembre. Arrastrarla a las comisiones de agosto sin esto recalcula
+   * con el porcentaje vigente HOY y no cambia nada, mientras la pantalla sigue
+   * prometiendo que hay N comisiones para recalcular.
+   */
+  asOf?: string | null
 ): Promise<Map<string, SellerCommissionProfile>> {
   const ids = Array.from(new Set(sellerIds.filter((id): id is string => !!id)))
   const profiles = new Map<string, SellerCommissionProfile>()
@@ -206,7 +217,10 @@ export async function resolveSellerCommissionProfiles(
     return profiles
   }
 
-  const today = new Date().toISOString().split("T")[0]
+  // La fecha contra la que se mide la vigencia de las reglas. Normalmente hoy;
+  // al arrastrar una regla a un período pasado se pasa una fecha DENTRO de ese
+  // período, o la regla que se quiere aplicar ya venció y no se la vería (VIB-181).
+  const today = asOf || new Date().toISOString().split("T")[0]
 
   const sellerRows = await fetchSellerRows(supabase, orgId, ids)
   const byId = new Map(sellerRows.map((r) => [r.id, r]))

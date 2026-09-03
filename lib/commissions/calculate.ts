@@ -507,7 +507,13 @@ export interface RecalculateResult extends ApplyCommissionResult {
 export async function recalculateOperationCommissions(
   supabase: any,
   operation: CommissionOperation,
-  baseConfig?: CommissionBaseConfig | null
+  baseConfig?: CommissionBaseConfig | null,
+  /**
+   * Fecha contra la que se mide la vigencia de las reglas (VIB-181). Sólo la
+   * usa el arrastre de una regla a un período pasado; el resto de los callers
+   * recalculan con lo que rige hoy.
+   */
+  asOf?: string | null
 ): Promise<RecalculateResult> {
   if (!operation.seller_id) {
     return { written: [], skipped: [], removed: [], errors: [], plan: EMPTY_PLAN }
@@ -520,7 +526,8 @@ export async function recalculateOperationCommissions(
     supabase,
     orgId,
     [operation.seller_id, operation.seller_secondary_id],
-    operation.agency_id
+    operation.agency_id,
+    asOf
   )
 
   // Si el caller no pasó la config, la resolvemos por la agencia de la operación.
@@ -571,7 +578,9 @@ export async function recalculateOperationCommissions(
  */
 export async function processCommissionsForOperations(
   operationIds: string[],
-  orgId: string
+  orgId: string,
+  /** Fecha de vigencia de las reglas. Sólo la usa el arrastre (VIB-181). */
+  asOf?: string | null
 ): Promise<void> {
   if (!orgId) {
     console.error("[Commissions] processCommissionsForOperations requiere orgId")
@@ -617,7 +626,12 @@ export async function processCommissionsForOperations(
       configByAgency.set(agencyKey, await getCommissionBaseConfig(supabase, operation.agency_id))
     }
 
-    await recalculateOperationCommissions(supabase, operation, configByAgency.get(agencyKey))
+    await recalculateOperationCommissions(
+      supabase,
+      operation,
+      configByAgency.get(agencyKey),
+      asOf
+    )
   }
 }
 
