@@ -258,7 +258,12 @@ export async function POST(request: Request) {
       .maybeSingle()
 
     if (!candidateOrg || candidateOrg.mp_preapproval_id) continue
-    if (!["PENDING_PAYMENT", "TRIAL"].includes(candidateOrg.subscription_status)) continue
+    // Mismos estados desde los que /api/billing/checkout permite iniciar un
+    // checkout (alta nueva, regularize sobre PAST_DUE, reactivate sobre
+    // CANCELLED). Antes solo cubría PENDING_PAYMENT/TRIAL, así que una org que
+    // regularizaba un pago vencido y cuyo webhook se perdía quedaba PAST_DUE
+    // sin red de contención (caso real: Milla Cero, pagó y quedó sin linkear).
+    if (!["PENDING_PAYMENT", "TRIAL", "TRIALING", "PAST_DUE", "CANCELLED"].includes(candidateOrg.subscription_status)) continue
 
     try {
       const res = await relinkPreapproval({

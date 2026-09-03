@@ -16,10 +16,12 @@ jest.mock("@/lib/billing/relink-preapproval", () => ({ relinkPreapproval: jest.f
 import { createAdminClient } from "@/lib/supabase/server"
 import { fetchPreapproval } from "@/lib/billing/mercadopago"
 import { checkCronAuth } from "@/lib/cron/auth"
+import { relinkPreapproval } from "@/lib/billing/relink-preapproval"
 
 const mockAdmin = createAdminClient as jest.Mock
 const mockFetch = fetchPreapproval as jest.Mock
 const mockAuth = checkCronAuth as jest.Mock
+const mockRelink = relinkPreapproval as jest.Mock
 
 function makeReq() {
   return new Request("http://test.local/api/cron/billing-reconcile", {
@@ -165,5 +167,58 @@ describe("POST /api/cron/billing-reconcile — fix mes gratis", () => {
     expect(orgResult.drifted).toBe(false) // no se cortó (conservador)
     expect(orgResult.silent_charge_failure).toBe(true) // pero sí alertó
     expect(inserts.some((i) => i.payload?.alert === "silent_charge_failure")).toBe(true)
+  })
+})
+
+/**
+ * Corre el reconcile con Fase 1 y Fase 2 vacías (sin orgs con mp_preapproval_id,
+ * sin trials vencidos), foco en Fase 3 (recuperar orgs pagas sin linkear).
+ * `candidateOrg` es la fila que devuelve el SELECT de organizations por id.
+ */
+async function runPhase3(opts: { pendingOrgId: string; candidateOrg: any }) {
+  const resolver = (state: any) => {
+    const { table, op, filters } = state
+    if (table === "organizations" && op === "select") {
+      if (state.notCalled) return { data: [], error: null } // Fase 1: sin orgs
+      if (state.ltCalled) return { data: [], error: null } // Fase 2: sin trials vencidos
+      // Fase 3: lookup del candidato por id
+      if (filters.id === opts.pendingOrgId) return { data: opts.candidateOrg, error: null }
+      return { data: null, error: null }
+    }
+    if (table === "billing_events" && op === "select") {
+      return {
+        data: [{ org_id: opts.pendingOrgId, created_at: new Date().toISOString() }],
+        error: null,
+      }
+    }
+    if (table === "billing_events" && op === "insert") return { error: null }
+    return { data: [], error: null }
+  }
+  mockAdmin.mockReturnValue(makeChainable(resolver))
+  const res = await POST(makeReq())
+  const body = await res.json()
+  return body
+}
+
+describe("POST /api/cron/billing-reconcile — Fase 3: recuperar orgs sin linkear", () => {
+  it("org PAST_DUE regularizando (checkout pendiente, sin mp_preapproval_id) SÍ se reintenta re-vincular", async () => {
+    mockRelink.mockResolvedValue({ linked: true, to_status: "ACTIVE", preapproval: { id: "pa_new" } })
+    const body = await runPhase3({
+      pendingOrgId: "org_2",
+      candidateOrg: { id: "org_2", subscription_status: "PAST_DUE", mp_preapproval_id: null },
+    })
+    expect(mockRelink).toHaveBeenCalledWith(expect.objectContaining({ orgId: "org_2" }))
+    expect(body.unlinked_recovery.candidates).toBe(1)
+    expect(body.unlinked_recovery.results[0]).toMatchObject({ orgId: "org_2", linked: true })
+  })
+
+  it("org ACTIVE sin mp_preapproval_id (ej. plan custom) NO se toca — fuera de los estados que checkout permite iniciar", async () => {
+    mockRelink.mockResolvedValue({ linked: true, to_status: "ACTIVE" })
+    const body = await runPhase3({
+      pendingOrgId: "org_3",
+      candidateOrg: { id: "org_3", subscription_status: "ACTIVE", mp_preapproval_id: null },
+    })
+    expect(mockRelink).not.toHaveBeenCalled()
+    expect(body.unlinked_recovery.results).toEqual([])
   })
 })
