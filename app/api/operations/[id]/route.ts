@@ -1315,6 +1315,40 @@ export async function DELETE(
       }, { status: 400 })
     }
 
+    // GUARD: reserva tomada con el proveedor. El seguimiento de una conversión
+    // que nunca llegó a reservar (QUEUED, PROCESSING, FAILED) se va por cascade
+    // con la operación, pero si el proveedor ya la tomó, borrar acá dejaría una
+    // reserva viva del otro lado sin nada que la respalde de este.
+    const { data: providerBookings } = await (supabase
+      .from("quotation_provider_bookings")
+      .select("id, status")
+      .eq("operation_id", operationId)
+      .eq("org_id", (user as any).org_id) as any)
+
+    const reservaTomada = (providerBookings as any[] | null)?.find((booking: any) =>
+      ["CONFIRMED", "PARTIAL", "PRICE_CHANGED"].includes(booking.status)
+    )
+    if (reservaTomada) {
+      return NextResponse.json(
+        {
+          error:
+            "No se puede eliminar: la reserva con el proveedor está tomada. " +
+            "Cancelala con el proveedor antes de borrar la operación.",
+          provider_booking_status: reservaTomada.status,
+        },
+        { status: 400 }
+      )
+    }
+
+    // Cotizaciones que generaron esta operación. Se buscan ANTES del borrado
+    // porque la FK las desvincula (ON DELETE SET NULL) y después no hay manera
+    // de encontrarlas.
+    const { data: linkedQuotations } = await (supabase
+      .from("quotations")
+      .select("id")
+      .eq("operation_id", operationId)
+      .eq("org_id", (user as any).org_id) as any)
+
     // 1. Eliminar registros de IVA
     try {
       await deleteSaleIVA(supabase, operationId)
@@ -1495,6 +1529,20 @@ export async function DELETE(
       )
     }
 
+
+    // La cotización vuelve a estar disponible para convertir. Sin esto queda
+    // "convertida" apuntando a una operación que ya no existe, y la ruta de
+    // conversión la rechaza por estado: la cotización queda inutilizable.
+    for (const quotation of ((linkedQuotations as any[] | null) ?? [])) {
+      const { error: unconvertError } = await (supabase.from("quotations") as any)
+        .update({ status: "APPROVED", converted_at: null })
+        .eq("id", quotation.id)
+        .eq("org_id", (user as any).org_id)
+
+      if (unconvertError) {
+        console.error("Error devolviendo la cotización a APPROVED:", quotation.id, unconvertError)
+      }
+    }
 
     // Invalidar caché del dashboard (los KPIs cambian al eliminar una operación)
     revalidateTag(CACHE_TAGS.DASHBOARD)
