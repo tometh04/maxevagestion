@@ -14,7 +14,7 @@ import { FlightResultCard } from "@/components/emilia/flight-result-card"
 import { HotelResultCard } from "@/components/emilia/hotel-result-card"
 import { buildQuotationPayload, type EmiliaFlight, type EurovipsHotel } from "@/lib/emilia/quotation-mapper"
 import { generateClientId } from "@/lib/emilia/utils"
-import { waitForEmiliaJob } from "@/lib/emilia/async-turn"
+import { EmiliaJobError, waitForEmiliaJob } from "@/lib/emilia/async-turn"
 import {
   filterFlights,
   filterHotels,
@@ -891,7 +891,14 @@ export function LeadEmiliaChat({
       }])
     } catch (err: any) {
       if (err?.name === "AbortError") return
-      setMessages(prev => [...prev, { role: "assistant", text: "Error de red: " + (err?.message || "") }])
+      const text = err instanceof EmiliaJobError
+        ? err.kind === "job" || err.kind === "http"
+          ? err.message
+          : err.kind === "timeout"
+            ? err.message
+            : `Error de conexión: ${err.message}`
+        : `No pude completar la búsqueda: ${err?.message || "error inesperado"}`
+      setMessages(prev => [...prev, { role: "assistant", text }])
     } finally {
       if (pendingJobControllerRef.current === controller) pendingJobControllerRef.current = null
       setSending(false)

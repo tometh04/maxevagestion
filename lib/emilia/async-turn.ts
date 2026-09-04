@@ -6,6 +6,19 @@ export interface EmiliaQueuedTurn {
   poll_after_ms?: number
 }
 
+export type EmiliaJobErrorKind = "job" | "transport" | "http" | "timeout"
+
+export class EmiliaJobError extends Error {
+  constructor(
+    message: string,
+    public readonly kind: EmiliaJobErrorKind,
+    public readonly status?: number
+  ) {
+    super(message)
+    this.name = "EmiliaJobError"
+  }
+}
+
 function abortError() {
   return new DOMException("La búsqueda fue cancelada", "AbortError")
 }
@@ -43,19 +56,54 @@ export async function waitForEmiliaJob({
 }): Promise<any> {
   const startedAt = Date.now()
   let delayMs = Math.min(Math.max(pollAfterMs, 500), 5000)
+  let consecutiveTransientFailures = 0
 
   while (Date.now() - startedAt < maxWaitMs) {
     await wait(delayMs, signal)
-    const response = await fetch(
-      `/api/emilia/chat/jobs/${encodeURIComponent(jobId)}?conversationId=${encodeURIComponent(conversationId)}`,
-      { signal, cache: "no-store" }
-    )
-    const data = await response.json().catch(() => ({}))
-    if (!response.ok) {
-      throw new Error(data?.error || "No se pudo consultar el estado de Emilia")
+    let response: Response
+    try {
+      response = await fetch(
+        `/api/emilia/chat/jobs/${encodeURIComponent(jobId)}?conversationId=${encodeURIComponent(conversationId)}`,
+        { signal, cache: "no-store" }
+      )
+    } catch (error: any) {
+      if (error?.name === "AbortError") throw error
+      consecutiveTransientFailures += 1
+      if (consecutiveTransientFailures <= 3) {
+        delayMs = Math.min(delayMs * 2, 5000)
+        continue
+      }
+      throw new EmiliaJobError("Se perdió la conexión mientras Emilia terminaba. Volvé a intentar.", "transport")
     }
+
+    let data: any
+    try {
+      data = await response.json()
+    } catch {
+      consecutiveTransientFailures += 1
+      if (consecutiveTransientFailures <= 3) {
+        delayMs = Math.min(delayMs * 2, 5000)
+        continue
+      }
+      throw new EmiliaJobError("La respuesta de Emilia llegó incompleta. Volvé a intentar.", "transport")
+    }
+    if (!response.ok) {
+      const message = data?.error?.message || data?.error || "No se pudo consultar el estado de Emilia"
+      if (response.status === 429 || response.status >= 500) {
+        consecutiveTransientFailures += 1
+        if (consecutiveTransientFailures <= 3) {
+          delayMs = Math.min(delayMs * 2, 5000)
+          continue
+        }
+      }
+      throw new EmiliaJobError(message, "http", response.status)
+    }
+    consecutiveTransientFailures = 0
     if (data.status === "failed") {
-      throw new Error(data?.error?.message || data?.message || "Emilia no pudo completar la búsqueda")
+      throw new EmiliaJobError(
+        data?.error?.message || data?.message || "Emilia no pudo completar la búsqueda",
+        "job"
+      )
     }
     if (data.status !== "queued" && data.status !== "processing") {
       return data
@@ -63,5 +111,8 @@ export async function waitForEmiliaJob({
     delayMs = Math.min(Math.max(Number(data.poll_after_ms) || delayMs, 500), 5000)
   }
 
-  throw new Error("La búsqueda sigue procesándose. Podés cerrar y volver a abrir el chat para retomarla.")
+  throw new EmiliaJobError(
+    "La búsqueda sigue procesándose. Podés cerrar y volver a abrir el chat para retomarla.",
+    "timeout"
+  )
 }

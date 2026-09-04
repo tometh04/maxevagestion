@@ -50,4 +50,26 @@ describe("waitForEmiliaJob", () => {
     await jest.advanceTimersByTimeAsync(500)
     await rejection
   })
+
+  it("recovers the persisted terminal result after a transient fetch failure", async () => {
+    const fetchMock = jest.mocked(global.fetch)
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ status: "completed", results: { flights: { count: 40, items: [] } } }),
+      } as Response)
+
+    const resultPromise = waitForEmiliaJob({
+      jobId: "11111111-1111-4111-8111-111111111111",
+      conversationId: "22222222-2222-4222-8222-222222222222",
+      pollAfterMs: 500,
+    })
+    const assertion = expect(resultPromise).resolves.toMatchObject({ status: "completed" })
+
+    await jest.advanceTimersByTimeAsync(500)
+    await jest.advanceTimersByTimeAsync(1000)
+
+    await assertion
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
 })
