@@ -478,7 +478,17 @@ export function BulkPaymentDialog({
       }
 
       if (responseData.errors?.length > 0) {
-        toast.warning(`Se procesaron ${responseData.processed?.length || 0} pago(s) con ${responseData.errors.length} advertencia(s)`)
+        // El detalle va en pantalla, no sólo en la consola: cada advertencia acá
+        // es una deuda que no se pagó, y hasta ahora se veía un cartel amarillo
+        // con un número que nadie podía interpretar.
+        const detalle = (responseData.errors as string[]).slice(0, 3).join(" · ")
+        const restantes = responseData.errors.length - 3
+        toast.warning(
+          `Se procesaron ${responseData.processed?.length || 0} de ${payments.length} pago(s). ` +
+            `${responseData.errors.length} no se pudieron aplicar: ${detalle}` +
+            (restantes > 0 ? ` (y ${restantes} más)` : ""),
+          { duration: 30000 },
+        )
         console.warn("[BulkPayment] Errores parciales:", responseData.errors)
       } else {
         toast.success(`Se procesaron ${payments.length} pago(s) correctamente`)

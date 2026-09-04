@@ -18,6 +18,11 @@ import { startOfDayAR } from "@/lib/utils/date-range"
 
 type LedgerMethod = "CASH" | "BANK" | "MP" | "USD" | "OTHER"
 
+/** Cuánto se tolera pagarle a un operador por encima de la deuda cargada. El
+ *  excedente sube el costo de la operación; más que esto es un dato mal
+ *  cargado y se rechaza sin tocar la caja. */
+const MAX_OVERPAY_PCT = 10
+
 /** Método del ledger según el tipo de cuenta. Cada asiento usa el de SU cuenta:
  *  el pago puede salir de un banco en USD y la comisión de la financiera de la
  *  caja en pesos. */
@@ -264,6 +269,23 @@ export async function POST(request: Request) {
       const totalAmount = parseFloat(operatorPayment.amount)
       const isFullyPaid = newPaidAmount >= totalAmount
 
+      // Pagar de más está permitido hasta MAX_OVERPAY_PCT: el operador factura
+      // un poco distinto de lo cargado y más abajo se corrige el costo de la
+      // operación. Pasado ese margen el pago se rechaza ACÁ, antes de mover un
+      // peso. Hasta el 2026-09-04 el exceso reventaba recién en el UPDATE de la
+      // deuda (la base tiene un CHECK paid_amount <= amount * 1.01), con el
+      // egreso ya asentado: la plata salía de la caja y la deuda quedaba
+      // intacta, sin pago en la operación. Le pasó a Lozada con tres pagos a
+      // Eurovips.
+      if (totalAmount > 0 && newPaidAmount > roundMoney(totalAmount * (1 + MAX_OVERPAY_PCT / 100))) {
+        errors.push(
+          `El pago de ${operatorPayment.currency} ${roundMoney(amt)} supera en más del ${MAX_OVERPAY_PCT}% ` +
+          `la deuda cargada (${operatorPayment.currency} ${totalAmount}). ` +
+          `Corregí el costo del operador en la operación y volvé a intentar. No se movió plata de la cuenta.`
+        )
+        continue
+      }
+
       const { data: operation } = await (supabase.from("operations") as any)
         .select("seller_id, operator_id, agency_id")
         .eq("id", operation_id)
@@ -402,6 +424,11 @@ export async function POST(request: Request) {
     const processedPayments: { operator_payment_id: string; amount_paid: number | string; new_status: string }[] = []
 
     for (const item of toProcess) {
+      // Compensación: si la deuda ya quedó aplicada y después falla el
+      // movimiento de plata, hay que devolverla a como estaba. Una deuda
+      // pagada sin egreso miente igual que un egreso sin deuda aplicada.
+      let debtApplied = false
+      let moneyMoved = false
       try {
         const { operator_payment_id, operation_id, amount_to_pay } = item.paymentItem
         const operatorPaymentCurrency = item.operatorPayment.currency as "ARS" | "USD"
@@ -441,6 +468,52 @@ export async function POST(request: Request) {
           continue
         }
 
+        // La deuda se aplica ANTES de mover la plata. Si el UPDATE no entra
+        // (CHECK de la base, carrera con otro lote, RLS), no sale un peso de la
+        // cuenta y el operador sigue figurando impago, que es lo recuperable.
+        const originalAmount = parseFloat(item.operatorPayment.amount)
+        const updateData: any = {
+          paid_amount: item.newPaidAmount,
+          updated_at: new Date().toISOString(),
+        }
+        if (item.newPaidAmount > originalAmount) {
+          // El sobrepago sube la deuda en el MISMO update que paid_amount: la
+          // base valida paid_amount <= amount * 1.01 por fila, así que hacerlo
+          // en dos pasos rebota el update entero.
+          updateData.amount = item.newPaidAmount
+        }
+        if (item.isFullyPaid) {
+          updateData.status = "PAID"
+        }
+
+        // P0 2026-05-10: CAS guard contra race conditions con bulk runs
+        // concurrentes. Si paid_amount cambió desde que lo leímos en validación,
+        // otro request ya procesó este operator_payment → abortar el item.
+        const { data: updatedRows, error: updateError } = await (supabase.from("operator_payments") as any)
+          .update(updateData)
+          .eq("id", operator_payment_id)
+          .eq("paid_amount", item.originalPaidAmount)
+          .eq("status", item.originalStatus)
+          .select("id")
+
+        if (updateError) {
+          errors.push(
+            `No se pudo aplicar el pago a la deuda ${operator_payment_id}: ${updateError.message}. ` +
+            `No se movió plata de la cuenta.`
+          )
+          continue
+        }
+
+        if (!updatedRows || updatedRows.length === 0) {
+          errors.push(
+            `Race condition detectada en ${operator_payment_id}: ` +
+            `otra operación modificó este pago mientras se procesaba. ` +
+            `No se movió plata de la cuenta.`
+          )
+          continue
+        }
+        debtApplied = true
+
         const ledgerMovementResult = await createLedgerMovement(
           {
             operation_id,
@@ -463,6 +536,47 @@ export async function POST(request: Request) {
           },
           supabase
         )
+
+        moneyMoved = true
+
+        // El pago se registra en la operación apenas sale la plata: es lo que
+        // el usuario ve en el historial y lo que ata el egreso con la deuda.
+        const paymentReference = [receipt_number, notes].filter(Boolean).join(" - ") || receipt_number
+        const paymentData = {
+          operation_id,
+          operator_id: operatorId,
+          operator_payment_id,
+          source: "OPERATOR_BULK",
+          payer_type: "OPERATOR" as const,
+          direction: "EXPENSE" as const,
+          method: "Pago Masivo",
+          amount: paymentEquivalentAmount,
+          currency: payment_currency,
+          exchange_rate: exchangeRateValue,
+          amount_usd: paymentEquivalentUsd,
+          date_paid: payment_date,
+          date_due: payment_date,
+          status: "PAID" as const,
+          reference: paymentReference || null,
+          ledger_movement_id: ledgerMovementResult.id,
+        }
+
+        const { data: paymentRecord, error: paymentInsertError } = await (supabase.from("payments") as any)
+          .insert(paymentData)
+          .select("id")
+          .single()
+
+        if (paymentInsertError || !paymentRecord?.id) {
+          errors.push(`Pago aplicado sin reflejo en operación ${operation_id.slice(0, 8)}: ${paymentInsertError?.message || "No se pudo registrar el payment"}`)
+        }
+
+        if (item.isFullyPaid) {
+          // Movimiento que cerró la deuda. Va en un update aparte porque el
+          // ledger se crea después de aplicarla.
+          await (supabase.from("operator_payments") as any)
+            .update({ ledger_movement_id: ledgerMovementResult.id })
+            .eq("id", operator_payment_id)
+        }
 
         // VIB-142: asiento del pago (Debe Cuentas por Pagar / Haber cuenta
         // financiera). Se asienta SOLO la salida real de plata: el movimiento
@@ -510,80 +624,10 @@ export async function POST(request: Request) {
           supabase
         )
 
-        const updateData: any = {
-          paid_amount: item.newPaidAmount,
-          updated_at: new Date().toISOString(),
-        }
-        if (item.isFullyPaid) {
-          updateData.status = "PAID"
-          updateData.ledger_movement_id = ledgerMovementResult.id
-        }
-
-        // P0 2026-05-10: CAS guard contra race conditions con bulk runs
-        // concurrentes. Si paid_amount cambió desde que lo leímos en validación
-        // (línea 160), otro request ya procesó este operator_payment → abort
-        // este item con error explícito, NO escribir nada.
-        // El ledger ya se creó antes (líneas ~311 y ~339) y queda como dato
-        // huérfano detectable por /api/payments/orphans — preferible a doble
-        // pago.
-        const { data: updatedRows, error: updateError } = await (supabase.from("operator_payments") as any)
-          .update(updateData)
-          .eq("id", operator_payment_id)
-          .eq("paid_amount", item.originalPaidAmount)
-          .eq("status", item.originalStatus)
-          .select("id")
-
-        if (updateError) {
-          errors.push(`Error actualizando ${operator_payment_id}: ${updateError.message}`)
-          continue
-        }
-
-        if (!updatedRows || updatedRows.length === 0) {
-          errors.push(
-            `Race condition detectada en ${operator_payment_id}: ` +
-            `otra operación modificó este pago mientras se procesaba. ` +
-            `Ledger creado quedó huérfano (visible en /api/payments/orphans).`
-          )
-          continue
-        }
-
-        const paymentReference = [receipt_number, notes].filter(Boolean).join(" - ") || receipt_number
-        const paymentData = {
-          operation_id,
-          operator_id: operatorId,
-          operator_payment_id,
-          source: "OPERATOR_BULK",
-          payer_type: "OPERATOR" as const,
-          direction: "EXPENSE" as const,
-          method: "Pago Masivo",
-          amount: paymentEquivalentAmount,
-          currency: payment_currency,
-          exchange_rate: exchangeRateValue,
-          amount_usd: paymentEquivalentUsd,
-          date_paid: payment_date,
-          date_due: payment_date,
-          status: "PAID" as const,
-          reference: paymentReference || null,
-          ledger_movement_id: ledgerMovementResult.id,
-        }
-
-        const { data: paymentRecord, error: paymentInsertError } = await (supabase.from("payments") as any)
-          .insert(paymentData)
-          .select("id")
-          .single()
-
-        if (paymentInsertError || !paymentRecord?.id) {
-          errors.push(`Pago aplicado sin reflejo en operación ${operation_id.slice(0, 8)}: ${paymentInsertError?.message || "No se pudo registrar el payment"}`)
-        }
-
-        // Si se pagó más que el monto original (hasta 10% extra), actualizar operator_cost y monto de la deuda
-        const originalAmount = parseFloat(item.operatorPayment.amount)
+        // El sobrepago ya subió la deuda del operador arriba; acá se traslada
+        // al costo de la operación para que el margen no quede inflado.
         if (item.newPaidAmount > originalAmount) {
           const extraAmount = roundMoney(item.newPaidAmount - originalAmount)
-          // Actualizar el monto de la deuda del operador para reflejar el pago extra
-          await (supabase.from("operator_payments") as any)
-            .update({ amount: item.newPaidAmount, updated_at: new Date().toISOString() })
-            .eq("id", operator_payment_id)
 
           // Actualizar el operator_cost de la operación en tiempo real
           if (item.paymentItem.operation_id) {
@@ -667,6 +711,25 @@ export async function POST(request: Request) {
           })
         }
       } catch (e: any) {
+        // Si la deuda se aplicó pero nunca llegó a salir la plata, se devuelve
+        // a como estaba: dejarla pagada escondería una deuda viva.
+        if (debtApplied && !moneyMoved) {
+          const { error: revertError } = await (supabase.from("operator_payments") as any)
+            .update({
+              paid_amount: item.originalPaidAmount,
+              status: item.originalStatus,
+              amount: item.operatorPayment.amount,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", item.paymentItem.operator_payment_id)
+          if (revertError) {
+            console.error("[BulkPayment API] ❌ No se pudo revertir la deuda:", item.paymentItem.operator_payment_id, revertError)
+            errors.push(
+              `La deuda ${item.paymentItem.operator_payment_id} quedó marcada como pagada sin egreso ` +
+              `y no se pudo revertir: ${revertError.message}. Revisala a mano.`
+            )
+          }
+        }
         errors.push(`Error procesando ${item.paymentItem.operator_payment_id}: ${e?.message ?? String(e)}`)
       }
     }
