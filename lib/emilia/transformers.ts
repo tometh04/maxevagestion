@@ -522,10 +522,10 @@ export function transformCanonicalHotels(hotels: any[], query: any = {}): any[] 
       address: hotel?.location?.address || "",
       phone: "",
       images: Array.isArray(hotel?.images)
-        ? [...new Set(hotel.images.filter((src: unknown): src is string => {
+        ? Array.from(new Set<string>(hotel.images.filter((src: unknown): src is string => {
             if (typeof src !== "string") return false
             try { return ["https:", "http:"].includes(new URL(src).protocol) } catch { return false }
-          }).map((src: string) => src.trim()))]
+          }).map((src: string) => src.trim())))
         : [],
       check_in: checkIn,
       check_out: checkOut,
