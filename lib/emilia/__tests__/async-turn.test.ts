@@ -101,4 +101,18 @@ describe("waitForEmiliaJob", () => {
     await assertion
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
+  it("delivers a stage change even when the product snapshot has not changed", async () => {
+    const onProgress = jest.fn()
+    const progress = { version: 103, attempt: 1, products: { flights: "available", hotels: "available" } }
+    const reply = (data: unknown) => ({ ok: true, json: async () => data }) as Response
+    jest.mocked(global.fetch)
+      .mockResolvedValueOnce(reply({ status: "processing", stage: "provider_search", attempt: 1, progress }))
+      .mockResolvedValueOnce(reply({ status: "processing", stage: "context_persistence", attempt: 1, progress }))
+      .mockResolvedValueOnce(reply({ status: "completed", stage: "completed", attempt: 1, progress }))
+    const result = waitForEmiliaJob({ jobId: "job", conversationId: "conversation", pollAfterMs: 500, immediate: true, onProgress })
+    await jest.advanceTimersByTimeAsync(1000)
+    await expect(result).resolves.toMatchObject({ status: "completed" })
+    expect(onProgress.mock.calls.map(([update]) => update.stage)).toEqual(["provider_search", "context_persistence"])
+  })
+
 })

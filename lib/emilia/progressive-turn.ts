@@ -10,6 +10,7 @@ export interface EmiliaProgressView {
 export interface EmiliaChatMessage {
   id?: string
   jobId?: string
+  stage?: string
   attempt?: number
   role: "user" | "assistant"
   text: string
@@ -36,6 +37,34 @@ export interface EmiliaTurnUpdate {
   assistant_message?: { content?: { text?: string }; meta?: EmiliaChatMessage["meta"] }
 }
 
+function pendingTurnText(status: string | undefined, stage: string | undefined, jobId: string | undefined, progress?: EmiliaProgressView): string {
+  if (!jobId) return "Enviando tu pedido…"
+  if (status === "queued") return "Tu pedido está en espera…"
+  switch (stage) {
+    case "starting": return "Iniciando tu pedido…"
+    case "identity_verified": return "Abriendo tu conversación…"
+    case "context_loading": return "Revisando el contexto de la conversación…"
+    case "parsing": return "Interpretando tu pedido…"
+    case "routing": return "Definiendo qué buscar…"
+    case "state_preparation": return "Organizando los resultados…"
+    case "context_persistence": return "Guardando los resultados de tu búsqueda…"
+    case "finalizing": return "Finalizando la respuesta…"
+    case "provider_search": {
+      const products = progress?.products
+      if (!products) return "Consultando disponibilidad con los proveedores…"
+      const flightsPending = products.flights === "searching"
+      const hotelsPending = products.hotels === "searching"
+      if (flightsPending && hotelsPending) return "Buscando vuelos y hoteles…"
+      if (hotelsPending) return products.flights === "available"
+        ? "Ya tenés vuelos. Sigo buscando hoteles…" : "Buscando hoteles…"
+      if (flightsPending) return products.hotels === "available"
+        ? "Ya tenés hoteles. Sigo buscando vuelos…" : "Buscando vuelos…"
+      return "Reuniendo los resultados…"
+    }
+    default: return "Esperando una actualización de Emilia…"
+  }
+}
+
 /** One response per job. Terminal responses win; snapshots replace only newer versions. */
 export function applyEmiliaTurnUpdate(
   messages: EmiliaChatMessage[], key: string, update: EmiliaTurnUpdate,
@@ -48,24 +77,28 @@ export function applyEmiliaTurnUpdate(
   const previousAttempt = previous?.attempt || previous?.progress?.attempt || 0
   if (pending && update.attempt && update.attempt < previousAttempt) return messages
   const newAttempt = Boolean(update.attempt && update.attempt > previousAttempt)
-  if (pending && previous?.progress && previous.jobStatus !== "interrupted" && !newAttempt
-    && (!update.progress || update.progress.version <= previous.progress.version)) return messages
-  const progress = update.progress || (newAttempt ? undefined : previous?.progress)
-  const ready = Object.values(progress?.products || {}).some(state => state === "available")
-  const allReady = progress && Object.values(progress.products).every(state => state !== "searching")
+  const stage = update.stage ?? (newAttempt ? undefined : previous?.stage)
+  if (pending && previous?.progress && !newAttempt && update.progress
+    && update.progress.version < previous.progress.version) return messages
+  const freshProgress = !previous?.progress || newAttempt
+    || Boolean(update.progress && update.progress.version > previous.progress.version)
+  if (pending && previous?.progress && previous.jobStatus !== "interrupted" && !freshProgress
+    && stage === previous.stage) return messages
+  const progress = freshProgress ? update.progress || (newAttempt ? undefined : previous?.progress) : previous?.progress
   const jobId = update.job_id || previous?.jobId
   const message: EmiliaChatMessage = {
     ...previous,
     id: previous?.id || key,
     jobId,
+    stage,
     attempt: update.attempt || update.progress?.attempt || previous?.attempt,
     role: "assistant",
     jobStatus: pending ? update.status as "queued" | "processing" : update.status === "failed" ? "failed" : "completed",
     progress: pending ? progress : undefined,
     text: pending
-      ? allReady ? "Terminando tu búsqueda…" : ready ? "Ya podés ver las primeras opciones." : "Preparando tu búsqueda…"
+      ? pendingTurnText(update.status, stage, jobId, progress)
       : update.assistant_message?.content?.text || update.message || "Acá tenés los resultados:",
-    cards: update.results ? { ...update.results, requestType: update.requestType }
+    cards: pending && !freshProgress ? previous?.cards : update.results ? { ...update.results, requestType: update.requestType }
       : pending && !newAttempt ? previous?.cards : undefined,
     meta: {
       ...(!newAttempt ? previous?.meta : {}),

@@ -57,3 +57,34 @@ describe("BFF progress normalization", () => {
     expect(normalizeEmiliaProgress({ progress: { version: -1 } })).toBeUndefined()
   })
 })
+
+
+describe("real runtime stages", () => {
+  it.each([
+    ["context_loading", "Revisando el contexto de la conversación…"],
+    ["parsing", "Interpretando tu pedido…"],
+    ["routing", "Definiendo qué buscar…"],
+    ["state_preparation", "Organizando los resultados…"],
+    ["context_persistence", "Guardando los resultados de tu búsqueda…"],
+    ["finalizing", "Finalizando la respuesta…"],
+    ["unknown", "Esperando una actualización de Emilia…"],
+  ])("renders %s from the reported stage", (stage, text) => {
+    expect(applyEmiliaTurnUpdate([], "job-1", { job_id: "job-1", status: "processing", stage })[0].text).toBe(text)
+  })
+
+  it("advances the stage without replacing an unchanged snapshot or its cards", () => {
+    const messages = applyEmiliaTurnUpdate([], "job-1", { ...partial, stage: "provider_search" } as any)
+    expect(messages[0].text).toBe("Ya tenés vuelos. Sigo buscando hoteles…")
+    const next = applyEmiliaTurnUpdate(messages, "job-1", { ...partial, stage: "context_persistence" } as any)
+    expect(next[0].text).toBe("Guardando los resultados de tu búsqueda…")
+    expect(next[0].cards).toBe(messages[0].cards)
+    expect(next[0].id).toBe(messages[0].id)
+    expect(applyEmiliaTurnUpdate(next, "job-1", { ...partial, stage: "provider_search", progress: { ...progress, version: 101 } } as any)).toBe(next)
+  })
+
+  it("distinguishes sending from a confirmed queue and does not guess requested products", () => {
+    expect(applyEmiliaTurnUpdate([], "client", { status: "queued" })[0].text).toBe("Enviando tu pedido…")
+    expect(applyEmiliaTurnUpdate([], "client", { status: "queued", job_id: "job" })[0].text).toBe("Tu pedido está en espera…")
+    expect(applyEmiliaTurnUpdate([], "client", { status: "processing", job_id: "job", stage: "provider_search" })[0].text).toBe("Consultando disponibilidad con los proveedores…")
+  })
+})

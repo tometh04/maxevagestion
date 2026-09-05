@@ -66,6 +66,7 @@ export async function waitForEmiliaJob({
   let firstPoll = true
   let lastProgressVersion = 0
   let lastAttempt = 0
+  let lastStage: string | undefined
 
   while (Date.now() - startedAt < maxWaitMs) {
     if (!firstPoll || !immediate) await wait(delayMs, signal)
@@ -111,13 +112,15 @@ export async function waitForEmiliaJob({
     }
     consecutiveTransientFailures = 0
     if (signal?.aborted) throw abortError()
-    if (data.progress && Number(data.progress.version) > lastProgressVersion) {
-      lastProgressVersion = Number(data.progress.version)
-      lastAttempt = Number(data.attempt) || Number(data.progress.attempt)
-      onProgress?.({ ...data, status: "processing" })
-    } else if (Number(data.attempt) > lastAttempt || lastProgressVersion === 0) {
-      lastAttempt = Number(data.attempt) || 0
-      if (data.status === "queued" || data.status === "processing") onProgress?.(data)
+    if (data.status === "queued" || data.status === "processing") {
+      const version = Number(data.progress?.version) || 0
+      const attempt = Number(data.attempt) || Number(data.progress?.attempt) || 0
+      if (version > lastProgressVersion || attempt > lastAttempt || data.stage !== lastStage || lastProgressVersion === 0) {
+        lastProgressVersion = Math.max(lastProgressVersion, version)
+        lastAttempt = Math.max(lastAttempt, attempt)
+        lastStage = data.stage
+        onProgress?.(data)
+      }
     }
     if (data.status === "failed") {
       throw new EmiliaJobError(

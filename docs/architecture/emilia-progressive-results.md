@@ -14,6 +14,10 @@ sus result sets canónicos. Un worker vencido no puede publicar. En un reintento
 el gateway descarta snapshots de intentos anteriores. El resultado terminal sigue
 siendo la fuente definitiva y el único que confirma contexto y artefactos.
 
+El texto de espera refleja el stage real del job: contexto, interpretación,
+búsqueda, organización, guardado y finalización. Los cambios de stage se entregan
+aunque no cambie la versión de las tarjetas; no se simulan avances por tiempo.
+
 El CRM recupera progress usando el polling autenticado existente. Mantiene una
 respuesta por job y actualiza sus bloques en el mismo lugar. Se pueden seleccionar
 opciones parciales, pero generar la cotización espera al cierre del job, cuando
