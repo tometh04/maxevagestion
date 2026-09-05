@@ -13,6 +13,7 @@ import {
   AlertCircle,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { formatSegmentBaggage, type SegmentBaggage } from "@/lib/emilia/flight-baggage"
 
 // Tipos según la especificación
 interface FlightLeg {
@@ -33,6 +34,7 @@ interface FlightLeg {
     destination_code: string
     waiting_time: string
   }>
+  segments?: Array<{ baggage?: SegmentBaggage; departure?: { airport_code?: string }; arrival?: { airport_code?: string } }>
   arrival_next_day?: boolean
   baggage?: { carry_on: boolean | null; checked: boolean | null }
   options?: Array<{
@@ -73,7 +75,6 @@ interface FlightResultCardProps {
   onSelectionChange?: (flightId: string, selected: boolean) => void
 }
 
-const lightAirlines = ["LA", "H2", "AV", "AM", "JA", "AR"]
 
 export function FlightResultCard({ 
   flight, 
@@ -92,38 +93,6 @@ export function FlightResultCard({
   
   const handleCheckboxChange = (checked: boolean) => {
     onSelectionChange?.(flight.id, checked)
-  }
-
-  const getBaggageText = (leg: FlightLeg, airlineCode: string): string => {
-    const segment = leg.options?.[0]?.segments?.[0]
-    const baggage = segment?.baggage
-    const carryOn = segment?.carryOnBagInfo?.quantity
-
-    const parts: string[] = []
-
-    // Equipaje despachado
-    if (baggage) {
-      const count = parseInt(baggage.replace(/[^0-9]/g, ""), 10)
-      if (count > 0) {
-        parts.push(`${count} despachada${count > 1 ? "s" : ""}`)
-      }
-    }
-
-    // Equipaje de mano
-    if (carryOn && parseInt(carryOn, 10) > 0) {
-      parts.push("1 de mano")
-    }
-
-    if (parts.length > 0) {
-      return `(${parts.join(" + ")})`
-    }
-
-    // Fallback para aerolíneas low cost
-    if (lightAirlines.includes(airlineCode)) {
-      return "(1 Mochila)"
-    }
-
-    return "(1 de mano)"
   }
 
   const childrens = flight.childrens || flight.children || 0
@@ -314,16 +283,18 @@ function FlightLegCard({ leg, airlineCode, departureDate }: FlightLegCardProps) 
   )
 }
 
-function getBaggageText(leg: FlightLeg, airlineCode: string): string {
+function getBaggageText(leg: FlightLeg, _airlineCode: string): string {
+  const detailed = formatSegmentBaggage(leg.segments ?? [])
+  if (detailed) return detailed
   if (leg.baggage) {
     const included: string[] = []
-    if (leg.baggage.checked === true) included.push("1 despachada")
-    if (leg.baggage.carry_on === true) included.push("1 de mano")
-    if (included.length > 0) return `(${included.join(" + ")})`
-    if (leg.baggage.checked === false && leg.baggage.carry_on === false) {
-      return "(Sin equipaje incluido)"
-    }
-    return "(Equipaje a confirmar)"
+    if (leg.baggage.checked === true) included.push("Despachado incluido")
+    if (leg.baggage.carry_on === true) included.push("De mano incluido")
+    if (leg.baggage.checked === false) included.push("Sin despachado")
+    if (leg.baggage.carry_on === false) included.push("Sin equipaje de mano")
+    if (leg.baggage.checked == null) included.push("Despachado a confirmar")
+    if (leg.baggage.carry_on == null) included.push("De mano a confirmar")
+    return `(${included.join(" + ")})`
   }
   const segment = leg.options?.[0]?.segments?.[0]
   const baggage = segment?.baggage
@@ -332,23 +303,19 @@ function getBaggageText(leg: FlightLeg, airlineCode: string): string {
   const parts: string[] = []
 
   if (baggage) {
-    const count = parseInt(baggage.replace(/[^0-9]/g, ""), 10)
-    if (count > 0) {
-      parts.push(`${count} despachada${count > 1 ? "s" : ""}`)
-    }
+    const pieces = /^(\d+)\s*PC$/i.exec(baggage.trim())
+    parts.push(pieces && Number(pieces[1]) === 0 ? "Sin despachado" : `Despachado: ${baggage}`)
   }
 
   if (carryOn && parseInt(carryOn, 10) > 0) {
-    parts.push("1 de mano")
+    parts.push(`${parseInt(carryOn, 10)} de mano`)
+  } else if (carryOn === "0") {
+    parts.push("Sin equipaje de mano")
   }
 
   if (parts.length > 0) {
     return `(${parts.join(" + ")})`
   }
 
-  if (lightAirlines.includes(airlineCode)) {
-    return "(1 Mochila)"
-  }
-
-  return "(1 de mano)"
+  return "(Equipaje a confirmar)"
 }

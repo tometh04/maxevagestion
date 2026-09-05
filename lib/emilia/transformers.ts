@@ -383,16 +383,8 @@ export function transformCanonicalFlights(flights: any[], query: any = {}): any[
         stops: typeof leg?.stops === "number" ? Math.max(0, leg.stops) : Math.max(0, segments.length - 1),
         layovers: canonicalLayovers(segments),
         arrival_next_day: Boolean(departureDate && arrivalDate && departureDate !== arrivalDate),
-        options: [{
-          segments: [{
-            ...(flight?.baggage?.checked === null || flight?.baggage?.checked === undefined
-              ? {}
-              : { baggage: flight.baggage.checked ? "1PC" : "0PC" }),
-            ...(flight?.baggage?.carry_on === null || flight?.baggage?.carry_on === undefined
-              ? {}
-              : { carryOnBagInfo: { quantity: flight.baggage.carry_on ? "1" : "0" } }),
-          }],
-        }],
+        baggage: flight?.baggage ?? null,
+        segments,
       }
     })
     const firstLeg = rawLegs[0]
