@@ -1,0 +1,37 @@
+.active {
+  color: hsl(var(--muted-foreground));
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @supports (background-clip: text) or (-webkit-background-clip: text) {
+    .active {
+      /* A narrow highlight travels over the entire label, then starts again. */
+      background-image: linear-gradient(
+        100deg,
+        hsl(var(--muted-foreground)) 40%,
+        hsl(var(--foreground)) 50%,
+        hsl(var(--muted-foreground)) 60%
+      );
+      background-size: 250% 100%;
+      background-position: 100% 0;
+      background-clip: text;
+      -webkit-background-clip: text;
+      color: transparent;
+      animation: progress-shine 2.4s linear infinite;
+    }
+  }
+}
+
+@keyframes progress-shine {
+  to {
+    background-position: 0% 0;
+  }
+}
+
+@media (forced-colors: active) {
+  .active {
+    animation: none;
+    background: none;
+    color: CanvasText;
+  }
+}

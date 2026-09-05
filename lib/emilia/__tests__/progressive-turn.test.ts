@@ -61,31 +61,31 @@ describe("BFF progress normalization", () => {
 
 describe("real runtime stages", () => {
   it.each([
-    ["context_loading", "Revisando el contexto de la conversación…"],
-    ["parsing", "Interpretando tu pedido…"],
-    ["routing", "Definiendo qué buscar…"],
-    ["state_preparation", "Organizando los resultados…"],
-    ["context_persistence", "Guardando los resultados de tu búsqueda…"],
-    ["finalizing", "Finalizando la respuesta…"],
-    ["unknown", "Esperando una actualización de Emilia…"],
+    ["context_loading", "Retomando el hilo de lo que veníamos planeando…"],
+    ["parsing", "Conectando los detalles de tu próximo viaje…"],
+    ["routing", "Trazando el rumbo de la búsqueda…"],
+    ["state_preparation", "Dándole forma a lo que encontré…"],
+    ["context_persistence", "Guardando los hallazgos de este recorrido…"],
+    ["finalizing", "Dando los últimos toques a tu respuesta…"],
+    ["unknown", "Sigo pendiente de las novedades de tu búsqueda…"],
   ])("renders %s from the reported stage", (stage, text) => {
     expect(applyEmiliaTurnUpdate([], "job-1", { job_id: "job-1", status: "processing", stage })[0].text).toBe(text)
   })
 
   it("advances the stage without replacing an unchanged snapshot or its cards", () => {
     const messages = applyEmiliaTurnUpdate([], "job-1", { ...partial, stage: "provider_search" } as any)
-    expect(messages[0].text).toBe("Ya tenés vuelos. Sigo buscando hoteles…")
+    expect(messages[0].text).toBe("Los vuelos ya están a la vista. Voy por los hoteles…")
     const next = applyEmiliaTurnUpdate(messages, "job-1", { ...partial, stage: "context_persistence" } as any)
-    expect(next[0].text).toBe("Guardando los resultados de tu búsqueda…")
+    expect(next[0].text).toBe("Guardando los hallazgos de este recorrido…")
     expect(next[0].cards).toBe(messages[0].cards)
     expect(next[0].id).toBe(messages[0].id)
     expect(applyEmiliaTurnUpdate(next, "job-1", { ...partial, stage: "provider_search", progress: { ...progress, version: 101 } } as any)).toBe(next)
   })
 
   it("distinguishes sending from a confirmed queue and does not guess requested products", () => {
-    expect(applyEmiliaTurnUpdate([], "client", { status: "queued" })[0].text).toBe("Enviando tu pedido…")
-    expect(applyEmiliaTurnUpdate([], "client", { status: "queued", job_id: "job" })[0].text).toBe("Tu pedido está en espera…")
-    expect(applyEmiliaTurnUpdate([], "client", { status: "processing", job_id: "job", stage: "provider_search" })[0].text).toBe("Consultando disponibilidad con los proveedores…")
+    expect(applyEmiliaTurnUpdate([], "client", { status: "queued" })[0].text).toBe("Tu próxima búsqueda está en camino…")
+    expect(applyEmiliaTurnUpdate([], "client", { status: "queued", job_id: "job" })[0].text).toBe("Tu pedido está en fila. Enseguida arrancamos…")
+    expect(applyEmiliaTurnUpdate([], "client", { status: "processing", job_id: "job", stage: "provider_search" })[0].text).toBe("Tocando la puerta de los proveedores para consultar disponibilidad…")
   })
 })
 

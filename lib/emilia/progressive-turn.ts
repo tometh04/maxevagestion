@@ -38,30 +38,30 @@ export interface EmiliaTurnUpdate {
 }
 
 function pendingTurnText(status: string | undefined, stage: string | undefined, jobId: string | undefined, progress?: EmiliaProgressView): string {
-  if (!jobId) return "Enviando tu pedido…"
-  if (status === "queued") return "Tu pedido está en espera…"
+  if (!jobId) return "Tu próxima búsqueda está en camino…"
+  if (status === "queued") return "Tu pedido está en fila. Enseguida arrancamos…"
   switch (stage) {
-    case "starting": return "Iniciando tu pedido…"
-    case "identity_verified": return "Abriendo tu conversación…"
-    case "context_loading": return "Revisando el contexto de la conversación…"
-    case "parsing": return "Interpretando tu pedido…"
-    case "routing": return "Definiendo qué buscar…"
-    case "state_preparation": return "Organizando los resultados…"
-    case "context_persistence": return "Guardando los resultados de tu búsqueda…"
-    case "finalizing": return "Finalizando la respuesta…"
+    case "starting": return "Poniendo tu búsqueda en marcha…"
+    case "identity_verified": return "Abriendo el mapa de nuestra conversación…"
+    case "context_loading": return "Retomando el hilo de lo que veníamos planeando…"
+    case "parsing": return "Conectando los detalles de tu próximo viaje…"
+    case "routing": return "Trazando el rumbo de la búsqueda…"
+    case "state_preparation": return "Dándole forma a lo que encontré…"
+    case "context_persistence": return "Guardando los hallazgos de este recorrido…"
+    case "finalizing": return "Dando los últimos toques a tu respuesta…"
     case "provider_search": {
       const products = progress?.products
-      if (!products) return "Consultando disponibilidad con los proveedores…"
+      if (!products) return "Tocando la puerta de los proveedores para consultar disponibilidad…"
       const flightsPending = products.flights === "searching"
       const hotelsPending = products.hotels === "searching"
-      if (flightsPending && hotelsPending) return "Buscando vuelos y hoteles…"
+      if (flightsPending && hotelsPending) return "Explorando cómo llegar y dónde quedarse…"
       if (hotelsPending) return products.flights === "available"
-        ? "Ya tenés vuelos. Sigo buscando hoteles…" : "Buscando hoteles…"
+        ? "Los vuelos ya están a la vista. Voy por los hoteles…" : "Buscando hoteles para tu próxima parada…"
       if (flightsPending) return products.hotels === "available"
-        ? "Ya tenés hoteles. Sigo buscando vuelos…" : "Buscando vuelos…"
-      return "Reuniendo los resultados…"
+        ? "Los hoteles ya están a la vista. Voy por los vuelos…" : "Explorando vuelos para tu próximo destino…"
+      return "Juntando las piezas de tu búsqueda…"
     }
-    default: return "Esperando una actualización de Emilia…"
+    default: return "Sigo pendiente de las novedades de tu búsqueda…"
   }
 }
 

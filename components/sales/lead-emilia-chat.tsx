@@ -17,6 +17,7 @@ import { generateClientId } from "@/lib/emilia/utils"
 import { EmiliaJobError, waitForEmiliaJob } from "@/lib/emilia/async-turn"
 import { applyEmiliaTurnUpdate, interruptEmiliaTurn, type EmiliaChatMessage } from "@/lib/emilia/progressive-turn"
 import { ProductSearchStatus } from "@/components/emilia/product-search-status"
+import progressStyles from "@/components/emilia/progress-text.module.css"
 import {
   filterFlights,
   filterHotels,
@@ -1190,7 +1191,9 @@ export function LeadEmiliaChat({
                   85% serían ~1080px — ilegible para una línea de texto. */}
               <div className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
                 <div className={`max-w-[min(85%,42rem)] rounded-lg px-3 py-2 text-sm ${m.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
-                  {m.text}
+                  <span className={m.role === "assistant" && (m.jobStatus === "queued" || m.jobStatus === "processing") ? progressStyles.active : undefined}>
+                    {m.text}
+                  </span>
                   {m.meta?.missing_fields && m.meta.missing_fields.length > 0 && (
                     <ul className="mt-2 text-xs list-disc list-inside opacity-80">
                       {m.meta.missing_fields.map((f, idx) => <li key={idx}>{f}</li>)}

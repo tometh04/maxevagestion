@@ -68,7 +68,7 @@ async function send() {
 it("hydrates hotels without remounting the flight or losing selection and filters", async () => {
   const view = chat()
   await send()
-  expect(screen.getByText("Buscando hoteles…")).toBeInTheDocument()
+  expect(screen.getByText("Buscando hoteles para tu próxima parada…")).toBeInTheDocument()
   const flightNode = screen.getByTestId("flight-card")
   fireEvent.click(screen.getByText("Seleccionar vuelo"))
   fireEvent.click(screen.getByText("Ver detalle del vuelo"))
