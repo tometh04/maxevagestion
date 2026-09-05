@@ -260,6 +260,9 @@ export function LeadDetailDialog({
   useScreenView("lead-detail", open)
   const canWriteLeads = useCan("leads", "write")
   const whaControlAvailable = useWhaControlAvailable()
+  const canDeleteQuotations = useCan("leads", "delete")
+  const [quotationToDelete, setQuotationToDelete] = useState<{ id: string; quotation_number: string } | null>(null)
+  const [deletingQuotation, setDeletingQuotation] = useState(false)
   const [convertDialogOpen, setConvertDialogOpen] = useState(false)
   const [quotationDialogOpen, setQuotationDialogOpen] = useState(false)
   const [editingQuotationId, setEditingQuotationId] = useState<string | null>(null)
@@ -370,6 +373,26 @@ export function LeadDetailDialog({
       if (!options.silent) toast.error("Error al cargar cotizaciones")
     } finally {
       setLoadingQuotations(false)
+    }
+  }
+
+  const handleDeleteQuotation = async () => {
+    if (!quotationToDelete || !canDeleteQuotations || deletingQuotation) return
+    const quotationId = quotationToDelete.id
+    setDeletingQuotation(true)
+    try {
+      const response = await fetch(`/api/quotations/${quotationId}`, { method: "DELETE" })
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error(data.error || "No se pudo eliminar la cotización")
+      }
+      setQuotations((current) => current.filter((quotation) => quotation.id !== quotationId))
+      setQuotationToDelete(null)
+      toast.success("Cotización eliminada")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo eliminar la cotización")
+    } finally {
+      setDeletingQuotation(false)
     }
   }
 
@@ -1139,6 +1162,19 @@ export function LeadDetailDialog({
                           >
                             <Download className="h-3.5 w-3.5" />
                           </Button>
+                          {canDeleteQuotations && q.status === "DRAFT" && !documentReady && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 shrink-0 p-0 text-destructive hover:text-destructive"
+                              onClick={() => setQuotationToDelete(q)}
+                              disabled={deletingQuotation}
+                              title="Eliminar cotización"
+                              aria-label={`Eliminar cotización ${q.quotation_number}`}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
                         </div>
                       </div>
                     )
@@ -1634,6 +1670,36 @@ export function LeadDetailDialog({
           return document
         } : undefined}
       />
+
+      <AlertDialog
+        open={quotationToDelete !== null}
+        onOpenChange={(isOpen) => {
+          if (!isOpen && !deletingQuotation) setQuotationToDelete(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar cotización?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se eliminará permanentemente la cotización <strong>{quotationToDelete?.quotation_number}</strong>.
+              Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingQuotation}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault()
+                void handleDeleteQuotation()
+              }}
+              disabled={deletingQuotation}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deletingQuotation ? "Eliminando..." : "Eliminar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Dialog de confirmación de eliminación */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

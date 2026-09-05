@@ -1,7 +1,10 @@
-import { fireEvent, render, screen } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { toast } from "sonner"
 import { PermissionsProvider } from "@/components/permissions/permissions-provider"
 import { buildDefaultMatrix } from "@/lib/permissions/resolved"
 import { LeadDetailDialog } from "../lead-detail-dialog"
+
+jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn() } }))
 
 jest.mock("@/components/ui/dropdown-menu", () => ({
   DropdownMenu: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -160,5 +163,88 @@ describe("permisos para cotizar desde el detalle del lead", () => {
     expect(screen.getAllByText("COT-UNCONFIRMED")).toHaveLength(1)
     fireEvent.click(convert[1])
     expect(await screen.findByRole("heading", { name: "Convertir y reservar con Delfos" })).toBeInTheDocument()
+  })
+})
+
+describe("eliminar cotizaciones desde el lead", () => {
+  const originalFetch = global.fetch
+  const quotation = {
+    id: "quote-1", quotation_number: "COT-001", status: "DRAFT",
+    total_amount: 100, currency: "USD", destination: "Cancún",
+    created_at: "2026-09-05T10:00:00.000Z", valid_until: null, public_token: null,
+    active_document_id: null,
+  }
+
+  function setup({ canDelete = true, status = "DRAFT", documentId = null as string | null } = {}) {
+    const deleteRequest = jest.fn().mockResolvedValue({ ok: true })
+    global.fetch = jest.fn((url, options) => {
+      if (options?.method === "DELETE") return deleteRequest()
+      if (String(url).startsWith("/api/quotations?")) {
+        return Promise.resolve({ ok: true, json: async () => ({
+          data: [{ ...quotation, status, active_document_id: documentId }],
+        }) })
+      }
+      return new Promise(() => {})
+    }) as typeof fetch
+    const matrix = buildDefaultMatrix("ADMIN")
+    matrix.leads = { ...matrix.leads, delete: canDelete }
+    render(
+      <PermissionsProvider role="ADMIN" matrix={matrix}>
+        <LeadDetailDialog lead={LEAD} open onOpenChange={jest.fn()} />
+      </PermissionsProvider>
+    )
+    return deleteRequest
+  }
+
+  afterEach(() => {
+    global.fetch = originalFetch
+    jest.clearAllMocks()
+  })
+
+  it.each([
+    { canDelete: false },
+    { status: "SENT" },
+    { status: "ACCEPTED" },
+    { documentId: "document-1" },
+  ])("respeta permisos y cotizaciones protegidas: %j", async (options) => {
+    setup(options)
+    await screen.findByText("COT-001")
+    expect(screen.queryByRole("button", { name: "Eliminar cotización COT-001" })).not.toBeInTheDocument()
+  })
+
+  it("permite cancelar sin borrar", async () => {
+    const deleteRequest = setup()
+    fireEvent.click(await screen.findByRole("button", { name: "Eliminar cotización COT-001" }))
+    expect(screen.getByRole("alertdialog")).toHaveTextContent("COT-001")
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }))
+    expect(deleteRequest).not.toHaveBeenCalled()
+    expect(screen.getByText("COT-001")).toBeInTheDocument()
+  })
+
+  it("confirma el borrado y actualiza el listado sin recargar", async () => {
+    setup()
+    fireEvent.click(await screen.findByRole("button", { name: "Eliminar cotización COT-001" }))
+    fireEvent.click(screen.getByRole("button", { name: "Eliminar", exact: true }))
+    await waitFor(() => expect(screen.queryByText("COT-001")).not.toBeInTheDocument())
+    expect(global.fetch).toHaveBeenCalledWith("/api/quotations/quote-1", { method: "DELETE" })
+    expect(screen.getByText("Cotizaciones (0)")).toBeInTheDocument()
+    expect(toast.success).toHaveBeenCalledWith("Cotización eliminada")
+  })
+
+  it("bloquea envíos repetidos y conserva la cotización ante un conflicto", async () => {
+    const deleteRequest = setup()
+    let finish!: (response: unknown) => void
+    deleteRequest.mockReturnValue(new Promise((resolve) => { finish = resolve }))
+    fireEvent.click(await screen.findByRole("button", { name: "Eliminar cotización COT-001" }))
+    fireEvent.click(screen.getByRole("button", { name: "Eliminar", exact: true }))
+    expect(screen.getByRole("button", { name: "Eliminando..." })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Cancelar" })).toBeDisabled()
+    finish({ ok: false, json: async () => ({ error: "La cotización cambió y ya no se puede eliminar" }) })
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("La cotización cambió y ya no se puede eliminar"))
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Eliminar", exact: true })).toBeEnabled()
+    expect(deleteRequest).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }))
+    expect(screen.getByText("COT-001")).toBeInTheDocument()
   })
 })
