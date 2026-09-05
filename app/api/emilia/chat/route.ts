@@ -2,7 +2,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { createAdminClient, createServerClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 import { generateClientId, generateRequestIdFromClientId } from "@/lib/emilia/utils"
-import { persistEmiliaTurnFailure, persistEmiliaTurnResult } from "@/lib/emilia/turn-result"
+import { normalizeEmiliaProgress, persistEmiliaTurnFailure, persistEmiliaTurnResult } from "@/lib/emilia/turn-result"
 import {
   canAccessEmiliaLeadAgency,
   resolveEmiliaOrganizationAccess,
@@ -234,6 +234,8 @@ export async function POST(request: Request) {
         request_id: data.request_id || requestId,
         status: data.status,
         stage: data.stage,
+        attempt: data.attempt,
+        ...normalizeEmiliaProgress(data),
         poll_after_ms: data.poll_after_ms || 1500,
       }, { status: 202 })
     }
@@ -246,6 +248,7 @@ export async function POST(request: Request) {
         requestId,
         jobId: data.job_id,
         message: failureMessage,
+        data,
       })
       await supabase
         .from("messages")

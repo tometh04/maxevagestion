@@ -1,3 +1,5 @@
+import type { EmiliaTurnUpdate } from "./progressive-turn"
+
 export interface EmiliaQueuedTurn {
   job_id: string
   request_id: string
@@ -47,19 +49,28 @@ export async function waitForEmiliaJob({
   pollAfterMs = 1500,
   maxWaitMs = 360_000,
   signal,
+  onProgress,
+  immediate = false,
 }: {
   jobId: string
   conversationId: string
   pollAfterMs?: number
   maxWaitMs?: number
   signal?: AbortSignal
+  onProgress?: (update: EmiliaTurnUpdate) => void
+  immediate?: boolean
 }): Promise<any> {
   const startedAt = Date.now()
   let delayMs = Math.min(Math.max(pollAfterMs, 500), 5000)
   let consecutiveTransientFailures = 0
+  let firstPoll = true
+  let lastProgressVersion = 0
+  let lastAttempt = 0
 
   while (Date.now() - startedAt < maxWaitMs) {
-    await wait(delayMs, signal)
+    if (!firstPoll || !immediate) await wait(delayMs, signal)
+    firstPoll = false
+    if (signal?.aborted) throw abortError()
     let response: Response
     try {
       response = await fetch(
@@ -99,6 +110,15 @@ export async function waitForEmiliaJob({
       throw new EmiliaJobError(message, "http", response.status)
     }
     consecutiveTransientFailures = 0
+    if (signal?.aborted) throw abortError()
+    if (data.progress && Number(data.progress.version) > lastProgressVersion) {
+      lastProgressVersion = Number(data.progress.version)
+      lastAttempt = Number(data.attempt) || Number(data.progress.attempt)
+      onProgress?.({ ...data, status: "processing" })
+    } else if (Number(data.attempt) > lastAttempt || lastProgressVersion === 0) {
+      lastAttempt = Number(data.attempt) || 0
+      if (data.status === "queued" || data.status === "processing") onProgress?.(data)
+    }
     if (data.status === "failed") {
       throw new EmiliaJobError(
         data?.error?.message || data?.message || "Emilia no pudo completar la búsqueda",

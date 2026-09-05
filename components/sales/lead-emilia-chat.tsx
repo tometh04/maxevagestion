@@ -15,6 +15,8 @@ import { HotelResultCard } from "@/components/emilia/hotel-result-card"
 import { buildQuotationPayload, type EmiliaFlight, type EurovipsHotel } from "@/lib/emilia/quotation-mapper"
 import { generateClientId } from "@/lib/emilia/utils"
 import { EmiliaJobError, waitForEmiliaJob } from "@/lib/emilia/async-turn"
+import { applyEmiliaTurnUpdate, interruptEmiliaTurn, type EmiliaChatMessage } from "@/lib/emilia/progressive-turn"
+import { ProductSearchStatus } from "@/components/emilia/product-search-status"
 import {
   filterFlights,
   filterHotels,
@@ -421,29 +423,6 @@ function CardCarousel({ count, ariaLabel, children }: CardCarouselProps) {
 }
 
 // -------------------------------------------------------------------------
-// TypingIndicator — burbuja del lado del asistente (opuesto al mensaje del
-// usuario) con tres puntos que laten suave mientras Emilia "piensa", entre el
-// envío y la respuesta. Motion sutil (opacity + translateY, sin bounce) y
-// respeta prefers-reduced-motion.
-// -------------------------------------------------------------------------
-function TypingIndicator() {
-  return (
-    <div className="flex justify-start" role="status" aria-label="Emilia está pensando">
-      <style>{`
-        @keyframes emilia-typing{0%,70%,100%{opacity:.25;transform:translateY(0)}35%{opacity:1;transform:translateY(-3px)}}
-        .emilia-typing-dot{animation:emilia-typing 1.2s ease-in-out infinite}
-        @media (prefers-reduced-motion: reduce){.emilia-typing-dot{animation:none;opacity:.5}}
-      `}</style>
-      <div className="bg-muted rounded-lg px-3.5 py-3 inline-flex items-center gap-1">
-        <span className="emilia-typing-dot h-1.5 w-1.5 rounded-full bg-foreground/45" style={{ animationDelay: "0s" }} />
-        <span className="emilia-typing-dot h-1.5 w-1.5 rounded-full bg-foreground/45" style={{ animationDelay: "0.16s" }} />
-        <span className="emilia-typing-dot h-1.5 w-1.5 rounded-full bg-foreground/45" style={{ animationDelay: "0.32s" }} />
-      </div>
-    </div>
-  )
-}
-
-// -------------------------------------------------------------------------
 // EmptySearchNotice — cuando Emilia devuelve un turno de "search_results" pero
 // SIN opciones (ej. corrió la búsqueda con origen vacío), mostramos qué entendió
 // y cómo reintentar, en vez de dejar solo el texto suelto del asistente.
@@ -489,7 +468,7 @@ function EmptySearchNotice({ meta }: { meta: any }) {
   )
 }
 
-interface Message {
+interface Message extends EmiliaChatMessage {
   role: "user" | "assistant"
   text: string
   cards?: {
@@ -618,7 +597,7 @@ export function LeadEmiliaChat({
     return -1
   }, [messages, activeSearchContextId, latestSearchMessageIndex])
   const activeResultKey = activeSearchContextId && latestSearchMessageIndex >= 0
-    ? `${activeSearchContextId}:${latestSearchMessageIndex}`
+    ? `${activeSearchContextId}:${latestSearchMessageIndex}:${messages[latestSearchMessageIndex].attempt || 1}`
     : activeResultMessageIndex >= 0
       ? `legacy:${activeResultMessageIndex}`
     : null
@@ -718,7 +697,7 @@ export function LeadEmiliaChat({
 
         if (conv?.id) {
           setConversationId(conv.id)
-          const count = await loadHistory(conv.id)
+          const count = await loadHistory(conv.id, () => cancelled)
           // Conversación vacía (abriste y cerraste sin enviar) → re-sugerir el prompt.
           if (count === 0 && !cancelled) {
             void applySuggestedPrompt(false, () => cancelled)
@@ -781,14 +760,24 @@ export function LeadEmiliaChat({
   }
 
   // Devuelve la cantidad de mensajes cargados (para decidir si re-sugerir prompt).
-  async function loadHistory(convId: string): Promise<number> {
+  async function loadHistory(convId: string, isCancelled = () => false): Promise<number> {
     try {
       const res = await fetch(`/api/emilia/conversations/${convId}`)
+      if (isCancelled()) return 0
       if (res.ok) {
         const json = await res.json()
+        if (isCancelled()) return 0
         const msgs = (json?.messages || []).map((m: any): Message => {
           const md = m.content?.metadata || {}
           return {
+            id: m.id,
+            jobId: md.emilia_job?.job_id,
+            jobStatus: m.role === "assistant" ? md.emilia_job?.status : undefined,
+            progress: md.progress && md.emilia_job?.status === "failed" ? {
+              ...md.progress,
+              products: Object.fromEntries(Object.entries(md.progress.products || {}).map(([product, state]) =>
+                [product, state === "searching" ? "failed" : state])),
+            } : md.progress,
             role: m.role,
             text: m.content?.text || "",
             cards: m.content?.cards,
@@ -811,17 +800,33 @@ export function LeadEmiliaChat({
           pendingJobControllerRef.current?.abort()
           pendingJobControllerRef.current = controller
           setSending(true)
+          setMessages(prev => applyEmiliaTurnUpdate(prev, pendingJob.job_id, {
+            job_id: pendingJob.job_id, status: "processing",
+          }))
           void waitForEmiliaJob({
             jobId: pendingJob.job_id,
             conversationId: convId,
             signal: controller.signal,
-          }).then(() => loadHistory(convId)).catch((error) => {
-            if (error?.name !== "AbortError") {
-              toast.error(error?.message || "No se pudo retomar la búsqueda")
+            immediate: true,
+            onProgress: update => {
+              if (pendingJobControllerRef.current === controller && !controller.signal.aborted) {
+                setMessages(prev => applyEmiliaTurnUpdate(prev, pendingJob.job_id, update))
+              }
+            },
+          }).then(data => {
+            if (pendingJobControllerRef.current === controller && !controller.signal.aborted) {
+              setMessages(prev => applyEmiliaTurnUpdate(prev, pendingJob.job_id, data))
+            }
+          }).catch((error) => {
+            if (error?.name !== "AbortError" && pendingJobControllerRef.current === controller) {
+              setMessages(prev => interruptEmiliaTurn(prev, pendingJob.job_id, error.message,
+                error instanceof EmiliaJobError && error.kind === "job"))
             }
           }).finally(() => {
-            if (pendingJobControllerRef.current === controller) pendingJobControllerRef.current = null
-            setSending(false)
+            if (pendingJobControllerRef.current === controller) {
+              pendingJobControllerRef.current = null
+              setSending(false)
+            }
           })
         }
         return msgs.length
@@ -836,9 +841,10 @@ export function LeadEmiliaChat({
     if (!input.trim() || !conversationId || sending) return
     const text = input.trim()
     setInput("")
-    setMessages(prev => [...prev, { role: "user", text }])
     setSending(true)
     const clientId = generateClientId()
+    followBottomRef.current = true
+    setMessages(prev => applyEmiliaTurnUpdate([...prev, { id: `user_${clientId}`, role: "user", text }], clientId, { status: "queued" }))
     const controller = new AbortController()
     pendingJobControllerRef.current?.abort()
     pendingJobControllerRef.current = controller
@@ -857,40 +863,32 @@ export function LeadEmiliaChat({
         signal: controller.signal,
       })
       const initialData = await res.json()
+      if (controller.signal.aborted || pendingJobControllerRef.current !== controller) return
       if (!res.ok) {
         const errText = initialData?.error?.message || initialData?.error
           || (res.status === 429 ? "Demasiadas búsquedas. Esperá unos segundos." : "No pude buscar ahora.")
-        setMessages(prev => [...prev, { role: "assistant", text: errText }])
+        setMessages(prev => interruptEmiliaTurn(prev, clientId, errText, true))
         return
       }
+      setMessages(prev => applyEmiliaTurnUpdate(prev, clientId, initialData))
       const data = initialData.status === "queued" || initialData.status === "processing"
         ? await waitForEmiliaJob({
           jobId: initialData.job_id,
           conversationId,
           pollAfterMs: initialData.poll_after_ms,
           signal: controller.signal,
+          onProgress: update => {
+            if (pendingJobControllerRef.current === controller && !controller.signal.aborted) {
+              setMessages(prev => applyEmiliaTurnUpdate(prev, clientId, update))
+            }
+          },
         })
         : initialData
-      if (data.status === "incomplete") {
-        setMessages(prev => [...prev, {
-          role: "assistant",
-          text: data.message || "Necesito más información.",
-          meta: { missing_fields: data.missing_fields || [] },
-        }])
-        return
+      if (!controller.signal.aborted && pendingJobControllerRef.current === controller) {
+        setMessages(prev => applyEmiliaTurnUpdate(prev, clientId, data))
       }
-      setMessages(prev => [...prev, {
-        role: "assistant",
-        text: data?.assistant_message?.content?.text || "Acá tenés los resultados:",
-        cards: {
-          flights: data?.results?.flights,
-          hotels: data?.results?.hotels,
-          requestType: data?.requestType,
-        },
-        meta: data?.assistant_message?.meta,
-      }])
     } catch (err: any) {
-      if (err?.name === "AbortError") return
+      if (err?.name === "AbortError" || pendingJobControllerRef.current !== controller) return
       const text = err instanceof EmiliaJobError
         ? err.kind === "job" || err.kind === "http"
           ? err.message
@@ -898,10 +896,13 @@ export function LeadEmiliaChat({
             ? err.message
             : `Error de conexión: ${err.message}`
         : `No pude completar la búsqueda: ${err?.message || "error inesperado"}`
-      setMessages(prev => [...prev, { role: "assistant", text }])
+      setMessages(prev => interruptEmiliaTurn(prev, clientId, text,
+        err instanceof EmiliaJobError && err.kind === "job"))
     } finally {
-      if (pendingJobControllerRef.current === controller) pendingJobControllerRef.current = null
-      setSending(false)
+      if (pendingJobControllerRef.current === controller) {
+        pendingJobControllerRef.current = null
+        setSending(false)
+      }
     }
   }
 
@@ -981,14 +982,15 @@ export function LeadEmiliaChat({
     })
   }
 
-  // Auto-scroll al final cuando llegan mensajes nuevos o cards de resultados
+  // Only follow updates while the user is already reading at the bottom.
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
+  const followBottomRef = useRef(true)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
-  }, [messages.length, sending])
+    if (followBottomRef.current) messagesEndRef.current?.scrollIntoView({ behavior: "auto", block: "end" })
+  }, [messages])
 
   async function handleGenerate() {
-    if (generating) return
+    if (generating || sending || (lastResults?.jobStatus && lastResults.jobStatus !== "completed")) return
     // Una cotización sólo puede usar cards del último turno de resultados de
     // la búsqueda activa. Nunca mezclamos opciones de destinos/iteraciones
     // históricas aunque coincidan sus ids.
@@ -1112,6 +1114,7 @@ export function LeadEmiliaChat({
   const canGenerate = (selectedFlightId !== null || selectedHotels.size > 0)
     && !generating
     && !sending
+    && (!lastResults?.jobStatus || lastResults.jobStatus === "completed")
 
   if (loading) {
     return (
@@ -1148,7 +1151,10 @@ export function LeadEmiliaChat({
       </div>
 
       {/* Mensajes */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4 space-y-3">
+      <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4 space-y-3" onScroll={event => {
+        const element = event.currentTarget
+        followBottomRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 100
+      }}>
         {messages.length === 0 && (
           <div className="py-6">
             <EmiliaPromptGuide />
@@ -1172,7 +1178,7 @@ export function LeadEmiliaChat({
           const flightFilterOptions = getFlightFilterOptions(mFlights)
           const hotelFilterOptions = getHotelFilterOptions(mHotels)
           return (
-            <div key={i} className="space-y-2">
+            <div key={m.id || i} className="space-y-2" data-emilia-job={m.jobId}>
               {isNewSearchBoundary && (
                 <div className="flex items-center gap-2 py-1 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
                   <span className="h-px flex-1 bg-border" />
@@ -1204,7 +1210,7 @@ export function LeadEmiliaChat({
               )}
 
               {/* Resultados de ESTE mensaje, inline debajo (flujo de chat real) */}
-              {hasCards && (
+              {(hasCards || m.progress) && (
                 <div className={cn(
                   "space-y-2",
                   !isActiveResultTurn && "opacity-60 [&_button]:pointer-events-none [&_button]:cursor-not-allowed"
@@ -1221,6 +1227,7 @@ export function LeadEmiliaChat({
                     </div>
                   )}
 
+                  <ProductSearchStatus product="flights" state={m.progress?.products.flights || m.meta?.productStates?.flights} />
                   {mFlights.length > 0 && (
                     <div>
                       <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-widest text-foreground/60 mb-2">
@@ -1253,6 +1260,7 @@ export function LeadEmiliaChat({
                     </div>
                   )}
 
+                  <ProductSearchStatus product="hotels" state={m.progress?.products.hotels || m.meta?.productStates?.hotels} />
                   {mHotels.length > 0 && (
                     <div className="mt-1">
                       <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-widest text-foreground/60 mb-2">
@@ -1292,16 +1300,13 @@ export function LeadEmiliaChat({
 
               {/* Turno de búsqueda SIN resultados: en vez de dejar solo el texto
                   de Emilia, mostramos qué entendió + cómo reintentar. */}
-              {!hasCards && m.role === "assistant" && m.meta?.messageType
+              {!hasCards && !m.progress && m.jobStatus !== "processing" && m.jobStatus !== "queued" && m.role === "assistant" && m.meta?.messageType
                 && ["search_results", "no_results"].includes(m.meta.messageType) && (
                 <EmptySearchNotice meta={m.meta} />
               )}
             </div>
           )
         })}
-
-        {/* Emilia "pensando" mientras esperamos la respuesta del turno */}
-        {sending && <TypingIndicator />}
 
         {/* Sentinela para auto-scroll al final */}
         <div ref={messagesEndRef} />

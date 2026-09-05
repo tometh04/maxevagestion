@@ -1,4 +1,6 @@
 import { buildAssistantContent, generateClientId, generateTitle } from "@/lib/emilia/utils"
+import type { EmiliaProgressView } from "./progressive-turn"
+import { z } from "zod"
 import {
   sanitizeEmiliaMetaForStorage,
   transformCanonicalFlights,
@@ -20,6 +22,41 @@ interface PersistTurnResultInput {
 
 function isDuplicate(error: any) {
   return error?.code === "23505" || error?.message?.includes("duplicate") || error?.message?.includes("unique")
+}
+
+const progressSchema = z.object({
+  version: z.number().int().positive(),
+  attempt: z.number().int().positive(),
+  requested_products: z.array(z.enum(["flights", "hotels"])).min(1).max(2),
+  results: z.object({ result_sets: z.array(z.object({
+    product: z.enum(["flights", "hotels"]),
+    status: z.enum(["available", "empty", "failed"]),
+    data: z.array(z.unknown()),
+  }).passthrough()) }).passthrough(),
+})
+
+/** Public snapshots use exactly the same card and price normalization as final turns. */
+export function normalizeEmiliaProgress(data: any) {
+  const parsed = progressSchema.safeParse(data?.progress)
+  if (!parsed.success || parsed.data.attempt !== data.attempt) return undefined
+  const snapshot = parsed.data
+  const turn = {
+    schema_version: "emilia.turn.v1",
+    metadata: { turn_id: `turn_${data.job_id}` },
+    outcome: { type: "search_results", results: snapshot.results },
+  }
+  const normalized = normalizeCanonicalTurn(turn)
+  const products: EmiliaProgressView["products"] = {}
+  for (const product of snapshot.requested_products) {
+    const set = snapshot.results.result_sets.find(set => set.product === product)
+    products[product] = set?.status || "searching"
+  }
+  return {
+    progress: { version: snapshot.version, attempt: snapshot.attempt, products },
+    results: { flights: normalized.flights, hotels: normalized.hotels },
+    requestType: snapshot.requested_products.length === 2 ? "combined" : snapshot.requested_products[0],
+    assistant_message: { meta: normalized.assistantMeta },
+  }
 }
 
 interface NormalizedEmiliaTurn {
@@ -279,6 +316,7 @@ function normalizeCanonicalTurn(data: any): NormalizedEmiliaTurn {
     assistantText: text,
     assistantMeta: {
       messageType: outcome.type || "message",
+      productStates: Object.fromEntries(resultSets.map(set => [set.product, set.status])),
       ...(parsedRequest ? { originalRequest: parsedRequest, parsedRequest } : {}),
       ...(Object.keys(turnSemantics).length > 0 ? { turnSemantics } : {}),
       canonicalResult: outcome.results
@@ -480,19 +518,26 @@ export async function persistEmiliaTurnFailure({
   requestId,
   jobId,
   message,
+  data,
 }: {
   supabase: any
   conversationId: string
   requestId: string
   jobId: string
   message: string
+  data?: any
 }) {
+  const preview = data ? normalizeEmiliaProgress(data) : undefined
   const { error } = await supabase.from("messages").insert({
     conversation_id: conversationId,
     role: "assistant",
     content: {
       text: message,
-      metadata: { emilia_job: { job_id: jobId, request_id: requestId, status: "failed" } },
+      ...(preview ? { cards: { ...preview.results, requestType: preview.requestType } } : {}),
+      metadata: {
+        emilia_job: { job_id: jobId, request_id: requestId, status: "failed" },
+        ...(preview ? { emilia_meta: preview.assistant_message.meta, progress: preview.progress } : {}),
+      },
     },
     client_id: jobId,
     api_request_id: requestId,

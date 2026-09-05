@@ -6,7 +6,7 @@ import {
   resolveEmiliaOrganizationAccess,
   resolveLeadEmiliaAccess,
 } from "@/lib/emilia/access"
-import { persistEmiliaTurnFailure, persistEmiliaTurnResult } from "@/lib/emilia/turn-result"
+import { normalizeEmiliaProgress, persistEmiliaTurnFailure, persistEmiliaTurnResult } from "@/lib/emilia/turn-result"
 import { z } from "zod"
 import { resolveAgencyEmiliaCredential } from "@/lib/emilia/agency-credential"
 import { resolveAgencyPermissionScope } from "@/lib/permissions/agency-scope-server"
@@ -166,7 +166,7 @@ export async function GET(
     }
 
     const data = await response.json().catch(() => ({}))
-    if (!response.ok) {
+    if (!response.ok && data.status !== "failed") {
       return NextResponse.json(
         { error: data?.error?.message || "No se pudo consultar la búsqueda de Emilia" },
         { status: response.status }
@@ -202,9 +202,11 @@ export async function GET(
         requestId: data.request_id,
         jobId,
         message,
+        data,
       })
       await updateUserJobStatus(supabase, conversationId, data.request_id, jobId, "failed")
-      return NextResponse.json({ status: "failed", job_id: jobId, error: { message } })
+      return NextResponse.json({ status: "failed", job_id: jobId, attempt: data.attempt,
+        ...normalizeEmiliaProgress(data), error: { message } })
     }
 
     return NextResponse.json({
@@ -212,6 +214,8 @@ export async function GET(
       request_id: data.request_id,
       status: data.status,
       stage: data.stage,
+      attempt: data.attempt,
+      ...normalizeEmiliaProgress(data),
       poll_after_ms: data.poll_after_ms || 1500,
     })
   } catch (error: any) {
