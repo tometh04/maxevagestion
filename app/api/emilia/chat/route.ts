@@ -18,10 +18,11 @@ const chatRequestSchema = z.object({
   message: z.string().trim().min(1).max(4000),
   conversationId: z.string().uuid(),
   clientId: z.string().uuid().optional(),
+  // La geolocalización del lead devuelve null si no hay una ciudad disponible.
   defaultOrigin: z.object({
     city: z.string().trim().min(1).max(100),
     country: z.string().trim().min(1).max(100).optional(),
-  }).optional(),
+  }).nullish(),
 })
 
 function getAsyncEmiliaUrl() {
