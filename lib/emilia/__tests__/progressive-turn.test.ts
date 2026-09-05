@@ -88,3 +88,19 @@ describe("real runtime stages", () => {
     expect(applyEmiliaTurnUpdate([], "client", { status: "processing", job_id: "job", stage: "provider_search" })[0].text).toBe("Consultando disponibilidad con los proveedores…")
   })
 })
+
+
+it("keeps API photos attached to their hotel in previews and final cards", () => {
+  const { normalizeEmiliaTurnPayload } = require("../turn-result")
+  const results = { result_sets: [{ product: "hotels", status: "available", query: {}, data: [
+    { id: "hotel-a", name: "A", images: ["https://photos.example/a.jpg"], rooms: [{ id: "room", name: "Standard", price: { amount: 100, currency: "USD" } }] },
+    { id: "hotel-b", name: "B", images: ["https://photos.example/b.jpg", "javascript:alert(1)"], rooms: [{ id: "room", name: "Standard", price: { amount: 100, currency: "USD" } }] },
+    { id: "hotel-c", name: "C", rooms: [{ id: "room", name: "Standard", price: { amount: 100, currency: "USD" } }] },
+  ] }] }
+  const preview = normalizeEmiliaProgress({ job_id: "photos", attempt: 1,
+    progress: { version: 102, attempt: 1, requested_products: ["hotels"], results } })
+  const final = normalizeEmiliaTurnPayload({ schema_version: "emilia.turn.v1", outcome: { type: "search_results", results } })
+  const expected = [["https://photos.example/a.jpg"], ["https://photos.example/b.jpg"], []]
+  expect(preview?.results.hotels?.items.map((hotel: any) => hotel.images)).toEqual(expected)
+  expect(final.hotels?.items.map((hotel: any) => hotel.images)).toEqual(expected)
+})

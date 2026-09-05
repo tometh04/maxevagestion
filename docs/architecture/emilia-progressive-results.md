@@ -52,3 +52,8 @@ El 5 de septiembre de 2026 se aplicó en producción la migración
 `20260905160000_emilia_job_progress` y se desplegó Edge `emilia-turn`.
 El gateway se publicó como `abb93e47`; la validación funcional de producción
 se realiza después de que Railway active gateway y CRM.
+
+Las fotos de hotel viajan en `emilia.hotel-offer.v1.images` como URLs HTTP(S).
+El gateway conserva el campo y el CRM lo mapea al carrusel del mismo hotel,
+tanto en previews como al finalizar. Si el proveedor no envía fotos, se conserva
+el estado sin foto; no se buscan coincidencias por nombre ni se inventan imágenes.
