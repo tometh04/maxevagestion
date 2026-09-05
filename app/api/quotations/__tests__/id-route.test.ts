@@ -210,6 +210,46 @@ describe("PATCH /api/quotations/[id]", () => {
 })
 
 describe("DELETE /api/quotations/[id]", () => {
+  it.each([
+    { error: null, status: 200, body: { success: true } },
+    { error: { code: "23503", message: "quotation parent not found" }, status: 409,
+      body: { error: "La cotización tiene registros relacionados que impiden eliminarla. Contactá a soporte." } },
+    { error: { code: "XX000", message: "private database diagnostic" }, status: 500,
+      body: { error: "No se pudo eliminar la cotización. Intentá nuevamente." } },
+  ])("handles draft deletion without inventing an issued document: $status", async ({ error, status, body }) => {
+    const { TextDecoder, TextEncoder } = require("util")
+    global.TextDecoder = TextDecoder
+    global.TextEncoder = TextEncoder
+    const { Request, Response, Headers } = require("undici")
+    Object.assign(global, { Request, Response, Headers })
+    const { DELETE } = require("../[id]/route")
+    const quote: any = {
+      select: jest.fn(() => quote), eq: jest.fn(() => quote), in: jest.fn(() => quote),
+      delete: jest.fn(() => quote),
+      maybeSingle: jest.fn()
+        .mockResolvedValueOnce({ data: { id: "quote-1", status: "DRAFT", agency_id: "agency-1" }, error: null })
+        .mockResolvedValueOnce({ data: error ? null : { id: "quote-1" }, error }),
+    }
+    const issued: any = {
+      select: jest.fn(() => issued), eq: jest.fn(() => issued), limit: jest.fn(() => issued),
+      maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
+    }
+    ;(getCurrentUser as jest.Mock).mockResolvedValue({ user: {
+      id: "seller-1", email: "seller@example.com", role: "SELLER", roles: ["SELLER"], org_id: "org-1",
+    } })
+    ;(createServerClient as jest.Mock).mockResolvedValue({ from: jest.fn(() => quote) })
+    ;(createAdminClient as jest.Mock).mockReturnValue({
+      from: jest.fn((table: string) => table === "quotations" ? quote : issued),
+    })
+    const response = await DELETE(new Request("http://localhost/api/quotations/quote-1", { method: "DELETE" }),
+      { params: Promise.resolve({ id: "quote-1" }) })
+    expect(response.status).toBe(status)
+    expect(await response.json()).toEqual(body)
+    expect(quote.eq).toHaveBeenCalledWith("org_id", "org-1")
+    expect(quote.eq).toHaveBeenCalledWith("agency_id", "agency-1")
+    expect(quote.eq).toHaveBeenCalledWith("status", "DRAFT")
+  })
+
   beforeEach(() => {
     jest.clearAllMocks()
   })

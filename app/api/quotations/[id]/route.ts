@@ -444,14 +444,16 @@ export async function DELETE(
       .maybeSingle()
 
     if (error?.code === "23503") {
+      console.error("Quotation deletion blocked by related records:", { quotationId: id, error })
       return NextResponse.json(
-        { error: "La cotización ya tiene un documento emitido y debe conservarse como historial" },
+        { error: "La cotización tiene registros relacionados que impiden eliminarla. Contactá a soporte." },
         { status: 409 }
       )
     }
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      console.error("Error deleting quotation:", { quotationId: id, error })
+      return NextResponse.json({ error: "No se pudo eliminar la cotización. Intentá nuevamente." }, { status: 500 })
     }
     if (!deleted) {
       return NextResponse.json(
