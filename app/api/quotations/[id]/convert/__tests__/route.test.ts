@@ -272,7 +272,7 @@ describe("POST /api/quotations/[id]/convert", () => {
 
     expect(response.status).toBe(200)
     expect(enqueueProviderBooking).toHaveBeenCalledWith(expect.objectContaining({ quotationId: "quotation-1", operationId: "operation-1", form: booking }))
-    expect(upsert).toHaveBeenCalledWith(expect.objectContaining({ quotation_id: "quotation-1", remote_job_id: "22222222-2222-4222-8222-222222222222", status: "QUEUED" }), { onConflict: "quotation_id" })
+    expect(upsert).toHaveBeenCalledWith(expect.objectContaining({ quotation_id: "quotation-1", remote_job_id: "22222222-2222-4222-8222-222222222222", status: "QUEUED" }), { onConflict: "quotation_id", ignoreDuplicates: true })
     expect(body.data.provider_booking).toEqual(expect.objectContaining({ job_id: "22222222-2222-4222-8222-222222222222" }))
   })
 

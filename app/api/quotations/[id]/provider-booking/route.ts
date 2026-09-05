@@ -25,7 +25,7 @@ export async function GET(
     const admin = createAdminClient()
     const { data: quotation, error: quotationError } = await admin
       .from("quotations")
-      .select("id,org_id,agency_id")
+      .select("id,org_id,agency_id,seller_id")
       .eq("id", id)
       .eq("org_id", user.org_id)
       .in("agency_id", scope.memberAgencyIds)
@@ -49,7 +49,12 @@ export async function GET(
       agencyId: quotation.agency_id,
       booking,
     })
-    return NextResponse.json({ data })
+    // The quotation dialog only needs progress. Rich passenger data is served
+    // exclusively by the operation-scoped Reservations endpoints.
+    return NextResponse.json({ data: { status: data.status, result: {
+      status: data.result.status,
+      items: data.result.items.map(({ client_item_id, product, status, booking_id, locator, provider_status }) => ({ client_item_id, product, status, booking_id, locator, provider_status })),
+    } } }, { headers: { "Cache-Control": "private, no-store" } })
   } catch {
     return NextResponse.json({ error: "No se pudo actualizar el estado de la reserva" }, { status: 502 })
   }

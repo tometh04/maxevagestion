@@ -195,3 +195,10 @@ app/api/quotations/[id]/convert/__tests__/route.test.ts                   # TEST
 app/api/quotations/__tests__/route.test.ts                                # TEST — mock del alta atómica y su reload service-role post-gate.
 app/api/quotations/__tests__/document-projection-route.test.ts            # TEST — mock de lecturas scoped para verificar la proyección documental aditiva.
 app/api/quotations/upload-flight-screenshot/__tests__/route.test.ts       # TEST — mock de lectura scoped y Storage service-role.
+app/api/operations/reservations/route.ts # PRIVATE READ — proyección de pasajeros privada; org y permisos efectivos por agencia/vendedor antes de leer/sincronizar.
+app/api/operations/reservations/[id]/route.ts # PRIVATE READ — ficha por UUID con org y scope efectivo de Operaciones; sin acceso cliente a JSON sensible.
+app/(dashboard)/operations/reservations/page.tsx # PRIVATE READ — carga inicial con org y permisos efectivos de Operaciones.
+app/api/cron/provider-reservations/route.ts # CRON — checkCronAuth, lote acotado; cada sincronización filtra org/agencia y CAS.
+app/api/quotations/[id]/provider-booking/route.ts # PRIVATE SYNC — permisos por agencia/vendedor antes del job; sólo devuelve progreso, sin ficha de pasajeros.
+app/api/quotations/[id]/provider-booking/__tests__/route.test.ts # TEST — mocks del cliente admin y aislamiento de vendedor en seguimiento de reservas.
+app/api/operations/reservations/__tests__/route.test.ts # TEST — mocks del cliente admin; verifica tenant, permisos revocados, detalle y payloads adulterados.

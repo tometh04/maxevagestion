@@ -193,7 +193,11 @@ export async function POST(
           remote_job_id: queued.jobId,
           status: String(queued.status || "queued").toUpperCase(),
           created_by: user.id,
-        }, { onConflict: "quotation_id" })
+          request_snapshot: {
+            holder: bookingForm.data.holder, travellers: bookingForm.data.travellers,
+            items: providerItems.map(({ client_item_id, product, expected_price }) => ({ client_item_id, product, expected_price })),
+          },
+        }, { onConflict: "quotation_id", ignoreDuplicates: true })
         if (bookingWriteError) throw new Error("No se pudo guardar el seguimiento de la reserva")
         providerBooking = { request_id: queued.requestId, job_id: queued.jobId, status: queued.status }
       } catch (bookingError) {

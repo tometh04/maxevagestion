@@ -14,6 +14,103 @@ export type Database = {
   }
   public: {
     Tables: {
+      quotation_provider_bookings: {
+        Row: {
+          agency_id: string
+          created_at: string
+          created_by: string
+          id: string
+          operation_id: string
+          org_id: string
+          quotation_id: string
+          remote_job_id: string
+          request_id: string
+          request_snapshot: Json | null
+          result: Json | null
+          status: string
+          sync_attempted_at: string | null
+          synced_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          agency_id: string
+          created_at?: string
+          created_by: string
+          id?: string
+          operation_id: string
+          org_id: string
+          quotation_id: string
+          remote_job_id: string
+          request_id: string
+          request_snapshot?: Json | null
+          result?: Json | null
+          status?: string
+          sync_attempted_at?: string | null
+          synced_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          agency_id?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          operation_id?: string
+          org_id?: string
+          quotation_id?: string
+          remote_job_id?: string
+          request_id?: string
+          request_snapshot?: Json | null
+          result?: Json | null
+          status?: string
+          sync_attempted_at?: string | null
+          synced_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quotation_provider_bookings_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotation_provider_bookings_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotation_provider_bookings_operation_id_fkey"
+            columns: ["operation_id"]
+            isOneToOne: false
+            referencedRelation: "operations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotation_provider_bookings_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotation_provider_bookings_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations_with_profile_completion"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotation_provider_bookings_quotation_id_fkey"
+            columns: ["quotation_id"]
+            isOneToOne: true
+            referencedRelation: "quotations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       afip_voucher_requests: {
         Row: {
           agency_id: string | null
@@ -12652,6 +12749,87 @@ export type Database = {
       }
     }
     Views: {
+      // Generated from production; non-null view columns follow the source constraints and inner joins.
+      provider_reservations: {
+        Row: {
+          agency_id: string
+          agency_name: string
+          booking_id: string
+          contact_name: string | null
+          created_at: string
+          destination: string | null
+          external_id: string | null
+          file_code: string | null
+          id: string | null
+          item: Json | null
+          item_id: string | null
+          job_status: string
+          last_ticket_date: string | null
+          locator: string | null
+          operation_id: string
+          org_id: string
+          passenger_count: number | null
+          passengers_summary: string | null
+          price_currency: string | null
+          price_total: string | null
+          product: string | null
+          quotation_id: string
+          reference: string | null
+          request_snapshot: Json | null
+          search_text: string
+          seller_id: string | null
+          seller_name: string | null
+          status: string
+          synced_at: string | null
+          travel_date: string | null
+          updated_at: string
+          wholesaler: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "operations_seller_id_fkey"
+            columns: ["seller_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotation_provider_bookings_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotation_provider_bookings_operation_id_fkey"
+            columns: ["operation_id"]
+            isOneToOne: false
+            referencedRelation: "operations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotation_provider_bookings_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotation_provider_bookings_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations_with_profile_completion"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotation_provider_bookings_quotation_id_fkey"
+            columns: ["quotation_id"]
+            isOneToOne: true
+            referencedRelation: "quotations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organizations_with_profile_completion: {
         Row: {
           address_city: string | null

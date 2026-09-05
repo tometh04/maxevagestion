@@ -22,6 +22,7 @@ async function pollProviderBooking(quotationId: string, onUpdated: () => void) {
       if (status === "QUEUED" || status === "PROCESSING") continue
       onUpdated()
       if (status === "CONFIRMED") toast.success("Reserva confirmada en Delfos.")
+      else if (status === "PENDING") toast.info("Reserva registrada en Delfos. Consultá su estado en Operaciones → Reservas.")
       else if (status === "PRICE_CHANGED") toast.error("Delfos informó un cambio de precio. Revisá la cotización antes de reservar.")
       else if (status === "PARTIAL") toast.error("Delfos confirmó solo una parte de la reserva. Requiere revisión.")
       else toast.error("Delfos no pudo confirmar la reserva.")
