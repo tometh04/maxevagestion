@@ -209,7 +209,7 @@ describe("QuotationPdfPriceDialog", () => {
     expect(onGenerate).not.toHaveBeenCalled()
   })
 
-  it("exige operador para ítems Emilia y lo envía al prepare atómico", async () => {
+  it.each([null, OPERATOR_ID])("genera sin selectores ni cambios de operador (operador actual: %s)", async (operatorId) => {
     const emiliaResponse = quotationResponse()
     Object.assign(emiliaResponse.data, {
       quotation_items: [{
@@ -217,7 +217,7 @@ describe("QuotationPdfPriceDialog", () => {
         option_id: OPTION_ID,
         item_type: "FLIGHT",
         description: "Aerolíneas · EZE - PUJ",
-        operator_id: null,
+        operator_id: operatorId,
       }],
       available_operators: [{ id: OPERATOR_ID, name: "Delfos" }],
     })
@@ -237,21 +237,13 @@ describe("QuotationPdfPriceDialog", () => {
 
     const generate = await screen.findByRole("button", { name: "Generar PDF" })
     await waitFor(() => expect(generate).not.toBeDisabled())
-    fireEvent.click(generate)
-    expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(toast.error).toHaveBeenCalledWith(
-      'Seleccioná un operador para "Aerolíneas · EZE - PUJ"'
-    )
-
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: OPERATOR_ID } })
+    expect(screen.queryByText("Operadores de esta opción")).not.toBeInTheDocument()
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument()
     fireEvent.click(generate)
     await waitFor(() => expect(onGenerate).toHaveBeenCalledWith(QUOTATION_ID, VERSION_2))
 
     const prepareBody = JSON.parse(String((fetchMock.mock.calls[1][1] as RequestInit).body))
-    expect(prepareBody.item_operators).toEqual([{
-      item_id: ITEM_ID,
-      operator_id: OPERATOR_ID,
-    }])
+    expect(prepareBody).not.toHaveProperty("item_operators")
   })
 
   it("locks every itinerary control while the document snapshot is being prepared", async () => {

@@ -15,13 +15,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { toast } from "sonner"
 import { formatQuotationCurrency } from "@/lib/quotations/presentation"
 import { normalizeManualQuotationTotal } from "@/lib/quotations/totals"
@@ -43,18 +36,6 @@ interface OptionEntry {
   manual: number | null
   /** Valor actual del input (string para edición libre) */
   input: string
-  items: ItemOperatorEntry[]
-}
-
-interface ItemOperatorEntry {
-  id: string
-  label: string
-  operatorId: string | null
-}
-
-interface AvailableOperator {
-  id: string
-  name: string
 }
 
 interface Props {
@@ -125,7 +106,6 @@ export function QuotationPdfPriceDialog({
   const [quotationNumber, setQuotationNumber] = useState<string | null>(null)
   const [expectedUpdatedAt, setExpectedUpdatedAt] = useState<string | null>(null)
   const [entries, setEntries] = useState<OptionEntry[]>([])
-  const [availableOperators, setAvailableOperators] = useState<AvailableOperator[]>([])
   // Adicionales globales de la cotización (seguro / traslado). String para
   // edición libre; "" = sin adicional (0).
   const [insurance, setInsurance] = useState("")
@@ -138,7 +118,6 @@ export function QuotationPdfPriceDialog({
     async function load() {
       setLoading(true)
       setEntries([])
-      setAvailableOperators([])
       setInsurance("")
       setTransfer("")
       setPresentation(parseQuotationPresentationContent({}))
@@ -156,12 +135,6 @@ export function QuotationPdfPriceDialog({
         setTransfer(Number(q?.transfer_amount) > 0 ? String(q.transfer_amount) : "")
         setPresentation(parseQuotationPresentationContent(q?.presentation_content))
         const options = Array.isArray(q?.quotation_options) ? q.quotation_options : []
-        const operators = Array.isArray(q?.available_operators)
-          ? q.available_operators.filter((operator: any) => operator?.id && operator?.name)
-          : []
-        const allowedOperatorIds = new Set(operators.map((operator: any) => String(operator.id)))
-        const items = Array.isArray(q?.quotation_items) ? q.quotation_items : []
-        setAvailableOperators(operators)
         const mapped: OptionEntry[] = options
           .slice()
           .sort((a: any, b: any) => Number(a.option_number || 0) - Number(b.option_number || 0))
@@ -177,22 +150,6 @@ export function QuotationPdfPriceDialog({
               calculated,
               manual,
               input: effective > 0 ? String(effective) : "",
-              items: items
-                .filter((item: any) => item.option_id === opt.id)
-                .map((item: any, itemIndex: number) => ({
-                  id: String(item.id),
-                  label: String(
-                    item.description
-                    || item.hotel_name
-                    || item.airline
-                    || item.provider
-                    || item.item_type
-                    || `Servicio ${itemIndex + 1}`
-                  ),
-                  operatorId: item.operator_id && allowedOperatorIds.has(String(item.operator_id))
-                    ? String(item.operator_id)
-                    : null,
-                })),
             }
           })
         setEntries(mapped)
@@ -218,17 +175,6 @@ export function QuotationPdfPriceDialog({
     setEntries(prev => prev.map(e =>
       e.id === optionId ? { ...e, input: e.calculated > 0 ? String(e.calculated) : "" } : e
     ))
-  }
-
-  const setItemOperator = (optionId: string, itemId: string, operatorId: string) => {
-    setEntries(prev => prev.map(entry => entry.id === optionId
-      ? {
-          ...entry,
-          items: entry.items.map(item => item.id === itemId
-            ? { ...item, operatorId: operatorId || null }
-            : item),
-        }
-      : entry))
   }
 
   // Comisión implícita: diferencia entre el precio del input y el calculado
@@ -260,14 +206,6 @@ export function QuotationPdfPriceDialog({
         return
       }
     }
-    const itemWithoutOperator = entries
-      .flatMap(entry => entry.items)
-      .find(item => !item.operatorId)
-    if (itemWithoutOperator) {
-      toast.error(`Seleccioná un operador para "${itemWithoutOperator.label}"`)
-      return
-    }
-
     // Adicionales: vacío = 0. Solo rechazamos valores inválidos/negativos.
     const insuranceValue = insurance.trim() ? Number(insurance) : 0
     const transferValue = transfer.trim() ? Number(transfer) : 0
@@ -310,10 +248,6 @@ export function QuotationPdfPriceDialog({
           insurance_amount: insuranceValue,
           transfer_amount: transferValue,
           presentation_content: presentation,
-          item_operators: entries.flatMap(entry => entry.items.map(item => ({
-            item_id: item.id,
-            operator_id: item.operatorId,
-          }))),
         }),
       })
       const preparedJson = await prepareRes.json().catch(() => ({}))
@@ -421,39 +355,6 @@ export function QuotationPdfPriceDialog({
                     </div>
                     {renderDiff(entry)}
                   </div>
-                  {entry.items.length > 0 && (
-                    <div className="space-y-2 border-t border-border/50 pt-2">
-                      <p className="text-xs font-medium text-muted-foreground">Operadores de esta opción</p>
-                      {entry.items.map((item) => (
-                        <div key={item.id} className="grid gap-1.5 sm:grid-cols-[minmax(0,1fr)_240px] sm:items-center">
-                          <Label htmlFor={`operator-${item.id}`} className="truncate text-xs">
-                            {item.label}
-                          </Label>
-                          <Select
-                            value={item.operatorId || ""}
-                            onValueChange={(value) => setItemOperator(entry.id, item.id, value)}
-                            disabled={saving || availableOperators.length === 0}
-                          >
-                            <SelectTrigger id={`operator-${item.id}`} aria-label={`Operador para ${item.label}`}>
-                              <SelectValue placeholder="Seleccionar operador" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {availableOperators.map((operator) => (
-                                <SelectItem key={operator.id} value={operator.id}>
-                                  {operator.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      ))}
-                      {availableOperators.length === 0 && (
-                        <p className="text-xs text-destructive">
-                          No hay operadores disponibles para esta agencia.
-                        </p>
-                      )}
-                    </div>
-                  )}
                 </div>
               )
             })}

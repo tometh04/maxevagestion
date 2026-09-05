@@ -405,7 +405,7 @@ async function issueDocument(
         : isInvalidState
           ? "La cotización ya no admite una nueva emisión"
           : isInvalidContent
-            ? "Completá precios, monedas y operadores de todos los servicios antes de emitir"
+            ? "Revisá los precios, las monedas y los datos de los servicios antes de emitir"
             : "No se pudo congelar el documento de la cotización",
       error
     )
