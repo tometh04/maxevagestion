@@ -32,7 +32,7 @@ beforeEach(() => {
   jest.mocked(getCurrentUser).mockResolvedValue({ user: { id: "user-1", org_id: "org-1" } } as never)
   jest.mocked(createServerClient).mockResolvedValue({ from: (table: string) => {
     const chain = {
-      select: jest.fn(() => chain), order: jest.fn(() => chain), limit: jest.fn(() => chain), update: jest.fn(() => chain),
+      select: jest.fn().mockReturnThis(), order: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), update: jest.fn().mockReturnThis(),
       eq: (column: string, value: unknown) => { filters.push([table, column, value]); return chain },
       single: async () => ({ data: missingConversation ? null : { id: conversation, lead_id: "lead-1" }, error: null }),
       maybeSingle: async () => ({ data: table === "leads" ? { id: "lead-1", agency_id: "agency-1" } : null, error: null }),
