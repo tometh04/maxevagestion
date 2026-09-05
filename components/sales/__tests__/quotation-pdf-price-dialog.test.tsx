@@ -219,7 +219,6 @@ describe("QuotationPdfPriceDialog", () => {
         description: "Aerolíneas · EZE - PUJ",
         operator_id: operatorId,
       }],
-      available_operators: [{ id: OPERATOR_ID, name: "Delfos" }],
     })
     const fetchMock = jest.fn()
       .mockResolvedValueOnce({ ok: true, json: async () => emiliaResponse })

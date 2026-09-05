@@ -72,28 +72,10 @@ export interface PersistQuotationOptionsResult {
   optionIds: string[]
 }
 
-export interface UpdateQuotationWithStructureArgs extends PersistQuotationOptionsArgs {
-  orgId: string
-  expectedUpdatedAt: string | null
-  actorId: string
-  agencyId: string
-  header: Record<string, unknown>
-}
-
 export interface CreateQuotationWithStructureArgs extends PersistQuotationOptionsArgs {
   orgId: string
   actorId: string
   agencyId: string
-  header: Record<string, unknown>
-}
-
-export interface UpdateQuotationHeaderArgs {
-  supabase: any
-  quotationId: string
-  orgId: string
-  agencyId: string
-  actorId: string
-  expectedUpdatedAt: string
   header: Record<string, unknown>
 }
 
@@ -339,34 +321,6 @@ function buildQuotationItemsInsertPayload(
 }
 
 /**
- * Snapshot completo de la estructura actual (filas tal cual están en la base).
- * Se usa para poder restaurarla si el reemplazo falla por el camino legacy.
- */
-export async function snapshotQuotationStructure(supabase: any, quotationId: string) {
-  const [{ data: options, error: optionsError }, { data: items, error: itemsError }] =
-    await Promise.all([
-      supabase.from("quotation_options").select("*").eq("quotation_id", quotationId),
-      supabase.from("quotation_items").select("*").eq("quotation_id", quotationId),
-    ])
-
-  if (optionsError || itemsError) {
-    throw new QuotationStructurePersistenceError(
-      "No se pudo leer la estructura actual de la cotización.",
-      "snapshot_failed",
-      {
-        quotationId,
-        cause: optionsError?.message || itemsError?.message,
-      }
-    )
-  }
-
-  return {
-    options: (options || []) as any[],
-    items: (items || []) as any[],
-  }
-}
-
-/**
  * Reemplaza opciones + items de una cotización.
  *
  * Camino preferido: RPC `replace_quotation_structure` (una sola transacción,
@@ -586,73 +540,6 @@ export async function createQuotationWithStructure({
     throw mapAtomicQuotationError(error, quotationId, "atomic_create_failed")
   }
   return Array.isArray(data) ? data[0] : data
-}
-
-/** Edición de encabezado con el mismo CAS server-only que la edición completa. */
-export async function updateQuotationHeader({
-  supabase,
-  quotationId,
-  orgId,
-  agencyId,
-  actorId,
-  expectedUpdatedAt,
-  header,
-}: UpdateQuotationHeaderArgs) {
-  const { data, error } = await supabase.rpc("update_quotation_header", {
-    p_quotation_id: quotationId,
-    p_org_id: orgId,
-    p_agency_id: agencyId,
-    p_expected_updated_at: expectedUpdatedAt,
-    p_header: header,
-    p_actor_id: actorId,
-  })
-  if (error || !data) {
-    throw mapAtomicQuotationError(error, quotationId, "atomic_update_failed")
-  }
-  return Array.isArray(data) ? data[0] : data
-}
-
-/**
- * Confirma encabezado + opciones + ítems en una única transacción con CAS.
- * No tiene fallback legacy: degradar acá volvería a abrir una ventana donde
- * el header y la estructura podrían pertenecer a ediciones distintas.
- */
-export async function updateQuotationWithStructure({
-  supabase,
-  quotationId,
-  currency,
-  preparedOptions,
-  orgId,
-  expectedUpdatedAt,
-  actorId,
-  agencyId,
-  header,
-}: UpdateQuotationWithStructureArgs) {
-  const { optionRows, itemRows } = buildQuotationStructureRows({
-    quotationId,
-    currency,
-    preparedOptions,
-    orgId,
-  })
-  const { data, error } = await supabase.rpc("update_quotation_with_structure", {
-    p_quotation_id: quotationId,
-    p_org_id: orgId,
-    p_agency_id: agencyId,
-    p_expected_updated_at: expectedUpdatedAt,
-    p_header: header,
-    p_options: optionRows,
-    p_items: itemRows,
-    p_actor_id: actorId,
-  })
-
-  if (error || !data) {
-    throw mapAtomicQuotationError(error, quotationId, "atomic_update_failed")
-  }
-
-  return {
-    quotation: Array.isArray(data) ? data[0] : data,
-    optionIds: optionRows.map(option => option.id),
-  }
 }
 
 /**

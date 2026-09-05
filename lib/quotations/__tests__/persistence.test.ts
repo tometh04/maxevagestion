@@ -3,7 +3,6 @@ import {
   prepareQuotationOptionsForPersistence,
   QuotationStructurePersistenceError,
   replaceQuotationStructure,
-  updateQuotationWithStructure,
   type PreparedQuotationOption,
 } from "../persistence"
 
@@ -227,63 +226,6 @@ function createSupabaseMock(config: SupabaseMockConfig = {}) {
 }
 
 describe("quotation persistence helpers", () => {
-  it("sends header, options and items through the single CAS RPC", async () => {
-    const supabase = {
-      rpc: jest.fn().mockResolvedValue({
-        data: { id: "quote-atomic", updated_at: "2026-08-24T12:01:00.000Z" },
-        error: null,
-      }),
-    }
-
-    const result = await updateQuotationWithStructure({
-      supabase,
-      quotationId: "quote-atomic",
-      orgId: "org-1",
-      agencyId: "agency-1",
-      actorId: "user-1",
-      expectedUpdatedAt: "2026-08-24T12:00:00.000Z",
-      currency: "USD",
-      header: { destination: "Aruba", total_amount: 2500 },
-      preparedOptions: createPreparedOptions(),
-    })
-
-    expect(result.quotation).toMatchObject({ id: "quote-atomic" })
-    expect(result.optionIds).toHaveLength(2)
-    expect(supabase.rpc).toHaveBeenCalledWith("update_quotation_with_structure", expect.objectContaining({
-      p_quotation_id: "quote-atomic",
-      p_org_id: "org-1",
-      p_agency_id: "agency-1",
-      p_actor_id: "user-1",
-      p_expected_updated_at: "2026-08-24T12:00:00.000Z",
-      p_header: { destination: "Aruba", total_amount: 2500 },
-      p_options: expect.arrayContaining([expect.objectContaining({ quotation_id: "quote-atomic" })]),
-      p_items: expect.arrayContaining([expect.objectContaining({ org_id: "org-1" })]),
-    }))
-  })
-
-  it("maps a CAS conflict without degrading to separate writes", async () => {
-    const supabase = {
-      rpc: jest.fn().mockResolvedValue({
-        data: null,
-        error: { code: "40001", message: "quotation changed during atomic update" },
-      }),
-      from: jest.fn(),
-    }
-
-    await expect(updateQuotationWithStructure({
-      supabase,
-      quotationId: "quote-stale",
-      orgId: "org-1",
-      agencyId: "agency-1",
-      actorId: "user-1",
-      expectedUpdatedAt: "2026-08-24T12:00:00.000Z",
-      currency: "USD",
-      header: {},
-      preparedOptions: createPreparedOptions(),
-    })).rejects.toMatchObject({ code: "quotation_changed" })
-    expect(supabase.from).not.toHaveBeenCalled()
-  })
-
   it("never degrades a business RPC failure to destructive legacy writes", async () => {
     const from = jest.fn()
     const supabase = {

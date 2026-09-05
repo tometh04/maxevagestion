@@ -6,7 +6,7 @@
  *
  * Patrón: 1 vuelo + N hoteles = N opciones de cotización, donde el
  * vuelo se replica en cada opción (alineado con el sync de vuelos
- * que ya hace QuotationBuilderDialog al editar).
+ * para mantener el contrato canónico de cotizaciones).
  *
  * Defense: si el UI permite >4 hoteles por bug, este mapper clampea
  * a 4 silenciosamente (el UI ya muestra toast).
@@ -232,7 +232,7 @@ export function deriveMealPlan(description: string | null | undefined): string |
 function buildFlightRoute(flight: EmiliaFlight): string | null {
   // El shape transformado expone origen/destino en cada leg como `city_code`.
   // Usamos el leg de ida. Si falta algún código devolvemos null en lugar de
-  // crashear — el vendedor puede completarlo en el QuotationBuilder.
+  // fallar o inventar una ruta que el proveedor no informó.
   const leg = outboundLeg(flight)
   const origin = leg?.departure?.city_code
   const destination = leg?.arrival?.city_code

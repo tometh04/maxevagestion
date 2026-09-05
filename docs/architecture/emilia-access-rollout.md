@@ -60,12 +60,8 @@ también revalidan el lead y la agencia antes de llamar al proveedor externo.
 
 ## UX al vencer
 
-Para PRO/STARTER, el botón `Cotizar` sigue ofreciendo el cotizador manual. Si el
-usuario intenta Emilia después del corte, la API devuelve
-`emilia_plan_required`; la UI informa que Emilia requiere Enterprise y abre el
-flujo manual de forma explícita.
-
-Los errores de permiso o tenancy no abren el cotizador como fallback.
+Si la API devuelve `emilia_plan_required`, Cotizar informa la falta de acceso.
+El cotizador manual fue retirado; tampoco se abre ante errores de conexión.
 
 ## Despliegue
 
@@ -74,5 +70,5 @@ Los errores de permiso o tenancy no abren el cotizador como fallback.
    corte, `EMILIA_PROMOTION_END_AT` en Railway.
 3. Desplegar la aplicación.
 4. Validar un tenant PRO y uno Enterprise antes del corte.
-5. Simular el tiempo posterior al corte en tests y verificar que PRO cae al
-   cotizador manual y Enterprise conserva Emilia.
+5. Simular el tiempo posterior al corte en tests y verificar el mensaje de acceso
+   para PRO y que Enterprise conserva Emilia.

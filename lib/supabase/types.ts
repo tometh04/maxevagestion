@@ -13593,30 +13593,6 @@ export type Database = {
         Args: { p_items: Json; p_options: Json; p_quotation_id: string }
         Returns: undefined
       }
-      update_quotation_with_structure: {
-        Args: {
-          p_actor_id: string
-          p_agency_id: string
-          p_expected_updated_at: string | null
-          p_header: Json
-          p_items: Json
-          p_options: Json
-          p_org_id: string
-          p_quotation_id: string
-        }
-        Returns: Database["public"]["Tables"]["quotations"]["Row"]
-      }
-      update_quotation_header: {
-        Args: {
-          p_actor_id: string
-          p_agency_id: string
-          p_expected_updated_at: string
-          p_header: Json
-          p_org_id: string
-          p_quotation_id: string
-        }
-        Returns: Database["public"]["Tables"]["quotations"]["Row"]
-      }
       reserve_growth_studio_generation: {
         Args: {
           p_agency_id: string

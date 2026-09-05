@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
-import { ExternalLink, MapPin, Users, Phone, Mail, Instagram, Calendar, FileText, Edit, Trash2, ArrowRight, AlertTriangle, UserPlus, Loader2, CheckCircle2, User, Briefcase, Save, X, MessageSquare, Send, Archive, ArchiveRestore, ClipboardList, Clock, DollarSign, Eye, Download, MoreHorizontal, Upload, Paperclip, RefreshCw, MessageCircle } from "lucide-react"
+import { ExternalLink, MapPin, Users, Phone, Mail, Instagram, Calendar, FileText, Edit, Trash2, ArrowRight, AlertTriangle, UserPlus, Loader2, CheckCircle2, User, Briefcase, Save, X, MessageSquare, Send, Archive, ArchiveRestore, ClipboardList, Clock, DollarSign, Eye, Download, MoreHorizontal, Paperclip, RefreshCw, MessageCircle } from "lucide-react"
 import { useWhaControlAvailable } from "@/hooks/use-wha-control-available"
 import {
   DropdownMenu,
@@ -19,17 +19,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import Link from "next/link"
 import { format } from "date-fns"
-import dynamic from "next/dynamic"
 import { ConvertLeadDialog } from "@/components/sales/convert-lead-dialog"
-// Lazy load: quotation-builder-dialog pesa ~1900 líneas y solo se abre al
-// generar cotización (fracción de las veces que se abre un lead).
-const QuotationBuilderDialog = dynamic(
-  () =>
-    import("@/components/sales/quotation-builder-dialog").then((m) => ({
-      default: m.QuotationBuilderDialog,
-    })),
-  { ssr: false }
-)
 import { EditLeadDialog } from "@/components/sales/edit-lead-dialog"
 import { LeadDocumentsSection } from "@/components/sales/lead-documents-section"
 import {
@@ -264,8 +254,6 @@ export function LeadDetailDialog({
   const [quotationToDelete, setQuotationToDelete] = useState<{ id: string; quotation_number: string } | null>(null)
   const [deletingQuotation, setDeletingQuotation] = useState(false)
   const [convertDialogOpen, setConvertDialogOpen] = useState(false)
-  const [quotationDialogOpen, setQuotationDialogOpen] = useState(false)
-  const [editingQuotationId, setEditingQuotationId] = useState<string | null>(null)
   // Cotización con el dialog "Cambiar precio" / Generar PDF (mismo modal que Emilia)
   const [pdfPriceQuotation, setPdfPriceQuotation] = useState<{
     id: string
@@ -333,8 +321,6 @@ export function LeadDetailDialog({
     file_url: string
     uploaded_at: string
   }>>([])
-  const [uploadingQuotationFile, setUploadingQuotationFile] = useState(false)
-  const quotationFileInputRef = React.useRef<HTMLInputElement>(null)
 
   const getQuotationDisplayAmount = (quotation: {
     total_amount: number
@@ -408,48 +394,6 @@ export function LeadDetailDialog({
       }
     } catch (error) {
       console.error("Error loading quotation files:", error)
-    }
-  }
-
-  // Subir una cotización externa como archivo adjunto al lead
-  const handleQuotationFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file || !lead) return
-
-    const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp", "application/pdf"]
-    if (!allowedTypes.includes(file.type)) {
-      toast.error("Tipo de archivo no permitido. Solo imágenes (JPEG, PNG, WebP) y PDF")
-      if (quotationFileInputRef.current) quotationFileInputRef.current.value = ""
-      return
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error("El archivo es demasiado grande. Máximo 10MB")
-      if (quotationFileInputRef.current) quotationFileInputRef.current.value = ""
-      return
-    }
-
-    try {
-      setUploadingQuotationFile(true)
-      const formData = new FormData()
-      formData.append("file", file)
-      formData.append("type", "QUOTATION")
-
-      const response = await fetch(`/api/leads/${lead.id}/documents/upload`, {
-        method: "POST",
-        body: formData,
-      })
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}))
-        throw new Error(err.error || "Error al subir el archivo")
-      }
-      toast.success("Cotización subida")
-      await loadQuotationFiles()
-    } catch (error: any) {
-      console.error("Error uploading quotation file:", error)
-      toast.error(error.message || "Error al subir el archivo")
-    } finally {
-      setUploadingQuotationFile(false)
-      if (quotationFileInputRef.current) quotationFileInputRef.current.value = ""
     }
   }
 
@@ -678,11 +622,6 @@ export function LeadDetailDialog({
     }
   }
 
-  const openManualQuotation = () => {
-    setEditingQuotationId(null)
-    setQuotationDialogOpen(true)
-  }
-
   const handleStartQuotation = async () => {
     if (openingQuotation) return
     setOpeningQuotation(true)
@@ -712,8 +651,7 @@ export function LeadDetailDialog({
       }
 
       if (json?.code === "emilia_plan_required") {
-        toast.info("Emilia requiere el plan Enterprise. Abrimos el cotizador manual.")
-        openManualQuotation()
+        toast.info("Tu plan no incluye Emilia. Consultá con el administrador de tu agencia.")
         return
       }
 
@@ -722,11 +660,9 @@ export function LeadDetailDialog({
         return
       }
 
-      toast.warning("Emilia no está disponible en este momento. Abrimos el cotizador manual.")
-      openManualQuotation()
+      toast.error("Emilia no está disponible en este momento. Intentá nuevamente.")
     } catch {
-      toast.warning("No se pudo conectar con Emilia. Abrimos el cotizador manual.")
-      openManualQuotation()
+      toast.error("No se pudo conectar con Emilia. Intentá nuevamente.")
     } finally {
       setOpeningQuotation(false)
     }
@@ -976,45 +912,6 @@ export function LeadDetailDialog({
                   </div>
                   <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Cotizaciones ({quotations.length + quotationFiles.length})</h4>
                 </div>
-                {lead.status !== "WON" && lead.status !== "LOST" && (
-                  <div className="flex items-center gap-1">
-                    {/* Subir cotización hecha con otra app como archivo adjunto */}
-                    <input
-                      ref={quotationFileInputRef}
-                      type="file"
-                      accept="image/*,.pdf"
-                      onChange={handleQuotationFileUpload}
-                      className="hidden"
-                    />
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => quotationFileInputRef.current?.click()}
-                      disabled={uploadingQuotationFile}
-                      className="h-7 text-xs"
-                      title="Subir una cotización hecha con otra app"
-                    >
-                      {uploadingQuotationFile ? (
-                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                      ) : (
-                        <Upload className="h-3 w-3 mr-1" />
-                      )}
-                      Subir
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setEditingQuotationId(null)
-                        setQuotationDialogOpen(true)
-                      }}
-                      className="h-7 text-xs"
-                    >
-                      <FileText className="h-3 w-3 mr-1" />
-                      Nueva
-                    </Button>
-                  </div>
-                )}
               </div>
               {loadingQuotations ? (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
@@ -1024,7 +921,6 @@ export function LeadDetailDialog({
               ) : quotations.length === 0 && quotationFiles.length === 0 ? (
                 <p className="text-xs text-muted-foreground py-1">
                   Este lead no tiene cotizaciones.
-                  {lead.status !== "WON" && lead.status !== "LOST" && " Usá “Nueva” para armar una, o “Subir” para adjuntar la de otra app."}
                 </p>
               ) : (
                 <div className="space-y-2">
@@ -1102,22 +998,6 @@ export function LeadDetailDialog({
                             >
                               <Briefcase className="mr-1 h-3.5 w-3.5" />
                               Convertir y reservar
-                            </Button>
-                          )}
-                          {/* El lápiz vuelve a abrir la estructura completa del borrador. */}
-                          {q.status === "DRAFT" && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 w-7 p-0"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setEditingQuotationId(q.id)
-                                setQuotationDialogOpen(true)
-                              }}
-                              title="Editar servicios y opciones"
-                            >
-                              <Edit className="h-3.5 w-3.5" />
                             </Button>
                           )}
                           {q.public_token && q.active_document_id && (
@@ -1574,32 +1454,6 @@ export function LeadDetailDialog({
           onSuccess={() => {
             onConvert?.()
             onOpenChange(false)
-          }}
-        />
-      )}
-
-      {/* Dialog de cotización */}
-      {lead && (
-        <QuotationBuilderDialog
-          key={`${lead.id}:${editingQuotationId || "new"}`}
-          open={quotationDialogOpen}
-          onOpenChange={(isOpen) => {
-            setQuotationDialogOpen(isOpen)
-            if (!isOpen) setEditingQuotationId(null)
-          }}
-          lead={{
-            id: lead.id,
-            contact_name: lead.contact_name,
-            contact_phone: lead.contact_phone,
-            contact_email: lead.contact_email,
-            destination: lead.destination,
-            region: lead.region,
-            agency_id: lead.agency_id,
-          }}
-          operators={operators}
-          existingQuotationId={editingQuotationId}
-          onSuccess={() => {
-            loadQuotations()
           }}
         />
       )}

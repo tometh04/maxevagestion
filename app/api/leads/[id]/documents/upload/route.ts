@@ -65,6 +65,10 @@ export async function POST(
       return NextResponse.json({ error: "No se especificó el tipo de documento" }, { status: 400 })
     }
 
+    if (documentType === "QUOTATION") {
+      return NextResponse.json({ error: "La carga de cotizaciones adjuntas ya no está disponible" }, { status: 400 })
+    }
+
     // Validar tipo de archivo
     const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp", "application/pdf"]
     if (!allowedTypes.includes(file.type)) {

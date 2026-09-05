@@ -150,7 +150,6 @@ app/api/cash/daily-balance/route.ts                                      # RPC_B
 
 # ─── STORAGE ───────────────────────────────────────────────────────────────────
 app/api/operations/[id]/itinerary/upload-image/route.ts                  # STORAGE — solo sube archivos al bucket.
-app/api/quotations/upload-flight-screenshot/route.ts                     # WRITE_VALIDATED/STORAGE — lectura org/agencia/seller y upload tenant-scoped tras permisos.
 
 # ─── WRITE_VALIDATED ───────────────────────────────────────────────────────────
 # Reads via serverClient (RLS), luego adminClient para writes con org_id validado.
@@ -166,7 +165,6 @@ app/api/quotations/[id]/document/route.ts                                # WRITE
 app/api/quotations/[id]/route.ts                                         # WRITE_VALIDATED — reemplazo atómico de estructura tras permisos, org, agencia y seller scope.
 app/api/quotations/[id]/convert/route.ts                                 # WRITE_VALIDATED — conversión RPC atómica tras validar org, agencia, seller y permisos de operación.
 app/api/quotations/route.ts                                              # WRITE_VALIDATED — alta atómica tras permisos, org, agencia, seller y lead scope.
-app/api/quotations/cost-settings/route.ts                                # WRITE_VALIDATED — proyección mínima de costos tras leads.write per-agency; query exacta por agencia.
 app/api/emilia/chat/route.ts                                             # WRITE_VALIDATED — agencia validada por lead/scope antes de resolver su key Emilia server-only.
 app/api/emilia/chat/jobs/[jobId]/route.ts                                # WRITE_VALIDATED — polling con la misma agencia validada y su key Emilia server-only.
 app/api/analytics/quotations/route.ts                                    # WRITE_VALIDATED — analytics readonly tras permisos y scope org/agencia/seller.
@@ -194,7 +192,6 @@ app/api/quotations/__tests__/id-route.test.ts                             # TEST
 app/api/quotations/[id]/convert/__tests__/route.test.ts                   # TEST — mock de conversión transaccional y alerta de revisión de comisiones.
 app/api/quotations/__tests__/route.test.ts                                # TEST — mock del alta atómica y su reload service-role post-gate.
 app/api/quotations/__tests__/document-projection-route.test.ts            # TEST — mock de lecturas scoped para verificar la proyección documental aditiva.
-app/api/quotations/upload-flight-screenshot/__tests__/route.test.ts       # TEST — mock de lectura scoped y Storage service-role.
 app/api/operations/reservations/route.ts # PRIVATE READ — proyección de pasajeros privada; org y permisos efectivos por agencia/vendedor antes de leer/sincronizar.
 app/api/operations/reservations/[id]/route.ts # PRIVATE READ — ficha por UUID con org y scope efectivo de Operaciones; sin acceso cliente a JSON sensible.
 app/(dashboard)/operations/reservations/page.tsx # PRIVATE READ — carga inicial con org y permisos efectivos de Operaciones.

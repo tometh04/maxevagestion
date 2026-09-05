@@ -616,7 +616,7 @@ export function LeadEmiliaChat({
 
   // La guía de prompt arranca únicamente dentro del chat autorizado. El gate de
   // "Cotizar" ya resolvió plan, tenant, agencia y leads.write antes de montar
-  // este componente; los fallbacks al cotizador manual nunca llegan acá.
+  // este componente, una vez validado el acceso a Emilia.
   useEffect(() => {
     if (
       contextualTourStartedRef.current ||

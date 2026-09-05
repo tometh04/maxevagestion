@@ -144,10 +144,10 @@ esa rama de compatibilidad no habilita nuevas aceptaciones sin snapshot.
 
 ## Recorridos de producto
 
-### CRM y cotización manual
+### CRM y documentos de cotización
 
-1. El asesor crea o edita la cotización.
-2. En `Cotizar` completa todos los precios, adicionales y contenido del PDF.
+1. El asesor crea la cotización con Emilia.
+2. Desde Generar PDF ajusta el precio y el contenido del documento.
 3. Esos datos se guardan atómicamente y se invalida cualquier snapshot anterior.
 4. El servidor resuelve el modelo de la agencia.
 5. Al generar o enviar se emite el snapshot.
@@ -170,7 +170,7 @@ popups del navegador.
 
 Emilia mapea su resultado al mismo contrato de cotización y agrega contenido
 editorial inicial. Desde ese punto usa exactamente la misma resolución, emisión,
-descarga y vista pública que una cotización manual.
+descarga y vista pública del CRM. El editor manual fue retirado.
 
 ### Administración por agencia
 

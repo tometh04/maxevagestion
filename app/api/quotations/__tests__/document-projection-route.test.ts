@@ -115,7 +115,7 @@ describe("quotation document projection in reads", () => {
     ])
   })
 
-  it("adds READY to quotation detail and preserves operators and legacy fields", async () => {
+  it("adds READY to quotation detail and preserves legacy fields", async () => {
     const detailQuery = resolvedQuery({
       data: {
         id: "quotation-1",
@@ -126,14 +126,7 @@ describe("quotation document projection in reads", () => {
       },
       error: null,
     })
-    const operatorsQuery = resolvedQuery({
-      data: [{ id: "operator-1", name: "Operador" }],
-      error: null,
-    })
-    ;(createAdminClient as jest.Mock).mockReturnValue({
-      from: jest.fn((table: string) => table === "quotations" ? detailQuery : operatorsQuery),
-    })
-
+    ;(createAdminClient as jest.Mock).mockReturnValue({ from: jest.fn(() => detailQuery) })
     const { GET } = require("../[id]/route")
     const response = await GET(
       new Request("http://localhost/api/quotations/quotation-1"),
@@ -146,7 +139,6 @@ describe("quotation document projection in reads", () => {
       status: "DRAFT",
       active_document_id: "document-1",
       public_token: "public-token-1",
-      available_operators: [{ id: "operator-1", name: "Operador" }],
       document: { status: "READY", active_document_id: "document-1" },
     }))
   })
