@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
 import { createServerClient } from "@/lib/supabase/server"
-import { checkAddon } from "@/lib/addons/guard"
-
 
 async function gate(supabase: any, user: any) {
   if (!user.org_id) {
@@ -10,10 +8,6 @@ async function gate(supabase: any, user: any) {
   }
   if (user.role !== "ADMIN" && user.role !== "SUPER_ADMIN") {
     return { error: NextResponse.json({ error: "Acceso denegado" }, { status: 403 }), userOrgId: null }
-  }
-  const enabled = (await checkAddon(supabase, user.org_id, "monthly_commissions")).allowed
-  if (!enabled) {
-    return { error: NextResponse.json({ error: "Módulo no habilitado" }, { status: 404 }), userOrgId: null }
   }
   return { error: null, userOrgId: user.org_id as string }
 }

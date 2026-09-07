@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
 import { createServerClient, createAdminClient } from "@/lib/supabase/server"
-import { checkAddon } from "@/lib/addons/guard"
 import { buildCalculationInputs } from "@/lib/commissions/monthly/fetcher"
 import { calculateMonthlyCommission } from "@/lib/commissions/monthly/calculator"
-
 
 /**
  * POST /api/commissions/monthly/settlements/generate/[year_month]
@@ -30,10 +28,6 @@ export async function POST(
   }
 
   const supabase: any = await createServerClient()
-  const enabled = (await checkAddon(supabase, user.org_id, "monthly_commissions")).allowed
-  if (!enabled) {
-    return NextResponse.json({ error: "Módulo no habilitado" }, { status: 404 })
-  }
 
   if (!/^\d{4}-\d{2}$/.test(year_month)) {
     return NextResponse.json({ error: "year_month inválido (YYYY-MM)" }, { status: 400 })

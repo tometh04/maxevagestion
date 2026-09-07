@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
 import { createServerClient, createAdminClient } from "@/lib/supabase/server"
-import { checkAddon } from "@/lib/addons/guard"
 import { buildCalculationInputs } from "@/lib/commissions/monthly/fetcher"
 import { calculateMonthlyCommission } from "@/lib/commissions/monthly/calculator"
-
 
 /**
  * GET /api/commissions/monthly/simulate/[seller_id]/[year_month]
@@ -35,13 +33,6 @@ export async function GET(
   }
 
   const supabase: any = await createServerClient()
-  const enabled = (await checkAddon(supabase, user.org_id, "monthly_commissions")).allowed
-  if (!enabled) {
-    return NextResponse.json(
-      { error: "Módulo de comisiones mensuales no habilitado" },
-      { status: 404 }
-    )
-  }
 
   // Validar formato year_month
   if (!/^\d{4}-\d{2}$/.test(year_month)) {

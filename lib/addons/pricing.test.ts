@@ -274,12 +274,12 @@ describe("computeAddonsMonthlyArs — redondeo", () => {
       catalog: [
         { addon_key: "library", price_ars_monthly: "1000.4", active: true, enforcement: "ON" },
         { addon_key: "cerebro", price_ars_monthly: "1000.4", active: true, enforcement: "ON" },
-        { addon_key: "referrals", price_ars_monthly: "1000.4", active: true, enforcement: "ON" },
+        { addon_key: "growth_studio", price_ars_monthly: "1000.4", active: true, enforcement: "ON" },
       ],
       orgRows: [
         { addon_key: "library", status: "ACTIVE", billable_from: PASADO },
         { addon_key: "cerebro", status: "ACTIVE", billable_from: PASADO },
-        { addon_key: "referrals", status: "ACTIVE", billable_from: PASADO },
+        { addon_key: "growth_studio", status: "ACTIVE", billable_from: PASADO },
       ],
     })
     const total = computeAddonsMonthlyArs(map, "now", NOW)

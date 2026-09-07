@@ -33,38 +33,28 @@ export async function POST(request: Request) {
   const month = lastOfPrevMonth.getMonth() + 1
   const yearMonth = `${year}-${String(month).padStart(2, "0")}`
 
-  // ─── 2. Encontrar orgs que tienen el módulo contratado ──────────────
+  // ─── 2. Encontrar orgs que usan el módulo ───────────────────────────
   //
-  // Se consulta `organization_addons` directamente y NO la resolución de
-  // entitlements: esa falla abierto y trata `enforcement: OFF` como "habilitado
-  // para todos", lo que acá significaría generar liquidaciones para tenants que
-  // nunca contrataron el módulo.
-  //
-  // SCHEDULED_CANCEL cuenta igual: si la agencia lo tuvo durante el mes que se
-  // está liquidando, ese mes se genera. La baja recién aplica después.
-  const { data: contratado } = await admin
-    .from("organization_addons")
+  // Comisiones mensuales viene con el plan base: no se contrata ni se habilita
+  // por agencia. Así que "lo usa" es tener reglas de comisión habilitadas, que
+  // es además el filtro que ya se aplicaba abajo: una agencia sin reglas nunca
+  // generó nada. Por eso este criterio no le suma liquidaciones a nadie que
+  // antes no las tuviera, y las agencias que configuren reglas de acá en
+  // adelante entran solas, sin que tengamos que habilitarles nada.
+  const { data: orgsConReglas } = await admin
+    .from("monthly_commission_rules")
     .select("org_id")
-    .eq("addon_key", "monthly_commissions")
-    .in("status", ["ACTIVE", "SCHEDULED_CANCEL"])
-
-  // Transición: mientras haya orgs que sigan marcadas solo con el flag viejo,
-  // se toman también, para que a nadie se le corte la generación. Se puede
-  // sacar cuando el backfill de organization_addons esté aplicado y verificado.
-  const { data: orgsWithFlag } = await admin
-    .from("organization_settings")
-    .select("org_id")
-    .eq("key", "features.monthly_commissions_module")
-    .in("value", ["true", "1", "yes"])
+    .eq("enabled", true)
 
   const orgIds = Array.from(
-    new Set([
-      ...((contratado || []) as any[]).map((r) => r.org_id),
-      ...((orgsWithFlag || []) as any[]).map((r) => r.org_id),
-    ])
+    new Set(((orgsConReglas || []) as any[]).map((r) => r.org_id).filter(Boolean))
   )
   if (orgIds.length === 0) {
-    return NextResponse.json({ year_month: yearMonth, orgs_processed: 0, message: "No hay orgs con el módulo activo" })
+    return NextResponse.json({
+      year_month: yearMonth,
+      orgs_processed: 0,
+      message: "No hay orgs con reglas de comisión mensual habilitadas",
+    })
   }
 
   // ─── 3. Obtener todas las reglas activas de esos orgs ───────────────

@@ -1,18 +1,12 @@
 import { NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
 import { createServerClient, createAdminClient } from "@/lib/supabase/server"
-import { checkAddon } from "@/lib/addons/guard"
 import { buildCalculationInputs } from "@/lib/commissions/monthly/fetcher"
 import { calculateMonthlyCommission } from "@/lib/commissions/monthly/calculator"
-
 
 async function gate(supabase: any, user: any) {
   if (!user.org_id) {
     return { error: NextResponse.json({ error: "Usuario sin organización" }, { status: 400 }), userOrgId: "" }
-  }
-  const enabled = (await checkAddon(supabase, user.org_id, "monthly_commissions")).allowed
-  if (!enabled) {
-    return { error: NextResponse.json({ error: "Módulo no habilitado" }, { status: 404 }), userOrgId: "" }
   }
   return { error: null, userOrgId: user.org_id as string }
 }

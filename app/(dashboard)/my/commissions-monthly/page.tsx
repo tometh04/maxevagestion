@@ -1,6 +1,5 @@
 import { getCurrentUser } from "@/lib/auth"
 import { createServerClient } from "@/lib/supabase/server"
-import { assertAddonEnabledPage } from "@/lib/addons/guard"
 import { notFound } from "next/navigation"
 import { MyCommissionsMonthlyClient } from "@/components/commissions-monthly/my-commissions-client"
 
@@ -10,9 +9,8 @@ export const dynamic = "force-dynamic"
  * Página para que la vendedora vea su simulación de comisión mensual en
  * tiempo real. Pedido por VICO TRAVEL GROUP (2026-05).
  *
- * Solo accesible si:
- *   - La agencia tiene contratado el complemento `monthly_commissions`
- *   - La vendedora tiene regla configurada (sino, mostramos mensaje)
+ * Solo accesible si la vendedora tiene regla configurada; si no, mostramos
+ * mensaje. El módulo viene con el plan base: no se contrata aparte.
  */
 export default async function MyCommissionsMonthlyPage() {
   const { user } = await getCurrentUser()
@@ -21,7 +19,6 @@ export default async function MyCommissionsMonthlyPage() {
   }
 
   const supabase: any = await createServerClient()
-  await assertAddonEnabledPage(supabase, user.org_id, "monthly_commissions")
 
   // Confirmar que la vendedora tiene regla
   const { data: rule } = await supabase

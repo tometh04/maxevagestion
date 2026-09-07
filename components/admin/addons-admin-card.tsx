@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { AlertTriangle, Loader2 } from "lucide-react"
+import { AlertTriangle, ChevronRight, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
@@ -12,6 +12,17 @@ import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import { formatArs } from "@/lib/billing/plans"
+
+interface AddonOrg {
+  orgId: string
+  name: string
+  plan: string | null
+  subscriptionStatus: string | null
+  status: string
+  priceArsMonthly: number | null
+  since: string | null
+  cancelEffectiveAt: string | null
+}
 
 interface AddonRow {
   key: string
@@ -25,7 +36,15 @@ interface AddonRow {
   enforcement: "OFF" | "SHADOW" | "ON"
   orgsActive: number
   orgsPending: number
+  orgs: AddonOrg[]
   inclusions: { planId: string; includedUntil: string | null }[]
+}
+
+const ESTADO_ORG: Record<string, string> = {
+  ACTIVE: "Activo",
+  SCHEDULED_CANCEL: "Baja programada",
+  REQUESTED: "Solicitado",
+  PENDING_SETUP: "En preparación",
 }
 
 const ENFORCEMENT_META: Record<string, { label: string; hint: string; className: string }> = {
@@ -148,6 +167,7 @@ function AddonCatalogRow({ addon, onSaved }: { addon: AddonRow; onSaved: () => P
   const [active, setActive] = React.useState(addon.active)
   const [enforcement, setEnforcement] = React.useState(addon.enforcement)
   const [saving, setSaving] = React.useState(false)
+  const [verOrgs, setVerOrgs] = React.useState(false)
 
   React.useEffect(() => {
     setPrice(addon.priceArsMonthly !== null ? String(addon.priceArsMonthly) : "")
@@ -202,11 +222,61 @@ function AddonCatalogRow({ addon, onSaved }: { addon: AddonRow; onSaved: () => P
         </div>
         <p className="mt-1 max-w-prose text-xs text-muted-foreground">{addon.description}</p>
         <p className="mt-2 text-xs text-muted-foreground">
-          {addon.orgsActive} {addon.orgsActive === 1 ? "agencia lo tiene" : "agencias lo tienen"}
+          {addon.orgs.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => setVerOrgs((v) => !v)}
+              aria-expanded={verOrgs}
+              className="inline-flex items-center gap-1 underline decoration-dotted underline-offset-2 hover:text-foreground"
+            >
+              <ChevronRight
+                className={`h-3 w-3 transition-transform duration-150 motion-reduce:transition-none ${verOrgs ? "rotate-90" : ""}`}
+                aria-hidden
+              />
+              {addon.orgsActive}{" "}
+              {addon.orgsActive === 1 ? "agencia lo tiene" : "agencias lo tienen"}
+            </button>
+          ) : (
+            <span>Ninguna agencia lo tiene</span>
+          )}
           {addon.orgsPending > 0 && ` · ${addon.orgsPending} pendiente${addon.orgsPending === 1 ? "" : "s"}`}
           {addon.inclusions.length > 0 &&
             ` · incluido en ${addon.inclusions.map((i) => i.planId).join(", ")}`}
         </p>
+
+        {/* Desglose por agencia: el control interno es "quién tiene qué", no
+            "cuántos". Colapsado por defecto para no romper la lectura vertical
+            de la lista de complementos. */}
+        {verOrgs && addon.orgs.length > 0 && (
+          <ul className="mt-2 divide-y divide-border/50 rounded-lg border border-border/50">
+            {addon.orgs.map((org) => (
+              <li
+                key={org.orgId}
+                className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 px-3 py-1.5 text-xs"
+              >
+                <span className="min-w-0 font-medium">
+                  {org.name}
+                  {org.subscriptionStatus && org.subscriptionStatus !== "ACTIVE" && (
+                    <span className="ml-1.5 font-normal text-muted-foreground">
+                      ({org.subscriptionStatus.toLowerCase()})
+                    </span>
+                  )}
+                </span>
+                <span className="text-muted-foreground">
+                  {ESTADO_ORG[org.status] ?? org.status}
+                  {org.status === "SCHEDULED_CANCEL" && org.cancelEffectiveAt
+                    ? ` hasta el ${fecha(org.cancelEffectiveAt)}`
+                    : ""}
+                  {" · "}
+                  {org.priceArsMonthly && org.priceArsMonthly > 0
+                    ? formatArs(org.priceArsMonthly)
+                    : "sin cargo"}
+                  {org.since ? ` · desde el ${fecha(org.since)}` : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       <div className="flex flex-wrap items-end gap-3">

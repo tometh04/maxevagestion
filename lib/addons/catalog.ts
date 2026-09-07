@@ -17,14 +17,17 @@
  */
 import type { Module } from "@/lib/permissions"
 
+/**
+ * Referidores y Comisiones mensuales NO están acá a propósito: vienen con el
+ * plan base y los usa la agencia que quiera. Su único gate es el permiso del
+ * módulo. Si algún día se venden aparte, hay que volver a cablearlos.
+ */
 export type AddonKey =
   | "agente_blanco"
   | "emilia"
   | "growth_studio"
   | "wha_control"
   | "library"
-  | "referrals"
-  | "monthly_commissions"
   | "cerebro"
 
 export interface AddonDefinition {
@@ -148,38 +151,6 @@ export const ADDONS: Record<AddonKey, AddonDefinition> = {
     module: "library",
     defaultPriceArsMonthly: null,
     routes: ["/library"],
-  },
-  referrals: {
-    key: "referrals",
-    name: "Referidores",
-    description:
-      "Gestión de referidores, su comisión por venta y la liquidación de lo que se les paga.",
-    highlights: [
-      "Ficha de cada referidor y las ventas que trajo",
-      "Comisión por venta con su propia regla",
-      "Liquidación con comprobante y salida de caja",
-    ],
-    category: "modulos",
-    selfServe: true,
-    module: "referrals",
-    defaultPriceArsMonthly: null,
-    routes: ["/referrals"],
-  },
-  monthly_commissions: {
-    key: "monthly_commissions",
-    name: "Comisiones mensuales",
-    description:
-      "Liquidación mensual de comisiones por vendedor, con reglas propias y simulación.",
-    highlights: [
-      "Liquidación mensual por vendedor",
-      "Reglas propias por agencia y tipo de venta",
-      "Simulás el mes antes de cerrarlo",
-    ],
-    category: "modulos",
-    selfServe: true,
-    module: "commissions",
-    defaultPriceArsMonthly: null,
-    routes: ["/commissions-monthly", "/my/commissions-monthly"],
   },
   cerebro: {
     key: "cerebro",

@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server"
-import { assertAddonEnabledApi } from "@/lib/addons/guard"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { getUserAgencyIds, canPerformAction } from "@/lib/permissions-api"
@@ -103,12 +102,6 @@ export async function POST(request: Request) {
     if (!canPerformAction(user, "referrals", "write", perms)) {
       return NextResponse.json({ error: "No tiene permiso para crear referidores" }, { status: 403 })
     }
-
-    // Complemento contratado. Se gatea el ALTA, no la lectura ni la
-    // liquidación: dar de baja el complemento no puede dejar comisiones ya
-    // devengadas sin poder consultarse ni pagarse.
-    const addonDenied = await assertAddonEnabledApi(supabase, user.org_id, "referrals")
-    if (addonDenied) return addonDenied
 
     const body = await request.json()
     const name = typeof body.name === "string" ? body.name.trim() : ""

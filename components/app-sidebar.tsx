@@ -165,7 +165,7 @@ const allNavigation: NavItem[] = [
       { title: "Comisiones", url: "/commissions", module: "commissions" as const },
       // VIB-86: módulo propio. Colgado de `commissions` se le mostraba al
       // vendedor, que al entrar era redirigido al dashboard.
-      { title: "Referidos", url: "/referrals", module: "referrals" as const, addon: "referrals" as const },
+      { title: "Referidos", url: "/referrals", module: "referrals" as const },
       { title: "Reportes", url: "/reports", module: "reports" as const },
       { title: "Configuración", url: "/finances/settings", module: "cash" as const },
     ],

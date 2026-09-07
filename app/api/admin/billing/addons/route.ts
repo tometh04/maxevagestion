@@ -56,13 +56,21 @@ export async function GET() {
   if (!ok) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const admin = createAdminClient() as any
-  const [{ data: rows }, { data: inclusions }, { data: orgRows }] = await Promise.all([
-    admin.from("subscription_addons").select("*"),
-    admin.from("subscription_addon_plan_inclusions").select("*"),
-    admin.from("organization_addons").select("addon_key, status"),
-  ])
+  const [{ data: rows }, { data: inclusions }, { data: orgRows }, { data: orgs }] =
+    await Promise.all([
+      admin.from("subscription_addons").select("*"),
+      admin.from("subscription_addon_plan_inclusions").select("*"),
+      admin
+        .from("organization_addons")
+        .select(
+          "org_id, addon_key, status, price_ars_monthly_snapshot, activated_at, " +
+            "requested_at, cancel_effective_at"
+        ),
+      admin.from("organizations").select("id, name, plan, subscription_status"),
+    ])
 
   const byKey = new Map<string, any>((rows ?? []).map((r: any) => [r.addon_key, r]))
+  const orgById = new Map<string, any>((orgs ?? []).map((o: any) => [o.id, o]))
   const activeCount = new Map<string, number>()
   const pendingCount = new Map<string, number>()
   for (const r of orgRows ?? []) {
@@ -74,6 +82,36 @@ export async function GET() {
           : null
     if (target) target.set(r.addon_key, (target.get(r.addon_key) ?? 0) + 1)
   }
+
+  /**
+   * Desglose por agencia. Se manda el detalle y no solo el contador porque el
+   * control interno es "quién tiene qué", no "cuántos". Las bajas y las
+   * solicitudes denegadas quedan afuera: la pregunta es quién lo tiene hoy o
+   * está en camino de tenerlo.
+   */
+  const VIGENTES = new Set(["ACTIVE", "SCHEDULED_CANCEL", "REQUESTED", "PENDING_SETUP"])
+  const orgsByAddon = new Map<string, any[]>()
+  for (const r of orgRows ?? []) {
+    if (!VIGENTES.has(r.status)) continue
+    const org = orgById.get(r.org_id)
+    const lista = orgsByAddon.get(r.addon_key) ?? []
+    lista.push({
+      orgId: r.org_id,
+      // Una org borrada dejaría la fila huérfana: se muestra igual, con el id.
+      name: org?.name ?? "(agencia no encontrada)",
+      plan: org?.plan ?? null,
+      subscriptionStatus: org?.subscription_status ?? null,
+      status: r.status,
+      priceArsMonthly:
+        r.price_ars_monthly_snapshot != null ? Number(r.price_ars_monthly_snapshot) : null,
+      since: r.activated_at ?? r.requested_at ?? null,
+      cancelEffectiveAt: r.cancel_effective_at ?? null,
+    })
+    orgsByAddon.set(r.addon_key, lista)
+  }
+  orgsByAddon.forEach((lista) => {
+    lista.sort((a: any, b: any) => String(a.name).localeCompare(String(b.name), "es"))
+  })
 
   const addons = ADDON_KEYS.map((key) => {
     const row = byKey.get(key)
@@ -92,6 +130,7 @@ export async function GET() {
       sortOrder: row?.sort_order ?? 0,
       orgsActive: activeCount.get(key) ?? 0,
       orgsPending: pendingCount.get(key) ?? 0,
+      orgs: orgsByAddon.get(key) ?? [],
       inclusions: (inclusions ?? [])
         .filter((i: any) => i.addon_key === key)
         .map((i: any) => ({ planId: i.plan_id, includedUntil: i.included_until })),

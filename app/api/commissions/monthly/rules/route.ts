@@ -1,20 +1,7 @@
 import { NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
 import { createServerClient } from "@/lib/supabase/server"
-import { checkAddon } from "@/lib/addons/guard"
 import { buildDefaultRule } from "@/lib/commissions/monthly/calculator"
-
-
-async function assertModuleEnabled(supabase: any, orgId: string) {
-  const enabled = (await checkAddon(supabase, orgId, "monthly_commissions")).allowed
-  if (!enabled) {
-    return NextResponse.json(
-      { error: "Módulo de comisiones mensuales no habilitado para esta organización" },
-      { status: 404 }
-    )
-  }
-  return null
-}
 
 /**
  * GET /api/commissions/monthly/rules
@@ -30,8 +17,6 @@ export async function GET() {
   }
 
   const supabase: any = await createServerClient()
-  const blocked = await assertModuleEnabled(supabase, user.org_id)
-  if (blocked) return blocked
 
   const { data, error } = await supabase
     .from("monthly_commission_rules")
@@ -64,8 +49,6 @@ export async function POST(request: Request) {
   }
 
   const supabase: any = await createServerClient()
-  const blocked = await assertModuleEnabled(supabase, user.org_id)
-  if (blocked) return blocked
 
   const body = await request.json()
   const { seller_id, ...overrides } = body

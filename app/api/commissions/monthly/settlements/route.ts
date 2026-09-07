@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
 import { createServerClient } from "@/lib/supabase/server"
-import { checkAddon } from "@/lib/addons/guard"
-
 
 /**
  * GET /api/commissions/monthly/settlements?year_month=YYYY-MM&status=...
@@ -16,10 +14,6 @@ export async function GET(request: Request) {
   }
 
   const supabase: any = await createServerClient()
-  const enabled = (await checkAddon(supabase, user.org_id, "monthly_commissions")).allowed
-  if (!enabled) {
-    return NextResponse.json({ error: "Módulo no habilitado" }, { status: 404 })
-  }
 
   const url = new URL(request.url)
   const yearMonth = url.searchParams.get("year_month")
