@@ -116,15 +116,23 @@ async function attachQuoteFollowups(supabase: any, chats: any[], orgId: string) 
 }
 
 async function mergeConversationPairs(supabase: any, chats: any[], deviceId: string) {
-  if (chats.length < 2) return chats.map((c: any) => ({ ...c, _chatIds: [c.id] }))
+  const lidJids = chats
+    .filter((c: any) => !c.is_group && String(c.remote_jid || "").endsWith("@lid"))
+    .map((c: any) => c.remote_jid)
 
-  // Perfil de direcciones de todos los chats en una sola query; el apareo en sí
-  // vive en lib/wha-control/merge-chats.ts (lógica pura, con tests).
-  const chatIds = chats.map((c: any) => c.id)
-  const { data: directionStats } = await supabase
-    .from('wa_messages')
-    .select('chat_id, direction')
-    .in('chat_id', chatIds)
+  if (lidJids.length === 0) {
+    return chats.map((c: any) => ({ ...c, _chatIds: [c.id] }))
+  }
 
-  return mergeConversationPairsPure(chats, directionStats)
+  // Lookup indexado por (device_id, lid_jid) y acotado a los LID de esta página.
+  // Antes acá se leía la dirección de TODOS los mensajes de los chats listados
+  // en cada refresco de 30s, que en dispositivos con miles de mensajes era la
+  // consulta más cara del inbox.
+  const { data: lidMap } = await supabase
+    .from("wa_lid_map")
+    .select("lid_jid, phone_jid")
+    .eq("device_id", deviceId)
+    .in("lid_jid", lidJids)
+
+  return mergeConversationPairsPure(chats, lidMap)
 }

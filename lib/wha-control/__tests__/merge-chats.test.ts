@@ -9,128 +9,120 @@ function chat(
   return { id, remote_jid, last_message_at, is_group: false, ...extra }
 }
 
-const LID = "237984540586190@lid"
-const TEL = "5493417417442@s.whatsapp.net"
+// Pares reales tomados de producción.
+const LID_GERA = "237984540586190@lid"
+const TEL_GERA = "5493417417442@s.whatsapp.net"
+const LID_LAUTI = "186092544380974@lid"
+const TEL_LAUTI = "5493413153222@s.whatsapp.net"
 const GRUPO = "120363419126710739@g.us"
 
+const MAPA = [
+  { lid_jid: LID_GERA, phone_jid: TEL_GERA },
+  { lid_jid: LID_LAUTI, phone_jid: TEL_LAUTI },
+]
+
 describe("mergeConversationPairs", () => {
-  it("une la mitad @lid con la del número aunque esa no tenga mensajes", () => {
-    // Caso real: los mensajes quedaron en la fila @lid y el preview en la fila
-    // del número, que se veía en el listado con el hilo vacío.
+  it("une las dos mitades usando el mapeo real", () => {
     const chats = [
-      chat("lid", LID, "2026-09-07T13:31:39Z"),
-      chat("tel", TEL, "2026-09-07T13:31:00Z", { contact_phone: "5493417417442" }),
-    ]
-    const stats = [
-      { chat_id: "lid", direction: "outbound" },
-      { chat_id: "lid", direction: "outbound" },
+      chat("lid", LID_GERA, "2026-09-07T13:31:39Z"),
+      chat("tel", TEL_GERA, "2026-09-07T13:31:00Z"),
     ]
 
-    const result = mergeConversationPairs(chats, stats)
+    const result = mergeConversationPairs(chats, MAPA)
 
     expect(result).toHaveLength(1)
     expect(result[0]._chatIds.sort()).toEqual(["lid", "tel"])
-    // Identidad desde la fila del número, que es la que tiene el teléfono.
     expect(result[0].contact_phone).toBe("5493417417442")
   })
 
-  it("NUNCA aparea una conversación con un grupo", () => {
-    // El bug original: el grupo era el candidato "solo entrantes" más cercano
-    // en el tiempo, así que los mensajes privados terminaban dentro del grupo.
+  it("no mezcla dos conversaciones distintas aunque sean simultáneas", () => {
+    // El bug que se arregla: por cercanía de tiempo, los salientes a gera
+    // aparecían dentro del chat de Lauti.
     const chats = [
-      chat("lid", LID, "2026-09-07T13:31:39Z"),
-      chat("grupo", GRUPO, "2026-09-07T13:35:40Z", { is_group: true, contact_name: "Vibook" }),
-    ]
-    const stats = [
-      { chat_id: "lid", direction: "outbound" },
-      { chat_id: "grupo", direction: "inbound" },
+      chat("lid_gera", LID_GERA, "2026-09-07T13:31:39Z"),
+      chat("tel_lauti", TEL_LAUTI, "2026-09-07T13:31:40Z"),
     ]
 
-    const result = mergeConversationPairs(chats, stats)
+    const result = mergeConversationPairs(chats, MAPA)
 
     expect(result).toHaveLength(2)
     for (const c of result) expect(c._chatIds).toHaveLength(1)
   })
 
-  it("no aparea dos chats con mensajes en la misma dirección", () => {
-    // Ambas tienen inbound => son personas distintas, no una charla partida.
+  it("cada mitad va con la suya cuando están las dos parejas juntas", () => {
     const chats = [
-      chat("lid", LID, "2026-09-07T13:31:39Z"),
-      chat("tel", TEL, "2026-09-07T13:31:00Z"),
-    ]
-    const stats = [
-      { chat_id: "lid", direction: "inbound" },
-      { chat_id: "tel", direction: "inbound" },
+      chat("lid_gera", LID_GERA, "2026-09-07T13:31:39Z"),
+      chat("tel_gera", TEL_GERA, "2026-09-07T13:31:00Z"),
+      chat("lid_lauti", LID_LAUTI, "2026-09-07T13:49:24Z"),
+      chat("tel_lauti", TEL_LAUTI, "2026-09-07T13:49:00Z"),
     ]
 
-    const result = mergeConversationPairs(chats, stats)
+    const result = mergeConversationPairs(chats, MAPA)
 
     expect(result).toHaveLength(2)
+    const porTelefono = Object.fromEntries(
+      result.map((c) => [c.contact_phone, c._chatIds.sort()])
+    )
+    expect(porTelefono["5493417417442"]).toEqual(["lid_gera", "tel_gera"])
+    expect(porTelefono["5493413153222"]).toEqual(["lid_lauti", "tel_lauti"])
   })
 
-  it("no aparea mitades separadas por más de 24 horas", () => {
+  it("nunca toca un grupo", () => {
     const chats = [
-      chat("lid", LID, "2026-09-07T13:00:00Z"),
-      chat("tel", TEL, "2026-09-05T13:00:00Z"),
+      chat("lid", LID_GERA, "2026-09-07T13:31:39Z"),
+      chat("grupo", GRUPO, "2026-09-07T13:35:40Z", { is_group: true, contact_name: "Vibook" }),
     ]
-    const stats = [{ chat_id: "lid", direction: "outbound" }]
 
-    const result = mergeConversationPairs(chats, stats)
+    const result = mergeConversationPairs(chats, MAPA)
 
     expect(result).toHaveLength(2)
+    const grupo = result.find((c) => c.id === "grupo")
+    expect(grupo?._chatIds).toEqual(["grupo"])
   })
 
-  it("no aparea dos chats @lid entre sí", () => {
-    const chats = [
-      chat("lid1", "111@lid", "2026-09-07T13:31:00Z"),
-      chat("lid2", "222@lid", "2026-09-07T13:31:30Z"),
-    ]
-    const stats = [
-      { chat_id: "lid1", direction: "outbound" },
-      { chat_id: "lid2", direction: "inbound" },
-    ]
+  it("un @lid sin su otra mitad en la página queda solo, pero muestra el teléfono", () => {
+    const chats = [chat("lid", LID_GERA, "2026-09-07T13:31:39Z")]
 
-    const result = mergeConversationPairs(chats, stats)
+    const result = mergeConversationPairs(chats, MAPA)
 
-    expect(result).toHaveLength(2)
+    expect(result).toHaveLength(1)
+    expect(result[0]._chatIds).toEqual(["lid"])
+    expect(result[0].contact_phone).toBe("5493417417442")
   })
 
-  it("elige la mitad más cercana en el tiempo cuando hay varias candidatas", () => {
-    const chats = [
-      chat("lid", LID, "2026-09-07T13:31:00Z"),
-      chat("lejos", "5490000000001@s.whatsapp.net", "2026-09-07T05:00:00Z"),
-      chat("cerca", TEL, "2026-09-07T13:30:00Z"),
-    ]
-    const stats = [{ chat_id: "lid", direction: "outbound" }]
+  it("un @lid sin mapeo se deja intacto", () => {
+    const chats = [chat("lid", "999999@lid", "2026-09-07T13:31:39Z")]
 
-    const result = mergeConversationPairs(chats, stats)
+    const result = mergeConversationPairs(chats, MAPA)
 
-    const merged = result.find((c) => c._chatIds.length === 2)
-    expect(merged?._chatIds.sort()).toEqual(["cerca", "lid"])
+    expect(result).toHaveLength(1)
+    expect(result[0].contact_phone).toBeUndefined()
   })
 
   it("suma los no leídos y se queda con el preview más reciente", () => {
     const chats = [
-      chat("lid", LID, "2026-09-07T13:31:39Z", {
+      chat("lid", LID_GERA, "2026-09-07T13:31:39Z", {
         unread_count: 2,
         last_message_preview: "el más nuevo",
       }),
-      chat("tel", TEL, "2026-09-07T13:00:00Z", {
+      chat("tel", TEL_GERA, "2026-09-07T13:00:00Z", {
         unread_count: 3,
         last_message_preview: "viejo",
       }),
     ]
-    const stats = [{ chat_id: "lid", direction: "outbound" }]
 
-    const [merged] = mergeConversationPairs(chats, stats)
+    const [merged] = mergeConversationPairs(chats, MAPA)
 
     expect(merged.unread_count).toBe(5)
     expect(merged.last_message_preview).toBe("el más nuevo")
     expect(merged.last_message_at).toBe("2026-09-07T13:31:39Z")
   })
 
-  it("sin mensajes en ningún chat, devuelve todo tal cual", () => {
-    const chats = [chat("a", LID, "2026-09-07T13:00:00Z"), chat("b", TEL, "2026-09-07T13:00:00Z")]
+  it("sin mapeos devuelve todo tal cual", () => {
+    const chats = [
+      chat("a", LID_GERA, "2026-09-07T13:00:00Z"),
+      chat("b", TEL_GERA, "2026-09-07T13:00:00Z"),
+    ]
 
     const result = mergeConversationPairs(chats, [])
 
@@ -138,17 +130,13 @@ describe("mergeConversationPairs", () => {
     expect(result[0]._chatIds).toEqual(["a"])
   })
 
-  it("ordena el resultado por último mensaje descendente", () => {
+  it("ordena por último mensaje descendente", () => {
     const chats = [
       chat("viejo", "5490000000002@s.whatsapp.net", "2026-09-01T10:00:00Z"),
       chat("nuevo", "5490000000003@s.whatsapp.net", "2026-09-07T10:00:00Z"),
     ]
-    const stats = [
-      { chat_id: "viejo", direction: "inbound" },
-      { chat_id: "nuevo", direction: "inbound" },
-    ]
 
-    const result = mergeConversationPairs(chats, stats)
+    const result = mergeConversationPairs(chats, MAPA)
 
     expect(result.map((c) => c.id)).toEqual(["nuevo", "viejo"])
   })

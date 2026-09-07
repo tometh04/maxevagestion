@@ -72,6 +72,16 @@ interface InboxViewProps {
 
 const MEDIA_TYPES = new Set(["image", "sticker", "video", "audio", "voice", "document"])
 
+// Refresco del inbox. El hilo abierto se consulta seguido porque es lo único
+// que el usuario está mirando y su query está indexada por (chat_id, sent_at);
+// el listado es más caro, así que va más espaciado.
+const MESSAGES_POLL_MS = 7000
+const CHATS_POLL_MS = 15000
+
+// El connector persiste el mensaje saliente recién cuando Baileys emite su eco,
+// así que después de enviar se reintenta unas cuantas veces en vez de una sola.
+const ECHO_RETRY_DELAYS_MS = [600, 1500, 3000]
+
 // Set curado de emojis comunes para el picker del composer (sin dependencias).
 const EMOJIS = [
   "😀","😁","😂","🤣","😅","😊","😇","🙂","😉","😍","😘","😋","😎","🤩","🥳","😜",
@@ -250,7 +260,7 @@ export function InboxView({ agencies, quoteFollowupEnabled = false, initialPhone
 
   useEffect(() => {
     fetchChats()
-    const interval = setInterval(fetchChats, 30000)
+    const interval = setInterval(fetchChats, CHATS_POLL_MS)
     return () => clearInterval(interval)
   }, [fetchChats])
 
@@ -302,7 +312,7 @@ export function InboxView({ agencies, quoteFollowupEnabled = false, initialPhone
     setAttachedDoc(null)
     fetchMessages()
     if (!selectedChat) return
-    const interval = setInterval(fetchMessages, 30000)
+    const interval = setInterval(fetchMessages, MESSAGES_POLL_MS)
     return () => clearInterval(interval)
   }, [fetchMessages, selectedChat])
 
@@ -366,9 +376,11 @@ export function InboxView({ agencies, quoteFollowupEnabled = false, initialPhone
         setMessageInput("")
         setAttachedImage(null)
         setAttachedDoc(null)
-        setTimeout(() => {
-          fetchMessages().then(scrollToBottom)
-        }, 1200)
+        for (const delay of ECHO_RETRY_DELAYS_MS) {
+          setTimeout(() => {
+            fetchMessages().then(scrollToBottom)
+          }, delay)
+        }
       } else {
         const data = await res.json().catch(() => ({}))
         setSendError(data.error || "No se pudo enviar el mensaje")
