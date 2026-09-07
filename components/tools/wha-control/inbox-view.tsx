@@ -169,6 +169,7 @@ export function InboxView({ agencies, quoteFollowupEnabled = false, initialPhone
     base64: string
     mimeType: string
     fileName: string
+    size: number
   } | null>(null)
   const [followupBusy, setFollowupBusy] = useState(false)
   // "Nuevo chat": enviar a un número sin conversación previa.
@@ -404,6 +405,7 @@ export function InboxView({ agencies, quoteFollowupEnabled = false, initialPhone
           base64,
           mimeType: file.type || "application/octet-stream",
           fileName: file.name,
+          size: file.size,
         })
       }
     }
@@ -966,6 +968,9 @@ export function InboxView({ agencies, quoteFollowupEnabled = false, initialPhone
                   <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/40 px-2.5 py-1.5">
                     <span className="text-base">📄</span>
                     <span className="max-w-[240px] truncate text-xs">{attachedDoc.fileName}</span>
+                    <span className="text-[11px] text-muted-foreground flex-shrink-0">
+                      {(attachedDoc.size / (1024 * 1024)).toFixed(1)} MB
+                    </span>
                     <button
                       type="button"
                       onClick={() => setAttachedDoc(null)}

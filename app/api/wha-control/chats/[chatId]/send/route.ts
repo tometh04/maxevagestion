@@ -32,20 +32,35 @@ export async function POST(
 
   const { chatId } = await params
 
-  let parsed: z.infer<typeof sendSchema>
+  // El parseo del body y la validación se manejan por separado: los adjuntos
+  // viajan en base64 dentro del JSON, así que un archivo grande puede cortar el
+  // body y hacer fallar request.json(). Mezclar ambos casos en un solo catch
+  // devolvía "Body inválido" para cualquier error, sin rastro del motivo.
+  let body: unknown
   try {
-    const body = await request.json()
-    const result = sendSchema.safeParse(body)
-    if (!result.success) {
-      return NextResponse.json(
-        { error: result.error.errors[0]?.message || "Payload inválido" },
-        { status: 400 }
-      )
-    }
-    parsed = result.data
-  } catch {
-    return NextResponse.json({ error: "Body inválido" }, { status: 400 })
+    body = await request.json()
+  } catch (err) {
+    console.error(
+      `[wha-control/send] body ilegible en chat ${chatId}:`,
+      (err as Error)?.message
+    )
+    return NextResponse.json(
+      {
+        error:
+          "No se pudo leer el envío. Si adjuntaste un archivo, probá con uno más liviano.",
+      },
+      { status: 400 }
+    )
   }
+
+  const validation = sendSchema.safeParse(body)
+  if (!validation.success) {
+    return NextResponse.json(
+      { error: validation.error.errors[0]?.message || "Payload inválido" },
+      { status: 400 }
+    )
+  }
+  const parsed = validation.data
 
   // adminDb justificado: wa_chats tiene org_id; pre-validamos el chat contra el
   // orgId del caller antes de resolver device/remote_jid para evitar forge de URL.
