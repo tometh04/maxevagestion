@@ -33,9 +33,18 @@ interface Device {
 
 interface ChatFollowup {
   id: string
-  status: "PENDING" | "PROCESSING" | "SENT"
+  status: "PENDING" | "PROCESSING" | "SENT" | "CANCELLED" | "FAILED"
   scheduled_for: string | null
   sent_at: string | null
+  cancelled_reason?: string | null
+}
+
+// Por qué no salió el seguimiento, en palabras del vendedor.
+const FOLLOWUP_CANCEL_LABELS: Record<string, string> = {
+  client_replied: "El cliente respondió",
+  seller_followed_up: "Le escribiste vos",
+  manual: "Lo cancelaste",
+  device_unavailable: "Dispositivo desconectado",
 }
 
 interface Chat {
@@ -825,6 +834,17 @@ export function InboxView({ agencies, quoteFollowupEnabled = false, initialPhone
                               <FileCheck2 className="h-3 w-3" />
                               Seguimiento enviado
                             </Badge>
+                          ) : chat.followup.status === "CANCELLED" ? (
+                            <Badge variant="outline" className="h-5 gap-1 px-1.5 text-[10px] text-muted-foreground border-border">
+                              <X className="h-3 w-3" />
+                              Sin seguimiento ·{" "}
+                              {FOLLOWUP_CANCEL_LABELS[chat.followup.cancelled_reason ?? ""] ?? "Cancelado"}
+                            </Badge>
+                          ) : chat.followup.status === "FAILED" ? (
+                            <Badge variant="outline" className="h-5 gap-1 px-1.5 text-[10px] text-destructive border-destructive/40">
+                              <X className="h-3 w-3" />
+                              Seguimiento no enviado
+                            </Badge>
                           ) : (
                             <Badge variant="outline" className="h-5 gap-1 px-1.5 text-[10px] text-accent-coral border-accent-coral/40">
                               <Timer className="h-3 w-3" />
@@ -890,6 +910,30 @@ export function InboxView({ agencies, quoteFollowupEnabled = false, initialPhone
                     <FileCheck2 className="h-3 w-3" />
                     Seguimiento enviado
                   </Badge>
+                ) : selectedFollowup?.status === "CANCELLED" || selectedFollowup?.status === "FAILED" ? (
+                  // El seguimiento terminó sin enviarse: se explica por qué y se
+                  // deja volver a marcar, en vez de que la marca desaparezca sola.
+                  <div className="flex items-center gap-2">
+                    <span className="hidden text-xs text-muted-foreground sm:inline">
+                      {selectedFollowup.status === "FAILED"
+                        ? "No se pudo enviar el seguimiento"
+                        : `Sin seguimiento: ${(FOLLOWUP_CANCEL_LABELS[selectedFollowup.cancelled_reason ?? ""] ?? "cancelado").toLowerCase()}`}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5"
+                      onClick={handleMarkQuoted}
+                      disabled={followupBusy}
+                    >
+                      {followupBusy ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <FileCheck2 className="h-3.5 w-3.5" />
+                      )}
+                      <span className="hidden sm:inline text-xs">Marcar de nuevo</span>
+                    </Button>
+                  </div>
                 ) : (
                   <Button
                     variant="outline"

@@ -5,7 +5,10 @@ import { getOrgFeatureFlag } from "@/lib/settings/org-features"
 import { FEATURE_FLAG_WHA_QUOTE_FOLLOWUP } from "@/lib/feature-flags"
 import { mergeConversationPairs as mergeConversationPairsPure } from "@/lib/wha-control/merge-chats"
 
-const SENT_BADGE_DAYS = 7
+// Cuánto sigue visible en el listado un seguimiento que ya terminó. Sin esto el
+// estado desaparecía apenas se enviaba o cancelaba, y el vendedor no tenía
+// forma de saber si su marca había hecho algo.
+const FINISHED_BADGE_DAYS = 2
 
 export async function GET(request: Request) {
   const auth = await whaControlAuthGuard()
@@ -111,15 +114,17 @@ async function attachQuoteFollowups(supabase: any, chats: any[], orgId: string) 
   const allChatIds = chats.flatMap((c: any) => c._chatIds ?? [c.id])
   const { data: followups } = await supabase
     .from("wa_quote_followups")
-    .select("id, chat_id, status, scheduled_for, sent_at, created_at")
+    .select(
+      "id, chat_id, status, scheduled_for, sent_at, cancelled_at, cancelled_reason, created_at"
+    )
     .in("chat_id", allChatIds)
     .eq("org_id", orgId)
-    .in("status", ["PENDING", "PROCESSING", "SENT"])
+    .in("status", ["PENDING", "PROCESSING", "SENT", "CANCELLED", "FAILED"])
     .order("created_at", { ascending: false })
 
   if (!followups || followups.length === 0) return
 
-  const sentCutoff = Date.now() - SENT_BADGE_DAYS * 24 * 60 * 60 * 1000
+  const finishedCutoff = Date.now() - FINISHED_BADGE_DAYS * 24 * 60 * 60 * 1000
   const byChatId: Record<string, any> = {}
   for (const f of followups) {
     // El más reciente por chat gana (vienen ordenados desc).
@@ -135,15 +140,17 @@ async function attachQuoteFollowups(supabase: any, chats: any[], orgId: string) 
       if (!best || new Date(f.created_at) > new Date(best.created_at)) best = f
     }
     if (!best) continue
-    // El badge de "enviado" caduca para no quedar eterno.
-    if (best.status === "SENT" && (!best.sent_at || new Date(best.sent_at).getTime() < sentCutoff)) {
-      continue
+    // Los estados terminales caducan para no quedar eternos en el listado.
+    if (best.status !== "PENDING" && best.status !== "PROCESSING") {
+      const terminadoEn = best.sent_at || best.cancelled_at || best.created_at
+      if (!terminadoEn || new Date(terminadoEn).getTime() < finishedCutoff) continue
     }
     chat.followup = {
       id: best.id,
       status: best.status,
       scheduled_for: best.scheduled_for,
       sent_at: best.sent_at,
+      cancelled_reason: best.cancelled_reason,
     }
   }
 }
