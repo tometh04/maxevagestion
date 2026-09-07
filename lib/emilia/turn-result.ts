@@ -1,6 +1,7 @@
 import { buildAssistantContent, generateClientId, generateTitle } from "@/lib/emilia/utils"
 import type { EmiliaProgressView } from "./progressive-turn"
 import { z } from "zod"
+import { hotelQueryForOffer, parseHotelSegments } from "./hotel-stays"
 import {
   sanitizeEmiliaMetaForStorage,
   transformCanonicalFlights,
@@ -226,7 +227,7 @@ export function canonicalOfferCards(data: any) {
               : undefined,
           offer_refresh_fallback: {
             product: "hotels" as const,
-            query: hotelQuery,
+            query: hotelQueryForOffer(hotelQuery, hotel.search_context),
             identity: {
               kind: "hotel_room",
               hotel_name: rawHotel?.name,
@@ -317,6 +318,7 @@ function normalizeCanonicalTurn(data: any): NormalizedEmiliaTurn {
     assistantMeta: {
       messageType: outcome.type || "message",
       productStates: Object.fromEntries(resultSets.map(set => [set.product, set.status])),
+      hotelSegments: parseHotelSegments(hotelSet?.metadata),
       ...(parsedRequest ? { originalRequest: parsedRequest, parsedRequest } : {}),
       ...(Object.keys(turnSemantics).length > 0 ? { turnSemantics } : {}),
       canonicalResult: outcome.results

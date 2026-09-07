@@ -4,13 +4,13 @@
  * (1 vuelo opcional + N hoteles) al payload exacto que espera
  * POST /api/quotations.
  *
- * Patrón: 1 vuelo + N hoteles = N opciones de cotización, donde el
- * vuelo se replica en cada opción (alineado con el sync de vuelos
- * para mantener el contrato canónico de cotizaciones).
+ * Las ofertas con estadías forman una opción con un hotel por estadía.
+ * Las ofertas históricas sin estadía siguen formando opciones comparables.
  *
- * Defense: si el UI permite >4 hoteles por bug, este mapper clampea
- * a 4 silenciosamente (el UI ya muestra toast).
+ * Se exige una selección completa antes de generar un itinerario.
  */
+
+import type { HotelSearchContext } from "./hotel-stays"
 
 const MAX_OPTIONS = 4
 
@@ -85,6 +85,7 @@ export interface EmiliaFlight {
 }
 
 export interface EurovipsHotel {
+  search_context?: HotelSearchContext
   id: string
   unique_id: string
   name: string
@@ -145,6 +146,7 @@ export interface SelectedHotel {
 }
 
 export interface BuildQuotationInput {
+  requiredStayIds?: string[]
   lead: LeadInfo
   selectedFlight: EmiliaFlight | null
   selectedHotels: SelectedHotel[]
@@ -350,8 +352,37 @@ export function buildQuotationPayload(input: BuildQuotationInput) {
     throw new Error("Seleccioná al menos un vuelo o un hotel.")
   }
 
-  // Defensa: clampear a MAX_OPTIONS hoteles aunque el UI ya lo limita
-  const hotels = selectedHotels.slice(0, MAX_OPTIONS)
+  const scoped = selectedHotels.some(({ hotel }) => hotel.search_context) || Boolean(input.requiredStayIds?.length)
+  const hotels = scoped ? [...selectedHotels] : selectedHotels.slice(0, MAX_OPTIONS)
+  if (scoped) {
+    const ids = hotels.map(({ hotel }) => hotel.search_context?.stay_id)
+    const required = new Set([
+      ...(input.requiredStayIds || []),
+      ...hotels.flatMap(({ hotel }) => hotel.search_context?.required_stay_ids || []),
+    ])
+    if (hotels.length > 6 || ids.some(id => !id) || new Set(ids).size !== ids.length) {
+      throw new Error("Seleccioná un solo hotel por estadía.")
+    }
+    if (Array.from(required).some(id => !ids.includes(id))) {
+      throw new Error("Seleccioná un hotel para cada estadía antes de cotizar.")
+    }
+    hotels.sort((a, b) => a.hotel.check_in.localeCompare(b.hotel.check_in))
+    for (let i = 1; i < hotels.length; i++) {
+      if (hotels[i].hotel.check_in < hotels[i - 1].hotel.check_out) throw new Error("Las fechas de las estadías se superponen.")
+    }
+    for (const { hotel } of hotels) {
+      const budget = hotel.search_context?.combined_budget
+      if (!budget) continue
+      const prices = [selectedFlight?.price, ...hotels.map(({ hotel: stay, roomIndex }) => {
+        const room = stay.rooms[roomIndex]
+        return room ? { amount: room.total_price, currency: room.currency } : undefined
+      })]
+      if (!selectedFlight || prices.some(price => !price || !Number.isFinite(price.amount) || price.currency !== budget.currency)
+        || prices.reduce((total, price) => total + (price?.amount || 0), 0) > budget.amount) {
+        throw new Error("La selección no cumple el presupuesto del viaje. Revisá el vuelo y todas las estadías.")
+      }
+    }
+  }
   const currencies = [
     selectedFlight?.price?.currency,
     ...hotels.map(selection => (
@@ -369,7 +400,7 @@ export function buildQuotationPayload(input: BuildQuotationInput) {
         : "Las ofertas seleccionadas usan monedas distintas. Convertí los importes antes de cotizar."
     )
   }
-  const numOptions = Math.max(hotels.length, 1)
+  const numOptions = scoped ? 1 : Math.max(hotels.length, 1)
 
   const options = []
   for (let i = 0; i < numOptions; i++) {
@@ -378,7 +409,9 @@ export function buildQuotationPayload(input: BuildQuotationInput) {
     if (selectedFlight) {
       items.push(mapFlightToItem(selectedFlight))
     }
-    if (hotels[i]) {
+    if (scoped) {
+      items.push(...hotels.map(mapHotelToItem))
+    } else if (hotels[i]) {
       items.push(mapHotelToItem(hotels[i]))
     }
 
@@ -395,10 +428,10 @@ export function buildQuotationPayload(input: BuildQuotationInput) {
   return {
     lead_id: lead.id,
     agency_id: lead.agency_id,
-    destination: lead.destination,
+    destination: scoped ? hotels.map(({ hotel }) => hotel.city).filter(Boolean).join(" · ") || lead.destination : lead.destination,
     region: lead.region || "OTROS",
-    departure_date: generalData.departureDate,
-    return_date: generalData.returnDate,
+    departure_date: selectedFlight?.departure_date || (scoped ? hotels[0]?.hotel.check_in : null) || generalData.departureDate,
+    return_date: selectedFlight ? selectedFlight.return_date ?? null : (scoped ? hotels[hotels.length - 1]?.hotel.check_out : null) || generalData.returnDate,
     adults: generalData.adults,
     children: generalData.children,
     infants: generalData.infants,

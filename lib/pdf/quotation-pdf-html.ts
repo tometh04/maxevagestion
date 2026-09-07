@@ -365,6 +365,11 @@ function buildCombinedInput(data: QuotationPresentationData): CombinedTemplateIn
   // (ej. Madrid + Barcelona). Opciones distintas = alternativas a elegir.
   if (refHotels.length > 1) {
     input.has_hotel_segments = true
+    const orderedHotels = [...refHotels].sort((a, b) => (a.checkin_date || "").localeCompare(b.checkin_date || ""))
+    input.checkin = fmtDate(orderedHotels[0]?.checkin_date)
+    input.checkout = fmtDate(orderedHotels[orderedHotels.length - 1]?.checkout_date)
+    const totalNights = refHotels.reduce((sum, hotel) => sum + (hotel.nights || 0), 0)
+    input.nights_label = `${totalNights} ${totalNights === 1 ? "Noche" : "Noches"}`
     input.hotel_summary_cards = refHotels.map(
       (item): HotelSummaryCard => ({
         city: esc(item.destination_city || ""),

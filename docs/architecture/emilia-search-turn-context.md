@@ -36,6 +36,20 @@ al abrir nuevamente el lead.
 
 ## Compatibilidad
 
+El contrato `emilia.turn.v1` admite `search_context` en cada hotel:
+`stay_id`, `destination_option_id`, `required_stay_ids` y presupuesto combinado
+opcional. Las estadías provienen de `query.segments`; `destinationOptions`
+representa ciudades alternativas para una misma estadía. El adaptador conserva
+estos identificadores y resuelve fechas, ocupación, país y consulta de actualización
+por la estadía y alternativa correspondientes. `metadata.hotel_segments` conserva
+los estados disponible, vacío y fallido, incluso si no hay cards en un destino.
+
+El chat permite un hotel por estadía; cambiar de alternativa reemplaza la selección
+de esa estadía. El mapper exige todas las estadías y construye una opción de
+cotización que suma cada alojamiento y el vuelo una sola vez. Cotización y PDF
+conservan las ciudades y fechas propias de cada hotel. Las ofertas sin scope
+conservan el flujo histórico de comparación de opciones.
+
 Conversaciones históricas sin `searchContextId` usan el último mensaje con
 cards como contexto activo. No se requiere migración de base de datos: el
 estado y los metadatos se persisten en columnas JSONB existentes.

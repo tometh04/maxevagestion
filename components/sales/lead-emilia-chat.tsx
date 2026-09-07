@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils"
 import { FlightResultCard } from "@/components/emilia/flight-result-card"
 import { HotelResultCard } from "@/components/emilia/hotel-result-card"
 import { buildQuotationPayload, type EmiliaFlight, type EurovipsHotel } from "@/lib/emilia/quotation-mapper"
+import { parseHotelSegments, selectHotelForStay } from "@/lib/emilia/hotel-stays"
 import { generateClientId } from "@/lib/emilia/utils"
 import { EmiliaJobError, waitForEmiliaJob } from "@/lib/emilia/async-turn"
 import { applyEmiliaTurnUpdate, interruptEmiliaTurn, type EmiliaChatMessage } from "@/lib/emilia/progressive-turn"
@@ -48,7 +49,6 @@ import {
   hasSearchCards,
 } from "@/lib/emilia/search-context"
 
-const MAX_HOTELS = 4
 const ALL_SELECT_VALUE = "__all__"
 const DEFAULT_FLIGHT_FILTERS: FlightFilters = { stops: "all" }
 const DEFAULT_HOTEL_FILTERS: HotelFilters = { mealPlan: "all" }
@@ -950,11 +950,8 @@ export function LeadEmiliaChat({
       if (next.has(hotel.id)) {
         next.delete(hotel.id)
       } else {
-        if (next.size >= MAX_HOTELS) {
-          toast.error(`Solo podés seleccionar hasta ${MAX_HOTELS} hoteles. Deseleccioná uno para elegir otro.`)
-          return prev
-        }
-        next.set(hotel.id, hotel.rooms?.[0]?.occupancy_id ?? "")
+        try { return selectHotelForStay(next, hotel, hotel.rooms?.[0]?.occupancy_id ?? "", lastResults?.cards?.hotels?.items || []) }
+        catch (error) { toast.error((error as Error).message); return prev }
       }
       return next
     })
@@ -973,11 +970,8 @@ export function LeadEmiliaChat({
           next.set(hotel.id, roomId)
         }
       } else {
-        if (next.size >= MAX_HOTELS) {
-          toast.error(`Solo podés seleccionar hasta ${MAX_HOTELS} hoteles. Deseleccioná uno para elegir otro.`)
-          return prev
-        }
-        next.set(hotel.id, roomId)
+        try { return selectHotelForStay(next, hotel, roomId, lastResults?.cards?.hotels?.items || []) }
+        catch (error) { toast.error((error as Error).message); return prev }
       }
       return next
     })
@@ -1081,6 +1075,7 @@ export function LeadEmiliaChat({
         },
         selectedFlight: flight,
         selectedHotels: selectedHotelArr,
+        requiredStayIds: Array.from(new Set(parseHotelSegments({ hotel_segments: lastResults?.meta?.hotelSegments }).map(segment => segment.stay_id))),
         generalData,
       })
       const res = await fetch("/api/quotations", {
@@ -1108,9 +1103,10 @@ export function LeadEmiliaChat({
     const fc = selectedFlightId ? 1 : 0
     const hc = selectedHotels.size
     if (fc + hc === 0) return "Generar cotización"
-    const opts = Math.max(hc, 1)
+    const scoped = lastResults?.cards?.hotels?.items.some(hotel => hotel.search_context)
+    const opts = scoped ? 1 : Math.max(hc, 1)
     return `Generar cotización · ${opts} opción${opts > 1 ? "es" : ""} (${fc} vuelo + ${hc} hotel${hc !== 1 ? "es" : ""})`
-  }, [selectedFlightId, selectedHotels])
+  }, [selectedFlightId, selectedHotels, lastResults])
 
   const canGenerate = (selectedFlightId !== null || selectedHotels.size > 0)
     && !generating
@@ -1264,11 +1260,17 @@ export function LeadEmiliaChat({
                   )}
 
                   <ProductSearchStatus product="hotels" state={m.progress?.products.hotels || m.meta?.productStates?.hotels} />
+                  {parseHotelSegments({ hotel_segments: m.meta?.hotelSegments }).map(segment => (
+                    <p key={`${segment.stay_id}:${segment.destination_option_id}`} className="text-xs text-muted-foreground" role="status">
+                      {segment.city} · {segment.check_in} al {segment.check_out}
+                      {segment.status === "failed" ? " · No pudimos consultar esta alternativa. Podés reintentar." : segment.status === "empty" ? " · Sin disponibilidad" : " · Disponible"}
+                    </p>
+                  ))}
                   {mHotels.length > 0 && (
                     <div className="mt-1">
                       <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-widest text-foreground/60 mb-2">
                         <span>🏨 Hoteles · {mHotels.filter(h => selectedHotels.has(h.id)).length} de {mHotels.length} seleccionados</span>
-                        <span className="text-foreground/40 normal-case">máx 4</span>
+                        <span className="text-foreground/40 normal-case">{mHotels.some(hotel => hotel.search_context) ? "1 hotel por estadía" : "máx 4"}</span>
                       </div>
                       <HotelFiltersBar
                         filters={hotelFilters}
@@ -1282,6 +1284,9 @@ export function LeadEmiliaChat({
                         <CardCarousel count={visibleHotels.length} ariaLabel="Hoteles disponibles">
                           {visibleHotels.map((hotel) => (
                             <CarouselSlide key={hotel.id}>
+                              {hotel.search_context && <p className="mb-2 text-xs font-medium">
+                                Estadía {hotel.search_context.required_stay_ids.indexOf(hotel.search_context.stay_id) + 1} · {hotel.city} · {hotel.check_in} al {hotel.check_out}
+                              </p>}
                               <HotelResultCard
                                 hotel={hotel as any}
                                 compact

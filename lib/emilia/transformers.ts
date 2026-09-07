@@ -1,3 +1,4 @@
+import { hotelQueryForOffer, hotelSearchContextSchema } from "./hotel-stays"
 import {
   truncateEurovipsAddress,
   truncateEurovipsPolicy,
@@ -478,6 +479,14 @@ function canonicalNights(checkIn: string, checkOut: string, value: unknown): num
 /** Convierte `emilia.hotel-offer.v1` al view model cotizable de las cards de Maxeva. */
 export function transformCanonicalHotels(hotels: any[], query: any = {}): any[] {
   return hotels.map((hotel) => {
+    const parsedContext = hotelSearchContextSchema.safeParse(hotel?.search_context)
+    const searchContext = parsedContext.success ? parsedContext.data : undefined
+    const scopedQuery = hotelQueryForOffer(query, searchContext)
+    return transformCanonicalHotel(hotel, scopedQuery, searchContext)
+  })
+}
+
+function transformCanonicalHotel(hotel: any, query: any, searchContext?: import("./hotel-stays").HotelSearchContext) {
     const checkIn = hotel?.stay?.check_in || query?.checkinDate || ""
     const checkOut = hotel?.stay?.check_out || query?.checkoutDate || ""
     const nights = canonicalNights(checkIn, checkOut, hotel?.stay?.nights)
@@ -508,6 +517,7 @@ export function transformCanonicalHotels(hotels: any[], query: any = {}): any[] 
     return {
       id: hotel.id,
       unique_id: hotel.id,
+      search_context: searchContext,
       name: hotel.name,
       category: typeof hotel?.stars === "number" ? `${hotel.stars} estrellas` : "",
       city: hotel?.location?.city || query?.city || query?.destination || "",
@@ -533,6 +543,5 @@ export function transformCanonicalHotels(hotels: any[], query: any = {}): any[] 
       latitude: hotel?.location?.latitude ?? null,
       longitude: hotel?.location?.longitude ?? null,
     }
-  })
 }
 
