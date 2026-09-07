@@ -65,6 +65,18 @@ async function send() {
   act(() => onProgress(partial))
 }
 
+it("rehydrates the quotation summary with both hotel stays", async () => {
+  history = [{ id: "quote-message", role: "assistant", content: { text: "Cotización actualizada", metadata: {
+    emilia_meta: { messageType: "quotation_updated", quotation: { id: "quote", revisionId: "revision", version: 1,
+      items: [{ id: "stay-1", label: "Hotel Porto · Porto de Galinhas · 2027-03-10 · 2027-03-14" },
+        { id: "stay-2", label: "Hotel Maragogi · Maragogi · 2027-03-14 · 2027-03-18" }] } },
+  } } }]
+  chat()
+  expect(await screen.findByText("Cotización · versión 1")).toBeInTheDocument()
+  expect(screen.getByText(/Hotel Porto/)).toBeInTheDocument()
+  expect(screen.getByText(/Hotel Maragogi/)).toBeInTheDocument()
+})
+
 it("hydrates hotels without remounting the flight or losing selection and filters", async () => {
   const view = chat()
   await send()

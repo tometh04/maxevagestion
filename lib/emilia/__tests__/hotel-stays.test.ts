@@ -54,6 +54,17 @@ it("replaces alternatives only within their stay", () => {
   expect(Array.from(selected.keys())).toEqual(["hotel-2", "hotel-1"])
 })
 
+it("preserves every hotel in a quotation update without replacing the active search context", () => {
+  const hotelSet = turn().outcome.results.result_sets[0]
+  const normalized = normalizeEmiliaTurnPayload({ schema_version: "emilia.turn.v1", request_id: "new-quote-turn", outcome: {
+    type: "quotation_updated", quotation: { id: "quote", revision_id: "revision", version: 1,
+      items: [hotelSet.data[0], hotelSet.data[2]].map(offer => ({ product: "hotels", offer_id: offer.id, offer })) },
+  } })
+  expect(normalized.assistantMeta.quotation.items).toHaveLength(2)
+  expect(normalized.assistantMeta.quotation.items[1].label).toContain("Buzios")
+  expect(normalized.assistantMeta.turnSemantics?.searchContextId).toBeUndefined()
+})
+
 it("builds one complete itinerary, with each hotel exactly once and the final checkout", () => {
   const hotels = cards()
   const selectedHotels = [{ hotel: hotels[2], roomIndex: 0 }, { hotel: hotels[0], roomIndex: 0 }]

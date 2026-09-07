@@ -50,6 +50,10 @@ cotización que suma cada alojamiento y el vuelo una sola vez. Cotización y PDF
 conservan las ciudades y fechas propias de cada hotel. Las ofertas sin scope
 conservan el flujo histórico de comparación de opciones.
 
+`quotation_updated` se guarda como resumen versionado con todos los servicios;
+el chat muestra cada hotel, ciudad y fechas al rehidratar. Este turno no genera
+un identificador de búsqueda nuevo ni interpreta los hoteles como alternativas.
+
 Conversaciones históricas sin `searchContextId` usan el último mensaje con
 cards como contexto activo. No se requiere migración de base de datos: el
 estado y los metadatos se persisten en columnas JSONB existentes.

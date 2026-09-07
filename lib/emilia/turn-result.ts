@@ -253,6 +253,31 @@ function canonicalRequestType(flights: any, hotels: any): string | undefined {
   return undefined
 }
 
+function quotationSummary(value: unknown) {
+  const parsed = z.object({
+    id: z.string(), revision_id: z.string(), version: z.number().int().positive(),
+    items: z.array(z.object({
+      product: z.enum(["flights", "hotels"]), offer_id: z.string(),
+      offer: z.object({
+        name: z.string().optional(),
+        location: z.object({ city: z.string().nullable() }).optional(),
+        stay: z.object({ check_in: z.string().nullable(), check_out: z.string().nullable() }).optional(),
+        legs: z.array(z.object({ origin: z.string().nullable(), destination: z.string().nullable() })).optional(),
+      }),
+    })).max(7),
+  }).safeParse(value)
+  if (!parsed.success) return undefined
+  return {
+    id: parsed.data.id, revisionId: parsed.data.revision_id, version: parsed.data.version,
+    items: parsed.data.items.map(item => ({
+      id: item.offer_id,
+      label: item.product === "flights"
+        ? `Vuelo ${item.offer.legs?.[0]?.origin || ""} → ${item.offer.legs?.[0]?.destination || ""}`
+        : [item.offer.name, item.offer.location?.city, item.offer.stay?.check_in, item.offer.stay?.check_out].filter(Boolean).join(" · "),
+    })),
+  }
+}
+
 function normalizeCanonicalTurn(data: any): NormalizedEmiliaTurn {
   const outcome = data.outcome || {}
   const text = assistantMessageText(data.assistant_message)
@@ -302,7 +327,7 @@ function normalizeCanonicalTurn(data: any): NormalizedEmiliaTurn {
   const searchContextId = data?.metadata?.turn_id || data?.metadata?.job_id || data?.request_id
   const turnSemantics = {
     ...(data?.metadata?.turn_relation ? { relation: data.metadata.turn_relation } : {}),
-    ...(searchContextId ? { searchContextId } : {}),
+    ...(searchContextId && outcome.type !== "quotation_updated" ? { searchContextId } : {}),
   }
 
   return {
@@ -319,6 +344,7 @@ function normalizeCanonicalTurn(data: any): NormalizedEmiliaTurn {
       messageType: outcome.type || "message",
       productStates: Object.fromEntries(resultSets.map(set => [set.product, set.status])),
       hotelSegments: parseHotelSegments(hotelSet?.metadata),
+      ...(outcome.type === "quotation_updated" ? { quotation: quotationSummary(outcome.quotation) } : {}),
       ...(parsedRequest ? { originalRequest: parsedRequest, parsedRequest } : {}),
       ...(Object.keys(turnSemantics).length > 0 ? { turnSemantics } : {}),
       canonicalResult: outcome.results

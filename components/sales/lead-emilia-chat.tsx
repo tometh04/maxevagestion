@@ -492,6 +492,7 @@ interface Message extends EmiliaChatMessage {
       [key: string]: any
     }
     messageType?: string
+    quotation?: { id: string; revisionId: string; version: number; items: Array<{ id: string; label: string }> }
     missing_fields?: string[]
     // Emilia agrega muchos campos al meta (routeResult, iterationContext, etc.);
     // permitimos cualquiera para no tipar todo el shape.
@@ -1195,6 +1196,12 @@ export function LeadEmiliaChat({
                       {m.meta.missing_fields.map((f, idx) => <li key={idx}>{f}</li>)}
                     </ul>
                   )}
+                  {m.meta?.quotation && <div className="mt-2 text-xs">
+                    <p className="font-medium">Cotización · versión {m.meta.quotation.version}</p>
+                    <ul className="mt-1 space-y-1">
+                      {m.meta.quotation.items.map(item => <li key={item.id}>{item.label}</li>)}
+                    </ul>
+                  </div>}
                 </div>
               </div>
 
