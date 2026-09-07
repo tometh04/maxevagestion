@@ -3,9 +3,7 @@ import { ArrowRight } from "lucide-react"
 
 import { Card, CardContent } from "@/components/ui/card"
 import { resolveOrgAddons } from "@/lib/addons/server"
-import { isAddonsSoftLaunchUser } from "@/lib/addons/soft-launch"
 import { ADDON_KEYS } from "@/lib/addons/catalog"
-import { getCurrentUser } from "@/lib/auth"
 import { formatArs } from "@/lib/billing/plans"
 
 /**
@@ -18,13 +16,6 @@ import { formatArs } from "@/lib/billing/plans"
  * plan: una agencia con contrato propio también contrata adicionales.
  */
 export async function AddonsSummaryCard({ supabase, orgId }: { supabase: any; orgId: string | null }) {
-  // Soft-launch: sin esto, publicar un complemento para probarlo le mostraría
-  // "N disponibles" a todos los dueños de agencia, con un link a una pantalla
-  // que para ellos es un 404. `getCurrentUser` está cacheado con React.cache,
-  // así que no agrega un round-trip a la página de suscripción.
-  const { user } = await getCurrentUser()
-  if (!isAddonsSoftLaunchUser((user as any)?.email)) return null
-
   const entitlements = await resolveOrgAddons(supabase, orgId)
 
   const contratados = ADDON_KEYS.map((k) => entitlements[k]).filter(

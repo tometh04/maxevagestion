@@ -1,7 +1,6 @@
 import { notFound, redirect } from "next/navigation"
 
 import { AddonsStore } from "@/components/billing/addons-store"
-import { isAddonsSoftLaunchUser } from "@/lib/addons/soft-launch"
 import { getCurrentUser } from "@/lib/auth"
 
 export const dynamic = "force-dynamic"
@@ -20,11 +19,6 @@ export const dynamic = "force-dynamic"
 export default async function AddonsPage() {
   const { user } = await getCurrentUser()
   if (!user) redirect("/login")
-
-  // Soft-launch: mientras se valida en producción la sección solo existe para
-  // las cuentas de prueba. Va antes del rol para no filtrar que la pantalla
-  // existe.
-  if (!isAddonsSoftLaunchUser((user as any).email)) notFound()
 
   const roles: string[] = (user as any).roles ?? [(user as any).role]
   const canManageBilling = roles.some(
