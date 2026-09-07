@@ -21,6 +21,7 @@ import {
 import Link from "next/link"
 import { shouldShowInSidebar, type UserRole, type Module } from "@/lib/permissions"
 import type { AddonKey } from "@/lib/addons/catalog"
+import { isAddonsSoftLaunchUser } from "@/lib/addons/soft-launch"
 import { checkResolvedPermission, type ResolvedPermissionsMatrix } from "@/lib/permissions-agency"
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
@@ -453,6 +454,12 @@ export function AppSidebar({
         return null
       }
       if (item.billingOnly && !canManageBilling) {
+        return null
+      }
+      // Soft-launch de Complementos: mientras se valida en producción solo lo
+      // ven las cuentas de prueba. El corte real está en la página y en la API;
+      // esto es para que el resto no vea el ítem. Para liberar, borrar el gate.
+      if (item.url === "/addons" && !isAddonsSoftLaunchUser(user.email)) {
         return null
       }
       // Filtrar items principales por módulo

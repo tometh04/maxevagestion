@@ -5,6 +5,7 @@ import { ADDONS, ADDON_KEYS, type AddonKey } from "@/lib/addons/catalog"
 import { syncAddonsToMp } from "@/lib/addons/mp-sync"
 import { computeSubscriptionTotalArs } from "@/lib/addons/pricing"
 import { resolveOrgAddons } from "@/lib/addons/server"
+import { isAddonsSoftLaunchUser } from "@/lib/addons/soft-launch"
 import { getCurrentUser } from "@/lib/auth"
 import { getPlanPricing } from "@/lib/billing/plan-pricing"
 import { logSecurityEvent } from "@/lib/security/audit"
@@ -53,6 +54,11 @@ export async function GET() {
   const { user } = await getCurrentUser()
   if (!user?.org_id) {
     return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+  }
+  // Soft-launch: para el resto de las cuentas el endpoint no existe. Este es el
+  // gate de verdad. El del sidebar y el de la página son UI, y acá se contrata.
+  if (!isAddonsSoftLaunchUser((user as any).email)) {
+    return NextResponse.json({ error: "No encontrado" }, { status: 404 })
   }
   if (!canManageBilling(user)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
@@ -125,6 +131,11 @@ export async function POST(request: Request) {
   const { user } = await getCurrentUser()
   if (!user?.org_id) {
     return NextResponse.json({ error: "Usuario sin organización asociada" }, { status: 400 })
+  }
+  // Soft-launch: para el resto de las cuentas el endpoint no existe. Este es el
+  // gate de verdad. El del sidebar y el de la página son UI, y acá se contrata.
+  if (!isAddonsSoftLaunchUser((user as any).email)) {
+    return NextResponse.json({ error: "No encontrado" }, { status: 404 })
   }
   if (!canManageBilling(user)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
