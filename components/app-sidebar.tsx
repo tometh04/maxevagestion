@@ -16,7 +16,6 @@ import {
   Megaphone,
   Library,
   BookOpen,
-  Blocks,
 } from "lucide-react"
 import Link from "next/link"
 import { shouldShowInSidebar, type UserRole, type Module } from "@/lib/permissions"
@@ -77,12 +76,6 @@ interface NavItem {
    * hacía las dos cosas a la vez.
    */
   propagatesAgencyId?: boolean
-  /**
-   * Solo para quien maneja la facturación de la agencia. No hay módulo de
-   * permisos para esto: la matriz no modela "puede gastar plata", y el gate real
-   * vive en la página y en la ruta de API.
-   */
-  billingOnly?: boolean
 }
 
 // Feature flag temporal: el módulo "Agente IA / Eve" solo aparece en el sidebar
@@ -98,16 +91,6 @@ const allNavigation: NavItem[] = [
     url: "/dashboard",
     icon: LayoutDashboard,
     module: "dashboard",
-    collapsible: false,
-  },
-  // 1b. Complementos. Arriba y no enterrado en Configuración: es una sección que
-  // se tiene que descubrir sola. Solo la ve quien puede contratar, así que para
-  // el resto del equipo el sidebar queda igual que antes.
-  {
-    title: "Complementos",
-    url: "/addons",
-    icon: Blocks,
-    billingOnly: true,
     collapsible: false,
   },
   // 2. CRM Ventas
@@ -287,13 +270,6 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
    * `hasAddon`).
    */
   enabledAddons?: AddonKey[]
-  /**
-   * Si este usuario maneja la facturación de la agencia. Se resuelve en el
-   * layout con todos sus roles: `userRole` solo trae el principal y un
-   * ORG_OWNER que además es SELLER quedaría afuera. Default `false`: ante la
-   * duda no se muestra una pantalla donde se contrata.
-   */
-  canManageBilling?: boolean
   user: {
     name: string
     email: string
@@ -305,7 +281,6 @@ export function AppSidebar({
   userRole,
   resolvedPermissions,
   enabledAddons,
-  canManageBilling = false,
   user,
   ...props
 }: AppSidebarProps) {
@@ -450,9 +425,6 @@ export function AppSidebar({
       // hijo declara módulo propio" que aplica abajo: no comprar un adicional no
       // es un permiso más fino, es que la sección no existe.
       if (!canShowAddon(item.addon)) {
-        return null
-      }
-      if (item.billingOnly && !canManageBilling) {
         return null
       }
       // Filtrar items principales por módulo

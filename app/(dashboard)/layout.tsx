@@ -141,7 +141,6 @@ export default async function DashboardLayout({
               userRole={user.role as any}
               resolvedPermissions={resolvedPermissions}
               enabledAddons={enabledAddons}
-              canManageBilling={canManageBilling}
               user={{
                 name: user.name,
                 email: user.email,
@@ -149,7 +148,7 @@ export default async function DashboardLayout({
               }}
             />
             <SidebarInset className="min-w-0">
-              <SiteHeader />
+              <SiteHeader canManageBilling={canManageBilling} />
               {orgBanner && <SubscriptionBanner {...orgBanner} />}
               <TrialBanner orgId={user.org_id ?? null} />
               {process.env.DISABLE_AUTH === "true" && (

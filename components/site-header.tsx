@@ -1,9 +1,11 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { SidebarTrigger } from "@/components/ui/sidebar"
-import { Search } from "lucide-react"
+import { Blocks, Search } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { CommandMenu } from "@/components/command-menu"
 import { NotificationBell } from "@/components/notifications/notification-bell"
 import { AnnouncementsBell } from "@/components/notifications/announcements-bell"
@@ -32,6 +34,7 @@ const getPageTitle = (pathname: string): string => {
     "/my/balance": "Mi Balance",
     "/my/commissions": "Mis Comisiones",
     "/settings": "Configuración",
+    "/addons": "Complementos",
     "/tools/cerebro": "Cerebro",
     "/tools/tasks": "Tareas",
   }
@@ -50,10 +53,17 @@ const getPageTitle = (pathname: string): string => {
   return ""
 }
 
-export function SiteHeader() {
+/**
+ * `canManageBilling` se resuelve en el layout sobre TODOS los roles del usuario:
+ * un ORG_OWNER que además vende tiene SELLER como rol principal y se quedaría
+ * sin la entrada a la pantalla donde se contrata. Default `false`: ante la duda
+ * no se muestra. El gate real vive en /addons y en /api/billing/addons.
+ */
+export function SiteHeader({ canManageBilling = false }: { canManageBilling?: boolean }) {
   const pathname = usePathname()
   const title = getPageTitle(pathname)
   const [commandMenuOpen, setCommandMenuOpen] = useState(false)
+  const enComplementos = pathname === "/addons" || pathname.startsWith("/addons/")
 
   return (
     <>
@@ -70,6 +80,24 @@ export function SiteHeader() {
               <span className="flex-1 text-left">Buscar...</span>
               <kbd className="hidden sm:inline-flex items-center gap-0.5 rounded border border-border/60 bg-background px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground">⌘K</kbd>
             </button>
+            {/* Antes de las campanas: es navegación, no una notificación, y en
+                el extremo derecho el usuario ya tiene aprendido que hay avisos.
+                En pantallas chicas queda solo el ícono para no comerle lugar al
+                buscador. */}
+            {canManageBilling && (
+              <Button
+                variant="ghost"
+                size="sm"
+                asChild
+                className={`gap-1.5 px-2 ${enComplementos ? "bg-accent text-foreground" : ""}`}
+              >
+                <Link href="/addons" aria-current={enComplementos ? "page" : undefined}>
+                  <Blocks className="h-[18px] w-[18px]" />
+                  <span className="hidden md:inline">Complementos</span>
+                  <span className="sr-only md:hidden">Complementos</span>
+                </Link>
+              </Button>
+            )}
             <ToursMenu />
             <AnnouncementsBell />
             <NotificationBell />
