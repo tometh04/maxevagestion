@@ -160,7 +160,7 @@ export async function syncAddonsToMp(
       orgId,
       plan: "CUSTOM",
       payerEmail: org.billing_email ?? "",
-      backUrl: `${appUrl}/settings/subscription/addons?reauth=1`,
+      backUrl: `${appUrl}/addons?reauth=1`,
       customAmount: targetAmountArs,
       customReason: "Vibook — plan y complementos",
       includeFreeTrial: false,

@@ -32,6 +32,13 @@ export interface AddonDefinition {
   /** Nombre visible para el cliente. */
   name: string
   description: string
+  /**
+   * Tres cosas concretas que el complemento hace. Es lo que separa una vitrina
+   * de una lista de settings: con una sola línea de descripción, nadie decide.
+   * Van acá y no en el componente porque son copy de producto, igual que
+   * `description` y `setupNote`.
+   */
+  highlights: string[]
   category: "integraciones" | "ia" | "modulos"
   /**
    * El cliente lo prende y apaga solo desde su panel. `false` ⇒ lo SOLICITA y
@@ -63,6 +70,11 @@ export const ADDONS: Record<AddonKey, AddonDefinition> = {
     name: "Agente Blanco",
     description:
       "Bandeja unificada de Instagram y WhatsApp dentro de Vibook, con los chats de tus redes.",
+    highlights: [
+      "Instagram y WhatsApp en la misma bandeja",
+      "Cada conversación queda pegada al lead",
+      "Contestás sin salir de Vibook",
+    ],
     category: "integraciones",
     // El slug lo entrega el proveedor externo: no se puede autoservir.
     selfServe: false,
@@ -78,6 +90,11 @@ export const ADDONS: Record<AddonKey, AddonDefinition> = {
     name: "Emilia IA",
     description:
       "Asistente que busca vuelos y hoteles y arma la cotización a partir de la charla con el lead.",
+    highlights: [
+      "Busca vuelos y hoteles mientras hablás con el lead",
+      "Arma la cotización con lo que encontró",
+      "Trabaja sobre la conversación, sin cargar nada a mano",
+    ],
     category: "ia",
     selfServe: true,
     defaultPriceArsMonthly: null,
@@ -88,6 +105,11 @@ export const ADDONS: Record<AddonKey, AddonDefinition> = {
     name: "Growth Studio",
     description:
       "Generación de piezas y campañas con IA, con el kit de marca de tu agencia.",
+    highlights: [
+      "Piezas y campañas con el kit de marca de la agencia",
+      "Imágenes generadas, sin banco de fotos",
+      "Todo queda guardado para reutilizar",
+    ],
     category: "ia",
     selfServe: true,
     defaultPriceArsMonthly: null,
@@ -98,6 +120,11 @@ export const ADDONS: Record<AddonKey, AddonDefinition> = {
     name: "WHA Control",
     description:
       "WhatsApp multi-dispositivo: vinculás los teléfonos de la agencia y seguís las conversaciones.",
+    highlights: [
+      "Vinculás varios teléfonos de la agencia",
+      "Ves y respondés las conversaciones de cada uno",
+      "El historial queda en Vibook, no en el celular",
+    ],
     category: "integraciones",
     // Hay que aparear el dispositivo contra el conector.
     selfServe: false,
@@ -111,6 +138,11 @@ export const ADDONS: Record<AddonKey, AddonDefinition> = {
     name: "Biblioteca",
     description:
       "Material de capacitación para tu equipo: archivos y links organizados por categoría y rol.",
+    highlights: [
+      "Archivos y links organizados por categoría",
+      "Elegís qué ve cada rol",
+      "El que entra nuevo se capacita solo",
+    ],
     category: "modulos",
     selfServe: true,
     module: "library",
@@ -122,6 +154,11 @@ export const ADDONS: Record<AddonKey, AddonDefinition> = {
     name: "Referidores",
     description:
       "Gestión de referidores, su comisión por venta y la liquidación de lo que se les paga.",
+    highlights: [
+      "Ficha de cada referidor y las ventas que trajo",
+      "Comisión por venta con su propia regla",
+      "Liquidación con comprobante y salida de caja",
+    ],
     category: "modulos",
     selfServe: true,
     module: "referrals",
@@ -133,6 +170,11 @@ export const ADDONS: Record<AddonKey, AddonDefinition> = {
     name: "Comisiones mensuales",
     description:
       "Liquidación mensual de comisiones por vendedor, con reglas propias y simulación.",
+    highlights: [
+      "Liquidación mensual por vendedor",
+      "Reglas propias por agencia y tipo de venta",
+      "Simulás el mes antes de cerrarlo",
+    ],
     category: "modulos",
     selfServe: true,
     module: "commissions",
@@ -144,6 +186,11 @@ export const ADDONS: Record<AddonKey, AddonDefinition> = {
     name: "Cerebro",
     description:
       "Preguntale a tus datos en castellano y obtené la respuesta sin armar el reporte.",
+    highlights: [
+      "Preguntás en castellano y responde con tus datos",
+      "No hay que armar el reporte ni exportar nada",
+      "Solo lee: nunca modifica información",
+    ],
     category: "ia",
     selfServe: true,
     defaultPriceArsMonthly: null,

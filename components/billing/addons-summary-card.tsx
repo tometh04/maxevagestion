@@ -43,7 +43,7 @@ export async function AddonsSummaryCard({ supabase, orgId }: { supabase: any; or
           </p>
         </div>
         <Link
-          href="/settings/subscription/addons"
+          href="/addons"
           className="inline-flex items-center gap-1.5 text-sm font-medium text-primary transition-colors hover:text-primary/80"
         >
           {contratados.length === 0 ? "Ver complementos" : "Administrar"}

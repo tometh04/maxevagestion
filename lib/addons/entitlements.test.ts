@@ -288,3 +288,41 @@ describe("hasAddon / enabledAddonKeys", () => {
     expect(enabledAddonKeys(map)).not.toContain("library")
   })
 })
+
+describe("resolveAddonEntitlements — precio de lista para la vitrina", () => {
+  it("un complemento que la org NO tiene expone el precio de lista sin cobrarlo", () => {
+    const map = resolver({ catalog: catalogoOn("library", 9000) })
+    // Lo que se le cobra: nada, porque no lo contrató.
+    expect(map.library.priceArsMonthly).toBe(0)
+    expect(map.library.priceSource).toBe("NONE")
+    // Lo que muestra la vitrina.
+    expect(map.library.listPriceArsMonthly).toBe(9000)
+  })
+
+  it("sin precio cargado el de lista es null, que la vitrina lee como 'a consultar'", () => {
+    const map = resolver({ catalog: catalogoOn("library", null) })
+    expect(map.library.listPriceArsMonthly).toBeNull()
+    expect(map.library.priceArsMonthly).toBe(0)
+  })
+
+  it("el precio de lista no pisa el snapshot congelado al contratar", () => {
+    const map = resolver({
+      catalog: catalogoOn("library", 12000),
+      orgRows: [
+        {
+          addon_key: "library",
+          status: "ACTIVE",
+          price_ars_monthly_snapshot: 9000,
+          billable_from: PASADO,
+        },
+      ],
+    })
+    expect(map.library.priceArsMonthly).toBe(9000)
+    expect(map.library.priceSource).toBe("SNAPSHOT")
+    expect(map.library.listPriceArsMonthly).toBe(12000)
+  })
+
+  it("sin fila de catálogo no hay precio de lista", () => {
+    expect(resolver({}).library.listPriceArsMonthly).toBeNull()
+  })
+})

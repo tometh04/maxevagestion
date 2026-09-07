@@ -30,6 +30,19 @@ const BODY = z.object({
   action: z.enum(["enable", "request", "schedule_cancel", "undo_cancel", "cancel_request"]),
 })
 
+/**
+ * Estados que hacen visible un complemento aunque ya no esté publicado en el
+ * catálogo: si la org lo tiene, lo está pagando o lo pidió, tiene que poder
+ * verlo y administrarlo.
+ */
+const VISIBLE_STATES = new Set([
+  "ACTIVE",
+  "SCHEDULED_CANCEL",
+  "INCLUDED",
+  "REQUESTED",
+  "PENDING_SETUP",
+])
+
 /** Quién puede tocar la facturación. Igual que /settings/subscription. */
 function canManageBilling(user: any): boolean {
   const roles: string[] = user?.roles ?? [user?.role]
@@ -76,12 +89,19 @@ export async function GET() {
   const next = computeSubscriptionTotalArs({ ...shared, horizon: "next_cycle" } as any)
 
   return NextResponse.json({
-    addons: ADDON_KEYS.filter((k) => entitlements[k].availableInCatalog).map((key) => {
+    // Se listan los del catálogo publicado MÁS los que esta org ya tiene o
+    // pidió. Filtrar solo por `availableInCatalog` dejaba invisible (y por lo
+    // tanto imposible de dar de baja) un complemento que la org tiene contratado
+    // y que después se despublicó del catálogo.
+    addons: ADDON_KEYS.filter(
+      (k) => entitlements[k].availableInCatalog || VISIBLE_STATES.has(entitlements[k].state)
+    ).map((key) => {
       const e = entitlements[key]
       return {
         key,
         name: ADDONS[key].name,
         description: ADDONS[key].description,
+        highlights: ADDONS[key].highlights,
         category: ADDONS[key].category,
         selfServe: e.selfServe,
         setupNote: ADDONS[key].setupNote ?? null,
@@ -89,7 +109,10 @@ export async function GET() {
         includedInPlan: e.includedInPlan,
         includedUntil: e.includedUntil,
         priceArsMonthly: e.priceArsMonthly,
+        listPriceArsMonthly: e.listPriceArsMonthly,
         cancelEffectiveAt: e.cancelEffectiveAt,
+        // Ya no se ofrece: se muestra para poder administrarlo, no para vender.
+        availableInCatalog: e.availableInCatalog,
       }
     }),
     totals: { nowArs: now.totalArs, nextCycleArs: next.totalArs },
@@ -128,8 +151,11 @@ export async function POST(request: Request) {
     .eq("addon_key", addonKey)
     .maybeSingle()
 
-  // No ofrecido = no existe para el cliente.
-  if (!catalogRow?.active) {
+  // No ofrecido = no se puede contratar. Las bajas y el retiro de una solicitud
+  // siguen habilitados aunque el complemento se haya despublicado: si la org ya
+  // lo tiene, sacarlo del catálogo no puede dejarla sin forma de darlo de baja.
+  const esAlta = action === "enable" || action === "request"
+  if (esAlta && !catalogRow?.active) {
     return NextResponse.json({ error: "Complemento no disponible" }, { status: 404 })
   }
 
@@ -162,7 +188,7 @@ export async function POST(request: Request) {
         addon_key: addonKey,
         status,
         price_ars_monthly_snapshot:
-          catalogRow.price_ars_monthly != null ? Number(catalogRow.price_ars_monthly) : null,
+          catalogRow?.price_ars_monthly != null ? Number(catalogRow.price_ars_monthly) : null,
         price_source: "CATALOG",
         requested_at: nowIso,
         requested_by: user.id,

@@ -76,6 +76,13 @@ export interface AddonEntitlement {
   includedUntil: string | null
   /** ARS/mes que se le cobra hoy. 0 si está incluido en el plan. */
   priceArsMonthly: number
+  /**
+   * Precio de lista del catálogo, exista o no contratación. `null` = todavía sin
+   * precio cargado, que la vitrina muestra como "a consultar" en vez de
+   * "sin cargo". No participa de ningún cálculo de facturación: para eso está
+   * `priceArsMonthly`, que solo tiene valor cuando la org lo tiene contratado.
+   */
+  listPriceArsMonthly: number | null
   priceSource: AddonPriceSource
   billableFrom: string | null
   cancelEffectiveAt: string | null
@@ -207,6 +214,7 @@ export function resolveAddonEntitlements(
 
     // Precio: incluido en el plan gana siempre y vale 0. Si no, el snapshot
     // congelado al contratar, y si no hay, el catálogo vigente.
+    const catalogPrice = toAmount(catalogRow?.price_ars_monthly)
     let priceArsMonthly = 0
     let priceSource: AddonPriceSource = "NONE"
     if (includedInPlan) {
@@ -216,12 +224,9 @@ export function resolveAddonEntitlements(
       if (snapshot !== null) {
         priceArsMonthly = snapshot
         priceSource = "SNAPSHOT"
-      } else {
-        const catalogPrice = toAmount(catalogRow?.price_ars_monthly)
-        if (catalogPrice !== null) {
-          priceArsMonthly = catalogPrice
-          priceSource = "CATALOG"
-        }
+      } else if (catalogPrice !== null) {
+        priceArsMonthly = catalogPrice
+        priceSource = "CATALOG"
       }
     }
 
@@ -234,6 +239,7 @@ export function resolveAddonEntitlements(
       includedInPlan,
       includedUntil: inclusion?.included_until ?? null,
       priceArsMonthly,
+      listPriceArsMonthly: catalogPrice,
       priceSource,
       billableFrom: orgRow?.billable_from ?? null,
       cancelEffectiveAt: orgRow?.cancel_effective_at ?? null,

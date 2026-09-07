@@ -79,6 +79,14 @@ export default async function DashboardLayout({
     resolveOrgAddons(supabase, user.org_id),
   ])
   const enabledAddons = enabledAddonKeys(addonEntitlements)
+  // Quién ve la sección Complementos. Se mira sobre TODOS los roles y no sobre
+  // `user.role`: un ORG_OWNER que además carga ventas tiene SELLER como rol
+  // principal y se quedaría sin la sección donde se contrata. Mismo criterio que
+  // /addons y que /api/billing/addons, que son los gates de verdad.
+  const rolesUsuario: string[] = (user as any).roles ?? [user.role]
+  const canManageBilling = rolesUsuario.some(
+    (r) => r === "SUPER_ADMIN" || r === "ADMIN" || r === "ORG_OWNER"
+  )
   t.mark("resolvePermissions")
 
   const agencies = (userAgencies || []).map((ua: any) => ({
@@ -133,6 +141,7 @@ export default async function DashboardLayout({
               userRole={user.role as any}
               resolvedPermissions={resolvedPermissions}
               enabledAddons={enabledAddons}
+              canManageBilling={canManageBilling}
               user={{
                 name: user.name,
                 email: user.email,
