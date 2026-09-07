@@ -48,6 +48,32 @@ export type FollowupAction =
 export interface FollowupMessage {
   direction: "inbound" | "outbound" | "system"
   sent_at: string | Date
+  message_type?: string | null
+}
+
+/**
+ * Tipos que cuentan como "alguien dijo algo". WhatsApp mezcla en el mismo flujo
+ * eventos de protocolo sin contenido (`unknown`), reacciones y mensajes de
+ * sistema: tomarlos como respuesta del cliente cancelaba seguimientos que nadie
+ * había contestado. Pasó en producción con un evento vacío que llegó 8 segundos
+ * después de mandar la cotización.
+ */
+export const MEANINGFUL_MESSAGE_TYPES = new Set([
+  "text",
+  "image",
+  "video",
+  "audio",
+  "voice",
+  "document",
+  "sticker",
+  "location",
+  "contact",
+])
+
+export function isMeaningfulMessage(type: string | null | undefined): boolean {
+  // Sin tipo asumimos que es real: preferimos no cancelar de más.
+  if (!type) return true
+  return MEANINGFUL_MESSAGE_TYPES.has(type)
 }
 
 function argLocalHour(date: Date): number {
@@ -114,6 +140,8 @@ export function decideFollowupAction(input: {
   for (const msg of input.messages) {
     const sentMs = new Date(msg.sent_at).getTime()
     if (Number.isNaN(sentMs) || sentMs <= markedMs) continue
+    // Los eventos de protocolo y las reacciones no son una conversación.
+    if (!isMeaningfulMessage(msg.message_type)) continue
     if (msg.direction === "inbound") {
       return { action: "cancel", reason: "client_replied" }
     }

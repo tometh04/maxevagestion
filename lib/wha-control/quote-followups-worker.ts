@@ -18,6 +18,7 @@ import {
   renderFollowupText,
   MAX_POSTPONE_HOURS,
   MAX_SEND_ATTEMPTS,
+  MEANINGFUL_MESSAGE_TYPES,
   type SendWindow,
 } from "@/lib/wha-control/quote-followups"
 import { getOrgFeatureFlag } from "@/lib/settings/org-features"
@@ -192,7 +193,7 @@ export async function runQuoteFollowupsWorker(
     // ¿El cliente respondió o el vendedor retomó el contacto?
     const { data: messages } = await supabase
       .from("wa_messages")
-      .select("direction, sent_at")
+      .select("direction, sent_at, message_type")
       .in("chat_id", linkedChatIds)
       .gt("sent_at", followup.marked_at)
       .in("direction", ["inbound", "outbound"])
@@ -400,9 +401,10 @@ async function earlyCancelReplied(
         : [followup.chat_id]
     const { data: inbound } = await supabase
       .from("wa_messages")
-      .select("id")
+      .select("id, message_type")
       .in("chat_id", linkedChatIds)
       .eq("direction", "inbound")
+      .in("message_type", Array.from(MEANINGFUL_MESSAGE_TYPES))
       .gt("sent_at", followup.marked_at)
       .limit(1)
     if (inbound && inbound.length > 0) {

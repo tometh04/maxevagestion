@@ -142,6 +142,64 @@ describe("decideFollowupAction", () => {
     })
     expect(result).toEqual({ action: "send" })
   })
+
+  // Caso real de producción (2026-09-07): 8 segundos después de mandar la
+  // cotización llegó un evento de protocolo entrante, sin contenido, y canceló
+  // un seguimiento que el cliente jamás había contestado.
+  it("un evento entrante vacío (type unknown) NO es una respuesta", () => {
+    const result = decideFollowupAction({
+      markedAt,
+      messages: [
+        {
+          direction: "inbound",
+          sent_at: arg(2026, 9, 3, 10, 1),
+          message_type: "unknown",
+        },
+      ],
+    })
+    expect(result).toEqual({ action: "send" })
+  })
+
+  it("una reacción tampoco cancela el seguimiento", () => {
+    const result = decideFollowupAction({
+      markedAt,
+      messages: [
+        {
+          direction: "inbound",
+          sent_at: arg(2026, 9, 3, 12),
+          message_type: "reaction",
+        },
+      ],
+    })
+    expect(result).toEqual({ action: "send" })
+  })
+
+  it("un audio o una imagen del cliente sí cancelan", () => {
+    for (const message_type of ["voice", "image", "document", "sticker"]) {
+      expect(
+        decideFollowupAction({
+          markedAt,
+          messages: [
+            { direction: "inbound", sent_at: arg(2026, 9, 3, 12), message_type },
+          ],
+        })
+      ).toEqual({ action: "cancel", reason: "client_replied" })
+    }
+  })
+
+  it("un evento vacío saliente tampoco cuenta como que escribió el vendedor", () => {
+    const result = decideFollowupAction({
+      markedAt,
+      messages: [
+        {
+          direction: "outbound",
+          sent_at: arg(2026, 9, 3, 11),
+          message_type: "unknown",
+        },
+      ],
+    })
+    expect(result).toEqual({ action: "send" })
+  })
 })
 
 describe("renderFollowupText", () => {
