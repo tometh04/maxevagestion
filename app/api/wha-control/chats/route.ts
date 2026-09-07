@@ -63,7 +63,40 @@ export async function GET(request: Request) {
   // para pintar badge y countdown en el inbox (solo con el flag ON).
   await attachQuoteFollowups(supabase, mergedChats, auth.orgId)
 
+  await attachUnreadCounts(supabase, mergedChats, auth.orgId)
+
   return NextResponse.json({ chats: mergedChats })
+}
+
+/**
+ * No leídos reales: mensajes entrantes posteriores a la última vez que la
+ * conversación se abrió EN VIBOOK. El `unread_count` que trae WhatsApp refleja
+ * lo que el dueño del teléfono leyó en su celular, así que no sirve acá.
+ */
+async function attachUnreadCounts(supabase: any, chats: any[], orgId: string) {
+  if (chats.length === 0) return
+
+  const allChatIds = chats.flatMap((c: any) => c._chatIds ?? [c.id])
+  const { data, error } = await supabase.rpc("wa_unread_counts", {
+    p_org_id: orgId,
+    p_chat_ids: allChatIds,
+  })
+
+  if (error) {
+    console.error("[wha-control/chats] error contando no leídos:", error.message)
+    return
+  }
+
+  const byChatId = new Map<string, number>()
+  for (const row of data || []) {
+    byChatId.set(row.chat_id, Number(row.unread) || 0)
+  }
+
+  for (const chat of chats) {
+    const ids: string[] = chat._chatIds ?? [chat.id]
+    // Las dos mitades de una conversación partida suman al mismo contador.
+    chat.unread = ids.reduce((total, id) => total + (byChatId.get(id) ?? 0), 0)
+  }
 }
 
 async function attachQuoteFollowups(supabase: any, chats: any[], orgId: string) {

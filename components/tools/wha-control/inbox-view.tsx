@@ -50,6 +50,8 @@ interface Chat {
   last_message_preview: string | null
   _chatIds?: string[] // merged conversation IDs
   followup?: ChatFollowup | null
+  /** Entrantes posteriores a la última apertura en vibook. */
+  unread?: number
 }
 
 interface Message {
@@ -566,6 +568,54 @@ export function InboxView({ agencies, quoteFollowupEnabled = false, initialPhone
     }
   }
 
+  // Iniciales del contacto. Si el "nombre" es el número (no hay agenda), el
+  // ícono genérico comunica mejor que dos dígitos sueltos.
+  const getInitials = (chat: Chat) => {
+    const name = getChatName(chat)
+    if (/^[\d\s+()-]+$/.test(name)) return null
+    return name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((w) => w[0]?.toUpperCase() ?? "")
+      .join("")
+  }
+
+  const isSameDay = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+
+  // Separador de día del hilo, como cualquier cliente de mensajería.
+  const dayLabel = (iso: string) => {
+    const date = new Date(iso)
+    const today = new Date()
+    const yesterday = new Date(today)
+    yesterday.setDate(today.getDate() - 1)
+    if (isSameDay(date, today)) return "Hoy"
+    if (isSameDay(date, yesterday)) return "Ayer"
+    return date.toLocaleDateString("es-AR", {
+      day: "numeric",
+      month: "long",
+      ...(date.getFullYear() !== today.getFullYear() ? { year: "numeric" } : {}),
+    })
+  }
+
+  // Color estable por participante: en un grupo hay que poder seguir quién
+  // habla sin leer el nombre cada vez.
+  const SENDER_COLORS = [
+    "text-accent-coral",
+    "text-accent-teal",
+    "text-accent-violet",
+    "text-primary",
+    "text-success",
+  ]
+  const senderColor = (key: string) => {
+    let hash = 0
+    for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) | 0
+    return SENDER_COLORS[Math.abs(hash) % SENDER_COLORS.length]
+  }
+
   const getTypeIcon = (type: string) => {
     switch (type) {
       case "image": return "📷"
@@ -582,6 +632,18 @@ export function InboxView({ agencies, quoteFollowupEnabled = false, initialPhone
   const handleSelectChat = (chat: Chat) => {
     setSelectedChat(chat)
     setShowThread(true)
+    if (!chat.unread) return
+    // Optimista: el badge se apaga al instante y el backend queda al día.
+    setChats((prev) =>
+      prev.map((c) => (c.id === chat.id ? { ...c, unread: 0 } : c))
+    )
+    fetch(`/api/wha-control/chats/${chat.id}/read`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chatIds: chat._chatIds || [chat.id] }),
+    }).catch(() => {
+      /* si falla, el próximo refresco vuelve a mostrar el badge */
+    })
   }
 
   // Link desde un lead (?phone=...): buscar por los últimos dígitos y, si hay
@@ -717,30 +779,42 @@ export function InboxView({ agencies, quoteFollowupEnabled = false, initialPhone
             </div>
           ) : (
             <div className="divide-y">
-              {chats.map((chat) => (
+              {chats.map((chat) => {
+                const unread = chat.unread ?? 0
+                const initials = getInitials(chat)
+                return (
                 <button
                   key={chat.id}
                   onClick={() => handleSelectChat(chat)}
-                  className={`w-full text-left p-3 hover:bg-accent/50 transition-colors ${selectedChat?.id === chat.id ? "bg-accent" : ""}`}
+                  aria-current={selectedChat?.id === chat.id ? "true" : undefined}
+                  className={`w-full text-left p-3 transition-colors ${selectedChat?.id === chat.id ? "bg-accent" : "hover:bg-accent/50"}`}
                 >
                   <div className="flex items-start gap-3">
-                    <div className={`flex h-10 w-10 items-center justify-center rounded-full flex-shrink-0 ${chat.is_group ? "bg-accent-coral/10" : "bg-muted"}`}>
-                      {chat.is_group ? <Users className="h-5 w-5 text-accent-coral" /> : <User className="h-5 w-5 text-muted-foreground" />}
+                    <div className={`flex h-10 w-10 items-center justify-center rounded-full flex-shrink-0 text-sm font-semibold ${chat.is_group ? "bg-accent-coral/10 text-accent-coral" : "bg-muted text-muted-foreground"}`}>
+                      {chat.is_group ? (
+                        <Users className="h-5 w-5 text-accent-coral" />
+                      ) : initials ? (
+                        initials
+                      ) : (
+                        <User className="h-5 w-5 text-muted-foreground" />
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="font-medium text-sm truncate">{getChatName(chat)}</span>
-                        <span className="text-xs text-muted-foreground flex-shrink-0">
+                        <span className={`truncate text-sm ${unread > 0 ? "font-semibold text-foreground" : "font-medium"}`}>
+                          {getChatName(chat)}
+                        </span>
+                        <span className={`text-xs flex-shrink-0 ${unread > 0 ? "font-medium text-success" : "text-muted-foreground"}`}>
                           {formatTime(chat.last_message_at)}
                         </span>
                       </div>
                       <div className="flex items-center justify-between gap-2 mt-0.5">
-                        <p className="text-xs text-muted-foreground truncate">
+                        <p className={`text-xs truncate ${unread > 0 ? "text-foreground/80" : "text-muted-foreground"}`}>
                           {chat.last_message_preview || "Sin mensajes"}
                         </p>
-                        {chat.unread_count > 0 && (
-                          <Badge variant="default" className="h-5 min-w-[20px] text-xs px-1.5 flex-shrink-0 bg-success/10 text-success">
-                            {chat.unread_count}
+                        {unread > 0 && (
+                          <Badge className="h-5 min-w-[20px] justify-center rounded-full px-1.5 text-xs flex-shrink-0 bg-success text-white hover:bg-success">
+                            {unread > 99 ? "99+" : unread}
                           </Badge>
                         )}
                       </div>
@@ -762,7 +836,8 @@ export function InboxView({ agencies, quoteFollowupEnabled = false, initialPhone
                     </div>
                   </div>
                 </button>
-              ))}
+                )
+              })}
             </div>
           )}
         </ScrollArea>
@@ -849,11 +924,18 @@ export function InboxView({ agencies, quoteFollowupEnabled = false, initialPhone
                   <span className="text-xs">Cargando mensajes…</span>
                 </div>
               ) : messages.length === 0 ? (
-                <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
-                  Sin mensajes
+                <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
+                  <MessageSquare className="h-8 w-8 text-muted-foreground/40" />
+                  <p className="text-sm text-muted-foreground">
+                    Todavía no hay mensajes en esta conversación
+                  </p>
+                  <p className="max-w-xs text-xs text-muted-foreground/80">
+                    Escribí abajo para iniciarla, o traé el historial anterior de
+                    WhatsApp si la conversación ya existía en el teléfono.
+                  </p>
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div>
                   {/* Cargar historial: paginado hacia atrás o backfill de WhatsApp */}
                   <div className="flex justify-center pb-1">
                     {hasMore ? (
@@ -897,7 +979,7 @@ export function InboxView({ agencies, quoteFollowupEnabled = false, initialPhone
                       {backfillNote}
                     </p>
                   )}
-                  {messages.map((msg) => {
+                  {messages.map((msg, index) => {
                     const isOutbound = msg.direction === "outbound"
                     const typeIcon = getTypeIcon(msg.message_type)
                     const isGroupChat = selectedChat?.is_group
@@ -908,20 +990,48 @@ export function InboxView({ agencies, quoteFollowupEnabled = false, initialPhone
                       : null
                     const participantName = msg.sender_name || participantPhone
 
+                    // Encabezado de día cuando cambia la fecha.
+                    const prev = index > 0 ? messages[index - 1] : null
+                    const nuevoDia =
+                      !prev || !isSameDay(new Date(prev.sent_at), new Date(msg.sent_at))
+
+                    // Mensajes seguidos del mismo remitente se agrupan: no se
+                    // repite el nombre y quedan más juntos, como en cualquier
+                    // cliente de mensajería.
+                    const mismoRemitente =
+                      !!prev &&
+                      !nuevoDia &&
+                      prev.direction === msg.direction &&
+                      (prev.participant_jid ?? null) === (msg.participant_jid ?? null)
+                    const dentroDeLaRafaga =
+                      mismoRemitente &&
+                      new Date(msg.sent_at).getTime() -
+                        new Date(prev!.sent_at).getTime() <
+                        5 * 60 * 1000
+                    const mostrarNombre =
+                      isGroupChat && !isOutbound && participantName && !dentroDeLaRafaga
+
                     return (
-                      <div
-                        key={msg.id}
-                        className={`flex ${isOutbound ? "justify-end" : "justify-start"}`}
-                      >
+                      <div key={msg.id}>
+                        {nuevoDia && (
+                          <div className="flex items-center justify-center py-3">
+                            <span className="rounded-full bg-muted px-3 py-1 text-[11px] font-medium text-muted-foreground">
+                              {dayLabel(msg.sent_at)}
+                            </span>
+                          </div>
+                        )}
+                        <div
+                          className={`flex ${isOutbound ? "justify-end" : "justify-start"} ${dentroDeLaRafaga ? "mt-0.5" : "mt-2"}`}
+                        >
                         <div
                           className={`max-w-[75%] rounded-2xl px-4 py-2 ${
                             isOutbound
-                              ? "bg-accent-coral text-white rounded-br-md"
-                              : "bg-muted rounded-bl-md"
+                              ? `bg-accent-coral text-white ${dentroDeLaRafaga ? "rounded-br-2xl" : "rounded-br-md"}`
+                              : `bg-muted ${dentroDeLaRafaga ? "rounded-bl-2xl" : "rounded-bl-md"}`
                           }`}
                         >
-                          {isGroupChat && !isOutbound && participantName && (
-                            <p className="text-xs font-semibold text-accent-coral mb-0.5">
+                          {mostrarNombre && (
+                            <p className={`text-xs font-semibold mb-0.5 ${senderColor(msg.participant_jid || participantName || "")}`}>
                               {participantName}
                             </p>
                           )}
@@ -942,6 +1052,7 @@ export function InboxView({ agencies, quoteFollowupEnabled = false, initialPhone
                           <p className={`text-[10px] mt-1 ${isOutbound ? "text-white/70" : "text-muted-foreground"}`}>
                             {new Date(msg.sent_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}
                           </p>
+                        </div>
                         </div>
                       </div>
                     )
