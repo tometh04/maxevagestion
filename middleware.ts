@@ -63,6 +63,48 @@ function checkRateLimit(key: string, max: number): { allowed: boolean; remaining
   return { allowed: true, remaining: max - entry.count }
 }
 
+/**
+ * ¿El dueño de esta sesión es platform admin?
+ *
+ * Devuelve `null` cuando no se puede saber (sin service_role key), para que el
+ * caller decida si eso es "dejar pasar" o "tratar como no admin". Nunca lo
+ * resuelve como `true` a ciegas.
+ *
+ * Usa service_role a propósito: la policy `platform_admins_self_view` (mig 142)
+ * es recursiva contra la misma tabla y devuelve 0 rows incluso para platform
+ * admins legítimos cuando se consulta con el cliente auth-aware.
+ * `lib/auth/platform.ts::isPlatformAdmin` documenta el mismo workaround.
+ *
+ * Ojo con la doble identidad: `platform_admins.user_id` guarda `users.id`, no
+ * `auth.users.id`, así que hay que traducir el auth_id primero.
+ */
+async function isPlatformAdminByAuthId(
+  authUserId: string,
+  supabaseUrl: string
+): Promise<boolean | null> {
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!serviceRoleKey) return null
+
+  const adminClient = createAdminSupabaseClient(supabaseUrl, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  })
+
+  const { data: userRow } = await (adminClient.from("users") as any)
+    .select("id")
+    .eq("auth_id", authUserId)
+    .maybeSingle()
+
+  const userId = (userRow as any)?.id as string | undefined
+  if (!userId) return null
+
+  const { data: adminRow } = await (adminClient.from("platform_admins") as any)
+    .select("user_id")
+    .eq("user_id", userId)
+    .maybeSingle()
+
+  return !!adminRow
+}
+
 export async function middleware(req: NextRequest) {
   // [perf-instrumentation] Identificador único por request para correlacionar
   // logs server-side (middleware → layout → page) y client-side. Setea
@@ -272,30 +314,14 @@ export async function middleware(req: NextRequest) {
   // queryea desde el cliente auth-aware. `lib/auth/platform.ts::isPlatformAdmin`
   // ya documenta este workaround para callers server-side.
   if (authUserId && pathname.startsWith("/admin") && !pathname.startsWith("/api/admin")) {
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-    if (serviceRoleKey) {
-      const adminClient = createAdminSupabaseClient(supabaseUrl, serviceRoleKey, {
-        auth: { autoRefreshToken: false, persistSession: false },
-      })
-      const { data: userRow } = await (adminClient.from("users") as any)
-        .select("id")
-        .eq("auth_id", authUserId)
-        .maybeSingle()
-      const userId = (userRow as any)?.id as string | undefined
-      if (userId) {
-        const { data: adminRow } = await (adminClient.from("platform_admins") as any)
-          .select("user_id")
-          .eq("user_id", userId)
-          .maybeSingle()
-        if (!adminRow) {
-          const url = req.nextUrl.clone()
-          url.pathname = "/dashboard"
-          return redirectKeepingSession(url, response)
-        }
-      }
+    // `null` = no se pudo resolver (falta service_role key). Ahí dejamos pasar:
+    // el admin layout server-side aplica el guard real con `isPlatformAdmin()`.
+    const esAdmin = await isPlatformAdminByAuthId(authUserId, supabaseUrl)
+    if (esAdmin === false) {
+      const url = req.nextUrl.clone()
+      url.pathname = "/dashboard"
+      return redirectKeepingSession(url, response)
     }
-    // Si falta service_role key, dejamos pasar — el admin layout server-side
-    // aplica el guard real con `isPlatformAdmin()`.
   }
 
   const isOnboardingAllowed =
@@ -375,8 +401,16 @@ export async function middleware(req: NextRequest) {
     if (!isActive) return response
 
     if (userRow && !orgId) {
+      // Un platform admin NO tiene tenant propio, y mandarlo a /onboarding es
+      // ofrecerle crear una agencia: el wizard inserta una `organizations`
+      // nueva, le escribe `users.org_id` y lo degrada a ORG_OWNER. Por evitar
+      // eso terminamos sentando cuentas nuestras adentro del tenant de un
+      // cliente (admin@vibook.ai vivio dentro de Lozada hasta 2026-09-08).
+      // Su lugar es /admin, que es lo unico que necesita ver.
       const url = req.nextUrl.clone()
-      url.pathname = "/onboarding"
+      url.pathname = (await isPlatformAdminByAuthId(authUserId, supabaseUrl))
+        ? "/admin/orgs"
+        : "/onboarding"
       return redirectKeepingSession(url, response)
     }
 

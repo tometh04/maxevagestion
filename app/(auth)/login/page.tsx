@@ -1,9 +1,24 @@
 import { Globe, MapPin, GalleryVerticalEnd } from "lucide-react"
 import Image from "next/image"
+import { redirect } from "next/navigation"
 
 import { LoginForm } from "@/components/login-form"
+import { resolveHomeForSession } from "@/lib/auth/home-route"
 
-export default function LoginPage() {
+/**
+ * Si ya hay sesion, no tiene sentido pedir credenciales de nuevo: se entra
+ * directo. Aplica tanto a quien escribe /login a mano como a quien abre
+ * app.vibook.ai en otra pestaña (la raiz llega hasta aca).
+ *
+ * `resolveHomeForSession()` devuelve null si no hay sesion o si no se puede
+ * resolver, y entonces se muestra el formulario como siempre.
+ */
+export const dynamic = "force-dynamic"
+
+export default async function LoginPage() {
+  const home = await resolveHomeForSession()
+  if (home) redirect(home)
+
   return (
     <div className="grid min-h-svh lg:grid-cols-2">
       {/* Panel izquierdo decorativo — branding Vibook */}

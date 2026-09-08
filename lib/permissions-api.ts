@@ -713,10 +713,23 @@ export async function getUserAgencyIds(
     .maybeSingle()
   const orgId = (userRow as any)?.org_id as string | null | undefined
 
+  // Sin org no hay agencias. Antes, un usuario sin `org_id` salteaba el filtro
+  // por tenant: con rol amplio se llevaba TODAS las agencias de la plataforma,
+  // y con rol acotado sus `user_agencies` crudas, que pueden apuntar a agencias
+  // de otras orgs. Hoy en prod hay 10 usuarios así —tests viejos, altas
+  // abandonadas y un platform admin—, todos SUPER_ADMIN. No los salva este
+  // helper sino el middleware, que los manda a /onboarding antes de llegar; un
+  // solo caller que se ejecute fuera de ese gate abre la plataforma entera.
+  //
+  // Un usuario legítimo siempre tiene org: si no la tiene, la respuesta correcta
+  // es "ninguna agencia", no "todas".
+  if (!orgId) return []
+
   if (userRole === 'SUPER_ADMIN' || userRole === 'ORG_OWNER' || userRole === 'CONTABLE' || userRole === 'POST_VENTA') {
-    let q = supabase.from('agencies').select('id')
-    if (orgId) q = q.eq('org_id', orgId)
-    const { data: agencies } = await q
+    const { data: agencies } = await supabase
+      .from('agencies')
+      .select('id')
+      .eq('org_id', orgId)
     return (agencies || []).map((a: any) => a.id)
   }
 
@@ -727,7 +740,7 @@ export async function getUserAgencyIds(
     .eq('user_id', userId)
   const assignedIds = (userAgencies || []).map((ua: any) => ua.agency_id as string)
 
-  if (!orgId || assignedIds.length === 0) return assignedIds
+  if (assignedIds.length === 0) return assignedIds
 
   const { data: orgAgencies } = await supabase
     .from('agencies')
