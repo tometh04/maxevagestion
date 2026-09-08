@@ -14,6 +14,14 @@ import {
 import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
 import { getCommissionCurrency } from "@/lib/commissions/currency"
 import {
+  allocateCommissionPayment,
+  sumLinesInCommissionCurrency,
+  toAccountCurrency,
+  toCommissionCurrency,
+  type PaymentLineInput,
+  type SplitCurrency,
+} from "@/lib/commissions/payment-split"
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -145,6 +153,22 @@ const fmtCurrency = (value: number, currency = "USD") =>
  */
 const getCommCurrency = (c: Commission): string => getCommissionCurrency(c as any)
 
+/** Una forma de pago del diálogo, con los importes tal como se tipean. */
+interface PayLineDraft {
+  id: string
+  accountId: string
+  /** En la moneda de la cuenta elegida. */
+  amount: string
+  /** Pesos por dólar. Solo se usa si la cuenta es de otra moneda. */
+  exchangeRate: string
+}
+
+let payLineSeq = 0
+function newPayLine(): PayLineDraft {
+  payLineSeq += 1
+  return { id: `pay-line-${payLineSeq}`, accountId: "", amount: "", exchangeRate: "" }
+}
+
   /**
  * Cómo se identifica una comisión en pantalla: por el pasajero, no por el
  * código de operación (pedido de Lozada, el vendedor reconoce al pasajero).
@@ -231,8 +255,12 @@ export function AdminCommissionsView({ userId, userRole, agencies }: AdminCommis
   const [selectedCommissionIds, setSelectedCommissionIds] = useState<Set<string>>(new Set())
   const [payAmounts, setPayAmounts] = useState<Record<string, number>>({})
   const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([])
-  const [payAccountId, setPayAccountId] = useState("")
-  const [payExchangeRate, setPayExchangeRate] = useState("")
+  /**
+   * Formas de pago. Normalmente una sola; se agregan más cuando la liquidación
+   * se paga con plata de dos cuentas (el caso real: una parte en pesos y otra
+   * en dólares). El importe de cada una está en la moneda de SU cuenta.
+   */
+  const [payLines, setPayLines] = useState<PayLineDraft[]>(() => [newPayLine()])
   const [payDate, setPayDate] = useState(() => formatDateOnlyLocal(new Date()) ?? "")
   const [payNotes, setPayNotes] = useState("")
   const [paySubmitting, setPaySubmitting] = useState(false)
@@ -452,8 +480,7 @@ export function AdminCommissionsView({ userId, userRole, agencies }: AdminCommis
       amounts[c.id] = getRemaining(c)
     }
     setPayAmounts(amounts)
-    setPayAccountId("")
-    setPayExchangeRate("")
+    setPayLines([newPayLine()])
     setPayDate(formatDateOnlyLocal(new Date()) ?? "")
     setPayNotes("")
     setPayDialogOpen(true)
@@ -474,7 +501,9 @@ export function AdminCommissionsView({ userId, userRole, agencies }: AdminCommis
         if (existingCur && existingCur !== newCur) {
           // Switch currency: deselect all previous, select only this one
           next.clear()
-          setPayAccountId("") // Reset account since currency changed
+          // Las formas de pago se rearman: los importes estaban en función de
+          // la moneda anterior.
+          setPayLines([newPayLine()])
         }
         next.add(id)
       }
@@ -512,12 +541,32 @@ export function AdminCommissionsView({ userId, userRole, agencies }: AdminCommis
     return accts
   }, [financialAccounts, selectedCurrency, payingSeller])
 
-  // Cuenta elegida y si requiere TC (su moneda difiere de la moneda de la comisión).
-  const selectedPayAccount = useMemo(
-    () => financialAccounts.find((a) => a.id === payAccountId) || null,
-    [financialAccounts, payAccountId]
+  const accountById = useMemo(
+    () => new Map(financialAccounts.map((a) => [a.id, a])),
+    [financialAccounts]
   )
-  const needsPayExchangeRate = !!selectedPayAccount && !!selectedCurrency && selectedPayAccount.currency !== selectedCurrency
+
+  /** Moneda de la cuenta de una forma de pago (undefined si no eligió cuenta). */
+  const lineCurrency = useCallback(
+    (line: PayLineDraft): SplitCurrency | undefined => {
+      const cur = accountById.get(line.accountId)?.currency
+      return cur === "ARS" || cur === "USD" ? cur : undefined
+    },
+    [accountById]
+  )
+
+  /** Una forma de pago necesita TC si su cuenta no es de la moneda de la comisión. */
+  const lineNeedsRate = useCallback(
+    (line: PayLineDraft): boolean => {
+      const cur = lineCurrency(line)
+      return !!cur && !!selectedCurrency && cur !== selectedCurrency
+    },
+    [lineCurrency, selectedCurrency]
+  )
+
+  const updatePayLine = useCallback((id: string, patch: Partial<PayLineDraft>) => {
+    setPayLines((prev) => prev.map((line) => (line.id === id ? { ...line, ...patch } : line)))
+  }, [])
 
   // Group dialog commissions by currency
   const dialogCommissionsByCurrency = useMemo(() => {
@@ -538,29 +587,138 @@ export function AdminCommissionsView({ userId, userRole, agencies }: AdminCommis
       .reduce((s, c) => s + (payAmounts[c.id] ?? getRemaining(c)), 0)
   }, [payingSeller, selectedCommissionIds, payAmounts])
 
+  /**
+   * Formas de pago cargadas, listas para el repartidor. Las que todavía no
+   * tienen cuenta elegida quedan afuera: no son un pago, son una fila vacía.
+   */
+  const payLineInputs = useMemo((): PaymentLineInput[] => {
+    return payLines
+      .map((line) => {
+        const currency = lineCurrency(line)
+        if (!currency) return null
+        const rate = Number(line.exchangeRate)
+        return {
+          id: line.id,
+          accountId: line.accountId,
+          accountCurrency: currency,
+          amount: Number(line.amount) || 0,
+          exchangeRate: rate > 0 ? rate : null,
+        }
+      })
+      .filter(Boolean) as PaymentLineInput[]
+  }, [payLines, lineCurrency])
+
+  /** Cuánto cubren las formas de pago, en la moneda de la comisión. */
+  const payLinesCovered = useMemo(() => {
+    if (!selectedCurrency) return 0
+    return sumLinesInCommissionCurrency(payLineInputs, selectedCurrency as SplitCurrency)
+  }, [payLineInputs, selectedCurrency])
+
+  /** Positivo = sobra; negativo = falta. */
+  const payLinesDifference = useMemo(
+    () => Math.round((payLinesCovered - selectedTotal) * 100) / 100,
+    [payLinesCovered, selectedTotal]
+  )
+
+  /**
+   * Lo que falta para llegar al total, en la moneda de la cuenta de esa línea.
+   * Devuelve 0 si todavía no se puede saber (sin cuenta o sin TC).
+   */
+  const restForLine = useCallback(
+    (line: PayLineDraft, accountCurrency?: SplitCurrency, exchangeRate?: number): number => {
+      if (!accountCurrency || !selectedCurrency) return 0
+      const others = payLineInputs.filter((l) => l.id !== line.id)
+      const rest =
+        selectedTotal - sumLinesInCommissionCurrency(others, selectedCurrency as SplitCurrency)
+      if (rest <= 0) return 0
+      return toAccountCurrency(
+        rest,
+        accountCurrency,
+        selectedCurrency as SplitCurrency,
+        exchangeRate && exchangeRate > 0 ? exchangeRate : null
+      )
+    },
+    [payLineInputs, selectedCurrency, selectedTotal]
+  )
+
+  /**
+   * Completa una forma de pago con lo que falta para llegar al total, en la
+   * moneda de su cuenta. Es el atajo del caso de dos líneas: se carga cuánto se
+   * entrega en pesos y el resto sale solo.
+   */
+  const fillPayLineWithRest = useCallback(
+    (line: PayLineDraft) => {
+      const amount = restForLine(line, lineCurrency(line), Number(line.exchangeRate))
+      if (amount > 0) updatePayLine(line.id, { amount: String(amount) })
+    },
+    [lineCurrency, restForLine, updatePayLine]
+  )
+
+  /**
+   * Al elegir la cuenta (o cargar el TC) se completa el importe con lo que
+   * falta, si el usuario no escribió uno. El caso de una sola cuenta queda como
+   * era: se elige la cuenta y el importe ya está.
+   */
+  const handlePayLineAccount = useCallback(
+    (line: PayLineDraft, accountId: string) => {
+      const accountCurrency = (() => {
+        const cur = accountById.get(accountId)?.currency
+        return cur === "ARS" || cur === "USD" ? cur : undefined
+      })()
+      const patch: Partial<PayLineDraft> = { accountId }
+      if (!line.amount) {
+        const rest = restForLine(line, accountCurrency, Number(line.exchangeRate))
+        if (rest > 0) patch.amount = String(rest)
+      }
+      updatePayLine(line.id, patch)
+    },
+    [accountById, restForLine, updatePayLine]
+  )
+
+  const handlePayLineRate = useCallback(
+    (line: PayLineDraft, value: string) => {
+      const patch: Partial<PayLineDraft> = { exchangeRate: value }
+      if (!line.amount) {
+        const cur = accountById.get(line.accountId)?.currency
+        const accountCurrency = cur === "ARS" || cur === "USD" ? cur : undefined
+        const rest = restForLine(line, accountCurrency, Number(value))
+        if (rest > 0) patch.amount = String(rest)
+      }
+      updatePayLine(line.id, patch)
+    },
+    [accountById, restForLine, updatePayLine]
+  )
+
   const handleConfirmPay = async () => {
-    if (!payingSeller || selectedCommissionIds.size === 0 || !payAccountId) {
+    if (!payingSeller || selectedCommissionIds.size === 0 || !selectedCurrency) {
       toast({ title: "Error", description: "Selecciona al menos una comision y una cuenta financiera.", variant: "destructive" })
       return
     }
 
-    // Si la cuenta es de otra moneda que la comisión, exigir tipo de cambio.
-    const exchangeRateNum = Number(payExchangeRate)
-    if (needsPayExchangeRate && (!exchangeRateNum || exchangeRateNum <= 0)) {
-      toast({ title: "Falta el tipo de cambio", description: `Ingresá el tipo de cambio para pagar en ${selectedPayAccount?.currency}.`, variant: "destructive" })
+    const selectedCommissions = payingSeller.commissions
+      .filter((c) => selectedCommissionIds.has(c.id))
+      .map((c) => ({ id: c.id, amount: payAmounts[c.id] ?? getRemaining(c) }))
+
+    // El reparto entre cuentas y comisiones lo resuelve `payment-split`: es el
+    // único lugar donde se decide qué parte cancela cada cuenta.
+    const split = allocateCommissionPayment({
+      commissions: selectedCommissions,
+      lines: payLineInputs,
+      commissionCurrency: selectedCurrency as SplitCurrency,
+    })
+
+    if (!split.ok) {
+      toast({ title: "Revisá las formas de pago", description: split.error, variant: "destructive" })
       return
     }
 
     setPaySubmitting(true)
-    let successCount = 0
+    const paidCommissionIds = new Set<string>()
     let errorCount = 0
 
-    for (const commId of Array.from(selectedCommissionIds)) {
-      const comm = payingSeller.commissions.find((c) => c.id === commId)
+    for (const allocation of split.allocations) {
+      const comm = payingSeller.commissions.find((c) => c.id === allocation.commissionId)
       if (!comm) continue
-
-      const payAmount = payAmounts[commId] ?? getRemaining(comm)
-      if (payAmount <= 0) continue
 
       try {
         const res = await fetch("/api/commissions/pay", {
@@ -568,21 +726,24 @@ export function AdminCommissionsView({ userId, userRole, agencies }: AdminCommis
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             commissionId: comm.id,
-            amount: payAmount,
+            amount: allocation.amount,
             currency: getCommCurrency(comm),
             datePaid: payDate,
             method: "BANK",
             notes: payNotes || null,
-            financial_account_id: payAccountId,
-            exchange_rate: needsPayExchangeRate ? exchangeRateNum : undefined,
+            financial_account_id: allocation.accountId,
+            exchange_rate: allocation.exchangeRate ?? undefined,
+            // Lo que sale de la cuenta, tal como se cargó: sin esto el importe
+            // en pesos se recalcularía y quedaría desviado por centavos.
+            cash_amount: allocation.cashAmount,
           }),
         })
 
         if (res.ok) {
-          successCount++
+          paidCommissionIds.add(comm.id)
         } else {
           const errData = await res.json()
-          console.error(`Error paying commission ${commId}:`, errData.error)
+          console.error(`Error paying commission ${comm.id}:`, errData.error)
           toast({ title: "Error en comisión", description: errData.error || "Error desconocido", variant: "destructive" })
           errorCount++
         }
@@ -594,10 +755,12 @@ export function AdminCommissionsView({ userId, userRole, agencies }: AdminCommis
     setPaySubmitting(false)
     setPayDialogOpen(false)
 
+    const successCount = paidCommissionIds.size
+
     if (successCount > 0) {
       toast({
         title: "Pagos realizados",
-        description: `${successCount} comision(es) pagada(s) exitosamente.${errorCount > 0 ? ` ${errorCount} con error.` : ""}`,
+        description: `${successCount} comision(es) pagada(s) exitosamente.${errorCount > 0 ? ` ${errorCount} movimiento(s) con error.` : ""}`,
       })
     } else {
       toast({
@@ -1259,64 +1422,160 @@ export function AdminCommissionsView({ userId, userRole, agencies }: AdminCommis
                 </h4>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label className="text-xs">Cuenta Financiera</Label>
-                  <Select value={payAccountId} onValueChange={setPayAccountId}>
-                    <SelectTrigger className="h-9 text-sm">
-                      <SelectValue placeholder="Seleccionar cuenta..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {filteredAccounts.map((acc) => (
-                        <SelectItem key={acc.id} value={acc.id}>
-                          {acc.name} ({acc.currency})
-                          {acc.current_balance !== undefined && (
-                            <span className="text-xs text-muted-foreground ml-2">
-                              - Balance: {fmtCurrency(acc.current_balance, acc.currency)}
-                            </span>
-                          )}
-                          {acc.agencies?.name ? ` - ${acc.agencies.name}` : ""}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-xs">Fecha de pago</Label>
-                  <Input
-                    type="date"
-                    value={payDate}
-                    onChange={(e) => setPayDate(e.target.value)}
-                    className="h-9 text-sm"
-                  />
-                </div>
+              <div className="space-y-2">
+                <Label className="text-xs">Fecha de pago</Label>
+                <Input
+                  type="date"
+                  value={payDate}
+                  onChange={(e) => setPayDate(e.target.value)}
+                  className="h-9 text-sm md:w-1/2"
+                />
               </div>
 
-              {/* Tipo de cambio: requerido cuando la cuenta es de otra moneda que la comisión */}
-              {needsPayExchangeRate && (
-                <div className="rounded-lg border border-accent-coral/30 bg-accent-coral/5 p-3 space-y-2">
-                  <Label className="text-xs">
-                    Tipo de cambio (1 {selectedCurrency} = ? {selectedPayAccount?.currency})
-                  </Label>
-                  <div className="flex items-center gap-3">
-                    <DecimalInput
-                      value={payExchangeRate}
-                      onChange={(v) => setPayExchangeRate(v)}
-                      className="h-9 w-36 text-sm"
-                    />
-                    {Number(payExchangeRate) > 0 && (
-                      <p className="text-xs text-muted-foreground">
-                        Se debitará{" "}
-                        <span className="font-medium text-foreground">
-                          {fmtCurrency(selectedTotal * Number(payExchangeRate), selectedPayAccount?.currency || "ARS")}
-                        </span>{" "}
-                        de la cuenta (= {fmtCurrency(selectedTotal, selectedCurrency || "USD")} × {payExchangeRate})
-                      </p>
-                    )}
-                  </div>
+              {/* Formas de pago: una por cuenta de la que sale plata. Con dos se
+                  paga una parte en pesos y otra en dólares. */}
+              <div className="space-y-3">
+                {payLines.map((line, index) => {
+                  const accountCurrency = lineCurrency(line)
+                  const needsRate = lineNeedsRate(line)
+                  const rate = Number(line.exchangeRate)
+                  const amount = Number(line.amount)
+                  const equivalent =
+                    accountCurrency && selectedCurrency && amount > 0
+                      ? toCommissionCurrency(
+                          amount,
+                          accountCurrency,
+                          selectedCurrency as SplitCurrency,
+                          rate > 0 ? rate : null
+                        )
+                      : 0
+
+                  return (
+                    <div
+                      key={line.id}
+                      className="rounded-lg border border-border/40 bg-background/40 p-3 space-y-3"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-foreground/60">
+                          Forma de pago {index + 1}
+                        </p>
+                        {payLines.length > 1 && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-xs"
+                            onClick={() =>
+                              setPayLines((prev) => prev.filter((l) => l.id !== line.id))
+                            }
+                          >
+                            Quitar
+                          </Button>
+                        )}
+                      </div>
+
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">Cuenta Financiera</Label>
+                          <Select
+                            value={line.accountId}
+                            onValueChange={(value) => handlePayLineAccount(line, value)}
+                          >
+                            <SelectTrigger className="h-9 text-sm">
+                              <SelectValue placeholder="Seleccionar cuenta..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {filteredAccounts.map((acc) => (
+                                <SelectItem key={acc.id} value={acc.id}>
+                                  {acc.name} ({acc.currency})
+                                  {acc.current_balance !== undefined && (
+                                    <span className="text-xs text-muted-foreground ml-2">
+                                      - Balance: {fmtCurrency(acc.current_balance, acc.currency)}
+                                    </span>
+                                  )}
+                                  {acc.agencies?.name ? ` - ${acc.agencies.name}` : ""}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">
+                            Importe{accountCurrency ? ` (${accountCurrency})` : ""}
+                          </Label>
+                          <div className="flex items-center gap-2">
+                            <DecimalInput
+                              value={line.amount}
+                              onChange={(v) => updatePayLine(line.id, { amount: v })}
+                              className="h-9 text-sm text-right tabular-nums"
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-9 whitespace-nowrap text-xs"
+                              disabled={!accountCurrency || (needsRate && !(rate > 0))}
+                              onClick={() => fillPayLineWithRest(line)}
+                            >
+                              El resto
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {needsRate && (
+                        <div className="rounded-lg border border-accent-coral/30 bg-accent-coral/5 p-3 space-y-2">
+                          <Label className="text-xs">Tipo de cambio (1 USD = ? ARS)</Label>
+                          <div className="flex items-center gap-3">
+                            <DecimalInput
+                              value={line.exchangeRate}
+                              onChange={(v) => handlePayLineRate(line, v)}
+                              className="h-9 w-36 text-sm"
+                            />
+                            {equivalent > 0 && (
+                              <p className="text-xs text-muted-foreground">
+                                Cancela{" "}
+                                <span className="font-medium text-foreground">
+                                  {fmtCurrency(equivalent, selectedCurrency || "USD")}
+                                </span>{" "}
+                                de comisión
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs"
+                    onClick={() => setPayLines((prev) => [...prev, newPayLine()])}
+                  >
+                    Agregar forma de pago
+                  </Button>
+
+                  {selectedCommissionIds.size > 0 && (
+                    <p className="text-xs tabular-nums">
+                      <span className="text-muted-foreground">Cubierto: </span>
+                      <span className="font-medium">
+                        {fmtCurrency(payLinesCovered, selectedCurrency || "USD")}
+                      </span>
+                      {Math.abs(payLinesDifference) >= 0.01 && (
+                        <span className="ml-2 text-accent-coral">
+                          {payLinesDifference < 0
+                            ? `Faltan ${fmtCurrency(Math.abs(payLinesDifference), selectedCurrency || "USD")}`
+                            : `Sobran ${fmtCurrency(payLinesDifference, selectedCurrency || "USD")}`}
+                        </span>
+                      )}
+                    </p>
+                  )}
                 </div>
-              )}
+              </div>
 
               <div className="space-y-2">
                 <Label className="text-xs">Notas (opcional)</Label>
@@ -1338,7 +1597,11 @@ export function AdminCommissionsView({ userId, userRole, agencies }: AdminCommis
             <Button
               size="sm"
               onClick={handleConfirmPay}
-              disabled={paySubmitting || selectedCommissionIds.size === 0 || !payAccountId}
+              disabled={
+                paySubmitting ||
+                selectedCommissionIds.size === 0 ||
+                payLineInputs.length === 0
+              }
             >
               {paySubmitting && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
               Confirmar Pago

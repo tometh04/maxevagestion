@@ -43,6 +43,8 @@ export async function POST(request: Request) {
     const supabase = await createServerClient()
     const body = await request.json()
 
+    // `cash_amount` (opcional) es lo que realmente sale de la cuenta, en la
+    // moneda de la cuenta. Ver más abajo: solo se usa si es consistente.
     const { commissionId, amount, currency, datePaid, method, notes, financial_account_id, exchange_rate } = body
 
     if (!commissionId || !amount || !datePaid || !financial_account_id) {
@@ -231,6 +233,43 @@ export async function POST(request: Request) {
       } else {
         return NextResponse.json({ error: "Combinación de monedas no soportada" }, { status: 400 })
       }
+    }
+
+    // Importe exacto que sale de la cuenta. Lo manda el pago dividido, donde el
+    // usuario carga la forma de pago en la moneda de la CUENTA ("le doy
+    // $200.000 y el resto en dólares"): reconvertir ese número deja un desvío de
+    // centavos entre lo que dice el comprobante y lo que salió de la caja.
+    //
+    // Se acepta solo si se corresponde con el monto y el tipo de cambio
+    // informados: si no, sería una forma de sacar de la cuenta un importe que
+    // no tiene nada que ver con la comisión que se está cancelando.
+    if (body.cash_amount !== undefined && body.cash_amount !== null) {
+      const requestedCash = parseFloat(String(body.cash_amount))
+
+      if (!Number.isFinite(requestedCash) || requestedCash <= 0) {
+        return NextResponse.json(
+          { error: "El importe a debitar de la cuenta no es válido" },
+          { status: 400 }
+        )
+      }
+
+      const tolerance = Math.max(0.05, cashAmount * 0.01)
+      if (Math.abs(requestedCash - cashAmount) > tolerance) {
+        return NextResponse.json(
+          {
+            error:
+              `El importe a debitar (${requestedCash.toFixed(2)} ${accountCur}) no se corresponde con ` +
+              `la comisión a pagar y el tipo de cambio informado (${cashAmount.toFixed(2)} ${accountCur}).`,
+          },
+          { status: 400 }
+        )
+      }
+
+      cashAmount = requestedCash
+      amountARS =
+        accountCur === "ARS"
+          ? requestedCash
+          : calculateARSEquivalent(requestedCash, "USD", exchangeRate)
     }
 
     // Validar saldo suficiente en la cuenta (en su propia moneda) — NUNCA saldo negativo.
