@@ -16,6 +16,7 @@ import {
   Megaphone,
   Library,
   BookOpen,
+  Package,
 } from "lucide-react"
 import Link from "next/link"
 import { shouldShowInSidebar, type UserRole, type Module } from "@/lib/permissions"
@@ -147,6 +148,19 @@ const allNavigation: NavItem[] = [
       { title: "Facturación", url: "/operations/billing" },
       { title: "Configuración", url: "/operations/settings" },
     ],
+  },
+  // 4b. Paquetería (paquetes cerrados con cupo, VIB-183)
+  //
+  // Módulo propio y no un subitem de Operaciones: el vendedor tiene que poder
+  // consultar el cupo de un paquete sin permiso de escritura sobre operaciones,
+  // y el permiso de armar paquetes es del admin. Sin `addon`: es núcleo, no un
+  // complemento facturable.
+  {
+    title: "Paquetería",
+    url: "/packages",
+    icon: Package,
+    module: "packages",
+    collapsible: false,
   },
   // 5. Finanzas — la plata que se mueve hoy.
   //
