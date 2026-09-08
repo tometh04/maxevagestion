@@ -50,6 +50,71 @@ function round2(n: number): number {
   return Math.round((Number(n) || 0) * 100) / 100
 }
 
+export interface ReferralResolution {
+  partnerId: string | null
+  partnerName: string | null
+  /** Sigue dado de alta. Se informa; no filtra el cálculo. */
+  partnerActive: boolean
+  /**
+   * % vigente para las ventas de este cliente: override del cliente si tiene,
+   * si no el default del referidor. NO contempla el ajuste manual de una venta
+   * puntual, que es de la comisión y no del cliente.
+   */
+  percentage: number
+}
+
+/**
+ * Referidor y porcentaje vigentes de un cliente.
+ *
+ * Extraído para que la previsualización de comisiones pendientes
+ * (`pending-operations.ts`) muestre exactamente lo que después va a calcular
+ * esta función: si la precedencia se escribiera dos veces, la pantalla podría
+ * prometer un número y el sistema guardar otro.
+ */
+export async function resolveReferralForCustomer(
+  supabase: SupabaseClient<any, any, any>,
+  customerId: string | null
+): Promise<ReferralResolution> {
+  const empty: ReferralResolution = {
+    partnerId: null,
+    partnerName: null,
+    partnerActive: false,
+    percentage: 0,
+  }
+  if (!customerId) return empty
+
+  const { data: customer } = await (supabase.from("customers") as any)
+    .select("referral_partner_id, referral_commission_percentage")
+    .eq("id", customerId)
+    .maybeSingle()
+
+  const partnerId = customer?.referral_partner_id ?? null
+  if (!partnerId) return empty
+
+  const overridePct =
+    customer?.referral_commission_percentage != null
+      ? Number(customer.referral_commission_percentage)
+      : null
+
+  const { data: partner } = await (supabase.from("referral_partners") as any)
+    .select("name, default_commission_percentage, active")
+    .eq("id", partnerId)
+    .maybeSingle()
+
+  const percentage =
+    overridePct ??
+    (partner?.default_commission_percentage != null
+      ? Number(partner.default_commission_percentage)
+      : 0)
+
+  return {
+    partnerId,
+    partnerName: partner?.name ?? null,
+    partnerActive: partner?.active !== false,
+    percentage: Number(percentage) || 0,
+  }
+}
+
 /**
  * Calcula (o recalcula) y persiste la comisión de referido de una operación.
  * Best-effort: nunca lanza; devuelve un resultado describiendo lo que hizo para
@@ -74,20 +139,9 @@ export async function createOrUpdateReferralCommission(
       return { status: "skipped", amount: 0, percentage: 0, partnerId: null, reason: "existing_non_pending" }
     }
 
-    // Resolver si el cliente MAIN está referido.
-    let partnerId: string | null = null
-    let overridePct: number | null = null
-    if (customerId) {
-      const { data: customer } = await (supabase.from("customers") as any)
-        .select("referral_partner_id, referral_commission_percentage")
-        .eq("id", customerId)
-        .maybeSingle()
-      partnerId = customer?.referral_partner_id ?? null
-      overridePct =
-        customer?.referral_commission_percentage != null
-          ? Number(customer.referral_commission_percentage)
-          : null
-    }
+    // Resolver si el cliente MAIN está referido, y con qué porcentaje.
+    const resolution = await resolveReferralForCustomer(supabase, customerId)
+    const partnerId = resolution.partnerId
 
     // Sin referidor, o margen no positivo → no corresponde comisión.
     // Si había una PENDING previa, la eliminamos (el cliente se desmarcó o el
@@ -109,21 +163,9 @@ export async function createOrUpdateReferralCommission(
     // Sin este chequeo, cualquier edición posterior de la operación —una fecha,
     // un servicio— dispara el recálculo y pisa el ajuste.
     const esManual = existing?.percentage_mode === "MANUAL"
-    let percentage: number | null
-
-    if (esManual) {
-      percentage = Number(existing.percentage) || 0
-    } else {
-      percentage = overridePct
-      if (percentage == null) {
-        const { data: partner } = await (supabase.from("referral_partners") as any)
-          .select("default_commission_percentage, active")
-          .eq("id", partnerId)
-          .maybeSingle()
-        percentage = partner?.default_commission_percentage != null ? Number(partner.default_commission_percentage) : 0
-      }
-    }
-    percentage = Number(percentage) || 0
+    const percentage = esManual
+      ? Number(existing.percentage) || 0
+      : resolution.percentage
 
     // Base de comisión: ganancia bruta por default, o neta de IVA si la agencia
     // lo tiene activo y la operación entra en el corte (VIB-95). Mismo criterio
