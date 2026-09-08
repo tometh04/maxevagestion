@@ -17,7 +17,7 @@ import { es } from "date-fns/locale"
 // Fix UTC shift (VICO 2026-05-22)
 import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 import Link from "next/link"
-import { ArrowLeft, Pencil, User, Phone, Mail, AtSign, Calendar, Globe, FileText, CreditCard, Plane, TrendingUp } from "lucide-react"
+import { ArrowLeft, Pencil, User, Phone, Mail, AtSign, Calendar, Globe, FileText, CreditCard, Plane, TrendingUp, Gift } from "lucide-react"
 import { DocumentsSection } from "@/components/documents/documents-section"
 import {
   Breadcrumb,
@@ -28,6 +28,7 @@ import {
   BreadcrumbPage,
 } from "@/components/ui/breadcrumb"
 import { EditCustomerDialog } from "./edit-customer-dialog"
+import { PendingReferralDialog } from "./pending-referral"
 import { CustomerMessagesSection } from "@/components/whatsapp/customer-messages-section"
 import { CustomerInteractions } from "./customer-interactions"
 import { useRouter } from "next/navigation"
@@ -80,6 +81,12 @@ export function CustomerDetailClient({
 }: CustomerDetailClientProps) {
   const router = useRouter()
   const [editDialogOpen, setEditDialogOpen] = useState(false)
+  /**
+   * Para el cliente que ya tenía el referidor cargado de antes: al asignarlo
+   * recién, el diálogo de edición ofrece las ventas pendientes solo, pero acá
+   * hay que poder volver a entrar.
+   */
+  const [referralDialogOpen, setReferralDialogOpen] = useState(false)
 
   const handleEditSuccess = () => {
     router.refresh()
@@ -129,10 +136,18 @@ export function CustomerDetailClient({
             <p className="text-xs font-medium text-muted-foreground">{customer.email}</p>
           </div>
         </div>
-        <Button onClick={() => setEditDialogOpen(true)}>
-          <Pencil className="mr-2 h-4 w-4" />
-          Editar
-        </Button>
+        <div className="flex items-center gap-2">
+          {customer.referral_partner_id && (
+            <Button variant="outline" onClick={() => setReferralDialogOpen(true)}>
+              <Gift className="mr-2 h-4 w-4" />
+              Comisión de ventas anteriores
+            </Button>
+          )}
+          <Button onClick={() => setEditDialogOpen(true)}>
+            <Pencil className="mr-2 h-4 w-4" />
+            Editar
+          </Button>
+        </div>
       </div>
 
       <Tabs defaultValue="info" className="space-y-4">
@@ -435,6 +450,14 @@ export function CustomerDetailClient({
         open={editDialogOpen}
         onOpenChange={setEditDialogOpen}
         onSuccess={handleEditSuccess}
+      />
+
+      <PendingReferralDialog
+        customerId={customer.id}
+        customerName={`${customer.first_name} ${customer.last_name}`}
+        open={referralDialogOpen}
+        onOpenChange={setReferralDialogOpen}
+        onApplied={handleEditSuccess}
       />
     </div>
   )

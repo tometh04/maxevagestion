@@ -34,43 +34,10 @@ import { Loader2, User, FileText, Globe, Settings2 } from "lucide-react"
 import { useCustomerSettings } from "@/hooks/use-customer-settings"
 import { CustomFieldsForm } from "./custom-fields-form"
 import { ReferralPartnerSelect, type ReferralValue } from "./referral-partner-select"
-import { Checkbox } from "@/components/ui/checkbox"
-import { parseDateOnlyLocal } from "@/lib/utils/date-only"
-import { format } from "date-fns"
-import { es } from "date-fns/locale"
-
-/**
- * Ventas del cliente que quedaron sin comisión de referido, tal como las
- * devuelve `/api/customers/[id]/referral-commissions`.
- */
-interface PendingReferralOperation {
-  operationId: string
-  fileCode: string | null
-  operationDate: string | null
-  destination: string | null
-  marginAmount: number
-  currency: string
-  percentage: number
-  amount: number
-}
-
-interface PendingReferralPayload {
-  referral: { partnerId: string | null; partnerName: string | null; percentage: number }
-  operations: PendingReferralOperation[]
-  truncated: boolean
-}
-
-const fmtMoney = (value: number, currency: string) =>
-  new Intl.NumberFormat("es-AR", {
-    style: "currency",
-    currency: currency === "USD" ? "USD" : "ARS",
-    minimumFractionDigits: 2,
-  }).format(value || 0)
-
-const fmtDate = (value: string | null) => {
-  const parsed = value ? parseDateOnlyLocal(value) : null
-  return parsed ? format(parsed, "dd/MM/yyyy", { locale: es }) : "Sin fecha"
-}
+import {
+  PendingReferralContent,
+  usePendingReferralCommissions,
+} from "./pending-referral"
 
 interface Customer {
   id: string
@@ -125,11 +92,10 @@ export function EditCustomerDialog({
   /**
    * Segundo paso del diálogo: al marcar un referidor en un cliente que ya tiene
    * ventas cargadas, esas ventas no generaron comisión (se calcula al guardar la
-   * venta). Acá se eligen cuáles completar. Null = paso normal de edición.
+   * venta). Acá se eligen cuáles completar. false = paso normal de edición.
    */
-  const [pendingReferral, setPendingReferral] = useState<PendingReferralPayload | null>(null)
-  const [selectedOperations, setSelectedOperations] = useState<Set<string>>(new Set())
-  const [applyingReferral, setApplyingReferral] = useState(false)
+  const [showReferralStep, setShowReferralStep] = useState(false)
+  const pendingReferral = usePendingReferralCommissions(customer.id)
   const { settings, loading: settingsLoading } = useCustomerSettings()
   const [referral, setReferral] = useState<ReferralValue>({
     referralPartnerId: customer.referral_partner_id ?? null,
@@ -278,12 +244,9 @@ export function EditCustomerDialog({
         referral.referralPartnerId !== (customer.referral_partner_id ?? null)
 
       if (partnerAdded) {
-        const pending = await fetchPendingReferral()
+        const pending = await pendingReferral.load()
         if (pending && pending.operations.length > 0) {
-          setPendingReferral(pending)
-          // Nada tildado por default: cada tilde genera plata a favor del
-          // referidor, así que la elección es explícita.
-          setSelectedOperations(new Set())
+          setShowReferralStep(true)
           return
         }
       }
@@ -298,159 +261,42 @@ export function EditCustomerDialog({
     }
   }
 
-  const fetchPendingReferral = async (): Promise<PendingReferralPayload | null> => {
-    try {
-      const res = await fetch(`/api/customers/${customer.id}/referral-commissions`)
-      if (!res.ok) return null
-      return (await res.json()) as PendingReferralPayload
-    } catch (error) {
-      // No bloquea: el cliente ya se guardó bien. Peor sería mostrar un error
-      // sobre el guardado que sí funcionó.
-      console.error("Error buscando ventas sin comisión de referido:", error)
-      return null
-    }
-  }
-
   const closeAfterReferralStep = () => {
-    setPendingReferral(null)
-    setSelectedOperations(new Set())
+    setShowReferralStep(false)
+    pendingReferral.reset()
     onSuccess()
     onOpenChange(false)
   }
 
   const applyReferralCommissions = async () => {
-    if (selectedOperations.size === 0) return
-    setApplyingReferral(true)
-    try {
-      const res = await fetch(`/api/customers/${customer.id}/referral-commissions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ operationIds: Array.from(selectedOperations) }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data?.error || "No se pudieron generar las comisiones")
-
-      toast.success(
-        data.created === 1
-          ? "Se generó la comisión del referidor"
-          : `Se generaron ${data.created} comisiones del referidor`,
-        data.failed > 0
-          ? { description: `${data.failed} venta(s) no se pudieron procesar.` }
-          : undefined
-      )
-      closeAfterReferralStep()
-    } catch (error) {
-      console.error("Error generando comisiones de referido:", error)
-      toast.error(error instanceof Error ? error.message : "No se pudieron generar las comisiones")
-    } finally {
-      setApplyingReferral(false)
-    }
+    const ok = await pendingReferral.apply()
+    if (ok) closeAfterReferralStep()
   }
 
-  if (pendingReferral) {
-    const total = pendingReferral.operations
-      .filter((op) => selectedOperations.has(op.operationId))
-      .reduce((sum, op) => sum + op.amount, 0)
-    const totalCurrency =
-      pendingReferral.operations.find((op) => selectedOperations.has(op.operationId))?.currency ??
-      "ARS"
-    const mixedCurrencies = new Set(
-      pendingReferral.operations
-        .filter((op) => selectedOperations.has(op.operationId))
-        .map((op) => op.currency)
-    ).size > 1
-
+  if (showReferralStep && pendingReferral.payload) {
     return (
-      <Dialog open={open} onOpenChange={(next) => (next ? onOpenChange(true) : closeAfterReferralStep())}>
+      <Dialog
+        open={open}
+        onOpenChange={(next) => (next ? onOpenChange(true) : closeAfterReferralStep())}
+      >
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Ventas anteriores del referidor</DialogTitle>
             <DialogDescription>
-              {pendingReferral.referral.partnerName || "El referidor"} quedó cargado en{" "}
+              {pendingReferral.payload.referral.partnerName || "El referidor"} quedó cargado en{" "}
               {customer.first_name} {customer.last_name}, pero estas ventas ya estaban hechas y no
               generaron comisión. Elegí a cuáles corresponde aplicársela.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="px-6 py-4 space-y-3 max-h-[60vh] overflow-y-auto">
-            {pendingReferral.operations.map((op) => {
-              const checked = selectedOperations.has(op.operationId)
-              return (
-                <label
-                  key={op.operationId}
-                  className="flex items-center gap-3 p-3 rounded-lg border border-border/40 hover:bg-muted/30 transition-colors cursor-pointer"
-                >
-                  <Checkbox
-                    checked={checked}
-                    onCheckedChange={() =>
-                      setSelectedOperations((prev) => {
-                        const next = new Set(prev)
-                        if (next.has(op.operationId)) next.delete(op.operationId)
-                        else next.add(op.operationId)
-                        return next
-                      })
-                    }
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">
-                      {fmtDate(op.operationDate)} · {op.destination || "Sin destino"}
-                    </p>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {op.fileCode || op.operationId.slice(0, 8)} · Ganancia{" "}
-                      {fmtMoney(op.marginAmount, op.currency)}
-                    </p>
-                  </div>
-                  <p className="text-sm font-semibold tabular-nums whitespace-nowrap">
-                    {fmtMoney(op.amount, op.currency)}
-                    <span className="ml-1 text-xs font-normal text-muted-foreground">
-                      ({op.percentage}%)
-                    </span>
-                  </p>
-                </label>
-              )
-            })}
-
-            {pendingReferral.truncated && (
-              <p className="text-xs text-muted-foreground">
-                Se revisaron las ventas más recientes del cliente. Si falta alguna más vieja,
-                editala y guardala para que genere la comisión.
-              </p>
-            )}
-          </div>
-
-          <DialogFooter className="px-6 pb-5">
-            <div className="mr-auto text-sm">
-              {selectedOperations.size > 0 && !mixedCurrencies && (
-                <>
-                  <span className="text-muted-foreground">Total a generar: </span>
-                  <span className="font-semibold tabular-nums">
-                    {fmtMoney(total, totalCurrency)}
-                  </span>
-                </>
-              )}
-              {mixedCurrencies && (
-                <span className="text-muted-foreground">
-                  Seleccionaste ventas en distintas monedas: cada comisión queda en la suya.
-                </span>
-              )}
-            </div>
-            <Button variant="outline" onClick={closeAfterReferralStep} disabled={applyingReferral}>
-              Ahora no
-            </Button>
-            <Button
-              onClick={applyReferralCommissions}
-              disabled={applyingReferral || selectedOperations.size === 0}
-            >
-              {applyingReferral ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Generando...
-                </>
-              ) : (
-                `Generar comisión (${selectedOperations.size})`
-              )}
-            </Button>
-          </DialogFooter>
+          <PendingReferralContent
+            payload={pendingReferral.payload}
+            selected={pendingReferral.selected}
+            applying={pendingReferral.applying}
+            onToggle={pendingReferral.toggle}
+            onApply={applyReferralCommissions}
+            onSkip={closeAfterReferralStep}
+          />
         </DialogContent>
       </Dialog>
     )
