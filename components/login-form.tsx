@@ -5,24 +5,18 @@ import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
+import { loginSchema, loginErrorMessage, LoginProfileError } from "@/lib/auth/login-feedback"
 import { supabase } from "@/lib/supabase/client"
 import { trackEvent } from "@/lib/analytics/track"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
   Field,
-  FieldDescription,
   FieldGroup,
   FieldLabel,
-  FieldSeparator,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-
-const loginSchema = z.object({
-  email: z.string().email("Email inválido"),
-  password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
-})
 
 type LoginFormValues = z.infer<typeof loginSchema>
 
@@ -33,6 +27,12 @@ export function LoginForm({
   const router = useRouter()
   const [error, setError] = React.useState<string | null>(null)
   const [loading, setLoading] = React.useState(false)
+  const submitting = React.useRef(false)
+  const errorRef = React.useRef<HTMLDivElement>(null)
+
+  React.useEffect(() => {
+    if (error) errorRef.current?.focus()
+  }, [error])
 
   // Detectar tokens de invitación o recuperación en la URL y redirigir
   React.useEffect(() => {
@@ -53,6 +53,7 @@ export function LoginForm({
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
+    mode: "onBlur",
     defaultValues: {
       email: "",
       password: "",
@@ -60,8 +61,11 @@ export function LoginForm({
   })
 
   const onSubmit = async (data: LoginFormValues) => {
+    if (submitting.current) return
+    submitting.current = true
     setError(null)
     setLoading(true)
+    let authenticated = false
 
     try {
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
@@ -70,6 +74,8 @@ export function LoginForm({
       })
 
       if (authError) throw authError
+      if (!authData.user) throw new Error("Missing auth user")
+      authenticated = true
 
       if (authData.user) {
         // Get user role from database
@@ -80,25 +86,16 @@ export function LoginForm({
           .maybeSingle()
 
         if (userError) {
-          // Check if the error is because the table doesn't exist
-          if (userError.code === 'PGRST205' || userError.message?.includes("Could not find the table")) {
-            throw new Error(
-              "La tabla 'users' no existe en la base de datos. " +
-              "Por favor ejecuta el SQL de migración en Supabase Dashboard: " +
-              "https://supabase.com/dashboard/project/pmqvplyyxiobkllapgjp/sql/new"
-            )
-          }
-          
-          throw new Error(`Error al buscar usuario: ${userError.message}`)
+          throw new LoginProfileError("No pudimos verificar tu cuenta. Volvé a intentar; si el problema continúa, contactá al administrador de tu agencia.")
         }
 
         if (!userData) {
-          throw new Error("Usuario no encontrado en la base de datos. Contacta al administrador.")
+          throw new LoginProfileError("No pudimos encontrar tu perfil. Contactá al administrador de tu agencia para revisar tu acceso.")
         }
 
         const user = userData as { role: string; is_active: boolean }
         if (!user.is_active) {
-          throw new Error("Tu cuenta está desactivada. Contacta al administrador.")
+          throw new LoginProfileError("Tu cuenta está desactivada. Contactá al administrador de tu agencia.")
         }
 
         trackEvent("login", { method: "password" })
@@ -121,15 +118,25 @@ export function LoginForm({
         return
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al iniciar sesión")
+      if (authenticated) {
+        try {
+          await supabase.auth.signOut({ scope: "local" })
+        } catch {
+          // Preserve the original actionable error if session cleanup fails.
+        }
+      }
+      setError(loginErrorMessage(err))
       // Solo se rehabilita el boton si el login fallo. En el camino feliz la
       // pagina ya esta recargando y volver a "Iniciar Sesión" es un parpadeo.
       setLoading(false)
+      submitting.current = false
     }
   }
 
   return (
-    <form className={cn("flex flex-col gap-6", className)} onSubmit={form.handleSubmit(onSubmit)} {...props}>
+    <form {...props} className={cn("flex flex-col gap-6", className)} noValidate aria-busy={loading}
+      onChange={(event) => { setError(null); props.onChange?.(event) }}
+      onSubmit={form.handleSubmit(onSubmit, () => setError(null))}>
       <FieldGroup>
         <div className="flex flex-col items-center gap-2 text-center">
           <h1 className="text-3xl font-bold tracking-tighter-h2 leading-[1.1]">
@@ -140,7 +147,7 @@ export function LoginForm({
           </p>
         </div>
         {error && (
-          <Alert className="text-destructive">
+          <Alert ref={errorRef} tabIndex={-1} variant="destructive" className="bg-destructive/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-destructive">
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
@@ -153,10 +160,14 @@ export function LoginForm({
             {...form.register("email")}
             disabled={loading}
             autoComplete="email"
+            autoCapitalize="none"
+            spellCheck={false}
+            aria-invalid={!!form.formState.errors.email}
+            aria-describedby={form.formState.errors.email ? "email-error" : undefined}
             required 
           />
           {form.formState.errors.email && (
-            <p className="text-sm text-destructive">{form.formState.errors.email.message}</p>
+            <p id="email-error" className="text-sm text-destructive">{form.formState.errors.email.message}</p>
           )}
         </Field>
         <Field>
@@ -175,10 +186,12 @@ export function LoginForm({
             {...form.register("password")}
             disabled={loading}
             autoComplete="current-password"
+            aria-invalid={!!form.formState.errors.password}
+            aria-describedby={form.formState.errors.password ? "password-error" : undefined}
             required 
           />
           {form.formState.errors.password && (
-            <p className="text-sm text-destructive">{form.formState.errors.password.message}</p>
+            <p id="password-error" className="text-sm text-destructive">{form.formState.errors.password.message}</p>
           )}
         </Field>
         <Field>
