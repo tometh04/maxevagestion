@@ -23,13 +23,13 @@ jest.mock("@/components/emilia/flight-result-card", () => ({
     </div>
   },
 }))
-jest.mock("@/components/emilia/hotel-result-card", () => ({ HotelResultCard: () => <div>Hotel disponible</div> }))
+jest.mock("@/components/emilia/hotel-result-card", () => ({ HotelResultCard: ({ selected, onSelectionChange }: any) => <button onClick={onSelectionChange}>{selected ? "Hotel seleccionado" : "Hotel disponible"}</button> }))
 
 const flight = { id: "flight-1", provider: "STARLING", airline: { code: "AR", name: "Aerolíneas" },
   price: { amount: 100, currency: "USD" }, legs: [], departure_date: "2026-10-10", adults: 2 }
 const flightResults = { flights: { count: 1, items: [flight] } }
 const hotelResults = { hotels: { count: 1, items: [{ id: "hotel-1", name: "Hotel Cancún",
-  rooms: [{ occupancy_id: "room-1", room_name: "Doble", room_price: 500, currency: "USD" }] }] } }
+  rooms: [{ occupancy_id: "room-1", room_name: "Doble", total_price: 500, currency: "USD" }] }] } }
 const partial = { status: "processing", job_id: "job-1", attempt: 1, requestType: "combined",
   progress: { version: 102, attempt: 1, products: { flights: "available", hotels: "searching" } }, results: flightResults }
 let complete: (value: any) => void
@@ -148,4 +148,41 @@ it("cotiza dos vuelos como alternativas y mantiene ambos visibles al filtrar", a
   const call = jest.mocked(global.fetch).mock.calls.find(([url]) => url === "/api/quotations")!
   const payload = JSON.parse(call[1]!.body as string)
   expect(payload.options.map((option: any) => option.total_amount)).toEqual([100, 200])
+})
+
+it("permite cotizar un hotel anterior junto con el vuelo de la continuación", async () => {
+  history = [{ id: "old-hotels", role: "assistant", content: { text: "Hoteles encontrados", cards: hotelResults,
+    metadata: { searchContextId: "trip-1" } } }]
+  const view = chat()
+  await screen.findByText("Hotel disponible")
+  fireEvent.click(screen.getByText("Hotel disponible"))
+  await send()
+  await act(async () => complete({ status: "completed", job_id: "job-1", results: flightResults,
+    assistant_message: { meta: { searchContextId: "trip-1" }, content: { text: "Vuelos encontrados" } } }))
+  expect(screen.getByText("Hotel seleccionado")).toBeInTheDocument()
+  expect(view.container.querySelector('.pointer-events-none')).not.toBeInTheDocument()
+  expect(screen.queryByText("Resultados históricos")).not.toBeInTheDocument()
+  fireEvent.click(screen.getByText("Hotel seleccionado"))
+  fireEvent.click(screen.getByText("Hotel disponible"))
+  fireEvent.click(screen.getByText("Seleccionar vuelo"))
+  fireEvent.click(screen.getByRole("button", { name: /Generar cotización/ }))
+  await waitFor(() => expect(jest.mocked(global.fetch).mock.calls.some(([url]) => url === "/api/quotations")).toBe(true))
+  const call = jest.mocked(global.fetch).mock.calls.find(([url]) => url === "/api/quotations")!
+  expect(JSON.parse(call[1]!.body as string).options[0].total_amount).toBe(600)
+})
+
+it("cotiza la tarjeta histórica elegida aunque un turno posterior repita su ID", async () => {
+  history = [100, 200].map((amount, index) => ({ id: `message-${index}`, role: "assistant", content: {
+    text: `Resultado ${index}`, cards: { requestType: "flights", flights: { count: 1,
+      items: [{ ...flight, price: { amount, currency: "USD" } }] } },
+    metadata: { searchContextId: `trip-${index}` },
+  } }))
+  chat()
+  await screen.findAllByText("Seleccionar vuelo")
+  fireEvent.click(screen.getAllByText("Seleccionar vuelo")[0])
+  expect(screen.getAllByText("Vuelo seleccionado")).toHaveLength(1)
+  fireEvent.click(screen.getByRole("button", { name: /Generar cotización/ }))
+  await waitFor(() => expect(jest.mocked(global.fetch).mock.calls.some(([url]) => url === "/api/quotations")).toBe(true))
+  const call = jest.mocked(global.fetch).mock.calls.find(([url]) => url === "/api/quotations")!
+  expect(JSON.parse(call[1]!.body as string).options[0].total_amount).toBe(100)
 })

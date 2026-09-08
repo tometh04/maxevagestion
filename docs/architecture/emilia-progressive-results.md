@@ -57,3 +57,16 @@ Las fotos de hotel viajan en `emilia.hotel-offer.v1.images` como URLs HTTP(S).
 El gateway conserva el campo y el CRM lo mapea al carrusel del mismo hotel,
 tanto en previews como al finalizar. Si el proveedor no envía fotos, se conserva
 el estado sin foto; no se buscan coincidencias por nombre ni se inventan imágenes.
+
+## Selección después de continuar una búsqueda
+
+Las tarjetas anteriores siguen disponibles para seleccionar y cotizar. La selección
+y los filtros se conservan entre turnos y se reinician al cambiar de lead. Cada
+selección identifica el mensaje y el ID de la oferta; el payload usa la oferta
+original, sin cambiar sus identificadores de proveedor. Esto evita que una tarjeta
+posterior con el mismo ID sustituya la opción elegida.
+
+La generación verifica también el estado del turno de cada opción seleccionada.
+Se mantienen los límites de alternativas de vuelo y la selección por estadía del
+flujo multidestino. El test de componente combina un hotel anterior con un vuelo
+de la continuación y verifica el importe del payload.

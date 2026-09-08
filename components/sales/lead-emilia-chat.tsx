@@ -643,17 +643,7 @@ export function LeadEmiliaChat({
     }
     return -1
   }, [messages, activeSearchContextId, latestSearchMessageIndex])
-  const activeResultKey = activeSearchContextId && latestSearchMessageIndex >= 0
-    ? `${activeSearchContextId}:${latestSearchMessageIndex}:${messages[latestSearchMessageIndex].attempt || 1}`
-    : activeResultMessageIndex >= 0
-      ? `legacy:${activeResultMessageIndex}`
-    : null
-  const activeResultKeyRef = useRef<string | null>(null)
-  const activeSearchContextIdRef = useRef<string | null>(null)
-
   useEffect(() => {
-    activeResultKeyRef.current = null
-    activeSearchContextIdRef.current = null
     setSelectedFlightIds([])
     setSelectedHotels(new Map())
     setFlightFiltersByMessage({})
@@ -693,31 +683,6 @@ export function LeadEmiliaChat({
     startTour,
     toursDisabled,
   ])
-
-  useEffect(() => {
-    if (!activeSearchContextId) return
-    if (
-      activeSearchContextIdRef.current
-      && activeSearchContextIdRef.current !== activeSearchContextId
-    ) {
-      setSelectedFlightIds([])
-      setSelectedHotels(new Map())
-      setFlightFiltersByMessage({})
-      setHotelFiltersByMessage({})
-    }
-    activeSearchContextIdRef.current = activeSearchContextId
-  }, [activeSearchContextId])
-
-  useEffect(() => {
-    if (!activeResultKey) return
-    if (activeResultKeyRef.current && activeResultKeyRef.current !== activeResultKey) {
-      setSelectedFlightIds([])
-      setSelectedHotels(new Map())
-      setFlightFiltersByMessage({})
-      setHotelFiltersByMessage({})
-    }
-    activeResultKeyRef.current = activeResultKey
-  }, [activeResultKey])
 
   // Inicialización del chat. Perf:
   //  - Reusamos la conversación que ya trajo el gate de "Cotizar"
@@ -964,10 +929,14 @@ export function LeadEmiliaChat({
   const allowsFlightAlternatives = selectionRequestType === "flights"
     || (!selectionRequestType && !lastResults?.cards?.hotels?.items?.length && (!lastResults?.jobStatus || lastResults.jobStatus === "completed"))
 
+  function resultSelectionKey(messageIndex: number, id: string) {
+    return JSON.stringify([messageIndex, id])
+  }
+
   function toggleFlight(id: string) {
     setSelectedFlightIds(prev => {
       if (prev.includes(id)) return prev.filter(flightId => flightId !== id)
-      if (!allowsFlightAlternatives) return [id]
+      if (!allowsFlightAlternatives || selectedHotels.size > 0) return [id]
       if (prev.length >= MAX_FLIGHTS) {
         toast.error(`Solo podés seleccionar hasta ${MAX_FLIGHTS} alternativas de vuelo.`)
         return prev
@@ -1004,13 +973,17 @@ export function LeadEmiliaChat({
   // toma por defecto la primera habitación usando su `occupancy_id` real, para
   // que la cotización mapee el room correcto (y el highlight de selección
   // coincida con una room existente).
-  function toggleHotelSelection(hotel: EurovipsHotel) {
+  function toggleHotelSelection(hotel: EurovipsHotel, selectionKey: string) {
+    if (selectedFlightIds.length > 1) {
+      toast.error("Para combinar con hoteles, seleccioná un solo vuelo.")
+      return
+    }
     setSelectedHotels(prev => {
       const next = new Map(prev)
-      if (next.has(hotel.id)) {
-        next.delete(hotel.id)
+      if (next.has(selectionKey)) {
+        next.delete(selectionKey)
       } else {
-        try { return selectHotelForStay(next, hotel, hotel.rooms?.[0]?.occupancy_id ?? "", lastResults?.cards?.hotels?.items || []) }
+        try { return selectHotelForStay(next, { ...hotel, id: selectionKey }, hotel.rooms?.[0]?.occupancy_id ?? "", messages.flatMap((message, index) => (message.cards?.hotels?.items || []).map(item => ({ ...item, id: resultSelectionKey(index, item.id) })))) }
         catch (error) { toast.error((error as Error).message); return prev }
       }
       return next
@@ -1020,17 +993,21 @@ export function LeadEmiliaChat({
   // Elegir una habitación puntual. Si el hotel no estaba seleccionado, lo
   // selecciona con esa habitación; si ya estaba, cambia la habitación (o lo
   // deselecciona si se vuelve a clickear la misma).
-  function selectHotelRoom(hotel: EurovipsHotel, roomId: string) {
+  function selectHotelRoom(hotel: EurovipsHotel, roomId: string, selectionKey: string) {
+    if (selectedFlightIds.length > 1) {
+      toast.error("Para combinar con hoteles, seleccioná un solo vuelo.")
+      return
+    }
     setSelectedHotels(prev => {
       const next = new Map(prev)
-      if (next.has(hotel.id)) {
-        if (next.get(hotel.id) === roomId) {
-          next.delete(hotel.id)
+      if (next.has(selectionKey)) {
+        if (next.get(selectionKey) === roomId) {
+          next.delete(selectionKey)
         } else {
-          next.set(hotel.id, roomId)
+          next.set(selectionKey, roomId)
         }
       } else {
-        try { return selectHotelForStay(next, hotel, roomId, lastResults?.cards?.hotels?.items || []) }
+        try { return selectHotelForStay(next, { ...hotel, id: selectionKey }, roomId, messages.flatMap((message, index) => (message.cards?.hotels?.items || []).map(item => ({ ...item, id: resultSelectionKey(index, item.id) })))) }
         catch (error) { toast.error((error as Error).message); return prev }
       }
       return next
@@ -1045,25 +1022,22 @@ export function LeadEmiliaChat({
   }, [messages])
 
   async function handleGenerate() {
-    if (generating || sending || (lastResults?.jobStatus && lastResults.jobStatus !== "completed")) return
-    // Una cotización sólo puede usar cards del último turno de resultados de
-    // la búsqueda activa. Nunca mezclamos opciones de destinos/iteraciones
-    // históricas aunque coincidan sus ids.
+    if (!canGenerate) return
+    // Resolve each selection against its original message, even after continuing.
     const flightById = new Map<string, EmiliaFlight>()
     const hotelById = new Map<string, EurovipsHotel>()
-    for (const msg of lastResults ? [lastResults] : []) {
-      for (const f of msg.cards?.flights?.items || []) flightById.set(f.id, f)
-      for (const h of msg.cards?.hotels?.items || []) hotelById.set(h.id, h)
-    }
+    messages.forEach((msg, index) => {
+      for (const f of msg.cards?.flights?.items || []) flightById.set(resultSelectionKey(index, f.id), f)
+      for (const h of msg.cards?.hotels?.items || []) hotelById.set(resultSelectionKey(index, h.id), h)
+    })
     const flights = selectedFlightIds.map(id => flightById.get(id)).filter((flight): flight is EmiliaFlight => Boolean(flight))
     const flight = flights[0] ?? null
     // El Map guarda el `occupancy_id` de la room elegida, no un índice.
     // Resolvemos el índice real buscando ese occupancy_id en las rooms del hotel.
     const selectedHotelArr = Array.from(selectedHotels.keys())
-      .map((id) => hotelById.get(id))
-      .filter((h): h is EurovipsHotel => Boolean(h))
-      .map((h) => {
-        const occId = selectedHotels.get(h.id)
+      .map((id) => ({ hotel: hotelById.get(id), roomId: selectedHotels.get(id) }))
+      .filter((entry): entry is { hotel: EurovipsHotel; roomId: string | undefined } => Boolean(entry.hotel))
+      .map(({ hotel: h, roomId: occId }) => {
         const idx = h.rooms?.findIndex(r => r.occupancy_id === occId) ?? -1
         return { hotel: h, roomIndex: idx >= 0 ? idx : 0 }
       })
@@ -1173,6 +1147,11 @@ export function LeadEmiliaChat({
     && !generating
     && !sending
     && (!lastResults?.jobStatus || lastResults.jobStatus === "completed")
+    && messages.every((message, index) => {
+      const hasSelection = message.cards?.flights?.items.some(f => selectedFlightIds.includes(resultSelectionKey(index, f.id)))
+        || message.cards?.hotels?.items.some(h => selectedHotels.has(resultSelectionKey(index, h.id)))
+      return !hasSelection || !message.jobStatus || message.jobStatus === "completed"
+    })
 
   if (loading) {
     return (
@@ -1223,17 +1202,17 @@ export function LeadEmiliaChat({
           const mHotels = m.cards?.hotels?.items || []
           const mConfidence = m.meta?.originalRequest?.confidence ?? 1
           const hasCards = mFlights.length > 0 || mHotels.length > 0
-          const messageSearchContextId = getMessageSearchContextId(m)
-          const isActiveResultTurn = !hasCards || i === activeResultMessageIndex
+          const messageFlightIds = mFlights.filter(f => selectedFlightIds.includes(resultSelectionKey(i, f.id))).map(f => f.id)
+          const messageHotels = new Map(mHotels.filter(h => selectedHotels.has(resultSelectionKey(i, h.id))).map(h => [h.id, selectedHotels.get(resultSelectionKey(i, h.id))!]))
           const isNewSearchBoundary = m.role === "assistant"
             && m.meta?.turnSemantics?.relation === "new_search"
             && messages.slice(0, i).some(previous => Boolean(getMessageSearchContextId(previous)))
           const searchSummary = m.meta?.searchSummary?.text
           const flightFilters = flightFiltersByMessage[i] ?? DEFAULT_FLIGHT_FILTERS
           const hotelFilters = hotelFiltersByMessage[i] ?? DEFAULT_HOTEL_FILTERS
-          const visibleFlights = filterFlights(mFlights, flightFilters, selectedFlightIds)
-          const selectedOutsideFilters = mFlights.some(flight => selectedFlightIds.includes(flight.id) && !matchesFlight(flight, flightFilters))
-          const visibleHotels = filterHotels(mHotels, hotelFilters, selectedHotels)
+          const visibleFlights = filterFlights(mFlights, flightFilters, messageFlightIds)
+          const selectedOutsideFilters = mFlights.some(flight => messageFlightIds.includes(flight.id) && !matchesFlight(flight, flightFilters))
+          const visibleHotels = filterHotels(mHotels, hotelFilters, messageHotels)
           const flightFilterOptions = getFlightFilterOptions(mFlights)
           const hotelFilterOptions = getHotelFilterOptions(mHotels)
           return (
@@ -1270,23 +1249,12 @@ export function LeadEmiliaChat({
                 <div className="flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-xs text-muted-foreground">
                   <span className="font-medium text-foreground">Resumen</span>
                   <span className="min-w-0 truncate">{searchSummary}</span>
-                  {messageSearchContextId && !isActiveResultTurn && (
-                    <Badge variant="outline" className="ml-auto shrink-0 text-[10px]">Histórico</Badge>
-                  )}
                 </div>
               )}
 
               {/* Resultados de ESTE mensaje, inline debajo (flujo de chat real) */}
               {(hasCards || m.progress) && (
-                <div className={cn(
-                  "space-y-2",
-                  !isActiveResultTurn && "opacity-60 [&_button]:pointer-events-none [&_button]:cursor-not-allowed"
-                )}>
-                  {!isActiveResultTurn && (
-                    <div className="flex justify-end">
-                      <Badge variant="outline" className="text-[10px]">Resultados históricos</Badge>
-                    </div>
-                  )}
+                <div className="space-y-2">
                   {mConfidence < 0.7 && (
                     <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 flex items-start gap-2">
                       <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" />
@@ -1298,7 +1266,7 @@ export function LeadEmiliaChat({
                   {mFlights.length > 0 && (
                     <div>
                       <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-widest text-foreground/60 mb-2">
-                        <span>✈️ Vuelos · {mFlights.filter(f => selectedFlightIds.includes(f.id)).length} de {mFlights.length} seleccionado</span>
+                        <span>✈️ Vuelos · {mFlights.filter(f => messageFlightIds.includes(f.id)).length} de {mFlights.length} seleccionado</span>
                         <span className="text-foreground/40 normal-case">máx {allowsFlightAlternatives ? MAX_FLIGHTS : 1}</span>
                       </div>
                       <FlightFiltersBar
@@ -1316,8 +1284,8 @@ export function LeadEmiliaChat({
                             <CarouselSlide key={flight.id}>
                               <FlightResultCard
                                 flight={flight as any}
-                                selected={selectedFlightIds.includes(flight.id)}
-                                onSelectionChange={(id, _selected) => toggleFlight(id)}
+                                selected={messageFlightIds.includes(flight.id)}
+                                onSelectionChange={(id, _selected) => toggleFlight(resultSelectionKey(i, id))}
                               />
                             </CarouselSlide>
                           ))}
@@ -1339,7 +1307,7 @@ export function LeadEmiliaChat({
                   {mHotels.length > 0 && (
                     <div className="mt-1">
                       <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-widest text-foreground/60 mb-2">
-                        <span>🏨 Hoteles · {mHotels.filter(h => selectedHotels.has(h.id)).length} de {mHotels.length} seleccionados</span>
+                        <span>🏨 Hoteles · {mHotels.filter(h => messageHotels.has(h.id)).length} de {mHotels.length} seleccionados</span>
                         <span className="text-foreground/40 normal-case">{mHotels.some(hotel => hotel.search_context) ? "1 hotel por estadía" : "máx 4"}</span>
                       </div>
                       <HotelFiltersBar
@@ -1360,10 +1328,10 @@ export function LeadEmiliaChat({
                               <HotelResultCard
                                 hotel={hotel as any}
                                 compact
-                                selected={selectedHotels.has(hotel.id)}
-                                selectedRoomId={selectedHotels.get(hotel.id)}
-                                onRoomSelect={(roomId) => selectHotelRoom(hotel, roomId)}
-                                onSelectionChange={() => toggleHotelSelection(hotel)}
+                                selected={messageHotels.has(hotel.id)}
+                                selectedRoomId={messageHotels.get(hotel.id)}
+                                onRoomSelect={(roomId) => selectHotelRoom(hotel, roomId, resultSelectionKey(i, hotel.id))}
+                                onSelectionChange={() => toggleHotelSelection(hotel, resultSelectionKey(i, hotel.id))}
                               />
                             </CarouselSlide>
                           ))}
