@@ -150,6 +150,20 @@ export interface CreateLedgerMovementParams {
    * una marcaría pagadas las otras.
    */
   commission_record_id?: string | null
+  /**
+   * false = este movimiento es un pago PARCIAL y NO salda la comisión.
+   *
+   * El marcado automático de abajo da por pagada la fila apenas ve un
+   * movimiento de plata, sin mirar cuánto se pagó. Con pagos parciales eso
+   * hacía desaparecer el saldo: pagar 447 de una comisión de 547,34 la dejaba
+   * PAID y los 100,34 restantes no volvían a aparecer en "Por Pagar" (caso real
+   * de septiembre 2026, 12 comisiones y USD 187,56 en total).
+   *
+   * Quien paga sabe si cubre el total, así que lo informa. Default true, que es
+   * el comportamiento histórico para los flujos que registran el pago de una
+   * comisión sin llevar el acumulado (por ejemplo desde Caja).
+   */
+  commission_fully_paid?: boolean
 }
 
 /**
@@ -288,8 +302,12 @@ export async function createLedgerMovement(
   //
   // Una línea de asiento no tiene account_id (ver createJournalEntry); un pago
   // real de comisión siempre lo tiene.
+  //
+  // Y solo si el pago SALDA la comisión: un pago parcial mueve plata igual, pero
+  // darlo por saldado hace desaparecer el resto de la deuda con el vendedor.
   const movioPlata = Boolean(params.account_id)
-  if (params.type === "COMMISSION" && params.operation_id && movioPlata) {
+  const saldaLaComision = params.commission_fully_paid !== false
+  if (params.type === "COMMISSION" && params.operation_id && movioPlata && saldaLaComision) {
     try {
       const { markCommissionsAsPaidIfLedgerExists } = await import("./mark-commission-paid")
       await markCommissionsAsPaidIfLedgerExists(supabase, params.operation_id, {

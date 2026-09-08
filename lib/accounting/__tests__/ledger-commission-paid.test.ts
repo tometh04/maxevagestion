@@ -79,6 +79,27 @@ describe("createLedgerMovement — marcado de comisiones como pagadas", () => {
     expect(markCommissionPaid.markCommissionsAsPaidIfLedgerExists).not.toHaveBeenCalled()
   })
 
+  it("NO marca la comisión cuando el pago es parcial", async () => {
+    // Caso real (septiembre 2026): se pagaron 447 de una comisión de 547,34 y
+    // la fila quedó PAID, así que los 100,34 restantes desaparecieron de "Por
+    // Pagar". El movimiento mueve plata igual: lo que cambia es que no salda.
+    await createLedgerMovement(
+      { ...baseParams, account_id: "cuenta-caja-1", commission_fully_paid: false },
+      createMockSupabase()
+    )
+
+    expect(markCommissionPaid.markCommissionsAsPaidIfLedgerExists).not.toHaveBeenCalled()
+  })
+
+  it("marca la comisión cuando el pago la cubre por completo", async () => {
+    await createLedgerMovement(
+      { ...baseParams, account_id: "cuenta-caja-1", commission_fully_paid: true },
+      createMockSupabase()
+    )
+
+    expect(markCommissionPaid.markCommissionsAsPaidIfLedgerExists).toHaveBeenCalledTimes(1)
+  })
+
   it("no marca nada si la comisión no está asociada a una operación", async () => {
     await createLedgerMovement(
       { ...baseParams, operation_id: null, account_id: "cuenta-caja-1" },

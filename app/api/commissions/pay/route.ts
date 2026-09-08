@@ -325,6 +325,10 @@ export async function POST(request: Request) {
         // pagando. Sin esto, una operación con comisión de venta y comisiones de
         // servicios del mismo vendedor daría por saldadas todas al cobrar una.
         commission_record_id: commission.id,
+        // Un pago parcial no salda la fila: el estado lo decide el update de
+        // abajo, con el acumulado. Sin esto el marcado automático la daba por
+        // pagada y el saldo restante desaparecía de "Por Pagar".
+        commission_fully_paid: isFullyPaid,
       },
       supabase
     )
