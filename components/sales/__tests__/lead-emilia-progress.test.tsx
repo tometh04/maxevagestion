@@ -120,3 +120,32 @@ it("resumes the persisted job on reopen without dispatching another search", asy
   expect(screen.getByTestId("flight-card")).toBeInTheDocument()
   expect(jest.mocked(global.fetch).mock.calls.some(([url]) => url === "/api/emilia/chat")).toBe(false)
 })
+
+it("envía con Enter, conserva Shift+Enter y no envía durante composición", async () => {
+  chat()
+  const input = await screen.findByLabelText("Pedido para Emilia")
+  await waitFor(() => expect(input).toBeEnabled())
+  fireEvent.change(input, { target: { value: "Solo vuelos a Cancún" } })
+  fireEvent.keyDown(input, { key: "Enter", shiftKey: true })
+  fireEvent.keyDown(input, { key: "Enter", isComposing: true })
+  expect(jest.mocked(global.fetch).mock.calls.some(([url]) => url === "/api/emilia/chat")).toBe(false)
+  fireEvent.keyDown(input, { key: "Enter" })
+  await waitFor(() => expect(waitForEmiliaJob).toHaveBeenCalled())
+})
+
+it("cotiza dos vuelos como alternativas y mantiene ambos visibles al filtrar", async () => {
+  chat()
+  await send()
+  await act(async () => complete({ status: "completed", job_id: "job-1", requestType: "flights",
+    results: { flights: { count: 2, items: [flight, { ...flight, id: "flight-2", price: { amount: 200, currency: "USD" } }] } } }))
+  fireEvent.click(screen.getAllByText("Seleccionar vuelo")[0])
+  fireEvent.click(screen.getByText("Seleccionar vuelo"))
+  expect(screen.getAllByText("Vuelo seleccionado")).toHaveLength(2)
+  fireEvent.change(screen.getByLabelText("Precio máximo de vuelo"), { target: { value: "50" } })
+  expect(screen.getAllByText("Vuelo seleccionado")).toHaveLength(2)
+  fireEvent.click(screen.getByRole("button", { name: /Generar cotización · 2 opciones/ }))
+  await waitFor(() => expect(jest.mocked(global.fetch).mock.calls.some(([url]) => url === "/api/quotations")).toBe(true))
+  const call = jest.mocked(global.fetch).mock.calls.find(([url]) => url === "/api/quotations")!
+  const payload = JSON.parse(call[1]!.body as string)
+  expect(payload.options.map((option: any) => option.total_amount)).toEqual([100, 200])
+})

@@ -33,7 +33,7 @@ function cards(): EurovipsHotel[] { return normalizeEmiliaTurnPayload(turn()).ho
 const base = {
   lead: { id: "lead", agency_id: "agency", contact_name: "Test", destination: "Recife", region: "BRASIL" },
   generalData: { departureDate: "2027-03-10", returnDate: "2027-03-14", adults: 2, children: 0, infants: 0 },
-  selectedFlight: null,
+  selectedFlights: [],
 }
 
 it("keeps dates, occupancy, countries and refresh references per stay in final and progressive cards", () => {

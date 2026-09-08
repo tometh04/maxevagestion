@@ -253,10 +253,11 @@ export async function previewQuotationModel(input: {
   manifest: unknown
   agencyId: string
   agencyName: string
+  agencyLogoUrl?: string
 }) {
   const manifest = validateAuthoringManifest(input.manifest)
   const model = cloneQuotationJson(KYO_FULL_ITINERARY_FIXTURE)
-  model.agency.id = input.agencyId
-  model.agency.name = input.agencyName
+  model.agency = { id: input.agencyId, name: input.agencyName, logoUrl: input.agencyLogoUrl }
+  model.advisor = { displayName: "Asesor de ejemplo" }
   return renderQuotationDocument({ model, manifest })
 }

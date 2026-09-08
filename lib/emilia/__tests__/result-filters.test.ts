@@ -4,6 +4,7 @@ import {
   getFlightFilterOptions,
   getHotelFilterOptions,
   normalizeHotelCategory,
+  hasActiveFlightFilters,
   type FlightFilters,
   type HotelFilters,
 } from "../result-filters"
@@ -25,6 +26,7 @@ function makeFlight(overrides: Partial<EmiliaFlight> & { provider?: string; stop
         arrival: { city_code: "PUJ", city_name: "Punta Cana", time: "17:00" },
         duration: "8h 00m",
         flight_type: "outbound",
+        stops: 0,
       },
     ],
     ...overrides,
@@ -114,6 +116,55 @@ describe("filterFlights", () => {
     expect(options.price).toEqual({ min: 800, max: 1600 })
     expect(options.providers.map((option) => option.value)).toEqual(["OTHER", "STARLING"])
     expect(options.stops).toEqual(["direct", "one", "two_plus"])
+  })
+})
+
+describe("filtros detallados de vuelos", () => {
+  const outbound = makeFlight().legs[0]
+  const flight = makeFlight({ legs: [
+    { ...outbound, stops: 1, layovers: [{ destination_city: "Panamá", destination_code: "PTY", waiting_time: "2h 00m" }] },
+    { ...outbound, flight_type: "inbound", departure: { ...outbound.departure, time: "23:30" }, arrival: { ...outbound.arrival, time: "05:00" }, stops: 0, layovers: [] },
+  ] })
+
+  it("combina horarios de ida y vuelta incluyendo rangos que cruzan medianoche", () => {
+    expect(filterFlights([flight], {
+      outboundDeparture: { from: "09:00", to: "11:00" },
+      outboundArrival: { to: "17:00" },
+      inboundDeparture: { from: "22:00", to: "06:00" },
+      inboundArrival: { from: "04:00", to: "06:00" },
+    })).toEqual([flight])
+    expect(filterFlights([flight], { inboundDeparture: { from: "06:00", to: "22:00" } })).toEqual([])
+  })
+
+  it("no supone horarios o regreso cuando faltan datos", () => {
+    expect(filterFlights([makeFlight({ legs: [] })], { stops: "direct" })).toEqual([])
+    expect(filterFlights([makeFlight({ legs: [{ ...outbound, stops: undefined }] })], { stops: "direct" })).toEqual([])
+    expect(filterFlights([makeFlight()], { inboundArrival: { to: "20:00" } })).toEqual([])
+    expect(filterFlights([makeFlight({ legs: [{ ...outbound, departure: { ...outbound.departure, time: "" } }] })], { outboundDeparture: { from: "08:00" } })).toEqual([])
+    expect(filterFlights([flight], { outboundDeparture: { from: "24:00" } })).toEqual([])
+  })
+
+  it("respeta las escalas declaradas aunque el proveedor omita las conexiones", () => {
+    const incomplete = makeFlight({ legs: [{ ...outbound, stops: 2, layovers: [] }] })
+    expect(filterFlights([incomplete], { stops: "direct" })).toEqual([])
+    expect(filterFlights([incomplete], { stops: "two_plus" })).toEqual([incomplete])
+    expect(filterFlights([flight, incomplete], { stops: "up_to_one" })).toEqual([flight])
+    expect(filterFlights([incomplete], { maxLayoverMinutes: 180 })).toEqual([])
+  })
+
+  it("limita cada trayecto y cada conexión sin sumar la duración de ida y vuelta", () => {
+    expect(filterFlights([flight], { maxDurationMinutes: 480, maxLayoverMinutes: 120 })).toEqual([flight])
+    expect(filterFlights([flight], { maxDurationMinutes: 479 })).toEqual([])
+    expect(filterFlights([flight], { maxLayoverMinutes: 119 })).toEqual([])
+    expect(filterFlights([makeFlight({ legs: [{ ...outbound, duration: "" }] })], { maxDurationMinutes: 1000 })).toEqual([])
+  })
+
+  it("separa monedas al comparar precios y detecta filtros para poder limpiarlos", () => {
+    const ars = makeFlight({ id: "ars", price: { amount: 500, currency: "ARS" } })
+    expect(filterFlights([flight, ars], { currency: "USD", maxPrice: 1000 })).toEqual([flight])
+    expect(hasActiveFlightFilters({ inboundDeparture: { from: "23:00" } })).toBe(true)
+    expect(hasActiveFlightFilters({ maxLayoverMinutes: 0 })).toBe(true)
+    expect(hasActiveFlightFilters({ outboundArrival: { from: "", to: "" } })).toBe(false)
   })
 })
 

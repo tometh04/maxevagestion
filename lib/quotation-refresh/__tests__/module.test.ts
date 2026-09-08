@@ -393,7 +393,7 @@ describe("QuotationRefresh module", () => {
         region: "EUROPA",
         agency_id: "33333333-3333-4333-8333-333333333333",
       },
-      selectedFlight: cards.flights?.[0] ?? null,
+      selectedFlights: cards.flights ?? [],
       selectedHotels: [],
       generalData: {
         departureDate: "2026-09-01",

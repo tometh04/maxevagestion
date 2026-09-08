@@ -616,10 +616,15 @@ async function waitForImages(container: HTMLElement, timeoutMs = 5000): Promise<
       img =>
         new Promise<void>(resolve => {
           if (img.complete) return resolve();
-          const done = () => resolve();
+          const done = () => {
+            clearTimeout(timer);
+            img.removeEventListener('load', done);
+            img.removeEventListener('error', done);
+            resolve();
+          };
+          const timer = setTimeout(done, timeoutMs);
           img.addEventListener('load', done, { once: true });
           img.addEventListener('error', done, { once: true });
-          setTimeout(done, timeoutMs);
         })
     )
   );
@@ -644,7 +649,7 @@ export async function renderHtmlToPdfBlob(html: string): Promise<Blob> {
   try {
     await waitForImages(container);
     await waitForQuotationDocumentFonts(document, container);
-    await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    await new Promise<void>(resolve => setTimeout(resolve, 0));
 
     const pageDivs = Array.from(container.querySelectorAll('[data-pdf-page]')) as HTMLElement[];
     const targets = pageDivs.length > 0 ? pageDivs : [container];
@@ -658,14 +663,16 @@ export async function renderHtmlToPdfBlob(html: string): Promise<Blob> {
       page.style.boxSizing = 'border-box';
     }
 
-    await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    await new Promise<void>(resolve => setTimeout(resolve, 0));
 
     const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
 
     for (let i = 0; i < targets.length; i++) {
+      await new Promise<void>(resolve => setTimeout(resolve, 0));
       const canvas = await html2canvas(targets[i], {
         scale: 2,
         useCORS: true,
+        imageTimeout: 8000,
         logging: false,
         width: A4_WIDTH_PX,
         height: A4_HEIGHT_PX,
@@ -678,6 +685,8 @@ export async function renderHtmlToPdfBlob(html: string): Promise<Blob> {
       if (i > 0) pdf.addPage();
       const imgData = canvas.toDataURL('image/jpeg', 0.95);
       pdf.addImage(imgData, 'JPEG', 0, 0, A4_WIDTH_MM, A4_HEIGHT_MM);
+      canvas.width = 0;
+      canvas.height = 0;
     }
 
     return pdf.output('blob');

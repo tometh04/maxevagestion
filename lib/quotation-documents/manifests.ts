@@ -86,6 +86,9 @@ export const EDITORIAL_GENERIC_MANIFEST: QuotationModelManifestV1 = parseQuotati
 })
 
 export function createDefaultManifest(layoutKey: string): QuotationModelManifestV1 {
+  if (layoutKey === "travel-summary-v1") {
+    return { ...cloneQuotationJson(VIBOOK_STANDARD_MANIFEST), layoutKey, copy: { ...VIBOOK_STANDARD_MANIFEST.copy, documentTitle: "Presupuesto de viaje" } }
+  }
   if (layoutKey === KYO_2026_MANIFEST.layoutKey) {
     return cloneQuotationJson(EDITORIAL_GENERIC_MANIFEST)
   }

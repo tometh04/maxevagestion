@@ -25,6 +25,7 @@ export function safeImageSource(value: unknown): string | null {
   const source = String(value ?? "").trim()
   if (!source) return null
   if (/^\/[A-Za-z0-9/_\-.]+$/.test(source)) return source
+  if (source.length <= 7 * 1024 * 1024 && /^data:image\/(?:png|jpeg|gif|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(source)) return source
 
   try {
     const url = new URL(source)

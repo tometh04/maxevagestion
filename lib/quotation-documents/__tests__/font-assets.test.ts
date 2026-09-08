@@ -45,3 +45,14 @@ describe("quotation document fonts", () => {
     expect(completed).toBe(true)
   })
 })
+
+
+it("termina con un error recuperable si la fuente del documento nunca termina de cargar", async () => {
+  jest.useFakeTimers()
+  try {
+    const waiting = waitForQuotationDocumentFonts({ fonts: { ready: new Promise(() => {}) } })
+    const result = waiting.then(() => "completed", error => error.message)
+    await jest.advanceTimersByTimeAsync(10001)
+    expect(await Promise.race([result, Promise.resolve("still waiting")])).toMatch(/fuentes/)
+  } finally { jest.useRealTimers() }
+})

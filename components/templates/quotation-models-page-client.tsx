@@ -94,11 +94,39 @@ export function QuotationModelsPageClient() {
   const [publishing, setPublishing] = useState(false)
   const [previewing, setPreviewing] = useState(false)
   const [dirty, setDirty] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const importRequestRef = useRef(0)
   const workspaceRequestRef = useRef(0)
   const previewRequestRef = useRef(0)
 
   const selectedAgency = workspace.agencies.find(agency => agency.id === agencyId)
-  const editorLocked = saving || publishing
+  const editorLocked = saving || publishing || importing
+
+  useEffect(() => {
+    importRequestRef.current += 1
+    setImporting(false)
+    return () => { importRequestRef.current += 1 }
+  }, [agencyId])
+
+  async function importDesign(file: File) {
+    if (!agencyId || editorLocked) return
+    if (file.size > 10 * 1024 * 1024) { toast.error("El PDF debe pesar hasta 10 MB."); return }
+    const requestId = ++importRequestRef.current
+    setImporting(true)
+    try {
+      const data = new FormData()
+      data.set("agency_id", agencyId)
+      data.set("file", file)
+      const json = await responseJson(await fetch("/api/quotation-document-models/import", { method: "POST", body: data }))
+      if (requestId !== importRequestRef.current) return
+      updateManifest(() => json.manifest)
+      toast.success("Diseño interpretado. Revisá la vista previa y guardá el borrador.")
+    } catch (error) {
+      if (requestId === importRequestRef.current) toast.error(error instanceof Error ? error.message : "No se pudo interpretar el PDF")
+    } finally {
+      if (requestId === importRequestRef.current) setImporting(false)
+    }
+  }
 
   const loadWorkspace = useCallback(async (selectedAgencyId?: string) => {
     const requestId = ++workspaceRequestRef.current
@@ -289,6 +317,11 @@ export function QuotationModelsPageClient() {
                 <CardContent className="space-y-6 pt-5">
                   <section className="space-y-3">
                     <div className="flex items-center gap-2 text-sm font-medium"><FileClock className="h-4 w-4" /> Modelo</div>
+                    <div className="flex flex-col gap-2">
+                      <Label htmlFor="quotation-design-pdf">Usar un PDF como modelo</Label>
+                      <Input id="quotation-design-pdf" type="file" accept="application/pdf,.pdf" disabled={editorLocked} onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void importDesign(file) }} />
+                      <p className="text-xs text-muted-foreground">{importing ? "Interpretando el diseño…" : "Adaptamos el diseño y los colores al formato disponible más cercano. El logo y los datos corresponden a la agencia elegida."}</p>
+                    </div>
                     <div className="space-y-2"><Label htmlFor="model-name">Nombre interno</Label><Input id="model-name" value={modelName} onChange={event => { setModelName(event.target.value); setDirty(true) }} /></div>
                     <div className="space-y-2"><Label>Diseño base</Label><Select value={manifest.layoutKey} onValueChange={changeLayout}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{workspace.layouts.map(layout => <SelectItem key={layout.key} value={layout.key}>{layout.name}</SelectItem>)}</SelectContent></Select></div>
                   </section>

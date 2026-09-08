@@ -245,3 +245,26 @@ y emisión; `APPROVED`, `REJECTED`, `EXPIRED`, `CONVERTING` y `CONVERTED` no.
 
 El código local, la migración aplicada, el deploy exitoso y la evidencia
 funcional en producción son estados distintos y deben reportarse por separado.
+
+
+## Referencia PDF y modelo compacto Lozada
+
+El editor puede subir un PDF (hasta 10 MB y seis páginas) a
+`POST /api/quotation-document-models/import`. Se valida la agencia, organización
+y permiso `settings.write` antes de llamar al intérprete. La salida sólo puede
+seleccionar un layout registrado y tres colores validados; no importa identidad,
+precios, servicios, condiciones ni código del documento. La revisión queda en
+el editor hasta guardarla y publicarla mediante el flujo existente.
+
+`travel-summary-v1` reúne resumen, alternativas y escalas sin una portada vacía.
+Los documentos extensos conservan su contenido mediante paginación adicional.
+El archivo `20260908010000_lozada_quotation_design.sql` asigna ese manifiesto,
+con `/lozada-logo.png`, sólo a los identificadores verificados de Madero y Rosario
+de la organización Lozada Rosario. No reemplaza bindings existentes ni documentos
+emitidos. Debe aplicarse después del despliegue del renderer; no está aplicado por
+el mero hecho de incorporarlo al repositorio.
+
+La vista previa de precios guarda la preparación con CAS y usa GET del documento;
+no emite, no consume una descarga ni cambia a SENT. Cambiar el contenido invalida
+la vista previa. La espera de fuentes del exportador tiene un máximo de diez
+segundos y devuelve un error recuperable si no termina.

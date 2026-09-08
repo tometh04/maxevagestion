@@ -515,7 +515,7 @@ export async function renderQuotationDocumentForUser(input: {
     : input.templateSupabase || input.supabase
 
   let activeDocument: ResolvedQuotationDocument | null = null
-  if (input.purpose === "customer" && quotation.active_document_id) {
+  if (quotation.active_document_id) {
     activeDocument = await loadIssuedDocument(
       documentSupabase,
       quotation.active_document_id,
@@ -524,6 +524,14 @@ export async function renderQuotationDocumentForUser(input: {
       quotation.id
     )
     if (activeDocument) activeDocument.quotationStatus = quotationStatus
+  }
+
+  if (input.purpose === "preview" && activeDocument && !input.useCurrentTemplate) {
+    if (immutableStatus) return activeDocument
+    return prepareDocumentForIssue(await buildCurrentDocument(documentSupabase, quotationForRender, {
+      revisionId: activeDocument.revisionId,
+      manifest: activeDocument.manifest,
+    }))
   }
 
   if (input.purpose === "customer" && activeDocument && !input.useCurrentTemplate) {

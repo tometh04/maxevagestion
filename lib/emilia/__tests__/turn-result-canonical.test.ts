@@ -128,7 +128,7 @@ describe("canonicalOfferCards", () => {
         region: "EUROPA",
         agency_id: "44444444-4444-4444-8444-444444444444",
       },
-      selectedFlight: cards.flights![0] as any,
+      selectedFlights: [cards.flights![0] as any],
       selectedHotels: [{ hotel: cards.hotels![0] as any, roomIndex: 0 }],
       generalData: {
         departureDate: "2026-09-01",
@@ -178,7 +178,7 @@ describe("canonicalOfferCards", () => {
         region: "EUROPA",
         agency_id: "44444444-4444-4444-8444-444444444444",
       },
-      selectedFlight: cards.flights![0] as any,
+      selectedFlights: [cards.flights![0] as any],
       selectedHotels: [{ hotel: cards.hotels![0] as any, roomIndex: 0 }],
       generalData: { departureDate: "2026-09-01", returnDate: "2026-09-04", adults: 2, children: 0, infants: 0 },
     })).toThrow("monedas distintas")
@@ -235,7 +235,7 @@ describe("canonicalOfferCards", () => {
         region: "CARIBE",
         agency_id: "44444444-4444-4444-8444-444444444444",
       },
-      selectedFlight: normalized.flights!.items[0],
+      selectedFlights: [normalized.flights!.items[0]],
       selectedHotels: [],
       generalData: {
         departureDate: "2026-10-01",
@@ -305,7 +305,7 @@ describe("canonicalOfferCards", () => {
         region: "CARIBE",
         agency_id: "44444444-4444-4444-8444-444444444444",
       },
-      selectedFlight: normalized.flights!.items[0],
+      selectedFlights: [normalized.flights!.items[0]],
       selectedHotels: [],
       generalData: {
         departureDate: "2026-10-01",
@@ -375,7 +375,7 @@ describe("canonicalOfferCards", () => {
         region: "CARIBE",
         agency_id: "44444444-4444-4444-8444-444444444444",
       },
-      selectedFlight: null,
+      selectedFlights: [],
       selectedHotels: [{ hotel: normalized.hotels!.items[0], roomIndex: 0 }],
       generalData: {
         departureDate: "2026-10-01",

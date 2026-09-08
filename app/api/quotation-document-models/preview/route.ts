@@ -28,10 +28,18 @@ export async function POST(request: Request) {
       agencyId: parsed.data.agency_id,
       allowedAgencyIds: scope.agencyIds,
     })
+    const { data: settings, error: settingsError } = await supabase
+      .from("organization_settings")
+      .select("key, value")
+      .eq("org_id", user.org_id)
+      .in("key", ["company_name", "brand_logo", "logo_url", "brand_logo_url"])
+    if (settingsError) throw settingsError
+    const branding = Object.fromEntries((settings || []).map(row => [row.key, typeof row.value === "string" ? row.value : ""]))
     const preview = await previewQuotationModel({
       manifest: parsed.data.manifest,
       agencyId: agency.id,
-      agencyName: agency.name,
+      agencyName: branding.company_name || agency.name,
+      agencyLogoUrl: branding.brand_logo || branding.logo_url || branding.brand_logo_url,
     })
     return NextResponse.json({ document: { html: preview.html, pageCount: preview.pageCount } })
   } catch (error) {

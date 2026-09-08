@@ -19,5 +19,17 @@ export async function waitForQuotationDocumentFonts(
   renderRoot?.getBoundingClientRect()
 
   const ready = documentObject.fonts?.ready
-  if (ready) await ready
+  if (ready) {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      await Promise.race([
+        ready,
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error("No se pudieron cargar las fuentes del documento. Volvé a intentar generar el PDF.")), 10_000)
+        }),
+      ])
+    } finally {
+      if (timer) clearTimeout(timer)
+    }
+  }
 }

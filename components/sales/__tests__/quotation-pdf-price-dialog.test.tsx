@@ -107,6 +107,29 @@ function quotationResponse() {
 }
 
 describe("QuotationPdfPriceDialog", () => {
+  it("previews the saved content without issuing, downloading or closing", async () => {
+    const document = { ...issuedDocument(), issuedDocumentId: null, quotationStatus: "DRAFT" }
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => quotationResponse() })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ data: { updated_at: VERSION_2 } }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ document }) })
+    global.fetch = fetchMock as unknown as typeof fetch
+    const onGenerate = jest.fn()
+    const onClose = jest.fn()
+    render(<QuotationPdfPriceDialog quotationId={QUOTATION_ID} onClose={onClose} onGenerate={onGenerate} />)
+    const previewButton = await screen.findByRole("button", { name: "Guardar y ver vista previa" })
+    await waitFor(() => expect(previewButton).not.toBeDisabled())
+    fireEvent.click(previewButton)
+    const frame = await screen.findByTitle("Vista previa de la cotización")
+    expect(frame).toHaveAttribute("srcDoc", document.html)
+    expect(fetchMock.mock.calls[1][1].method).toBe("PUT")
+    expect(fetchMock.mock.calls[2][1].method).toBe("GET")
+    expect(onGenerate).not.toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
+    fireEvent.change(screen.getByDisplayValue("1250"), { target: { value: "1300" } })
+    expect(screen.queryByTitle("Vista previa de la cotización")).not.toBeInTheDocument()
+  })
+
   beforeEach(() => {
     jest.clearAllMocks()
   })

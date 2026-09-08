@@ -21,6 +21,7 @@ import { ProductSearchStatus } from "@/components/emilia/product-search-status"
 import progressStyles from "@/components/emilia/progress-text.module.css"
 import {
   filterFlights,
+  matchesFlight,
   filterHotels,
   getFlightFilterOptions,
   getHotelFilterOptions,
@@ -49,6 +50,7 @@ import {
   hasSearchCards,
 } from "@/lib/emilia/search-context"
 
+const MAX_FLIGHTS = 4
 const ALL_SELECT_VALUE = "__all__"
 const DEFAULT_FLIGHT_FILTERS: FlightFilters = { stops: "all" }
 const DEFAULT_HOTEL_FILTERS: HotelFilters = { mealPlan: "all" }
@@ -57,6 +59,7 @@ const FLIGHT_STOPS_OPTIONS: Array<{ value: FlightStopsFilter; label: string }> =
   { value: "all", label: "Todas" },
   { value: "direct", label: "Directo" },
   { value: "one", label: "1 escala" },
+  { value: "up_to_one", label: "Hasta 1 escala" },
   { value: "two_plus", label: "2+ escalas" },
 ]
 
@@ -101,6 +104,7 @@ function FlightFiltersBar({
   onClear,
 }: FlightFiltersBarProps) {
   const active = hasActiveFlightFilters(filters)
+  const priceCurrency = filters.currency || (options.currencies.length === 1 ? options.currencies[0].value : null)
 
   return (
     <div className="mb-2 rounded-lg border border-border/50 bg-muted/20 px-3 py-2">
@@ -172,12 +176,53 @@ function FlightFiltersBar({
           min={0}
           inputMode="decimal"
           aria-label="Precio máximo de vuelo"
-          placeholder={options.price.max != null ? `Máx ${formatFilterPrice(options.price.max)}` : "Precio máx"}
+          disabled={!priceCurrency}
+          placeholder={priceCurrency ? `Precio máx (${priceCurrency})` : "Elegí moneda"}
           value={filters.maxPrice ?? ""}
-          onChange={(event) => onChange({ ...filters, maxPrice: parseOptionalNumber(event.target.value) })}
+          onChange={(event) => onChange({ ...filters, currency: priceCurrency, maxPrice: parseOptionalNumber(event.target.value) })}
           className="h-8 text-xs"
         />
       </div>
+      <details className="mt-2">
+        <summary className="cursor-pointer rounded text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Horarios y más filtros</summary>
+        <p className="mt-2 text-xs text-muted-foreground">Horarios locales de cada aeropuerto. De 22:00 a 06:00 incluye la madrugada.</p>
+        <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {([
+            ["outboundDeparture", "Salida de ida"], ["outboundArrival", "Llegada de ida"],
+            ["inboundDeparture", "Salida de vuelta"], ["inboundArrival", "Llegada de vuelta"],
+          ] as const).map(([key, label]) => (
+            <fieldset key={key}>
+              <legend className="mb-1 text-xs font-medium">{label}</legend>
+              <div className="flex items-center gap-2">
+                <Input type="time" aria-label={`${label} desde`} value={filters[key]?.from || ""}
+                  onChange={event => onChange({ ...filters, [key]: { ...filters[key], from: event.target.value } })} className="h-8 min-w-0 text-xs" />
+                <span className="text-xs text-muted-foreground">a</span>
+                <Input type="time" aria-label={`${label} hasta`} value={filters[key]?.to || ""}
+                  onChange={event => onChange({ ...filters, [key]: { ...filters[key], to: event.target.value } })} className="h-8 min-w-0 text-xs" />
+              </div>
+            </fieldset>
+          ))}
+          {([
+            ["maxDurationMinutes", "Duración máxima por ida/vuelta (min)"],
+            ["maxLayoverMinutes", "Espera máxima por conexión (min)"],
+          ] as const).map(([key, label]) => (
+            <label key={key} className="space-y-1 text-xs font-medium">
+              <span>{label}</span>
+              <Input type="number" min={0} step={30} value={filters[key] ?? ""} placeholder="Sin límite"
+                onChange={event => onChange({ ...filters, [key]: parseOptionalNumber(event.target.value) })} className="h-8 text-xs" />
+            </label>
+          ))}
+          <Select value={filters.currency || ALL_SELECT_VALUE}
+            onValueChange={value => onChange({ ...filters, currency: value === ALL_SELECT_VALUE ? null : value, maxPrice: null })}>
+            <SelectTrigger className="h-8 text-xs" aria-label="Moneda del vuelo"><SelectValue placeholder="Moneda" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_SELECT_VALUE}>Todas las monedas</SelectItem>
+              {options.currencies.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">Filtra las opciones recibidas. Los límites de tiempo excluyen opciones sin ese dato; para buscar otras, pedíselo a Emilia.</p>
+      </details>
     </div>
   )
 }
@@ -568,7 +613,7 @@ export function LeadEmiliaChat({
   }, [])
 
   // Selección
-  const [selectedFlightId, setSelectedFlightId] = useState<string | null>(null)
+  const [selectedFlightIds, setSelectedFlightIds] = useState<string[]>([])
   const [selectedHotels, setSelectedHotels] = useState<Map<string, string>>(new Map()) // hotelId → roomId
   const [flightFiltersByMessage, setFlightFiltersByMessage] = useState<Record<number, FlightFilters>>({})
   const [hotelFiltersByMessage, setHotelFiltersByMessage] = useState<Record<number, HotelFilters>>({})
@@ -609,7 +654,7 @@ export function LeadEmiliaChat({
   useEffect(() => {
     activeResultKeyRef.current = null
     activeSearchContextIdRef.current = null
-    setSelectedFlightId(null)
+    setSelectedFlightIds([])
     setSelectedHotels(new Map())
     setFlightFiltersByMessage({})
     setHotelFiltersByMessage({})
@@ -655,7 +700,7 @@ export function LeadEmiliaChat({
       activeSearchContextIdRef.current
       && activeSearchContextIdRef.current !== activeSearchContextId
     ) {
-      setSelectedFlightId(null)
+      setSelectedFlightIds([])
       setSelectedHotels(new Map())
       setFlightFiltersByMessage({})
       setHotelFiltersByMessage({})
@@ -666,7 +711,7 @@ export function LeadEmiliaChat({
   useEffect(() => {
     if (!activeResultKey) return
     if (activeResultKeyRef.current && activeResultKeyRef.current !== activeResultKey) {
-      setSelectedFlightId(null)
+      setSelectedFlightIds([])
       setSelectedHotels(new Map())
       setFlightFiltersByMessage({})
       setHotelFiltersByMessage({})
@@ -913,8 +958,22 @@ export function LeadEmiliaChat({
     return activeResultMessageIndex >= 0 ? messages[activeResultMessageIndex] : null
   }, [messages, activeResultMessageIndex])
 
+  const selectionRequestType = lastResults?.cards?.requestType
+        || lastResults?.meta?.originalRequest?.requestType
+        || lastResults?.meta?.parsedRequest?.requestType
+  const allowsFlightAlternatives = selectionRequestType === "flights"
+    || (!selectionRequestType && !lastResults?.cards?.hotels?.items?.length && (!lastResults?.jobStatus || lastResults.jobStatus === "completed"))
+
   function toggleFlight(id: string) {
-    setSelectedFlightId(prev => (prev === id ? null : id))
+    setSelectedFlightIds(prev => {
+      if (prev.includes(id)) return prev.filter(flightId => flightId !== id)
+      if (!allowsFlightAlternatives) return [id]
+      if (prev.length >= MAX_FLIGHTS) {
+        toast.error(`Solo podés seleccionar hasta ${MAX_FLIGHTS} alternativas de vuelo.`)
+        return prev
+      }
+      return [...prev, id]
+    })
   }
 
   function updateFlightFilters(messageIndex: number, filters: FlightFilters) {
@@ -996,7 +1055,8 @@ export function LeadEmiliaChat({
       for (const f of msg.cards?.flights?.items || []) flightById.set(f.id, f)
       for (const h of msg.cards?.hotels?.items || []) hotelById.set(h.id, h)
     }
-    const flight = selectedFlightId ? flightById.get(selectedFlightId) ?? null : null
+    const flights = selectedFlightIds.map(id => flightById.get(id)).filter((flight): flight is EmiliaFlight => Boolean(flight))
+    const flight = flights[0] ?? null
     // El Map guarda el `occupancy_id` de la room elegida, no un índice.
     // Resolvemos el índice real buscando ese occupancy_id en las rooms del hotel.
     const selectedHotelArr = Array.from(selectedHotels.keys())
@@ -1074,7 +1134,7 @@ export function LeadEmiliaChat({
           region: lead.region ?? null,
           agency_id: lead.agency_id,
         },
-        selectedFlight: flight,
+        selectedFlights: flights,
         selectedHotels: selectedHotelArr,
         requiredStayIds: Array.from(new Set(parseHotelSegments({ hotel_segments: lastResults?.meta?.hotelSegments }).map(segment => segment.stay_id))),
         generalData,
@@ -1101,15 +1161,15 @@ export function LeadEmiliaChat({
   }
 
   const generateLabel = useMemo(() => {
-    const fc = selectedFlightId ? 1 : 0
+    const fc = selectedFlightIds.length
     const hc = selectedHotels.size
     if (fc + hc === 0) return "Generar cotización"
     const scoped = lastResults?.cards?.hotels?.items.some(hotel => hotel.search_context)
-    const opts = scoped ? 1 : Math.max(hc, 1)
-    return `Generar cotización · ${opts} opción${opts > 1 ? "es" : ""} (${fc} vuelo + ${hc} hotel${hc !== 1 ? "es" : ""})`
-  }, [selectedFlightId, selectedHotels, lastResults])
+    const opts = scoped ? 1 : Math.max(hc, fc, 1)
+    return `Generar cotización · ${opts} ${opts > 1 ? "opciones" : "opción"} (${fc} vuelo${fc !== 1 ? "s" : ""} + ${hc} hotel${hc !== 1 ? "es" : ""})`
+  }, [selectedFlightIds, selectedHotels, lastResults])
 
-  const canGenerate = (selectedFlightId !== null || selectedHotels.size > 0)
+  const canGenerate = (selectedFlightIds.length > 0 || selectedHotels.size > 0)
     && !generating
     && !sending
     && (!lastResults?.jobStatus || lastResults.jobStatus === "completed")
@@ -1171,7 +1231,8 @@ export function LeadEmiliaChat({
           const searchSummary = m.meta?.searchSummary?.text
           const flightFilters = flightFiltersByMessage[i] ?? DEFAULT_FLIGHT_FILTERS
           const hotelFilters = hotelFiltersByMessage[i] ?? DEFAULT_HOTEL_FILTERS
-          const visibleFlights = filterFlights(mFlights, flightFilters, selectedFlightId)
+          const visibleFlights = filterFlights(mFlights, flightFilters, selectedFlightIds)
+          const selectedOutsideFilters = mFlights.some(flight => selectedFlightIds.includes(flight.id) && !matchesFlight(flight, flightFilters))
           const visibleHotels = filterHotels(mHotels, hotelFilters, selectedHotels)
           const flightFilterOptions = getFlightFilterOptions(mFlights)
           const hotelFilterOptions = getHotelFilterOptions(mHotels)
@@ -1237,8 +1298,8 @@ export function LeadEmiliaChat({
                   {mFlights.length > 0 && (
                     <div>
                       <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-widest text-foreground/60 mb-2">
-                        <span>✈️ Vuelos · {mFlights.some(f => f.id === selectedFlightId) ? 1 : 0} de {mFlights.length} seleccionado</span>
-                        <span className="text-foreground/40 normal-case">máx 1</span>
+                        <span>✈️ Vuelos · {mFlights.filter(f => selectedFlightIds.includes(f.id)).length} de {mFlights.length} seleccionado</span>
+                        <span className="text-foreground/40 normal-case">máx {allowsFlightAlternatives ? MAX_FLIGHTS : 1}</span>
                       </div>
                       <FlightFiltersBar
                         filters={flightFilters}
@@ -1248,13 +1309,14 @@ export function LeadEmiliaChat({
                         onChange={(filters) => updateFlightFilters(i, filters)}
                         onClear={() => clearFlightFilters(i)}
                       />
+                      {selectedOutsideFilters && <p role="status" className="mb-2 text-xs text-muted-foreground">Tu vuelo seleccionado no cumple los filtros y sigue visible para que puedas revisarlo o desmarcarlo.</p>}
                       {visibleFlights.length > 0 ? (
                         <CardCarousel count={visibleFlights.length} ariaLabel="Vuelos disponibles">
                           {visibleFlights.map((flight) => (
                             <CarouselSlide key={flight.id}>
                               <FlightResultCard
                                 flight={flight as any}
-                                selected={selectedFlightId === flight.id}
+                                selected={selectedFlightIds.includes(flight.id)}
                                 onSelectionChange={(id, _selected) => toggleFlight(id)}
                               />
                             </CarouselSlide>
@@ -1273,6 +1335,7 @@ export function LeadEmiliaChat({
                       {segment.status === "failed" ? " · No pudimos consultar esta alternativa. Podés reintentar." : segment.status === "empty" ? " · Sin disponibilidad" : " · Disponible"}
                     </p>
                   ))}
+
                   {mHotels.length > 0 && (
                     <div className="mt-1">
                       <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-widest text-foreground/60 mb-2">
@@ -1435,7 +1498,10 @@ export function LeadEmiliaChat({
               : "Ej.: Quiero un vuelo y hotel desde Buenos Aires a Cancún, 10 al 17/10, 2 adultos"}
             className="min-h-[60px] resize-none"
             onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSend()
+              if (e.key === "Enter" && !e.shiftKey && !e.altKey && !e.nativeEvent.isComposing) {
+                e.preventDefault()
+                if (!e.repeat) void handleSend()
+              }
             }}
             disabled={sending}
           />

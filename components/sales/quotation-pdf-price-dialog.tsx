@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Loader2, FileText, RotateCcw, Shield, Bus, Plus, Trash2 } from "lucide-react"
 import {
   Dialog,
@@ -24,6 +24,7 @@ import {
 } from "@/lib/quotation-documents/schemas"
 import {
   QuotationDocumentDownloadError,
+  fetchQuotationDocumentForUser,
   type QuotationDocumentPayload,
 } from "@/lib/quotation-documents/client"
 
@@ -102,6 +103,8 @@ export function QuotationPdfPriceDialog({
 }: Props) {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [preview, setPreview] = useState<QuotationDocumentPayload | null>(null)
+  const requestVersion = useRef(0)
   const [currency, setCurrency] = useState("USD")
   const [quotationNumber, setQuotationNumber] = useState<string | null>(null)
   const [expectedUpdatedAt, setExpectedUpdatedAt] = useState<string | null>(null)
@@ -113,6 +116,8 @@ export function QuotationPdfPriceDialog({
   const [presentation, setPresentation] = useState<QuotationPresentationContent>(() => parseQuotationPresentationContent({}))
 
   useEffect(() => {
+    requestVersion.current += 1
+    setSaving(false)
     if (!quotationId) return
     let cancelled = false
     async function load() {
@@ -163,7 +168,7 @@ export function QuotationPdfPriceDialog({
       }
     }
     load()
-    return () => { cancelled = true }
+    return () => { cancelled = true; requestVersion.current += 1 }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quotationId])
 
@@ -191,8 +196,12 @@ export function QuotationPdfPriceDialog({
     )
   }
 
-  const handleGenerate = async (action: "download" | "send" = "download") => {
-    if (!quotationId) return
+  useEffect(() => {
+    setPreview(null)
+  }, [quotationId, entries, insurance, transfer, presentation])
+
+  const handleGenerate = async (action: "download" | "send" | "preview" = "download") => {
+    if (!quotationId || saving) return
     if (action === "send" && sendValidationError) {
       toast.error(sendValidationError)
       return
@@ -230,6 +239,7 @@ export function QuotationPdfPriceDialog({
     if (sendWindow) sendWindow.opener = null
 
     setSaving(true)
+    const version = requestVersion.current
     let contentSaved = false
     try {
       if (!expectedUpdatedAt) throw new Error("La cotización no tiene versión de edición")
@@ -251,6 +261,7 @@ export function QuotationPdfPriceDialog({
         }),
       })
       const preparedJson = await prepareRes.json().catch(() => ({}))
+      if (version !== requestVersion.current) { sendWindow?.close(); return }
       if (!prepareRes.ok) {
         throw new Error(preparedJson?.error || "No se pudieron guardar los precios y el contenido")
       }
@@ -264,6 +275,13 @@ export function QuotationPdfPriceDialog({
       setExpectedUpdatedAt(preparedUpdatedAt)
       contentSaved = true
 
+      if (action === "preview") {
+        const document = await fetchQuotationDocumentForUser(quotationId, { issue: false })
+        if (version !== requestVersion.current) return
+        setPreview(document)
+        return
+      }
+
       let completedDocument: void | QuotationDocumentPayload
       if (action === "send" && onSend) {
         if (!sendWindow || sendWindow.closed) {
@@ -273,12 +291,14 @@ export function QuotationPdfPriceDialog({
       } else {
         completedDocument = await onGenerate(quotationId, preparedUpdatedAt)
       }
+      if (version !== requestVersion.current) return
       if (completedDocument?.quotationUpdatedAt) {
         setExpectedUpdatedAt(completedDocument.quotationUpdatedAt)
       }
       onClose()
     } catch (err: any) {
       if (sendWindow && !sendWindow.closed) sendWindow.close()
+      if (version !== requestVersion.current) return
       if (err instanceof QuotationDocumentDownloadError && err.document.quotationUpdatedAt) {
         setExpectedUpdatedAt(err.document.quotationUpdatedAt)
       }
@@ -287,13 +307,13 @@ export function QuotationPdfPriceDialog({
         ? `La cotización quedó guardada, pero no se pudo completar la emisión o descarga: ${detail}`
         : `No se pudieron guardar los cambios de la cotización: ${detail}`)
     } finally {
-      setSaving(false)
+      if (version === requestVersion.current) setSaving(false)
     }
   }
 
   return (
     <Dialog open={quotationId !== null} onOpenChange={(open) => { if (!open && !saving) onClose() }}>
-      <DialogContent className="sm:max-w-[760px]">
+      <DialogContent className="max-h-[95vh] overflow-y-auto sm:max-w-[760px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileText className="h-4 w-4 text-primary" />
@@ -444,9 +464,18 @@ export function QuotationPdfPriceDialog({
           </Tabs>
         )}
 
+        {preview && (
+          <div className="flex flex-col gap-2">
+            <p className="text-sm text-muted-foreground">Vista previa · {preview.pageCount} {preview.pageCount === 1 ? "página" : "páginas"}</p>
+            <iframe title="Vista previa de la cotización" sandbox="allow-same-origin" srcDoc={preview.html} className="h-[55vh] w-full rounded-md border bg-white" />
+          </div>
+        )}
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={saving}>
             Cancelar
+          </Button>
+          <Button variant="outline" onClick={() => void handleGenerate("preview")} disabled={loading || saving || entries.length === 0}>
+            Guardar y ver vista previa
           </Button>
           <Button onClick={() => void handleGenerate("download")} disabled={loading || saving || entries.length === 0}>
             {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FileText className="h-4 w-4 mr-2" />}

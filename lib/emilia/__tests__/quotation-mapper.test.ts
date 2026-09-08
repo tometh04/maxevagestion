@@ -175,7 +175,7 @@ describe("buildQuotationPayload", () => {
 
     const payload = buildQuotationPayload({
       lead,
-      selectedFlight: makeFlight(),
+      selectedFlights: [makeFlight()],
       selectedHotels: [
         { hotel: hotelA, roomIndex: 0 },
         { hotel: hotelB, roomIndex: 0 },
@@ -209,7 +209,7 @@ describe("buildQuotationPayload", () => {
   it("0 vuelos + 2 hoteles → 2 opciones sin vuelo", () => {
     const payload = buildQuotationPayload({
       lead,
-      selectedFlight: null,
+      selectedFlights: [],
       selectedHotels: [
         { hotel: makeHotel(), roomIndex: 0 },
         { hotel: makeHotel({ id: "hotel_h2", unique_id: "h2", name: "Otro" }), roomIndex: 0 },
@@ -225,7 +225,7 @@ describe("buildQuotationPayload", () => {
   it("1 vuelo + 0 hoteles → 1 opción con solo vuelo", () => {
     const payload = buildQuotationPayload({
       lead,
-      selectedFlight: makeFlight(),
+      selectedFlights: [makeFlight()],
       selectedHotels: [],
       generalData: general,
     })
@@ -237,12 +237,12 @@ describe("buildQuotationPayload", () => {
   it("vuelo: conserva como una unidad el total grupal aunque haya varios pasajeros", () => {
     const payload = buildQuotationPayload({
       lead,
-      selectedFlight: makeFlight({
+      selectedFlights: [makeFlight({
         price: { amount: 1310.86, currency: "USD", basis: "GROUP_TOTAL" },
         adults: 2,
         children: undefined,
         childrens: 1,
-      }),
+      })],
       selectedHotels: [],
       generalData: { ...general, children: 1 },
     })
@@ -254,9 +254,9 @@ describe("buildQuotationPayload", () => {
   it("conserva costo proveedor para que fee y margen no se calculen desde cero", () => {
     const payload = buildQuotationPayload({
       lead,
-      selectedFlight: makeFlight({
+      selectedFlights: [makeFlight({
         price: { amount: 1000, currency: "USD", basis: "GROUP_TOTAL" },
-      }),
+      })],
       selectedHotels: [],
       generalData: general,
     })
@@ -276,7 +276,7 @@ describe("buildQuotationPayload", () => {
   it("vuelo: sin escalas → flight_stops = 0 y ruta desde el leg de ida", () => {
     const payload = buildQuotationPayload({
       lead,
-      selectedFlight: makeFlight({
+      selectedFlights: [makeFlight({
         legs: [
           {
             departure: { city_code: "EZE", city_name: "Buenos Aires", time: "10:00" },
@@ -285,7 +285,7 @@ describe("buildQuotationPayload", () => {
             flight_type: "outbound",
           },
         ],
-      }),
+      })],
       selectedHotels: [],
       generalData: general,
     })
@@ -303,7 +303,7 @@ describe("buildQuotationPayload", () => {
     })
     const payload = buildQuotationPayload({
       lead,
-      selectedFlight: null,
+      selectedFlights: [],
       selectedHotels: [{ hotel, roomIndex: 1 }],
       generalData: general,
     })
@@ -315,7 +315,7 @@ describe("buildQuotationPayload", () => {
   it("vuelo: arma description legible con aerolínea, ruta y escalas", () => {
     const payload = buildQuotationPayload({
       lead,
-      selectedFlight: makeFlight(),
+      selectedFlights: [makeFlight()],
       selectedHotels: [],
       generalData: general,
     })
@@ -341,7 +341,7 @@ describe("buildQuotationPayload", () => {
     })
     const payload = buildQuotationPayload({
       lead,
-      selectedFlight: null,
+      selectedFlights: [],
       selectedHotels: [{ hotel, roomIndex: 0 }],
       generalData: general,
     })
@@ -355,7 +355,7 @@ describe("buildQuotationPayload", () => {
     const hotel = makeHotel({ category: "★★★★★" })
     const payload = buildQuotationPayload({
       lead,
-      selectedFlight: null,
+      selectedFlights: [],
       selectedHotels: [{ hotel, roomIndex: 0 }],
       generalData: general,
     })
@@ -366,7 +366,7 @@ describe("buildQuotationPayload", () => {
     const hotel = makeHotel({ images: [] })
     const payload = buildQuotationPayload({
       lead,
-      selectedFlight: null,
+      selectedFlights: [],
       selectedHotels: [{ hotel, roomIndex: 0 }],
       generalData: general,
     })
@@ -376,7 +376,7 @@ describe("buildQuotationPayload", () => {
   it("defaults: currency USD, pricing_mode GROUP_TOTAL, payment_methods []", () => {
     const payload = buildQuotationPayload({
       lead,
-      selectedFlight: makeFlight(),
+      selectedFlights: [makeFlight()],
       selectedHotels: [{ hotel: makeHotel(), roomIndex: 0 }],
       generalData: general,
     })
@@ -389,7 +389,7 @@ describe("buildQuotationPayload", () => {
     expect(() =>
       buildQuotationPayload({
         lead,
-        selectedFlight: makeFlight(),
+        selectedFlights: [makeFlight()],
         selectedHotels: [],
         generalData: { ...general, departureDate: "" },
       })
@@ -400,7 +400,7 @@ describe("buildQuotationPayload", () => {
     expect(() =>
       buildQuotationPayload({
         lead,
-        selectedFlight: null,
+        selectedFlights: [],
         selectedHotels: [],
         generalData: general,
       })
@@ -413,7 +413,7 @@ describe("buildQuotationPayload", () => {
     )
     const payload = buildQuotationPayload({
       lead,
-      selectedFlight: null,
+      selectedFlights: [],
       selectedHotels: hotels,
       generalData: general,
     })
@@ -511,7 +511,7 @@ describe("integración raw → transformers → buildQuotationPayload", () => {
     const [flight] = transformFlights([rawFlight as any]) as EmiliaFlight[]
     const payload = buildQuotationPayload({
       lead,
-      selectedFlight: flight,
+      selectedFlights: [flight],
       selectedHotels: [],
       generalData: { ...general, children: 1 },
     })
@@ -533,7 +533,7 @@ describe("integración raw → transformers → buildQuotationPayload", () => {
     const roomIndex = hotel.rooms.findIndex(r => r.occupancy_id === "occ-deluxe")
     const payload = buildQuotationPayload({
       lead,
-      selectedFlight: null,
+      selectedFlights: [],
       selectedHotels: [{ hotel, roomIndex }],
       generalData: general,
     })
@@ -575,5 +575,27 @@ describe("integración raw → transformers → buildQuotationPayload", () => {
     expect(meta.combinedData.hotels[0].policy_lodging.length).toBeGreaterThan(EUROVIPS_POLICY_MAX_LENGTH)
     expect(sanitized.combinedData.hotels[0].policy_lodging.length).toBeLessThanOrEqual(EUROVIPS_POLICY_MAX_LENGTH)
     expect(sanitized.combinedData.hotels[0].policy_lodging.endsWith("...")).toBe(true)
+  })
+})
+
+
+describe("alternativas de solo vuelos", () => {
+  it("conserva un total grupal y la procedencia independientes por alternativa", () => {
+    const first = makeFlight({ offer_source: { artifact_id: "a1", product: "flights", offer_id: "f1" } })
+    const second = makeFlight({ id: "f2", price: { amount: 1200, currency: "USD", basis: "GROUP_TOTAL" },
+      offer_source: { artifact_id: "a1", product: "flights", offer_id: "f2" } })
+    const payload = buildQuotationPayload({ lead, selectedFlights: [first, second], selectedHotels: [], generalData: general })
+    expect(payload.options).toHaveLength(2)
+    expect(payload.options.map(option => option.total_amount)).toEqual([850, 1200])
+    expect(payload.options.map(option => option.items.length)).toEqual([1, 1])
+    expect(payload.options.map(option => option.items[0].offer_source)).toEqual([first.offer_source, second.offer_source])
+  })
+  it("rechaza mezclar varias alternativas de vuelos con hoteles sin una combinación explícita", () => {
+    expect(() => buildQuotationPayload({ lead, selectedFlights: [makeFlight(), makeFlight({ id: "f2" })],
+      selectedHotels: [{ hotel: makeHotel(), roomIndex: 0 }], generalData: general })).toThrow("un solo vuelo")
+  })
+  it("rechaza superar el límite sin descartar vuelos silenciosamente", () => {
+    expect(() => buildQuotationPayload({ lead, selectedFlights: Array.from({ length: 5 }, (_, i) => makeFlight({ id: `f${i}` })),
+      selectedHotels: [], generalData: general })).toThrow("hasta 4")
   })
 })

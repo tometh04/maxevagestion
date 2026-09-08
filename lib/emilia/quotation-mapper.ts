@@ -1,7 +1,7 @@
 // lib/emilia/quotation-mapper.ts
 /**
  * Función pura que mapea la selección de cards de Emilia
- * (1 vuelo opcional + N hoteles) al payload exacto que espera
+ * (alternativas de vuelos, o 1 vuelo opcional + N hoteles) al payload que espera
  * POST /api/quotations.
  *
  * Las ofertas con estadías forman una opción con un hotel por estadía.
@@ -148,7 +148,7 @@ export interface SelectedHotel {
 export interface BuildQuotationInput {
   requiredStayIds?: string[]
   lead: LeadInfo
-  selectedFlight: EmiliaFlight | null
+  selectedFlights: EmiliaFlight[]
   selectedHotels: SelectedHotel[]
   generalData: GeneralData
 }
@@ -342,14 +342,21 @@ function mapHotelToItem(sel: SelectedHotel) {
 // =============================================================================
 
 export function buildQuotationPayload(input: BuildQuotationInput) {
-  const { lead, selectedFlight, selectedHotels, generalData } = input
+  const { lead, selectedFlights, selectedHotels, generalData } = input
+  const primaryFlight = selectedFlights[0]
 
   // Validaciones de entrada
   if (!generalData.departureDate) {
     throw new Error("Faltan fechas. Pedile a Emilia que aclare antes de generar.")
   }
-  if (!selectedFlight && selectedHotels.length === 0) {
+  if (selectedFlights.length === 0 && selectedHotels.length === 0) {
     throw new Error("Seleccioná al menos un vuelo o un hotel.")
+  }
+  if (selectedFlights.length > MAX_OPTIONS) {
+    throw new Error(`Seleccioná hasta ${MAX_OPTIONS} alternativas de vuelo.`)
+  }
+  if (selectedFlights.length > 1 && selectedHotels.length > 0) {
+    throw new Error("Para combinar con hoteles, seleccioná un solo vuelo.")
   }
 
   const scoped = selectedHotels.some(({ hotel }) => hotel.search_context) || Boolean(input.requiredStayIds?.length)
@@ -373,18 +380,18 @@ export function buildQuotationPayload(input: BuildQuotationInput) {
     for (const { hotel } of hotels) {
       const budget = hotel.search_context?.combined_budget
       if (!budget) continue
-      const prices = [selectedFlight?.price, ...hotels.map(({ hotel: stay, roomIndex }) => {
+      const prices = [primaryFlight?.price, ...hotels.map(({ hotel: stay, roomIndex }) => {
         const room = stay.rooms[roomIndex]
         return room ? { amount: room.total_price, currency: room.currency } : undefined
       })]
-      if (!selectedFlight || prices.some(price => !price || !Number.isFinite(price.amount) || price.currency !== budget.currency)
+      if (!primaryFlight || prices.some(price => !price || !Number.isFinite(price.amount) || price.currency !== budget.currency)
         || prices.reduce((total, price) => total + (price?.amount || 0), 0) > budget.amount) {
         throw new Error("La selección no cumple el presupuesto del viaje. Revisá el vuelo y todas las estadías.")
       }
     }
   }
   const currencies = [
-    selectedFlight?.price?.currency,
+    ...selectedFlights.map(flight => flight.price?.currency),
     ...hotels.map(selection => (
       selection.hotel.rooms?.[selection.roomIndex]
       ?? selection.hotel.rooms?.[0]
@@ -400,12 +407,13 @@ export function buildQuotationPayload(input: BuildQuotationInput) {
         : "Las ofertas seleccionadas usan monedas distintas. Convertí los importes antes de cotizar."
     )
   }
-  const numOptions = scoped ? 1 : Math.max(hotels.length, 1)
+  const numOptions = scoped ? 1 : Math.max(hotels.length, selectedFlights.length, 1)
 
   const options = []
   for (let i = 0; i < numOptions; i++) {
     const items: any[] = []
 
+    const selectedFlight = hotels.length > 0 ? selectedFlights[0] : selectedFlights[i]
     if (selectedFlight) {
       items.push(mapFlightToItem(selectedFlight))
     }
@@ -430,8 +438,8 @@ export function buildQuotationPayload(input: BuildQuotationInput) {
     agency_id: lead.agency_id,
     destination: scoped ? hotels.map(({ hotel }) => hotel.city).filter(Boolean).join(" · ") || lead.destination : lead.destination,
     region: lead.region || "OTROS",
-    departure_date: selectedFlight?.departure_date || (scoped ? hotels[0]?.hotel.check_in : null) || generalData.departureDate,
-    return_date: selectedFlight ? selectedFlight.return_date ?? null : (scoped ? hotels[hotels.length - 1]?.hotel.check_out : null) || generalData.returnDate,
+    departure_date: primaryFlight?.departure_date || (scoped ? hotels[0]?.hotel.check_in : null) || generalData.departureDate,
+    return_date: primaryFlight ? primaryFlight.return_date ?? null : (scoped ? hotels[hotels.length - 1]?.hotel.check_out : null) || generalData.returnDate,
     adults: generalData.adults,
     children: generalData.children,
     infants: generalData.infants,

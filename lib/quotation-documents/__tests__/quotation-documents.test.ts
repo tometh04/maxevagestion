@@ -9,8 +9,39 @@ import {
   VIBOOK_STANDARD_MANIFEST,
   withSelectedQuotationOption,
 } from "@/lib/quotation-documents"
+import { safeImageSource } from "@/lib/quotation-documents/html"
 
 describe("quotation-documents deep module", () => {
+  it("renders an uploaded raster logo while rejecting executable or oversized data URLs", () => {
+    const logo = "data:image/png;base64,iVBORw0KGgo="
+    expect(safeImageSource(logo)).toBe(logo)
+    expect(safeImageSource("data:image/svg+xml;base64,PHN2Zz4=")).toBeNull()
+    expect(safeImageSource("javascript:alert(1)")).toBeNull()
+    expect(safeImageSource("data:image/png;base64," + "A".repeat(7 * 1024 * 1024))).toBeNull()
+    const model = cloneQuotationJson(KYO_FULL_ITINERARY_FIXTURE)
+    model.agency.logoUrl = logo
+    expect(renderQuotationDocument({ model, manifest: createDefaultManifest("travel-summary-v1") }).html).toContain(logo)
+  })
+  it("packs four separate flight alternatives into two pages with prices, layovers and agency branding", () => {
+    const model = cloneQuotationJson(KYO_FULL_ITINERARY_FIXTURE)
+    model.agency = { id: "agency", name: "Lozada Rosario", logoUrl: "/lozada-logo.png" }
+    model.advisor = { displayName: "Asesor de ejemplo" }
+    model.narrative = { inclusions: [], exclusions: [], itinerary: [], recommendations: [], restrictions: [] }
+    model.commercial = { currency: "USD", pricingMode: "GROUP_TOTAL", insuranceAmount: 0, transferAmount: 0, terms: [], paymentMethods: [], paymentSchedule: [] }
+    model.options.forEach(option => {
+      option.items = option.items.filter(item => item.flight)
+      option.items[0].flight!.legs.forEach(leg => { leg.layovers = [{ city: "Santiago", code: "SCL", waitingTime: "2 h 10 min" }] })
+    })
+    const document = renderQuotationDocument({ model, manifest: createDefaultManifest("travel-summary-v1") })
+    expect(document.pageCount).toBeLessThanOrEqual(2)
+    expect(document.html).toContain("/lozada-logo.png")
+    expect(document.html).toContain("Tiempo de espera: 2 h 10 min")
+    expect(document.html).toContain("USD 5.050,00")
+    expect(document.html).toContain("USD 5.800,00")
+    expect(document.html).not.toContain("Compañía de Viajes")
+    expect(VIBOOK_STANDARD_MANIFEST.layoutKey).toBe("vibook-standard-v1")
+  })
+
   it("registers the system fallback and the reusable editorial layout", () => {
     expect(getQuotationLayoutCatalog()).toEqual(expect.arrayContaining([
       expect.objectContaining({ key: "vibook-standard-v1", version: 1 }),
