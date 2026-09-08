@@ -16,6 +16,8 @@ import {
   sumInvoicedInSaleCurrency,
   type InvoicedRow,
 } from "@/lib/invoices/currency"
+import { validateIssueDate } from "@/lib/invoices/issue-date"
+import { todayInArgentina } from "@/lib/utils/date-only"
 import { createOrgAdminScope } from "@/lib/supabase/admin-scope"
 
 export const dynamic = "force-dynamic"
@@ -182,12 +184,29 @@ export async function POST(
       )
     }
 
-    const fechaEmision = invoice.fecha_emision || formatLocalDate()
+    const today = todayInArgentina()
+    const fechaEmision = invoice.fecha_emision || today
     const invoiceDatePatch: Record<string, string> = {}
 
     if (!invoice.fecha_emision) {
       invoiceDatePatch.fecha_emision = fechaEmision
       invoice.fecha_emision = fechaEmision
+    }
+
+    // La fecha de emisión puede quedar fuera de la ventana de AFIP: o porque el
+    // borrador quedó días sin autorizar, o porque se eligió una fecha anterior
+    // y se autoriza tarde. AFIP lo rechaza con el error 10024; frenarlo acá
+    // deja un mensaje que dice qué hacer en vez de un código.
+    const issueDateCheck = validateIssueDate(fechaEmision, invoice.concepto, today)
+    if (!issueDateCheck.ok) {
+      return NextResponse.json(
+        {
+          error:
+            `${issueDateCheck.error} El borrador no se puede reescribir: borralo y volvé a ` +
+            `crear la factura con una fecha dentro del rango.`,
+        },
+        { status: 400 }
+      )
     }
 
     if (invoice.concepto === 2 || invoice.concepto === 3) {

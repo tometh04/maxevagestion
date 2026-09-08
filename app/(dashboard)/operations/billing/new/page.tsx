@@ -35,6 +35,8 @@ import {
 } from "@/lib/invoices/operation-invoice-items"
 import { COMPROBANTE_LABELS } from "@/lib/afip/types"
 import { translateAfipError } from "@/lib/afip/error-translator"
+import { issueDateBounds } from "@/lib/invoices/issue-date"
+import { todayInArgentina } from "@/lib/utils/date-only"
 import {
   calculateInvoice,
   formatInvoiceMoney,
@@ -179,12 +181,22 @@ export default function NewInvoicePage() {
     receptor_doc_tipo: 99 as number, // 99=Sin especificar (Consumidor Final)
     receptor_doc_nro: '0',
     receptor_condicion_iva: 5 as number, // 5=Consumidor Final por defecto
+    // Fecha del comprobante (CbteFch). Por defecto hoy, que es lo que hacía el
+    // sistema siempre; se puede mover dentro de la ventana que acepta AFIP.
+    fecha_emision: todayInArgentina(),
     fecha_servicio_desde: new Date().toISOString().split('T')[0],
     fecha_servicio_hasta: new Date().toISOString().split('T')[0],
     moneda: 'PES' as 'PES' | 'DOL',
     cotizacion: 1,
   })
   
+  // Ventana de fechas que acepta AFIP para el comprobante (depende del
+  // concepto). Se usa para el min/max del calendario y para avisar cuando la
+  // factura sale con fecha anterior a hoy.
+  const todayAR = todayInArgentina()
+  const issueDateLimits = issueDateBounds(formData.concepto, todayAR)
+  const isBackdatedIssueDate = !!formData.fecha_emision && formData.fecha_emision < todayAR
+
   // Estado para dialog de nuevo cliente
   const [showNewCustomerDialog, setShowNewCustomerDialog] = useState(false)
   
@@ -1273,6 +1285,36 @@ export default function NewInvoicePage() {
                     </div>
                   )}
                 </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="fecha-emision">Fecha de emisión</Label>
+                  <Input
+                    id="fecha-emision"
+                    type="date"
+                    value={formData.fecha_emision}
+                    min={issueDateLimits.min}
+                    max={issueDateLimits.max}
+                    onChange={(e) =>
+                      setFormData({ ...formData, fecha_emision: e.target.value })
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    AFIP acepta hasta {issueDateLimits.days} días de diferencia con hoy.
+                  </p>
+                </div>
+                {isBackdatedIssueDate && (
+                  <div className="flex items-end">
+                    <div className="flex items-start gap-2 rounded-md border border-accent-coral/15 bg-accent-coral/5 p-3 text-xs text-accent-coral w-full">
+                      <AlertTriangle className="h-4 w-4 text-accent-coral mt-0.5 shrink-0" />
+                      <span>
+                        Vas a emitir con fecha anterior a hoy. AFIP la rechaza si es previa a la
+                        del último comprobante autorizado en este punto de venta y tipo.
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">

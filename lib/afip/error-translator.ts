@@ -126,9 +126,9 @@ const KNOWN_ERRORS: Record<number, Omit<AfipErrorTranslation, 'code' | 'rawMessa
   10024: {
     title: 'Fecha del comprobante fuera de rango',
     explanation:
-      'AFIP solo acepta CbteFch entre 5 días anteriores y 5 días posteriores a hoy (10 días totales).',
+      'AFIP acepta CbteFch dentro de una ventana alrededor de hoy: 10 días para comprobantes de Servicios y 5 para Productos, hacia atrás y hacia adelante. Tampoco acepta una fecha anterior a la del último comprobante autorizado del mismo punto de venta y tipo.',
     action:
-      'Reintentá ahora — Vibook usa la fecha de hoy automáticamente. Si pasaron días desde que la dejaste como borrador, la fecha vieja está fuera de rango.',
+      'Volvé a crear la factura con una fecha de emisión dentro del rango. Si la dejaste como borrador varios días, la fecha con la que se creó ya quedó vieja.',
     severity: 'transient',
   },
   10036: {

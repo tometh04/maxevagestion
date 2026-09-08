@@ -24,6 +24,8 @@ import {
   type SupportedCurrency,
 } from "@/lib/payments/customer-income-fx"
 import { normalizeReceptorDoc } from "@/lib/afip/afip-config"
+import { validateIssueDate } from "@/lib/invoices/issue-date"
+import { todayInArgentina } from "@/lib/utils/date-only"
 import { z } from "zod"
 
 export const dynamic = 'force-dynamic'
@@ -77,6 +79,10 @@ const createInvoiceSchema = z.object({
   })),
   moneda: z.string().default('PES'),
   cotizacion: z.number().default(1),
+  // Fecha de emisión (CbteFch). Opcional: si no viene, se emite con la fecha de
+  // hoy, que es lo que hacía siempre. El rango permitido lo valida
+  // `lib/invoices/issue-date.ts` más abajo, contra el concepto del comprobante.
+  fecha_emision: z.string().optional(),
   fch_serv_desde: z.string().optional(),
   fch_serv_hasta: z.string().optional(),
   fecha_vto_pago: z.string().optional(),
@@ -412,7 +418,23 @@ export async function POST(request: Request) {
     }
 
     // Crear factura
-    const fechaEmision = formatLocalDate()
+    //
+    // Fecha de emisión: la que eligió el usuario, si mandó una. AFIP acepta
+    // emitir con fecha anterior (o posterior) dentro de una ventana que depende
+    // del concepto; fuera de esa ventana rechaza el comprobante con el error
+    // 10024, así que se corta acá con un mensaje que dice cuál es el rango.
+    // El default es el día calendario argentino, no el del server: en Railway
+    // (TZ=UTC) después de las 21:00 ART "hoy" ya era el día siguiente.
+    const today = todayInArgentina()
+    const fechaEmision = validatedData.fecha_emision || today
+
+    if (validatedData.fecha_emision) {
+      const check = validateIssueDate(fechaEmision, validatedData.concepto, today)
+      if (!check.ok) {
+        return NextResponse.json({ error: check.error }, { status: 400 })
+      }
+    }
+
     const fchServDesde = validatedData.fch_serv_desde || (validatedData.concepto === 2 || validatedData.concepto === 3 ? fechaEmision : undefined)
     const fchServHasta = validatedData.fch_serv_hasta || fchServDesde
     const fechaVtoPago = validatedData.fecha_vto_pago || fchServHasta
