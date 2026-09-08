@@ -12,6 +12,8 @@ import { logAudit, getClientIP } from "@/lib/audit"
 import { enforceUserRateLimit } from "@/lib/rate-limit"
 import { getOperationVisibleDocuments } from "@/lib/documents/operation-documents"
 import { sumOperationOperatorCosts } from "@/lib/operations/operation-financials"
+import { computeOperationSeats } from "@/lib/packages/seats"
+import { mapPackageRpcError } from "@/lib/packages/errors"
 
 /** Señal interna: conservar los tramos y no tocar operation_legs. */
 class SkipLegsSync extends Error {}
@@ -368,6 +370,12 @@ export async function PATCH(
       operators: incomingOperators,
       legs: incomingLegs,
       legs_replace: incomingLegsReplace,
+      // VIB-183: el paquete se elige SOLO en el alta, así que acá se descarta.
+      // Además `travel_package_id` no es columna de `operations` (el vínculo es
+      // la fila de travel_package_bookings): si se colara al update, PostgREST
+      // rechazaría la escritura ENTERA con un "column does not exist", que es
+      // exactamente lo que rompió todas las ediciones en 2026-07-21.
+      travel_package_id: _ignoredTravelPackageId,
       ...bodyWithoutOperators
     } = body
     const normalizedIncomingOperators = normalizeIncomingOperators(
@@ -475,6 +483,51 @@ export async function PATCH(
     }
 
     updateData.updated_at = new Date().toISOString()
+
+    // ============================================
+    // VIB-183 — GUARDS DE CUPO AL EDITAR
+    //
+    // Cancelar libera el cupo solo, porque el conteo excluye las operaciones
+    // CANCELLED. Pero hay dos caminos por los que el consumo puede CRECER sin
+    // pasar por book_travel_package_seats, y son justo estos dos:
+    //
+    //   a) subir los pasajeros de una venta que ya tiene reserva;
+    //   b) sacar de CANCELLED una operación cuyo lugar ya se revendió.
+    //
+    // Sin esto el invariante no se sostiene: el paquete terminaría con más
+    // plazas vendidas que su cupo y nadie se enteraría.
+    //
+    // Va ANTES del update: si no entra, la edición no se aplica. La RPC devuelve
+    // has_booking=false y no hace nada para las operaciones sin paquete, que son
+    // la enorme mayoría.
+    // ============================================
+    const paxCambio =
+      body.adults !== undefined || body.children !== undefined || body.infants !== undefined
+    const statusCambio = body.status !== undefined && body.status !== currentOp.status
+
+    if (paxCambio || statusCambio) {
+      const nuevasPlazas = computeOperationSeats({
+        adults: body.adults ?? currentOp.adults,
+        children: body.children ?? currentOp.children,
+        infants: body.infants ?? currentOp.infants,
+      })
+      const quedaraActiva = (body.status ?? currentOp.status) !== "CANCELLED"
+
+      const { error: cupoError } = await (supabase.rpc as any)(
+        "revalidate_travel_package_booking",
+        {
+          p_operation_id: operationId,
+          p_org_id: (user as any).org_id,
+          p_seats: nuevasPlazas,
+          p_will_be_active: quedaraActiva,
+        }
+      )
+
+      if (cupoError) {
+        const mapped = mapPackageRpcError(cupoError, "PATCH /api/operations/[id] (cupo)")
+        return NextResponse.json(mapped.body, { status: mapped.status })
+      }
+    }
 
     let operatorRowsReplaced = false
     if (usesIncomingOperators) {
@@ -1506,7 +1559,11 @@ export async function DELETE(
       console.error("Error deleting empty journal entries:", error)
     }
 
-    // 10. Finalmente eliminar la operación (esto cascadea operation_customers)
+    // 10. Finalmente eliminar la operación (esto cascadea operation_customers y,
+    // desde VIB-183, travel_package_bookings: borrar la operación devuelve su
+    // cupo al paquete sin que haga falta código acá. La FK hacia el paquete es
+    // RESTRICT, pero apunta a travel_packages, no a operations: no bloquea este
+    // borrado).
     const { error: deleteError } = await supabase
       .from("operations")
       .delete()

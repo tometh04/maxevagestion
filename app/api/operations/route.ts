@@ -28,6 +28,8 @@ import {
   invoicedPctFor,
 } from "@/lib/operations/invoiced-by-operation"
 import { convertPaymentAmount } from "@/lib/operations/payment-conversion"
+import { computeOperationSeats } from "@/lib/packages/seats"
+import { mapPackageRpcError } from "@/lib/packages/errors"
 import { buildOperationSearchConditions } from "@/lib/operations/search-conditions"
 import {
   normalizeOperationPassengers,
@@ -124,6 +126,10 @@ export async function POST(request: Request) {
       customer_payment_deadline,
       // Info adicional libre para el pasajero (la usa el PDF de detalle).
       passenger_notes,
+      // VIB-183: paquete cerrado del que sale esta venta. Va como campo de la
+      // operación y NO dentro de `operators[]`: el cupo es del paquete, meterlo
+      // por pata invitaría a descontarlo N veces.
+      travel_package_id,
     } = body
 
     // Guard (2026-06-29): un vendedor no puede ser su propio secundario.
@@ -144,6 +150,47 @@ export async function POST(request: Request) {
         .maybeSingle()
       if (!agencyCheck) {
         return NextResponse.json({ error: "Agencia no encontrada" }, { status: 404 })
+      }
+    }
+
+    // ============================================
+    // VIB-183 — PRE-CHEQUEO DE CUPO DEL PAQUETE
+    //
+    // Va acá, ANTES del CAS lock del lead y del insert, porque cubre el caso
+    // normal ("el cupo ya estaba agotado cuando abriste el diálogo") sin haber
+    // tocado nada todavía. La toma real y atómica ocurre después del insert;
+    // esto es solo para fallar temprano y con un mensaje decente.
+    // ============================================
+    const paqueteSeats = travel_package_id
+      ? computeOperationSeats({ adults, children, infants })
+      : 0
+
+    if (travel_package_id) {
+      const { data: disponibilidad, error: dispError } = await (supabase.rpc as any)(
+        "get_travel_package_availability",
+        { p_org_id: (user as any).org_id, p_package_ids: [travel_package_id] }
+      )
+
+      if (dispError) {
+        const mapped = mapPackageRpcError(dispError, "POST /api/operations (pre-chequeo)")
+        return NextResponse.json(mapped.body, { status: mapped.status })
+      }
+
+      const cupo = (disponibilidad || [])[0]
+      if (!cupo) {
+        return NextResponse.json(
+          { error: "El paquete seleccionado no existe" },
+          { status: 404 }
+        )
+      }
+      if (cupo.remaining < paqueteSeats) {
+        return NextResponse.json(
+          {
+            error: `No hay cupo suficiente en el paquete: quedan ${Math.max(cupo.remaining, 0)} plaza(s) y esta venta necesita ${paqueteSeats}.`,
+            detail: cupo,
+          },
+          { status: 409 }
+        )
       }
     }
 
@@ -480,9 +527,8 @@ export async function POST(request: Request) {
       .select()
       .single()
 
-    if (operationError) {
-      console.error("Error creating operation:", operationError)
-      // Rollback del CAS lock: devolver el lead a su estado anterior
+    /** Devuelve el lead a su estado anterior si el alta no prosperó. */
+    const rollbackLeadLock = async () => {
       if (lead_id && leadPreviousStatus && leadPreviousStatus !== "WON") {
         try {
           await (supabase.from("leads") as any)
@@ -492,9 +538,69 @@ export async function POST(request: Request) {
           console.error("Error rollbackeando lead status tras fallo en creación:", rollbackError)
         }
       }
+    }
+
+    if (operationError) {
+      console.error("Error creating operation:", operationError)
+      await rollbackLeadLock()
       // Pasar el mensaje real del error de Supabase para que el UI lo muestre
       const errorMsg = operationError.message || operationError.details || operationError.hint || "Error al crear operación"
       return NextResponse.json({ error: errorMsg }, { status: 500 })
+    }
+
+    // ============================================
+    // VIB-183 — TOMA DEL CUPO DEL PAQUETE
+    //
+    // Va exactamente acá: después del INSERT (la RPC necesita el operation_id
+    // real) y ANTES de todo lo demás. Es el punto de mínima superficie de
+    // rollback: en este instante la operación no tiene file_code, ni IVA, ni
+    // patas, ni deudas al operador, ni ledger, ni asientos. Un DELETE plano
+    // alcanza y no hace falta nada de la cascada manual del endpoint de borrado.
+    //
+    // Y es el ÚNICO otro hard-fail del endpoint además del insert. El resto de
+    // los side effects loguean y siguen porque son reconstruibles; vender dos
+    // veces la misma plaza de un cupo cerrado no lo es, y es justamente el bug
+    // que esta feature existe para prevenir.
+    // ============================================
+    if (travel_package_id) {
+      const { error: bookingError } = await (supabase.rpc as any)("book_travel_package_seats", {
+        p_package_id: travel_package_id,
+        p_operation_id: operation.id,
+        // Siempre de la sesión, nunca del body.
+        p_org_id: (user as any).org_id,
+        p_seats: paqueteSeats,
+      })
+
+      if (bookingError) {
+        const { error: deleteError } = await (supabase.from("operations") as any)
+          .delete()
+          .eq("id", operation.id)
+          .eq("org_id", (user as any).org_id)
+
+        if (deleteError) {
+          // Caso patológico. Igual NO se devuelve 200: el estado resultante es
+          // "operación sin paquete", que se arregla a mano; el que hay que
+          // evitar es "cupo vendido dos veces", y ese ya lo impidió la RPC.
+          console.error(
+            "[VIB-183] no se pudo borrar la operación tras fallar la toma de cupo:",
+            { operationId: operation.id, deleteError }
+          )
+          logAudit(supabase, {
+            user_id: user.id,
+            user_email: user.email,
+            action: "UPDATE",
+            entity_type: "operation",
+            entity_id: operation.id,
+            details: { motivo: "OPERATION_CREATE_ROLLBACK_FAILED", travel_package_id },
+            ip_address: getClientIP(request) || undefined,
+          })
+        }
+
+        await rollbackLeadLock()
+
+        const mapped = mapPackageRpcError(bookingError, "POST /api/operations (toma de cupo)")
+        return NextResponse.json(mapped.body, { status: mapped.status })
+      }
     }
 
     // Audit log for operation creation
