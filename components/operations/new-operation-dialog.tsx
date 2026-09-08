@@ -26,6 +26,12 @@ import {
 } from "@/lib/operations/duplicate-operation"
 import { distributeSaleByCost } from "@/lib/operations/operator-sale-breakdown"
 import {
+  buildPackageOperationDraft,
+  mergeOperatorRowsWithPackage,
+  remainingSeats,
+  type ApplicablePackage,
+} from "@/lib/packages/apply-package-draft"
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -118,6 +124,8 @@ type OperatorRow = {
   file_code?: string
   payment_due_date?: string
   sale_amount?: string | number
+  /** VIB-183: presente ⇒ la ficha vino de un paquete cerrado. */
+  source_package_item_id?: string
 }
 
 const emptyOperatorRow = (currency: "ARS" | "USD" = "USD"): OperatorRow => ({
@@ -279,6 +287,9 @@ interface NewOperationDialogProps {
   canPickOtherSeller?: boolean
   /** Si el usuario puede elegir vendedor SECUNDARIO (default true). */
   canPickSecondarySeller?: boolean
+  /** VIB-183: muestra el selector de paquete cerrado. Solo el alta normal lo
+   *  activa; duplicar y convertir un lead quedan como estaban. */
+  allowPackages?: boolean
 }
 
 export function NewOperationDialog({
@@ -296,11 +307,17 @@ export function NewOperationDialog({
   userRole,
   canPickOtherSeller = true,
   canPickSecondarySeller = true,
+  allowPackages = false,
 }: NewOperationDialogProps) {
   useScreenView("new-operation", open)
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
   const [operatorList, setOperatorList] = useState<OperatorRow[]>([emptyOperatorRow()])
+  // VIB-183: paquete cerrado del que sale esta venta. Elegirlo solo precarga el
+  // formulario; el cupo lo toma el POST, que es el único que crea la operación.
+  const [packages, setPackages] = useState<ApplicablePackage[]>([])
+  const [selectedPackageId, setSelectedPackageId] = useState<string>("NONE")
+  const [pendingPackageId, setPendingPackageId] = useState<string | null>(null)
   // El total de venta pasa a "manual" en cuanto el usuario lo escribe a mano, y
   // vuelve a seguir a las fichas cuando toca un precio de venta de ficha.
   const [saleTotalManual, setSaleTotalManual] = useState(false)
@@ -647,6 +664,104 @@ export function NewOperationDialog({
     [operatorList]
   )
 
+  // ─── VIB-183: paquetes cerrados ────────────────────────────────────────────
+  // Catálogo lazy, solo cuando el diálogo se abre en el alta normal. El endpoint
+  // ya devuelve únicamente los que se pueden vender (ACTIVE y con plazas libres).
+  useEffect(() => {
+    if (!open || !allowPackages) return
+    let cancelled = false
+    fetch("/api/packages?selector=true")
+      .then((res) => (res.ok ? res.json() : { packages: [] }))
+      .then((data) => {
+        if (!cancelled) setPackages(data.packages || [])
+      })
+      .catch(() => {
+        // Sin catálogo el alta sigue funcionando igual: no hay nada que elegir.
+        if (!cancelled) setPackages([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open, allowPackages])
+
+  const selectedPackage = React.useMemo(
+    () => packages.find((p) => p.id === selectedPackageId) || null,
+    [packages, selectedPackageId]
+  )
+
+  /**
+   * Aplica o quita un paquete sobre las fichas de operador. Las patas del
+   * paquete van adelante (la primera define el operador principal) y los
+   * operadores que el vendedor sumó a mano se conservan.
+   */
+  const applyPackage = React.useCallback(
+    (packageId: string) => {
+      const pkg = packageId === "NONE" ? null : packages.find((p) => p.id === packageId) || null
+      const draft = pkg
+        ? buildPackageOperationDraft(pkg)
+        : { formValues: {}, operatorRows: [], hasOperators: false }
+
+      setOperatorList((prev) => {
+        const { rows } = mergeOperatorRowsWithPackage(prev, draft.operatorRows as OperatorRow[])
+        return rows.length > 0 ? (rows as OperatorRow[]) : [emptyOperatorRow(leadCurrency)]
+      })
+
+      // El paquete completa lo que está vacío y no pisa lo que el vendedor ya
+      // escribió. La excepción es el precio: es lo central de un paquete
+      // cerrado, así que ese sí se aplica siempre.
+      const values = draft.formValues
+      if (values.destination && !form.getValues("destination")) {
+        form.setValue("destination", values.destination)
+      }
+      if (values.departure_date && !form.getValues("departure_date")) {
+        form.setValue("departure_date", values.departure_date)
+      }
+      if (values.return_date && !form.getValues("return_date")) {
+        form.setValue("return_date", values.return_date)
+      }
+      if (values.sale_amount_total !== undefined) {
+        form.setValue("sale_amount_total", values.sale_amount_total)
+        if (values.sale_currency) form.setValue("sale_currency", values.sale_currency)
+        setSaleTotalManual(false)
+      }
+
+      setSelectedPackageId(packageId)
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [packages, leadCurrency]
+  )
+
+  /**
+   * Cambiar de paquete descarta las fichas del anterior, que el vendedor pudo
+   * haber editado. Nunca en silencio: se pide confirmación con el conteo.
+   */
+  const handlePackageChange = (packageId: string) => {
+    if (packageId === selectedPackageId) return
+    const { removedCount } = mergeOperatorRowsWithPackage(operatorList, [])
+    if (removedCount > 0) {
+      setPendingPackageId(packageId)
+      return
+    }
+    applyPackage(packageId)
+  }
+
+  /**
+   * Pasajeros cargados, para avisar si no entran en el cupo que queda.
+   *
+   * Sin useMemo a propósito: `form.watch` se suscribe al campo durante el
+   * render, y memoizarlo con `[form]` congelaría el número (el aviso nunca se
+   * actualizaría al cambiar los pasajeros).
+   */
+  const paxWatch =
+    (Number(form.watch("adults")) || 0) +
+    (Number(form.watch("children")) || 0) +
+    (Number(form.watch("infants")) || 0)
+  const paxCargados = paxWatch > 0 ? paxWatch : 1
+
+  const cupoInsuficiente = Boolean(
+    selectedPackage && paxCargados > remainingSeats(selectedPackage)
+  )
+
   // Calcular costo total de operadores
   const totalOperatorCost = filledOperators.reduce((sum, op) => sum + (Number(op.cost) || 0), 0)
 
@@ -820,7 +935,12 @@ export function NewOperationDialog({
         // El operador principal lo resuelve el backend con la primera ficha de
         // `operators`. Sin fichas cargadas, la operación queda sin operador.
         operator_id: null,
-        operators: filledOperators.length > 0 ? filledOperators.map(op => ({ ...op, cost: Number(op.cost) || 0, sale_amount: Number(op.sale_amount) || 0, passenger_detail: sanitizePassengerDetail(op.passenger_detail), file_code: (op.file_code || "").trim() || null, payment_due_date: op.payment_due_date || null })) : undefined,
+        // `source_package_item_id` es una marca de la UI para saber qué ficha
+        // vino del paquete: se descarta acá y no viaja al servidor.
+        operators: filledOperators.length > 0 ? filledOperators.map(({ source_package_item_id: _origen, ...op }) => ({ ...op, cost: Number(op.cost) || 0, sale_amount: Number(op.sale_amount) || 0, passenger_detail: sanitizePassengerDetail(op.passenger_detail), file_code: (op.file_code || "").trim() || null, payment_due_date: op.payment_due_date || null })) : undefined,
+        // VIB-183: el paquete va como campo de la operación. El servidor toma
+        // el cupo con él; sin paquete no llama a nada.
+        travel_package_id: selectedPackageId === "NONE" ? null : selectedPackageId,
         seller_secondary_id: values.seller_secondary_id || null,
         commission_split: values.seller_secondary_id ? (values.commission_split ?? 50) : null,
         // Reparto de la comisión (VIB-63). Solo se mandan los porcentajes si el
@@ -926,6 +1046,7 @@ export function NewOperationDialog({
       form.reset()
       setOperatorList([])
       setCompanionList([])
+      setSelectedPackageId("NONE")
       setApiError(null)
     } catch (error) {
       console.error("Error creating operation:", error)
@@ -957,6 +1078,7 @@ export function NewOperationDialog({
     form.reset()
     setOperatorList([])
     setCompanionList([])
+    setSelectedPackageId("NONE")
     onOpenChange(false)
     setPendingClose(false)
   }
@@ -1377,6 +1499,43 @@ export function NewOperationDialog({
                   <span className="text-xs font-medium text-muted-foreground">Operador & Tipo de Producto</span>
                   <FieldHelp text="Una ficha por proveedor: el operador al que le comprás el servicio, con su costo y su precio de venta. Si la operación tiene varios (ej: aéreo + hotel + traslado), sumá una ficha por cada uno con “Agregar Operador”; el costo total se suma solo." />
                 </div>
+
+                {/* VIB-183: elegir un paquete cerrado carga sus patas de una.
+                    Solo precarga el formulario — el cupo lo toma el POST. */}
+                {allowPackages && packages.length > 0 && (
+                  <div className="space-y-2 md:max-w-[calc(50%-0.75rem)]">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-sm font-medium">Paquete cerrado</span>
+                      <FieldHelp text="Carga de una vez todos los operadores del paquete y descuenta una plaza por pasajero. Podés editar los costos y sumar operadores extra por fuera: lo cerrado del paquete es el cupo, no los precios." />
+                    </div>
+                    <Select value={selectedPackageId} onValueChange={handlePackageChange}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Sin paquete" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="NONE">Sin paquete</SelectItem>
+                        {packages.map((pkg) => (
+                          <SelectItem key={pkg.id} value={pkg.id}>
+                            {pkg.name} — quedan {remainingSeats(pkg)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {selectedPackage && (
+                      <p
+                        className={
+                          cupoInsuficiente
+                            ? "text-xs text-destructive"
+                            : "text-xs text-muted-foreground"
+                        }
+                      >
+                        {cupoInsuficiente
+                          ? `Quedan ${remainingSeats(selectedPackage)} plaza(s) y esta venta necesita ${paxCargados}.`
+                          : `Quedan ${remainingSeats(selectedPackage)} plaza(s); esta venta ocupa ${paxCargados}.`}
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {/* Tipo de la operación: uno solo, más allá de cuántos
                     operadores se carguen abajo. */}
@@ -2490,6 +2649,36 @@ export function NewOperationDialog({
             <AlertDialogCancel onClick={handleCancelClose}>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmClose} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               Cerrar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* VIB-183: cambiar de paquete descarta las fichas que trajo el anterior,
+          que el vendedor pudo haber editado. Nunca se hace en silencio. */}
+      <AlertDialog
+        open={pendingPackageId !== null}
+        onOpenChange={(abierto) => !abierto && setPendingPackageId(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {pendingPackageId === "NONE" ? "¿Quitar el paquete?" : "¿Cambiar de paquete?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Se van a reemplazar las fichas de operador que trajo el paquete actual, incluidos los
+              costos que hayas editado. Los operadores que agregaste por fuera se conservan.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setPendingPackageId(null)}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pendingPackageId) applyPackage(pendingPackageId)
+                setPendingPackageId(null)
+              }}
+            >
+              {pendingPackageId === "NONE" ? "Quitar" : "Cambiar"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
