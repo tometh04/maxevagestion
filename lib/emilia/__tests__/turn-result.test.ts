@@ -1,4 +1,5 @@
 import { persistEmiliaTurnResult } from "../turn-result"
+import { applyEmiliaTurnUpdate } from "../progressive-turn"
 
 function createSupabaseMock() {
   const inserts: Array<{ table: string; row: any }> = []
@@ -150,6 +151,35 @@ function canonicalSearchTurn() {
 }
 
 describe("persistEmiliaTurnResult emilia.turn.v1", () => {
+  it.each(["flights", "hotels"])("muestra y guarda %s disponibles junto al mensaje de recuperación", async (available) => {
+    const supabase = createSupabaseMock()
+    const data = canonicalSearchTurn()
+    const failed = available === "flights" ? "hotels" : "flights"
+    const text = "Pude completar una parte del pedido. Conservé los resultados disponibles. ¿Querés que reintente?"
+    data.assistant_message.content.text = text
+    data.outcome.type = "recovery"
+    data.outcome.results.status = "partial"
+    const failedSet = data.outcome.results.result_sets.find(set => set.product === failed)!
+    failedSet.status = "failed"
+    failedSet.count = 0
+    failedSet.data = []
+
+    const result = await persistEmiliaTurnResult({
+      supabase: supabase.client, conversation: { title: "Viaje" },
+      conversationId: "conversation-1", orgId: "org-1", userId: "user-1",
+      requestId: "recovery-1", jobId: "job-1", data,
+    })
+    expect(result.results[available].items).toHaveLength(1)
+    expect(result.results[failed].items).toHaveLength(0)
+    const saved = supabase.inserts[0].row.content
+    expect(saved.text).toBe(text)
+    expect(saved.cards[available].items).toHaveLength(1)
+    expect(saved.metadata.emilia_meta.productStates).toEqual({ [available]: "available", [failed]: "failed" })
+    const messages = applyEmiliaTurnUpdate([], "job-1", result)
+    expect(messages[0].text).toBe(text)
+    expect(messages[0].cards?.[available as "flights" | "hotels"]?.items).toHaveLength(1)
+  })
+
   it("convierte result_sets canónicos en cards cotizables de vuelos y hoteles", async () => {
     const supabase = createSupabaseMock()
 

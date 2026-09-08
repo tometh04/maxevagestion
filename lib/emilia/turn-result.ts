@@ -82,7 +82,7 @@ function assistantMessageText(message: any): string | undefined {
 function canonicalResultSets(data: any): any[] | null {
   const outcome = data?.outcome
   if (data?.schema_version !== "emilia.turn.v1" || !outcome) return null
-  if (outcome.type !== "search_results" && outcome.type !== "no_results") return []
+  if (!["search_results", "no_results", "recovery"].includes(outcome.type)) return []
   return Array.isArray(outcome?.results?.result_sets) ? outcome.results.result_sets : []
 }
 
