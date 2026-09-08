@@ -323,6 +323,10 @@ export async function GET(request: Request) {
         agency_name:
           agencyNameById.get(cr.operations?.agency_id ?? cr.agency_id ?? "") ?? "",
         amount: parseFloat(cr.amount || 0),
+        // Lo ya cobrado de esta comisión. Sin esto la pantalla no puede saber
+        // que una comisión PENDING tiene un pago parcial encima: ofrecía pagar
+        // el total de nuevo y el servidor lo rechazaba por exceder el restante.
+        amount_paid: cr.amount_paid != null ? parseFloat(cr.amount_paid) : 0,
         percentage: cr.percentage ? parseFloat(cr.percentage) : null,
         status: cr.status as "PENDING" | "PAID",
         date_calculated: cr.date_calculated,

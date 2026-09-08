@@ -45,6 +45,8 @@ interface Commission {
   id: string
   operation_id: string
   amount: number
+  /** Ya cobrado de esta comisión: una PENDING puede tener un pago parcial. */
+  amount_paid?: number
   percentage: number | null
   status: "PENDING" | "PAID"
   date_calculated: string
@@ -219,11 +221,17 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
     direction: "desc",
   })
 
+  /**
+   * Lo que le deben al vendedor: de una comisión con pago parcial encima solo
+   * queda pendiente la diferencia, no el total.
+   */
+  const remainingOf = (c: Commission) => c.amount - (c.amount_paid || 0)
+
   const pendingTotal = useMemo(
     () =>
       commissions
         .filter((c) => c.status === "PENDING")
-        .reduce((s, c) => s + c.amount, 0),
+        .reduce((s, c) => s + remainingOf(c), 0),
     [commissions]
   )
 
@@ -492,6 +500,12 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
                       </TableCell>
                       <TableCell className="text-right tabular-nums font-medium">
                         {fmtCurrency(c.amount, c.operation?.currency)}
+                        {c.status === "PENDING" && (c.amount_paid || 0) > 0 && (
+                          <p className="text-[10px] font-normal text-muted-foreground">
+                            Cobrado {fmtCurrency(c.amount_paid || 0, c.operation?.currency)} · queda{" "}
+                            {fmtCurrency(remainingOf(c), c.operation?.currency)}
+                          </p>
+                        )}
                       </TableCell>
                       <TableCell>
                         {c.status === "PAID" ? (

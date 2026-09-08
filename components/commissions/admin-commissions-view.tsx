@@ -195,14 +195,23 @@ function generateMonthOptions() {
   return options
 }
 
-/** Calcula totales separados por moneda */
-function calcTotalsByCurrency(commissions: Commission[]): { usd: number; ars: number } {
+/**
+ * Calcula totales separados por moneda.
+ *
+ * `amountOf` decide qué se suma: el importe de la comisión (historial) o lo que
+ * queda por pagar (pendientes). Una comisión con un pago parcial encima debe
+ * pesar por el saldo, no por el total, o el "Por Pagar" pide plata que ya salió.
+ */
+function calcTotalsByCurrency(
+  commissions: Commission[],
+  amountOf: (c: Commission) => number = (c) => c.amount
+): { usd: number; ars: number } {
   let usd = 0
   let ars = 0
   for (const c of commissions) {
     const cur = getCommCurrency(c)
-    if (cur === "ARS") ars += c.amount
-    else usd += c.amount
+    if (cur === "ARS") ars += amountOf(c)
+    else usd += amountOf(c)
   }
   return { usd, ars }
 }
@@ -405,10 +414,13 @@ export function AdminCommissionsView({ userId, userRole, agencies }: AdminCommis
       }
       const group = map.get(key)!
       group.commissions.push(c)
-      group.totalPending += c.amount
+      // Lo que falta pagar, no el total de la comisión: una con pago parcial
+      // encima ya no debe la diferencia.
+      const remaining = getRemaining(c)
+      group.totalPending += remaining
       const cur = getCommCurrency(c)
-      if (cur === "ARS") group.totalPendingARS += c.amount
-      else group.totalPendingUSD += c.amount
+      if (cur === "ARS") group.totalPendingARS += remaining
+      else group.totalPendingUSD += remaining
       group.count += 1
     }
     return Array.from(map.values()).sort((a, b) => b.totalPending - a.totalPending)
@@ -416,12 +428,16 @@ export function AdminCommissionsView({ userId, userRole, agencies }: AdminCommis
 
   // ── KPI for pending tab (separated by currency) ──
   const pendingTotals = useMemo(
-    () => calcTotalsByCurrency(pendingCommissions),
+    () => calcTotalsByCurrency(pendingCommissions, getRemaining),
     [pendingCommissions]
   )
   // Solo lo cobrable ahora (operación cobrada ≥95%) — el resto se muestra pero no es pagable.
   const pendingCollectibleTotals = useMemo(
-    () => calcTotalsByCurrency(pendingCommissions.filter((c) => c.collectible !== false)),
+    () =>
+      calcTotalsByCurrency(
+        pendingCommissions.filter((c) => c.collectible !== false),
+        getRemaining
+      ),
     [pendingCommissions]
   )
   const sellersWithPending = sellerGroups.length
