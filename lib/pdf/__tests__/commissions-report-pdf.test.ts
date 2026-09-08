@@ -76,17 +76,17 @@ function record(
   }
 }
 
-function render(
-  records: CommissionRecordRow[],
-  opts: {
-    dateFrom?: string
-    dateTo?: string
-    sellers?: Array<[string, string]>
-    referralPartners?: Array<[string, string]>
-    include?: { sale?: boolean; margin?: boolean; referrals?: boolean }
-  } = {}
-): Uint8Array {
-  const report = buildCommissionsReport({
+interface RenderOptions {
+  dateFrom?: string
+  dateTo?: string
+  sellers?: Array<[string, string]>
+  referralPartners?: Array<[string, string]>
+  include?: { sale?: boolean; margin?: boolean; referrals?: boolean }
+  currency?: string
+}
+
+function buildReport(records: CommissionRecordRow[], opts: RenderOptions = {}) {
+  return buildCommissionsReport({
     records,
     include: opts.include,
     referralPartners: new Map(
@@ -106,18 +106,32 @@ function render(
       ["ag-1", "Rosario"],
       ["ag-2", "Madero"],
     ]),
-    currency: "ARS",
+    currency: opts.currency ?? "ARS",
     dateFrom: opts.dateFrom ?? filters.dateFrom,
     dateTo: opts.dateTo ?? filters.dateTo,
   })
+}
 
+function renderReports(
+  reports: ReturnType<typeof buildReport>[],
+  currency = "ARS"
+): Uint8Array {
   const buffer = generateCommissionsReportPdf({
-    report,
-    filters: { ...filters, dateFrom: report.dateFrom, dateTo: report.dateTo },
+    reports,
+    filters: {
+      ...filters,
+      currency,
+      dateFrom: reports[0].dateFrom,
+      dateTo: reports[0].dateTo,
+    },
     company,
     generatedAt: new Date("2026-07-27T12:00:00Z"),
   })
   return new Uint8Array(buffer)
+}
+
+function render(records: CommissionRecordRow[], opts: RenderOptions = {}): Uint8Array {
+  return renderReports([buildReport(records, opts)], opts.currency ?? "ARS")
 }
 
 function isPdf(bytes: Uint8Array): boolean {
@@ -139,6 +153,28 @@ describe("generateCommissionsReportPdf", () => {
     ])
     expect(isPdf(bytes)).toBe(true)
     expect(bytes.length).toBeGreaterThan(1000)
+  })
+
+  it("entrega las dos monedas en un solo documento", () => {
+    const records = [
+      record({ amount: 12000, seller_id: "seller-a" }),
+      record({
+        amount: 500,
+        seller_id: "seller-b",
+        operations: { id: "op-usd", currency: "USD", sale_currency: "USD" },
+      }),
+    ]
+
+    const ars = buildReport(records, { currency: "ARS" })
+    const usd = buildReport(records, { currency: "USD" })
+    expect(ars.summary.total).toBe(12000)
+    expect(usd.summary.total).toBe(500)
+
+    const both = renderReports([ars, usd], "ALL")
+    expect(isPdf(both)).toBe(true)
+    // El documento con las dos monedas tiene que traer más que el de una sola:
+    // si el segundo bloque no se dibujara, pesarían casi igual.
+    expect(both.length).toBeGreaterThan(renderReports([ars]).length)
   })
 
   it("genera un PDF para un período sin comisiones", () => {

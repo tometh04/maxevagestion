@@ -19,7 +19,13 @@ const boolParam = z
   .transform((value) => value === "true")
 
 const commissionsQuerySchema = baseReportQuerySchema.extend({
-  currency: z.enum(["ARS", "USD"]).optional(),
+  /**
+   * "ALL" = las dos monedas en el mismo reporte, una debajo de la otra. No es
+   * una moneda: ARS y USD se siguen agregando por separado y nunca se suman
+   * (ver `lib/commissions/currency.ts`). Existe porque la agencia le entrega un
+   * solo documento a cada vendedor.
+   */
+  currency: z.enum(["ARS", "USD", "ALL"]).optional(),
   sellerId: z.string().uuid().optional(),
   // Qué información de la agencia se incluye. Default: nada (VIB-94).
   includeSale: boolParam,
@@ -46,7 +52,8 @@ export interface CommissionsReportInclude {
 export interface CommissionsReportRequestParams {
   dateFrom: string
   dateTo: string
-  currency: "ARS" | "USD"
+  /** "ALL" = un bloque por moneda en el mismo reporte. */
+  currency: "ARS" | "USD" | "ALL"
   agencyId: string | null
   sellerId: string | null
   ownDataOnlyUserId: string | null

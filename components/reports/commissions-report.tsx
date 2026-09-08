@@ -60,7 +60,11 @@ interface ReportPayload {
     /** Lo resuelve el servidor: a un vendedor le fuerza todo en false. */
     include: { sale: boolean; margin: boolean; referrals: boolean }
   }
-  report: {
+  /**
+   * Un reporte por moneda. La pantalla muestra el de la moneda elegida en el
+   * filtro (siempre uno solo); el PDF "ARS + USD" es el que pide los dos.
+   */
+  reports: Array<{
     currency: string
     dateFrom: string
     dateTo: string
@@ -135,7 +139,7 @@ interface ReportPayload {
       pending: number
       paid: number
     }>
-  }
+  }>
 }
 
 const DETAIL_PAGE_SIZE = 50
@@ -193,10 +197,17 @@ export function CommissionsReport({ sellers, agencies }: CommissionsReportProps)
     fetchReport()
   }, [fetchReport])
 
-  const handleDownloadPdf = async () => {
+  /**
+   * `bothCurrencies` pide el mismo reporte con un bloque de ARS y otro de USD
+   * en el mismo documento: es lo que la agencia le entrega al vendedor, para no
+   * tener que mandarle dos PDF. Los totales siguen separados por moneda.
+   */
+  const handleDownloadPdf = async (bothCurrencies = false) => {
     setDownloading(true)
     try {
-      const res = await fetch(`/api/reports/commissions/pdf?${queryString}`)
+      const params = new URLSearchParams(queryString)
+      if (bothCurrencies) params.set("currency", "ALL")
+      const res = await fetch(`/api/reports/commissions/pdf?${params.toString()}`)
       if (!res.ok) {
         const body = await res.json().catch(() => null)
         throw new Error(body?.error || "No se pudo generar el PDF")
@@ -205,7 +216,9 @@ export function CommissionsReport({ sellers, agencies }: CommissionsReportProps)
       const url = URL.createObjectURL(blob)
       const link = document.createElement("a")
       link.href = url
-      link.download = `reporte-comisiones-${currency}-${dateFrom}_${dateTo}.pdf`
+      link.download = `reporte-comisiones-${
+        bothCurrencies ? "ARS-USD" : currency
+      }-${dateFrom}_${dateTo}.pdf`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
@@ -257,7 +270,10 @@ export function CommissionsReport({ sellers, agencies }: CommissionsReportProps)
     [currency]
   )
 
-  const report = data?.report
+  // La pantalla trabaja con una sola moneda a la vez (la del filtro), así que
+  // toma el primer bloque: el endpoint devuelve uno solo salvo que se pidan las
+  // dos, cosa que solo hace la descarga del PDF.
+  const report = data?.reports?.[0]
   const summary = report?.summary
   const detail = useMemo(() => report?.detail ?? [], [report])
   const visibleDetail = useMemo(() => detail.slice(0, detailLimit), [detail, detailLimit])
@@ -316,14 +332,32 @@ export function CommissionsReport({ sellers, agencies }: CommissionsReportProps)
               detalladas.
             </p>
           </div>
-          <Button onClick={handleDownloadPdf} disabled={downloading || loading || !!error}>
-            {downloading ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Download className="h-4 w-4 mr-2" />
-            )}
-            Descargar PDF
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              onClick={() => handleDownloadPdf(true)}
+              disabled={downloading || loading || !!error}
+              title="Un solo PDF con las comisiones en pesos y en dólares, cada una con su total"
+            >
+              {downloading ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4 mr-2" />
+              )}
+              PDF ARS + USD
+            </Button>
+            <Button
+              onClick={() => handleDownloadPdf(false)}
+              disabled={downloading || loading || !!error}
+            >
+              {downloading ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4 mr-2" />
+              )}
+              Descargar PDF
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">

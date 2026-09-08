@@ -17,7 +17,10 @@ import {
 export interface CommissionsReportFilters {
   dateFrom: string
   dateTo: string
-  /** "ARS" | "USD" — el reporte se arma siempre para una sola moneda. */
+  /**
+   * "ARS" | "USD" | "ALL". Cada bloque del reporte sigue siendo de una sola
+   * moneda; "ALL" solo significa que se devuelven los dos.
+   */
   currency: string
   agencyId: string | null
   agencyName: string | null
@@ -31,7 +34,15 @@ export interface CommissionsReportFilters {
 
 export interface CommissionsReportPayload {
   filters: CommissionsReportFilters
-  report: CommissionsReport
+  /**
+   * Un reporte por moneda pedida: uno solo con "ARS"/"USD", dos con "ALL". Cada
+   * uno trae su propio total, su desglose por agencia y su detalle; no hay
+   * ningún número que los cruce.
+   *
+   * Con "ALL" se descartan las monedas sin comisiones en el período, salvo que
+   * no haya ninguna: ahí queda un bloque vacío para poder mostrar el mensaje.
+   */
+  reports: CommissionsReport[]
 }
 
 export interface BuildCommissionsReportDataParams {
@@ -120,20 +131,28 @@ export async function buildCommissionsReportData(
     }
   }
 
-  const report = buildCommissionsReport({
-    records,
-    sellerNames,
-    agencyNames,
-    referralPartners,
-    mainPassengers,
-    include,
-    currency,
-    dateFrom,
-    dateTo,
-    cancelledRecords,
-    settledRecords,
-    truncated,
-  })
+  // Los registros se leen una sola vez: `buildCommissionsReport` filtra por
+  // moneda sobre la misma lista, así que pedir las dos no duplica la consulta.
+  const requested = currency === "ALL" ? ["ARS", "USD"] : [currency]
+  const built = requested.map((cur) =>
+    buildCommissionsReport({
+      records,
+      sellerNames,
+      agencyNames,
+      referralPartners,
+      mainPassengers,
+      include,
+      currency: cur,
+      dateFrom,
+      dateTo,
+      cancelledRecords,
+      settledRecords,
+      truncated,
+    })
+  )
+
+  const withRecords = built.filter((r) => r.summary.count > 0)
+  const reports = withRecords.length > 0 ? withRecords : built.slice(0, 1)
 
   return {
     filters: {
@@ -147,6 +166,6 @@ export async function buildCommissionsReportData(
       ownDataOnly: !!ownDataOnlyUserId,
       include,
     },
-    report,
+    reports,
   }
 }

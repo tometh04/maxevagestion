@@ -202,8 +202,11 @@ export class ReportPdfBuilder {
   private readonly generatedAt: Date
   private readonly title: string
   private readonly subtitle?: string
-  private readonly meta?: string
-  private readonly continuationLine: string
+  // Mutables: un mismo documento puede traer varias secciones (p. ej. un
+  // reporte por moneda), y cada una necesita su propio `meta` y su propia línea
+  // de continuación en las páginas siguientes. Ver `newSection()`.
+  private meta?: string
+  private continuationLine: string
 
   constructor(options: ReportPdfBuilderOptions) {
     this.doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" })
@@ -255,6 +258,22 @@ export class ReportPdfBuilder {
     this.doc.addPage()
     this.drawContinuationHeader()
     this.y = 22
+  }
+
+  /**
+   * Arranca una sección nueva del mismo reporte en una página propia, con su
+   * portada y su `meta`. Se usa cuando un documento agrupa varios cortes que no
+   * se pueden mezclar entre sí (el caso real: comisiones en ARS y en USD, que
+   * nunca se suman pero se entregan juntas).
+   *
+   * No pasa por `addPage()` a propósito: la cabecera compacta quedaría pintada
+   * debajo de la banda de portada.
+   */
+  newSection(options: { meta?: string; continuationLine?: string }) {
+    if (options.meta !== undefined) this.meta = options.meta
+    if (options.continuationLine !== undefined) this.continuationLine = options.continuationLine
+    this.doc.addPage()
+    this.coverBand()
   }
 
   /** Salta de página si no entran `needed` mm antes del pie. */

@@ -13,7 +13,9 @@ import { resolveCommissionsReportRequest } from "@/lib/reports/commissions-repor
  * El mes de cada comisión lo define la fecha de venta de la operación, no la
  * fecha de cálculo: un recálculo masivo no debe reescribir la historia.
  *
- * Query: dateFrom, dateTo (YYYY-MM-DD), currency (ARS|USD), agencyId, sellerId.
+ * Query: dateFrom, dateTo (YYYY-MM-DD), currency (ARS|USD|ALL), agencyId,
+ *        sellerId. Con "ALL" vuelve un reporte por moneda en `reports`; las
+ *        monedas nunca se suman entre sí.
  */
 export async function GET(request: Request) {
   try {

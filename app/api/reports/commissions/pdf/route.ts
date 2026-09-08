@@ -10,6 +10,11 @@ import { generateCommissionsReportPdf } from "@/lib/pdf/commissions-report-pdf"
  * Descarga el Reporte de Comisiones como PDF listo para presentar. Usa los
  * mismos datos, filtros y guards que `/api/reports/commissions`; lo único que
  * agrega es el branding del tenant.
+ *
+ * Con `currency=ALL` sale un único documento con un bloque de ARS y otro de
+ * USD: es el reporte que la agencia le entrega al vendedor sin tener que
+ * mandarle dos archivos. Cada bloque conserva su total y su desglose por
+ * agencia; no hay ningún número que cruce monedas.
  */
 export async function GET(request: Request) {
   try {
@@ -29,12 +34,16 @@ export async function GET(request: Request) {
     ])
 
     const pdf = generateCommissionsReportPdf({
-      report: payload.report,
+      reports: payload.reports,
       filters: payload.filters,
       company,
     })
 
-    const filename = `reporte-comisiones-${payload.filters.currency}-${payload.filters.dateFrom}_${payload.filters.dateTo}.pdf`
+    const currencyTag =
+      payload.filters.currency === "ALL"
+        ? payload.reports.map((report) => report.currency).join("-")
+        : payload.filters.currency
+    const filename = `reporte-comisiones-${currencyTag}-${payload.filters.dateFrom}_${payload.filters.dateTo}.pdf`
 
     return new Response(pdf, {
       headers: {

@@ -54,34 +54,73 @@ const MATRIX_MAX_MONTHS = 14
 const MATRIX_MAX_SELLERS = 20
 
 export interface CommissionsReportPdfParams {
-  report: CommissionsReport
+  /**
+   * Un reporte por moneda. Con dos, el PDF sale con un bloque de ARS y otro de
+   * USD (cada uno arranca en su propia página, con su desglose por agencia y su
+   * total). Nunca se suman entre sí: es un solo documento para entregar, no una
+   * moneda nueva.
+   */
+  reports: CommissionsReport[]
   filters: CommissionsReportFilters
   company: ReportCompany
   generatedAt?: Date
 }
 
+const metaLine = (report: CommissionsReport) => `Moneda: ${report.currency}`
+
+const continuationLineFor = (report: CommissionsReport) =>
+  `Reporte de comisiones · ${fmtDate(report.dateFrom)} – ${fmtDate(report.dateTo)} · ${
+    report.currency
+  }`
+
 export function generateCommissionsReportPdf({
-  report,
+  reports,
   filters,
   company,
   generatedAt = new Date(),
 }: CommissionsReportPdfParams): ArrayBuffer {
-  const currency = report.currency
-  const money = (amount: number) => fmtMoney(amount, currency)
+  const [first, ...rest] = reports
+  const multi = reports.length > 1
 
   const b = new ReportPdfBuilder({
     company,
     generatedAt,
     title: "REPORTE DE COMISIONES",
-    subtitle: `${fmtDate(report.dateFrom)}  –  ${fmtDate(report.dateTo)}`,
-    meta: `Moneda: ${currency}`,
-    continuationLine: `Reporte de comisiones · ${fmtDate(report.dateFrom)} – ${fmtDate(
-      report.dateTo
-    )} · ${currency}`,
+    subtitle: `${fmtDate(first.dateFrom)}  –  ${fmtDate(first.dateTo)}`,
+    meta: metaLine(first),
+    continuationLine: continuationLineFor(first),
   })
-  const doc = b.doc
 
   b.coverBand()
+  renderCurrencySection(b, { report: first, filters, generatedAt, multi })
+
+  for (const report of rest) {
+    b.newSection({ meta: metaLine(report), continuationLine: continuationLineFor(report) })
+    renderCurrencySection(b, { report, filters, generatedAt, multi })
+  }
+
+  return b.finish()
+}
+
+interface CurrencySectionParams {
+  report: CommissionsReport
+  filters: CommissionsReportFilters
+  generatedAt: Date
+  /** true si el documento trae más de una moneda. */
+  multi: boolean
+}
+
+/**
+ * Dibuja el reporte de UNA moneda sobre el documento ya abierto. Todo lo que
+ * hay acá adentro está en `report.currency`, así que no hay conversiones.
+ */
+function renderCurrencySection(
+  b: ReportPdfBuilder,
+  { report, filters, generatedAt, multi }: CurrencySectionParams
+): void {
+  const currency = report.currency
+  const money = (amount: number) => fmtMoney(amount, currency)
+  const doc = b.doc
 
   b.filtersLine([
     `Vendedor: ${filters.sellerName || (filters.ownDataOnly ? "Propias" : "Todos")}`,
@@ -114,7 +153,9 @@ export function generateCommissionsReportPdf({
     },
   ])
 
-  if (report.summary.otherCurrency) {
+  // Con las dos monedas en el mismo PDF la aclaración sobra: la otra moneda no
+  // está "afuera del reporte", está unas páginas más adelante.
+  if (!multi && report.summary.otherCurrency) {
     b.note(
       `En el mismo período también hay ${report.summary.otherCurrency.count} comisión(es) en ` +
         `${report.summary.otherCurrency.currency} por ${fmtMoney(
@@ -133,7 +174,7 @@ export function generateCommissionsReportPdf({
         report.dateFrom
       )} y ${fmtDate(report.dateTo)} con los filtros aplicados.`
     )
-    return b.finish()
+    return
   }
 
   // ================================================= TORTA POR VENDEDOR ===
@@ -634,6 +675,4 @@ export function generateCommissionsReportPdf({
     b.y += 4
   }
   doc.setFont("helvetica", "normal")
-
-  return b.finish()
 }
