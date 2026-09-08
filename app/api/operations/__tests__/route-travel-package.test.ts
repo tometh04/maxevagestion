@@ -86,6 +86,7 @@ const { createServerClient } = require("@/lib/supabase/server")
 const { createSaleIVA, createPurchaseIVA } = require("@/lib/accounting/iva")
 const { createOperatorPayment } = require("@/lib/accounting/operator-payments")
 const { createLedgerMovement } = require("@/lib/accounting/ledger")
+const { canPerformAction } = require("@/lib/permissions-api")
 
 const ORG_ID = "org-1"
 const AGENCY_ID = "agency-1"
@@ -232,6 +233,9 @@ describe("POST /api/operations — cupo de paquete (VIB-183)", () => {
 
   beforeEach(() => {
     jest.clearAllMocks()
+    // Se restablece acá y no al final del test que lo cambia: si ese test
+    // falla a mitad, no arrastra el permiso denegado a los que siguen.
+    canPerformAction.mockImplementation(() => true)
     state = {
       remaining: 10,
       bookError: null,
@@ -319,6 +323,18 @@ describe("POST /api/operations — cupo de paquete (VIB-183)", () => {
 
     expect(res.status).toBe(404)
     expect(state.operationsDeleted).toHaveBeenCalled()
+  })
+
+  it("sin permiso del módulo, mandar el id del paquete se rechaza igual", async () => {
+    // Esconder el selector en la UI no es un permiso: la API tiene que
+    // rechazarlo (anti-patrón explícito de AGENTS.md).
+    canPerformAction.mockImplementation((_u: any, modulo: string) => modulo !== "packages")
+
+    const res: any = await POST(makeRequest({ ...baseBody, travel_package_id: PAQUETE }))
+
+    expect(res.status).toBe(403)
+    expect(state.operationsInserted).not.toHaveBeenCalled()
+    expect(llamadasDePaquete(state)).toHaveLength(0)
   })
 
   it("un reintento del alta no consume el cupo dos veces", async () => {

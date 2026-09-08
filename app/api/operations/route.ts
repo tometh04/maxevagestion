@@ -166,6 +166,15 @@ export async function POST(request: Request) {
       : 0
 
     if (travel_package_id) {
+      // El selector se esconde para quien no tiene el módulo, pero esconder un
+      // botón no es un permiso: la API tiene que rechazarlo igual (AGENTS.md).
+      if (!canPerformAction(user, "packages", "read", perms)) {
+        return NextResponse.json(
+          { error: "No tiene permisos para vender paquetes" },
+          { status: 403 }
+        )
+      }
+
       const { data: disponibilidad, error: dispError } = await (supabase.rpc as any)(
         "get_travel_package_availability",
         { p_org_id: (user as any).org_id, p_package_ids: [travel_package_id] }
