@@ -196,12 +196,12 @@ export function NewOrgWizard() {
               />
               <div className="flex-1 space-y-1">
                 <Label htmlFor="seed_chart" className="cursor-pointer">
-                  Clonar plan de cuentas estándar AR (recomendado)
+                  Crear plan de cuentas estándar AR (recomendado)
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  Copia toda la jerarquía de cuentas estándar para una agencia argentina (basada en el
-                  plan de Lozada Viajes — el caso de uso de referencia). Si lo dejás vacío, el cliente
-                  arranca con plan en blanco.
+                  Crea la jerarquía de cuentas estándar para una agencia argentina, desde una
+                  plantilla genérica. No copia datos de ninguna otra agencia. Si lo dejás vacío, el
+                  cliente arranca con plan en blanco y no genera ningún asiento.
                 </p>
               </div>
             </div>
@@ -233,7 +233,7 @@ export function NewOrgWizard() {
               <SummaryRow label="Agencia" value={form.agency_name || form.org_name} />
               <SummaryRow label="Moneda" value={form.default_currency} />
               <SummaryRow label="Admin" value={`${form.admin_name} <${form.admin_email}>`} />
-              <SummaryRow label="Plan cuentas" value={form.seed_chart_of_accounts ? "Clonar Lozada" : "Vacío"} />
+              <SummaryRow label="Plan cuentas" value={form.seed_chart_of_accounts ? "Plantilla estándar AR" : "Vacío"} />
               <SummaryRow label="Listas CRM" value={form.seed_manychat_lists ? "7 listas default" : "Vacío"} />
             </dl>
             {error && (

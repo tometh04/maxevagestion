@@ -1,126 +1,82 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
+import {
+  DEFAULT_CHART_OF_ACCOUNTS,
+  type DefaultChartAccount,
+} from "./default-chart-of-accounts"
 
 /**
- * Clona el plan de cuentas de una org template (default: lozada-viajes) a una
- * org nueva. Resuelve la jerarquía parent_id mappeando por account_code.
+ * Siembra el plan de cuentas default en una org nueva.
+ *
+ * La plantilla es `DEFAULT_CHART_OF_ACCOUNTS`: una lista generica que vive en
+ * el codigo. Antes esto clonaba las cuentas de una org real usada como template
+ * (`lozada-viajes`), o sea que el alta de un tenant leia datos de otro tenant y
+ * heredaba cualquier cuenta que esa agencia hubiera agregado a mano. Ya no hay
+ * lectura cross-tenant: la funcion solo escribe en la org destino.
  *
  * Multi-tenant: el caller tiene que tener permisos para escribir en la target
- * org (típicamente platform_admin via createAdminClient para bypass RLS).
+ * org (tipicamente platform_admin via createAdminClient para bypass RLS).
  *
  * Idempotente: si la target ya tiene cuentas, retorna { created: 0, skipped: N }
- * sin tocar nada. Para forzar re-seed habría que borrar las cuentas existentes
- * primero (no lo hacemos automático para evitar perder data).
+ * sin tocar nada. Una agencia que armo su plan a mano no puede perderlo.
  */
 export async function seedChartOfAccountsForOrg(
   targetOrgId: string,
-  supabase: SupabaseClient,
-  options: {
-    templateOrgSlug?: string
-    templateOrgId?: string
-  } = {}
-): Promise<{ created: number; skipped: number; templateOrgId: string }> {
-  const templateSlug = options.templateOrgSlug || "lozada-viajes"
-
-  // 1. Resolver template org id (por slug o explicit id)
-  let templateOrgId = options.templateOrgId
-  if (!templateOrgId) {
-    const { data: templateOrg, error: orgError } = await (supabase
-      .from("organizations") as any)
-      .select("id")
-      .eq("slug", templateSlug)
-      .maybeSingle()
-
-    if (orgError || !templateOrg) {
-      throw new Error(`Template org "${templateSlug}" no encontrada`)
-    }
-    templateOrgId = (templateOrg as any).id as string
-  }
-
-  if (templateOrgId === targetOrgId) {
-    throw new Error("La org template no puede ser igual a la target")
-  }
-
-  // 2. Si la target ya tiene cuentas, no tocar nada
+  supabase: SupabaseClient
+): Promise<{ created: number; skipped: number }> {
+  // 1. Si la target ya tiene cuentas, no tocar nada
   const { count: existingCount } = await (supabase.from("chart_of_accounts") as any)
     .select("id", { count: "exact", head: true })
     .eq("org_id", targetOrgId)
 
   if ((existingCount || 0) > 0) {
-    return { created: 0, skipped: existingCount || 0, templateOrgId }
+    return { created: 0, skipped: existingCount || 0 }
   }
 
-  // 3. Traer todas las cuentas activas del template, ordenadas por nivel (padres primero)
-  const { data: templateAccounts, error: accountsError } = await (supabase
-    .from("chart_of_accounts") as any)
-    .select(
-      "id, account_code, account_name, category, subcategory, account_type, level, parent_id, is_movement_account, display_order, description"
-    )
-    .eq("org_id", templateOrgId)
-    .eq("is_active", true)
-    .order("level", { ascending: true })
-    .order("account_code", { ascending: true })
-
-  if (accountsError || !templateAccounts) {
-    throw new Error(
-      `Error al leer cuentas del template: ${accountsError?.message || "sin data"}`
-    )
+  // 2. Insertar por nivel: los rubros primero, para poder colgar de ellos las
+  //    subcuentas. `parent_id` se resuelve por codigo contra lo ya insertado.
+  const porNivel = new Map<number, DefaultChartAccount[]>()
+  for (const cuenta of DEFAULT_CHART_OF_ACCOUNTS) {
+    const nivel = porNivel.get(cuenta.level) ?? []
+    nivel.push(cuenta)
+    porNivel.set(cuenta.level, nivel)
   }
 
-  if (templateAccounts.length === 0) {
-    throw new Error(
-      `Template org "${templateOrgId}" no tiene cuentas activas — no se puede seedear`
-    )
-  }
+  const idPorCodigo = new Map<string, string>()
+  let created = 0
 
-  // 4. Map old_id → account_code (para resolver parent_id legacy → account_code → new_id)
-  const oldIdToCode = new Map<string, string>()
-  for (const tpl of templateAccounts as any[]) {
-    oldIdToCode.set(tpl.id, tpl.account_code)
-  }
+  for (const nivel of Array.from(porNivel.keys()).sort((a, b) => a - b)) {
+    const cuentas = porNivel.get(nivel)!
 
-  // 5. Insertar en orden (padres primero por level ASC). Resolver parent_id por account_code.
-  const newIdByCode = new Map<string, string>()
+    const filas = cuentas.map((c) => ({
+      org_id: targetOrgId,
+      account_code: c.code,
+      account_name: c.name,
+      category: c.category,
+      subcategory: c.subcategory,
+      account_type: c.accountType,
+      level: c.level,
+      parent_id: c.parentCode ? idPorCodigo.get(c.parentCode) ?? null : null,
+      is_movement_account: c.isMovement,
+      is_active: true,
+      display_order: c.displayOrder,
+      description: c.description,
+    }))
 
-  for (const tpl of templateAccounts as any[]) {
-    let newParentId: string | null = null
-    if (tpl.parent_id) {
-      const parentCode = oldIdToCode.get(tpl.parent_id)
-      if (parentCode) {
-        newParentId = newIdByCode.get(parentCode) || null
-      }
-    }
+    const { data: insertadas, error } = await (supabase.from("chart_of_accounts") as any)
+      .insert(filas)
+      .select("id, account_code")
 
-    const { data: inserted, error: insertError } = await (supabase
-      .from("chart_of_accounts") as any)
-      .insert({
-        org_id: targetOrgId,
-        account_code: tpl.account_code,
-        account_name: tpl.account_name,
-        category: tpl.category,
-        subcategory: tpl.subcategory,
-        account_type: tpl.account_type,
-        level: tpl.level,
-        parent_id: newParentId,
-        is_movement_account: tpl.is_movement_account,
-        is_active: true,
-        display_order: tpl.display_order,
-        description: tpl.description,
-      })
-      .select("id")
-      .single()
-
-    if (insertError || !inserted) {
+    if (error || !insertadas) {
       throw new Error(
-        `Error insertando cuenta ${tpl.account_code}: ${insertError?.message || "sin id"}`
+        `Error insertando el nivel ${nivel} del plan de cuentas: ${error?.message || "sin data"}`
       )
     }
 
-    newIdByCode.set(tpl.account_code, (inserted as any).id)
+    for (const fila of insertadas as any[]) {
+      idPorCodigo.set(fila.account_code, fila.id)
+    }
+    created += insertadas.length
   }
 
-  return {
-    created: templateAccounts.length,
-    skipped: 0,
-    templateOrgId,
-  }
+  return { created, skipped: 0 }
 }

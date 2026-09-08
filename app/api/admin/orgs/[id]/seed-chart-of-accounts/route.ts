@@ -8,14 +8,15 @@ import { seedChartOfAccountsForOrg } from "@/lib/accounting/seed-chart-of-accoun
 /**
  * POST /api/admin/orgs/[id]/seed-chart-of-accounts
  *
- * Clona el plan de cuentas de una org template (default: lozada-viajes) a la
- * org indicada. Idempotente: si ya tiene cuentas, no hace nada.
+ * Siembra el plan de cuentas default (plantilla generica, ver
+ * `lib/accounting/default-chart-of-accounts.ts`) en la org indicada.
+ * Idempotente: si ya tiene cuentas, no hace nada.
  *
- * Solo platform_admin. Body opcional:
- *   { templateOrgId?: string, templateOrgSlug?: string }
+ * Solo platform_admin. Sin body: ya no se puede elegir "de que agencia copiar",
+ * el plan sale siempre de la plantilla del codigo.
  */
 export async function POST(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { user } = await getCurrentUser()
@@ -39,16 +40,8 @@ export async function POST(
     return NextResponse.json({ error: "Org no existe" }, { status: 404 })
   }
 
-  // Body opcional con template override
-  const body = await request.json().catch(() => ({}))
-  const templateOrgId = typeof body.templateOrgId === "string" ? body.templateOrgId : undefined
-  const templateOrgSlug = typeof body.templateOrgSlug === "string" ? body.templateOrgSlug : undefined
-
   try {
-    const result = await seedChartOfAccountsForOrg(orgId, admin, {
-      templateOrgId,
-      templateOrgSlug,
-    })
+    const result = await seedChartOfAccountsForOrg(orgId, admin)
 
     logSecurityEvent({
       eventType: "ADMIN_SEED_CHART_OF_ACCOUNTS",
@@ -57,7 +50,6 @@ export async function POST(
       targetOrgId: orgId,
       requestPath: "/api/admin/orgs/[id]/seed-chart-of-accounts",
       details: {
-        templateOrgId: result.templateOrgId,
         created: result.created,
         skipped: result.skipped,
       },

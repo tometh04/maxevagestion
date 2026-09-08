@@ -21,7 +21,7 @@ import { seedLeadRegionsForOrg } from "@/lib/leads/seed-lead-regions"
  *  5. Crear public.users (SUPER_ADMIN dentro de su org)
  *  6. Crear organization_members (OWNER) + user_agencies
  *  7. Setear organization_settings.default_currency
- *  8. (opcional) Seed chart of accounts desde Lozada
+ *  8. (opcional) Seed chart of accounts desde la plantilla default
  *  9. (opcional) Seed Manychat lists default
  * 10. logSecurityEvent
  */
