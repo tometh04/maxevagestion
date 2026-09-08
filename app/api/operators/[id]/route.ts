@@ -237,6 +237,38 @@ export async function DELETE(
       )
     }
 
+    // VIB-183: travel_package_items.operator_id es ON DELETE RESTRICT a propósito
+    // (borrar el operador en cascada dejaría al paquete vendiendo una pata menos
+    // sin avisarle a nadie). Sin este chequeo, la base rebota con un 23503 crudo
+    // y el usuario no tiene forma de saber qué paquete lo está reteniendo.
+    const { data: packageItems, error: packagesCheckError } = await (supabase
+      .from("travel_package_items") as any)
+      .select("travel_packages:package_id ( name )")
+      .eq("operator_id", operatorId)
+      .eq("org_id", (user as any).org_id)
+      .limit(5)
+
+    if (packagesCheckError) {
+      console.error("Error checking operator packages:", packagesCheckError)
+      return NextResponse.json({ error: "Error al verificar operador" }, { status: 500 })
+    }
+
+    if (packageItems && packageItems.length > 0) {
+      const nombres = Array.from(
+        new Set(
+          (packageItems as any[]).map((item) => item.travel_packages?.name).filter(Boolean)
+        )
+      )
+      return NextResponse.json(
+        {
+          error: nombres.length
+            ? `No se puede eliminar el operador porque forma parte del/de los paquete(s): ${nombres.join(", ")}`
+            : "No se puede eliminar el operador porque forma parte de un paquete",
+        },
+        { status: 400 }
+      )
+    }
+
     // Delete operator (scopeado por org)
     const { error: deleteError } = await supabase
       .from("operators")
