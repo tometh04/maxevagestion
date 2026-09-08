@@ -702,7 +702,7 @@ export function NewOperationDialog({
         : { formValues: {}, operatorRows: [], hasOperators: false }
 
       setOperatorList((prev) => {
-        const { rows } = mergeOperatorRowsWithPackage(prev, draft.operatorRows as OperatorRow[])
+        const { rows } = mergeOperatorRowsWithPackage<OperatorRow>(prev, draft.operatorRows)
         return rows.length > 0 ? (rows as OperatorRow[]) : [emptyOperatorRow(leadCurrency)]
       })
 
@@ -713,11 +713,16 @@ export function NewOperationDialog({
       if (values.destination && !form.getValues("destination")) {
         form.setValue("destination", values.destination)
       }
-      if (values.departure_date && !form.getValues("departure_date")) {
-        form.setValue("departure_date", values.departure_date)
+      // Las fechas del paquete son columnas DATE ("YYYY-MM-DD") y el formulario
+      // trabaja con Date. parseDateOnlyLocal evita el corrimiento de un día que
+      // produciría `new Date(string)` en UTC-3.
+      const salida = parseDateOnlyLocal(values.departure_date)
+      if (salida && !form.getValues("departure_date")) {
+        form.setValue("departure_date", salida)
       }
-      if (values.return_date && !form.getValues("return_date")) {
-        form.setValue("return_date", values.return_date)
+      const regreso = parseDateOnlyLocal(values.return_date)
+      if (regreso && !form.getValues("return_date")) {
+        form.setValue("return_date", regreso)
       }
       if (values.sale_amount_total !== undefined) {
         form.setValue("sale_amount_total", values.sale_amount_total)
