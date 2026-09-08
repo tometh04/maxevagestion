@@ -11766,6 +11766,235 @@ export type Database = {
           },
         ]
       }
+      travel_package_bookings: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          operation_id: string
+          org_id: string
+          package_id: string
+          seats: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          operation_id: string
+          org_id: string
+          package_id: string
+          seats?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          operation_id?: string
+          org_id?: string
+          package_id?: string
+          seats?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "travel_package_bookings_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "travel_package_bookings_operation_id_fkey"
+            columns: ["operation_id"]
+            isOneToOne: true
+            referencedRelation: "operations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "travel_package_bookings_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "travel_package_bookings_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations_with_profile_completion"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "travel_package_bookings_package_id_fkey"
+            columns: ["package_id"]
+            isOneToOne: false
+            referencedRelation: "travel_packages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      travel_package_items: {
+        Row: {
+          cost: number
+          cost_currency: string
+          created_at: string
+          id: string
+          notes: string | null
+          operator_id: string
+          org_id: string
+          package_id: string
+          product_type: string | null
+          sale_amount: number
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          cost?: number
+          cost_currency?: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          operator_id: string
+          org_id: string
+          package_id: string
+          product_type?: string | null
+          sale_amount?: number
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          cost?: number
+          cost_currency?: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          operator_id?: string
+          org_id?: string
+          package_id?: string
+          product_type?: string | null
+          sale_amount?: number
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "travel_package_items_operator_id_fkey"
+            columns: ["operator_id"]
+            isOneToOne: false
+            referencedRelation: "operators"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "travel_package_items_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "travel_package_items_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations_with_profile_completion"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "travel_package_items_package_id_fkey"
+            columns: ["package_id"]
+            isOneToOne: false
+            referencedRelation: "travel_packages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      travel_packages: {
+        Row: {
+          agency_id: string | null
+          created_at: string
+          created_by: string | null
+          departure_date: string | null
+          description: string | null
+          destination: string | null
+          id: string
+          name: string
+          notes: string | null
+          org_id: string
+          return_date: string | null
+          sale_amount_total: number | null
+          sale_currency: string
+          status: string
+          total_quota: number
+          updated_at: string
+        }
+        Insert: {
+          agency_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          departure_date?: string | null
+          description?: string | null
+          destination?: string | null
+          id?: string
+          name: string
+          notes?: string | null
+          org_id: string
+          return_date?: string | null
+          sale_amount_total?: number | null
+          sale_currency?: string
+          status?: string
+          total_quota: number
+          updated_at?: string
+        }
+        Update: {
+          agency_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          departure_date?: string | null
+          description?: string | null
+          destination?: string | null
+          id?: string
+          name?: string
+          notes?: string | null
+          org_id?: string
+          return_date?: string | null
+          sale_amount_total?: number | null
+          sale_currency?: string
+          status?: string
+          total_quota?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "travel_packages_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "travel_packages_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "travel_packages_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "travel_packages_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations_with_profile_completion"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       usage_events: {
         Row: {
           agency_id: string | null
@@ -13222,6 +13451,15 @@ export type Database = {
           total_sales: number
         }[]
       }
+      book_travel_package_seats: {
+        Args: {
+          p_operation_id: string
+          p_org_id: string
+          p_package_id: string
+          p_seats?: number
+        }
+        Returns: Json
+      }
       bulk_import_agencies: {
         Args: { p_org_id: string; p_rows: Json }
         Returns: Json
@@ -13438,6 +13676,17 @@ export type Database = {
         Args: { p_org_id: string; p_user_auth_id: string }
         Returns: string
       }
+      get_travel_package_availability: {
+        Args: { p_org_id: string; p_package_ids?: string[] }
+        Returns: {
+          active_bookings: number
+          cancelled_bookings: number
+          consumed: number
+          package_id: string
+          remaining: number
+          total_quota: number
+        }[]
+      }
       get_user_org_id: { Args: { p_user_auth_id: string }; Returns: string }
       is_org_member: {
         Args: { p_org_id: string; p_user_auth_id: string }
@@ -13593,6 +13842,10 @@ export type Database = {
         Args: { p_items: Json; p_options: Json; p_quotation_id: string }
         Returns: undefined
       }
+      replace_travel_package_items: {
+        Args: { p_items: Json; p_org_id: string; p_package_id: string }
+        Returns: number
+      }
       reserve_growth_studio_generation: {
         Args: {
           p_agency_id: string
@@ -13611,6 +13864,15 @@ export type Database = {
           remaining: number
           request_id: string
         }[]
+      }
+      revalidate_travel_package_booking: {
+        Args: {
+          p_operation_id: string
+          p_org_id: string
+          p_seats?: number
+          p_will_be_active?: boolean
+        }
+        Returns: Json
       }
       search_global_unaccent: {
         Args: {
@@ -13646,6 +13908,10 @@ export type Database = {
           summary: string
           title: string
         }[]
+      }
+      set_travel_package_quota: {
+        Args: { p_org_id: string; p_package_id: string; p_total_quota: number }
+        Returns: Json
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
