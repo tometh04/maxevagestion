@@ -223,11 +223,14 @@ export default async function OperationDetailPage({
     .eq("org_id", (user as any).org_id)
     .order("name")
   // Porcentaje EFECTIVO, no la columna cruda: el tope del reparto compartido
-  // tiene que decir lo mismo que valida el servidor (VIB-173).
+  // tiene que decir lo mismo que valida el servidor (VIB-173). Por oficina,
+  // porque el diálogo permite mover la operación de sucursal y el porcentaje
+  // —y con él el tope— cambia (VIB-188).
   const sellers: SellerOption[] = await resolveEffectiveSellerOptions(
     supabase,
     (user as any).org_id,
-    sellersData
+    sellersData,
+    [...agencies.map((a) => a.id), (op as any).agency_id]
   )
 
   // Get operators for edit dialog.

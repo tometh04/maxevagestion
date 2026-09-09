@@ -10,6 +10,7 @@
 import {
   resolveSellerCommissionProfiles,
   resolveEffectivePercentage,
+  resolveSellerPercentagesByAgency,
 } from "@/lib/commissions/seller-commission-profile"
 
 interface Call {
@@ -611,5 +612,70 @@ describe("porcentaje por oficina (VIB-175)", () => {
     )
 
     expect(profiles.get("santi")?.percentage).toBe(25)
+  })
+
+  /**
+   * VIB-188: los diálogos necesitan el porcentaje de TODAS las oficinas que el
+   * formulario puede elegir, porque la sucursal se cambia sin recargar y el
+   * tope del reparto sale de ahí.
+   */
+  describe("resolveSellerPercentagesByAgency", () => {
+    const reglasDeSanti = [
+      { agency_id: ROSARIO, value: 45, valid_from: "2026-08-01" },
+      { agency_id: MADERO, value: 25, valid_from: "2026-08-01" },
+    ]
+
+    it("devuelve una entrada por oficina y la resolución sin oficina aparte", async () => {
+      const byId = await resolveSellerPercentagesByAgency(
+        clientConReglas(reglasDeSanti),
+        ORG,
+        ["santi"],
+        [ROSARIO, MADERO]
+      )
+
+      const santi = byId.get("santi")!
+      expect(santi.byAgency[ROSARIO]).toBe(45)
+      expect(santi.byAgency[MADERO]).toBe(25)
+      // Sin oficina no gana ninguna de las dos reglas: queda la ficha.
+      expect(santi.base).toBe(35)
+    })
+
+    it("una oficina sin regla propia cae a la ficha, no a la regla de la otra", async () => {
+      const byId = await resolveSellerPercentagesByAgency(
+        clientConReglas([{ agency_id: ROSARIO, value: 45, valid_from: "2026-08-01" }]),
+        ORG,
+        ["santi"],
+        [ROSARIO, MADERO]
+      )
+
+      expect(byId.get("santi")!.byAgency[MADERO]).toBe(35)
+    })
+
+    it("lee las mismas fuentes que la resolución de una sola oficina", async () => {
+      // El mismo cliente para las dos: si divergieran, la pantalla volvería a
+      // mostrar un tope que el servidor no comparte.
+      const porOficina = await resolveSellerPercentagesByAgency(
+        clientConReglas(reglasDeSanti), ORG, ["santi"], [ROSARIO]
+      )
+      const deLaOperacion = await resolveSellerCommissionProfiles(
+        clientConReglas(reglasDeSanti), ORG, ["santi"], ROSARIO
+      )
+
+      expect(porOficina.get("santi")!.byAgency[ROSARIO]).toBe(
+        deLaOperacion.get("santi")!.percentage
+      )
+    })
+
+    it("sin oficinas pedidas devuelve sólo la resolución sin sucursal", async () => {
+      const byId = await resolveSellerPercentagesByAgency(
+        clientConReglas(reglasDeSanti),
+        ORG,
+        ["santi"],
+        []
+      )
+
+      expect(byId.get("santi")!.byAgency).toEqual({})
+      expect(byId.get("santi")!.base).toBe(35)
+    })
   })
 })

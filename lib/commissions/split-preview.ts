@@ -28,15 +28,28 @@ export interface SharedSplitPreview {
 }
 
 export function previewSharedSplit(
-  sellers: Array<Pick<SellerOption, "id" | "default_commission_percentage">>,
+  sellers: Array<Pick<SellerOption, "id" | "default_commission_percentage" | "commission_by_agency">>,
   primaryId: string | null | undefined,
   secondaryId: string | null | undefined,
-  assigned?: { primary?: number | null; secondary?: number | null }
+  assigned?: { primary?: number | null; secondary?: number | null },
+  /**
+   * Oficina elegida en el formulario (VIB-188). El mismo vendedor cobra 45% en
+   * una sucursal y 25% en otra, y el servidor valida el reparto con el de la
+   * oficina de la operación: sin esto el tope de la pantalla es el de otra.
+   */
+  agencyId?: string | null
 ): SharedSplitPreview {
   const pctOf = (id: string | null | undefined) => {
     if (!id) return null
     const found = sellers.find((s) => s.id === id)
-    const raw = found?.default_commission_percentage
+    // La oficina sólo manda cuando la lista trae su porcentaje: una entrada
+    // ausente es "no lo resolvimos", distinto de una presente en `null`, que es
+    // "este vendedor no comisiona acá".
+    const byAgency = found?.commission_by_agency
+    const raw =
+      agencyId && byAgency && agencyId in byAgency
+        ? byAgency[agencyId]
+        : found?.default_commission_percentage
     return raw == null ? null : Number(raw)
   }
 

@@ -152,7 +152,14 @@ export async function captureQuotationCommissionSnapshot(input: {
   sellerIds: Array<string | null | undefined>
 }): Promise<Json> {
   const [profiles, baseConfig] = await Promise.all([
-    resolveSellerCommissionProfiles(input.supabase as any, input.orgId, input.sellerIds),
+    // Con la oficina: el snapshot tiene que decir el porcentaje que se va a
+    // pagar de verdad, y depende de la sucursal (VIB-188).
+    resolveSellerCommissionProfiles(
+      input.supabase as any,
+      input.orgId,
+      input.sellerIds,
+      input.agencyId
+    ),
     getCommissionBaseConfig(input.supabase as any, input.agencyId),
   ])
 

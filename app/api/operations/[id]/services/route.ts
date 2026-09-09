@@ -479,7 +479,11 @@ export async function POST(
         const sellerPct = await getSellerPercentage(
           supabase,
           (user as any).org_id,
-          serviceSellerId
+          serviceSellerId,
+          // La oficina de la operación: el mismo vendedor cobra distinto en cada
+          // sucursal y sin esto la comisión del servicio salía con la ficha
+          // vieja (VIB-188).
+          operation.agency_id
         )
 
         // La comisión se expresa en la moneda de la OPERACIÓN. Si el servicio

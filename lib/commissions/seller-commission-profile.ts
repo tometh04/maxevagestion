@@ -183,6 +183,151 @@ async function fetchSellerRows(
   return []
 }
 
+/** Todo lo que hace falta para resolver a un vendedor, ya leído de la base. */
+interface SellerSources {
+  sellerId: string
+  name: string | null
+  mode: SharedSaleMode
+  advisorManagerId: string | null
+  advisorManagerPercentage: number | null
+  /** Reglas del vendedor CON oficina, por `agency_id`. */
+  ruleByAgency: Map<string, number>
+  /** Regla del vendedor sin oficina: vale en todas. */
+  sellerRule: number | null
+  userDefault: number | null
+}
+
+/**
+ * Las fuentes en crudo, sin aplicar precedencia y sin elegir oficina.
+ *
+ * Existe separada porque hay dos formas de consumirlas: el cálculo resuelve
+ * contra UNA oficina (la de la operación) y los diálogos necesitan el
+ * porcentaje de CADA oficina que el usuario puede elegir en el formulario
+ * (VIB-188). Con la resolución por oficina metida adentro de la query, la
+ * segunda tenía que repetir las tres consultas una vez por sucursal.
+ */
+async function fetchPercentageSources(
+  supabase: any,
+  orgId: string,
+  ids: string[],
+  asOf?: string | null
+): Promise<{ sources: Map<string, SellerSources>; orgRule: number | null }> {
+  // La fecha contra la que se mide la vigencia de las reglas. Normalmente hoy;
+  // al arrastrar una regla a un período pasado se pasa una fecha DENTRO de ese
+  // período, o la regla que se quiere aplicar ya venció y no se la vería (VIB-181).
+  const today = asOf || new Date().toISOString().split("T")[0]
+
+  const sellerRows = await fetchSellerRows(supabase, orgId, ids)
+  const byId = new Map(sellerRows.map((r) => [r.id, r]))
+
+  // Reglas específicas por vendedor. El filtro por org va como
+  // "de esta org o sin org": `seller_id` ya ancla el tenant (un vendedor
+  // pertenece a una sola org, y arriba validamos que sea la nuestra), así que
+  // acá el filtro es defensa en profundidad y no debe descartar reglas legacy
+  // que quedaron con org_id nulo.
+  const { data: sellerRules, error: sellerRulesError } = await supabase
+    .from("commission_rules")
+    .select("seller_id, value, valid_from, agency_id")
+    .eq("type", "SELLER")
+    .in("seller_id", ids)
+    .or(`org_id.eq.${orgId},org_id.is.null`)
+    .lte("valid_from", today)
+    .or(`valid_to.is.null,valid_to.gte.${today}`)
+    .order("valid_from", { ascending: false })
+
+  if (sellerRulesError) {
+    console.error(
+      "[Commissions] Error leyendo commission_rules por vendedor:",
+      sellerRulesError.message
+    )
+  }
+
+  // La query viene ordenada por valid_from desc; la primera de cada vendedor es
+  // la vigente más reciente.
+  //
+  // Las reglas CON oficina se guardan todas, indexadas por oficina (VIB-175):
+  // quién gana lo decide el caller cuando dice en qué sucursal está parado. La
+  // regla de otra oficina nunca entra a la precedencia; si entrara, el 45% de
+  // Rosario le ganaría al default del usuario en las ventas de Madero.
+  const ruleByAgencyBySeller = new Map<string, Map<string, number>>()
+  const ruleBySellerGlobal = new Map<string, number>()
+
+  for (const rule of (sellerRules || []) as any[]) {
+    if (!rule.seller_id) continue
+    const value = normalizePct(rule.value)
+    if (value == null) continue
+
+    if (rule.agency_id == null) {
+      if (!ruleBySellerGlobal.has(rule.seller_id)) ruleBySellerGlobal.set(rule.seller_id, value)
+      continue
+    }
+
+    let byAgency = ruleByAgencyBySeller.get(rule.seller_id)
+    if (!byAgency) {
+      byAgency = new Map<string, number>()
+      ruleByAgencyBySeller.set(rule.seller_id, byAgency)
+    }
+    if (!byAgency.has(rule.agency_id)) byAgency.set(rule.agency_id, value)
+  }
+
+  const sources = new Map<string, SellerSources>()
+  for (const id of ids) {
+    const row = byId.get(id)
+    // El administrador no participa de la precedencia: no hay reglas en
+    // `commission_rules` para él, y heredar un default de la org sería pagarle
+    // a alguien un porcentaje que nadie eligió.
+    const advisorManagerId = row?.managerId ?? null
+    sources.set(id, {
+      sellerId: id,
+      name: row?.name ?? null,
+      mode: normalizeMode(row?.mode),
+      advisorManagerId,
+      advisorManagerPercentage: advisorManagerId ? normalizePct(row?.managerPct) : null,
+      ruleByAgency: ruleByAgencyBySeller.get(id) ?? new Map<string, number>(),
+      sellerRule: ruleBySellerGlobal.get(id) ?? null,
+      userDefault: normalizePct(row?.pct),
+    })
+  }
+
+  // La regla genérica de la org solo se consulta si algún vendedor la necesita.
+  // No se mira `ruleByAgency` para decidirlo: un vendedor con regla en Rosario
+  // y nada más igual cae a la genérica cuando se lo resuelve para Madero. Como
+  // la genérica es la última de la precedencia, consultarla de más no cambia
+  // ningún resultado; no consultarla de menos, sí.
+  //
+  // Acá el filtro por org_id SÍ es estricto: sin `seller_id` que ancle el
+  // tenant, una regla con org_id nulo es justamente la que se filtraba a otras
+  // organizaciones.
+  const needsGeneric = Array.from(sources.values()).some(
+    (p) => p.sellerRule == null && p.userDefault == null
+  )
+  let orgRule: number | null = null
+
+  if (needsGeneric) {
+    const { data: genericRules, error: genericError } = await supabase
+      .from("commission_rules")
+      .select("value")
+      .eq("type", "SELLER")
+      .is("seller_id", null)
+      .is("destination_region", null)
+      .eq("org_id", orgId)
+      .lte("valid_from", today)
+      .or(`valid_to.is.null,valid_to.gte.${today}`)
+      .order("valid_from", { ascending: false })
+      .limit(1)
+
+    if (genericError) {
+      console.error(
+        "[Commissions] Error leyendo la regla genérica de comisión:",
+        genericError.message
+      )
+    }
+    orgRule = normalizePct((genericRules as any[])?.[0]?.value)
+  }
+
+  return { sources, orgRule }
+}
+
 export async function resolveSellerCommissionProfiles(
   supabase: any,
   orgId: string,
@@ -217,130 +362,102 @@ export async function resolveSellerCommissionProfiles(
     return profiles
   }
 
-  // La fecha contra la que se mide la vigencia de las reglas. Normalmente hoy;
-  // al arrastrar una regla a un período pasado se pasa una fecha DENTRO de ese
-  // período, o la regla que se quiere aplicar ya venció y no se la vería (VIB-181).
-  const today = asOf || new Date().toISOString().split("T")[0]
+  const { sources, orgRule } = await fetchPercentageSources(supabase, orgId, ids, asOf)
 
-  const sellerRows = await fetchSellerRows(supabase, orgId, ids)
-  const byId = new Map(sellerRows.map((r) => [r.id, r]))
-
-  // Reglas específicas por vendedor. El filtro por org va como
-  // "de esta org o sin org": `seller_id` ya ancla el tenant (un vendedor
-  // pertenece a una sola org, y arriba validamos que sea la nuestra), así que
-  // acá el filtro es defensa en profundidad y no debe descartar reglas legacy
-  // que quedaron con org_id nulo.
-  const { data: sellerRules, error: sellerRulesError } = await supabase
-    .from("commission_rules")
-    .select("seller_id, value, valid_from, agency_id")
-    .eq("type", "SELLER")
-    .in("seller_id", ids)
-    .or(`org_id.eq.${orgId},org_id.is.null`)
-    .lte("valid_from", today)
-    .or(`valid_to.is.null,valid_to.gte.${today}`)
-    .order("valid_from", { ascending: false })
-
-  if (sellerRulesError) {
-    console.error(
-      "[Commissions] Error leyendo commission_rules por vendedor:",
-      sellerRulesError.message
-    )
-  }
-
-  // La query viene ordenada por valid_from desc; la primera de cada vendedor es
-  // la vigente más reciente.
-  //
-  // Se separan en dos baldes (VIB-175): la regla de ESTA oficina y la que no
-  // tiene oficina y vale en todas. Una regla de OTRA oficina se descarta acá y
-  // no entra a la precedencia: si entrara, el 45% de Rosario le ganaría al
-  // default del usuario en las ventas de Madero, que es exactamente el bug.
-  const ruleBySellerForAgency = new Map<string, number>()
-  const ruleBySellerGlobal = new Map<string, number>()
-
-  for (const rule of (sellerRules || []) as any[]) {
-    if (!rule.seller_id) continue
-    const value = normalizePct(rule.value)
-    if (value == null) continue
-
-    if (rule.agency_id == null) {
-      if (!ruleBySellerGlobal.has(rule.seller_id)) ruleBySellerGlobal.set(rule.seller_id, value)
-    } else if (agencyId && rule.agency_id === agencyId) {
-      if (!ruleBySellerForAgency.has(rule.seller_id)) {
-        ruleBySellerForAgency.set(rule.seller_id, value)
-      }
+  for (const id of ids) {
+    const row = sources.get(id)
+    if (!row) {
+      profiles.set(id, emptyProfile(id))
+      continue
     }
-  }
 
-  // Las fuentes en crudo. La precedencia se aplica más abajo, una sola vez y
-  // con `resolveEffectivePercentage`, para que el cálculo y la pantalla de
-  // Reglas de Comisiones no puedan separarse.
-  const resolved = ids.map((id) => {
-    const row = byId.get(id)
-    // El administrador no participa de la precedencia: no hay reglas en
-    // `commission_rules` para él, y heredar un default de la org sería pagarle
-    // a alguien un porcentaje que nadie eligió.
-    const advisorManagerId = row?.managerId ?? null
-    return {
-      sellerId: id,
-      name: row?.name ?? null,
-      mode: normalizeMode(row?.mode),
-      advisorManagerId,
-      advisorManagerPercentage: advisorManagerId ? normalizePct(row?.managerPct) : null,
-      sellerAgencyRule: ruleBySellerForAgency.get(id) ?? null,
-      sellerRule: ruleBySellerGlobal.get(id) ?? null,
-      userDefault: normalizePct(row?.pct),
-    }
-  })
-
-  // La regla genérica de la org solo se consulta si algún vendedor la necesita.
-  // Acá el filtro por org_id SÍ es estricto: sin `seller_id` que ancle el
-  // tenant, una regla con org_id nulo es justamente la que se filtraba a otras
-  // organizaciones.
-  const needsGeneric = resolved.some(
-    (p) => p.sellerAgencyRule == null && p.sellerRule == null && p.userDefault == null
-  )
-  let genericPct: number | null = null
-
-  if (needsGeneric) {
-    const { data: genericRules, error: genericError } = await supabase
-      .from("commission_rules")
-      .select("value")
-      .eq("type", "SELLER")
-      .is("seller_id", null)
-      .is("destination_region", null)
-      .eq("org_id", orgId)
-      .lte("valid_from", today)
-      .or(`valid_to.is.null,valid_to.gte.${today}`)
-      .order("valid_from", { ascending: false })
-      .limit(1)
-
-    if (genericError) {
-      console.error(
-        "[Commissions] Error leyendo la regla genérica de comisión:",
-        genericError.message
-      )
-    }
-    genericPct = normalizePct((genericRules as any[])?.[0]?.value)
-  }
-
-  for (const { sellerAgencyRule, sellerRule, userDefault, ...rest } of resolved) {
+    const { ruleByAgency, sellerRule, userDefault, ...rest } = row
     const { percentage, source } = resolveEffectivePercentage({
-      sellerAgencyRule,
+      sellerAgencyRule: agencyId ? ruleByAgency.get(agencyId) ?? null : null,
       sellerRule,
       userDefault,
-      orgRule: genericPct,
+      orgRule,
     })
 
     if (percentage == null) {
       console.warn(
-        `[Commissions] El vendedor ${rest.sellerId} no tiene porcentaje de comisión configurado. Cargalo en Configuración → Usuarios.`
+        `[Commissions] El vendedor ${id} no tiene porcentaje de comisión configurado. Cargalo en Configuración → Usuarios.`
       )
     }
 
-    profiles.set(rest.sellerId, { ...rest, percentage, source })
+    profiles.set(id, { ...rest, percentage, source })
   }
 
   return profiles
+}
+
+/**
+ * El porcentaje de cada vendedor en CADA oficina pedida, más el de "sin oficina".
+ *
+ * Lo consumen las pantallas que arman el selector de vendedores (VIB-188): el
+ * tope de una venta compartida depende de la sucursal elegida en el formulario,
+ * que puede cambiar sin recargar la página. Con un solo número por vendedor, el
+ * cartel del tope vuelve a decir algo que el servidor no comparte — el mismo
+ * bug de VIB-173, ahora por oficina.
+ *
+ * `base` es la resolución sin oficina: lo que se muestra mientras el formulario
+ * no eligió ninguna.
+ */
+export interface SellerPercentagesByAgency {
+  base: number | null
+  /** Una entrada por oficina pedida. `null` = sin porcentaje en ninguna fuente. */
+  byAgency: Record<string, number | null>
+}
+
+export async function resolveSellerPercentagesByAgency(
+  supabase: any,
+  orgId: string,
+  sellerIds: Array<string | null | undefined>,
+  agencyIds: Array<string | null | undefined>,
+  asOf?: string | null
+): Promise<Map<string, SellerPercentagesByAgency>> {
+  const ids = Array.from(new Set(sellerIds.filter((id): id is string => !!id)))
+  const agencies = Array.from(new Set(agencyIds.filter((id): id is string => !!id)))
+  const result = new Map<string, SellerPercentagesByAgency>()
+  if (ids.length === 0) return result
+
+  if (!orgId) {
+    console.error("[Commissions] resolveSellerPercentagesByAgency llamado sin orgId")
+    for (const id of ids) result.set(id, { base: null, byAgency: {} })
+    return result
+  }
+
+  const { sources, orgRule } = await fetchPercentageSources(supabase, orgId, ids, asOf)
+
+  for (const id of ids) {
+    const row = sources.get(id)
+    if (!row) {
+      result.set(id, { base: null, byAgency: {} })
+      continue
+    }
+
+    const { ruleByAgency, sellerRule, userDefault } = row
+    const base = resolveEffectivePercentage({
+      sellerAgencyRule: null,
+      sellerRule,
+      userDefault,
+      orgRule,
+    }).percentage
+
+    const byAgency: Record<string, number | null> = {}
+    for (const agencyId of agencies) {
+      byAgency[agencyId] = resolveEffectivePercentage({
+        sellerAgencyRule: ruleByAgency.get(agencyId) ?? null,
+        sellerRule,
+        userDefault,
+        orgRule,
+      }).percentage
+    }
+
+    result.set(id, { base, byAgency })
+  }
+
+  return result
 }
 
 /** Perfil de un solo vendedor. Envoltorio sobre la versión batcheada. */

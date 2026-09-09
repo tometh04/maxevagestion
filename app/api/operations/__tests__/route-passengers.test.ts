@@ -315,4 +315,38 @@ describe("POST /api/operations — pasajeros (VIB-106)", () => {
     // Y no se notifica a nadie: no hay pasajero asociado.
     expect(sendCustomerNotifications).not.toHaveBeenCalled()
   })
+
+  /**
+   * VIB-188: el tope del reparto manual sale del porcentaje de cada vendedor, y
+   * ese porcentaje depende de la oficina (45% en Rosario, 25% en Madero). Sin
+   * pasarla, a quien tiene reglas por sucursal se lo validaba contra la ficha
+   * vieja y su reparto legítimo volvía con un 400.
+   */
+  it("valida el reparto manual con el porcentaje de la oficina de la venta", async () => {
+    const { resolveSellerCommissionProfiles } = require("@/lib/commissions/seller-commission-profile")
+    resolveSellerCommissionProfiles.mockResolvedValue(
+      new Map([
+        ["seller-1", { sellerId: "seller-1", name: "Santi", percentage: 45 }],
+        ["seller-2", { sellerId: "seller-2", name: "Mica", percentage: 45 }],
+      ])
+    )
+
+    const response: any = await POST(
+      makeRequest({
+        ...baseBody,
+        customer_id: TITULAR,
+        seller_secondary_id: "seller-2",
+        commission_pct_primary: 45,
+        commission_pct_secondary: 0,
+      })
+    )
+
+    expect(response.status).toBe(200)
+    expect(resolveSellerCommissionProfiles).toHaveBeenCalledWith(
+      expect.anything(),
+      ORG_ID,
+      ["seller-1", "seller-2"],
+      AGENCY_ID
+    )
+  })
 })

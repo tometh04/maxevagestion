@@ -85,19 +85,24 @@ export async function GET(request: Request) {
     // poder decir "hoy cobra X y sale de tal lado". Los diálogos de operación,
     // en cambio, necesitan el efectivo, porque con él calculan el tope de las
     // ventas compartidas y ese tope lo valida el servidor con el efectivo.
-    const { resolveSellerCommissionProfiles } = await import(
+    //
+    // Y va también por oficina (VIB-188): el mismo vendedor cobra 45% en una
+    // sucursal y 25% en otra, así que el tope del reparto depende de la oficina
+    // elegida en el diálogo, que se cambia sin recargar la página.
+    const { resolveSellerPercentagesByAgency } = await import(
       "@/lib/commissions/seller-commission-profile"
     )
     let effectiveById = new Map<string, number | null>()
+    let byAgencyById = new Map<string, Record<string, number | null>>()
     try {
-      const profiles = await resolveSellerCommissionProfiles(
+      const resolved = await resolveSellerPercentagesByAgency(
         supabase,
         (user as any).org_id,
-        (usersData || []).map((u: any) => u.id)
+        (usersData || []).map((u: any) => u.id),
+        agencyIds
       )
-      effectiveById = new Map(
-        Array.from(profiles.entries()).map(([id, p]) => [id, p.percentage])
-      )
+      effectiveById = new Map(Array.from(resolved.entries()).map(([id, p]) => [id, p.base]))
+      byAgencyById = new Map(Array.from(resolved.entries()).map(([id, p]) => [id, p.byAgency]))
     } catch (err) {
       // Best-effort: sin esto los diálogos caen al valor de la ficha, que es el
       // comportamiento de antes, no una pantalla rota.
@@ -122,6 +127,9 @@ export async function GET(request: Request) {
         effective_commission_percentage: effectiveById.has(u.id)
           ? effectiveById.get(u.id) ?? null
           : u.default_commission_percentage ?? null,
+        // Uno por oficina del usuario: con cuál se calcula el tope lo decide la
+        // sucursal elegida en el formulario (VIB-188).
+        commission_by_agency: byAgencyById.get(u.id) ?? undefined,
         // Campos derivados para compatibilidad
         first_name: nameParts[0] || '',
         last_name: nameParts.slice(1).join(' ') || '',

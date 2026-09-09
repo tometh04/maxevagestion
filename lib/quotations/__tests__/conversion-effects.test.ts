@@ -99,7 +99,13 @@ describe("quotation conversion financial effects", () => {
       profiles: [profile],
       base_config: frozenSnapshot.base_config,
     }))
-    expect(resolveSellerCommissionProfiles).toHaveBeenCalledWith({}, "org-1", ["seller-1"])
+    // Con la oficina: el porcentaje que se va a pagar depende de ella (VIB-188).
+    expect(resolveSellerCommissionProfiles).toHaveBeenCalledWith(
+      {},
+      "org-1",
+      ["seller-1"],
+      "agency-1"
+    )
     expect(getCommissionBaseConfig).toHaveBeenCalledWith({}, "agency-1")
   })
 

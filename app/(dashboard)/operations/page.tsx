@@ -91,10 +91,13 @@ export default async function OperationsPage() {
   // le sirve para nada y los nombres del equipo no son información suya.
   // Con el porcentaje EFECTIVO (regla propia → ficha → regla de la org): el tope
   // de la venta compartida tiene que coincidir con el que valida el servidor.
+  // Va con las oficinas que el diálogo puede elegir, porque el porcentaje —y con
+  // él el tope— cambia según la sucursal de la operación (VIB-188).
   const allSellerOptions: SellerOption[] = await resolveEffectiveSellerOptions(
     supabase,
     (user as any).org_id,
-    sellers
+    sellers,
+    agencyIds
   )
   const sellerOptions: SellerOption[] = isIndependentAdvisor(user)
     ? allSellerOptions.filter((s) => s.id === user.id)

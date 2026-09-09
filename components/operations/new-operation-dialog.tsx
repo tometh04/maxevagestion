@@ -1025,7 +1025,13 @@ export function NewOperationDialog({
             values.commission_pct_primary != null || values.commission_pct_secondary != null
           if (!repartoEditado) return {}
 
-          const auto = previewSharedSplit(sellersForCommissionLookup, values.seller_id, values.seller_secondary_id)
+          const auto = previewSharedSplit(
+            sellersForCommissionLookup,
+            values.seller_id,
+            values.seller_secondary_id,
+            undefined,
+            values.agency_id
+          )
           return {
             commission_pct_primary: Number(
               values.commission_pct_primary ?? auto.primary
@@ -1473,10 +1479,15 @@ export function NewOperationDialog({
                 // El sugerido sale de la misma función que usa el servidor. Antes
                 // acá se calculaba la mitad del porcentaje DEL PRINCIPAL y se le
                 // mostraba también al secundario, que cobra sobre el suyo.
+                // La oficina va porque el tope depende de ella: el mismo
+                // vendedor puede cobrar distinto en cada sucursal (VIB-188).
+                const agencyForSplit = form.watch("agency_id")
                 const sugerido = previewSharedSplit(
                   sellersForCommissionLookup,
                   form.watch("seller_id"),
-                  form.watch("seller_secondary_id")
+                  form.watch("seller_secondary_id"),
+                  undefined,
+                  agencyForSplit
                 )
                 const primaryVal = form.watch("commission_pct_primary")
                 const secondaryVal = form.watch("commission_pct_secondary")
@@ -1484,7 +1495,8 @@ export function NewOperationDialog({
                   sellersForCommissionLookup,
                   form.watch("seller_id"),
                   form.watch("seller_secondary_id"),
-                  { primary: primaryVal, secondary: secondaryVal }
+                  { primary: primaryVal, secondary: secondaryVal },
+                  agencyForSplit
                 )
                 const sum = reparto.total
                 const exceedsCeiling = reparto.exceedsCeiling

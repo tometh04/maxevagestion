@@ -307,10 +307,16 @@ export async function PATCH(
       )
       const { validateManualSplit } = await import("@/lib/commissions/validate-shared-split")
 
-      const profiles = await resolveSellerCommissionProfiles(supabase, (user as any).org_id, [
-        effectivePrimaryId,
-        effectiveSecondaryId,
-      ])
+      // Con la oficina que va a quedar en la operación (VIB-188): el porcentaje
+      // de cada vendedor —y por lo tanto el tope del reparto— depende de la
+      // sucursal, así que validar sin ella rechaza repartos que el cálculo
+      // después paga sin chistar.
+      const profiles = await resolveSellerCommissionProfiles(
+        supabase,
+        (user as any).org_id,
+        [effectivePrimaryId, effectiveSecondaryId],
+        body.agency_id ?? currentOp.agency_id
+      )
       const primaryProfile = profiles.get(effectivePrimaryId)
       const secondaryProfile = profiles.get(effectiveSecondaryId)
 

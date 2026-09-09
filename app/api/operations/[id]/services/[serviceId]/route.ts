@@ -499,11 +499,23 @@ export async function PATCH(
         } else if (sellerId) {
           // Con cambio de vendedor hay que re-resolver el porcentaje sí o sí:
           // conservar el guardado le aplicaría al nuevo la tasa del anterior.
+          // La oficina de la operación entra en la resolución: el mismo vendedor
+          // cobra 45% en una sucursal y 25% en otra (VIB-188).
           const sellerPct = Number(
             sellerChanged
-              ? await getSellerPercentage(supabase, (user as any).org_id, sellerId)
+              ? await getSellerPercentage(
+                  supabase,
+                  (user as any).org_id,
+                  sellerId,
+                  operation.agency_id
+                )
               : existingCommission?.percentage ??
-                  (await getSellerPercentage(supabase, (user as any).org_id, sellerId))
+                  (await getSellerPercentage(
+                    supabase,
+                    (user as any).org_id,
+                    sellerId,
+                    operation.agency_id
+                  ))
           )
 
           // La comisión se expresa en la moneda de la OPERACIÓN. Si el servicio

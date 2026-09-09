@@ -232,7 +232,14 @@ describe("PATCH — cambiar quién comisiona", () => {
     expect(commissionUpdate).toBeDefined()
     expect(commissionUpdate!.payload.seller_id).toBe(MELANI)
     expect(commissionUpdate!.payload.percentage).toBe(20)
-    expect(getSellerPercentage).toHaveBeenCalledWith(expect.anything(), ORG_ID, MELANI)
+    // Con la oficina de la operación: el mismo vendedor cobra distinto en cada
+    // sucursal y sin ella salía la ficha vieja (VIB-188).
+    expect(getSellerPercentage).toHaveBeenCalledWith(
+      expect.anything(),
+      ORG_ID,
+      MELANI,
+      AGENCY_ID
+    )
   })
 
   it("no le toca el mes a la comisión: el servicio se vendió cuando se vendió", async () => {

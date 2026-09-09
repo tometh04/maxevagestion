@@ -74,7 +74,12 @@ export async function AdvancedCRMKanban({ orgId }: AdvancedCRMKanbanProps) {
   const agencies = scopedAgencies
   const sellers = sellersResult.data ?? []
   // Porcentaje EFECTIVO (VIB-173): mismo criterio que Operaciones.
-  const sellerOptions = await resolveEffectiveSellerOptions(supabase, orgId, sellers)
+  const sellerOptions = await resolveEffectiveSellerOptions(
+    supabase,
+    orgId,
+    sellers,
+    scopedAgencyIds
+  )
   const operators = operatorsResult.data ?? []
 
   const categories = rawCategories.map((c) => ({

@@ -33,7 +33,7 @@
  * viendo tal cual.
  */
 
-import { resolveSellerCommissionProfiles } from "@/lib/commissions/seller-commission-profile"
+import { resolveSellerPercentagesByAgency } from "@/lib/commissions/seller-commission-profile"
 import { toSellerOptions, type SellerOption } from "@/lib/sellers/seller-option"
 
 /**
@@ -49,31 +49,47 @@ export async function resolveEffectiveSellerOptions(
   orgId: string | null | undefined,
   rows: any[] | null | undefined,
   /**
-   * Oficina para la que se resuelve (VIB-175). Un vendedor puede cobrar 25% en
-   * una sucursal y 45% en otra, así que sin esto el tope que muestra el diálogo
-   * volvería a poder discrepar del que aplica el servidor: el mismo bug que
-   * este módulo vino a arreglar, ahora por oficina.
+   * Oficinas para las que se resuelve (VIB-175 / VIB-188). Un vendedor puede
+   * cobrar 25% en una sucursal y 45% en otra, así que sin esto el tope que
+   * muestra el diálogo vuelve a discrepar del que aplica el servidor.
+   *
+   * Va la lista de las que el formulario puede elegir, no una sola: la sucursal
+   * de la operación se cambia en el mismo diálogo y sin recargar la página.
+   * Con una sola oficina también se pisa `default_commission_percentage`, que
+   * es lo que mira cualquier pantalla que todavía no sepa de oficinas.
    */
-  agencyId?: string | null,
+  agencyIds?: string | Array<string | null | undefined> | null,
 ): Promise<SellerOption[]> {
   const options = toSellerOptions(rows)
   if (!orgId || options.length === 0) return options
 
+  const agencies = (Array.isArray(agencyIds) ? agencyIds : [agencyIds]).filter(
+    (id): id is string => !!id
+  )
+
   try {
-    const profiles = await resolveSellerCommissionProfiles(
+    const byId = await resolveSellerPercentagesByAgency(
       supabase,
       orgId,
       options.map((o) => o.id),
-      agencyId,
+      agencies,
     )
 
     return options.map((option) => {
-      const profile = profiles.get(option.id)
+      const resolved = byId.get(option.id)
       // `percentage` puede ser null legítimamente ("sin porcentaje en ninguna
       // fuente"), y en ese caso el null tiene que ganar: es distinto de 0 y los
       // diálogos lo muestran como "falta cargar la comisión".
-      if (!profile) return option
-      return { ...option, default_commission_percentage: profile.percentage }
+      if (!resolved) return option
+      return {
+        ...option,
+        // Con una sola oficina, ese es EL porcentaje de la pantalla. Con varias
+        // el default queda en la resolución sin oficina y cada diálogo elige la
+        // suya con `commission_by_agency`.
+        default_commission_percentage:
+          agencies.length === 1 ? resolved.byAgency[agencies[0]] ?? null : resolved.base,
+        ...(agencies.length > 0 ? { commission_by_agency: resolved.byAgency } : {}),
+      }
     })
   } catch (err) {
     console.error("[Sellers] No se pudo resolver el porcentaje efectivo:", err)

@@ -241,10 +241,15 @@ export async function POST(request: Request) {
       commission_pct_primary != null &&
       commission_pct_secondary != null
     ) {
-      const profiles = await resolveSellerCommissionProfiles(supabase, (user as any).org_id, [
-        seller_id,
-        normalizedSecondaryId,
-      ])
+      // La oficina de la venta define el porcentaje de cada uno, y con él el
+      // tope (VIB-188): sin ella, a quien tiene reglas por sucursal se le
+      // validaba contra la ficha vieja y el reparto legítimo se rechazaba.
+      const profiles = await resolveSellerCommissionProfiles(
+        supabase,
+        (user as any).org_id,
+        [seller_id, normalizedSecondaryId],
+        agency_id
+      )
       const primaryProfile = profiles.get(seller_id)
       const secondaryProfile = profiles.get(normalizedSecondaryId)
 

@@ -37,6 +37,19 @@ export interface SellerOption {
    * `null` = sin configurar en ninguna fuente, distinto de 0.
    */
   default_commission_percentage: number | null
+  /**
+   * Porcentaje por oficina, para las sucursales que el formulario puede elegir
+   * (VIB-188). Una misma persona cobra 45% en Rosario y 25% en Madero, así que
+   * el tope de la venta compartida no es un número por vendedor sino uno por
+   * vendedor y sucursal — y el servidor valida con el de la oficina de la
+   * operación.
+   *
+   * Opcional a propósito, al revés que `default_commission_percentage`: una
+   * lista que no lo trae cae al porcentaje sin oficina, que es lo que se venía
+   * mostrando. Una oficina presente con valor `null` sí significa "sin
+   * porcentaje en ninguna fuente".
+   */
+  commission_by_agency?: Record<string, number | null>
 }
 
 /** Columnas a pedirle a `users` para construir un `SellerOption`. */
@@ -57,10 +70,15 @@ export function toSellerOption(row: any): SellerOption {
       ? row.effective_commission_percentage
       : row?.default_commission_percentage
   const value = raw == null ? null : Number(raw)
+  const byAgency =
+    row?.commission_by_agency && typeof row.commission_by_agency === "object"
+      ? (row.commission_by_agency as Record<string, number | null>)
+      : undefined
   return {
     id: row?.id,
     name: row?.name ?? "",
     default_commission_percentage: value != null && Number.isFinite(value) ? value : null,
+    ...(byAgency ? { commission_by_agency: byAgency } : {}),
   }
 }
 

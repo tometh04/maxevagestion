@@ -883,10 +883,15 @@ export function EditOperationDialog({
                 const canEdit = ["SUPER_ADMIN", "ADMIN", "CONTABLE"].includes(userRole || "")
                 // Mismo cálculo que el servidor (VIB-63): antes el sugerido del
                 // secundario era la mitad del porcentaje del principal.
+                // La oficina va porque el tope depende de ella: el mismo
+                // vendedor puede cobrar distinto en cada sucursal (VIB-188).
+                const agencyForSplit = form.watch("agency_id")
                 const sugerido = previewSharedSplit(
                   sellers,
                   form.watch("seller_id"),
-                  form.watch("seller_secondary_id")
+                  form.watch("seller_secondary_id"),
+                  undefined,
+                  agencyForSplit
                 )
                 const primaryVal = form.watch("commission_pct_primary")
                 const secondaryVal = form.watch("commission_pct_secondary")
@@ -894,7 +899,8 @@ export function EditOperationDialog({
                   sellers,
                   form.watch("seller_id"),
                   form.watch("seller_secondary_id"),
-                  { primary: primaryVal, secondary: secondaryVal }
+                  { primary: primaryVal, secondary: secondaryVal },
+                  agencyForSplit
                 )
                 const sum = reparto.total
                 const exceedsCeiling = reparto.exceedsCeiling

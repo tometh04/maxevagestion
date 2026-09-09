@@ -16,16 +16,19 @@
  */
 
 jest.mock("@/lib/commissions/seller-commission-profile", () => ({
-  resolveSellerCommissionProfiles: jest.fn(),
+  resolveSellerPercentagesByAgency: jest.fn(),
 }))
 
-import { resolveSellerCommissionProfiles } from "@/lib/commissions/seller-commission-profile"
+import { resolveSellerPercentagesByAgency } from "@/lib/commissions/seller-commission-profile"
 import { resolveEffectiveSellerOptions } from "@/lib/sellers/effective-seller-options"
 import { previewSharedSplit } from "@/lib/commissions/split-preview"
 
 const ORG = "org-lozada"
 const GIANELLA = "u-gianella"
 const MICAELA = "u-micaela"
+const SANTI = "u-santi"
+const ROSARIO = "a-rosario"
+const MADERO = "a-madero"
 
 /** Lo que devuelve la query cruda a `users`: la ficha, ya vieja. */
 const FILAS = [
@@ -33,15 +36,19 @@ const FILAS = [
   { id: MICAELA, name: "Micaela Nader", default_commission_percentage: 35 },
 ]
 
+/** Resolución sin oficina: un solo porcentaje por vendedor. */
 function profiles(byId: Record<string, number | null>) {
-  ;(resolveSellerCommissionProfiles as jest.Mock).mockResolvedValue(
-    new Map(
-      Object.entries(byId).map(([id, percentage]) => [
-        id,
-        { sellerId: id, name: null, percentage, mode: "HALF", source: "SELLER_RULE",
-          advisorManagerId: null, advisorManagerPercentage: null },
-      ])
-    )
+  ;(resolveSellerPercentagesByAgency as jest.Mock).mockResolvedValue(
+    new Map(Object.entries(byId).map(([id, base]) => [id, { base, byAgency: {} }]))
+  )
+}
+
+/** Resolución por oficina (VIB-188). */
+function profilesByAgency(
+  byId: Record<string, { base: number | null; byAgency: Record<string, number | null> }>
+) {
+  ;(resolveSellerPercentagesByAgency as jest.Mock).mockResolvedValue(
+    new Map(Object.entries(byId))
   )
 }
 
@@ -79,13 +86,13 @@ describe("resolveEffectiveSellerOptions", () => {
   it("sin org no consulta y devuelve la ficha", async () => {
     const options = await resolveEffectiveSellerOptions({}, null, FILAS)
 
-    expect(resolveSellerCommissionProfiles).not.toHaveBeenCalled()
+    expect(resolveSellerPercentagesByAgency).not.toHaveBeenCalled()
     expect(options.find((o) => o.id === MICAELA)!.default_commission_percentage).toBe(35)
   })
 
   it("si la resolución falla, la lista sigue viniendo con la ficha", async () => {
     const spy = jest.spyOn(console, "error").mockImplementation(() => {})
-    ;(resolveSellerCommissionProfiles as jest.Mock).mockRejectedValue(new Error("boom"))
+    ;(resolveSellerPercentagesByAgency as jest.Mock).mockRejectedValue(new Error("boom"))
 
     const options = await resolveEffectiveSellerOptions({}, ORG, FILAS)
 
@@ -155,5 +162,79 @@ describe("el tope que ve el usuario", () => {
     expect(reparto.ceiling).toBe(45)
     expect(reparto.total).toBe(45)
     expect(reparto.exceedsCeiling).toBe(false)
+  })
+})
+
+/**
+ * VIB-188 (Santiago Nader, Lozada): comisiona 45% en Rosario y 25% en Madero
+ * por dos reglas con `agency_id`, y su ficha quedó en 35. Con un solo
+ * porcentaje por vendedor, el tope de la pantalla es el de otra sucursal —o el
+ * de la ficha vieja— y el reparto que el servidor acepta se marca en rojo.
+ */
+describe("el tope depende de la oficina", () => {
+  const SANTI_FILA = { id: SANTI, name: "Santiago Nader", default_commission_percentage: 35 }
+
+  async function opcionesDeSanti() {
+    profilesByAgency({
+      [SANTI]: { base: 35, byAgency: { [ROSARIO]: 45, [MADERO]: 25 } },
+      [MICAELA]: { base: 45, byAgency: { [ROSARIO]: 45, [MADERO]: 45 } },
+    })
+    return resolveEffectiveSellerOptions({}, ORG, [SANTI_FILA, FILAS[1]], [ROSARIO, MADERO])
+  }
+
+  it("en Rosario el tope es 45 y el reparto entra", async () => {
+    const options = await opcionesDeSanti()
+
+    const reparto = previewSharedSplit(
+      options,
+      SANTI,
+      MICAELA,
+      { primary: 45, secondary: 0 },
+      ROSARIO
+    )
+
+    expect(reparto.primaryMax).toBe(45)
+    expect(reparto.exceedsCeiling).toBe(false)
+  })
+
+  it("en Madero el mismo vendedor tiene tope 25", async () => {
+    const options = await opcionesDeSanti()
+
+    const reparto = previewSharedSplit(
+      options,
+      SANTI,
+      MICAELA,
+      { primary: 30, secondary: 0 },
+      MADERO
+    )
+
+    // 30 supera su 25 de Madero, aunque en Rosario cobre 45.
+    expect(reparto.primaryMax).toBe(25)
+  })
+
+  it("sin oficina elegida cae al porcentaje sin sucursal, no al de una cualquiera", async () => {
+    const options = await opcionesDeSanti()
+
+    const reparto = previewSharedSplit(options, SANTI, MICAELA)
+
+    expect(reparto.primaryMax).toBe(35)
+  })
+
+  it("con una sola oficina, esa es la que manda también en el porcentaje suelto", async () => {
+    profilesByAgency({ [SANTI]: { base: 35, byAgency: { [ROSARIO]: 45 } } })
+
+    const options = await resolveEffectiveSellerOptions({}, ORG, [SANTI_FILA], ROSARIO)
+
+    // Las pantallas que todavía no saben de oficinas leen este campo.
+    expect(options[0].default_commission_percentage).toBe(45)
+  })
+
+  it("una oficina donde no comisiona es null, no el porcentaje de la otra", async () => {
+    profilesByAgency({ [SANTI]: { base: null, byAgency: { [ROSARIO]: 45, [MADERO]: null } } })
+
+    const options = await resolveEffectiveSellerOptions({}, ORG, [SANTI_FILA], [ROSARIO, MADERO])
+    const reparto = previewSharedSplit(options, SANTI, MICAELA, undefined, MADERO)
+
+    expect(reparto.primaryMax).toBeNull()
   })
 })

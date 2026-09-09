@@ -82,7 +82,14 @@ export default async function CRMManychatPage() {
   const { data: sellers } = await sellersQuery
   // Porcentaje EFECTIVO: los diálogos del CRM comparten el cálculo del reparto
   // con los de Operaciones (VIB-173).
-  const sellerOptions = await resolveEffectiveSellerOptions(supabase, (user as any).org_id, sellers)
+  // Con las oficinas que el diálogo puede elegir: el tope depende de la
+  // sucursal de la operación (VIB-188).
+  const sellerOptions = await resolveEffectiveSellerOptions(
+    supabase,
+    (user as any).org_id,
+    sellers,
+    agencyIds
+  )
 
   // Get operators for conversion dialog
   // Cast a any: types.ts está stale; admin_fee_percentage agregada en migration
