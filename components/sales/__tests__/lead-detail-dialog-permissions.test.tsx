@@ -1,8 +1,12 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { toast } from "sonner"
 import { PermissionsProvider } from "@/components/permissions/permissions-provider"
 import { buildDefaultMatrix } from "@/lib/permissions/resolved"
 import { LeadDetailDialog } from "../lead-detail-dialog"
+import { detectBrowserOriginCity } from "@/lib/emilia/browser-geolocation"
+
+jest.mock("@/lib/emilia/browser-geolocation", () => ({ detectBrowserOriginCity: jest.fn() }))
+jest.mock("../lead-emilia-chat", () => ({ LeadEmiliaChat: () => <div>Chat de cotización</div> }))
 
 jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn(), info: jest.fn() } }))
 
@@ -60,7 +64,7 @@ describe("permisos para cotizar desde el detalle del lead", () => {
     render(<PermissionsProvider role="ADMIN" matrix={buildDefaultMatrix("ADMIN")}>
       <LeadDetailDialog lead={LEAD} open onOpenChange={jest.fn()} />
     </PermissionsProvider>)
-    fireEvent.click(screen.getByRole("menuitem", { name: "Cotizar" }))
+    fireEvent.click(screen.getByRole("button", { name: "Cotizar" }))
     await waitFor(() => expect(status === 403 ? toast.info : toast.error).toHaveBeenCalledWith(
       status === 403 ? "Tu plan no incluye Emilia. Consultá con el administrador de tu agencia."
         : "Emilia no está disponible en este momento. Intentá nuevamente."
@@ -82,7 +86,7 @@ describe("permisos para cotizar desde el detalle del lead", () => {
       </PermissionsProvider>
     )
 
-    expect(screen.queryByRole("menuitem", { name: "Cotizar" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Cotizar" })).not.toBeInTheDocument()
   })
 
   it("muestra Cotizar cuando la matriz resuelta concede leads.write", () => {
@@ -99,7 +103,7 @@ describe("permisos para cotizar desde el detalle del lead", () => {
       </PermissionsProvider>
     )
 
-    expect(screen.getByRole("menuitem", { name: "Cotizar" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Cotizar" })).toBeInTheDocument()
   })
 
   it("ofrece convertir y reservar al aprobarla o confirmar su precio", async () => {
@@ -182,6 +186,48 @@ describe("permisos para cotizar desde el detalle del lead", () => {
     expect(screen.getAllByText("COT-UNCONFIRMED")).toHaveLength(1)
     fireEvent.click(convert[1])
     expect(await screen.findByRole("heading", { name: "Convertir y reservar con Delfos" })).toBeInTheDocument()
+  })
+  it("abre el chat sin esperar la ubicación del navegador", async () => {
+    jest.mocked(detectBrowserOriginCity).mockReturnValue(new Promise(() => {}))
+    global.fetch = jest.fn((url) => {
+      if (String(url) === "/api/quotation-quota" || String(url).endsWith("/emilia")) {
+        return Promise.resolve({ ok: true, json: async () => ({ data: null }) })
+      }
+      return new Promise(() => {})
+    }) as typeof fetch
+    render(<PermissionsProvider role="ADMIN" matrix={buildDefaultMatrix("ADMIN")}>
+      <LeadDetailDialog lead={LEAD} open onOpenChange={jest.fn()} />
+    </PermissionsProvider>)
+    fireEvent.click(screen.getByText("Cotizar", { exact: true }))
+    expect(await screen.findByText("Chat de cotización")).toBeInTheDocument()
+  })
+
+  it.each(["quota", "access"])("mantiene el bloqueo por %s y evita clics repetidos", async (blockedBy) => {
+    let finishQuota!: (value: unknown) => void
+    const quota = new Promise((resolve) => { finishQuota = resolve })
+    global.fetch = jest.fn((url) => {
+      if (String(url) === "/api/quotation-quota") return quota
+      if (String(url).endsWith("/emilia")) return Promise.resolve({
+        ok: blockedBy !== "access", status: blockedBy === "access" ? 403 : 200,
+        json: async () => ({ error: "Sin acceso", data: null }),
+      })
+      return new Promise(() => {})
+    }) as typeof fetch
+    render(<PermissionsProvider role="ADMIN" matrix={buildDefaultMatrix("ADMIN")}>
+      <LeadDetailDialog lead={LEAD} open onOpenChange={jest.fn()} />
+    </PermissionsProvider>)
+    fireEvent.click(screen.getByRole("button", { name: "Cotizar" }))
+    // Ambos controles arrancan incluso con la cuota pendiente.
+    expect(global.fetch).toHaveBeenCalledWith("/api/leads/lead-1/emilia")
+    const opening = screen.getByRole("button", { name: "Abriendo..." })
+    expect(opening).toBeDisabled()
+    fireEvent.click(opening)
+    expect(jest.mocked(global.fetch).mock.calls.filter(([url]) => url === "/api/quotation-quota")).toHaveLength(1)
+    await act(async () => finishQuota({ ok: true, json: async () => ({
+      usage: { enforcement_enabled: true, at_limit: blockedBy === "quota" },
+    }) }))
+    expect(screen.queryByText("Chat de cotización")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Cotizar" })).toBeEnabled()
   })
 })
 

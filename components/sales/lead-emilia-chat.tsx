@@ -594,6 +594,8 @@ export function LeadEmiliaChat({
   } | null>(null)
   // Cargando el prompt sugerido (gpt). Loading sutil: se llena una sola vez.
   const [promptLoading, setPromptLoading] = useState(false)
+  const defaultOriginRef = useRef(defaultOrigin)
+  defaultOriginRef.current = defaultOrigin
   const pendingJobControllerRef = useRef<AbortController | null>(null)
   const contextualTourStartedRef = useRef(false)
   const activeTourIdRef = useRef<string | null>(null)
@@ -761,7 +763,7 @@ export function LeadEmiliaChat({
       const data = res.ok ? await res.json() : null
       const prompt = (data?.prompt || "").trim()
       if (prompt) {
-        const promptWithOrigin = withDefaultOrigin(prompt, defaultOrigin)
+        const promptWithOrigin = withDefaultOrigin(prompt, defaultOriginRef.current)
         setInput(prev => (force || prev.trim() === "" ? promptWithOrigin : prev))
       }
     } catch {

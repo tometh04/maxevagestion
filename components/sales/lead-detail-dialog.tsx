@@ -449,6 +449,18 @@ export function LeadDetailDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, lead?.id])
 
+  // La ubicación es opcional: nunca debe bloquear la apertura del chat.
+  useEffect(() => {
+    if (!open || mode !== "emilia") return
+    let cancelled = false
+    void detectBrowserOriginCity().then((origin) => {
+      if (!cancelled) setEmiliaDefaultOrigin(origin)
+    }).catch(() => {
+      // Sin ubicación, Emilia pregunta el origen en la conversación.
+    })
+    return () => { cancelled = true }
+  }, [open, mode, lead?.id])
+
   // Resetear mode cuando el modal se cierra
   useEffect(() => {
     if (!open) {
@@ -627,7 +639,10 @@ export function LeadDetailDialog({
     setOpeningQuotation(true)
 
     try {
-      const quotaResponse = await fetch("/api/quotation-quota", { cache: "no-store" })
+      const [quotaResponse, response] = await Promise.all([
+        fetch("/api/quotation-quota", { cache: "no-store" }),
+        fetch(`/api/leads/${lead.id}/emilia`),
+      ])
       if (quotaResponse.ok) {
         const quota = await quotaResponse.json().catch(() => null)
         if (quota?.usage?.enforcement_enabled && quota?.usage?.at_limit) {
@@ -636,16 +651,11 @@ export function LeadDetailDialog({
         }
       }
 
-      const response = await fetch(`/api/leads/${lead.id}/emilia`)
       const json = await response.json().catch(() => ({}))
 
       if (response.ok) {
-        // El navegador muestra su permiso nativo. Si el usuario lo rechaza o
-        // no podemos resolver ciudad/país, null mantiene el flujo de pregunta.
-        const detectedOrigin = await detectBrowserOriginCity()
         // Reutilizamos la conversación del gate para evitar otro GET al montar.
         setEmiliaConversation(json?.data ?? null)
-        setEmiliaDefaultOrigin(detectedOrigin)
         setMode("emilia")
         return
       }
@@ -1277,7 +1287,7 @@ export function LeadDetailDialog({
             const canQuote = canWriteLeads && !hasOp && lead.status !== "LOST"
             const canClaim = !lead.assigned_seller_id && canClaimLeads && lead.status !== "WON"
             return (
-              <div className="flex items-center gap-1.5">
+              <div className="flex flex-wrap items-center gap-1.5">
                 {/* Acción primaria contextual */}
                 {hasOp ? (
                   <Button size="sm" asChild className="shrink-0 bg-success hover:bg-success/90">
@@ -1297,6 +1307,13 @@ export function LeadDetailDialog({
                   </Button>
                 ) : null}
 
+                {canQuote && (
+                  <Button variant="outline" size="sm" onClick={handleStartQuotation} disabled={openingQuotation} className="shrink-0" aria-busy={openingQuotation}>
+                    {openingQuotation ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
+                    <span className="ml-1.5">{openingQuotation ? "Abriendo..." : "Cotizar"}</span>
+                  </Button>
+                )}
+
                 <div className="flex-1" />
 
                 {/* Menú "Más" con el resto de las acciones */}
@@ -1312,12 +1329,6 @@ export function LeadDetailDialog({
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-56">
-                    {canQuote && (
-                      <DropdownMenuItem onClick={handleStartQuotation} disabled={openingQuotation}>
-                        <FileText className="h-4 w-4" />
-                        {openingQuotation ? "Abriendo..." : "Cotizar"}
-                      </DropdownMenuItem>
-                    )}
                     {!resolved && (
                       <DropdownMenuItem
                         onClick={() => handleSetOutcome("SALE")}
