@@ -18,7 +18,7 @@ import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { parseDateOnlyLocal } from "@/lib/utils/date-only"
 import Link from "next/link"
-import { ArrowLeft, Pencil, AlertCircle, Trash2, Loader2, RefreshCw, HelpCircle, Receipt, Info, Users, FileText, CreditCard, Wrench, ShoppingBag, Calculator, BarChart3, Bell, Copy } from "lucide-react"
+import { ArrowLeft, Pencil, AlertCircle, Trash2, Loader2, RefreshCw, HelpCircle, Receipt, Info, Users, FileText, CreditCard, Wrench, ShoppingBag, Calculator, BarChart3, Bell, Copy, Package } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -26,6 +26,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { DocumentsSection } from "@/components/documents/documents-section"
+import type { OperationTravelPackage } from "@/lib/packages/queries"
 import { OperationAccountingSection } from "@/components/operations/operation-accounting-section"
 import { PurchaseInvoicesSection } from "@/components/operations/purchase-invoices-section"
 import { OperationSaleInvoicesSection } from "@/components/operations/operation-invoices-section"
@@ -181,6 +182,8 @@ interface OperationDetailClientProps {
     checkout_date: string | null
   }>
   paymentWithholdings?: Array<{ source_id: string; type: string; amount: number; currency: string }>
+  /** VIB-183: paquete del que salió esta venta, o null si se cargó suelta. */
+  travelPackage?: OperationTravelPackage | null
 }
 
 export function OperationDetailClient({
@@ -203,6 +206,7 @@ export function OperationDetailClient({
   operationOperators = [],
   operationLegs = [],
   paymentWithholdings = [],
+  travelPackage = null,
 }: OperationDetailClientProps) {
   const router = useRouter()
   const [editDialogOpen, setEditDialogOpen] = useState(false)
@@ -378,6 +382,29 @@ export function OperationDetailClient({
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Operación #{operation.id.slice(0, 8)}</h1>
             <p className="text-muted-foreground">{operation.destination}</p>
+            {/* VIB-183: de dónde salió esta venta. Sin esto la operación no
+                tiene forma de contar que ocupa plazas de un grupal: el vínculo
+                vive en travel_package_bookings, no en una columna suya. */}
+            {travelPackage && (
+              <Link
+                href={`/packages/${travelPackage.package_id}`}
+                className="mt-1.5 inline-flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm text-muted-foreground hover:text-foreground"
+              >
+                <Package className="h-3.5 w-3.5 shrink-0" />
+                <span>
+                  Grupal:{" "}
+                  <span className="font-medium text-foreground">{travelPackage.name}</span>
+                </span>
+                <span className="tabular-nums">
+                  · ocupa {travelPackage.seats} plaza{travelPackage.seats === 1 ? "" : "s"}
+                </span>
+                {travelPackage.status === "CLOSED" && (
+                  <Badge variant="secondary" className="ml-0.5">
+                    Cerrado
+                  </Badge>
+                )}
+              </Link>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">

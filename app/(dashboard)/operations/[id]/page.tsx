@@ -5,6 +5,7 @@ import { resolveUserPermissions } from "@/lib/permissions-agency"
 import { notFound } from "next/navigation"
 import { OperationDetailClient } from "@/components/operations/operation-detail-client"
 import { getOperationVisibleDocuments } from "@/lib/documents/operation-documents"
+import { fetchOperationPackage } from "@/lib/packages/queries"
 import {
   SELLER_OPTION_ROLES,
   SELLER_OPTION_SELECT,
@@ -238,8 +239,13 @@ export default async function OperationDetailPage({
     .order("name")
   const operators = (operatorsData || []) as Array<{ id: string; name: string }>
 
+  // VIB-183: de qué paquete salió esta venta. El vínculo vive en
+  // travel_package_bookings, así que sin esto el detalle no lo puede saber.
+  const travelPackage = await fetchOperationPackage(supabase, userOrgId, id)
+
   return (
     <OperationDetailClient
+      travelPackage={travelPackage}
       operation={operationWithoutCustomers}
       customers={operationCustomers || []}
       documents={documents || []}

@@ -289,6 +289,60 @@ export async function fetchPackageConsumingOperations(
   })
 }
 
+export interface OperationTravelPackage {
+  package_id: string
+  name: string
+  destination: string | null
+  departure_date: string | null
+  return_date: string | null
+  status: string
+  /** Plazas que esta operación le ocupa al paquete. */
+  seats: number
+}
+
+/**
+ * Paquete del que salió una operación, o null si se cargó suelta.
+ *
+ * El vínculo es la fila de `travel_package_bookings`: la operación no guarda el
+ * paquete en ninguna columna propia, así que sin esta consulta el detalle no
+ * tiene forma de saber de dónde vino la venta.
+ */
+export async function fetchOperationPackage(
+  supabase: SupabaseClient<Database>,
+  orgId: string,
+  operationId: string
+): Promise<OperationTravelPackage | null> {
+  const { data, error } = await (supabase.from("travel_package_bookings") as any)
+    .select(
+      `
+      seats, package_id,
+      travel_packages:package_id ( id, name, destination, departure_date, return_date, status )
+    `
+    )
+    .eq("org_id", orgId)
+    .eq("operation_id", operationId)
+    .maybeSingle()
+
+  // Que no se sepa el paquete no puede romper el detalle de la operación: se
+  // registra y la pantalla sigue mostrando todo lo demás.
+  if (error) {
+    console.error("[packages] no se pudo leer el paquete de la operación:", error)
+    return null
+  }
+  if (!data?.travel_packages) return null
+
+  const pkg = data.travel_packages
+  return {
+    package_id: pkg.id,
+    name: pkg.name,
+    destination: pkg.destination ?? null,
+    departure_date: pkg.departure_date ?? null,
+    return_date: pkg.return_date ?? null,
+    status: pkg.status,
+    seats: Number(data.seats) || 0,
+  }
+}
+
 /** Venta acumulada de las operaciones que consumen cupo, separada por moneda. */
 export function sumSalesByCurrency(
   operations: PackageConsumingOperation[]
