@@ -42,9 +42,16 @@ export async function GET(
     return NextResponse.json({ messages: [] })
   }
 
+  // `sender_name` sale del pushName que viene dentro de raw_payload. Se extrae
+  // en la base y no se trae la columna entera: raw_payload pesa ~2,6 kB por
+  // mensaje (hasta 85 kB), así que una ventana de 100 movía ~260 kB —y en el
+  // peor caso varios MB— en cada refresco, para leer un solo campo y descartar
+  // todo lo demás.
   let query = supabase
     .from("wa_messages")
-    .select("id, direction, message_type, body_text, sent_at, from_me, participant_jid, raw_payload")
+    .select(
+      "id, direction, message_type, body_text, sent_at, from_me, participant_jid, sender_name:raw_payload->>pushName"
+    )
     .eq("org_id", auth.orgId) // SaaS tenant scope
 
   // Use .in() for multiple chat IDs, .eq() for single
@@ -72,16 +79,11 @@ export async function GET(
   // Si vinieron `limit` filas, probablemente hay más historial hacia atrás.
   const hasMore = (messages || []).length === limit
 
-  // Extract sender_name from raw_payload.pushName and strip raw_payload from response.
   // Revertimos a orden ascendente (contrato que espera la UI: más viejo → más nuevo).
   const enriched = (messages || [])
     .slice()
     .reverse()
-    .map((msg: any) => {
-      const senderName = msg.raw_payload?.pushName || null
-      const { raw_payload, ...rest } = msg
-      return { ...rest, sender_name: senderName }
-    })
+    .map((msg: any) => ({ ...msg, sender_name: msg.sender_name || null }))
 
   return NextResponse.json({ messages: enriched, hasMore })
 }

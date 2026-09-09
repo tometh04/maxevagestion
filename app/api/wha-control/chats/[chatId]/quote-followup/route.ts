@@ -100,7 +100,7 @@ export async function POST(
     return NextResponse.json(
       {
         error:
-          "Configurá el seguimiento primero (pestaña Seguimientos de WHA Control)",
+          "Configurá el seguimiento primero (pestaña Seguimientos de la Central)",
       },
       { status: 409 }
     )

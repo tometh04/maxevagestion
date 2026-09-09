@@ -57,7 +57,7 @@ export function PasswordGate({ children }: PasswordGateProps) {
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-accent-coral/10 dark:bg-accent-coral/30">
             <Lock className="h-8 w-8 text-accent-coral dark:text-accent-coral" />
           </div>
-          <CardTitle className="text-2xl font-semibold tracking-tight">WHA Control</CardTitle>
+          <CardTitle className="text-2xl font-semibold tracking-tight">Central</CardTitle>
           <CardDescription>Ingresá el PIN para acceder</CardDescription>
         </CardHeader>
         <CardContent>

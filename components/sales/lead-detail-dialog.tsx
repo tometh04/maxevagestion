@@ -764,7 +764,7 @@ export function LeadDetailDialog({
                       <a
                         href={`/tools/wha-control?phone=${encodeURIComponent(lead.contact_phone)}`}
                         className="flex items-center gap-1.5 text-sm hover:underline truncate"
-                        title="Abrir el chat en WHA Control"
+                        title="Abrir el chat en la Central"
                       >
                         {lead.contact_phone}
                         <MessageCircle className="h-3.5 w-3.5 text-success flex-shrink-0" />
