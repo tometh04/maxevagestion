@@ -16,7 +16,6 @@ import {
   Megaphone,
   Library,
   BookOpen,
-  Package,
 } from "lucide-react"
 import Link from "next/link"
 import { shouldShowInSidebar, type UserRole, type Module } from "@/lib/permissions"
@@ -140,27 +139,24 @@ const allNavigation: NavItem[] = [
     url: "/operations",
     icon: Plane,
     module: "operations",
+    // Paquetería (VIB-183) declara `module: "packages"`, propio y distinto del
+    // grupo: un vendedor puede consultar el cupo de un paquete sin poder
+    // armarlo, y armarlo es permiso de admin.
+    //
+    // Por eso los demás subítems repiten `module: "operations"` en vez de
+    // heredarlo. El filtrado saltea el gate del grupo en cuanto ALGÚN subítem
+    // trae módulo propio; hoy los otros igual lo heredan por el fallback
+    // `subItem.module || item.module`, pero explicitarlo los hace
+    // independientes de esa vía. Mismo criterio que Contabilidad.
     items: [
-      { title: "Operaciones", url: "/operations" },
-      { title: "Reservas", url: "/operations/reservations" },
-      { title: "Reservas por hotel", url: "/operations/hotel-bookings" },
-      { title: "Estadísticas", url: "/operations/statistics" },
-      { title: "Facturación", url: "/operations/billing" },
-      { title: "Configuración", url: "/operations/settings" },
+      { title: "Operaciones", url: "/operations", module: "operations" as const },
+      { title: "Reservas", url: "/operations/reservations", module: "operations" as const },
+      { title: "Reservas por hotel", url: "/operations/hotel-bookings", module: "operations" as const },
+      { title: "Paquetería", url: "/packages", module: "packages" as const },
+      { title: "Estadísticas", url: "/operations/statistics", module: "operations" as const },
+      { title: "Facturación", url: "/operations/billing", module: "operations" as const },
+      { title: "Configuración", url: "/operations/settings", module: "operations" as const },
     ],
-  },
-  // 4b. Paquetería (paquetes cerrados con cupo, VIB-183)
-  //
-  // Módulo propio y no un subitem de Operaciones: el vendedor tiene que poder
-  // consultar el cupo de un paquete sin permiso de escritura sobre operaciones,
-  // y el permiso de armar paquetes es del admin. Sin `addon`: es núcleo, no un
-  // complemento facturable.
-  {
-    title: "Paquetería",
-    url: "/packages",
-    icon: Package,
-    module: "packages",
-    collapsible: false,
   },
   // 5. Finanzas — la plata que se mueve hoy.
   //

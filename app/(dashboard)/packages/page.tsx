@@ -27,6 +27,12 @@ function Shell({ children }: { children: React.ReactNode }) {
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
+            <BreadcrumbLink asChild>
+              <Link href="/operations">Operaciones</Link>
+            </BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
             <BreadcrumbPage>Paquetería</BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>

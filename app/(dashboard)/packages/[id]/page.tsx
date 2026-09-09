@@ -62,6 +62,12 @@ export default async function PackageDetailPage({
           <BreadcrumbSeparator />
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
+              <Link href="/operations">Operaciones</Link>
+            </BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbLink asChild>
               <Link href="/packages">Paquetería</Link>
             </BreadcrumbLink>
           </BreadcrumbItem>
