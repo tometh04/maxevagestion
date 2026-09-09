@@ -725,17 +725,17 @@ export function NewOperationDialog({
       if (values.destination && !form.getValues("destination")) {
         form.setValue("destination", values.destination)
       }
-      // Las fechas del paquete son columnas DATE ("YYYY-MM-DD") y el formulario
-      // trabaja con Date. parseDateOnlyLocal evita el corrimiento de un día que
-      // produciría `new Date(string)` en UTC-3.
+      // Las fechas SÍ se imponen (no "solo si está vacío" como el destino):
+      // un paquete cerrado ES su salida, y abajo quedan bloqueadas. Si se
+      // respetara lo que el vendedor tipeó antes, el campo quedaría bloqueado
+      // mostrando una fecha que no es la del paquete.
+      //
+      // parseDateOnlyLocal porque son columnas DATE ("YYYY-MM-DD") y el
+      // formulario trabaja con Date: `new Date(string)` correría un día en UTC-3.
       const salida = parseDateOnlyLocal(values.departure_date)
-      if (salida && !form.getValues("departure_date")) {
-        form.setValue("departure_date", salida)
-      }
+      if (salida) form.setValue("departure_date", salida)
       const regreso = parseDateOnlyLocal(values.return_date)
-      if (regreso && !form.getValues("return_date")) {
-        form.setValue("return_date", regreso)
-      }
+      if (regreso) form.setValue("return_date", regreso)
       if (values.sale_amount_total !== undefined) {
         form.setValue("sale_amount_total", values.sale_amount_total)
         if (values.sale_currency) form.setValue("sale_currency", values.sale_currency)
@@ -817,6 +817,21 @@ export function NewOperationDialog({
   const cupoInsuficiente = Boolean(
     selectedPackage && paxCargados > remainingSeats(selectedPackage)
   )
+
+  /**
+   * Un paquete cerrado ES su fecha de salida: el pasajero ocupa una plaza de
+   * ESA salida. Cambiarla no sería corregir un dato, sería decir que la venta
+   * no pertenece a ese bloque, y sin embargo seguiría descontando cupo.
+   *
+   * Por eso van bloqueadas y sin botón de "editar", a diferencia de los costos
+   * de las patas: un costo sí puede cambiar de verdad (el hotel aumentó), una
+   * fecha no. Si hace falta otra fecha, es otro paquete.
+   *
+   * Solo se bloquea lo que el paquete define: si no tiene fechas cargadas, los
+   * campos siguen libres.
+   */
+  const salidaBloqueadaPorPaquete = Boolean(selectedPackage?.departure_date)
+  const regresoBloqueadoPorPaquete = Boolean(selectedPackage?.return_date)
 
   // Calcular costo total de operadores
   const totalOperatorCost = filledOperators.reduce((sum, op) => sum + (Number(op.cost) || 0), 0)
@@ -2208,8 +2223,14 @@ export function NewOperationDialog({
                         onChange={field.onChange}
                         placeholder="dd/MM/yyyy"
                         minDate={new Date()}
+                        disabled={salidaBloqueadaPorPaquete}
                       />
                         </FormControl>
+                    {salidaBloqueadaPorPaquete && (
+                      <p className="text-xs text-muted-foreground">
+                        La fija el paquete cerrado. Para otra fecha, elegí otro paquete.
+                      </p>
+                    )}
                     <FormMessage />
                   </FormItem>
                 )}
@@ -2229,8 +2250,14 @@ export function NewOperationDialog({
                           onChange={field.onChange}
                           placeholder="dd/MM/yyyy"
                           minDate={departureDate || new Date()}
+                          disabled={regresoBloqueadoPorPaquete}
                         />
                         </FormControl>
+                    {regresoBloqueadoPorPaquete && (
+                      <p className="text-xs text-muted-foreground">
+                        La fija el paquete cerrado.
+                      </p>
+                    )}
                     <FormMessage />
                   </FormItem>
                   )
