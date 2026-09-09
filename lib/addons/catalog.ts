@@ -120,7 +120,7 @@ export const ADDONS: Record<AddonKey, AddonDefinition> = {
   },
   wha_control: {
     key: "wha_control",
-    name: "Central de WhatsApp",
+    name: "WhatsApp central",
     description:
       "WhatsApp multi-dispositivo: vinculás los teléfonos de la agencia y seguís las conversaciones.",
     highlights: [

@@ -233,7 +233,7 @@ const allNavigation: NavItem[] = [
         iconSrc: "/agente-blanco-icon.png",
         addon: "agente_blanco",
       },
-      { title: "Central", url: "/tools/wha-control", addon: "wha_control" as const },
+      { title: "WhatsApp central", url: "/tools/wha-control", addon: "wha_control" as const },
       // Pendientes 3.2: el v2 import vivía sólo via URL directa. Lo colgamos
       // de Herramientas (admin task) en vez de Configuración para evitar
       // duplicación con el tab "Importación" del legacy en /settings.

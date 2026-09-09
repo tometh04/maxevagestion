@@ -100,7 +100,7 @@ export async function POST(
     return NextResponse.json(
       {
         error:
-          "Configurá el seguimiento primero (pestaña Seguimientos de la Central)",
+          "Configurá el seguimiento primero (pestaña Seguimientos de WhatsApp central)",
       },
       { status: 409 }
     )

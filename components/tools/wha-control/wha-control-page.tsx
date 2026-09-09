@@ -33,9 +33,9 @@ export function WhaControlPage({
     <PasswordGate>
       <div className="flex flex-1 flex-col">
         <div className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight">Central</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">WhatsApp central</h1>
           <p className="text-sm text-muted-foreground">
-            Los WhatsApp de la agencia, en un solo lugar
+            Todos los teléfonos de la agencia, en un solo lugar
           </p>
         </div>
 
