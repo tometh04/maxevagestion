@@ -7,6 +7,7 @@ import { Separator } from "@/components/ui/separator"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
   Hotel,
+  Star,
   MapPin,
   Calendar,
   ChevronLeft,
@@ -225,8 +226,9 @@ export function HotelResultCard({
               <div className="flex items-center gap-2">
                 <Hotel className="h-4 w-4 text-primary" />
                 <h3 className="font-semibold text-base">{hotel.name}</h3>
-                <Badge variant="secondary" className="text-xs">
-                  {hotel.category}
+                <Badge variant="secondary" className="shrink-0 gap-1 whitespace-nowrap text-xs" aria-label={hotel.category}>
+                  {hotel.category.replace(/\s*(?:estrellas?|stars?|\*)\s*/gi, "").trim()}
+                  <Star className="h-3 w-3 fill-current" aria-hidden="true" />
                 </Badge>
               </div>
 
