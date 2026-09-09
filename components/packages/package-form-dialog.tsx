@@ -518,7 +518,10 @@ export function PackageFormDialog({
                     key={index}
                     className="grid gap-3 rounded-md border bg-muted/30 p-3 sm:grid-cols-12"
                   >
-                    <div className="space-y-1.5 sm:col-span-4">
+                    {/* Fila 1: quién y qué. Fila 2: la plata. Antes entraba
+                        todo en una sola fila y el costo quedaba en un campo
+                        donde no se leía el número. */}
+                    <div className="space-y-1.5 sm:col-span-6">
                       <Label className="text-xs">Operador</Label>
                       <SearchableCombobox
                         value={item.operator_id}
@@ -536,7 +539,7 @@ export function PackageFormDialog({
                       />
                     </div>
 
-                    <div className="space-y-1.5 sm:col-span-3">
+                    <div className="space-y-1.5 sm:col-span-5">
                       <Label className="text-xs">Producto</Label>
                       <Select
                         value={item.product_type || "NONE"}
@@ -558,45 +561,7 @@ export function PackageFormDialog({
                       </Select>
                     </div>
 
-                    <div className="space-y-1.5 sm:col-span-2">
-                      <Label className="text-xs">Costo</Label>
-                      <div className="flex gap-1">
-                        <Input
-                          type="number"
-                          min={0}
-                          step="0.01"
-                          value={item.cost}
-                          onChange={(e) => updateItem(index, { cost: e.target.value })}
-                          placeholder="0.00"
-                        />
-                        <Select
-                          value={item.cost_currency}
-                          onValueChange={(v) => updateItem(index, { cost_currency: v as Currency })}
-                        >
-                          <SelectTrigger className="w-[4.5rem] shrink-0 px-2">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="USD">USD</SelectItem>
-                            <SelectItem value="ARS">ARS</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-
-                    <div className="space-y-1.5 sm:col-span-2">
-                      <Label className="text-xs">Venta</Label>
-                      <Input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        value={item.sale_amount}
-                        onChange={(e) => updateItem(index, { sale_amount: e.target.value })}
-                        placeholder="0.00"
-                      />
-                    </div>
-
-                    <div className="flex items-end sm:col-span-1">
+                    <div className="flex items-end justify-end sm:col-span-1">
                       <Button
                         type="button"
                         variant="ghost"
@@ -606,6 +571,57 @@ export function PackageFormDialog({
                       >
                         <Trash2 className="h-4 w-4 text-muted-foreground" />
                       </Button>
+                    </div>
+
+                    <div className="space-y-1.5 sm:col-span-3">
+                      <Label className="text-xs">Costo</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={item.cost}
+                        onChange={(e) => updateItem(index, { cost: e.target.value })}
+                        placeholder="0.00"
+                        className="tabular-nums"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5 sm:col-span-2">
+                      <Label className="text-xs">Moneda</Label>
+                      <Select
+                        value={item.cost_currency}
+                        onValueChange={(v) => updateItem(index, { cost_currency: v as Currency })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="USD">USD</SelectItem>
+                          <SelectItem value="ARS">ARS</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-1.5 sm:col-span-3">
+                      <Label className="text-xs">Venta</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={item.sale_amount}
+                        onChange={(e) => updateItem(index, { sale_amount: e.target.value })}
+                        placeholder="0.00"
+                        className="tabular-nums"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5 sm:col-span-4">
+                      <Label className="text-xs">Notas</Label>
+                      <Input
+                        value={item.notes}
+                        onChange={(e) => updateItem(index, { notes: e.target.value })}
+                        placeholder="Opcional"
+                      />
                     </div>
                   </div>
                 ))}

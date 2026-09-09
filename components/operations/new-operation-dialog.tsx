@@ -44,6 +44,7 @@ import { CalendarIcon, Plus, Trash2, AlertCircle, Loader2, Building2, User, Plan
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
 import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { cn } from "@/lib/utils"
@@ -318,6 +319,10 @@ export function NewOperationDialog({
   const [packages, setPackages] = useState<ApplicablePackage[]>([])
   const [selectedPackageId, setSelectedPackageId] = useState<string>("NONE")
   const [pendingPackageId, setPendingPackageId] = useState<string | null>(null)
+  // La mayoría de las ventas NO son sobre un paquete. El selector arranca
+  // plegado detrás de un switch para no ocupar lugar ni sugerir que hay que
+  // elegir algo en el caso normal.
+  const [packageEnabled, setPackageEnabled] = useState(false)
   // El total de venta pasa a "manual" en cuanto el usuario lo escribe a mano, y
   // vuelve a seguir a las fichas cuando toca un precio de venta de ficha.
   const [saleTotalManual, setSaleTotalManual] = useState(false)
@@ -751,6 +756,25 @@ export function NewOperationDialog({
   }
 
   /**
+   * Prender el switch solo abre el selector. Apagarlo saca el paquete, y si eso
+   * descarta fichas ya cargadas pasa por la misma confirmación que cambiarlo:
+   * el switch recién se apaga cuando el usuario confirma.
+   */
+  const togglePaquete = (activado: boolean) => {
+    if (activado) {
+      setPackageEnabled(true)
+      return
+    }
+    const { removedCount } = mergeOperatorRowsWithPackage(operatorList, [])
+    if (removedCount > 0) {
+      setPendingPackageId("NONE")
+      return
+    }
+    setSelectedPackageId("NONE")
+    setPackageEnabled(false)
+  }
+
+  /**
    * Pasajeros cargados, para avisar si no entran en el cupo que queda.
    *
    * Sin useMemo a propósito: `form.watch` se suscribe al campo durante el
@@ -1052,6 +1076,7 @@ export function NewOperationDialog({
       setOperatorList([])
       setCompanionList([])
       setSelectedPackageId("NONE")
+      setPackageEnabled(false)
       setApiError(null)
     } catch (error) {
       console.error("Error creating operation:", error)
@@ -1084,6 +1109,7 @@ export function NewOperationDialog({
     setOperatorList([])
     setCompanionList([])
     setSelectedPackageId("NONE")
+    setPackageEnabled(false)
     onOpenChange(false)
     setPendingClose(false)
   }
@@ -1508,11 +1534,24 @@ export function NewOperationDialog({
                 {/* VIB-183: elegir un paquete cerrado carga sus patas de una.
                     Solo precarga el formulario — el cupo lo toma el POST. */}
                 {allowPackages && packages.length > 0 && (
-                  <div className="space-y-2 md:max-w-[calc(50%-0.75rem)]">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-sm font-medium">Paquete cerrado</span>
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        id="usar-paquete-cerrado"
+                        checked={packageEnabled}
+                        onCheckedChange={togglePaquete}
+                      />
+                      <Label
+                        htmlFor="usar-paquete-cerrado"
+                        className="cursor-pointer text-sm font-normal"
+                      >
+                        Esta venta sale de un paquete cerrado
+                      </Label>
                       <FieldHelp text="Carga de una vez todos los operadores del paquete y descuenta una plaza por pasajero. Podés editar los costos y sumar operadores extra por fuera: lo cerrado del paquete es el cupo, no los precios." />
                     </div>
+
+                    {packageEnabled && (
+                  <div className="space-y-2 md:max-w-[calc(50%-0.75rem)]">
                     <Select value={selectedPackageId} onValueChange={handlePackageChange}>
                       <SelectTrigger>
                         <SelectValue placeholder="Sin paquete" />
@@ -1538,6 +1577,8 @@ export function NewOperationDialog({
                           ? `Quedan ${remainingSeats(selectedPackage)} plaza(s) y esta venta necesita ${paxCargados}.`
                           : `Quedan ${remainingSeats(selectedPackage)} plaza(s); esta venta ocupa ${paxCargados}.`}
                       </p>
+                    )}
+                  </div>
                     )}
                   </div>
                 )}
@@ -2680,6 +2721,9 @@ export function NewOperationDialog({
             <AlertDialogAction
               onClick={() => {
                 if (pendingPackageId) applyPackage(pendingPackageId)
+                // Quitar el paquete además apaga el switch; si el usuario
+                // cancela, el switch queda prendido y no se tocó nada.
+                if (pendingPackageId === "NONE") setPackageEnabled(false)
                 setPendingPackageId(null)
               }}
             >
