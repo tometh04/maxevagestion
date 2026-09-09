@@ -89,6 +89,10 @@ const MEDIA_TYPES = new Set(["image", "sticker", "video", "audio", "voice", "doc
 const MESSAGES_POLL_MS = 7000
 const CHATS_POLL_MS = 15000
 
+// Tamaño de tanda del listado. Un dispositivo con años de uso tiene cientos de
+// conversaciones; se traen de a poco y el resto se pide al llegar al final.
+const CHATS_PAGE_SIZE = 40
+
 // El connector persiste el mensaje saliente recién cuando Baileys emite su eco,
 // así que después de enviar se reintenta unas cuantas veces en vez de una sola.
 const ECHO_RETRY_DELAYS_MS = [600, 1500, 3000]
@@ -172,6 +176,9 @@ export function InboxView({ agencies, quoteFollowupEnabled = false, initialPhone
   const [messages, setMessages] = useState<Message[]>([])
   const [search, setSearch] = useState("")
   const [loadingChats, setLoadingChats] = useState(false)
+  const [loadingMoreChats, setLoadingMoreChats] = useState(false)
+  const [hasMoreChats, setHasMoreChats] = useState(false)
+  const paginasCargadas = useRef(0)
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [showThread, setShowThread] = useState(false)
   const [hasMore, setHasMore] = useState(false)
@@ -250,28 +257,67 @@ export function InboxView({ agencies, quoteFollowupEnabled = false, initialPhone
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedAgencyId, filteredDevices.length])
 
-  // Load chats when device changes
-  const fetchChats = useCallback(async () => {
-    if (!selectedDeviceId) return
-    setLoadingChats(true)
-    try {
-      const params = new URLSearchParams({ deviceId: selectedDeviceId, limit: "100" })
-      if (search) params.set("search", search)
-      const res = await fetch(`/api/wha-control/chats?${params}`)
-      if (res.ok) {
-        const data = await res.json()
-        setChats(data.chats || [])
-      }
-    } catch (err) {
-      console.error("Error fetching chats:", err)
-    } finally {
-      setLoadingChats(false)
-    }
-  }, [selectedDeviceId, search])
+  // Une el refresco con lo que ya está en pantalla: sin esto, cada ciclo
+  // reemplazaba la lista entera y el usuario veía desaparecer los chats.
+  const mergeChatLists = useCallback((previos: Chat[], frescos: Chat[]) => {
+    const porId = new Map(previos.map((c) => [c.id, c]))
+    for (const chat of frescos) porId.set(chat.id, chat)
+    return Array.from(porId.values()).sort((a, b) => {
+      const ta = a.last_message_at ? new Date(a.last_message_at).getTime() : 0
+      const tb = b.last_message_at ? new Date(b.last_message_at).getTime() : 0
+      return tb - ta
+    })
+  }, [])
 
+  /**
+   * `initial` es la única que muestra el esqueleto de carga; `refresh` trae la
+   * primera tanda y la funde con lo que hay (silenciosa); `more` agrega la
+   * tanda siguiente. Traer de a tandas evita bajar miles de conversaciones
+   * históricas de una.
+   */
+  const fetchChats = useCallback(
+    async (mode: "initial" | "refresh" | "more" = "refresh") => {
+      if (!selectedDeviceId) return
+      if (mode === "initial") setLoadingChats(true)
+      if (mode === "more") setLoadingMoreChats(true)
+      const pagina = mode === "more" ? paginasCargadas.current : 0
+      try {
+        const params = new URLSearchParams({
+          deviceId: selectedDeviceId,
+          limit: String(CHATS_PAGE_SIZE),
+          offset: String(pagina * CHATS_PAGE_SIZE),
+        })
+        if (search) params.set("search", search)
+        const res = await fetch(`/api/wha-control/chats?${params}`)
+        if (res.ok) {
+          const data = await res.json()
+          const frescos: Chat[] = data.chats || []
+          // El servidor puede sumar la otra mitad de una conversación partida,
+          // así que el corte se mide contra lo pedido, no contra lo recibido.
+          setHasMoreChats((data.hasMore ?? frescos.length >= CHATS_PAGE_SIZE) === true)
+          if (mode === "initial") {
+            paginasCargadas.current = 1
+            setChats(frescos)
+          } else {
+            if (mode === "more") paginasCargadas.current += 1
+            setChats((prev) => mergeChatLists(prev, frescos))
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching chats:", err)
+      } finally {
+        if (mode === "initial") setLoadingChats(false)
+        if (mode === "more") setLoadingMoreChats(false)
+      }
+    },
+    [selectedDeviceId, search, mergeChatLists]
+  )
+
+  // Cambiar de dispositivo o de búsqueda arranca de cero; el polling solo funde.
   useEffect(() => {
-    fetchChats()
-    const interval = setInterval(fetchChats, CHATS_POLL_MS)
+    paginasCargadas.current = 0
+    fetchChats("initial")
+    const interval = setInterval(() => fetchChats("refresh"), CHATS_POLL_MS)
     return () => clearInterval(interval)
   }, [fetchChats])
 
@@ -858,6 +904,23 @@ export function InboxView({ agencies, quoteFollowupEnabled = false, initialPhone
                 </button>
                 )
               })}
+              {hasMoreChats && (
+                <div className="p-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-full text-xs text-muted-foreground"
+                    onClick={() => fetchChats("more")}
+                    disabled={loadingMoreChats}
+                  >
+                    {loadingMoreChats ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      "Ver conversaciones anteriores"
+                    )}
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </ScrollArea>

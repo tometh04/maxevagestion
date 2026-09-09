@@ -68,7 +68,12 @@ export async function GET(request: Request) {
 
   await attachUnreadCounts(supabase, mergedChats, auth.orgId)
 
-  return NextResponse.json({ chats: mergedChats })
+  // Se mide contra la página cruda: el merge puede sumar la otra mitad de una
+  // conversación partida o fusionar dos filas en una, así que el largo del
+  // resultado no dice nada sobre si quedan más por traer.
+  const hasMore = (chats?.length ?? 0) >= limit
+
+  return NextResponse.json({ chats: mergedChats, hasMore })
 }
 
 /**
