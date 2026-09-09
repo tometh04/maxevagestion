@@ -9,6 +9,11 @@ export async function GET(request: Request) {
   const auth = await whaControlAuthGuard()
   if (!auth.authorized) return auth.response
 
+  // Las métricas son del equipo entero: solo administración.
+  if (!auth.isWhaAdmin) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
+  }
+
   const { searchParams } = new URL(request.url)
   const deviceId = searchParams.get("deviceId")
   const agencyId = searchParams.get("agencyId")

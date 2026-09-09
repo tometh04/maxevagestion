@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 import { createAdminClient } from "@/lib/supabase/server"
 import { whaControlAuthGuard } from "@/lib/wha-control/auth-guard"
+import { filterAccessibleChatIds, scopeFromAuth } from "@/lib/wha-control/access"
 
 const schema = z.object({
   // Las dos mitades de una conversación partida por LID se marcan juntas.
@@ -41,7 +42,14 @@ export async function POST(
   // orgId del caller, así que no se puede marcar el chat de otro tenant.
   const supabase = createAdminClient() as any
 
-  const ids = Array.from(new Set([...(parsed.chatIds ?? []), chatId]))
+  const ids = await filterAccessibleChatIds(
+    supabase,
+    scopeFromAuth(auth),
+    Array.from(new Set([...(parsed.chatIds ?? []), chatId]))
+  )
+  if (ids.length === 0) {
+    return NextResponse.json({ error: "Chat no encontrado" }, { status: 404 })
+  }
 
   const { error } = await supabase
     .from("wa_chats")

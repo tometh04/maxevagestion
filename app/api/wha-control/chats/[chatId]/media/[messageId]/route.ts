@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { whaControlAuthGuard } from "@/lib/wha-control/auth-guard"
+import { getAccessibleDevice, scopeFromAuth } from "@/lib/wha-control/access"
 import { callConnector } from "@/lib/wha-control/connector-client"
 
 /**
@@ -29,6 +30,17 @@ export async function GET(
     .maybeSingle()
 
   if (!msg) {
+    return NextResponse.json({ error: "Mensaje no encontrado" }, { status: 404 })
+  }
+
+  // Un vendedor solo baja la media de su propio teléfono.
+  const device = await getAccessibleDevice(
+    supabase,
+    scopeFromAuth(auth),
+    msg.device_id,
+    "id"
+  )
+  if (!device) {
     return NextResponse.json({ error: "Mensaje no encontrado" }, { status: 404 })
   }
 

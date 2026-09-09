@@ -475,8 +475,13 @@ export function AppSidebar({
 
             // Ocultar Cerebro para SELLER
 
-            // Ocultar WHA Control para todos excepto SUPER_ADMIN y ADMIN
-            if (subItem.url === "/tools/wha-control" && !["SUPER_ADMIN", "ADMIN"].includes(userRole)) {
+            // WhatsApp central: administración ve todos los teléfonos y el
+            // vendedor solo el suyo, así que entran ambos. Queda afuera quien no
+            // atiende clientes por WhatsApp (contable, viewer).
+            if (
+              subItem.url === "/tools/wha-control" &&
+              !["SUPER_ADMIN", "ORG_OWNER", "ADMIN", "SELLER", "POST_VENTA"].includes(userRole)
+            ) {
               return null
             }
             // Ocultar Importar CSV para todos excepto SUPER_ADMIN y ADMIN

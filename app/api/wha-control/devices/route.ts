@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { whaControlAuthGuard } from "@/lib/wha-control/auth-guard"
+import {
+  getAccessibleDevice,
+  scopeDevicesQuery,
+  scopeFromAuth,
+} from "@/lib/wha-control/access"
 import { callConnector } from "@/lib/wha-control/connector-client"
 
 // Prioridad para elegir el "mejor" device de un mismo teléfono.
@@ -43,11 +48,12 @@ export async function GET(request: Request) {
   const agencyId = searchParams.get("agencyId")
 
   const supabase = createAdminClient() as any
-  let devicesQuery = supabase
-    .from("wa_devices")
-    .select("*, agencies:agency_id(id, name)")
-    .eq("org_id", auth.orgId) // SaaS: acotar al tenant del caller
-    .order("created_at", { ascending: false })
+  // Administración ve los teléfonos de toda la organización; un vendedor, solo
+  // el suyo.
+  let devicesQuery = scopeDevicesQuery(
+    supabase.from("wa_devices").select("*, agencies:agency_id(id, name)"),
+    scopeFromAuth(auth)
+  ).order("created_at", { ascending: false })
 
   if (!includeInactive) {
     devicesQuery = devicesQuery.eq("is_active", true)
@@ -150,6 +156,19 @@ export async function POST(request: Request) {
   }
   if (agencyId) insertData.agency_id = agencyId
 
+  // El vendedor vincula SU línea: el dueño sale de la sesión, nunca del body, y
+  // se da de baja la anterior para que tenga una sola activa. La administración
+  // puede seguir vinculando teléfonos de la agencia, que quedan sin dueño.
+  if (!auth.isWhaAdmin) {
+    insertData.user_id = auth.user.id
+    await supabase
+      .from("wa_devices")
+      .update({ is_active: false, status: "DISCONNECTED" })
+      .eq("org_id", auth.orgId)
+      .eq("user_id", auth.user.id)
+      .eq("is_active", true)
+  }
+
   const { data: device, error } = await supabase
     .from("wa_devices")
     .insert(insertData)
@@ -186,6 +205,12 @@ export async function DELETE(request: Request) {
   }
 
   const supabase = createAdminClient() as any
+
+  // Un vendedor solo puede desvincular su propio teléfono.
+  const device = await getAccessibleDevice(supabase, scopeFromAuth(auth), id, "id")
+  if (!device) {
+    return NextResponse.json({ error: "Device no encontrado" }, { status: 404 })
+  }
 
   // Stop connector socket first (best effort)
   await callConnector(`/devices/${id}/stop`, "POST")

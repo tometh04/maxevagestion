@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 import { createAdminClient } from "@/lib/supabase/server"
 import { whaControlAuthGuard } from "@/lib/wha-control/auth-guard"
+import { getAccessibleDevice, scopeFromAuth } from "@/lib/wha-control/access"
 import { sendWhaMessage } from "@/lib/wha-control/send-message"
 import { phoneToWaJid } from "@/lib/wha-control/phone"
 
@@ -47,12 +48,12 @@ export async function POST(request: Request) {
   // contra el orgId del caller antes de llamar al connector.
   const supabase = createAdminClient() as any
 
-  const { data: device } = await supabase
-    .from("wa_devices")
-    .select("id, status")
-    .eq("id", parsed.deviceId)
-    .eq("org_id", auth.orgId)
-    .maybeSingle()
+  const device = await getAccessibleDevice(
+    supabase,
+    scopeFromAuth(auth),
+    parsed.deviceId,
+    "id, status"
+  )
 
   if (!device) {
     return NextResponse.json({ error: "Device no encontrado" }, { status: 404 })

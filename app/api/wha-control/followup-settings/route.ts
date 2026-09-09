@@ -42,6 +42,12 @@ export async function PUT(request: Request) {
   const auth = await whaControlAuthGuard()
   if (!auth.authorized) return auth.response
 
+  // La espera, el texto y la ventana horaria son de la organización: las define
+  // quien administra, no cada vendedor.
+  if (!auth.isWhaAdmin) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
+  }
+
   let parsed: z.infer<typeof putSchema>
   try {
     const body = await request.json()

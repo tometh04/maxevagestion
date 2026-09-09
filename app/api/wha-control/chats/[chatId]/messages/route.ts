@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { whaControlAuthGuard } from "@/lib/wha-control/auth-guard"
+import { filterAccessibleChatIds, scopeFromAuth } from "@/lib/wha-control/access"
 
 export async function GET(
   request: Request,
@@ -31,13 +32,14 @@ export async function GET(
     }
   }
 
-  // Pre-validar que TODOS los chatIds pertenezcan al org del caller.
-  const { data: validChats } = await supabase
-    .from("wa_chats")
-    .select("id")
-    .in("id", requestedChatIds)
-    .eq("org_id", auth.orgId)
-  const allChatIds = (validChats || []).map((c: any) => c.id)
+  // Pre-validar que TODOS los chatIds sean de la org y, para un vendedor, de su
+  // propio teléfono: los ids extra vienen de la URL y hay que tratarlos como
+  // entrada del usuario.
+  const allChatIds = await filterAccessibleChatIds(
+    supabase,
+    scopeFromAuth(auth),
+    requestedChatIds
+  )
   if (allChatIds.length === 0) {
     return NextResponse.json({ messages: [] })
   }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { whaControlAuthGuard } from "@/lib/wha-control/auth-guard"
+import { getAccessibleDevice, scopeFromAuth } from "@/lib/wha-control/access"
 import { callConnector } from "@/lib/wha-control/connector-client"
 
 export async function GET(
@@ -14,15 +15,17 @@ export async function GET(
 
   const supabase = createAdminClient() as any
 
-  const { data, error } = await supabase
-    .from("wa_devices")
-    .select("qr_value, status, phone_number")
-    .eq("id", id)
-    .eq("org_id", auth.orgId) // SaaS tenant scope
-    .single()
+  // El QR es la llave para vincular una sesión de WhatsApp: solo lo ve quien es
+  // dueño del teléfono, o quien administra.
+  const data = await getAccessibleDevice(
+    supabase,
+    scopeFromAuth(auth),
+    id,
+    "qr_value, status, phone_number"
+  )
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  if (!data) {
+    return NextResponse.json({ error: "Device no encontrado" }, { status: 404 })
   }
 
   // For devices waiting for QR, ask the connector for the current QR value.

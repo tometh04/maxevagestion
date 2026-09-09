@@ -11,7 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { ArrowDown, ArrowLeft, FileCheck2, History, Loader2, MessageSquare, MessageSquarePlus, Paperclip, Search, Send, Smile, Timer, User, Users, X } from "lucide-react"
+import { ArrowDown, ArrowLeft, FileCheck2, History, Loader2, MessageSquare, MessageSquarePlus, Paperclip, Search, Send, Smartphone, Smile, Timer, User, Users, X } from "lucide-react"
 import { phoneSearchFragment } from "@/lib/wha-control/phone"
 import { formatDistanceToNow } from "date-fns"
 import { es } from "date-fns/locale"
@@ -79,6 +79,8 @@ interface InboxViewProps {
   quoteFollowupEnabled?: boolean
   /** Teléfono para abrir directo el chat (link desde un lead). */
   initialPhone?: string
+  /** El vendedor tiene un solo teléfono: no necesita elegir agencia ni device. */
+  isWhaAdmin?: boolean
 }
 
 const MEDIA_TYPES = new Set(["image", "sticker", "video", "audio", "voice", "document"])
@@ -167,7 +169,12 @@ function mergeById(a: Message[], b: Message[]): Message[] {
   return Array.from(map.values()).sort((x, y) => x.sent_at.localeCompare(y.sent_at))
 }
 
-export function InboxView({ agencies, quoteFollowupEnabled = false, initialPhone }: InboxViewProps) {
+export function InboxView({
+  agencies,
+  quoteFollowupEnabled = false,
+  initialPhone,
+  isWhaAdmin = false,
+}: InboxViewProps) {
   const [devices, setDevices] = useState<Device[]>([])
   const [selectedAgencyId, setSelectedAgencyId] = useState<string>("all")
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>("")
@@ -771,32 +778,36 @@ export function InboxView({ agencies, quoteFollowupEnabled = false, initialPhone
     <div className="flex h-[calc(100vh-240px)] min-h-[500px] gap-4">
       {/* Chat List Panel */}
       <div className={`w-full md:w-80 flex-shrink-0 flex flex-col gap-3 ${showThread ? "hidden md:flex" : "flex"}`}>
-        {/* Agency filter */}
-        <Select value={selectedAgencyId} onValueChange={setSelectedAgencyId}>
-          <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background">
-            <SelectValue placeholder="Agencia" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todas las agencias</SelectItem>
-            {agencies.map((a) => (
-              <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {/* Elegir agencia y teléfono es cosa de administración: el vendedor
+            tiene uno solo y no necesita el selector ocupando lugar. */}
+        {isWhaAdmin && (
+          <>
+            <Select value={selectedAgencyId} onValueChange={setSelectedAgencyId}>
+              <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background">
+                <SelectValue placeholder="Agencia" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas las agencias</SelectItem>
+                {agencies.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-        {/* Device selector */}
-        <Select value={selectedDeviceId} onValueChange={(v) => { setSelectedDeviceId(v); setSelectedChat(null); setShowThread(false) }}>
-          <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
-            <SelectValue placeholder="Seleccionar dispositivo" />
-          </SelectTrigger>
-          <SelectContent>
-            {filteredDevices.map((d) => (
-              <SelectItem key={d.id} value={d.id}>
-                {d.display_name} {d.phone_number ? `(${d.phone_number})` : ""}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+            <Select value={selectedDeviceId} onValueChange={(v) => { setSelectedDeviceId(v); setSelectedChat(null); setShowThread(false) }}>
+              <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
+                <SelectValue placeholder="Seleccionar dispositivo" />
+              </SelectTrigger>
+              <SelectContent>
+                {filteredDevices.map((d) => (
+                  <SelectItem key={d.id} value={d.id}>
+                    {d.display_name} {d.phone_number ? `(${d.phone_number})` : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </>
+        )}
 
         {/* Search + nuevo chat */}
         <div className="flex items-center gap-1.5">
@@ -826,6 +837,20 @@ export function InboxView({ agencies, quoteFollowupEnabled = false, initialPhone
           {loadingChats ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : !selectedDeviceId ? (
+            // Un vendedor sin teléfono vinculado: el inbox vacío no explica
+            // nada, así que se le dice qué hacer.
+            <div className="flex flex-col items-center justify-center gap-2 px-6 py-12 text-center">
+              <Smartphone className="h-8 w-8 text-muted-foreground/40" />
+              <p className="text-sm font-medium">
+                {isWhaAdmin ? "No hay teléfonos vinculados" : "Todavía no vinculaste tu teléfono"}
+              </p>
+              <p className="max-w-[220px] text-xs text-muted-foreground">
+                {isWhaAdmin
+                  ? "Vinculá un teléfono desde la pestaña Dispositivos."
+                  : "Andá a “Mi teléfono” y escaneá el código con tu WhatsApp para empezar."}
+              </p>
             </div>
           ) : chats.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">

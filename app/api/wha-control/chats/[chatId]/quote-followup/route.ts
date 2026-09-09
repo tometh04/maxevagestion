@@ -5,6 +5,12 @@ import { whaControlAuthGuard } from "@/lib/wha-control/auth-guard"
 import { getOrgFeatureFlag } from "@/lib/settings/org-features"
 import { FEATURE_FLAG_WHA_QUOTE_FOLLOWUP } from "@/lib/feature-flags"
 import { computeScheduledFor } from "@/lib/wha-control/quote-followups"
+import {
+  filterAccessibleChatIds,
+  getAccessibleChat,
+  getAccessibleDevice,
+  scopeFromAuth,
+} from "@/lib/wha-control/access"
 
 const markSchema = z.object({
   // _chatIds del merge de conversaciones partidas por LID (incluye chatId).
@@ -56,12 +62,12 @@ export async function POST(
     )
   }
 
-  const { data: chat } = await supabase
-    .from("wa_chats")
-    .select("id, device_id, remote_jid, is_group")
-    .eq("id", chatId)
-    .eq("org_id", auth.orgId)
-    .maybeSingle()
+  const chat = await getAccessibleChat(
+    supabase,
+    scopeFromAuth(auth),
+    chatId,
+    "id, device_id, remote_jid, is_group"
+  )
 
   if (!chat) {
     return NextResponse.json({ error: "Chat no encontrado" }, { status: 404 })
@@ -73,14 +79,18 @@ export async function POST(
     )
   }
 
-  // Validar los chats linkeados (merge LID) contra org y device.
+  // Validar los chats linkeados (merge LID) contra org, alcance y device.
   const linkedIds = Array.from(new Set([...(parsed.chatIds ?? []), chat.id]))
   if (linkedIds.length > 1) {
+    const accesibles = await filterAccessibleChatIds(
+      supabase,
+      scopeFromAuth(auth),
+      linkedIds
+    )
     const { data: linked } = await supabase
       .from("wa_chats")
       .select("id")
-      .in("id", linkedIds)
-      .eq("org_id", auth.orgId)
+      .in("id", accesibles)
       .eq("device_id", chat.device_id)
     if ((linked ?? []).length !== linkedIds.length) {
       return NextResponse.json(
@@ -172,6 +182,22 @@ export async function DELETE(
 
   // adminDb justificado: update CAS filtrado por org_id del caller.
   const supabase = createAdminClient() as any
+
+  // El followupId viene del cliente: hay que confirmar que el seguimiento sea
+  // de un teléfono al que este usuario tiene acceso.
+  const { data: followup } = await supabase
+    .from("wa_quote_followups")
+    .select("id, device_id")
+    .eq("id", parsed.followupId)
+    .eq("org_id", auth.orgId)
+    .maybeSingle()
+
+  if (
+    !followup ||
+    !(await getAccessibleDevice(supabase, scopeFromAuth(auth), followup.device_id, "id"))
+  ) {
+    return NextResponse.json({ error: "Seguimiento no encontrado" }, { status: 404 })
+  }
 
   const { data: updated, error } = await supabase
     .from("wa_quote_followups")

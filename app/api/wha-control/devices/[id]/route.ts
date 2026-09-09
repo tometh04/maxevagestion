@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { whaControlAuthGuard } from "@/lib/wha-control/auth-guard"
+import { getAccessibleDevice, scopeFromAuth } from "@/lib/wha-control/access"
 import { callConnector } from "@/lib/wha-control/connector-client"
 
 export async function DELETE(
@@ -14,12 +15,7 @@ export async function DELETE(
   const supabase = createAdminClient() as any
 
   // SaaS: verificar que el device pertenece al tenant del caller.
-  const { data: device } = await supabase
-    .from("wa_devices")
-    .select("id")
-    .eq("id", id)
-    .eq("org_id", auth.orgId)
-    .maybeSingle()
+  const device = await getAccessibleDevice(supabase, scopeFromAuth(auth), id, "id")
   if (!device) {
     return NextResponse.json({ error: "Device no encontrado" }, { status: 404 })
   }

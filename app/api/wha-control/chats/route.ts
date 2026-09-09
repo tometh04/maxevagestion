@@ -4,6 +4,7 @@ import { whaControlAuthGuard } from "@/lib/wha-control/auth-guard"
 import { getOrgFeatureFlag } from "@/lib/settings/org-features"
 import { FEATURE_FLAG_WHA_QUOTE_FOLLOWUP } from "@/lib/feature-flags"
 import { mergeConversationPairs as mergeConversationPairsPure } from "@/lib/wha-control/merge-chats"
+import { getAccessibleDevice, scopeFromAuth } from "@/lib/wha-control/access"
 
 // Cuánto sigue visible en el listado un seguimiento que ya terminó. Sin esto el
 // estado desaparecía apenas se enviaba o cancelaba, y el vendedor no tenía
@@ -26,13 +27,10 @@ export async function GET(request: Request) {
 
   const supabase = createAdminClient() as any
 
-  // SaaS: el device debe pertenecer a la org del caller.
-  const { data: device } = await supabase
-    .from("wa_devices")
-    .select("id")
-    .eq("id", deviceId)
-    .eq("org_id", auth.orgId)
-    .maybeSingle()
+  // El device debe ser de la org y, si quien pregunta es un vendedor, suyo:
+  // sin esto alcanzaba con cambiar el id en la URL para leer el WhatsApp de un
+  // compañero.
+  const device = await getAccessibleDevice(supabase, scopeFromAuth(auth), deviceId, "id")
   if (!device) {
     return NextResponse.json({ error: "Device no encontrado" }, { status: 404 })
   }

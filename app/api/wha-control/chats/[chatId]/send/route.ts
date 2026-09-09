@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 import { createAdminClient } from "@/lib/supabase/server"
 import { whaControlAuthGuard } from "@/lib/wha-control/auth-guard"
+import { getAccessibleChat, scopeFromAuth } from "@/lib/wha-control/access"
 import { sendWhaMessage } from "@/lib/wha-control/send-message"
 
 const sendSchema = z
@@ -66,12 +67,7 @@ export async function POST(
   // orgId del caller antes de resolver device/remote_jid para evitar forge de URL.
   const supabase = createAdminClient() as any
 
-  const { data: chat } = await supabase
-    .from("wa_chats")
-    .select("id, device_id, remote_jid")
-    .eq("id", chatId)
-    .eq("org_id", auth.orgId)
-    .maybeSingle()
+  const chat = await getAccessibleChat(supabase, scopeFromAuth(auth), chatId, "id, device_id, remote_jid")
 
   if (!chat) {
     return NextResponse.json({ error: "Chat no encontrado" }, { status: 404 })

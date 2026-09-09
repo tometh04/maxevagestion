@@ -14,9 +14,18 @@ export default async function WhaControlPageRoute({
   const { user } = await getCurrentUser()
   const { phone } = await searchParams
 
-  if (!["SUPER_ADMIN", "ADMIN"].includes(user.role)) {
+  // Un vendedor entra a vincular su teléfono y atender lo suyo; la API acota
+  // qué ve (lib/wha-control/access.ts).
+  const rolesDelUsuario: string[] = (user as any).roles ?? [user.role]
+  const puedeEntrar = rolesDelUsuario.some((r) =>
+    ["SUPER_ADMIN", "ORG_OWNER", "ADMIN", "SELLER", "POST_VENTA"].includes(r)
+  )
+  if (!puedeEntrar) {
     redirect("/dashboard")
   }
+  const esAdminDeWha = rolesDelUsuario.some((r) =>
+    ["SUPER_ADMIN", "ORG_OWNER", "ADMIN"].includes(r)
+  )
 
   const supabase = await createServerClient()
   const agencies = await getScopedAgenciesForUser(supabase, user)
@@ -34,6 +43,7 @@ export default async function WhaControlPageRoute({
         agencies={agencies}
         quoteFollowupEnabled={quoteFollowupEnabled}
         initialPhone={phone}
+        isWhaAdmin={esAdminDeWha}
       />
     </div>
   )
