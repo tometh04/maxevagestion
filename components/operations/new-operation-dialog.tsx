@@ -40,7 +40,7 @@ import {
 } from "@/components/ui/select"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { CalendarIcon, Plus, Trash2, AlertCircle, Loader2, Building2, User, Plane, DollarSign, Ticket, MapPin, Users, Package, HelpCircle } from "lucide-react"
+import { CalendarIcon, Plus, Trash2, AlertCircle, Loader2, Building2, User, Plane, DollarSign, Ticket, MapPin, Users, Package, HelpCircle, Pencil, Lock } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
 import { Label } from "@/components/ui/label"
@@ -323,6 +323,13 @@ export function NewOperationDialog({
   // plegado detrás de un switch para no ocupar lugar ni sugerir que hay que
   // elegir algo en el caso normal.
   const [packageEnabled, setPackageEnabled] = useState(false)
+  /**
+   * Las patas que trajo el paquete arrancan bloqueadas: se ven como listado y
+   * no se tocan hasta que el usuario lo pida explícitamente. Editarlas NO
+   * libera el cupo — la plaza la ocupa el pasajero, no el precio — así que
+   * bloquearlas es para que nadie las cambie sin querer, no un candado real.
+   */
+  const [packageRowsLocked, setPackageRowsLocked] = useState(true)
   // El total de venta pasa a "manual" en cuanto el usuario lo escribe a mano, y
   // vuelve a seguir a las fichas cuando toca un precio de venta de ficha.
   const [saleTotalManual, setSaleTotalManual] = useState(false)
@@ -736,9 +743,29 @@ export function NewOperationDialog({
       }
 
       setSelectedPackageId(packageId)
+      // Un paquete nuevo vuelve a entrar bloqueado, aunque se hubiera
+      // desbloqueado el anterior.
+      setPackageRowsLocked(true)
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [packages, leadCurrency]
+  )
+
+  /** Fichas que trajo el paquete, en el orden en que llegaron. */
+  const packageRows = React.useMemo(
+    () => operatorList.filter((op) => Boolean(op.source_package_item_id)),
+    [operatorList]
+  )
+
+  const nombreOperador = React.useCallback(
+    (id: string) => localOperators.find((o) => o.id === id)?.name || "Operador",
+    [localOperators]
+  )
+
+  const etiquetaProducto = React.useCallback(
+    (value?: string) =>
+      value ? availableProductTypes.find((p) => p.value === value)?.label || value : null,
+    [availableProductTypes]
   )
 
   /**
@@ -1634,7 +1661,75 @@ export function NewOperationDialog({
                 </div>
 
                 <div className="space-y-3">
-                {operatorList.map((op, index) => (
+                {/* VIB-183: las patas que trajo el paquete se muestran como
+                    listado y no se editan hasta que el usuario lo pida. No es
+                    un candado real: editarlas NO libera el cupo, porque la
+                    plaza la ocupa el pasajero y no el precio. Es para que nadie
+                    las cambie sin darse cuenta. */}
+                {packageRowsLocked && packageRows.length > 0 && (
+                  <div className="rounded-lg border bg-background">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2.5">
+                      <span className="flex items-center gap-1.5 text-sm font-medium">
+                        <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                        Patas del paquete ({packageRows.length})
+                      </span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPackageRowsLocked(false)}
+                      >
+                        <Pencil className="mr-1.5 h-3.5 w-3.5" />
+                        Editar patas
+                      </Button>
+                    </div>
+
+                    <div className="divide-y">
+                      {packageRows.map((op, i) => (
+                        <div
+                          key={op.source_package_item_id || i}
+                          className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-4 py-2.5 text-sm"
+                        >
+                          <span className="min-w-0">
+                            <span className="font-medium">{nombreOperador(op.operator_id)}</span>
+                            {etiquetaProducto(op.product_type) && (
+                              <span className="text-muted-foreground">
+                                {" · "}
+                                {etiquetaProducto(op.product_type)}
+                              </span>
+                            )}
+                          </span>
+                          <span className="tabular-nums text-muted-foreground">
+                            Costo {op.cost_currency}{" "}
+                            {(Number(op.cost) || 0).toLocaleString("es-AR", {
+                              minimumFractionDigits: 2,
+                            })}
+                            {Number(op.sale_amount) > 0 && (
+                              <>
+                                {" · Venta "}
+                                {Number(op.sale_amount).toLocaleString("es-AR", {
+                                  minimumFractionDigits: 2,
+                                })}
+                              </>
+                            )}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+
+                    <p className="border-t px-4 py-2 text-xs text-muted-foreground">
+                      Editar los costos no libera el cupo: la venta sigue ocupando su lugar en el
+                      paquete.
+                    </p>
+                  </div>
+                )}
+
+                {operatorList.map((op, index) =>
+                  // Bloqueadas: no se renderiza la ficha editable, pero la fila
+                  // sigue en `operatorList` y se envía igual. Se mapea sobre la
+                  // lista COMPLETA para que `index` no se corra: es el que usan
+                  // updateOperator y removeOperator.
+                  op.source_package_item_id && packageRowsLocked ? null : (
                     <div key={index} className="bg-background border rounded-lg p-4 space-y-3">
                       {/* Con una sola ficha no hace falta numerarla ni poder
                           borrarla: para dejar la operación sin operador se
@@ -1859,7 +1954,8 @@ export function NewOperationDialog({
                         </div>
                       </div>
                   </div>
-                ))}
+                  )
+                )}
                 </div>
 
                 {filledOperators.length > 0 && (
