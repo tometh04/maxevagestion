@@ -139,7 +139,7 @@ const allNavigation: NavItem[] = [
     url: "/operations",
     icon: Plane,
     module: "operations",
-    // Paquetería (VIB-183) declara `module: "packages"`, propio y distinto del
+    // Grupales y Cupo (VIB-183) declara `module: "packages"`, propio y distinto del
     // grupo: un vendedor puede consultar el cupo de un paquete sin poder
     // armarlo, y armarlo es permiso de admin.
     //
@@ -152,7 +152,7 @@ const allNavigation: NavItem[] = [
       { title: "Operaciones", url: "/operations", module: "operations" as const },
       { title: "Reservas", url: "/operations/reservations", module: "operations" as const },
       { title: "Reservas por hotel", url: "/operations/hotel-bookings", module: "operations" as const },
-      { title: "Paquetería", url: "/packages", module: "packages" as const },
+      { title: "Grupales y Cupo", url: "/packages", module: "packages" as const },
       { title: "Estadísticas", url: "/operations/statistics", module: "operations" as const },
       { title: "Facturación", url: "/operations/billing", module: "operations" as const },
       { title: "Configuración", url: "/operations/settings", module: "operations" as const },

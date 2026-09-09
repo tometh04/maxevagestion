@@ -5,7 +5,7 @@ import type { Database } from "@/lib/supabase/types"
  * Lectura de paquetes cerrados con su cupo (VIB-183).
  *
  * Vive acá y no en la ruta porque lo consumen tres lugares: el listado de
- * Paquetería (Server Component), el selector del alta de operación y el
+ * Grupales y Cupo (Server Component), el selector del alta de operación y el
  * pre-chequeo del POST de operaciones. El "consumido" se calcula en UN solo
  * lado —la RPC `get_travel_package_availability`— para que nadie reimplemente
  * el JOIN contra operaciones canceladas por su cuenta.

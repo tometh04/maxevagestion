@@ -33,13 +33,13 @@ function Shell({ children }: { children: React.ReactNode }) {
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
-            <BreadcrumbPage>Paquetería</BreadcrumbPage>
+            <BreadcrumbPage>Grupales y Cupo</BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
 
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Paquetería</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Grupales y Cupo</h1>
         <p className="text-muted-foreground">
           Paquetes cerrados y cuántas plazas quedan de cada uno.
         </p>
@@ -56,7 +56,7 @@ export default async function PackagesPage() {
   if (!user.org_id || !canPerformAction(user, "packages", "read", matrix ?? undefined)) {
     return (
       <Shell>
-        <p className="text-muted-foreground">No tenés permiso para ver la paquetería.</p>
+        <p className="text-muted-foreground">No tenés permiso para ver Grupales y Cupo.</p>
       </Shell>
     )
   }

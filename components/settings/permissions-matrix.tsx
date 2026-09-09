@@ -54,7 +54,7 @@ const MODULE_LABELS: Record<string, string> = {
   documents: "Documentos",
   tasks: "Tareas",
   library: "Biblioteca",
-  packages: "Paquetería",
+  packages: "Grupales y Cupo",
 }
 
 const ALL_MODULES = Object.keys(MODULE_LABELS)

@@ -30,8 +30,8 @@ export default async function PackageDetailPage({
   if (!user.org_id || !canPerformAction(user, "packages", "read", matrix ?? undefined)) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Paquetería</h1>
-        <p className="text-muted-foreground">No tenés permiso para ver la paquetería.</p>
+        <h1 className="text-2xl font-semibold tracking-tight">Grupales y Cupo</h1>
+        <p className="text-muted-foreground">No tenés permiso para ver Grupales y Cupo.</p>
       </div>
     )
   }
@@ -68,7 +68,7 @@ export default async function PackageDetailPage({
           <BreadcrumbSeparator />
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
-              <Link href="/packages">Paquetería</Link>
+              <Link href="/packages">Grupales y Cupo</Link>
             </BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbSeparator />
