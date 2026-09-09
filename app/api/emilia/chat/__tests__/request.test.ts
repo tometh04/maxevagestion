@@ -41,6 +41,83 @@ describe("primer mensaje de un lead a Emilia", () => {
 
   afterEach(() => { global.fetch = originalFetch })
 
+  it.each([503, 504, "network", "timeout"])("recupera el despacho transitorio %s sin duplicar la búsqueda", async (failure) => {
+    const fetchMock = global.fetch as jest.Mock
+    if (typeof failure === "number") {
+      fetchMock.mockResolvedValueOnce(Response.json({ error: { message: "temporarily unavailable" } }, { status: failure }))
+    } else {
+      fetchMock.mockRejectedValueOnce(failure === "timeout"
+        ? new DOMException("aborted", "AbortError") : new TypeError("fetch failed"))
+    }
+    const response = await POST(new Request("http://localhost/api/emilia/chat", {
+      method: "POST", body: JSON.stringify({ message, conversationId, clientId }),
+    }))
+    expect(response.status).toBe(202)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock.mock.calls[0][1].body).toBe(fetchMock.mock.calls[1][1].body)
+    expect(fetchMock.mock.calls[1][1].headers["X-API-Key"]).toBe("test-key")
+    expect(query.insert).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([401, 402, 403, 409, 429])("no reintenta un rechazo definitivo %s", async (status) => {
+    ;(global.fetch as jest.Mock).mockResolvedValue(Response.json({ error: { message: "rejected" } }, { status }))
+    const response = await POST(new Request("http://localhost/api/emilia/chat", {
+      method: "POST", body: JSON.stringify({ message, conversationId, clientId }),
+    }))
+    expect(response.status).toBe(status)
+    expect(global.fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it("acota los reintentos si la conexión sigue caída", async () => {
+    ;(global.fetch as jest.Mock).mockRejectedValue(new TypeError("fetch failed"))
+    const response = await POST(new Request("http://localhost/api/emilia/chat", {
+      method: "POST", body: JSON.stringify({ message, conversationId, clientId }),
+    }))
+    expect(response.status).toBe(503)
+    expect(global.fetch).toHaveBeenCalledTimes(2)
+    expect((await response.json()).error).not.toContain("fetch failed")
+  })
+
+  it("corta una respuesta colgada y recupera el mismo trabajo aunque ya haya recibido las cabeceras", async () => {
+    jest.useFakeTimers()
+    try {
+      ;(global.fetch as jest.Mock).mockImplementationOnce(async (_url, init) => ({
+        status: 202, ok: true,
+        text: () => new Promise((_resolve, reject) => {
+          init.signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")))
+        }),
+      }))
+      const pending = POST(new Request("http://localhost/api/emilia/chat", {
+        method: "POST", body: JSON.stringify({ message, conversationId, clientId }),
+      }))
+      await jest.advanceTimersByTimeAsync(7_500)
+      const response = await pending
+      expect(response.status).toBe(202)
+      expect(global.fetch).toHaveBeenCalledTimes(2)
+      expect(jest.getTimerCount()).toBe(0)
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
+  it("termina dentro del presupuesto total si ambos despachos se cuelgan", async () => {
+    jest.useFakeTimers()
+    try {
+      ;(global.fetch as jest.Mock).mockImplementation((_url, init) => new Promise((_resolve, reject) => {
+        init.signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")))
+      }))
+      const pending = POST(new Request("http://localhost/api/emilia/chat", {
+        method: "POST", body: JSON.stringify({ message, conversationId, clientId }),
+      }))
+      await jest.advanceTimersByTimeAsync(15_000)
+      expect((await pending).status).toBe(504)
+      expect(global.fetch).toHaveBeenCalledTimes(2)
+      expect(jest.getTimerCount()).toBe(0)
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
   it.each([null, undefined, { city: "Rosario", country: "Argentina" }])(
     "despacha el primer prompt con origen %j sin Solicitud inválida",
     async (defaultOrigin) => {

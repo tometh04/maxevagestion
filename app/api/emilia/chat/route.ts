@@ -1,3 +1,4 @@
+import { dispatchEmiliaTurn } from "@/lib/emilia/dispatch"
 import { getCurrentUser } from "@/lib/auth"
 import { createAdminClient, createServerClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
@@ -159,11 +160,10 @@ export async function POST(request: Request) {
     }
     const configuredTimeout = Number(process.env.EMILIA_API_DISPATCH_TIMEOUT_MS || 15_000)
     const timeoutMs = Number.isFinite(configuredTimeout) && configuredTimeout > 0 ? configuredTimeout : 15_000
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), timeoutMs)
     let response: Response
+    let data: any
     try {
-      response = await fetch(getAsyncEmiliaUrl(), {
+      ;({ response, data } = await dispatchEmiliaTurn(getAsyncEmiliaUrl(), {
         method: "POST",
         headers: {
           "X-API-Key": apiKey,
@@ -172,22 +172,16 @@ export async function POST(request: Request) {
           "Origin": "https://app.vibook.ai",
         },
         body: JSON.stringify(apiPayload),
-        signal: controller.signal,
         cache: "no-store",
-      })
+      }, timeoutMs))
     } catch (error: any) {
-      if (error?.name === "AbortError") {
-        return NextResponse.json(
-          { error: "No se pudo iniciar la búsqueda de Emilia. Intentá nuevamente." },
-          { status: 504 }
-        )
-      }
-      throw error
-    } finally {
-      clearTimeout(timeout)
+      console.error("[Emilia API] Dispatch unavailable", { requestId, errorType: error?.name })
+      return NextResponse.json(
+        { error: "Emilia no pudo confirmar el inicio de la búsqueda por un problema temporal de conexión. Intentá nuevamente.", code: "emilia_dispatch_unavailable" },
+        { status: error?.name === "AbortError" ? 504 : 503 }
+      )
     }
 
-    const data = await response.json().catch(async () => ({ message: await response.text().catch(() => "") }))
     if (!response.ok) {
       console.error("[Emilia API] Error:", {
         status: response.status,
@@ -204,6 +198,12 @@ export async function POST(request: Request) {
       }
       if (response.status === 403) {
         return NextResponse.json({ error: "Sin permisos para realizar búsquedas. Contactá al administrador." }, { status: 403 })
+      }
+      if ([408, 502, 503, 504].includes(response.status)) {
+        return NextResponse.json(
+          { error: "Emilia no pudo confirmar el inicio de la búsqueda por un problema temporal de conexión. Intentá nuevamente.", code: "emilia_dispatch_unavailable" },
+          { status: response.status }
+        )
       }
       return NextResponse.json(
         { error: data?.error?.message || `Error al iniciar la búsqueda (${response.status})` },
