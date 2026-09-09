@@ -171,7 +171,17 @@ export function SearchableCombobox({
         align="start"
         side="bottom"
         sideOffset={4}
-        avoidCollisions={false}
+        // Preferido abajo, pero si no entra se da vuelta. Antes era
+        // `avoidCollisions={false}`, y el `onOpenAutoFocus` de abajo lo
+        // compensaba scrolleando el trigger hasta el tope de su contenedor.
+        // Ese truco no puede funcionar cuando el trigger es el ÚLTIMO elemento
+        // del contenedor: no queda nada abajo contra lo cual scrollear, así que
+        // la lista se abría igual hacia abajo y se cortaba contra el borde de
+        // la ventana. Con esto, en el caso normal sigue abriendo hacia abajo
+        // (el auto-scroll ya le hizo lugar) y sólo se da vuelta cuando de
+        // verdad no entra.
+        avoidCollisions
+        collisionPadding={12}
         onOpenAutoFocus={(e) => {
           // Scroll the trigger into view at the top when popover opens
           const trigger = document.querySelector('[aria-expanded="true"][role="combobox"]')

@@ -324,7 +324,10 @@ export function PackageFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+      {/* Columna flex con el cuerpo scrolleando y el footer fijo. Con todo en
+          un solo contenedor scrolleable, al llegar al final los botones
+          quedaban pegados a la última fila de patas. */}
+      <DialogContent className="flex max-h-[90vh] max-w-4xl flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Editar paquete" : "Nuevo paquete"}</DialogTitle>
           <DialogDescription>
@@ -332,6 +335,12 @@ export function PackageFormDialog({
           </DialogDescription>
         </DialogHeader>
 
+        {/* `data-scroll-container` lo busca SearchableCombobox para subir el
+            trigger antes de abrir la lista. */}
+        <div
+          data-scroll-container
+          className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-1 py-1"
+        >
         {loading ? (
           <div className="space-y-3 py-4">
             <Skeleton className="h-10 w-full" />
@@ -628,8 +637,9 @@ export function PackageFormDialog({
             )}
           </div>
         )}
+        </div>
 
-        <DialogFooter>
+        <DialogFooter className="border-t pt-4">
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             Cancelar
           </Button>
