@@ -69,12 +69,23 @@ export async function GET(request: Request) {
   // El management (includeInactive) ve todo para poder limpiar.
   const deduped = includeInactive ? devices || [] : dedupeByPhone(devices || [])
 
-  // Enrich with live connector status — single batch attempt
-  // If connector is unreachable, skip enrichment entirely (use DB status)
+  // Estado en vivo desde el connector. Es una llamada HTTP POR dispositivo, así
+  // que con el connector caído el listado tardaba lo que tardara el timeout más
+  // largo (10s por defecto). Se acota a 3s: si no contesta en ese lapso, se usa
+  // el estado guardado, que es lo que se mostraba igual.
+  const STATUS_TIMEOUT_MS = 3000
   const enriched = await Promise.all(
     deduped.map(async (device: any) => {
+      // Un device dado de baja en WhatsApp no vuelve solo: preguntar por él es
+      // gastar un round-trip para confirmar lo que ya sabemos.
+      if (device.status === "LOGGED_OUT") return device
       try {
-        const result = await callConnector(`/devices/${device.id}/status`)
+        const result = await callConnector(
+          `/devices/${device.id}/status`,
+          "GET",
+          undefined,
+          STATUS_TIMEOUT_MS
+        )
         if (!result.ok) return device // Connector unreachable, use DB status as-is
 
         const liveStatus = result.data

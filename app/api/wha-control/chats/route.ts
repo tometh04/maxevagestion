@@ -156,23 +156,62 @@ async function attachQuoteFollowups(supabase: any, chats: any[], orgId: string) 
 }
 
 async function mergeConversationPairs(supabase: any, chats: any[], deviceId: string) {
-  const lidJids = chats
-    .filter((c: any) => !c.is_group && String(c.remote_jid || "").endsWith("@lid"))
+  const individuales = chats.filter((c: any) => !c.is_group)
+  const lidJids = individuales
+    .filter((c: any) => String(c.remote_jid || "").endsWith("@lid"))
+    .map((c: any) => c.remote_jid)
+  const phoneJids = individuales
+    .filter((c: any) => !String(c.remote_jid || "").endsWith("@lid"))
     .map((c: any) => c.remote_jid)
 
-  if (lidJids.length === 0) {
+  if (lidJids.length === 0 && phoneJids.length === 0) {
     return chats.map((c: any) => ({ ...c, _chatIds: [c.id] }))
   }
 
-  // Lookup indexado por (device_id, lid_jid) y acotado a los LID de esta página.
-  // Antes acá se leía la dirección de TODOS los mensajes de los chats listados
-  // en cada refresco de 30s, que en dispositivos con miles de mensajes era la
+  // Lookup indexado por (device_id, lid_jid) y acotado a lo que hay en la
+  // página. Antes acá se leía la dirección de TODOS los mensajes de los chats
+  // listados en cada refresco, que en dispositivos con miles de mensajes era la
   // consulta más cara del inbox.
-  const { data: lidMap } = await supabase
-    .from("wa_lid_map")
-    .select("lid_jid, phone_jid")
-    .eq("device_id", deviceId)
-    .in("lid_jid", lidJids)
+  // Dos consultas en vez de un `or`: los JID traen `@` y `.`, que hay que
+  // escapar a mano en el filtro compuesto de PostgREST y es fácil de romper.
+  const mapQuery = () =>
+    supabase.from("wa_lid_map").select("lid_jid, phone_jid").eq("device_id", deviceId)
+  const [porLid, porTelefono] = await Promise.all([
+    lidJids.length ? mapQuery().in("lid_jid", lidJids) : Promise.resolve({ data: [] }),
+    phoneJids.length ? mapQuery().in("phone_jid", phoneJids) : Promise.resolve({ data: [] }),
+  ])
+  const lidMap = Array.from(
+    new Map(
+      [...(porLid.data ?? []), ...(porTelefono.data ?? [])].map((r: any) => [
+        r.lid_jid,
+        r,
+      ])
+    ).values()
+  )
 
-  return mergeConversationPairsPure(chats, lidMap)
+  // Las dos mitades de una conversación tienen fechas distintas, así que una
+  // puede caer fuera de la página y la otra no: sin esto la conversación se
+  // seguía viendo partida, con la mitad @lid mostrando un id numérico en vez
+  // del contacto. Se traen las mitades faltantes por JID (índice único).
+  const presentes = new Set(individuales.map((c: any) => c.remote_jid))
+  const faltantes: string[] = []
+  for (const row of lidMap || []) {
+    if (presentes.has(row.lid_jid) && !presentes.has(row.phone_jid)) {
+      faltantes.push(row.phone_jid)
+    } else if (presentes.has(row.phone_jid) && !presentes.has(row.lid_jid)) {
+      faltantes.push(row.lid_jid)
+    }
+  }
+
+  let completos = chats
+  if (faltantes.length > 0) {
+    const { data: mitades } = await supabase
+      .from("wa_chats")
+      .select("*")
+      .eq("device_id", deviceId)
+      .in("remote_jid", Array.from(new Set(faltantes)))
+    if (mitades?.length) completos = [...chats, ...mitades]
+  }
+
+  return mergeConversationPairsPure(completos, lidMap)
 }
