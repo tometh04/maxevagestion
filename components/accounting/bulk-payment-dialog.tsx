@@ -50,6 +50,21 @@ interface FinancialAccount {
   type: string
   currency: "ARS" | "USD"
   current_balance?: number
+  /** Oficina dueña de la cuenta. `null` = cuenta compartida de la organización. */
+  agencies?: { id: string; name: string } | null
+}
+
+/**
+ * Etiqueta de una cuenta en los selectores.
+ *
+ * La oficina va en el nombre porque los nombres solos no alcanzan para
+ * distinguirlas: en Lozada la caja en pesos de Rosario se llama "Caja Pesos" y
+ * la de Madero "Caja Pesos MADERO", así que la primera parece la genérica y no
+ * hay forma de saber de qué sucursal sale la plata sin ir a Cuentas.
+ */
+function accountLabel(account: FinancialAccount): string {
+  const agencia = account.agencies?.name
+  return agencia ? `${account.name} · ${agencia}` : account.name
 }
 
 interface OperatorPayment {
@@ -824,7 +839,7 @@ export function BulkPaymentDialog({
                     <SelectContent>
                       {financialAccounts.map(account => (
                         <SelectItem key={account.id} value={account.id}>
-                          {account.name} ({account.currency})
+                          {accountLabel(account)} ({account.currency})
                           {account.current_balance !== undefined && (
                             <span className="text-xs text-muted-foreground ml-2">
                               - Balance: {formatCurrency(account.current_balance, account.currency)}
@@ -926,7 +941,7 @@ export function BulkPaymentDialog({
                             .filter((acc) => acc.id !== paymentAccountId)
                             .map((account) => (
                               <SelectItem key={account.id} value={account.id}>
-                                {account.name} ({account.currency})
+                                {accountLabel(account)} ({account.currency})
                               </SelectItem>
                             ))}
                         </SelectContent>
@@ -993,7 +1008,7 @@ export function BulkPaymentDialog({
                           ) : (
                             arsAccounts.map((account) => (
                               <SelectItem key={account.id} value={account.id}>
-                                {account.name}
+                                {accountLabel(account)}
                               </SelectItem>
                             ))
                           )}

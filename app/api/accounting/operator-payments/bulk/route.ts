@@ -12,6 +12,7 @@ import {
   buildFinancialCostMovement,
   buildFinancialCostConcept,
   buildFinancialIncomeConcept,
+  isFinancialResultAlreadyRegistered,
 } from "@/lib/accounting/financial-result"
 import { roundMoney } from "@/lib/currency"
 import { startOfDayAR } from "@/lib/utils/date-range"
@@ -768,17 +769,21 @@ export async function POST(request: Request) {
 
         // Sin esta guarda, un doble submit del mismo lote duplicaba la
         // ganancia financiera: el chequeo de duplicados del loop sólo cubre el
-        // EXPENSE de cada deuda.
-        const { data: existingBonus } = await (supabase.from("ledger_movements") as any)
-          .select("id")
-          .eq("org_id", (user as any).org_id)
-          .eq("type", "INCOME")
-          .eq("concept", bonusConcept)
-          .eq("account_id", deposit_bonus.bonus_account_id)
-          .limit(1)
+        // EXPENSE de cada deuda. Identifica al lote por importe y día además
+        // del comprobante, que se repite entre lotes (ver el módulo).
+        const yaRegistrada = await isFinancialResultAlreadyRegistered(supabase, {
+          orgId: (user as any).org_id,
+          type: "INCOME",
+          concept: bonusConcept,
+          accountId: deposit_bonus.bonus_account_id,
+          amount: bonusTotal,
+          dayStart: financialMovementDate,
+        })
 
-        if (existingBonus && existingBonus.length > 0) {
-          errors.push("La ganancia financiera de este comprobante ya estaba registrada, se omitió")
+        if (yaRegistrada) {
+          errors.push(
+            "La ganancia financiera ya estaba registrada para este comprobante, importe y fecha: se omitió para no duplicarla"
+          )
         } else {
           await createLedgerMovement(
             {
@@ -812,19 +817,22 @@ export async function POST(request: Request) {
       try {
         const feeConcept = buildFinancialCostConcept(receipt_number)
 
-        // El comprobante identifica la transferencia: dos lotes con el mismo
-        // comprobante y la misma cuenta registran una sola comisión, que es lo
-        // correcto —la financiera la cobró una vez.
-        const { data: existingFee } = await (supabase.from("ledger_movements") as any)
-          .select("id")
-          .eq("org_id", (user as any).org_id)
-          .eq("type", "EXPENSE")
-          .eq("concept", feeConcept)
-          .eq("account_id", financial_fee.account_id)
-          .limit(1)
+        // Un reintento del mismo lote registra una sola comisión —la financiera
+        // la cobró una vez—, pero dos lotes distintos que comparten comprobante
+        // son dos comisiones: por eso la identidad incluye importe y día.
+        const yaRegistrado = await isFinancialResultAlreadyRegistered(supabase, {
+          orgId: (user as any).org_id,
+          type: "EXPENSE",
+          concept: feeConcept,
+          accountId: financial_fee.account_id,
+          amount: financialFeeAmount,
+          dayStart: financialMovementDate,
+        })
 
-        if (existingFee && existingFee.length > 0) {
-          errors.push("El costo financiero de este comprobante ya estaba registrado, se omitió")
+        if (yaRegistrado) {
+          errors.push(
+            "El costo financiero ya estaba registrado para este comprobante, importe y fecha: se omitió para no duplicarlo"
+          )
         } else {
           await createLedgerMovement(
             buildFinancialCostMovement({

@@ -123,6 +123,83 @@ export function buildFinancialCostMovement(
   }
 }
 
+/**
+ * ¿El resultado financiero de ESTE lote ya está asentado?
+ *
+ * ── Por qué no alcanza con el comprobante ──────────────────────────────────
+ *
+ * La guarda original matcheaba concepto + cuenta, y el concepto lleva el número
+ * de comprobante. Eso presupone que el comprobante identifica una transferencia,
+ * pero en la práctica se repite: en Lozada "1111" es el número que cargan
+ * siempre. Resultado medido el 10/09: un lote de 24 pagos matcheó contra el
+ * costo financiero de OTRO lote del 21/08 y se saltó los $ 110.000 —y la
+ * ganancia de US$ 671,22 contra uno de agosto—. Los pagos entraron igual, así
+ * que la deuda quedó cancelada, la comisión nunca salió de la caja en pesos y
+ * la ganancia financiera nunca entró. Plata que desaparece con un cartel que
+ * dice "se omitió".
+ *
+ * La identidad de un lote es, entonces: mismo concepto (o sea mismo
+ * comprobante), misma cuenta, mismo importe y mismo DÍA argentino. Un reintento
+ * del mismo lote coincide en las cuatro cosas; un lote nuevo con el comprobante
+ * repetido difiere al menos en el importe o en el día.
+ *
+ * El día va como rango y no como igualdad porque un lote sin fecha de pago se
+ * asienta con `now()`: dos envíos del mismo lote caen en el mismo día pero no
+ * en el mismo instante.
+ */
+export async function isFinancialResultAlreadyRegistered(
+  supabase: any,
+  params: {
+    orgId: string
+    type: "INCOME" | "EXPENSE"
+    concept: string
+    accountId: string
+    amount: number
+    /** Inicio del día argentino del pago, o null si el lote no trae fecha. */
+    dayStart: string | null
+  }
+): Promise<boolean> {
+  let query = supabase
+    .from("ledger_movements")
+    .select("id")
+    .eq("org_id", params.orgId)
+    .eq("type", params.type)
+    .eq("concept", params.concept)
+    .eq("account_id", params.accountId)
+    .eq("amount_original", roundMoney(params.amount))
+
+  const dayStart = params.dayStart ?? todayStartAR()
+  query = query.gte("movement_date", dayStart).lt("movement_date", nextDayAR(dayStart))
+
+  const { data, error } = await query.limit(1)
+
+  if (error) {
+    // Sin la lectura no se puede afirmar que no exista. Se prefiere reportar
+    // "ya existe" antes que arriesgar un duplicado de plata: el faltante se ve
+    // en el cartel y se puede cargar a mano, un duplicado hay que salir a
+    // buscarlo.
+    console.error("[FinancialResult] No se pudo verificar duplicados:", error.message)
+    return true
+  }
+
+  return Array.isArray(data) && data.length > 0
+}
+
+/** Inicio del día argentino de hoy, en el mismo formato que `startOfDayAR`. */
+function todayStartAR(): string {
+  // -3h y recién ahí el día: entre las 21 y las 24 UTC ya es el día siguiente
+  // en UTC pero todavía es hoy en Argentina.
+  const enAR = new Date(Date.now() - 3 * 60 * 60 * 1000)
+  return `${enAR.toISOString().split("T")[0]}T00:00:00-03:00`
+}
+
+/** El inicio del día argentino siguiente, para cerrar el rango por arriba. */
+function nextDayAR(dayStart: string): string {
+  const dia = new Date(`${dayStart.split("T")[0]}T00:00:00Z`)
+  dia.setUTCDate(dia.getUTCDate() + 1)
+  return `${dia.toISOString().split("T")[0]}T00:00:00-03:00`
+}
+
 /** Concepto exacto del costo financiero de un lote. Compartido por el escritor
  *  y por la guarda de duplicados, que matchea por igualdad. */
 export function buildFinancialCostConcept(receiptNumber: string | null | undefined): string {

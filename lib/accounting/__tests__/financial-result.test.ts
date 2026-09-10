@@ -19,6 +19,7 @@ import {
   buildFinancialIncomeConcept,
   isFinancialCostConcept,
   isFinancialIncomeConcept,
+  isFinancialResultAlreadyRegistered,
 } from "../financial-result"
 
 describe("conceptos del resultado financiero", () => {
@@ -134,5 +135,114 @@ describe("buildFinancialCostMovement", () => {
     expect(mov.concept).toBe("Costo financiero por depósito")
     expect(mov.receipt_number).toBeNull()
     expect(isFinancialCostConcept(mov.concept)).toBe(true)
+  })
+})
+
+/**
+ * La guarda de duplicados del resultado financiero.
+ *
+ * El caso real (Lozada, 10/09/2026): un lote de 24 pagos con el comprobante
+ * "1111" —el número que cargan siempre— matcheó contra el costo financiero de
+ * OTRO lote del 21/08 y se saltó los $ 110.000, más la ganancia de US$ 671,22
+ * contra un movimiento de agosto. Los pagos entraron, la comisión nunca salió
+ * de la caja en pesos y la ganancia nunca entró.
+ */
+describe("isFinancialResultAlreadyRegistered", () => {
+  /** Cliente falso que registra los filtros aplicados y devuelve `rows`. */
+  function client(rows: any[]) {
+    const filtros: Array<{ method: string; args: any[] }> = []
+    const builder: any = new Proxy(
+      {},
+      {
+        get(_t, prop) {
+          if (prop === "then") {
+            return (resolve: any) => Promise.resolve({ data: rows, error: null }).then(resolve)
+          }
+          return (...args: any[]) => {
+            filtros.push({ method: String(prop), args })
+            return builder
+          }
+        },
+      }
+    )
+    return { supabase: { from: () => builder } as any, filtros }
+  }
+
+  const params = {
+    orgId: "org-lozada",
+    type: "EXPENSE" as const,
+    concept: "Costo financiero por depósito - 1111",
+    accountId: "acc-caja-pesos",
+    amount: 110000,
+    dayStart: "2026-09-10T00:00:00-03:00",
+  }
+
+  it("un lote nuevo con el comprobante repetido NO se toma por duplicado", async () => {
+    // El del 21/08 no entra en la ventana del día del lote nuevo.
+    const { supabase } = client([])
+
+    expect(await isFinancialResultAlreadyRegistered(supabase, params)).toBe(false)
+  })
+
+  it("acota por importe y por el día argentino, además del concepto y la cuenta", async () => {
+    const { supabase, filtros } = client([])
+
+    await isFinancialResultAlreadyRegistered(supabase, params)
+
+    const eq = (col: string) =>
+      filtros.find((f) => f.method === "eq" && f.args[0] === col)?.args[1]
+    expect(eq("concept")).toBe("Costo financiero por depósito - 1111")
+    expect(eq("account_id")).toBe("acc-caja-pesos")
+    expect(eq("amount_original")).toBe(110000)
+    expect(eq("org_id")).toBe("org-lozada")
+
+    expect(filtros.find((f) => f.method === "gte")?.args).toEqual([
+      "movement_date",
+      "2026-09-10T00:00:00-03:00",
+    ])
+    // Cierra en el día siguiente: un lote sin fecha se asienta con now() y dos
+    // envíos del mismo lote no caen en el mismo instante.
+    expect(filtros.find((f) => f.method === "lt")?.args).toEqual([
+      "movement_date",
+      "2026-09-11T00:00:00-03:00",
+    ])
+  })
+
+  it("el reintento del mismo lote sí es duplicado", async () => {
+    const { supabase } = client([{ id: "mov-1" }])
+
+    expect(await isFinancialResultAlreadyRegistered(supabase, params)).toBe(true)
+  })
+
+  it("si la lectura falla, se reporta como duplicado", async () => {
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {})
+    const builder: any = new Proxy(
+      {},
+      {
+        get(_t, prop) {
+          if (prop === "then") {
+            return (resolve: any) =>
+              Promise.resolve({ data: null, error: { message: "boom" } }).then(resolve)
+          }
+          return () => builder
+        },
+      }
+    )
+
+    // Un faltante se ve en el cartel y se carga a mano; un duplicado de plata
+    // hay que salir a buscarlo.
+    expect(await isFinancialResultAlreadyRegistered({ from: () => builder } as any, params)).toBe(
+      true
+    )
+    spy.mockRestore()
+  })
+
+  it("sin fecha de pago usa el día de hoy", async () => {
+    const { supabase, filtros } = client([])
+
+    await isFinancialResultAlreadyRegistered(supabase, { ...params, dayStart: null })
+
+    const gte = filtros.find((f) => f.method === "gte")?.args[1] as string
+    expect(gte).toMatch(/^\d{4}-\d{2}-\d{2}T00:00:00-03:00$/)
   })
 })
