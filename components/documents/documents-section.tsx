@@ -200,6 +200,9 @@ export function DocumentsSection({
       HOTEL: "Hotel",
       TRANSFER: "Traslado",
       INVOICE: "Factura",
+      // VIB-184: las cotizaciones adjuntas (VIB-114) llegan a la operación por
+      // el lead. Sin esta entrada el badge mostraba el string crudo.
+      QUOTATION: "Cotización",
       INVOICE_OPERATOR: "Factura Operador",
       INVOICE_CUSTOMER: "Factura Cliente",
       CONTRACT: "Contrato",

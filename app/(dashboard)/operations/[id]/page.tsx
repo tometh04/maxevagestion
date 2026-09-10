@@ -6,6 +6,8 @@ import { notFound } from "next/navigation"
 import { OperationDetailClient } from "@/components/operations/operation-detail-client"
 import { getOperationVisibleDocuments } from "@/lib/documents/operation-documents"
 import { fetchOperationPackage } from "@/lib/packages/queries"
+import { fetchOperationOrigin } from "@/lib/quotations/operation-origin"
+import { resolveAgencyPermissionScope } from "@/lib/permissions/agency-scope-server"
 import {
   SELLER_OPTION_ROLES,
   SELLER_OPTION_SELECT,
@@ -246,9 +248,27 @@ export default async function OperationDetailPage({
   // travel_package_bookings, así que sin esto el detalle no lo puede saber.
   const travelPackage = await fetchOperationPackage(supabase, userOrgId, id)
 
+  // VIB-184: de qué lead y con qué cotizaciones salió esta venta.
+  //
+  // El alcance se resuelve contra `leads` / `read`, no contra el gate de la
+  // operación: poder ver la venta no habilita a ver el CRM que la originó. Un
+  // asesor independiente tiene ese módulo en cero por techo, así que
+  // `fetchOperationOrigin` le devuelve vacío y el bloque no se dibuja.
+  const leadsScope = await resolveAgencyPermissionScope(supabase, user as any, "leads", "read")
+  const operationOrigin = await fetchOperationOrigin(supabase, {
+    orgId: userOrgId,
+    operationId: id,
+    leadId: op.lead_id,
+    customerIds: operationCustomers
+      .map((row: any) => row.customer_id || row.customers?.id)
+      .filter(Boolean),
+    scope: leadsScope,
+  })
+
   return (
     <OperationDetailClient
       travelPackage={travelPackage}
+      operationOrigin={operationOrigin}
       operation={operationWithoutCustomers}
       customers={operationCustomers || []}
       documents={documents || []}

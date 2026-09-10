@@ -27,6 +27,8 @@ import {
 } from "@/components/ui/tooltip"
 import { DocumentsSection } from "@/components/documents/documents-section"
 import type { OperationTravelPackage } from "@/lib/packages/queries"
+import type { OperationOrigin } from "@/lib/quotations/operation-origin"
+import { OperationOriginSection } from "@/components/operations/operation-origin-section"
 import { OperationAccountingSection } from "@/components/operations/operation-accounting-section"
 import { PurchaseInvoicesSection } from "@/components/operations/purchase-invoices-section"
 import { OperationSaleInvoicesSection } from "@/components/operations/operation-invoices-section"
@@ -184,6 +186,11 @@ interface OperationDetailClientProps {
   paymentWithholdings?: Array<{ source_id: string; type: string; amount: number; currency: string }>
   /** VIB-183: paquete del que salió esta venta, o null si se cargó suelta. */
   travelPackage?: OperationTravelPackage | null
+  /**
+   * VIB-184: lead de origen y sus cotizaciones. Ya viene filtrado por permisos
+   * desde el server; si el usuario no puede ver CRM llega vacío.
+   */
+  operationOrigin?: OperationOrigin | null
 }
 
 export function OperationDetailClient({
@@ -207,6 +214,7 @@ export function OperationDetailClient({
   operationLegs = [],
   paymentWithholdings = [],
   travelPackage = null,
+  operationOrigin = null,
 }: OperationDetailClientProps) {
   const router = useRouter()
   const [editDialogOpen, setEditDialogOpen] = useState(false)
@@ -263,6 +271,13 @@ export function OperationDetailClient({
   const operatorNameMap = useMemo(
     () => new Map(operators.map((operator) => [operator.id, operator.name])),
     [operators]
+  )
+  // VIB-184: las cotizaciones hechas con otra app se suben como documentos
+  // (type QUOTATION) y ya viajan en `documents`, así que se filtran acá en vez
+  // de pedirlas de nuevo: no agrega query ni una superficie de permisos nueva.
+  const quotationFiles = useMemo(
+    () => (documents || []).filter((doc: any) => doc.type === "QUOTATION"),
+    [documents]
   )
   // Email sugerido para "Enviar detalle al pasajero": cliente MAIN (o el primero).
   const mainCustomerEmail = useMemo(() => {
@@ -968,6 +983,12 @@ export function OperationDetailClient({
             </Card>
             )
           })()}
+
+          {/* VIB-184: lead de origen y cotizaciones. Se dibuja solo si hay algo
+              que mostrar: una operación cargada a mano no tiene origen. */}
+          {operationOrigin && (
+            <OperationOriginSection origin={operationOrigin} quotationFiles={quotationFiles} />
+          )}
 
           {/* Requisitos del destino */}
           <OperationRequirementsSection
