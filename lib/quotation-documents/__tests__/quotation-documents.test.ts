@@ -49,6 +49,73 @@ describe("quotation-documents deep module", () => {
     ]))
   })
 
+  it("gives every registered layout a default manifest that keeps its own key", () => {
+    for (const entry of getQuotationLayoutCatalog()) {
+      const manifest = createDefaultManifest(entry.key)
+      expect(manifest.layoutKey).toBe(entry.key)
+      expect(manifest.layoutVersion).toBe(entry.version)
+
+      const document = renderQuotationDocument({
+        model: cloneQuotationJson(KYO_FULL_ITINERARY_FIXTURE),
+        manifest,
+      })
+      expect(document.layoutKey).toBe(entry.key)
+      expect(document.pageCount).toBeGreaterThan(0)
+    }
+  })
+
+  it("renders the flight screenshot when the flight has no structured legs", () => {
+    // La mayoría de los vuelos cargados se guardan como captura del buscador,
+    // sin tramos. Un layout que sólo dibuje tramos deja esos vuelos reducidos
+    // a la aerolínea y la ruta.
+    const screenshot = "data:image/png;base64,iVBORw0KGgo="
+    const model = cloneQuotationJson(KYO_FULL_ITINERARY_FIXTURE)
+    model.options.forEach(option => {
+      option.items.forEach(item => {
+        if (item.flight) {
+          item.flight.legs = []
+          item.flight.screenshotUrl = screenshot
+        }
+      })
+    })
+
+    for (const entry of getQuotationLayoutCatalog()) {
+      const document = renderQuotationDocument({ model, manifest: createDefaultManifest(entry.key) })
+      expect(document.html).toContain(screenshot)
+    }
+  })
+
+  it("prefers structured legs over the screenshot when both are present", () => {
+    const screenshot = "data:image/png;base64,iVBORw0KGgo="
+    const model = cloneQuotationJson(KYO_FULL_ITINERARY_FIXTURE)
+    model.options.forEach(option => {
+      option.items.forEach(item => {
+        if (item.flight) item.flight.screenshotUrl = screenshot
+      })
+    })
+
+    for (const key of ["cover-editorial-v1", "brochure-cards-v1"]) {
+      const document = renderQuotationDocument({ model, manifest: createDefaultManifest(key) })
+      expect(document.html).not.toContain(screenshot)
+      expect(document.html).toContain("EZE")
+    }
+  })
+
+  it("renders the cover layouts with their cover page, comparison and per-option pricing", () => {
+    const model = cloneQuotationJson(KYO_FULL_ITINERARY_FIXTURE)
+
+    for (const key of ["cover-editorial-v1", "brochure-cards-v1"]) {
+      const document = renderQuotationDocument({ model, manifest: createDefaultManifest(key) })
+      // La portada es una página propia: el resto del contenido va después.
+      expect(document.pageCount).toBeGreaterThan(1)
+      expect(document.html).toContain(model.identity.title)
+      expect(document.html).toContain("Alternativa 1")
+      // El precio a la vista es el final del cliente: 5.050 de la alternativa
+      // más seguro (180) y traslado (220), sumados una sola vez.
+      expect(document.html).toContain("USD 5.450,00")
+    }
+  })
+
   it("only accepts a safe manifest vocabulary", () => {
     expect(() => quotationModelManifestSchema.parse({
       ...KYO_2026_MANIFEST,

@@ -195,6 +195,38 @@ export function splitTextAtWord(value: string, maxChars: number): string[] {
   return chunks
 }
 
+/**
+ * Aclara (ratio > 0) u oscurece (ratio < 0) un color hexadecimal mezclándolo
+ * con blanco o negro. Permite derivar bordes, fondos y sombras de la paleta del
+ * manifiesto sin agregar colores nuevos al vocabulario configurable.
+ */
+export function shadeColor(hex: string, ratio: number): string {
+  const value = hex.replace("#", "")
+  const channels = [0, 2, 4].map(offset => parseInt(value.slice(offset, offset + 2), 16))
+  const target = ratio < 0 ? 0 : 255
+  const amount = Math.min(1, Math.abs(ratio))
+  return `#${channels
+    .map(channel => Math.round(channel + (target - channel) * amount).toString(16).padStart(2, "0"))
+    .join("")}`
+}
+
+/**
+ * Alto estimado de un párrafo, en píxeles, para paginar sin navegador.
+ * El ancho medio de carácter de Open Sans ronda 0,52em; el resultado se usa
+ * como peso de bloque y conviene que sobreestime antes que quedarse corto,
+ * porque una página con overflow recorta contenido en silencio.
+ */
+export function estimateTextHeight(
+  value: string,
+  boxWidth: number,
+  fontPx: number,
+  lineHeight: number
+): number {
+  const perLine = Math.max(8, Math.floor(boxWidth / (fontPx * 0.52)))
+  const lines = Math.max(1, Math.ceil(value.length / perLine))
+  return lines * Math.round(fontPx * lineHeight)
+}
+
 export function chunkByWeight<T>(
   values: readonly T[],
   weight: (value: T) => number,

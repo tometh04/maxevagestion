@@ -86,11 +86,18 @@ export const EDITORIAL_GENERIC_MANIFEST: QuotationModelManifestV1 = parseQuotati
 })
 
 export function createDefaultManifest(layoutKey: string): QuotationModelManifestV1 {
-  if (layoutKey === "travel-summary-v1") {
-    return { ...cloneQuotationJson(VIBOOK_STANDARD_MANIFEST), layoutKey, copy: { ...VIBOOK_STANDARD_MANIFEST.copy, documentTitle: "Presupuesto de viaje" } }
-  }
   if (layoutKey === KYO_2026_MANIFEST.layoutKey) {
     return cloneQuotationJson(EDITORIAL_GENERIC_MANIFEST)
   }
-  return cloneQuotationJson(VIBOOK_STANDARD_MANIFEST)
+  if (layoutKey === VIBOOK_STANDARD_MANIFEST.layoutKey) {
+    return cloneQuotationJson(VIBOOK_STANDARD_MANIFEST)
+  }
+  // Cualquier otro layout registrado parte del manifiesto estándar pero conserva
+  // su propia clave: si se devolviera la del estándar, elegir un diseño en el
+  // editor terminaría publicando otro.
+  return {
+    ...cloneQuotationJson(VIBOOK_STANDARD_MANIFEST),
+    layoutKey,
+    copy: { ...VIBOOK_STANDARD_MANIFEST.copy, documentTitle: "Presupuesto de viaje" },
+  }
 }

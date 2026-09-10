@@ -1,3 +1,5 @@
+import { brochureCardsV1Layout } from "@/lib/quotation-documents/layouts/brochure-cards-v1"
+import { coverEditorialV1Layout } from "@/lib/quotation-documents/layouts/cover-editorial-v1"
 import { editorialRightRailV1Layout } from "@/lib/quotation-documents/layouts/editorial-right-rail-v1"
 import { vibookStandardV1Layout } from "@/lib/quotation-documents/layouts/standard-v1"
 import { travelSummaryV1Layout } from "@/lib/quotation-documents/layouts/travel-summary-v1"
@@ -7,6 +9,8 @@ const layouts: readonly QuotationLayoutRenderer[] = [
   vibookStandardV1Layout,
   editorialRightRailV1Layout,
   travelSummaryV1Layout,
+  coverEditorialV1Layout,
+  brochureCardsV1Layout,
 ]
 
 const layoutByKey = new Map(layouts.map(layout => [layout.catalog.key, layout]))
