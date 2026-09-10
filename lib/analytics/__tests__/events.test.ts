@@ -31,7 +31,7 @@ const SAMPLES: { [K in AnalyticsEventName]: AnalyticsEventParams[K] } = {
   checkout_returned: { plan_id: "PRO", result: "done" },
   lead_created: { source_channel: "manychat", has_agency_assigned: true },
   lead_stage_changed: { from_stage: "nuevo", to_stage: "cotizado", board: "manychat" },
-  lead_converted: { sale_currency: "USD", had_quote: true },
+  lead_converted: { sale_currency: "USD", had_quote: true, entry_point: "crm" },
   operation_created: {
     passengers_bucket: "2-5",
     services_bucket: "1",

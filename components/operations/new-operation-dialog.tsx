@@ -32,6 +32,12 @@ import {
   type ApplicablePackage,
 } from "@/lib/packages/apply-package-draft"
 import {
+  buildLeadPrefill,
+  cleanLeadDestination,
+  selectUntouchedPrefill,
+} from "@/lib/leads/operation-prefill"
+import type { LeadSelectorItem } from "@/lib/leads/selector"
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -45,6 +51,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import { Badge } from "@/components/ui/badge"
+import Link from "next/link"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { cn } from "@/lib/utils"
@@ -198,54 +206,6 @@ const operationTypeOptions = [
   { value: "CAR", label: "Alquiler de Auto" },
 ]
 
-// Estados de leads que NO son destinos
-const leadStatusKeywords = [
-  "presupuesto", "enviado", "nuevo", "contactado", "calificado",
-  "negociacion", "negociación", "ganado", "perdido", "pendiente",
-  "seguimiento", "cerrado", "cancelado", "won", "lost", "new",
-  "contacted", "qualified", "negotiation", "closed"
-]
-
-// Función para limpiar destino de lead (si no es un destino válido)
-function cleanDestination(destination: string): string {
-  if (!destination) return ""
-  
-  const destLower = destination.toLowerCase().trim()
-  
-  // Verificar si es un estado de lead
-  for (const status of leadStatusKeywords) {
-    if (destLower.includes(status)) {
-      return ""
-    }
-  }
-  
-  // Si parece un usuario de Instagram, email o algo raro, ignorar
-  const invalidPatterns = [
-    /^@/, // Instagram handle
-    /@.*\.com$/, // Email
-    /^[a-z0-9_]+$/, // Solo letras minúsculas y guiones bajos (username)
-    /^\d+$/, // Solo números
-  ]
-  
-  for (const pattern of invalidPatterns) {
-    if (pattern.test(destLower)) {
-      return ""
-    }
-  }
-  
-  // Si es muy corto o muy largo, probablemente no es un destino
-  if (destination.length < 3 || destination.length > 50) {
-    return ""
-  }
-  
-  // Si contiene números o caracteres raros, limpiar
-  if (/\d/.test(destination) || /[^a-záéíóúüñ\s]/i.test(destination)) {
-    return ""
-  }
-  
-  return destination
-}
-
 interface LeadData {
   id: string
   contact_name?: string | null
@@ -291,6 +251,12 @@ interface NewOperationDialogProps {
   /** VIB-183: muestra el selector de paquete cerrado. Solo el alta normal lo
    *  activa; duplicar y convertir un lead quedan como estaban. */
   allowPackages?: boolean
+  /**
+   * VIB-191: permite elegir el lead de origen desde el alta. Solo en el alta
+   * normal — convertir desde el CRM ya llega con `lead`, y duplicar (VIB-109)
+   * no debe arrastrar el lead de la operación original.
+   */
+  allowLeadPicker?: boolean
 }
 
 export function NewOperationDialog({
@@ -309,6 +275,7 @@ export function NewOperationDialog({
   canPickOtherSeller = true,
   canPickSecondarySeller = true,
   allowPackages = false,
+  allowLeadPicker = false,
 }: NewOperationDialogProps) {
   useScreenView("new-operation", open)
   const { toast } = useToast()
@@ -530,7 +497,7 @@ export function NewOperationDialog({
   // Limpiar destino del lead si existe
   const cleanedDestination = React.useMemo(() => {
     if (lead?.destination) {
-      return cleanDestination(lead.destination)
+      return cleanLeadDestination(lead.destination)
     }
     return ""
   }, [lead?.destination])
@@ -675,6 +642,88 @@ export function NewOperationDialog({
     () => operatorList.filter((op) => Boolean(op.operator_id)),
     [operatorList]
   )
+
+  // ─── VIB-191: lead de origen ───────────────────────────────────────────────
+  // El lead elegido acá NO alimenta el `form.reset()` de abajo: ese resetea el
+  // formulario entero y es correcto sólo cuando el diálogo se abre ya dedicado a
+  // un lead (conversión desde el CRM). Elegirlo a mitad de carga aplica un
+  // merge que respeta lo que el usuario ya escribió.
+  const [leadPickerEnabled, setLeadPickerEnabled] = useState(false)
+  const [leadSearch, setLeadSearch] = useState("")
+  const [leadResults, setLeadResults] = useState<LeadSelectorItem[]>([])
+  const [leadSearching, setLeadSearching] = useState(false)
+  const [pickedLead, setPickedLead] = useState<LeadSelectorItem | null>(null)
+  /** Operación que ya existe para el lead elegido (409 del POST). */
+  const [leadConflictOperationId, setLeadConflictOperationId] = useState<string | null>(null)
+
+  /** El lead que se manda al servidor: el de la conversión o el elegido acá. */
+  const effectiveLead = lead ?? pickedLead
+
+  useEffect(() => {
+    if (!open) {
+      setLeadPickerEnabled(false)
+      setLeadSearch("")
+      setLeadResults([])
+      setPickedLead(null)
+      setLeadConflictOperationId(null)
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!open || !allowLeadPicker || !leadPickerEnabled || pickedLead) return
+
+    let cancelled = false
+    setLeadSearching(true)
+    // Debounce: el buscador pega por tecla y son ~14.500 leads convertibles.
+    const timer = setTimeout(() => {
+      const params = new URLSearchParams({ selector: "true" })
+      if (leadSearch.trim()) params.set("search", leadSearch.trim())
+
+      fetch(`/api/leads?${params.toString()}`)
+        .then((res) => (res.ok ? res.json() : { leads: [] }))
+        .then((data) => {
+          if (!cancelled) setLeadResults(data.leads || [])
+        })
+        .catch(() => {
+          // Sin resultados el alta sigue andando: el lead es opcional.
+          if (!cancelled) setLeadResults([])
+        })
+        .finally(() => {
+          if (!cancelled) setLeadSearching(false)
+        })
+    }, 300)
+
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [open, allowLeadPicker, leadPickerEnabled, leadSearch, pickedLead])
+
+  /**
+   * Aplica el lead sin pisar lo que el usuario ya cargó. `dirtyFields` marca lo
+   * tocado; el resto se completa. Es la diferencia con la conversión desde el
+   * CRM, donde el formulario está recién abierto y sí se resetea entero.
+   */
+  const handlePickLead = (candidate: LeadSelectorItem) => {
+    setPickedLead(candidate)
+    setLeadResults([])
+    setLeadConflictOperationId(null)
+
+    const prefill = buildLeadPrefill(candidate)
+    const toApply = selectUntouchedPrefill(prefill, form.formState.dirtyFields as any)
+
+    for (const [field, value] of Object.entries(toApply)) {
+      form.setValue(field as any, value as any, { shouldDirty: false })
+    }
+  }
+
+  const handleUnpickLead = () => {
+    // No se deshace la precarga: el usuario ya la vio y puede haberla editado.
+    // Desvincular sólo corta la relación con el lead.
+    setPickedLead(null)
+    setLeadSearch("")
+    setLeadConflictOperationId(null)
+  }
 
   // ─── VIB-183: paquetes cerrados ────────────────────────────────────────────
   // Catálogo lazy, solo cuando el diálogo se abre en el alta normal. El endpoint
@@ -1001,8 +1050,8 @@ export function NewOperationDialog({
       // Si se usan múltiples operadores, enviar el array; si no, usar formato antiguo
       const requestBody: any = {
         ...values,
-        // Incluir lead_id si hay un lead
-        ...(lead ? { lead_id: lead.id } : {}),
+        // Incluir lead_id si hay un lead (de la conversión o elegido en el alta)
+        ...(effectiveLead ? { lead_id: effectiveLead.id } : {}),
         // El operador principal lo resuelve el backend con la primera ficha de
         // `operators`. Sin fichas cargadas, la operación queda sin operador.
         operator_id: null,
@@ -1075,6 +1124,19 @@ export function NewOperationDialog({
       if (!response.ok) {
         const error = await response.json()
         const errorMessage = error.error || "Error al crear operación"
+        // VIB-191: el POST devuelve 409 + existingOperationId cuando el lead ya
+        // fue convertido. Sin esto el usuario ve "Error de validación" y no
+        // entiende que la venta ya existe.
+        if (response.status === 409 && error.existingOperationId) {
+          setLeadConflictOperationId(error.existingOperationId)
+          setApiError("")
+          toast({
+            title: "El lead ya fue convertido",
+            description: "Ese lead ya tiene una operación cargada.",
+            variant: "destructive",
+          })
+          return
+        }
         setApiError(errorMessage)
         toast({
           title: "Error de validación",
@@ -1088,8 +1150,8 @@ export function NewOperationDialog({
       const operationId = data.operation?.id
 
       toast({
-        title: lead ? "Lead convertido a operación" : "Operación creada",
-        description: lead ? "El lead se ha convertido a operación correctamente" : "La operación se ha creado correctamente",
+        title: effectiveLead ? "Lead convertido a operación" : "Operación creada",
+        description: effectiveLead ? "El lead se ha convertido a operación correctamente" : "La operación se ha creado correctamente",
       })
 
       // La operación se creó pero algo secundario falló (ej. no se pudieron
@@ -1107,13 +1169,16 @@ export function NewOperationDialog({
         services_bucket: bucketCount(filledOperators.length || 1),
         multi_operator: filledOperators.length > 1,
         sale_currency: trackedSaleCurrency,
-        from_lead: Boolean(lead),
+        from_lead: Boolean(effectiveLead),
         had_warnings: warnings.length > 0,
       })
-      if (lead) {
+      if (effectiveLead) {
         trackEvent("lead_converted", {
           sale_currency: trackedSaleCurrency,
-          had_quote: lead.quoted_price != null && lead.quoted_price !== "",
+          had_quote: effectiveLead.quoted_price != null && effectiveLead.quoted_price !== "",
+          // VIB-191: de dónde salió el vínculo, para poder medir si la puerta
+          // nueva del alta se usa o si todo sigue viniendo del CRM.
+          entry_point: lead ? "crm" : "operation_form",
         })
       }
 
@@ -1212,6 +1277,108 @@ export function NewOperationDialog({
             {settings.require_departure_date && <span className="mr-2">• Fecha de salida</span>}
             {settings.require_operator && <span className="mr-2">• Operador</span>}
             {settings.require_customer && <span className="mr-2">• Cliente</span>}
+          </div>
+        )}
+
+        {/* VIB-191: elegir el lead de origen. Deja la relación directa, marca el
+            lead como vendido y precarga lo que el usuario todavía no cargó. */}
+        {allowLeadPicker && (
+          <div className="space-y-3 rounded-xl border border-border/40 bg-muted/20 p-4">
+            <div className="flex items-center gap-2">
+              <Switch
+                id="viene-de-un-lead"
+                checked={leadPickerEnabled}
+                onCheckedChange={(checked) => {
+                  setLeadPickerEnabled(checked)
+                  if (!checked) handleUnpickLead()
+                }}
+              />
+              <Label htmlFor="viene-de-un-lead" className="cursor-pointer text-sm font-normal">
+                Esta venta viene de un lead del CRM
+              </Label>
+              <FieldHelp text="Vincula la operación con el lead: lo marca como vendido, precarga sus datos y hace que la venta cuente en las métricas de conversión. Lo que ya hayas cargado en el formulario no se pisa." />
+            </div>
+
+            {leadPickerEnabled && !pickedLead && (
+              <div className="space-y-2">
+                <Input
+                  value={leadSearch}
+                  onChange={(e) => setLeadSearch(e.target.value)}
+                  placeholder="Buscar por nombre, teléfono, email o destino…"
+                  autoComplete="off"
+                />
+                {leadSearching && (
+                  <p className="text-xs text-muted-foreground">Buscando…</p>
+                )}
+                {!leadSearching && leadResults.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {leadSearch.trim()
+                      ? "Ningún lead coincide con esa búsqueda."
+                      : "Escribí para buscar entre los leads abiertos."}
+                  </p>
+                )}
+                {leadResults.length > 0 && (
+                  <div className="max-h-56 space-y-1 overflow-y-auto">
+                    {leadResults.map((candidate) => (
+                      <button
+                        key={candidate.id}
+                        type="button"
+                        onClick={() => handlePickLead(candidate)}
+                        disabled={candidate.has_operation}
+                        className="flex w-full items-center justify-between gap-3 rounded-lg border border-border/40 bg-background p-2.5 text-left transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-background"
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-medium">
+                            {candidate.contact_name}
+                          </span>
+                          <span className="block truncate text-xs text-muted-foreground">
+                            {[candidate.destination, candidate.contact_phone || candidate.contact_email]
+                              .filter(Boolean)
+                              .join(" · ") || "Sin datos de contacto"}
+                          </span>
+                        </span>
+                        {candidate.has_operation && (
+                          <Badge variant="secondary" className="shrink-0 text-[10px]">
+                            Ya convertido
+                          </Badge>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {pickedLead && (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/40 bg-background p-2.5">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{pickedLead.contact_name}</p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {[pickedLead.destination, pickedLead.contact_phone || pickedLead.contact_email]
+                      .filter(Boolean)
+                      .join(" · ") || "Sin datos de contacto"}
+                  </p>
+                </div>
+                <Button type="button" size="sm" variant="ghost" onClick={handleUnpickLead}>
+                  Desvincular
+                </Button>
+              </div>
+            )}
+
+            {leadConflictOperationId && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription className="flex flex-wrap items-center gap-2">
+                  Ese lead ya tiene una operación cargada.
+                  <Link
+                    href={`/operations/${leadConflictOperationId}`}
+                    className="font-medium underline underline-offset-2"
+                  >
+                    Ver la operación
+                  </Link>
+                </AlertDescription>
+              </Alert>
+            )}
           </div>
         )}
 

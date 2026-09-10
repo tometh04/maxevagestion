@@ -14,6 +14,87 @@ import {
 import { applyLeadsFilters, canPerformAction, getUserAgencyIds, isOwnDataOnlyResolved } from "@/lib/permissions-api"
 import { resolveUserPermissions } from "@/lib/permissions-agency"
 import { resolveListNameForRegion } from "@/lib/manychat/seed-lists"
+import {
+  CONVERTIBLE_LEAD_STATUSES,
+  LEAD_SELECTOR_COLUMNS,
+  LEAD_SELECTOR_LIMIT,
+  buildLeadSearchFilter,
+  mapLeadSelectorRow,
+  sanitizeLeadSearch,
+} from "@/lib/leads/selector"
+
+/**
+ * VIB-191: leads elegibles como origen de una operación.
+ *
+ * Arma su propia query en vez de reusar la del listado: aquella trae `*` con
+ * joins para el kanban. El scope de permisos sí es el mismo helper
+ * (`applyLeadsFilters`), para que el buscador ofrezca exactamente los leads que
+ * el usuario ya ve en el CRM — incluido el corte del asesor independiente, que
+ * ahí adentro lanza y se traduce a 403.
+ */
+async function respondLeadSelector({
+  supabase,
+  user,
+  agencyIds,
+  perms,
+  searchParams,
+  orgId,
+}: {
+  supabase: any
+  user: any
+  agencyIds: string[]
+  perms: any
+  searchParams: URLSearchParams
+  orgId: string
+}) {
+  let query = (supabase.from("leads") as any)
+    .select(LEAD_SELECTOR_COLUMNS)
+    .eq("org_id", orgId)
+    .is("archived_at", null)
+    .in("status", CONVERTIBLE_LEAD_STATUSES as unknown as string[])
+
+  try {
+    query = applyLeadsFilters(query, user, agencyIds, perms)
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 403 })
+  }
+
+  const sanitized = sanitizeLeadSearch(searchParams.get("search") || "")
+  if (sanitized) {
+    query = query.or(buildLeadSearchFilter(sanitized))
+  }
+
+  const { data, error } = await query
+    .order("updated_at", { ascending: false })
+    .limit(LEAD_SELECTOR_LIMIT)
+
+  if (error) {
+    console.error("[leads/selector] error buscando leads:", error)
+    return NextResponse.json({ error: "Error al buscar leads" }, { status: 500 })
+  }
+
+  const rows = (data || []) as any[]
+  const operationByLeadId = new Map<string, string>()
+
+  if (rows.length > 0) {
+    // Qué lead ya se convirtió. Se consulta sólo para los que se van a mostrar,
+    // no para los 14.500 convertibles.
+    const { data: existingOps } = await (supabase.from("operations") as any)
+      .select("id, lead_id")
+      .in("lead_id", rows.map((row) => row.id))
+      .eq("org_id", orgId)
+
+    for (const op of (existingOps || []) as any[]) {
+      if (op.lead_id && !operationByLeadId.has(op.lead_id)) {
+        operationByLeadId.set(op.lead_id, op.id)
+      }
+    }
+  }
+
+  return NextResponse.json({
+    leads: rows.map((row) => mapLeadSelectorRow(row, operationByLeadId)),
+  })
+}
 
 export async function GET(request: Request) {
   try {
@@ -42,6 +123,21 @@ export async function GET(request: Request) {
       query = applyLeadsFilters(query, user, agencyIds, perms)
     } catch (error: any) {
       return NextResponse.json({ error: error.message }, { status: 403 })
+    }
+
+    // VIB-191: modo selector para el alta de operaciones. Corta acá y no sigue
+    // al listado normal a propósito: ese devuelve `*` con joins y después carga
+    // operaciones y clientes de los leads WON. Para elegir un lead en un combo
+    // alcanza con un puñado de columnas, y son ~14.500 leads convertibles.
+    if (searchParams.get("selector") === "true") {
+      return await respondLeadSelector({
+        supabase,
+        user,
+        agencyIds,
+        perms,
+        searchParams,
+        orgId: (user as any).org_id,
+      })
     }
 
     // Apply filters

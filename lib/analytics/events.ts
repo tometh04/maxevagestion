@@ -62,7 +62,8 @@ export type AnalyticsEventParams = {
   lead_created: { source_channel: string; has_agency_assigned: boolean }
   lead_stage_changed: { from_stage: string; to_stage: string; board: "manychat" | "native" }
   /** `had_quote` y no `had_quoted_price`: "price" esta en el denylist del scrubber. */
-  lead_converted: { sale_currency: string; had_quote: boolean }
+  /** `entry_point` (VIB-191): si el vínculo se hizo desde el CRM o desde el alta de operaciones. */
+  lead_converted: { sale_currency: string; had_quote: boolean; entry_point: "crm" | "operation_form" }
 
   operation_created: {
     passengers_bucket: string

@@ -273,6 +273,9 @@ export function OperationsPageClient({
         // VIB-183: el selector de paquete solo aparece en el alta normal.
         // Duplicar y convertir un lead usan este mismo diálogo y quedan igual.
         allowPackages
+        // VIB-191: elegir el lead de origen. Solo acá: convertir desde el CRM ya
+        // llega con el lead, y duplicar no debe arrastrar el de la original.
+        allowLeadPicker
       />
     </div>
   )
