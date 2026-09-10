@@ -1,19 +1,16 @@
 "use client"
 
 import Link from "next/link"
-import { format } from "date-fns"
-import { ExternalLink, FileText, Sprout } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
+import { ExternalLink, Sprout } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
-  QUOTATION_STATUS_LABELS,
-  formatQuotationCurrency,
-  getQuotationOptionPricing,
-} from "@/lib/quotations/presentation"
-import { getPublicQuotationPath } from "@/lib/quotations/public-links"
-import { getQuotationStatusColors } from "@/lib/vibook-status-colors"
-import type { OperationOrigin, OriginQuotation } from "@/lib/quotations/operation-origin"
+  QuotationFileRow,
+  QuotationRow,
+  formatRowDate,
+  type QuotationFileLike,
+} from "@/components/quotations/quotation-rows"
+import type { OperationOrigin } from "@/lib/quotations/operation-origin"
 
 /**
  * "Origen de la venta" (VIB-184): de dónde salió esta operación.
@@ -27,51 +24,12 @@ import type { OperationOrigin, OriginQuotation } from "@/lib/quotations/operatio
  * manda `origin` vacío y esto no se renderiza.
  */
 
-export interface OriginQuotationFile {
-  id: string
-  file_url: string
-  uploaded_at: string
-  fromLead?: boolean
-  fromCustomer?: boolean
-}
+export type OriginQuotationFile = QuotationFileLike
 
 interface OperationOriginSectionProps {
   origin: OperationOrigin
   /** Adjuntos type QUOTATION que ya viajaban en el listado de documentos. */
   quotationFiles: OriginQuotationFile[]
-}
-
-const SOURCE_LABELS: Record<OriginQuotation["source"], string> = {
-  OPERATION: "De esta operación",
-  LEAD: "Del lead",
-  CUSTOMER: "Del cliente",
-}
-
-function formatDate(value: string | null | undefined) {
-  if (!value) return null
-  const parsed = new Date(value)
-  return Number.isNaN(parsed.getTime()) ? null : format(parsed, "dd/MM/yyyy")
-}
-
-function QuotationAmount({ quotation }: { quotation: OriginQuotation }) {
-  const pricing = getQuotationOptionPricing(
-    { total_amount: quotation.total_amount },
-    {
-      adults: quotation.adults,
-      children: quotation.children,
-      infants: quotation.infants,
-      pricing_mode: quotation.pricing_mode,
-    }
-  )
-
-  return (
-    <div className="text-right">
-      <p className="text-sm font-medium tabular-nums">
-        {formatQuotationCurrency(pricing.primaryAmount, quotation.currency)}
-      </p>
-      <p className="text-xs text-muted-foreground">{pricing.primaryLabel}</p>
-    </div>
-  )
 }
 
 export function OperationOriginSection({ origin, quotationFiles }: OperationOriginSectionProps) {
@@ -82,7 +40,7 @@ export function OperationOriginSection({ origin, quotationFiles }: OperationOrig
   // card vacía sólo para decir que no hay nada.
   if (!hasSomething) return null
 
-  const leadCreatedAt = formatDate(lead?.created_at)
+  const leadCreatedAt = formatRowDate(lead?.created_at)
 
   return (
     <Card className="rounded-xl border border-border/40">
@@ -99,7 +57,11 @@ export function OperationOriginSection({ origin, quotationFiles }: OperationOrig
               <div className="min-w-0">
                 <p className="text-sm font-medium">{lead.contact_name}</p>
                 <p className="text-xs text-muted-foreground">
-                  {[lead.destination, lead.seller_name && `Vendedor: ${lead.seller_name}`, leadCreatedAt && `Creado ${leadCreatedAt}`]
+                  {[
+                    lead.destination,
+                    lead.seller_name && `Vendedor: ${lead.seller_name}`,
+                    leadCreatedAt && `Creado ${leadCreatedAt}`,
+                  ]
                     .filter(Boolean)
                     .join(" · ")}
                 </p>
@@ -157,88 +119,12 @@ export function OperationOriginSection({ origin, quotationFiles }: OperationOrig
             </div>
           ) : (
             <div className="space-y-2">
-              {quotations.map((quotation) => {
-                const colors = getQuotationStatusColors(quotation.status)
-                const createdAt = formatDate(quotation.created_at)
-
-                return (
-                  <div
-                    key={quotation.id}
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/40 bg-muted/20 p-3"
-                  >
-                    <div className="min-w-0 space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-medium">#{quotation.quotation_number}</span>
-                        <Badge variant="outline" className={`${colors.bg} ${colors.text} ${colors.border}`}>
-                          {QUOTATION_STATUS_LABELS[quotation.status] || quotation.status}
-                        </Badge>
-                        <Badge variant="secondary" className="text-[10px]">
-                          {SOURCE_LABELS[quotation.source]}
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        {[quotation.destination, createdAt && `Creada ${createdAt}`, quotation.seller_name]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <QuotationAmount quotation={quotation} />
-                      {quotation.public_token ? (
-                        <Button asChild size="sm" variant="ghost">
-                          <a
-                            href={getPublicQuotationPath(quotation.public_token)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            Abrir
-                            <ExternalLink className="ml-1.5 h-3.5 w-3.5" />
-                          </a>
-                        </Button>
-                      ) : (
-                        // Sin token público no hay página que abrir: decirlo es
-                        // mejor que un botón que no lleva a ningún lado.
-                        <span className="text-xs text-muted-foreground">Sin link público</span>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
-
-              {quotationFiles.map((file) => {
-                const uploadedAt = formatDate(file.uploaded_at)
-                const sourceLabel = file.fromLead
-                  ? SOURCE_LABELS.LEAD
-                  : file.fromCustomer
-                    ? SOURCE_LABELS.CUSTOMER
-                    : SOURCE_LABELS.OPERATION
-
-                return (
-                  <div
-                    key={file.id}
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/40 bg-muted/20 p-3"
-                  >
-                    <div className="min-w-0 space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                        <span className="text-sm font-medium">Cotización adjunta</span>
-                        <Badge variant="secondary" className="text-[10px]">
-                          {sourceLabel}
-                        </Badge>
-                      </div>
-                      {uploadedAt && (
-                        <p className="text-xs text-muted-foreground">Subida {uploadedAt}</p>
-                      )}
-                    </div>
-                    <Button asChild size="sm" variant="ghost">
-                      <a href={file.file_url} target="_blank" rel="noopener noreferrer">
-                        Abrir
-                        <ExternalLink className="ml-1.5 h-3.5 w-3.5" />
-                      </a>
-                    </Button>
-                  </div>
-                )
-              })}
+              {quotations.map((quotation) => (
+                <QuotationRow key={quotation.id} quotation={quotation} />
+              ))}
+              {quotationFiles.map((file) => (
+                <QuotationFileRow key={file.id} file={file} />
+              ))}
             </div>
           )}
         </div>

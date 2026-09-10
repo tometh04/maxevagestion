@@ -1007,12 +1007,13 @@ export function OperationDetailClient({
         </TabsContent>
 
         <TabsContent value="documents" className="space-y-4">
-          <DocumentsSection 
-            documents={documents || []} 
-            operationId={operation.id} 
+          <DocumentsSection
+            documents={documents || []}
+            operationId={operation.id}
             departureDate={operation.departure_date || undefined}
             allowUpload={canManageDocuments}
             allowDelete={canManageDocuments}
+            quotations={operationOrigin?.quotations || []}
           />
         </TabsContent>
 

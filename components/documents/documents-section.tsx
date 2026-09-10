@@ -22,6 +22,8 @@ import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
 import { format } from "date-fns"
 import { useRouter } from "next/navigation"
+import { QuotationRow } from "@/components/quotations/quotation-rows"
+import type { OriginQuotation } from "@/lib/quotations/operation-origin"
 
 /**
  * Verifica el estado de vencimiento de un documento
@@ -79,6 +81,13 @@ interface DocumentsSectionProps {
   departureDate?: string // Para verificar vencimiento vs viaje
   allowUpload?: boolean
   allowDelete?: boolean
+  /**
+   * VIB-184: cotizaciones del cotizador (tabla `quotations`). No son documentos
+   * —no tienen archivo ni se borran desde acá— pero el usuario las busca en esta
+   * pestaña junto con todo lo demás, así que se listan aparte arriba. Las
+   * cotizaciones ADJUNTAS no van acá: son documentos reales y ya salen abajo.
+   */
+  quotations?: OriginQuotation[]
 }
 
 export function DocumentsSection({
@@ -88,6 +97,7 @@ export function DocumentsSection({
   departureDate,
   allowUpload = true,
   allowDelete = true,
+  quotations = [],
 }: DocumentsSectionProps) {
   const [documents, setDocuments] = useState<Document[]>(initialDocuments || [])
   const [uploading, setUploading] = useState(false)
@@ -296,7 +306,22 @@ export function DocumentsSection({
           </Dialog>
         )}
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-5">
+        {/* VIB-184: las cotizaciones del cotizador no son archivos, así que van
+            en su propio bloque y sin acciones de borrado. */}
+        {quotations.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Cotizaciones
+            </p>
+            <div className="space-y-2">
+              {quotations.map((quotation) => (
+                <QuotationRow key={quotation.id} quotation={quotation} />
+              ))}
+            </div>
+          </div>
+        )}
+
         {documents.length === 0 ? (
           <div className="text-sm text-muted-foreground rounded-xl border border-border/40 bg-muted/20 p-4 text-center">
             No hay documentos subidos
