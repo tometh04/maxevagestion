@@ -7,6 +7,7 @@ import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
 import { getOrgFeatureFlag } from "@/lib/settings/org-features"
 import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
 import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
+import { AGENCY_EXPENSE_SELECT, isAgencyExpenseMovement } from "@/lib/accounting/agency-expense"
 
 export const dynamic = 'force-dynamic'
 
@@ -518,9 +519,9 @@ export async function GET(request: Request) {
     const costosTotalUSD = costosUSD + (costosARS / tcParaCalculos)
 
     // Gastos operativos del mes (movimientos EXPENSE sin operation_id)
-    const { data: gastosMes } = await supabase
-      .from("ledger_movements")
-      .select("amount_original, currency")
+    const { data: gastosMes } = await (supabase
+      .from("ledger_movements") as any)
+      .select(`amount_original, currency, ${AGENCY_EXPENSE_SELECT}`)
       .eq("type", "EXPENSE")
       .is("operation_id", null)
       .gte("created_at", startOfDayAR(fechaInicioMes))
@@ -529,6 +530,12 @@ export async function GET(request: Request) {
     let gastosUSD = 0, gastosARS = 0
     if (gastosMes) {
       for (const g of gastosMes as any[]) {
+        // VIB-149 — Mismo criterio que Ganancias: una transferencia entre
+        // cuentas propias y un egreso marcado "no es gasto" no son gasto del
+        // mes. Acá pesaba doble: estos movimientos no tienen operación, así que
+        // pasaban enteros por el filtro de arriba.
+        if (!isAgencyExpenseMovement(g)) continue
+
         const amount = parseFloat(g.amount_original || "0")
         if (g.currency === "USD") gastosUSD += amount
         else gastosARS += amount

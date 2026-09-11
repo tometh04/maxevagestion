@@ -122,6 +122,13 @@ export interface CreateLedgerMovementParams {
   notes?: string | null
   created_by?: string | null
   affects_balance?: boolean
+  /**
+   * true = este movimiento es una de las dos patas de una transferencia entre
+   * cuentas propias de la agencia, incluida la compra/venta de dólares
+   * (VIB-149). Mueve el saldo de la cuenta pero no es ingreso ni gasto, así que
+   * los reportes de resultado lo dejan afuera.
+   */
+  is_internal_transfer?: boolean
   /** Categoría del gasto (recurring_payment_categories). Sólo aplica a gastos
    *  recurrentes/variables; alimenta el resumen por categoría. */
   category_id?: string | null
@@ -260,6 +267,7 @@ export async function createLedgerMovement(
       notes: params.notes || null,
       created_by: params.created_by || null,
       affects_balance: params.affects_balance ?? true,
+      is_internal_transfer: params.is_internal_transfer ?? false,
       category_id: params.category_id || null,
       recurring_payment_id: params.recurring_payment_id || null,
       org_id: orgId,

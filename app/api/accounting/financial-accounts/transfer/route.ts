@@ -155,6 +155,10 @@ export async function POST(request: Request) {
           account_id: from_account_id,
           notes: notes || `${concept} (TC: ${tc})`,
           created_by: user.id,
+          // VIB-149 — Comprar dólares no es un gasto: la agencia sigue teniendo
+          // la plata, en otra moneda. Sin esta marca, el reporte de Ganancias
+          // suma la salida en pesos como gasto del trimestre.
+          is_internal_transfer: true,
         },
         supabase
       )
@@ -174,6 +178,8 @@ export async function POST(request: Request) {
           account_id: to_account_id,
           notes: notes || `${concept} (TC: ${tc})`,
           created_by: user.id,
+          // La pata de entrada tampoco es un ingreso: se marcan las dos.
+          is_internal_transfer: true,
         },
         supabase
       )
@@ -249,6 +255,8 @@ export async function POST(request: Request) {
           account_id: from_account_id,
           notes: notes || `Transferencia a cuenta ${toAccount.name}`,
           created_by: user.id,
+          // VIB-149 — Pasar plata de una cuenta propia a otra no es un gasto.
+          is_internal_transfer: true,
         },
         supabase
       )
@@ -267,6 +275,7 @@ export async function POST(request: Request) {
           account_id: to_account_id,
           notes: notes || `Transferencia desde cuenta ${fromAccount.name}`,
           created_by: user.id,
+          is_internal_transfer: true,
         },
         supabase
       )

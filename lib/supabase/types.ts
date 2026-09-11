@@ -5147,6 +5147,7 @@ export type Database = {
           debit_amount: number | null
           exchange_rate: number | null
           id: string
+          is_internal_transfer: boolean
           journal_entry_id: string | null
           lead_id: string | null
           method: string
@@ -5178,6 +5179,7 @@ export type Database = {
           debit_amount?: number | null
           exchange_rate?: number | null
           id?: string
+          is_internal_transfer?: boolean
           journal_entry_id?: string | null
           lead_id?: string | null
           method: string
@@ -5209,6 +5211,7 @@ export type Database = {
           debit_amount?: number | null
           exchange_rate?: number | null
           id?: string
+          is_internal_transfer?: boolean
           journal_entry_id?: string | null
           lead_id?: string | null
           method?: string

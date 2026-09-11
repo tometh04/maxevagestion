@@ -6,6 +6,7 @@ import { getOrgFeatureFlag } from "@/lib/settings/org-features"
 import { FEATURE_FLAG_INCLUDE_SERVICES_IN_SALE_TOTAL } from "@/lib/feature-flags"
 import { getServiceExtrasByOperation } from "@/lib/accounting/operation-services-debt"
 import { isFinancialCostConcept } from "@/lib/accounting/financial-result"
+import { AGENCY_EXPENSE_SELECT, isAgencyExpenseMovement } from "@/lib/accounting/agency-expense"
 import { computeGananciasResult } from "@/lib/accounting/ganancias-calc"
 import { sumarReferidosPorMoneda } from "@/lib/commissions/referral-totals"
 
@@ -96,7 +97,7 @@ export async function GET(request: Request) {
 
     // Get expenses (gastos) in the quarter
     const { data: expenses, error: expensesError } = await (supabase.from("ledger_movements") as any)
-      .select("id, amount_original, currency, type, concept, movement_date")
+      .select(`id, amount_original, currency, type, concept, movement_date, ${AGENCY_EXPENSE_SELECT}`)
       .eq("type", "EXPENSE")
       // VIB-134/B0: excluir las líneas de asiento contable, que no son egresos
       // de dinero. Los asientos de costo también son type=EXPENSE, así que sin
@@ -112,7 +113,18 @@ export async function GET(request: Request) {
       .lte("movement_day", endDate)
 
     if (expensesError) {
+      // Antes esto sólo se logueaba y el cálculo seguía con `expenses = null`,
+      // o sea informando CERO gastos: el reporte mostraba la ganancia más alta
+      // posible y nada en pantalla decía que faltaba la mitad del cálculo. En
+      // una base imponible, un número faltante es peor que un error visible.
       console.error("Error querying expenses for ganancias:", expensesError)
+      return NextResponse.json(
+        {
+          error:
+            "No se pudieron leer los gastos del período. El resultado no se calcula sin ellos.",
+        },
+        { status: 500 }
+      )
     }
 
     // TODO: Implement deducibility categorization via chart_of_accounts join
@@ -205,6 +217,13 @@ export async function GET(request: Request) {
       // lee EXPENSE—, así que sumarlo como deducible bajaría el resultado
       // impositivo sin la mitad que lo compensa.
       if (isFinancialCostConcept(exp.concept)) continue
+
+      // VIB-149 — Que salga plata no la vuelve un gasto. Quedan afuera las dos
+      // patas de una transferencia entre cuentas propias (comprar dólares es
+      // cambiar de bolsillo, no gastar) y los egresos que el usuario ya marcó
+      // "no es gasto" desde Caja. Sin esto, un movimiento podía estar excluido
+      // del Reporte de Gastos y seguir siendo gasto deducible acá.
+      if (!isAgencyExpenseMovement(exp)) continue
 
       const amount = Number(exp.amount_original) || 0
       const isUSD = exp.currency === "USD"
