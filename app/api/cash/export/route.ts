@@ -70,7 +70,7 @@ function dateEs(value: unknown): string {
  * para fijar el separador en cualquier configuración regional. CRLF es lo que
  * espera Excel en Windows.
  */
-function buildCsvResponse(rows: string[][]): NextResponse {
+function buildCsvResponse(rows: string[][], truncated = false): NextResponse {
   const BOM = "﻿"
   const body =
     BOM +
@@ -78,13 +78,41 @@ function buildCsvResponse(rows: string[][]): NextResponse {
     [HEADERS, ...rows].map((row) => row.map(csvEscape).join(DELIM)).join("\r\n")
 
   const today = new Date().toISOString().slice(0, 10)
+  const parcial = truncated ? `-TRUNCADO-${LIMIT_HARD}` : ""
 
   return new NextResponse(body, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="movimientos-caja-${today}.csv"`,
+      "Content-Disposition": `attachment; filename="movimientos-caja-${today}${parcial}.csv"`,
     },
   })
+}
+
+const PAGE = 1000
+/** Tope por descarga, alineado con el resto de los exports. */
+const LIMIT_HARD = 10_000
+
+/**
+ * Trae los movimientos paginando.
+ *
+ * Antes se hacía `await query` sin `.limit()` ni `.range()`, así que PostgREST
+ * cortaba en su máximo por defecto (1000 filas) sin que nada lo dijera. En la
+ * agencia más grande eso era una fracción de la caja presentada como el
+ * archivo completo — y peor: el "Saldo acumulado" se calculaba sobre ese
+ * pedazo, o sea que el número tampoco cerraba con el extracto.
+ */
+async function fetchAllMovements(
+  buildQuery: () => any
+): Promise<{ movements: any[]; truncated: boolean }> {
+  const movements: any[] = []
+  for (let from = 0; from < LIMIT_HARD; from += PAGE) {
+    const { data, error } = await buildQuery().range(from, from + PAGE - 1)
+    if (error) throw error
+    if (!data || data.length === 0) return { movements, truncated: false }
+    movements.push(...data)
+    if (data.length < PAGE) return { movements, truncated: false }
+  }
+  return { movements, truncated: true }
 }
 
 export async function GET(request: Request) {
@@ -105,10 +133,31 @@ export async function GET(request: Request) {
     const currency = searchParams.get("currency")
     const agencyId = searchParams.get("agencyId")
 
-    let query = (supabase
-      .from("cash_movements") as any)
-      .select(
-        `
+    // Mapeo dateType (mismo comportamiento que /api/cash/movements):
+    // - MOVIMIENTO (default): cash_movements.movement_date con timezone AR
+    // - OPERACION: pre-resolver operation_ids cuya operations.operation_date cae
+    //   en [from,to] y restringir cash_movements.operation_id IN (...).
+    let operationIds: string[] | null = null
+    if (dateType === "OPERACION" && (dateFrom || dateTo)) {
+      let opQuery = (supabase.from("operations") as any)
+        .select("id")
+        .eq("org_id", (user as any).org_id)
+      if (dateFrom) opQuery = opQuery.gte("operation_date", dateFrom)
+      if (dateTo) opQuery = opQuery.lte("operation_date", dateTo)
+      const { data: matchingOps } = await opQuery.limit(5000)
+      const ids = (matchingOps || []).map((o: any) => String(o.id))
+      if (ids.length === 0) {
+        return buildCsvResponse([])
+      }
+      operationIds = ids
+    }
+
+    // Se rearma en cada página: una query de PostgREST se consume una sola vez.
+    const buildQuery = () => {
+      let query = (supabase
+        .from("cash_movements") as any)
+        .select(
+          `
         *,
         agencies:agency_id (
           name
@@ -129,56 +178,53 @@ export async function GET(request: Request) {
           )
         )
       `,
-      )
-      // Cross-tenant fix: scopear export por org del user.
-      .eq("org_id", (user as any).org_id)
-      // Ascendente: el saldo acumulado se calcula en este orden, y para conciliar
-      // se lee de lo más viejo a lo más nuevo.
-      .order("movement_date", { ascending: true })
-
-    if (user.role === "SELLER") {
-      query = query.eq("user_id", user.id)
-    }
-
-    if (type && type !== "ALL") {
-      query = query.eq("type", type)
-    }
-
-    if (currency && currency !== "ALL") {
-      query = query.eq("currency", currency)
-    }
-
-    if (agencyId && agencyId !== "ALL") {
-      // Por la oficina DEL MOVIMIENTO. Antes se resolvía por las operaciones de
-      // esa oficina, así que el export por oficina dejaba afuera todo lo que no
-      // cuelga de una venta (gastos, transferencias, ajustes).
-      query = query.eq("agency_id", agencyId)
-    }
-
-    // Mapeo dateType (mismo comportamiento que /api/cash/movements):
-    // - MOVIMIENTO (default): cash_movements.movement_date con timezone AR
-    // - OPERACION: pre-resolver operation_ids cuya operations.operation_date cae
-    //   en [from,to] y restringir cash_movements.operation_id IN (...).
-    if (dateType === "OPERACION" && (dateFrom || dateTo)) {
-      let opQuery = (supabase.from("operations") as any)
-        .select("id")
+        )
+        // Cross-tenant fix: scopear export por org del user.
         .eq("org_id", (user as any).org_id)
-      if (dateFrom) opQuery = opQuery.gte("operation_date", dateFrom)
-      if (dateTo) opQuery = opQuery.lte("operation_date", dateTo)
-      const { data: matchingOps } = await opQuery.limit(5000)
-      const opIds = (matchingOps || []).map((o: any) => o.id)
-      if (opIds.length === 0) {
-        return buildCsvResponse([])
+        // Ascendente: el saldo acumulado se calcula en este orden, y para conciliar
+        // se lee de lo más viejo a lo más nuevo.
+        .order("movement_date", { ascending: true })
+        // Desempate estable: sin un segundo criterio, dos movimientos con la
+        // misma fecha pueden caer en distinto orden entre página y página, y la
+        // paginación duplicaría uno y se comería otro.
+        .order("id", { ascending: true })
+
+      if (user.role === "SELLER") {
+        query = query.eq("user_id", user.id)
       }
-      query = query.in("operation_id", opIds)
-    } else {
-      if (dateFrom) query = query.gte("movement_day", dateFrom)
-      if (dateTo) query = query.lte("movement_day", dateTo)
+
+      if (type && type !== "ALL") {
+        query = query.eq("type", type)
+      }
+
+      if (currency && currency !== "ALL") {
+        query = query.eq("currency", currency)
+      }
+
+      if (agencyId && agencyId !== "ALL") {
+        // Por la oficina DEL MOVIMIENTO. Antes se resolvía por las operaciones de
+        // esa oficina, así que el export por oficina dejaba afuera todo lo que no
+        // cuelga de una venta (gastos, transferencias, ajustes).
+        query = query.eq("agency_id", agencyId)
+      }
+
+      if (operationIds) {
+        query = query.in("operation_id", operationIds)
+      } else {
+        if (dateFrom) query = query.gte("movement_day", dateFrom)
+        if (dateTo) query = query.lte("movement_day", dateTo)
+      }
+
+      return query
     }
 
-    const { data: movements, error } = await query
-
-    if (error) {
+    let movements: any[] = []
+    let truncated = false
+    try {
+      const result = await fetchAllMovements(buildQuery)
+      movements = result.movements
+      truncated = result.truncated
+    } catch (error) {
       console.error("Error exporting movements:", error)
       return NextResponse.json({ error: "Error al exportar movimientos" }, { status: 500 })
     }
@@ -220,7 +266,7 @@ export async function GET(request: Request) {
       ]
     })
 
-    return buildCsvResponse(rows)
+    return buildCsvResponse(rows, truncated)
   } catch (error) {
     console.error("Error in GET /api/cash/export:", error)
     return NextResponse.json({ error: "Error al exportar movimientos" }, { status: 500 })

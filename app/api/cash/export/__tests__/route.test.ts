@@ -80,6 +80,9 @@ function useMovements(rows: any[]) {
         lte: () => builder,
         limit: async () => ({ data: [], error: null }),
         order: () => builder,
+        // El export pagina con .range(): devuelve esta única página, que al
+        // venir corta (< 1000) corta el bucle.
+        range: () => builder,
         then: (resolve: any) => resolve({ data: rows, error: null }),
       }
       return builder
@@ -252,5 +255,71 @@ describe("GET /api/cash/export — oficina del movimiento", () => {
     const csv = await exportCsv()
 
     expect(csv.split("\r\n")[2].split(";")[7]).toBe("Rosario")
+  })
+})
+
+/**
+ * VIB-195 — el export cortaba en silencio.
+ *
+ * La query se ejecutaba con `await query`, sin `.limit()` ni `.range()`, así
+ * que PostgREST devolvía su máximo por defecto (1000 filas) y nada lo decía.
+ * En la agencia más grande eso era una fracción de la caja presentada como el
+ * archivo completo, y el "Saldo acumulado" —que se calcula sobre las filas
+ * traídas— tampoco cerraba contra el extracto.
+ */
+describe("GET /api/cash/export — no corta en la primera página", () => {
+  /** Devuelve `total` movimientos repartidos en páginas de 1000. */
+  function usePagedMovements(total: number) {
+    const pedidos: Array<[number, number]> = []
+    ;(createServerClient as jest.Mock).mockResolvedValue({
+      from: () => {
+        let desde = 0
+        let hasta = 999
+        const builder: any = {
+          select: () => builder,
+          eq: () => builder,
+          in: () => builder,
+          gte: () => builder,
+          lte: () => builder,
+          limit: async () => ({ data: [], error: null }),
+          order: () => builder,
+          range: (from: number, to: number) => {
+            desde = from
+            hasta = to
+            pedidos.push([from, to])
+            return builder
+          },
+          then: (resolve: any) => {
+            const data = []
+            for (let i = desde; i <= Math.min(hasta, total - 1); i++) {
+              data.push(movement({ id: `m${i}`, amount: 1 }))
+            }
+            return resolve({ data, error: null })
+          },
+        }
+        return builder
+      },
+    })
+    return pedidos
+  }
+
+  it("pide la página siguiente cuando la primera vino completa", async () => {
+    const pedidos = usePagedMovements(1500)
+    const csv = await exportCsv()
+
+    // Dos páginas pedidas, no una.
+    expect(pedidos.slice(0, 2)).toEqual([
+      [0, 999],
+      [1000, 1999],
+    ])
+    // 1500 movimientos + encabezado + directiva sep=;
+    expect(csv.split("\r\n").length).toBe(1502)
+  })
+
+  it("no pide otra página cuando la primera vino corta", async () => {
+    const pedidos = usePagedMovements(3)
+    await exportCsv()
+
+    expect(pedidos).toEqual([[0, 999]])
   })
 })
