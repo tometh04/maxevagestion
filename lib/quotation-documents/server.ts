@@ -310,13 +310,12 @@ async function buildCurrentDocument(
   quotation: QuotationSourceRow,
   selection?: { revisionId: string | null; manifest: QuotationModelManifestV1 }
 ): Promise<ResolvedQuotationDocument> {
-  const branding = await loadOrganizationBranding(supabase, quotation.org_id)
+  const [branding, effectiveSelection] = await Promise.all([
+    loadOrganizationBranding(supabase, quotation.org_id),
+    selection || resolveEffectiveManifest(supabase, quotation.org_id, quotation.agency_id),
+  ])
   const model = buildQuotationDocumentData({ quotation, branding })
-  let resolved = selection || await resolveEffectiveManifest(
-    supabase,
-    quotation.org_id,
-    quotation.agency_id
-  )
+  let resolved = effectiveSelection
   const brandColor = branding.brand_color?.trim()
   if (!selection && resolved.revisionId === null && brandColor && /^#[0-9a-f]{6}$/i.test(brandColor)) {
     resolved = {

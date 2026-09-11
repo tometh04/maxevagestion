@@ -631,24 +631,33 @@ async function waitForImages(container: HTMLElement, timeoutMs = 5000): Promise<
 }
 
 export async function renderHtmlToPdfBlob(html: string): Promise<Blob> {
-  const html2canvas = (await import('html2canvas')).default;
-  const jsPDF = (await import('jspdf')).default;
+  const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+    import('html2canvas'), import('jspdf'),
+  ]);
 
-  const container = document.createElement('div');
-  container.innerHTML = html;
-  container.style.position = 'fixed';
-  container.style.top = '0';
-  container.style.left = '0';
-  container.style.width = `${A4_WIDTH_PX}px`;
-  container.style.zIndex = '-1';
-  container.style.pointerEvents = 'none';
-  container.style.background = 'white';
-  container.style.fontFamily = "'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif";
-  document.body.appendChild(container);
+  // html2canvas clones the entire ownerDocument for each page. Isolate the
+  // quotation so CRM images, fonts, styles and thousands of nodes are excluded.
+  const frame = document.createElement('iframe');
+  frame.setAttribute('sandbox', 'allow-same-origin');
+  frame.setAttribute('aria-hidden', 'true');
+  frame.tabIndex = -1;
+  frame.style.cssText = `position:fixed;left:0;top:0;width:${A4_WIDTH_PX}px;height:${A4_HEIGHT_PX}px;border:0;z-index:-1;pointer-events:none`;
+  document.body.appendChild(frame);
 
   try {
-    await waitForImages(container);
-    await waitForQuotationDocumentFonts(document, container);
+    const renderDocument = frame.contentDocument;
+    if (!renderDocument) throw new Error('No se pudo preparar el PDF');
+    renderDocument.open();
+    renderDocument.write(html);
+    renderDocument.close();
+    const container = renderDocument.body;
+    container.style.margin = '0';
+    container.style.width = `${A4_WIDTH_PX}px`;
+    container.style.background = 'white';
+    await Promise.all([
+      waitForImages(container),
+      waitForQuotationDocumentFonts(renderDocument, container),
+    ]);
     await new Promise<void>(resolve => setTimeout(resolve, 0));
 
     const pageDivs = Array.from(container.querySelectorAll('[data-pdf-page]')) as HTMLElement[];
@@ -669,7 +678,8 @@ export async function renderHtmlToPdfBlob(html: string): Promise<Blob> {
 
     for (let i = 0; i < targets.length; i++) {
       await new Promise<void>(resolve => setTimeout(resolve, 0));
-      const canvas = await html2canvas(targets[i], {
+      let captureTimer: ReturnType<typeof setTimeout> | undefined;
+      const canvas = await Promise.race([html2canvas(targets[i], {
         scale: 2,
         useCORS: true,
         imageTimeout: 8000,
@@ -680,7 +690,9 @@ export async function renderHtmlToPdfBlob(html: string): Promise<Blob> {
         scrollX: 0,
         scrollY: 0,
         backgroundColor: '#ffffff',
-      });
+      }), new Promise<never>((_, reject) => {
+        captureTimer = setTimeout(() => reject(new Error('No se pudo terminar de dibujar el PDF. Volvé a intentar la descarga.')), 30_000);
+      })]).finally(() => { if (captureTimer) clearTimeout(captureTimer); });
 
       if (i > 0) pdf.addPage();
       const imgData = canvas.toDataURL('image/jpeg', 0.95);
@@ -691,7 +703,7 @@ export async function renderHtmlToPdfBlob(html: string): Promise<Blob> {
 
     return pdf.output('blob');
   } finally {
-    document.body.removeChild(container);
+    frame.remove();
   }
 }
 

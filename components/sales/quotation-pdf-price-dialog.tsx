@@ -18,6 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "sonner"
 import { formatQuotationCurrency } from "@/lib/quotations/presentation"
 import { normalizeManualQuotationTotal } from "@/lib/quotations/totals"
+import { requestQuotationJson } from "@/lib/quotation-documents/request-client"
 import {
   parseQuotationPresentationContent,
   type QuotationPresentationContent,
@@ -128,9 +129,8 @@ export function QuotationPdfPriceDialog({
       setPresentation(parseQuotationPresentationContent({}))
       setExpectedUpdatedAt(null)
       try {
-        const res = await fetch(`/api/quotations/${quotationId}`)
+        const { response: res, json } = await requestQuotationJson(`/api/quotations/${quotationId}`)
         if (!res.ok) throw new Error("No se pudo cargar la cotización")
-        const json = await res.json()
         if (cancelled) return
         const q = json.data
         setCurrency(q?.currency || "USD")
@@ -243,7 +243,7 @@ export function QuotationPdfPriceDialog({
     let contentSaved = false
     try {
       if (!expectedUpdatedAt) throw new Error("La cotización no tiene versión de edición")
-      const prepareRes = await fetch(`/api/quotations/${quotationId}/document`, {
+      const { response: prepareRes, json: preparedJson } = await requestQuotationJson(`/api/quotations/${quotationId}/document`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -260,7 +260,6 @@ export function QuotationPdfPriceDialog({
           presentation_content: presentation,
         }),
       })
-      const preparedJson = await prepareRes.json().catch(() => ({}))
       if (version !== requestVersion.current) { sendWindow?.close(); return }
       if (!prepareRes.ok) {
         throw new Error(preparedJson?.error || "No se pudieron guardar los precios y el contenido")

@@ -1,10 +1,11 @@
 /// <reference types="@testing-library/jest-dom" />
 import React from "react"
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { toast } from "sonner"
 import { QuotationPdfPriceDialog } from "../quotation-pdf-price-dialog"
 import {
   QuotationDocumentDownloadError,
+  fetchQuotationDocumentForUser,
   type QuotationDocumentPayload,
 } from "@/lib/quotation-documents/client"
 
@@ -107,6 +108,29 @@ function quotationResponse() {
 }
 
 describe("QuotationPdfPriceDialog", () => {
+  it.each(["Generar PDF", "Guardar y enviar"])("unlocks %s when issuance stops responding", async label => {
+    const sendWindow = { opener: null, closed: false, close: jest.fn() } as unknown as Window
+    const openSpy = jest.spyOn(window, "open").mockReturnValue(sendWindow)
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => quotationResponse() })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ data: { updated_at: VERSION_2 } }) })
+      .mockImplementation(() => new Promise(() => {}))
+    const issue = () => fetchQuotationDocumentForUser(QUOTATION_ID, { expectedUpdatedAt: VERSION_2 })
+    const onClose = jest.fn()
+    render(<QuotationPdfPriceDialog quotationId={QUOTATION_ID} onClose={onClose} onGenerate={issue} onSend={issue} />)
+    const button = await screen.findByRole("button", { name: label })
+    await waitFor(() => expect(button).not.toBeDisabled())
+    jest.useFakeTimers()
+    try {
+      fireEvent.click(button)
+      await act(async () => { await jest.advanceTimersByTimeAsync(45_001) })
+      expect(button).not.toBeDisabled()
+      expect(onClose).not.toHaveBeenCalled()
+      expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("comprobar si se guardó"))
+      if (label === "Guardar y enviar") expect(sendWindow.close).toHaveBeenCalled()
+    } finally { jest.useRealTimers(); openSpy.mockRestore() }
+  })
+
   it("previews the saved content without issuing, downloading or closing", async () => {
     const document = { ...issuedDocument(), issuedDocumentId: null, quotationStatus: "DRAFT" }
     const fetchMock = jest.fn()
@@ -242,6 +266,7 @@ describe("QuotationPdfPriceDialog", () => {
         description: "Aerolíneas · EZE - PUJ",
         operator_id: operatorId,
       }],
+      available_operators: [{ id: OPERATOR_ID, name: "Delfos" }],
     })
     const fetchMock = jest.fn()
       .mockResolvedValueOnce({ ok: true, json: async () => emiliaResponse })

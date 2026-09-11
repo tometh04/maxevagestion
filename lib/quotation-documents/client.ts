@@ -1,6 +1,7 @@
 "use client"
 
 import { downloadPdfFromHtml } from "@/lib/pdf/quote-pdf-designs"
+import { requestQuotationJson } from "./request-client"
 import type { QuotationDocumentDataV1 } from "@/lib/quotation-documents/types"
 import type { QuotationPresentationData } from "@/lib/quotations/presentation"
 
@@ -54,8 +55,9 @@ export class QuotationDocumentDownloadError extends Error {
   }
 }
 
-async function readDocumentResponse(response: Response): Promise<QuotationDocumentPayload> {
-  const json = await response.json().catch(() => ({}))
+function readDocumentResponse(response: Response, json: {
+  document?: QuotationDocumentPayload; error?: string; code?: string
+}): QuotationDocumentPayload {
   if (!response.ok || !json?.document?.html) {
     throw new QuotationDocumentClientError(
       json?.error || "No se pudo generar el documento de la cotización",
@@ -71,8 +73,7 @@ async function withCommittedQuotationMetadata(
 ): Promise<QuotationDocumentPayload> {
   if (!document.issuedDocumentId || document.quotationUpdatedAt) return document
   try {
-    const quotationResponse = await fetch(`/api/quotations/${quotationId}`, { cache: "no-store" })
-    const quotationJson = await quotationResponse.json().catch(() => ({}))
+    const { response: quotationResponse, json: quotationJson } = await requestQuotationJson(`/api/quotations/${quotationId}`, { cache: "no-store" })
     const quotation = quotationJson?.data
     if (
       quotationResponse.ok
@@ -106,14 +107,13 @@ export async function fetchQuotationDocumentForUser(
   const issue = options.issue !== false
   let expectedUpdatedAt = options.expectedUpdatedAt
   if (issue && !expectedUpdatedAt) {
-    const quotationResponse = await fetch(`/api/quotations/${quotationId}`, { cache: "no-store" })
-    const quotationJson = await quotationResponse.json().catch(() => ({}))
+    const { response: quotationResponse, json: quotationJson } = await requestQuotationJson(`/api/quotations/${quotationId}`, { cache: "no-store" })
     expectedUpdatedAt = quotationJson?.data?.updated_at
     if (!quotationResponse.ok || typeof expectedUpdatedAt !== "string" || !expectedUpdatedAt) {
       throw new Error(quotationJson?.error || "No se pudo leer la versión actual de la cotización")
     }
   }
-  const response = await fetch(`/api/quotations/${quotationId}/document`, {
+  const { response, json } = await requestQuotationJson(`/api/quotations/${quotationId}/document`, {
     method: issue ? "POST" : "GET",
     headers: issue ? { "Content-Type": "application/json" } : undefined,
     body: issue
@@ -125,7 +125,7 @@ export async function fetchQuotationDocumentForUser(
       : undefined,
     cache: "no-store",
   })
-  const document = await readDocumentResponse(response)
+  const document = readDocumentResponse(response, json)
   if (!issue || !document.issuedDocumentId) return document
   return withCommittedQuotationMetadata(quotationId, document)
 }
@@ -133,10 +133,10 @@ export async function fetchQuotationDocumentForUser(
 export async function fetchQuotationDocumentForPublic(
   token: string
 ): Promise<QuotationDocumentPayload> {
-  const response = await fetch(`/api/public/quotations/${encodeURIComponent(token)}/document`, {
+  const { response, json } = await requestQuotationJson(`/api/public/quotations/${encodeURIComponent(token)}/document`, {
     cache: "no-store",
   })
-  return readDocumentResponse(response)
+  return readDocumentResponse(response, json)
 }
 
 export async function downloadQuotationDocumentHtml(
