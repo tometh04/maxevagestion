@@ -15,6 +15,7 @@ import { AfipSettings } from "@/components/settings/afip-settings"
 import { InterfaceSettings } from "@/components/settings/interface-settings"
 import { AuditSettings } from "@/components/settings/audit-settings"
 import { CustomersSettings } from "@/components/settings/customers-settings"
+import { DataExportsSettings } from "@/components/settings/data-exports-settings"
 import { AgencyApprovalRulesForm } from "@/components/settings/agency-approval-rules-form"
 import { PermissionsMatrix } from "@/components/settings/permissions-matrix"
 import { OperatorsTable, Operator } from "@/components/operators/operators-table"
@@ -27,6 +28,8 @@ interface SettingsPageClientProps {
   agencies: Array<{ id: string; name: string }>
   firstAgencyId: string | null
   userRole: string
+  /** Ids del catálogo de exportaciones que este usuario puede descargar. */
+  allowedExportIds?: string[]
   initialPermissionsMatrix?: Record<string, Record<string, { read: boolean; write: boolean; delete: boolean; export: boolean; ownDataOnly: boolean }>>
   initialPermissionsCustomized?: Record<string, string[]>
 }
@@ -84,7 +87,7 @@ function OperatorsTab() {
   )
 }
 
-export function SettingsPageClient({ defaultTab, agencies, firstAgencyId, userRole, initialPermissionsMatrix, initialPermissionsCustomized }: SettingsPageClientProps) {
+export function SettingsPageClient({ defaultTab, agencies, firstAgencyId, userRole, allowedExportIds, initialPermissionsMatrix, initialPermissionsCustomized }: SettingsPageClientProps) {
   const searchParams = useSearchParams()
   const router = useRouter()
   const tabFromUrl = searchParams.get("tab") || defaultTab
@@ -111,6 +114,7 @@ export function SettingsPageClient({ defaultTab, agencies, firstAgencyId, userRo
         <TabsTrigger value="requirements">Requisitos Destino</TabsTrigger>
         <TabsTrigger value="regiones">Regiones CRM</TabsTrigger>
         <TabsTrigger value="afip" data-tour="settings.tab-afip">Facturación AFIP</TabsTrigger>
+        <TabsTrigger value="exportaciones">Exportar datos</TabsTrigger>
         <TabsTrigger value="permisos">Permisos de Roles</TabsTrigger>
         <TabsTrigger value="auditoria">Auditoría</TabsTrigger>
       </TabsList>
@@ -159,6 +163,9 @@ export function SettingsPageClient({ defaultTab, agencies, firstAgencyId, userRo
       </TabsContent>
       <TabsContent value="afip" className="mt-6">
         <AfipSettings agencies={agencies} defaultAgencyId={firstAgencyId} />
+      </TabsContent>
+      <TabsContent value="exportaciones" className="mt-6">
+        <DataExportsSettings agencies={agencies} allowedExportIds={allowedExportIds ?? []} />
       </TabsContent>
       <TabsContent value="permisos" className="mt-6">
         <div className="space-y-4">

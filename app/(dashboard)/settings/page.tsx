@@ -1,8 +1,19 @@
 import { getCurrentUser } from "@/lib/auth"
 import { createServerClient } from "@/lib/supabase/server"
-import { getScopedAgenciesForUser } from "@/lib/permissions-api"
-import { loadFullAgencyMatrix, buildDefaultMatrix, CONFIGURABLE_ROLES } from "@/lib/permissions-agency"
+import {
+  getScopedAgenciesForUser,
+  getUserAgencyIds,
+  canPerformAction,
+  isOwnDataOnlyResolved,
+} from "@/lib/permissions-api"
+import {
+  loadFullAgencyMatrix,
+  buildDefaultMatrix,
+  CONFIGURABLE_ROLES,
+  resolveUserPermissions,
+} from "@/lib/permissions-agency"
 import { SettingsPageClient } from "@/components/settings/settings-page-client"
+import { availableExportIds } from "@/lib/exports/catalog"
 import type { UserRole } from "@/lib/permissions"
 
 interface SettingsPageProps {
@@ -55,6 +66,26 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     }
   }
 
+  // Qué exportaciones ofrece la pestaña "Exportar datos". Se resuelve acá, con
+  // la matriz del usuario, y no en el cliente: la lista es la promesa de qué
+  // descargas van a funcionar, y el permiso lo tiene el server.
+  const userRoles = ((user as any).roles ?? [user.role]) as string[]
+  const exportAgencyIds = await getUserAgencyIds(supabase, user.id, user.role as UserRole)
+  const userPerms = user.org_id
+    ? await resolveUserPermissions(
+        supabase as any,
+        user.id,
+        user.org_id,
+        userRoles,
+        exportAgencyIds
+      )
+    : undefined
+  const allowedExportIds = availableExportIds({
+    roles: userRoles,
+    can: (module, permission) => canPerformAction(user as any, module, permission, userPerms),
+    ownDataOnly: (module) => isOwnDataOnlyResolved(user as any, module, userPerms),
+  })
+
   return (
     <div className="space-y-6">
       <div>
@@ -67,6 +98,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         agencies={agencies}
         firstAgencyId={firstAgencyId}
         userRole={user.role}
+        allowedExportIds={allowedExportIds}
         initialPermissionsMatrix={initialPermissionsMatrix}
         initialPermissionsCustomized={initialPermissionsCustomized}
       />
