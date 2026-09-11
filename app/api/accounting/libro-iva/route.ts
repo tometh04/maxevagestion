@@ -6,11 +6,17 @@ import { ledgerSign } from "@/lib/invoices/credit-note"
 import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
 import { bundleLibroIvaDigital } from "@/lib/accounting/libro-iva-digital"
 import { afipMonCotiz } from "@/lib/invoices/currency"
+import { hasAdminRole } from "@/lib/permissions"
 
 export async function GET(request: Request) {
   try {
     const { user } = await getCurrentUser()
-    if (!["ADMIN", "SUPER_ADMIN", "CONTABLE"].includes(user.role)) {
+    // El libro fiscal sigue siendo de administración y contaduría (no se delega
+    // a la matriz por agencia), pero el chequeo literal contra `user.role`
+    // dejaba afuera al ORG_OWNER —el dueño del tenant, que tiene exactamente
+    // los permisos de SUPER_ADMIN— y a quien tenga CONTABLE como rol adicional.
+    const roles = ((user as any).roles ?? [user.role]) as string[]
+    if (!hasAdminRole(roles) && !roles.includes("CONTABLE")) {
       return NextResponse.json({ error: "No autorizado" }, { status: 403 })
     }
 
