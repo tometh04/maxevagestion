@@ -1,6 +1,8 @@
 "use client"
 
 import { previewSharedSplit } from "@/lib/commissions/split-preview"
+import { canEditSharedSplit } from "@/lib/commissions/shared-split-roles"
+import { usePermissions } from "@/components/permissions/permissions-provider"
 import type { SellerOption } from "@/lib/sellers/seller-option"
 import { useState, useEffect, useMemo } from "react"
 import { useForm, type DefaultValues } from "react-hook-form"
@@ -164,7 +166,6 @@ interface EditOperationDialogProps {
   agencies: Array<{ id: string; name: string }>
   sellers: SellerOption[]
   operators: Array<{ id: string; name: string }>
-  userRole?: string
   operationLegs?: Array<{
     id: string
     order_index: number
@@ -200,11 +201,14 @@ export function EditOperationDialog({
   agencies,
   sellers,
   operators,
-  userRole,
   operationLegs = [],
   operationOperators = [],
 }: EditOperationDialogProps) {
   useScreenView("edit-operation", open)
+  // El rol sale del provider del dashboard, no de una prop: como prop opcional,
+  // el listado de Operaciones se la olvidó y el reparto de comisión quedó
+  // deshabilitado para todos los roles ahí, mientras el detalle lo habilitaba.
+  const { role: userRole } = usePermissions()
   const [isLoading, setIsLoading] = useState(false)
 
   // Estado para crear nuevo operador
@@ -875,12 +879,13 @@ export function EditOperationDialog({
               />
 
               {/* Comisión compartida - dos inputs absolutos (29/04 — Tomi opción B).
-                  Solo visible con vendedor secundario. ADMIN/SUPER_ADMIN/CONTABLE pueden
-                  editar; resto ve readonly. Validación reactiva: suma ≤ pct del principal.
+                  Solo visible con vendedor secundario. Quién puede editarlo está en
+                  SHARED_SPLIT_EDITOR_ROLES; el resto ve readonly.
+                  Validación reactiva: suma ≤ pct del principal.
                   Para operaciones legacy (overrides NULL) seguimos mostrando el input
                   commission_split clásico para no migrarlas automáticamente. */}
               {form.watch("seller_secondary_id") && form.watch("seller_secondary_id") !== "none" && (() => {
-                const canEdit = ["SUPER_ADMIN", "ADMIN", "CONTABLE"].includes(userRole || "")
+                const canEdit = canEditSharedSplit(userRole)
                 // Mismo cálculo que el servidor (VIB-63): antes el sugerido del
                 // secundario era la mitad del porcentaje del principal.
                 // La oficina va porque el tope depende de ella: el mismo

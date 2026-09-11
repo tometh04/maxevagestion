@@ -906,7 +906,6 @@ export function OperationsTable({
           agencies={agencies}
           sellers={sellers}
           operators={allOperators}
-          userRole={userRole}
           // Conservador: al duplicar, un vendedor no reasigna la venta. La copia
           // arranca con el vendedor de la operación original (que es él mismo,
           // porque sólo ve las propias) y el servidor valida igual.

@@ -1220,7 +1220,6 @@ export function OperationDetailClient({
           agencies={agencies}
           sellers={sellers}
           operators={operators}
-          userRole={userRole}
           operationLegs={operationLegs}
           operationOperators={operationOperators}
         />
@@ -1239,7 +1238,6 @@ export function OperationDetailClient({
           agencies={agencies}
           sellers={sellers}
           operators={operators}
-          userRole={userRole}
           canPickOtherSeller={userRole !== "SELLER"}
         />
       )}

@@ -269,7 +269,6 @@ export function OperationsPageClient({
         defaultSellerId={defaultSellerId}
         canPickOtherSeller={canPickOtherSeller}
         canPickSecondarySeller={canPickSecondarySeller}
-        userRole={userRole}
         // VIB-183: el selector de paquete solo aparece en el alta normal.
         // Duplicar y convertir un lead usan este mismo diálogo y quedan igual.
         allowPackages
