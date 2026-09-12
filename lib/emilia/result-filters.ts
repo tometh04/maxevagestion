@@ -30,6 +30,10 @@ export interface FlightFilters {
 }
 
 export interface HotelFilters {
+  name?: string
+  currency?: string | null
+  freeCancellation?: boolean
+  availableOnly?: boolean
   maxRoomTotal?: number | null
   category?: string | null
   mealPlan?: MealPlanFilter
@@ -55,6 +59,7 @@ export interface FlightFilterOptions {
 }
 
 export interface HotelFilterOptions {
+  currencies: FilterOption[]
   roomTotal: NumberRange
   categories: FilterOption[]
   mealPlans: FilterOption[]
@@ -264,7 +269,7 @@ export function formatHotelCategoryLabel(category: string): string {
 }
 
 function getRoomMealPlan(room: HotelRoom): Exclude<MealPlanFilter, "all"> | null {
-  return deriveMealPlan(room.description) as Exclude<MealPlanFilter, "all"> | null
+  return (deriveMealPlan(room.board_description) || deriveMealPlan(room.board) || deriveMealPlan(room.description)) as Exclude<MealPlanFilter, "all"> | null
 }
 
 function selectedRoomIdFor(selectedRooms: SelectedRooms | undefined, hotelId: string): string | null {
@@ -276,6 +281,8 @@ function selectedRoomIdFor(selectedRooms: SelectedRooms | undefined, hotelId: st
 }
 
 function matchesHotelLevelFilters(hotel: EurovipsHotel, filters: HotelFilters): boolean {
+  const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es").trim()
+  if (filters.name?.trim() && !normalize(hotel.name).includes(normalize(filters.name))) return false
   if (filters.category && normalizeHotelCategory(hotel.category) !== filters.category) {
     return false
   }
@@ -287,12 +294,15 @@ function matchesHotelLevelFilters(hotel: EurovipsHotel, filters: HotelFilters): 
   return true
 }
 
-function matchesRoomFilters(room: HotelRoom, filters: HotelFilters): boolean {
+export function matchesRoomFilters(room: HotelRoom, filters: HotelFilters): boolean {
+  if (filters.currency && room.currency !== filters.currency) return false
+  if (filters.freeCancellation && room.free_cancellation !== true) return false
+  if (filters.availableOnly && (room.availability_status
+    ? room.availability_status !== "available" : room.availability < 3 || !Number.isFinite(room.availability))) return false
   if (
     filters.maxRoomTotal != null &&
     Number.isFinite(filters.maxRoomTotal) &&
-    typeof room.total_price === "number" &&
-    room.total_price > filters.maxRoomTotal
+    (!Number.isFinite(room.total_price) || room.total_price > filters.maxRoomTotal)
   ) {
     return false
   }
@@ -352,6 +362,7 @@ export function getHotelFilterOptions(hotels: EurovipsHotel[]): HotelFilterOptio
     .map((value) => ({ value, label: formatHotelCategoryLabel(value) }))
 
   return {
+    currencies: uniqueOptions(rooms.map(room => room.currency)),
     roomTotal: numberRange(rooms.map((room) => room.total_price).filter((value): value is number => typeof value === "number")),
     categories: categoryValues,
     mealPlans,
@@ -361,6 +372,7 @@ export function getHotelFilterOptions(hotels: EurovipsHotel[]): HotelFilterOptio
 
 export function hasActiveHotelFilters(filters: HotelFilters): boolean {
   return Boolean(
+    filters.name?.trim() || filters.currency || filters.freeCancellation || filters.availableOnly ||
     filters.maxRoomTotal != null ||
     filters.category ||
     (filters.mealPlan && filters.mealPlan !== "all") ||

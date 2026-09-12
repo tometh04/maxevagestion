@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Button } from "@/components/ui/button"
 import {
   Hotel,
   Star,
@@ -43,6 +44,12 @@ interface HotelData {
   website?: string
   description?: string
   images?: string[]
+  latitude?: number | null
+  longitude?: number | null
+  amenities?: string[]
+  accessibility?: string[]
+  search_adults?: number
+  search_children?: number
   /** Mayorista de origen (proviene del campo `provider` de la API de Emilia). */
   provider?: string
   rooms: HotelRoom[]
@@ -61,6 +68,7 @@ interface HotelResultCardProps {
   onSelectionChange?: (hotelId: string, selected: boolean) => void
   /** Carrusel angosto (chat embebido): fuerza 1 columna de habitaciones. */
   compact?: boolean
+  onViewDetails?: () => void
 }
 
 /**
@@ -68,7 +76,7 @@ interface HotelResultCardProps {
  * Usa <img> nativo (los dominios de imagen de Emilia son dinámicos y no
  * dependen de `next.config` remotePatterns); si una foto falla, la descarta.
  */
-function HotelImageCarousel({
+export function HotelImageCarousel({
   images,
   alt,
   provider,
@@ -188,6 +196,7 @@ export function HotelResultCard({
   selected = false,
   onSelectionChange,
   compact = false,
+  onViewDetails,
 }: HotelResultCardProps) {
   const formatDate = (dateStr: string) => {
     // Mantener formato YYYY-MM-DD según especificación
@@ -204,6 +213,10 @@ export function HotelResultCard({
     : ""
   const visibleAddress = fullAddress ? truncateEurovipsAddress(fullAddress) : ""
   const isAddressTruncated = Boolean(fullAddress) && visibleAddress !== fullAddress
+  const pricesByCurrency = new Map<string, number>()
+  for (const room of hotel.rooms) {
+    if (Number.isFinite(room.total_price)) pricesByCurrency.set(room.currency, Math.min(pricesByCurrency.get(room.currency) ?? Infinity, room.total_price))
+  }
 
   return (
     <Card className={cn("overflow-hidden border-border/50", selected && "ring-2 ring-primary")}>
@@ -262,14 +275,22 @@ export function HotelResultCard({
       <Separator />
 
       <CardContent className="pt-4">
-        <RoomGroupSelector
+        {onViewDetails ? (
+          <div className="space-y-3">
+            {Array.from(pricesByCurrency, ([currency, amount]) => <p key={currency} className="text-base font-semibold tabular-nums">Desde {currency} {new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 }).format(amount)} <span className="text-xs font-normal text-muted-foreground">total estadía</span></p>)}
+            <p className="text-sm text-muted-foreground">{hotel.rooms.length} tarifa{hotel.rooms.length !== 1 ? "s" : ""} para esta estadía</p>
+            <Button type="button" variant={selected ? "default" : "outline"} className="w-full" onClick={onViewDetails}>
+              Ver hotel y habitaciones
+            </Button>
+          </div>
+        ) : <RoomGroupSelector
           rooms={hotel.rooms}
           selectedRoomId={selectedRoomId}
           onRoomSelect={onRoomSelect}
           nights={hotel.nights}
           maxInitialRooms={3}
           compact={compact}
-        />
+        />}
       </CardContent>
     </Card>
   )

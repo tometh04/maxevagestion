@@ -11,6 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { FlightResultCard } from "@/components/emilia/flight-result-card"
+import { HotelDetailSidebar } from "@/components/emilia/hotel-detail-sidebar"
+import { HotelFiltersBar } from "@/components/emilia/hotel-filters-bar"
 import { HotelResultCard } from "@/components/emilia/hotel-result-card"
 import { buildQuotationPayload, type EmiliaFlight, type EurovipsHotel } from "@/lib/emilia/quotation-mapper"
 import { parseHotelSegments, selectHotelForStay } from "@/lib/emilia/hotel-stays"
@@ -26,13 +28,10 @@ import {
   getFlightFilterOptions,
   getHotelFilterOptions,
   hasActiveFlightFilters,
-  hasActiveHotelFilters,
   type FlightFilters,
   type FlightFilterOptions,
   type FlightStopsFilter,
   type HotelFilters,
-  type HotelFilterOptions,
-  type MealPlanFilter,
 } from "@/lib/emilia/result-filters"
 import { getPublicQuotationPath } from "@/lib/quotations/public-links"
 import { downloadQuotationPdfFromPriceDialog } from "@/lib/pdf/quotation-pdf-html"
@@ -63,27 +62,11 @@ const FLIGHT_STOPS_OPTIONS: Array<{ value: FlightStopsFilter; label: string }> =
   { value: "two_plus", label: "2+ escalas" },
 ]
 
-const HOTEL_MEAL_PLAN_OPTIONS: Array<{ value: MealPlanFilter; label: string }> = [
-  { value: "all", label: "Todos" },
-  { value: "ALL_INCLUSIVE", label: "All inclusive" },
-  { value: "DESAYUNO", label: "Desayuno" },
-  { value: "MEDIA_PENSION", label: "Media pensión" },
-  { value: "PENSION_COMPLETA", label: "Pensión completa" },
-  { value: "SOLO_ALOJAMIENTO", label: "Solo alojamiento" },
-]
-
 function parseOptionalNumber(value: string): number | null {
   const trimmed = value.trim()
   if (!trimmed) return null
   const parsed = Number(trimmed)
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null
-}
-
-function formatFilterPrice(value: number | null | undefined): string {
-  if (value == null) return ""
-  return new Intl.NumberFormat("es-AR", {
-    maximumFractionDigits: 0,
-  }).format(value)
 }
 
 interface FlightFiltersBarProps {
@@ -223,105 +206,6 @@ function FlightFiltersBar({
         </div>
         <p className="mt-2 text-xs text-muted-foreground">Filtra las opciones recibidas. Los límites de tiempo excluyen opciones sin ese dato; para buscar otras, pedíselo a Emilia.</p>
       </details>
-    </div>
-  )
-}
-
-interface HotelFiltersBarProps {
-  filters: HotelFilters
-  options: HotelFilterOptions
-  visibleCount: number
-  totalCount: number
-  onChange: (filters: HotelFilters) => void
-  onClear: () => void
-}
-
-function HotelFiltersBar({
-  filters,
-  options,
-  visibleCount,
-  totalCount,
-  onChange,
-  onClear,
-}: HotelFiltersBarProps) {
-  const active = hasActiveHotelFilters(filters)
-
-  return (
-    <div className="mb-2 rounded-lg border border-border/50 bg-muted/20 px-3 py-2">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <Badge variant="outline" className="h-6 rounded-md bg-background text-[11px] font-medium">
-          {visibleCount} visibles de {totalCount}
-        </Badge>
-        {active && (
-          <Button type="button" variant="ghost" size="sm" onClick={onClear} className="h-7 px-2 text-xs">
-            Limpiar filtros
-          </Button>
-        )}
-      </div>
-      <div className="mt-2 grid grid-cols-2 gap-2 lg:grid-cols-4">
-        <Select
-          value={filters.category ?? ALL_SELECT_VALUE}
-          onValueChange={(value) => onChange({ ...filters, category: value === ALL_SELECT_VALUE ? null : value })}
-          disabled={options.categories.length === 0}
-        >
-          <SelectTrigger className="h-8 text-xs" aria-label="Filtrar hoteles por categoría">
-            <SelectValue placeholder="Categoría" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL_SELECT_VALUE}>Todas</SelectItem>
-            {options.categories.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select
-          value={filters.mealPlan ?? "all"}
-          onValueChange={(value) => onChange({ ...filters, mealPlan: value as MealPlanFilter })}
-        >
-          <SelectTrigger className="h-8 text-xs" aria-label="Filtrar hoteles por régimen">
-            <SelectValue placeholder="Régimen" />
-          </SelectTrigger>
-          <SelectContent>
-            {HOTEL_MEAL_PLAN_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select
-          value={filters.provider ?? ALL_SELECT_VALUE}
-          onValueChange={(value) => onChange({ ...filters, provider: value === ALL_SELECT_VALUE ? null : value })}
-          disabled={options.providers.length === 0}
-        >
-          <SelectTrigger className="h-8 text-xs" aria-label="Filtrar hoteles por mayorista">
-            <SelectValue placeholder="Mayorista" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL_SELECT_VALUE}>Todos</SelectItem>
-            {options.providers.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Input
-          type="number"
-          min={0}
-          inputMode="decimal"
-          aria-label="Precio máximo de hotel"
-          placeholder={options.roomTotal.max != null ? `Máx ${formatFilterPrice(options.roomTotal.max)}` : "Precio máx"}
-          value={filters.maxRoomTotal ?? ""}
-          onChange={(event) => onChange({ ...filters, maxRoomTotal: parseOptionalNumber(event.target.value) })}
-          className="h-8 text-xs"
-        />
-      </div>
     </div>
   )
 }
@@ -616,6 +500,8 @@ export function LeadEmiliaChat({
 
   // Selección
   const [selectedFlightIds, setSelectedFlightIds] = useState<string[]>([])
+  const [openHotel, setOpenHotel] = useState<{ messageIndex: number; hotelId: string } | null>(null)
+  const hotelDetailTrigger = useRef<HTMLElement | null>(null)
   const [selectedHotels, setSelectedHotels] = useState<Map<string, string>>(new Map()) // hotelId → roomId
   const [flightFiltersByMessage, setFlightFiltersByMessage] = useState<Record<number, FlightFilters>>({})
   const [hotelFiltersByMessage, setHotelFiltersByMessage] = useState<Record<number, HotelFilters>>({})
@@ -650,6 +536,7 @@ export function LeadEmiliaChat({
     setSelectedHotels(new Map())
     setFlightFiltersByMessage({})
     setHotelFiltersByMessage({})
+    setOpenHotel(null)
   }, [lead.id])
 
   // La guía de prompt arranca únicamente dentro del chat autorizado. El gate de
@@ -1155,6 +1042,16 @@ export function LeadEmiliaChat({
       return !hasSelection || !message.jobStatus || message.jobStatus === "completed"
     })
 
+  const detailHotel = openHotel ? messages[openHotel.messageIndex]?.cards?.hotels?.items.find(hotel => hotel.id === openHotel.hotelId) : undefined
+  function openHotelDetails(messageIndex: number, hotelId: string) {
+    hotelDetailTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    setOpenHotel({ messageIndex, hotelId })
+  }
+  function closeHotelDetails() {
+    setOpenHotel(null)
+    requestAnimationFrame(() => hotelDetailTrigger.current?.focus())
+  }
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-12 h-full">
@@ -1165,7 +1062,8 @@ export function LeadEmiliaChat({
   }
 
   return (
-    <div className="flex flex-col h-full min-h-0 min-w-0 overflow-hidden">
+    <div className="flex h-full min-h-0 min-w-0 overflow-hidden">
+    <div className={cn("flex flex-1 flex-col h-full min-h-0 min-w-0 overflow-hidden", detailHotel && "max-md:hidden")}>
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 px-6 py-3 border-b text-sm">
         <button onClick={onBack} className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
@@ -1215,6 +1113,8 @@ export function LeadEmiliaChat({
           const visibleFlights = filterFlights(mFlights, flightFilters, messageFlightIds)
           const selectedOutsideFilters = mFlights.some(flight => messageFlightIds.includes(flight.id) && !matchesFlight(flight, flightFilters))
           const visibleHotels = filterHotels(mHotels, hotelFilters, messageHotels)
+          const matchingHotelIds = new Set(filterHotels(mHotels, hotelFilters).map(hotel => hotel.id))
+          const hotelSelectionOutsideFilters = mHotels.some(hotel => messageHotels.has(hotel.id) && (!matchingHotelIds.has(hotel.id) || !filterHotels([hotel], hotelFilters)[0]?.rooms.some(room => room.occupancy_id === messageHotels.get(hotel.id))))
           const flightFilterOptions = getFlightFilterOptions(mFlights)
           const hotelFilterOptions = getHotelFilterOptions(mHotels)
           return (
@@ -1320,6 +1220,7 @@ export function LeadEmiliaChat({
                         onChange={(filters) => updateHotelFilters(i, filters)}
                         onClear={() => clearHotelFilters(i)}
                       />
+                      {hotelSelectionOutsideFilters && <p role="status" className="mb-2 text-xs text-muted-foreground">Tu hotel o habitación seleccionada no cumple los filtros y sigue visible para que puedas revisarla o desmarcarla.</p>}
                       {visibleHotels.length > 0 ? (
                         <CardCarousel count={visibleHotels.length} ariaLabel="Hoteles disponibles">
                           {visibleHotels.map((hotel) => (
@@ -1332,8 +1233,11 @@ export function LeadEmiliaChat({
                                 compact
                                 selected={messageHotels.has(hotel.id)}
                                 selectedRoomId={messageHotels.get(hotel.id)}
-                                onRoomSelect={(roomId) => selectHotelRoom(hotel, roomId, resultSelectionKey(i, hotel.id))}
-                                onSelectionChange={() => toggleHotelSelection(hotel, resultSelectionKey(i, hotel.id))}
+                                onViewDetails={() => openHotelDetails(i, hotel.id)}
+                                onSelectionChange={() => {
+                                  toggleHotelSelection(hotel, resultSelectionKey(i, hotel.id))
+                                  if (!messageHotels.has(hotel.id)) openHotelDetails(i, hotel.id)
+                                }}
                               />
                             </CarouselSlide>
                           ))}
@@ -1496,6 +1400,12 @@ export function LeadEmiliaChat({
           {generateLabel}
         </Button>
       </div>
+    </div>
+    {detailHotel && openHotel && <HotelDetailSidebar key={`${openHotel.messageIndex}:${detailHotel.id}`}
+      hotel={detailHotel} filters={hotelFiltersByMessage[openHotel.messageIndex] ?? DEFAULT_HOTEL_FILTERS}
+      selectedRoomId={selectedHotels.get(resultSelectionKey(openHotel.messageIndex, detailHotel.id))}
+      onClose={closeHotelDetails}
+      onRoomSelect={roomId => selectHotelRoom(detailHotel, roomId, resultSelectionKey(openHotel.messageIndex, detailHotel.id))} />}
     </div>
   )
 }

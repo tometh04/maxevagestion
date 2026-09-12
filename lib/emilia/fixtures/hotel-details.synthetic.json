@@ -1,0 +1,87 @@
+{
+  "schema_version": "emilia.hotel-offer.v1",
+  "phone": "+54 11 5555 0100",
+  "website": "https://hotel.example/informacion",
+  "category": "5 estrellas",
+  "lodging_policy": "Ingreso desde las 15:00. Depósito de garantía al ingresar.",
+  "cancellation_policy": "No reembolsable",
+  "expires_at": "2026-09-12T21:00:00Z",
+  "images": [
+    "https://hotel.example/fachada.jpg"
+  ],
+  "id": "hotel-sidebar-example",
+  "provider": "EUROVIPS",
+  "name": "Hotel de prueba",
+  "description": "Habitaciones con vista al mar. POLITICA NO REEMBOLSABLE: esta tarifa no admite cancelaciones sin cargo. El ingreso es a partir de las 15:00 y la salida hasta las 11:00. Se informa un depósito de garantía al ingresar.",
+  "stars": 5,
+  "location": {
+    "city": "Cancún",
+    "address": "Avenida del Mar 100",
+    "latitude": null,
+    "longitude": null
+  },
+  "stay": {
+    "check_in": "2027-01-10",
+    "check_out": "2027-01-15",
+    "nights": 5
+  },
+  "minimum_price": {
+    "amount": 1000,
+    "currency": "USD",
+    "basis": "COMMISSIONABLE_GROSS"
+  },
+  "amenities": [
+    "Piscina",
+    "Wi-Fi"
+  ],
+  "accessibility": [
+    "Ascensor"
+  ],
+  "rooms": [
+    {
+      "description": "Doble superior con balcón. Tarifa para dos adultos y un menor.",
+      "board_description": "Todo incluido",
+      "amenities": [
+        "Balcón",
+        "Aire acondicionado"
+      ],
+      "occupancy": {
+        "adults": 2,
+        "children": 1,
+        "infants": 0
+      },
+      "price_per_night": {
+        "amount": 200,
+        "currency": "USD",
+        "basis": "COMMISSIONABLE_GROSS"
+      },
+      "price_breakdown": {
+        "base": {
+          "amount": 900,
+          "currency": "USD",
+          "basis": "COMMISSIONABLE_GROSS"
+        },
+        "taxes": {
+          "amount": 100,
+          "currency": "USD",
+          "basis": "COMMISSIONABLE_GROSS"
+        }
+      },
+      "availability": 3,
+      "room_type_code": "DBL",
+      "rate_plan_code": "GENERAL",
+      "id": "room-sidebar-example",
+      "name": "Doble",
+      "board": "all_inclusive",
+      "price": {
+        "amount": 1000,
+        "currency": "USD",
+        "basis": "COMMISSIONABLE_GROSS"
+      },
+      "refundable": false,
+      "free_cancellation": false,
+      "payment_at_property": false,
+      "cancellation_policy": "No reembolsable"
+    }
+  ]
+}

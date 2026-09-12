@@ -1,8 +1,4 @@
 import { hotelQueryForOffer, hotelSearchContextSchema } from "./hotel-stays"
-import {
-  truncateEurovipsAddress,
-  truncateEurovipsPolicy,
-} from "@/lib/emilia/display-text"
 
 /**
  * Transformadores de datos de la API externa de viajes
@@ -417,44 +413,16 @@ export function transformCanonicalFlights(flights: any[], query: any = {}): any[
   })
 }
 
-function truncateHotelPolicyFields(hotel: any): any {
-  return {
-    ...hotel,
-    address:
-      typeof hotel?.address === "string"
-        ? truncateEurovipsAddress(hotel.address)
-        : hotel?.address,
-    policy_cancellation:
-      typeof hotel?.policy_cancellation === "string"
-        ? truncateEurovipsPolicy(hotel.policy_cancellation)
-        : hotel?.policy_cancellation,
-    policy_lodging:
-      typeof hotel?.policy_lodging === "string"
-        ? truncateEurovipsPolicy(hotel.policy_lodging)
-        : hotel?.policy_lodging,
-  }
-}
-
+// Preserve full commercial details; truncate only in visual summaries.
 export function sanitizeEmiliaMetaForStorage(meta: any): any {
-  const hotels = meta?.combinedData?.hotels
-  if (!Array.isArray(hotels)) {
-    return meta
-  }
-
-  return {
-    ...meta,
-    combinedData: {
-      ...meta.combinedData,
-      hotels: hotels.map(truncateHotelPolicyFields),
-    },
-  }
+  return meta
 }
 
 export function transformHotels(hotels: any[]): any[] {
   // Los hoteles ya vienen en el formato correcto según la especificación
   // Solo agregamos occupancy_id si no existe
   return hotels.map((hotel) => {
-    const safeHotel = truncateHotelPolicyFields(hotel)
+    const safeHotel = hotel
 
     return {
       ...safeHotel,
@@ -496,17 +464,23 @@ function transformCanonicalHotel(hotel: any, query: any, searchContext?: import(
       const name = typeof room?.name === "string" && room.name.trim() ? room.name.trim() : "Habitación"
       return {
         type: name,
-        description: [name, board].filter(Boolean).join(" · "),
-        price_per_night: typeof totalPrice === "number" && nights > 0 ? totalPrice / nights : totalPrice,
+        description: room?.description || [name, board].filter(Boolean).join(" · "),
+        board,
+        board_description: room?.board_description,
+        amenities: room?.amenities,
+        price_breakdown: room?.price_breakdown,
+        room_type_code: room?.room_type_code,
+        rate_plan_code: room?.rate_plan_code,
+        price_per_night: room?.price_per_night?.amount ?? (typeof totalPrice === "number" && nights > 0 ? totalPrice / nights : totalPrice),
         total_price: totalPrice,
         currency: room?.price?.currency || hotel?.minimum_price?.currency || "USD",
-        // El contrato público no publica cupo numérico. `2` representa "consultar",
-        // evitando prometer disponibilidad que el proveedor no expuso.
-        availability: 2,
+        // Si no hay cupo informado, conservar disponibilidad a consultar.
+        availability: room?.availability ?? 2,
+        availability_status: room?.availability_status,
         occupancy_id: room?.id || `room-${hotel?.id || "hotel"}-${index}`,
-        adults: canonicalPassengerCount(query?.adults, 1),
-        children: canonicalPassengerCount(query?.children, 0),
-        infants: canonicalPassengerCount(query?.infants, 0),
+        adults: room?.occupancy?.adults ?? canonicalPassengerCount(query?.adults, 1),
+        children: room?.occupancy?.children ?? canonicalPassengerCount(query?.children, 0),
+        infants: room?.occupancy?.infants ?? canonicalPassengerCount(query?.infants, 0),
         policy_cancellation: room?.cancellation_policy || "",
         refundable: room?.refundable ?? null,
         free_cancellation: room?.free_cancellation ?? null,
@@ -519,10 +493,13 @@ function transformCanonicalHotel(hotel: any, query: any, searchContext?: import(
       unique_id: hotel.id,
       search_context: searchContext,
       name: hotel.name,
-      category: typeof hotel?.stars === "number" ? `${hotel.stars} estrellas` : "",
+      category: typeof hotel?.stars === "number" ? `${hotel.stars} estrellas` : hotel?.category || "",
       city: hotel?.location?.city || query?.city || query?.destination || "",
       address: hotel?.location?.address || "",
-      phone: "",
+      phone: hotel?.phone || "",
+      website: hotel?.website,
+      expires_at: hotel?.expires_at,
+      description: typeof hotel?.description === "string" ? hotel.description : "",
       images: Array.isArray(hotel?.images)
         ? Array.from(new Set<string>(hotel.images.filter((src: unknown): src is string => {
             if (typeof src !== "string") return false
@@ -533,8 +510,8 @@ function transformCanonicalHotel(hotel: any, query: any, searchContext?: import(
       check_out: checkOut,
       nights,
       rooms,
-      policy_cancellation: rooms[0]?.policy_cancellation || "",
-      policy_lodging: "",
+      policy_cancellation: hotel?.cancellation_policy || "",
+      policy_lodging: hotel?.lodging_policy || "",
       search_adults: canonicalPassengerCount(query?.adults, 1),
       search_children: canonicalPassengerCount(query?.children, 0),
       provider: hotel?.provider || "",

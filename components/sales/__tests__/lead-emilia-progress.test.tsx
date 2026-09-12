@@ -23,7 +23,7 @@ jest.mock("@/components/emilia/flight-result-card", () => ({
     </div>
   },
 }))
-jest.mock("@/components/emilia/hotel-result-card", () => ({ HotelResultCard: ({ selected, onSelectionChange }: any) => <button onClick={onSelectionChange}>{selected ? "Hotel seleccionado" : "Hotel disponible"}</button> }))
+jest.mock("@/components/emilia/hotel-result-card", () => ({ ...jest.requireActual("@/components/emilia/hotel-result-card"), HotelResultCard: ({ selected, onSelectionChange }: any) => <button onClick={onSelectionChange}>{selected ? "Hotel seleccionado" : "Hotel disponible"}</button> }))
 
 const flight = { id: "flight-1", provider: "STARLING", airline: { code: "AR", name: "Aerolíneas" },
   price: { amount: 100, currency: "USD" }, legs: [], departure_date: "2026-10-10", adults: 2 }

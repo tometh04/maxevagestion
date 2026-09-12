@@ -95,6 +95,11 @@ export interface EurovipsHotel {
   phone: string
   website?: string
   description?: string
+  amenities?: string[]
+  accessibility?: string[]
+  latitude?: number | null
+  longitude?: number | null
+  expires_at?: string | null
   images: string[]
   check_in: string
   check_out: string
@@ -116,6 +121,17 @@ export interface EurovipsHotel {
     offer_source?: EmiliaOfferSource
     offer_refresh_fallback?: EmiliaOfferRefreshFallback
     cost_basis?: EmiliaCostBasis
+    availability_status?: "available" | "on_request" | "unavailable"
+    policy_cancellation?: string
+    refundable?: boolean | null
+    free_cancellation?: boolean | null
+    payment_at_property?: boolean | null
+    board?: string | null
+    board_description?: string | null
+    amenities?: string[]
+    price_breakdown?: { base?: { amount: number; currency: string }; taxes?: { amount: number; currency: string } }
+    room_type_code?: string | null
+    rate_plan_code?: string | null
   }>
   policy_cancellation: string
   policy_lodging: string
@@ -220,7 +236,7 @@ export function normalizeFlightClass(raw: string | null | undefined): string | n
  */
 export function deriveMealPlan(description: string | null | undefined): string | null {
   if (!description) return null
-  const s = String(description).toLowerCase()
+  const s = String(description).toLowerCase().replace(/_/g, " ")
   if (!s.trim()) return null
 
   if (/all\s*-?\s*inclusive|todo\s+incluido/.test(s)) return "ALL_INCLUSIVE"
@@ -328,7 +344,7 @@ function mapHotelToItem(sel: SelectedHotel) {
     hotel_photo_url: sel.hotel.images?.[0] ?? null,
     destination_city: sel.hotel.city ?? null,
     room_type: room?.type ?? null,
-    meal_plan: deriveMealPlan(room?.description),
+    meal_plan: deriveMealPlan(room?.board_description) || deriveMealPlan(room?.board) || deriveMealPlan(room?.description),
     checkin_date: sel.hotel.check_in,
     checkout_date: sel.hotel.check_out,
     nights: sel.hotel.nights,

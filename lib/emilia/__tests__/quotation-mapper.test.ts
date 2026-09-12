@@ -550,18 +550,17 @@ describe("integración raw → transformers → buildQuotationPayload", () => {
     expect(item.checkout_date).toBe("2026-07-15")
   })
 
-  it("hotel: recorta policy_lodging largo antes de serializar cards", () => {
+  it("hotel: conserva policy_lodging completo para la sidebar", () => {
     const longPolicy = "Si selecciona dos o mas habitaciones deben ser de la misma categoria y regimen. " +
       "Cargo de Cancelacion desde: 09-07-2026, hasta: 20-08-2026: 9999. ".repeat(40)
 
     const [hotel] = transformHotels([{ ...rawHotel, policy_lodging: longPolicy } as any]) as EurovipsHotel[]
 
-    expect(hotel.policy_lodging.length).toBeLessThanOrEqual(EUROVIPS_POLICY_MAX_LENGTH)
+    expect(hotel.policy_lodging).toBe(longPolicy)
     expect(hotel.policy_lodging).toContain("Si selecciona")
-    expect(hotel.policy_lodging.endsWith("...")).toBe(true)
   })
 
-  it("hotel: recorta policy_lodging dentro de emilia_meta.combinedData", () => {
+  it("hotel: conserva policy_lodging completo al guardar la conversación", () => {
     const longPolicy = "Si selecciona dos o mas habitaciones deben ser de la misma categoria y regimen. " +
       "https://d2poxrheyfxwbo.cloudfront.net/hotel/demo ".repeat(80)
     const meta = {
@@ -573,8 +572,7 @@ describe("integración raw → transformers → buildQuotationPayload", () => {
     const sanitized = sanitizeEmiliaMetaForStorage(meta)
 
     expect(meta.combinedData.hotels[0].policy_lodging.length).toBeGreaterThan(EUROVIPS_POLICY_MAX_LENGTH)
-    expect(sanitized.combinedData.hotels[0].policy_lodging.length).toBeLessThanOrEqual(EUROVIPS_POLICY_MAX_LENGTH)
-    expect(sanitized.combinedData.hotels[0].policy_lodging.endsWith("...")).toBe(true)
+    expect(sanitized.combinedData.hotels[0].policy_lodging).toBe(longPolicy)
   })
 })
 
