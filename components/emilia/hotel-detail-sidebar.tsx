@@ -104,7 +104,7 @@ export function HotelDetailSidebar({ hotel, selectedRoomId, filters, onRoomSelec
                 </div>
                 <DetailText title="Servicios de la habitación" value={room.amenities?.join(" · ")} />
                 <DetailText title="Cancelación de esta tarifa" value={room.policy_cancellation} />
-                <DetailText title="Fecha límite de cancelación informada" value={room.cancellation_deadline} />
+                <DetailText title="Fecha de cancelación informada por el proveedor" value={room.cancellation_deadline} />
                 {!!room.cancellation_terms?.length && <section className="space-y-2 text-xs">
                   <h3 className="text-sm font-semibold">Cargos por cancelación</h3>
                   {room.cancellation_terms.map((term, index) => <p key={`${term.from_date}-${index}`} className="text-muted-foreground">Desde {term.from_date}{term.to_date ? ` hasta ${term.to_date}` : ""}: {hotelPrice(term.penalty.amount, term.penalty.currency)}</p>)}

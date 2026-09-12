@@ -28,7 +28,7 @@ HTTP(S) sin credenciales. No se modificaron permisos, credenciales ni queries de
 | rooms.cancellation_policy, amenities, room_type_code, rate_plan_code | Política de tarifa, servicios y referencias comerciales |
 | room_conditions, observations | Condiciones de habitaciones y observaciones generales del proveedor |
 | rooms.images | Fotos asociadas explícitamente a esa habitación; nunca se copian fotos del hotel |
-| rooms.promotion, cancellation_deadline | Promoción y fecha límite informadas, sin inferir cancelación gratuita |
+| rooms.promotion, cancellation_deadline | Promoción y fecha de cancelación informadas, sin inferir cancelación gratuita |
 | rooms.nightly_prices | Fecha e importe por noche, conservando la moneda propia de cada importe |
 | rooms.cancellation_terms | Desde/hasta e importe de penalidad con su propia moneda |
 
