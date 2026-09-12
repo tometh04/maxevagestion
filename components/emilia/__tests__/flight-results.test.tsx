@@ -37,3 +37,18 @@ it("abre la sidebar del chat sin cambiar la selección ni insertar paneles en el
   fireEvent.click(screen.getByRole("checkbox", { name: /LATAM/ }))
   expect(onSelectionChange).toHaveBeenCalledWith(connecting.id, true)
 })
+
+it("pagina todas las opciones manteniendo acotadas las tarjetas montadas", () => {
+  const flights = Array.from({ length: 65 }, (_, i) => ({ ...direct, id: `f-${i}` }))
+  const onViewDetails = jest.fn()
+  render(<FlightResults flights={flights} selectedFlightIds={["f-64"]} onSelectionChange={jest.fn()} onViewDetails={onViewDetails} />)
+  expect(screen.getAllByRole("checkbox")).toHaveLength(24)
+  expect(screen.getByRole("button", { name: "Vuelos anteriores" })).toBeDisabled()
+  fireEvent.click(screen.getByRole("button", { name: "Más vuelos" }))
+  fireEvent.click(screen.getByRole("button", { name: "Más vuelos" }))
+  expect(screen.getAllByRole("checkbox")).toHaveLength(17)
+  expect(screen.getByRole("button", { name: "Más vuelos" })).toBeDisabled()
+  expect(screen.getAllByRole("checkbox")[16]).toBeChecked()
+  fireEvent.click(screen.getAllByRole("button", { name: "Ver detalle del vuelo" })[16])
+  expect(onViewDetails).toHaveBeenCalledWith(flights[64])
+})

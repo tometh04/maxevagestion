@@ -26,7 +26,7 @@ function makeFlight(overrides: Partial<EmiliaFlight> & { provider?: string; stop
         arrival: { city_code: "PUJ", city_name: "Punta Cana", time: "17:00" },
         duration: "8h 00m",
         flight_type: "outbound",
-        stops: 0,
+        stops: overrides.stops ?? 0,
       },
     ],
     ...overrides,
@@ -67,6 +67,18 @@ function makeHotel(overrides: Partial<EurovipsHotel> = {}): EurovipsHotel {
 }
 
 describe("filterFlights", () => {
+  it("aplica cantidades por escalas después del horario y conserva la selección", () => {
+    const flights = Array.from({ length: 70 }, (_, i) => makeFlight({ id: `f-${i}`, stops: i % 4,
+      legs: [{ ...makeFlight().legs[0], stops: i % 4, departure: { ...makeFlight().legs[0].departure, time: i < 10 ? "05:00" : "10:00" } }],
+    }))
+    expect(filterFlights(flights, {})).toHaveLength(70)
+    const filters: FlightFilters = { outboundDeparture: { from: "09:00" }, maxPerStops: { 0: 2, 1: 1, 2: 0, 3: 3 } }
+    expect(filterFlights(flights, filters).map(f => f.id)).toEqual(["f-11", "f-12", "f-13", "f-15", "f-16", "f-19"])
+    expect(filterFlights(flights, filters, "f-0")[0].id).toBe("f-0")
+    expect(hasActiveFlightFilters({ maxPerStops: { 0: 0 } })).toBe(true)
+    expect(hasActiveFlightFilters({ maxPerStops: { 0: null } })).toBe(false)
+    expect(getFlightFilterOptions(flights).stopCounts).toEqual([0, 1, 2, 3])
+  })
   const flights = [
     makeFlight({ id: "direct", price: { amount: 800, currency: "USD" }, provider: "STARLING" } as any),
     makeFlight({

@@ -72,6 +72,18 @@ function terminalResult() {
 }
 
 describe("canonicalOfferCards", () => {
+  it("conserva cobertura parcial y más de 40 vuelos al adaptar el contrato público", () => {
+    const data = terminalResult()
+    const flightSet = data.outcome.results.result_sets[0]
+    const inventory = { delfos: { partial: true, retrieved_count: 65, total_available: 80 } }
+    const normalized = normalizeEmiliaTurnPayload({ ...data, schema_version: "emilia.turn.v1",
+      outcome: { ...data.outcome, type: "search_results", results: { ...data.outcome.results,
+        result_sets: [{ ...flightSet, metadata: { flight_inventory: inventory }, data: Array.from({ length: 65 }, (_, i) => ({ ...flightSet.data[0], id: `flight-${i}` })) }],
+      } },
+    })
+    expect(normalized.flights?.items).toHaveLength(65)
+    expect(normalized.assistantMeta?.flightInventory).toEqual(inventory)
+  })
   it("preserva precio, identidad pública, fuente y fallback hasta la cotización", () => {
     const cards = canonicalOfferCards(terminalResult())
     expect(cards.flights).toHaveLength(1)

@@ -170,6 +170,22 @@ function FlightFiltersBar({
         />
       </div>
       <details className="mt-2">
+        <summary className="cursor-pointer rounded text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Cantidad por escalas</summary>
+        <div className="mt-2 grid grid-cols-2 gap-2 lg:grid-cols-4">
+          {options.stopCounts.map(stops => <label key={stops} className="space-y-1 text-xs font-medium">
+            <span>{stops === 0 ? "Directos" : `${stops} escala${stops === 1 ? "" : "s"}`}</span>
+            <Input type="number" min={0} step={1} placeholder="Sin límite"
+              aria-label={stops === 0 ? "Cantidad máxima de vuelos directos" : `Cantidad máxima con ${stops} escalas`}
+              value={filters.maxPerStops?.[stops] ?? ""}
+              onChange={event => {
+                const value = parseOptionalNumber(event.target.value)
+                onChange({ ...filters, maxPerStops: { ...filters.maxPerStops, [stops]: value === null ? null : Math.floor(value) } })
+              }} className="h-8 text-xs" />
+          </label>)}
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">Máximo de escalas por trayecto. Las cantidades se aplican después de los demás filtros.</p>
+      </details>
+      <details className="mt-2">
         <summary className="cursor-pointer rounded text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Horarios y más filtros</summary>
         <p className="mt-2 text-xs text-muted-foreground">Horarios locales de cada aeropuerto. De 22:00 a 06:00 incluye la madrugada.</p>
         <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -1050,6 +1066,8 @@ export function LeadEmiliaChat({
                   )}
 
                   <ProductSearchStatus product="flights" state={m.progress?.products.flights || m.meta?.productStates?.flights} />
+                  {(m.meta?.flightInventory?.delfos?.partial || m.meta?.flightInventory?.delfos?.provider_limit_reached || m.meta?.flightInventory?.delfos?.expansion_limit_reached) &&
+                    <p role="status" className="text-xs text-muted-foreground">La búsqueda de Delfos tiene cobertura parcial. Podés usar las opciones recibidas; puede haber otras que no se hayan recuperado.</p>}
                   {mFlights.length > 0 && (
                     <div>
                       <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-widest text-foreground/60 mb-2">
@@ -1067,6 +1085,7 @@ export function LeadEmiliaChat({
                       {selectedOutsideFilters && <p role="status" className="mb-2 text-xs text-muted-foreground">Tu vuelo seleccionado no cumple los filtros y sigue visible para que puedas revisarlo o desmarcarlo.</p>}
                       {visibleFlights.length > 0 ? (
                         <FlightResults
+                          key={JSON.stringify(flightFilters)}
                           flights={visibleFlights}
                           onViewDetails={flight => openFlightDetails(i, flight.id)}
                           panelId={detailFlight ? flightPanelId : undefined}

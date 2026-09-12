@@ -16,6 +16,7 @@ export type MealPlanFilter =
   | "SOLO_ALOJAMIENTO"
 
 export interface FlightFilters {
+  maxPerStops?: Record<number, number | null>
   maxPrice?: number | null
   stops?: FlightStopsFilter
   airline?: string | null
@@ -51,6 +52,7 @@ export interface NumberRange {
 }
 
 export interface FlightFilterOptions {
+  stopCounts: number[]
   currencies: FilterOption[]
   price: NumberRange
   airlines: FilterOption[]
@@ -104,12 +106,10 @@ function getFlightProvider(flight: EmiliaFlight): string | null {
 
 function getFlightStops(flight: EmiliaFlight): number | null {
   const rawStops = (flight as any).stops
-  if (typeof rawStops === "number" && Number.isFinite(rawStops)) {
-    return Math.max(0, rawStops)
-  }
+  const fallback = typeof rawStops === "number" && Number.isInteger(rawStops) && rawStops >= 0 ? rawStops : null
 
   const legs = Array.isArray(flight.legs) ? flight.legs : []
-  if (legs.length === 0) return null
+  if (legs.length === 0) return fallback
 
   let unknown = false
   const maximum = legs.reduce((maxStops, leg) => {
@@ -127,7 +127,7 @@ function getFlightStops(flight: EmiliaFlight): number | null {
     unknown = true
     return maxStops
   }, 0)
-  return unknown ? null : maximum
+  return unknown ? fallback : maximum
 }
 
 function matchesStopsFilter(stops: number | null, filter: FlightStopsFilter | undefined): boolean {
@@ -215,7 +215,17 @@ export function filterFlights(
   selectedFlightIds?: string | readonly string[] | null
 ): EmiliaFlight[] {
   const selectedIds = new Set(typeof selectedFlightIds === "string" ? [selectedFlightIds] : selectedFlightIds ?? [])
-  const matching = flights.filter((flight) => matchesFlight(flight, filters))
+  const counts = new Map<number, number>()
+  const matching = flights.filter((flight) => {
+    if (!matchesFlight(flight, filters)) return false
+    const stops = getFlightStops(flight)
+    if (stops === null) return true
+    const limit = filters.maxPerStops?.[stops]
+    const count = counts.get(stops) ?? 0
+    if (limit != null && Number.isInteger(limit) && limit >= 0 && count >= limit) return false
+    counts.set(stops, count + 1)
+    return true
+  })
   const matchingIds = new Set(matching.map(flight => flight.id))
   const selected = flights.filter(flight => selectedIds.has(flight.id) && !matchingIds.has(flight.id))
   return [...selected, ...matching]
@@ -223,6 +233,8 @@ export function filterFlights(
 
 export function getFlightFilterOptions(flights: EmiliaFlight[]): FlightFilterOptions {
   return {
+    stopCounts: Array.from(new Set([0, 1, 2, ...flights.map(getFlightStops).filter((stops): stops is number => stops !== null)]))
+      .sort((a, b) => a - b),
     currencies: uniqueOptions(flights.map(flight => flight.price?.currency)),
     price: numberRange(flights.map((flight) => flight.price?.amount).filter((value): value is number => typeof value === "number")),
     airlines: uniqueOptions(flights.map((flight) => flight.airline?.name || flight.airline?.code)),
@@ -237,6 +249,7 @@ export function getFlightFilterOptions(flights: EmiliaFlight[]): FlightFilterOpt
 
 export function hasActiveFlightFilters(filters: FlightFilters): boolean {
   return Boolean(
+    Object.values(filters.maxPerStops ?? {}).some(limit => limit != null && Number.isInteger(limit) && limit >= 0) ||
     filters.maxPrice != null ||
     (filters.stops && filters.stops !== "all") ||
     filters.airline ||

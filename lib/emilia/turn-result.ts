@@ -343,6 +343,7 @@ function normalizeCanonicalTurn(data: any): NormalizedEmiliaTurn {
     assistantMeta: {
       messageType: outcome.type || "message",
       productStates: Object.fromEntries(resultSets.map(set => [set.product, set.status])),
+      flightInventory: flightSet?.metadata?.flight_inventory,
       hotelSegments: parseHotelSegments(hotelSet?.metadata),
       ...(outcome.type === "quotation_updated" ? { quotation: quotationSummary(outcome.quotation) } : {}),
       ...(parsedRequest ? { originalRequest: parsedRequest, parsedRequest } : {}),
