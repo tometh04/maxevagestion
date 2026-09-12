@@ -5,7 +5,7 @@ import {
   type EurovipsHotel,
 } from "@/lib/emilia/quotation-mapper"
 
-export type FlightStopsFilter = "all" | "direct" | "one" | "up_to_one" | "two_plus"
+export type FlightStopsFilter = "all" | "direct" | "one" | "up_to_one" | "two_plus" | `exact_${number}`
 export interface FlightTimeRange { from?: string; to?: string }
 export type MealPlanFilter =
   | "all"
@@ -52,6 +52,8 @@ export interface NumberRange {
 }
 
 export interface FlightFilterOptions {
+  maxDurationMinutes: FilterOption[]
+  maxLayoverMinutes: FilterOption[]
   stopCounts: number[]
   currencies: FilterOption[]
   price: NumberRange
@@ -136,6 +138,7 @@ function matchesStopsFilter(stops: number | null, filter: FlightStopsFilter | un
   if (filter === "direct") return stops === 0
   if (filter === "one") return stops === 1
   if (filter === "up_to_one") return stops <= 1
+  if (filter.startsWith("exact_")) return stops === Number(filter.slice(6))
   return stops >= 2
 }
 
@@ -231,9 +234,17 @@ export function filterFlights(
   return [...selected, ...matching]
 }
 
+function durationOptions(values: Array<string | undefined>): FilterOption[] {
+  return Array.from(new Set(values.map(flightDurationMinutes).filter((value): value is number => value !== null)))
+    .sort((a, b) => a - b)
+    .map(minutes => ({ value: String(minutes), label: `${Math.floor(minutes / 60)} h${minutes % 60 ? ` ${minutes % 60} min` : ""}` }))
+}
+
 export function getFlightFilterOptions(flights: EmiliaFlight[]): FlightFilterOptions {
   return {
-    stopCounts: Array.from(new Set([0, 1, 2, ...flights.map(getFlightStops).filter((stops): stops is number => stops !== null)]))
+    maxDurationMinutes: durationOptions(flights.flatMap(flight => (flight.legs || []).map(leg => leg.duration))),
+    maxLayoverMinutes: durationOptions(flights.flatMap(flight => (flight.legs || []).flatMap(leg => (leg.layovers || []).map(layover => layover.waiting_time)))),
+    stopCounts: Array.from(new Set(flights.map(getFlightStops).filter((stops): stops is number => stops !== null)))
       .sort((a, b) => a - b),
     currencies: uniqueOptions(flights.map(flight => flight.price?.currency)),
     price: numberRange(flights.map((flight) => flight.price?.amount).filter((value): value is number => typeof value === "number")),

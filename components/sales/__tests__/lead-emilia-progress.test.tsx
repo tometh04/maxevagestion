@@ -1,5 +1,4 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
-import { useState } from "react"
 import { LeadEmiliaChat } from "../lead-emilia-chat"
 import { waitForEmiliaJob } from "@/lib/emilia/async-turn"
 
@@ -14,12 +13,11 @@ jest.mock("@/components/sales/quotation-pdf-price-dialog", () => ({ QuotationPdf
 jest.mock("@/lib/pdf/quotation-pdf-html", () => ({ downloadQuotationPdfFromPriceDialog: jest.fn() }))
 jest.mock("@/components/sales/emilia-prompt-guide", () => ({ EmiliaPromptGuide: () => null }))
 jest.mock("@/components/emilia/flight-result-card", () => ({
-  FlightResultCard: function Card({ flight, selected, onSelectionChange }: any) {
-    const [expanded, setExpanded] = useState(false)
+  ...jest.requireActual("@/components/emilia/flight-result-card"),
+  FlightResultCard: function Card({ flight, selected, onSelectionChange, details }: any) {
     return <div data-testid="flight-card">
       <button onClick={() => onSelectionChange(flight.id, !selected)}>{selected ? "Vuelo seleccionado" : "Seleccionar vuelo"}</button>
-      <button onClick={() => setExpanded(!expanded)}>Ver detalle del vuelo</button>
-      {expanded && <span>Detalle abierto</span>}
+      <button onClick={details.onToggle}>Ver detalle del vuelo</button>
     </div>
   },
 }))
@@ -81,10 +79,11 @@ it("hydrates hotels without remounting the flight or losing selection and filter
   const view = chat()
   await send()
   expect(screen.getByText("Buscando hoteles para tu próxima parada…")).toBeInTheDocument()
-  const flightNode = screen.getByTestId("flight-card")
   fireEvent.click(screen.getByText("Seleccionar vuelo"))
   fireEvent.click(screen.getByText("Ver detalle del vuelo"))
-  fireEvent.change(screen.getByLabelText("Precio máximo de vuelo"), { target: { value: "500" } })
+  fireEvent.keyDown(screen.getByLabelText("Filtrar vuelos por aerolínea"), { key: "ArrowDown" })
+  fireEvent.click(screen.getByRole("option", { name: "Aerolíneas" }))
+  const flightNode = screen.getByTestId("flight-card")
   expect(screen.getByRole("button", { name: /Generar cotización/ })).toBeDisabled()
   act(() => onProgress({ ...partial, progress: { ...partial.progress, version: 103,
     products: { flights: "available", hotels: "available" } }, results: { ...flightResults, ...hotelResults } }))
@@ -94,8 +93,9 @@ it("hydrates hotels without remounting the flight or losing selection and filter
     assistant_message: { content: { text: "Búsqueda lista" } } }))
   expect(screen.getByTestId("flight-card")).toBe(flightNode)
   expect(screen.getByText("Vuelo seleccionado")).toBeInTheDocument()
-  expect(screen.getByText("Detalle abierto")).toBeInTheDocument()
-  expect(screen.getByLabelText("Precio máximo de vuelo")).toHaveValue(500)
+  expect(screen.getByRole("complementary", { name: "Detalle del vuelo de Aerolíneas" })).toBeInTheDocument()
+  expect(screen.getByLabelText("Filtrar vuelos por aerolínea")).toHaveTextContent("Aerolíneas")
+  expect(screen.queryByLabelText("Precio máximo de vuelo")).not.toBeInTheDocument()
   expect(screen.getByRole("button", { name: /Generar cotización/ })).toBeEnabled()
   expect(view.container.querySelectorAll('[data-emilia-job="job-1"]')).toHaveLength(1)
 })
@@ -141,7 +141,9 @@ it("cotiza dos vuelos como alternativas y mantiene ambos visibles al filtrar", a
   fireEvent.click(screen.getAllByText("Seleccionar vuelo")[0])
   fireEvent.click(screen.getByText("Seleccionar vuelo"))
   expect(screen.getAllByText("Vuelo seleccionado")).toHaveLength(2)
-  fireEvent.change(screen.getByLabelText("Precio máximo de vuelo"), { target: { value: "50" } })
+  fireEvent.keyDown(screen.getByLabelText("Salida de ida desde"), { key: "ArrowDown" })
+  expect(screen.getAllByRole("option")).toHaveLength(25)
+  fireEvent.click(screen.getByRole("option", { name: "08:00" }))
   expect(screen.getAllByText("Vuelo seleccionado")).toHaveLength(2)
   fireEvent.click(screen.getByRole("button", { name: /Generar cotización · 2 opciones/ }))
   await waitFor(() => expect(jest.mocked(global.fetch).mock.calls.some(([url]) => url === "/api/quotations")).toBe(true))

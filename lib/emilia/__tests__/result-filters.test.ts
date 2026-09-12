@@ -272,3 +272,15 @@ describe("filterHotels", () => {
     expect(options.providers.map((option) => option.value)).toEqual(["EUROVIPS"])
   })
 })
+
+ it("ofrece solo escalas y duraciones recibidas y distingue dos de tres escalas", () => {
+  const base = makeFlight().legs[0]
+  const two = makeFlight({ id: "two", legs: [{ ...base, stops: 2, duration: "5h 30m", layovers: [{ destination_city: "Lima", destination_code: "LIM", waiting_time: "1h 20m" }] }] })
+  const three = makeFlight({ id: "three", legs: [{ ...base, stops: 3, duration: "8h" }] })
+  const options = getFlightFilterOptions([two, three])
+  expect(options.stopCounts).toEqual([2, 3])
+  expect(options.maxDurationMinutes).toEqual([{ value: "330", label: "5 h 30 min" }, { value: "480", label: "8 h" }])
+  expect(options.maxLayoverMinutes).toEqual([{ value: "80", label: "1 h 20 min" }])
+  expect(filterFlights([two, three], { stops: "exact_2" })).toEqual([two])
+  expect(getFlightFilterOptions([]).stopCounts).toEqual([])
+ })

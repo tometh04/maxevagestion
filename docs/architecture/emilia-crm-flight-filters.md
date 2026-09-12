@@ -31,3 +31,14 @@ el lote del adaptador; no se implementó streaming por página de proveedor. La
 paginación de tarjetas evita montar miles de componentes, pero el payload completo
 sigue viajando y persistiendo: el impacto real requiere medir búsquedas autenticadas.
 La novedad de producto corresponde cuando estos cambios estén desplegados.
+
+## Simplificación de filtros (2026-09-12)
+
+La barra del CRM elimina precio máximo y cupos por cantidad de escalas.
+El selector muestra Directo, 1 escala, 2 escalas y otras cantidades exactas
+solo cuando existen en los resultados. Aerolíneas, mayoristas, monedas,
+duraciones y esperas se obtienen del lote recibido. Los rangos horarios usan
+24 opciones de hora entera, de 00:00 a 23:00, con extremos inclusivos y cruce
+de medianoche. Sin límite permite incluir también resultados sin el dato.
+Se mantiene la selección al filtrar y durante la llegada progresiva de resultados.
+Esta actualización es local; la novedad corresponde al despliegue.

@@ -5,7 +5,6 @@ import scrollStyles from "@/components/emilia/chat-scroll.module.css"
 import { useEffect, useId, useMemo, useRef, useState } from "react"
 import { Loader2, ChevronLeft, MessageSquarePlus, Send, AlertTriangle, CheckCircle2, ExternalLink, X, Sparkles, FileText, HelpCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -57,20 +56,7 @@ const ALL_SELECT_VALUE = "__all__"
 const DEFAULT_FLIGHT_FILTERS: FlightFilters = { stops: "all" }
 const DEFAULT_HOTEL_FILTERS: HotelFilters = { mealPlan: "all" }
 
-const FLIGHT_STOPS_OPTIONS: Array<{ value: FlightStopsFilter; label: string }> = [
-  { value: "all", label: "Todas" },
-  { value: "direct", label: "Directo" },
-  { value: "one", label: "1 escala" },
-  { value: "up_to_one", label: "Hasta 1 escala" },
-  { value: "two_plus", label: "2+ escalas" },
-]
-
-function parseOptionalNumber(value: string): number | null {
-  const trimmed = value.trim()
-  if (!trimmed) return null
-  const parsed = Number(trimmed)
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null
-}
+const FLIGHT_HOURS = Array.from({ length: 24 }, (_, hour) => `${String(hour).padStart(2, "0")}:00`)
 
 interface FlightFiltersBarProps {
   filters: FlightFilters
@@ -81,7 +67,7 @@ interface FlightFiltersBarProps {
   onClear: () => void
 }
 
-function FlightFiltersBar({
+export function FlightFiltersBar({
   filters,
   options,
   visibleCount,
@@ -90,7 +76,6 @@ function FlightFiltersBar({
   onClear,
 }: FlightFiltersBarProps) {
   const active = hasActiveFlightFilters(filters)
-  const priceCurrency = filters.currency || (options.currencies.length === 1 ? options.currencies[0].value : null)
 
   return (
     <div className="mb-2 rounded-lg border border-border/50 bg-muted/20 px-3 py-2">
@@ -104,7 +89,7 @@ function FlightFiltersBar({
           </Button>
         )}
       </div>
-      <div className="mt-2 grid grid-cols-2 gap-2 lg:grid-cols-4">
+      <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
         <Select
           value={filters.stops ?? "all"}
           onValueChange={(value) => onChange({ ...filters, stops: value as FlightStopsFilter })}
@@ -113,7 +98,7 @@ function FlightFiltersBar({
             <SelectValue placeholder="Escalas" />
           </SelectTrigger>
           <SelectContent>
-            {FLIGHT_STOPS_OPTIONS.map((option) => (
+            {[{ value: "all", label: "Todas las escalas" }, ...options.stopCounts.map(stops => ({ value: stops === 0 ? "direct" : stops === 1 ? "one" : `exact_${stops}`, label: stops === 0 ? "Directo" : `${stops} escalas`.replace("1 escalas", "1 escala") }))].map((option) => (
               <SelectItem key={option.value} value={option.value}>
                 {option.label}
               </SelectItem>
@@ -130,7 +115,7 @@ function FlightFiltersBar({
             <SelectValue placeholder="Aerolínea" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={ALL_SELECT_VALUE}>Todas</SelectItem>
+            <SelectItem value={ALL_SELECT_VALUE}>Todas las aerolíneas</SelectItem>
             {options.airlines.map((option) => (
               <SelectItem key={option.value} value={option.value}>
                 {option.label}
@@ -148,7 +133,7 @@ function FlightFiltersBar({
             <SelectValue placeholder="Mayorista" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={ALL_SELECT_VALUE}>Todos</SelectItem>
+            <SelectItem value={ALL_SELECT_VALUE}>Todos los mayoristas</SelectItem>
             {options.providers.map((option) => (
               <SelectItem key={option.value} value={option.value}>
                 {option.label}
@@ -157,34 +142,7 @@ function FlightFiltersBar({
           </SelectContent>
         </Select>
 
-        <Input
-          type="number"
-          min={0}
-          inputMode="decimal"
-          aria-label="Precio máximo de vuelo"
-          disabled={!priceCurrency}
-          placeholder={priceCurrency ? `Precio máx (${priceCurrency})` : "Elegí moneda"}
-          value={filters.maxPrice ?? ""}
-          onChange={(event) => onChange({ ...filters, currency: priceCurrency, maxPrice: parseOptionalNumber(event.target.value) })}
-          className="h-8 text-xs"
-        />
       </div>
-      <details className="mt-2">
-        <summary className="cursor-pointer rounded text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Cantidad por escalas</summary>
-        <div className="mt-2 grid grid-cols-2 gap-2 lg:grid-cols-4">
-          {options.stopCounts.map(stops => <label key={stops} className="space-y-1 text-xs font-medium">
-            <span>{stops === 0 ? "Directos" : `${stops} escala${stops === 1 ? "" : "s"}`}</span>
-            <Input type="number" min={0} step={1} placeholder="Sin límite"
-              aria-label={stops === 0 ? "Cantidad máxima de vuelos directos" : `Cantidad máxima con ${stops} escalas`}
-              value={filters.maxPerStops?.[stops] ?? ""}
-              onChange={event => {
-                const value = parseOptionalNumber(event.target.value)
-                onChange({ ...filters, maxPerStops: { ...filters.maxPerStops, [stops]: value === null ? null : Math.floor(value) } })
-              }} className="h-8 text-xs" />
-          </label>)}
-        </div>
-        <p className="mt-2 text-xs text-muted-foreground">Máximo de escalas por trayecto. Las cantidades se aplican después de los demás filtros.</p>
-      </details>
       <details className="mt-2">
         <summary className="cursor-pointer rounded text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Horarios y más filtros</summary>
         <p className="mt-2 text-xs text-muted-foreground">Horarios locales de cada aeropuerto. De 22:00 a 06:00 incluye la madrugada.</p>
@@ -196,23 +154,37 @@ function FlightFiltersBar({
             <fieldset key={key}>
               <legend className="mb-1 text-xs font-medium">{label}</legend>
               <div className="flex items-center gap-2">
-                <Input type="time" aria-label={`${label} desde`} value={filters[key]?.from || ""}
-                  onChange={event => onChange({ ...filters, [key]: { ...filters[key], from: event.target.value } })} className="h-8 min-w-0 text-xs" />
-                <span className="text-xs text-muted-foreground">a</span>
-                <Input type="time" aria-label={`${label} hasta`} value={filters[key]?.to || ""}
-                  onChange={event => onChange({ ...filters, [key]: { ...filters[key], to: event.target.value } })} className="h-8 min-w-0 text-xs" />
+                {(["from", "to"] as const).map(bound => (
+                  <Select key={bound} value={filters[key]?.[bound] || ALL_SELECT_VALUE}
+                    onValueChange={value => onChange({ ...filters, [key]: { ...filters[key], [bound]: value === ALL_SELECT_VALUE ? undefined : value } })}>
+                    <SelectTrigger className="h-8 min-w-0 text-xs" aria-label={`${label} ${bound === "from" ? "desde" : "hasta"}`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ALL_SELECT_VALUE}>{bound === "from" ? "Desde" : "Hasta"}</SelectItem>
+                      {FLIGHT_HOURS.map(hour => <SelectItem key={hour} value={hour}>{hour}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                ))}
               </div>
             </fieldset>
           ))}
           {([
-            ["maxDurationMinutes", "Duración máxima por ida/vuelta (min)"],
-            ["maxLayoverMinutes", "Espera máxima por conexión (min)"],
+            ["maxDurationMinutes", "Duración máxima por ida/vuelta"],
+            ["maxLayoverMinutes", "Espera máxima por conexión"],
           ] as const).map(([key, label]) => (
-            <label key={key} className="space-y-1 text-xs font-medium">
+            <div key={key} className="space-y-1 text-xs font-medium">
               <span>{label}</span>
-              <Input type="number" min={0} step={30} value={filters[key] ?? ""} placeholder="Sin límite"
-                onChange={event => onChange({ ...filters, [key]: parseOptionalNumber(event.target.value) })} className="h-8 text-xs" />
-            </label>
+              <Select value={filters[key]?.toString() || ALL_SELECT_VALUE}
+                disabled={options[key].length === 0}
+                onValueChange={value => onChange({ ...filters, [key]: value === ALL_SELECT_VALUE ? null : Number(value) })}>
+                <SelectTrigger className="h-8 text-xs" aria-label={label}><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_SELECT_VALUE}>Sin límite</SelectItem>
+                  {options[key].map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
           ))}
           <Select value={filters.currency || ALL_SELECT_VALUE}
             onValueChange={value => onChange({ ...filters, currency: value === ALL_SELECT_VALUE ? null : value, maxPrice: null })}>
