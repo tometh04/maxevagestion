@@ -129,12 +129,19 @@ export interface EurovipsHotel {
     board?: string | null
     board_description?: string | null
     amenities?: string[]
+    images?: string[]
+    cancellation_deadline?: string | null
+    nightly_prices?: Array<{ date: string; price: { amount: number; currency: string } }>
+    promotion?: string | null
+    cancellation_terms?: Array<{ from_date: string; to_date?: string; penalty: { amount: number; currency: string } }>
     price_breakdown?: { base?: { amount: number; currency: string }; taxes?: { amount: number; currency: string } }
     room_type_code?: string | null
     rate_plan_code?: string | null
   }>
   policy_cancellation: string
   policy_lodging: string
+  room_conditions?: string | null
+  observations?: string | null
   search_adults: number
   search_children: number
   provider?: string | null

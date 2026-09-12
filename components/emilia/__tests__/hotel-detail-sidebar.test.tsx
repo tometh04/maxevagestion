@@ -15,6 +15,7 @@ it("renders commercial details from the API contract and selects the exact room"
   expect(screen.getByText(fixture.description)).toBeVisible()
   expect(screen.getByText(fixture.lodging_policy)).toBeVisible()
   expect(screen.getByText(/Impuestos: USD 100/)).toBeVisible()
+  expect(screen.getByText("Desde 2027-01-08 hasta 2027-01-15: EUR 100")).toBeVisible()
   expect(screen.getByText(/Balcón · Aire acondicionado/)).toBeVisible()
   expect(screen.getByRole("link", { name: "Sitio web del hotel" })).toHaveAttribute("href", fixture.website)
   expect(screen.getByRole("button", { name: "Cerrar detalle del hotel" })).toHaveFocus()
@@ -53,6 +54,23 @@ it("moves room choices out of the CRM card", () => {
   expect(within(view.container).queryByText(fixture.rooms[0].description)).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole("button", { name: "Ver hotel y habitaciones" }))
   expect(open).toHaveBeenCalledTimes(1)
+})
+
+it("shows room-specific photos, nightly prices and cancellation charges without borrowing hotel photos", () => {
+  const room = { ...hotel.rooms[0], images: ["https://images.example.com/room.jpg"],
+    promotion: "Descuento por reserva anticipada", cancellation_deadline: "2027-01-03",
+    nightly_prices: [{ date: "2027-01-10", price: { amount: 200, currency: "USD" } }],
+    cancellation_terms: [{ from_date: "2027-01-04", to_date: "2027-01-10", penalty: { amount: 150, currency: "USD" } }] }
+  const { rerender } = render(<HotelDetailSidebar hotel={{ ...hotel, room_conditions: "Cama extra bajo petición", observations: "Obras en piscina", rooms: [room] }} filters={{}} onRoomSelect={jest.fn()} onClose={jest.fn()} />)
+  expect(screen.getByText("Cama extra bajo petición")).toBeVisible()
+  expect(screen.getByText("Obras en piscina")).toBeVisible()
+  expect(screen.getByText(room.promotion)).toBeVisible()
+  expect(screen.getByText(room.cancellation_deadline)).toBeVisible()
+  expect(screen.getByText("Desde 2027-01-04 hasta 2027-01-10: USD 150")).toBeVisible()
+  expect(screen.getByRole("img", { name: `${room.type} · habitación en ${hotel.name}` })).toHaveAttribute("src", room.images[0])
+  expect(screen.getByText("Ver precios por noche").parentElement).toHaveTextContent("2027-01-10USD 200")
+  rerender(<HotelDetailSidebar hotel={{ ...hotel, rooms: [{ ...hotel.rooms[0], images: [] }] }} filters={{}} onRoomSelect={jest.fn()} onClose={jest.fn()} />)
+  expect(within(screen.getByRole("region", { name: "Habitaciones y tarifas" })).queryByRole("img")).not.toBeInTheDocument()
 })
 
 it("requires a currency before filtering mixed prices and resets filters", () => {

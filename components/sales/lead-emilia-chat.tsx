@@ -1,5 +1,6 @@
 // components/sales/lead-emilia-chat.tsx
 "use client"
+import scrollStyles from "@/components/emilia/chat-scroll.module.css"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Loader2, ChevronLeft, ChevronRight, MessageSquarePlus, Send, AlertTriangle, CheckCircle2, ExternalLink, X, Sparkles, FileText, HelpCircle } from "lucide-react"
@@ -1088,7 +1089,7 @@ export function LeadEmiliaChat({
       </div>
 
       {/* Mensajes */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4 space-y-3" onScroll={event => {
+      <div className={`${scrollStyles.scroll} flex-1 min-h-0 overflow-y-auto px-6 py-4 space-y-3`} onScroll={event => {
         const element = event.currentTarget
         followBottomRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 100
       }}>

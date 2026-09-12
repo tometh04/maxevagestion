@@ -1,5 +1,7 @@
 {
   "schema_version": "emilia.hotel-offer.v1",
+  "room_conditions": "Las habitaciones deben pertenecer a la misma categoría y régimen.",
+  "observations": "Tarifa válida al momento de reservar.",
   "phone": "+54 11 5555 0100",
   "website": "https://hotel.example/informacion",
   "category": "5 estrellas",
@@ -39,6 +41,32 @@
   ],
   "rooms": [
     {
+      "images": [
+        "https://hotel.example/habitacion-doble.jpg"
+      ],
+      "cancellation_deadline": "2027-01-08T15:00:00",
+      "nightly_prices": [
+        {
+          "date": "2027-01-10",
+          "price": {
+            "amount": 200,
+            "currency": "USD",
+            "basis": "COMMISSIONABLE_GROSS"
+          }
+        }
+      ],
+      "promotion": "Descuento por estadía prolongada",
+      "cancellation_terms": [
+        {
+          "from_date": "2027-01-08",
+          "to_date": "2027-01-15",
+          "penalty": {
+            "amount": 100,
+            "currency": "EUR",
+            "basis": "PROVIDER_TOTAL"
+          }
+        }
+      ],
       "description": "Doble superior con balcón. Tarifa para dos adultos y un menor.",
       "board_description": "Todo incluido",
       "amenities": [

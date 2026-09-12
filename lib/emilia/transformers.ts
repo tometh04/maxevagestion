@@ -444,6 +444,17 @@ function canonicalNights(checkIn: string, checkOut: string, value: unknown): num
   return Math.max(0, Math.round((end.getTime() - start.getTime()) / 86_400_000))
 }
 
+function hotelImageUrls(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return Array.from(new Set(value.filter((src): src is string => {
+    if (typeof src !== "string") return false
+    try {
+      const url = new URL(src)
+      return ["https:", "http:"].includes(url.protocol) && !url.username && !url.password
+    } catch { return false }
+  }).map(src => src.trim())))
+}
+
 /** Convierte `emilia.hotel-offer.v1` al view model cotizable de las cards de Maxeva. */
 export function transformCanonicalHotels(hotels: any[], query: any = {}): any[] {
   return hotels.map((hotel) => {
@@ -468,6 +479,11 @@ function transformCanonicalHotel(hotel: any, query: any, searchContext?: import(
         board,
         board_description: room?.board_description,
         amenities: room?.amenities,
+        images: hotelImageUrls(room?.images),
+        cancellation_deadline: room?.cancellation_deadline,
+        nightly_prices: room?.nightly_prices,
+        promotion: room?.promotion,
+        cancellation_terms: room?.cancellation_terms,
         price_breakdown: room?.price_breakdown,
         room_type_code: room?.room_type_code,
         rate_plan_code: room?.rate_plan_code,
@@ -500,18 +516,15 @@ function transformCanonicalHotel(hotel: any, query: any, searchContext?: import(
       website: hotel?.website,
       expires_at: hotel?.expires_at,
       description: typeof hotel?.description === "string" ? hotel.description : "",
-      images: Array.isArray(hotel?.images)
-        ? Array.from(new Set<string>(hotel.images.filter((src: unknown): src is string => {
-            if (typeof src !== "string") return false
-            try { return ["https:", "http:"].includes(new URL(src).protocol) } catch { return false }
-          }).map((src: string) => src.trim())))
-        : [],
+      images: hotelImageUrls(hotel?.images),
       check_in: checkIn,
       check_out: checkOut,
       nights,
       rooms,
       policy_cancellation: hotel?.cancellation_policy || "",
       policy_lodging: hotel?.lodging_policy || "",
+      room_conditions: hotel?.room_conditions,
+      observations: hotel?.observations,
       search_adults: canonicalPassengerCount(query?.adults, 1),
       search_children: canonicalPassengerCount(query?.children, 0),
       provider: hotel?.provider || "",

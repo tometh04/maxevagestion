@@ -6,7 +6,10 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { HotelImageCarousel } from "./hotel-result-card"
 import type { EurovipsHotel } from "@/lib/emilia/quotation-mapper"
+import { deriveMealPlan } from "@/lib/emilia/quotation-mapper"
+import { QUOTATION_MEAL_PLAN_LABELS } from "@/lib/quotations/presentation"
 import { matchesRoomFilters, type HotelFilters } from "@/lib/emilia/result-filters"
+import scrollStyles from "./chat-scroll.module.css"
 
 export function hotelPrice(amount: number, currency: string) {
   if (!Number.isFinite(amount)) return "Precio no informado"
@@ -52,7 +55,7 @@ export function HotelDetailSidebar({ hotel, selectedRoomId, filters, onRoomSelec
         </div>
         <Button ref={closeRef} className="order-first shrink-0" variant="ghost" size="icon" aria-label="Cerrar detalle del hotel" onClick={onClose}><ChevronLeft className="h-4 w-4" /></Button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+      <div className={`${scrollStyles.scroll} min-h-0 flex-1 overflow-y-auto overscroll-contain`}>
         <HotelImageCarousel key={hotel.id} images={hotel.images} alt={hotel.name} provider={hotel.provider || undefined} />
         <div className="space-y-5 p-4">
           <div className="space-y-2 text-sm">
@@ -67,20 +70,31 @@ export function HotelDetailSidebar({ hotel, selectedRoomId, filters, onRoomSelec
           <DetailText title="Sobre el hotel" value={hotel.description} />
           <DetailText title="Servicios" value={hotel.amenities?.join(" · ")} />
           <DetailText title="Accesibilidad" value={hotel.accessibility?.join(" · ")} />
+          <DetailText title="Condiciones de las habitaciones" value={hotel.room_conditions} />
+          <DetailText title="Observaciones del proveedor" value={hotel.observations} />
           <section className="space-y-3" aria-label="Habitaciones y tarifas">
             <h3 ref={roomsRef} tabIndex={-1} className="text-base font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Habitaciones y tarifas <span className="text-sm font-normal text-muted-foreground">({hotel.rooms?.length || 0})</span></h3>
             {!hotel.rooms?.length && <p className="text-sm text-muted-foreground">El proveedor no informó habitaciones para esta búsqueda.</p>}
             {hotel.rooms?.map(room => {
               const selected = selectedRoomId === room.occupancy_id
+              const mealPlan = deriveMealPlan(room.board)
+              const boardLabel = room.board_description || (mealPlan && QUOTATION_MEAL_PLAN_LABELS[mealPlan]) || room.board
+              const description = room.description === room.type || room.description === [room.type, room.board].filter(Boolean).join(" · ") ? null : room.description
               const unavailable = room.availability_status === "unavailable" || (!room.availability_status && Number.isFinite(room.availability) && room.availability < 2)
               const available = room.availability_status === "available" || (!room.availability_status && room.availability >= 3)
               return <div key={room.occupancy_id} className="space-y-3 border-t py-4">
                 <div className="flex items-start justify-between gap-3"><h4 className="text-sm font-semibold">{room.type}</h4>{selected && <Badge>Seleccionada</Badge>}</div>
-                <p className="whitespace-pre-line break-words text-sm text-muted-foreground">{room.description}</p>
-                {room.board_description || room.board ? <p className="text-sm">Régimen: {room.board_description || room.board}</p> : null}
+                {!!room.images?.length && <HotelImageCarousel key={room.occupancy_id} images={room.images} alt={`${room.type} · habitación en ${hotel.name}`} />}
+                {description && <p className="whitespace-pre-line break-words text-sm text-muted-foreground">{description}</p>}
+                {boardLabel && <p className="text-sm">Régimen: {boardLabel}</p>}
+                <DetailText title="Promoción" value={room.promotion} />
                 <p className="text-lg font-semibold tabular-nums">{hotelPrice(room.total_price, room.currency)} <span className="text-xs font-normal text-muted-foreground">total estadía</span></p>
                 <p className="text-xs text-muted-foreground">{hotelPrice(room.price_per_night, room.currency)} por noche</p>
                 {room.price_breakdown && <p className="text-xs text-muted-foreground">{room.price_breakdown.base && `Base: ${hotelPrice(room.price_breakdown.base.amount, room.price_breakdown.base.currency)}`}{room.price_breakdown.taxes && ` · Impuestos: ${hotelPrice(room.price_breakdown.taxes.amount, room.price_breakdown.taxes.currency)}`}</p>}
+                {!!room.nightly_prices?.length && <details className="text-xs">
+                  <summary className="cursor-pointer rounded-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Ver precios por noche</summary>
+                  <dl className="mt-2 space-y-1">{room.nightly_prices.map((night, index) => <div key={`${night.date}-${index}`} className="flex justify-between gap-3"><dt>{night.date}</dt><dd className="tabular-nums">{hotelPrice(night.price.amount, night.price.currency)}</dd></div>)}</dl>
+                </details>}
                 <p className="text-xs">{unavailable ? "No disponible" : available ? "Disponible al consultar" : "Disponibilidad a consultar"}</p>
                 {room.adults != null && <p className="text-xs text-muted-foreground">Ocupación: {room.adults} adultos · {room.children || 0} menores{room.infants ? ` · ${room.infants} bebés` : ""}</p>}
                 <div className="flex flex-wrap gap-1">
@@ -90,6 +104,11 @@ export function HotelDetailSidebar({ hotel, selectedRoomId, filters, onRoomSelec
                 </div>
                 <DetailText title="Servicios de la habitación" value={room.amenities?.join(" · ")} />
                 <DetailText title="Cancelación de esta tarifa" value={room.policy_cancellation} />
+                <DetailText title="Fecha límite de cancelación informada" value={room.cancellation_deadline} />
+                {!!room.cancellation_terms?.length && <section className="space-y-2 text-xs">
+                  <h3 className="text-sm font-semibold">Cargos por cancelación</h3>
+                  {room.cancellation_terms.map((term, index) => <p key={`${term.from_date}-${index}`} className="text-muted-foreground">Desde {term.from_date}{term.to_date ? ` hasta ${term.to_date}` : ""}: {hotelPrice(term.penalty.amount, term.penalty.currency)}</p>)}
+                </section>}
                 {(room.room_type_code || room.rate_plan_code) && <p className="text-xs text-muted-foreground">{room.room_type_code && `Habitación: ${room.room_type_code}`}{room.rate_plan_code && ` · Tarifa: ${room.rate_plan_code}`}</p>}
                 {!matchesRoomFilters(room, filters) && <p className="text-xs text-muted-foreground">Esta tarifa no cumple los filtros actuales.</p>}
                 <Button className="w-full" variant={selected ? "secondary" : "outline"} disabled={!selected && (unavailable || !Number.isFinite(room.total_price))} onClick={() => onRoomSelect(room.occupancy_id)}>{selected ? "Quitar selección" : "Seleccionar habitación"}</Button>

@@ -26,6 +26,23 @@ HTTP(S) sin credenciales. No se modificaron permisos, credenciales ni queries de
 | rooms.refundable, free_cancellation, payment_at_property | Indicadores explícitos; null conserva desconocido |
 | rooms.availability, availability_status | Cupo/estado informado, sin prometer confirmación de reserva |
 | rooms.cancellation_policy, amenities, room_type_code, rate_plan_code | Política de tarifa, servicios y referencias comerciales |
+| room_conditions, observations | Condiciones de habitaciones y observaciones generales del proveedor |
+| rooms.images | Fotos asociadas explícitamente a esa habitación; nunca se copian fotos del hotel |
+| rooms.promotion, cancellation_deadline | Promoción y fecha límite informadas, sin inferir cancelación gratuita |
+| rooms.nightly_prices | Fecha e importe por noche, conservando la moneda propia de cada importe |
+| rooms.cancellation_terms | Desde/hasta e importe de penalidad con su propia moneda |
+
+El scroll vertical del chat y del panel mide 4 px en Chromium, sin pista ni
+flechas, con contraste bajo que aumenta al interactuar. Firefox usa barra fina;
+en modo de colores forzados se conserva un indicador visible. No cambia el
+desplazamiento nativo por rueda, toque o teclado.
+
+EUROVIPS puede entregar `Fare.type=SGL` junto a una descripción comercial completa.
+La API conserva esa descripción como nombre de habitación y el código por separado.
+Los textos de cama y vista se muestran como los informó el proveedor: no se
+deducen atributos estructurados ni fotos de habitación a partir de un nombre de
+archivo del hotel. `RoomFeatures` contiene condiciones de contratación y no debe
+tratarse automáticamente como lista de comodidades.
 
 El panel toma el hotel original del mensaje, no la copia con habitaciones filtradas.
 Así se puede inspeccionar toda su información. Las tarifas que no cumplen el filtro
