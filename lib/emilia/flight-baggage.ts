@@ -13,6 +13,17 @@ export interface SegmentBaggage {
   by_passenger_type?: Array<{ passenger_type: string; checked: BaggageAllowance }>
 }
 
+/** Short display only; detailed allowances remain available in the itinerary. */
+export function summarizeSegmentBaggage(segments: Array<{ baggage?: SegmentBaggage }>): string | null {
+  if (!segments.some(segment => segment.baggage)) return null
+  if (segments.some(segment => !segment.baggage)) return "Equipaje: datos por confirmar por tramo"
+  const descriptions = segments.map(segment => formatSegmentBaggage([segment]))
+  if (new Set(descriptions).size > 1) return "Equipaje: varía por tramo"
+  const baggage = segments[0].baggage!
+  const shortStatus = (value?: BaggageAllowance) => value?.included === true ? "incluido" : value?.included === false ? "no incluido" : "a confirmar"
+  return `Despachado: ${shortStatus(baggage.checked)} · De mano: ${shortStatus(baggage.carry_on)}`
+}
+
 function formatAllowance(label: string, value?: BaggageAllowance): string {
   if (value?.included === false) return `${label}: no incluido`
   const details: string[] = []

@@ -2,8 +2,8 @@
 "use client"
 import scrollStyles from "@/components/emilia/chat-scroll.module.css"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Loader2, ChevronLeft, ChevronRight, MessageSquarePlus, Send, AlertTriangle, CheckCircle2, ExternalLink, X, Sparkles, FileText, HelpCircle } from "lucide-react"
+import { useEffect, useId, useMemo, useRef, useState } from "react"
+import { Loader2, ChevronLeft, MessageSquarePlus, Send, AlertTriangle, CheckCircle2, ExternalLink, X, Sparkles, FileText, HelpCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -11,7 +11,9 @@ import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
-import { FlightResultCard } from "@/components/emilia/flight-result-card"
+import { FlightResults } from "@/components/emilia/flight-results"
+import { FlightDetailSidebar } from "@/components/emilia/flight-detail-sidebar"
+import { CardCarousel, CarouselSlide } from "@/components/emilia/result-carousel"
 import { HotelDetailSidebar } from "@/components/emilia/hotel-detail-sidebar"
 import { HotelFiltersBar } from "@/components/emilia/hotel-filters-bar"
 import { HotelResultCard } from "@/components/emilia/hotel-result-card"
@@ -223,137 +225,6 @@ function FilteredResultsEmpty({ onClear }: { onClear: () => void }) {
 }
 
 // -------------------------------------------------------------------------
-// CarouselSlide — wrapper unificado para cada card del carrusel.
-// Ancho fijo (para el snap horizontal) pero ALTURA NATURAL: la card crece
-// con su contenido. Una altura fija + overflow-hidden recortaba el vuelo de
-// REGRESO, el "total" del hotel y el ring de selección (`ring-2 ring-primary`).
-// 360px: con el modal ancho (max-w-7xl) entran ~3 cards y el contenido de la
-// card (aerolínea, precio, horarios) respira sin envolver en 3 líneas.
-// -------------------------------------------------------------------------
-const SLIDE_WIDTH = 360
-
-function CarouselSlide({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="shrink-0 snap-start" style={{ width: `${SLIDE_WIDTH}px` }}>
-      {children}
-    </div>
-  )
-}
-
-// -------------------------------------------------------------------------
-// CardCarousel — banda horizontal con snap, flechas y contador.
-// Reusada para vuelos y hoteles dentro del chat embebido.
-// -------------------------------------------------------------------------
-interface CardCarouselProps {
-  count: number            // cantidad total de items (para el contador)
-  ariaLabel: string
-  children: React.ReactNode
-}
-
-function CardCarousel({ count, ariaLabel, children }: CardCarouselProps) {
-  const itemWidth = SLIDE_WIDTH + 12  // ancho del slide + gap-3 (12px)
-  const trackRef = useRef<HTMLDivElement | null>(null)
-  const [canLeft, setCanLeft] = useState(false)
-  const [canRight, setCanRight] = useState(false)
-  const [activeIndex, setActiveIndex] = useState(0)
-
-  const updateNav = useCallback(() => {
-    const el = trackRef.current
-    if (!el) return
-    const left = el.scrollLeft
-    const max = el.scrollWidth - el.clientWidth - 1
-    setCanLeft(left > 0)
-    setCanRight(left < max)
-    // index del card más cercano al borde izquierdo (con un pequeño offset)
-    setActiveIndex(Math.min(count - 1, Math.max(0, Math.round(left / itemWidth))))
-  }, [count, itemWidth])
-
-  useEffect(() => {
-    updateNav()
-  }, [updateNav, count])
-
-  function scrollBy(direction: 1 | -1) {
-    const el = trackRef.current
-    if (!el) return
-    el.scrollBy({ left: direction * itemWidth, behavior: "smooth" })
-  }
-
-  return (
-    <div className="relative group/carousel" aria-roledescription="carousel" aria-label={ariaLabel}>
-      {/* Sin margen negativo: con -mx-3 las cards sangraban sobre el padding
-          del modal y el scroll container las recortaba contra el borde.
-          px-1 deja lugar para el ring de selección de las cards. */}
-      <div
-        ref={trackRef}
-        onScroll={updateNav}
-        className="flex gap-3 items-start overflow-x-auto scroll-smooth snap-x snap-mandatory px-1 py-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-      >
-        {children}
-      </div>
-
-      {/* Flechas — solo visibles cuando hay overflow + en hover/focus */}
-      <button
-        type="button"
-        aria-label="Anterior"
-        onClick={() => scrollBy(-1)}
-        disabled={!canLeft}
-        className={cn(
-          "absolute top-1/2 -translate-y-1/2 left-1 z-10 h-9 w-9 rounded-full",
-          "bg-background/85 backdrop-blur-sm border shadow-md flex items-center justify-center",
-          "text-foreground transition-all duration-150",
-          "opacity-0 group-hover/carousel:opacity-100 focus-visible:opacity-100",
-          "disabled:cursor-not-allowed disabled:opacity-0",
-          "hover:bg-background hover:scale-105"
-        )}
-      >
-        <ChevronLeft className="h-4 w-4" />
-      </button>
-      <button
-        type="button"
-        aria-label="Siguiente"
-        onClick={() => scrollBy(1)}
-        disabled={!canRight}
-        className={cn(
-          "absolute top-1/2 -translate-y-1/2 right-1 z-10 h-9 w-9 rounded-full",
-          "bg-background/85 backdrop-blur-sm border shadow-md flex items-center justify-center",
-          "text-foreground transition-all duration-150",
-          "opacity-0 group-hover/carousel:opacity-100 focus-visible:opacity-100",
-          "disabled:cursor-not-allowed disabled:opacity-0",
-          "hover:bg-background hover:scale-105"
-        )}
-      >
-        <ChevronRight className="h-4 w-4" />
-      </button>
-
-      {/* Contador + dots */}
-      {count > 1 && (
-        <div className="flex items-center justify-center gap-2 pt-1.5">
-          <div className="flex items-center gap-1">
-            {Array.from({ length: Math.min(count, 8) }).map((_, i) => (
-              <span
-                key={i}
-                className={cn(
-                  "h-1.5 rounded-full transition-all duration-200",
-                  i === activeIndex
-                    ? "w-4 bg-primary"
-                    : "w-1.5 bg-muted-foreground/30"
-                )}
-              />
-            ))}
-            {count > 8 && (
-              <span className="text-[10px] text-muted-foreground/60 ml-1">+{count - 8}</span>
-            )}
-          </div>
-          <span className="text-[10px] tabular-nums text-muted-foreground/60">
-            {activeIndex + 1}/{count}
-          </span>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// -------------------------------------------------------------------------
 // EmptySearchNotice — cuando Emilia devuelve un turno de "search_results" pero
 // SIN opciones (ej. corrió la búsqueda con origen vacío), mostramos qué entendió
 // y cómo reintentar, en vez de dejar solo el texto suelto del asistente.
@@ -502,6 +373,8 @@ export function LeadEmiliaChat({
   // Selección
   const [selectedFlightIds, setSelectedFlightIds] = useState<string[]>([])
   const [openHotel, setOpenHotel] = useState<{ messageIndex: number; hotelId: string } | null>(null)
+  const [openFlight, setOpenFlight] = useState<{ messageIndex: number; flightId: string } | null>(null)
+  const flightPanelId = useId()
   const hotelDetailTrigger = useRef<HTMLElement | null>(null)
   const [selectedHotels, setSelectedHotels] = useState<Map<string, string>>(new Map()) // hotelId → roomId
   const [flightFiltersByMessage, setFlightFiltersByMessage] = useState<Record<number, FlightFilters>>({})
@@ -1044,8 +917,19 @@ export function LeadEmiliaChat({
     })
 
   const detailHotel = openHotel ? messages[openHotel.messageIndex]?.cards?.hotels?.items.find(hotel => hotel.id === openHotel.hotelId) : undefined
+  const detailFlight = openFlight ? messages[openFlight.messageIndex]?.cards?.flights?.items.find(flight => flight.id === openFlight.flightId) : undefined
+  function openFlightDetails(messageIndex: number, flightId: string) {
+    hotelDetailTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    setOpenHotel(null)
+    setOpenFlight({ messageIndex, flightId })
+  }
+  function closeFlightDetails() {
+    setOpenFlight(null)
+    requestAnimationFrame(() => hotelDetailTrigger.current?.focus({ preventScroll: true }))
+  }
   function openHotelDetails(messageIndex: number, hotelId: string) {
     hotelDetailTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    setOpenFlight(null)
     setOpenHotel({ messageIndex, hotelId })
   }
   function closeHotelDetails() {
@@ -1064,7 +948,7 @@ export function LeadEmiliaChat({
 
   return (
     <div className="flex h-full min-h-0 min-w-0 overflow-hidden">
-    <div className={cn("flex flex-1 flex-col h-full min-h-0 min-w-0 overflow-hidden", detailHotel && "max-md:hidden")}>
+    <div className={cn("flex flex-1 flex-col h-full min-h-0 min-w-0 overflow-hidden", (detailHotel || detailFlight) && "max-md:hidden")}>
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 px-6 py-3 border-b text-sm">
         <button onClick={onBack} className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
@@ -1182,17 +1066,14 @@ export function LeadEmiliaChat({
                       />
                       {selectedOutsideFilters && <p role="status" className="mb-2 text-xs text-muted-foreground">Tu vuelo seleccionado no cumple los filtros y sigue visible para que puedas revisarlo o desmarcarlo.</p>}
                       {visibleFlights.length > 0 ? (
-                        <CardCarousel count={visibleFlights.length} ariaLabel="Vuelos disponibles">
-                          {visibleFlights.map((flight) => (
-                            <CarouselSlide key={flight.id}>
-                              <FlightResultCard
-                                flight={flight as any}
-                                selected={messageFlightIds.includes(flight.id)}
-                                onSelectionChange={(id, _selected) => toggleFlight(resultSelectionKey(i, id))}
-                              />
-                            </CarouselSlide>
-                          ))}
-                        </CardCarousel>
+                        <FlightResults
+                          flights={visibleFlights}
+                          onViewDetails={flight => openFlightDetails(i, flight.id)}
+                          panelId={detailFlight ? flightPanelId : undefined}
+                          openFlightId={openFlight?.messageIndex === i ? openFlight.flightId : undefined}
+                          selectedFlightIds={messageFlightIds}
+                          onSelectionChange={(id, _selected) => toggleFlight(resultSelectionKey(i, id))}
+                        />
                       ) : (
                         <FilteredResultsEmpty onClear={() => clearFlightFilters(i)} />
                       )}
@@ -1402,6 +1283,10 @@ export function LeadEmiliaChat({
         </Button>
       </div>
     </div>
+    {detailFlight && openFlight && <FlightDetailSidebar key={`flight:${openFlight.messageIndex}:${detailFlight.id}`}
+      id={flightPanelId} flight={detailFlight} selected={selectedFlightIds.includes(resultSelectionKey(openFlight.messageIndex, detailFlight.id))}
+      onClose={closeFlightDetails}
+      onSelectionChange={id => toggleFlight(resultSelectionKey(openFlight.messageIndex, id))} />}
     {detailHotel && openHotel && <HotelDetailSidebar key={`${openHotel.messageIndex}:${detailHotel.id}`}
       hotel={detailHotel} filters={hotelFiltersByMessage[openHotel.messageIndex] ?? DEFAULT_HOTEL_FILTERS}
       selectedRoomId={selectedHotels.get(resultSelectionKey(openHotel.messageIndex, detailHotel.id))}

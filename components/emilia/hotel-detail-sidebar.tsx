@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useRef } from "react"
-import { ChevronLeft, MapPin } from "lucide-react"
+import { useRef } from "react"
+import { MapPin } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { HotelImageCarousel } from "./hotel-result-card"
@@ -9,7 +9,7 @@ import type { EurovipsHotel } from "@/lib/emilia/quotation-mapper"
 import { deriveMealPlan } from "@/lib/emilia/quotation-mapper"
 import { QUOTATION_MEAL_PLAN_LABELS } from "@/lib/quotations/presentation"
 import { matchesRoomFilters, type HotelFilters } from "@/lib/emilia/result-filters"
-import scrollStyles from "./chat-scroll.module.css"
+import { ResultDetailSidebar } from "./result-detail-sidebar"
 
 export function hotelPrice(amount: number, currency: string) {
   if (!Number.isFinite(amount)) return "Precio no informado"
@@ -38,24 +38,14 @@ interface Props {
 
 /** A docked panel keeps the conversation usable on desktop and takes its place on mobile. */
 export function HotelDetailSidebar({ hotel, selectedRoomId, filters, onRoomSelect, onClose }: Props) {
-  const closeRef = useRef<HTMLButtonElement>(null)
   const roomsRef = useRef<HTMLHeadingElement>(null)
-  useEffect(() => { closeRef.current?.focus() }, [hotel.id])
   const website = safeWebsite(hotel.website)
   const hasCoordinates = typeof hotel.latitude === "number" && Number.isFinite(hotel.latitude)
     && typeof hotel.longitude === "number" && Number.isFinite(hotel.longitude)
   return (
-    <aside aria-label={`Detalle de ${hotel.name}`} className="flex h-full min-h-0 w-full shrink-0 flex-col border-l bg-background md:w-[420px] xl:w-[480px]"
-      onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose() } }}>
-      <div className="flex items-start justify-between gap-3 border-b p-4">
-        <div className="min-w-0 space-y-1">
-          <h2 className="break-words text-lg font-semibold">{hotel.name}</h2>
-          <p className="text-sm text-muted-foreground">{[hotel.category, hotel.city].filter(Boolean).join(" · ")}</p>
-          <Button variant="link" className="h-auto p-0 text-xs" onClick={() => { roomsRef.current?.scrollIntoView({ block: "start" }); roomsRef.current?.focus({ preventScroll: true }) }}>Ver habitaciones y tarifas</Button>
-        </div>
-        <Button ref={closeRef} className="order-first shrink-0" variant="ghost" size="icon" aria-label="Cerrar detalle del hotel" onClick={onClose}><ChevronLeft className="h-4 w-4" /></Button>
-      </div>
-      <div className={`${scrollStyles.scroll} min-h-0 flex-1 overflow-y-auto overscroll-contain`}>
+    <ResultDetailSidebar identity={hotel.id} label={`Detalle de ${hotel.name}`} closeLabel="Cerrar detalle del hotel"
+      title={hotel.name} subtitle={[hotel.category, hotel.city].filter(Boolean).join(" · ")} onClose={onClose}
+      headerAction={<Button variant="link" className="h-auto p-0 text-xs" onClick={() => { roomsRef.current?.scrollIntoView({ block: "start" }); roomsRef.current?.focus({ preventScroll: true }) }}>Ver habitaciones y tarifas</Button>}>
         <HotelImageCarousel key={hotel.id} images={hotel.images} alt={hotel.name} provider={hotel.provider || undefined} />
         <div className="space-y-5 p-4">
           <div className="space-y-2 text-sm">
@@ -119,7 +109,6 @@ export function HotelDetailSidebar({ hotel, selectedRoomId, filters, onRoomSelec
           <DetailText title="Política de cancelación del hotel" value={hotel.policy_cancellation} />
           {!hotel.description && !hotel.amenities?.length && !hotel.policy_lodging && !hotel.policy_cancellation && <p className="text-xs text-muted-foreground">El proveedor no informó descripción, servicios ni políticas generales.</p>}
         </div>
-      </div>
-    </aside>
+    </ResultDetailSidebar>
   )
 }

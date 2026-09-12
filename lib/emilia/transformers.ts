@@ -1,3 +1,4 @@
+import { flightProviderSections } from "./flight-provider-details"
 import { hotelQueryForOffer, hotelSearchContextSchema } from "./hotel-stays"
 
 /**
@@ -34,6 +35,7 @@ interface ApiFlightLeg {
 }
 
 interface ApiFlight {
+  provider_details?: unknown
   id: string
   airline: {
     code: string
@@ -280,6 +282,7 @@ export function transformFlight(flight: ApiFlight): any {
 
   return {
     id: flight.id,
+      provider_details: flightProviderSections(flight.provider_details),
     airline: flight.airline,
     // Starling `TotalAmount` y Delfos `price.total` ya incluyen a todos los
     // pasajeros solicitados. Dejamos la base explícita para que ningún
@@ -389,6 +392,7 @@ export function transformCanonicalFlights(flights: any[], query: any = {}): any[
 
     return {
       id: flight.id,
+      provider_details: flightProviderSections(flight.provider_details),
       airline: {
         code: flight?.airline?.code || firstLeg?.segments?.[0]?.marketing_airline || "",
         name: flight?.airline?.name || flight?.airline?.code || "Aerolínea",

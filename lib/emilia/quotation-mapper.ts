@@ -58,6 +58,7 @@ export interface EmiliaFlightLeg {
 }
 
 export interface EmiliaFlight {
+  provider_details?: import("./flight-provider-details").FlightProviderSection[]
   id: string
   airline: { code: string; name: string }
   price: {

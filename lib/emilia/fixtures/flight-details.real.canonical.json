@@ -1,0 +1,1801 @@
+[
+  {
+    "schema_version": "emilia.flight-offer.v1",
+    "provider_details": [
+      {
+        "title": "Tarifa y condiciones del proveedor",
+        "fields": [
+          {
+            "label": "Tarifa base",
+            "value": "936"
+          },
+          {
+            "label": "Impuestos",
+            "value": "460.08"
+          },
+          {
+            "label": "Servicio",
+            "value": "0"
+          },
+          {
+            "label": "Comisión",
+            "value": "0"
+          },
+          {
+            "label": "Total",
+            "value": "1396.08"
+          },
+          {
+            "label": "Moneda",
+            "value": "USD"
+          },
+          {
+            "label": "Fecha límite de emisión",
+            "value": "2026-09-14T02:59:00.000Z"
+          },
+          {
+            "label": "Aerolínea validadora",
+            "value": "AV"
+          },
+          {
+            "label": "Tipo de tarifa",
+            "value": "P"
+          },
+          {
+            "label": "País IATA",
+            "value": "AR"
+          },
+          {
+            "label": "Moneda IATA",
+            "value": "USD"
+          },
+          {
+            "label": "Total IATA",
+            "value": "1396.08"
+          },
+          {
+            "label": "Cuotas máximas",
+            "value": "0"
+          },
+          {
+            "label": "Proveedor de tarifa",
+            "value": "GDS"
+          },
+          {
+            "label": "Código del proveedor de tarifa",
+            "value": "AMS"
+          },
+          {
+            "label": "Código de tarifa",
+            "value": "No informado"
+          },
+          {
+            "label": "Características de tarifa",
+            "value": "No informado"
+          },
+          {
+            "label": "Política de cancelación",
+            "value": "MDNT"
+          },
+          {
+            "label": "Mensajes de tarifa",
+            "value": "No informado"
+          },
+          {
+            "label": "Titular del contenido",
+            "value": "LOZ"
+          },
+          {
+            "label": "Contenido propio",
+            "value": "Sí"
+          },
+          {
+            "label": "Categoría de tarifa",
+            "value": "No informado"
+          },
+          {
+            "label": "Moneda base",
+            "value": "USD"
+          },
+          {
+            "label": "Relación de moneda base",
+            "value": "1"
+          }
+        ]
+      },
+      {
+        "title": "Pasajero",
+        "fields": [
+          {
+            "label": "Pasajero 1 · Tarifa por pasajero",
+            "value": "468"
+          },
+          {
+            "label": "Pasajero 1 · Impuestos por pasajero",
+            "value": "230.04"
+          },
+          {
+            "label": "Pasajero 1 · Comisión por pasajero",
+            "value": "0"
+          },
+          {
+            "label": "Pasajero 1 · Total por pasajero",
+            "value": "698.04"
+          },
+          {
+            "label": "Pasajero 1 · Tipo de pasajero",
+            "value": "ADT"
+          },
+          {
+            "label": "Pasajero 1 · Subtipo",
+            "value": "No informado"
+          },
+          {
+            "label": "Pasajero 1 · Cantidad",
+            "value": "2"
+          },
+          {
+            "label": "Pasajero 1 · Impuesto",
+            "value": "Sin elementos informados"
+          }
+        ]
+      },
+      {
+        "title": "Impuesto",
+        "fields": [
+          {
+            "label": "Impuesto",
+            "value": "Sin elementos informados"
+          }
+        ]
+      },
+      {
+        "title": "Comisión",
+        "fields": [
+          {
+            "label": "Porcentaje",
+            "value": "0"
+          },
+          {
+            "label": "Sobrecomisión",
+            "value": "0"
+          },
+          {
+            "label": "Cálculo de sobrecomisión",
+            "value": "D"
+          },
+          {
+            "label": "Tipos de pasajero",
+            "value": "No informado"
+          }
+        ]
+      },
+      {
+        "title": "Formas de pago",
+        "fields": [
+          {
+            "label": "Formas de pago 1",
+            "value": "CASH"
+          }
+        ]
+      },
+      {
+        "title": "Detalle comercial",
+        "fields": [
+          {
+            "label": "Tarifa neta",
+            "value": "936"
+          },
+          {
+            "label": "Impuestos netos",
+            "value": "460.08"
+          },
+          {
+            "label": "Total neto",
+            "value": "1396.08"
+          },
+          {
+            "label": "Total neto con cargo",
+            "value": "1396.08"
+          },
+          {
+            "label": "Impuestos adicionales",
+            "value": "No informado"
+          },
+          {
+            "label": "Cargo · Importe",
+            "value": "0"
+          },
+          {
+            "label": "Cargo · Pasajero 1 · Tipo de pasajero",
+            "value": "ADT"
+          },
+          {
+            "label": "Cargo · Pasajero 1 · Importe por pasajero",
+            "value": "0"
+          },
+          {
+            "label": "Comisión · Importe",
+            "value": "0"
+          },
+          {
+            "label": "Comisión · Pasajero 1 · Tipo de pasajero",
+            "value": "ADT"
+          },
+          {
+            "label": "Comisión · Pasajero 1 · Importe por pasajero",
+            "value": "0"
+          },
+          {
+            "label": "Sobrecomisión · Importe",
+            "value": "0"
+          },
+          {
+            "label": "Sobrecomisión · Pasajero 1 · Tipo de pasajero",
+            "value": "ADT"
+          },
+          {
+            "label": "Sobrecomisión · Pasajero 1 · Importe por pasajero",
+            "value": "0"
+          }
+        ]
+      },
+      {
+        "title": "Política comercial",
+        "fields": [
+          {
+            "label": "Formas de pago 1",
+            "value": "CASH"
+          },
+          {
+            "label": "Porcentaje de comisión",
+            "value": "0"
+          },
+          {
+            "label": "Porcentaje de sobrecomisión",
+            "value": "0"
+          },
+          {
+            "label": "Cálculo de sobrecomisión",
+            "value": "D"
+          }
+        ]
+      },
+      {
+        "title": "Ida · itinerario de la tarjeta",
+        "fields": [
+          {
+            "label": "Duración total (min)",
+            "value": "635"
+          },
+          {
+            "label": "Tramo 1 · Tramo",
+            "value": "1"
+          },
+          {
+            "label": "Tramo 1 · Aerolínea comercial",
+            "value": "AV"
+          },
+          {
+            "label": "Tramo 1 · Aerolínea operadora",
+            "value": "AV"
+          },
+          {
+            "label": "Tramo 1 · Número de vuelo",
+            "value": "88"
+          },
+          {
+            "label": "Tramo 1 · Clase de reserva",
+            "value": "T"
+          },
+          {
+            "label": "Tramo 1 · Cabina",
+            "value": "Y"
+          },
+          {
+            "label": "Tramo 1 · Salida · Aeropuerto",
+            "value": "EZE"
+          },
+          {
+            "label": "Tramo 1 · Salida · Fecha",
+            "value": "2026-10-10"
+          },
+          {
+            "label": "Tramo 1 · Salida · Hora",
+            "value": "07:10"
+          },
+          {
+            "label": "Tramo 1 · Llegada · Aeropuerto",
+            "value": "BOG"
+          },
+          {
+            "label": "Tramo 1 · Llegada · Fecha",
+            "value": "2026-10-10"
+          },
+          {
+            "label": "Tramo 1 · Llegada · Hora",
+            "value": "11:30"
+          },
+          {
+            "label": "Tramo 1 · Parada técnica",
+            "value": "Sin elementos informados"
+          },
+          {
+            "label": "Tramo 1 · Estado informado",
+            "value": "NN"
+          },
+          {
+            "label": "Tramo 1 · Equipaje despachado",
+            "value": "0PC"
+          },
+          {
+            "label": "Tramo 1 · Duración informada (min)",
+            "value": "0"
+          },
+          {
+            "label": "Tramo 1 · Base tarifaria",
+            "value": "TZAB1BR9"
+          },
+          {
+            "label": "Tramo 1 · Características",
+            "value": "No informado"
+          },
+          {
+            "label": "Tramo 1 · Familia tarifaria",
+            "value": "LIGHT"
+          },
+          {
+            "label": "Tramo 1 · Disponibilidad informada",
+            "value": "9"
+          },
+          {
+            "label": "Tramo 1 · Aeronave",
+            "value": "788"
+          },
+          {
+            "label": "Tramo 1 · Equipaje de mano",
+            "value": "No informado"
+          },
+          {
+            "label": "Tramo 1 · Operado por",
+            "value": "AVIANCA"
+          },
+          {
+            "label": "Tramo 2 · Tramo",
+            "value": "2"
+          },
+          {
+            "label": "Tramo 2 · Aerolínea comercial",
+            "value": "AV"
+          },
+          {
+            "label": "Tramo 2 · Aerolínea operadora",
+            "value": "AV"
+          },
+          {
+            "label": "Tramo 2 · Número de vuelo",
+            "value": "252"
+          },
+          {
+            "label": "Tramo 2 · Clase de reserva",
+            "value": "T"
+          },
+          {
+            "label": "Tramo 2 · Cabina",
+            "value": "Y"
+          },
+          {
+            "label": "Tramo 2 · Salida · Aeropuerto",
+            "value": "BOG"
+          },
+          {
+            "label": "Tramo 2 · Salida · Fecha",
+            "value": "2026-10-10"
+          },
+          {
+            "label": "Tramo 2 · Salida · Hora",
+            "value": "13:00"
+          },
+          {
+            "label": "Tramo 2 · Llegada · Aeropuerto",
+            "value": "PUJ"
+          },
+          {
+            "label": "Tramo 2 · Llegada · Fecha",
+            "value": "2026-10-10"
+          },
+          {
+            "label": "Tramo 2 · Llegada · Hora",
+            "value": "16:45"
+          },
+          {
+            "label": "Tramo 2 · Parada técnica",
+            "value": "Sin elementos informados"
+          },
+          {
+            "label": "Tramo 2 · Estado informado",
+            "value": "NN"
+          },
+          {
+            "label": "Tramo 2 · Equipaje despachado",
+            "value": "0PC"
+          },
+          {
+            "label": "Tramo 2 · Duración informada (min)",
+            "value": "0"
+          },
+          {
+            "label": "Tramo 2 · Base tarifaria",
+            "value": "TZAB1BR9"
+          },
+          {
+            "label": "Tramo 2 · Características",
+            "value": "No informado"
+          },
+          {
+            "label": "Tramo 2 · Familia tarifaria",
+            "value": "LIGHT"
+          },
+          {
+            "label": "Tramo 2 · Disponibilidad informada",
+            "value": "9"
+          },
+          {
+            "label": "Tramo 2 · Aeronave",
+            "value": "32N"
+          },
+          {
+            "label": "Tramo 2 · Equipaje de mano",
+            "value": "No informado"
+          },
+          {
+            "label": "Tramo 2 · Operado por",
+            "value": "AVIANCA"
+          }
+        ]
+      },
+      {
+        "title": "Ida · horario alternativo 2",
+        "fields": [
+          {
+            "label": "Duración total (min)",
+            "value": "675"
+          },
+          {
+            "label": "Tramo 1 · Tramo",
+            "value": "1"
+          },
+          {
+            "label": "Tramo 1 · Aerolínea comercial",
+            "value": "AV"
+          },
+          {
+            "label": "Tramo 1 · Aerolínea operadora",
+            "value": "AV"
+          },
+          {
+            "label": "Tramo 1 · Número de vuelo",
+            "value": "88"
+          },
+          {
+            "label": "Tramo 1 · Clase de reserva",
+            "value": "T"
+          },
+          {
+            "label": "Tramo 1 · Cabina",
+            "value": "Y"
+          },
+          {
+            "label": "Tramo 1 · Salida · Aeropuerto",
+            "value": "EZE"
+          },
+          {
+            "label": "Tramo 1 · Salida · Fecha",
+            "value": "2026-10-10"
+          },
+          {
+            "label": "Tramo 1 · Salida · Hora",
+            "value": "07:10"
+          },
+          {
+            "label": "Tramo 1 · Llegada · Aeropuerto",
+            "value": "BOG"
+          },
+          {
+            "label": "Tramo 1 · Llegada · Fecha",
+            "value": "2026-10-10"
+          },
+          {
+            "label": "Tramo 1 · Llegada · Hora",
+            "value": "11:30"
+          },
+          {
+            "label": "Tramo 1 · Parada técnica",
+            "value": "Sin elementos informados"
+          },
+          {
+            "label": "Tramo 1 · Estado informado",
+            "value": "NN"
+          },
+          {
+            "label": "Tramo 1 · Equipaje despachado",
+            "value": "0PC"
+          },
+          {
+            "label": "Tramo 1 · Duración informada (min)",
+            "value": "0"
+          },
+          {
+            "label": "Tramo 1 · Base tarifaria",
+            "value": "TZAB1BR9"
+          },
+          {
+            "label": "Tramo 1 · Características",
+            "value": "No informado"
+          },
+          {
+            "label": "Tramo 1 · Familia tarifaria",
+            "value": "LIGHT"
+          },
+          {
+            "label": "Tramo 1 · Disponibilidad informada",
+            "value": "9"
+          },
+          {
+            "label": "Tramo 1 · Aeronave",
+            "value": "788"
+          },
+          {
+            "label": "Tramo 1 · Equipaje de mano",
+            "value": "No informado"
+          },
+          {
+            "label": "Tramo 1 · Operado por",
+            "value": "AVIANCA"
+          },
+          {
+            "label": "Tramo 2 · Tramo",
+            "value": "2"
+          },
+          {
+            "label": "Tramo 2 · Aerolínea comercial",
+            "value": "AV"
+          },
+          {
+            "label": "Tramo 2 · Aerolínea operadora",
+            "value": "AV"
+          },
+          {
+            "label": "Tramo 2 · Número de vuelo",
+            "value": "136"
+          },
+          {
+            "label": "Tramo 2 · Clase de reserva",
+            "value": "T"
+          },
+          {
+            "label": "Tramo 2 · Cabina",
+            "value": "Y"
+          },
+          {
+            "label": "Tramo 2 · Salida · Aeropuerto",
+            "value": "BOG"
+          },
+          {
+            "label": "Tramo 2 · Salida · Fecha",
+            "value": "2026-10-10"
+          },
+          {
+            "label": "Tramo 2 · Salida · Hora",
+            "value": "13:40"
+          },
+          {
+            "label": "Tramo 2 · Llegada · Aeropuerto",
+            "value": "PUJ"
+          },
+          {
+            "label": "Tramo 2 · Llegada · Fecha",
+            "value": "2026-10-10"
+          },
+          {
+            "label": "Tramo 2 · Llegada · Hora",
+            "value": "17:25"
+          },
+          {
+            "label": "Tramo 2 · Parada técnica",
+            "value": "Sin elementos informados"
+          },
+          {
+            "label": "Tramo 2 · Estado informado",
+            "value": "NN"
+          },
+          {
+            "label": "Tramo 2 · Equipaje despachado",
+            "value": "0PC"
+          },
+          {
+            "label": "Tramo 2 · Duración informada (min)",
+            "value": "0"
+          },
+          {
+            "label": "Tramo 2 · Base tarifaria",
+            "value": "TZAB1BR9"
+          },
+          {
+            "label": "Tramo 2 · Características",
+            "value": "No informado"
+          },
+          {
+            "label": "Tramo 2 · Familia tarifaria",
+            "value": "LIGHT"
+          },
+          {
+            "label": "Tramo 2 · Disponibilidad informada",
+            "value": "9"
+          },
+          {
+            "label": "Tramo 2 · Aeronave",
+            "value": "320"
+          },
+          {
+            "label": "Tramo 2 · Equipaje de mano",
+            "value": "No informado"
+          },
+          {
+            "label": "Tramo 2 · Operado por",
+            "value": "AVIANCA"
+          }
+        ]
+      },
+      {
+        "title": "Ida · horario alternativo 3",
+        "fields": [
+          {
+            "label": "Duración total (min)",
+            "value": "1755"
+          },
+          {
+            "label": "Tramo 1 · Tramo",
+            "value": "1"
+          },
+          {
+            "label": "Tramo 1 · Aerolínea comercial",
+            "value": "AV"
+          },
+          {
+            "label": "Tramo 1 · Aerolínea operadora",
+            "value": "AV"
+          },
+          {
+            "label": "Tramo 1 · Número de vuelo",
+            "value": "88"
+          },
+          {
+            "label": "Tramo 1 · Clase de reserva",
+            "value": "T"
+          },
+          {
+            "label": "Tramo 1 · Cabina",
+            "value": "Y"
+          },
+          {
+            "label": "Tramo 1 · Salida · Aeropuerto",
+            "value": "EZE"
+          },
+          {
+            "label": "Tramo 1 · Salida · Fecha",
+            "value": "2026-10-10"
+          },
+          {
+            "label": "Tramo 1 · Salida · Hora",
+            "value": "07:10"
+          },
+          {
+            "label": "Tramo 1 · Llegada · Aeropuerto",
+            "value": "BOG"
+          },
+          {
+            "label": "Tramo 1 · Llegada · Fecha",
+            "value": "2026-10-10"
+          },
+          {
+            "label": "Tramo 1 · Llegada · Hora",
+            "value": "11:30"
+          },
+          {
+            "label": "Tramo 1 · Parada técnica",
+            "value": "Sin elementos informados"
+          },
+          {
+            "label": "Tramo 1 · Estado informado",
+            "value": "NN"
+          },
+          {
+            "label": "Tramo 1 · Equipaje despachado",
+            "value": "0PC"
+          },
+          {
+            "label": "Tramo 1 · Duración informada (min)",
+            "value": "0"
+          },
+          {
+            "label": "Tramo 1 · Base tarifaria",
+            "value": "TZAB1BR9"
+          },
+          {
+            "label": "Tramo 1 · Características",
+            "value": "No informado"
+          },
+          {
+            "label": "Tramo 1 · Familia tarifaria",
+            "value": "LIGHT"
+          },
+          {
+            "label": "Tramo 1 · Disponibilidad informada",
+            "value": "9"
+          },
+          {
+            "label": "Tramo 1 · Aeronave",
+            "value": "788"
+          },
+          {
+            "label": "Tramo 1 · Equipaje de mano",
+            "value": "No informado"
+          },
+          {
+            "label": "Tramo 1 · Operado por",
+            "value": "AVIANCA"
+          },
+          {
+            "label": "Tramo 2 · Tramo",
+            "value": "2"
+          },
+          {
+            "label": "Tramo 2 · Aerolínea comercial",
+            "value": "AV"
+          },
+          {
+            "label": "Tramo 2 · Aerolínea operadora",
+            "value": "AV"
+          },
+          {
+            "label": "Tramo 2 · Número de vuelo",
+            "value": "128"
+          },
+          {
+            "label": "Tramo 2 · Clase de reserva",
+            "value": "T"
+          },
+          {
+            "label": "Tramo 2 · Cabina",
+            "value": "Y"
+          },
+          {
+            "label": "Tramo 2 · Salida · Aeropuerto",
+            "value": "BOG"
+          },
+          {
+            "label": "Tramo 2 · Salida · Fecha",
+            "value": "2026-10-11"
+          },
+          {
+            "label": "Tramo 2 · Salida · Hora",
+            "value": "07:35"
+          },
+          {
+            "label": "Tramo 2 · Llegada · Aeropuerto",
+            "value": "PUJ"
+          },
+          {
+            "label": "Tramo 2 · Llegada · Fecha",
+            "value": "2026-10-11"
+          },
+          {
+            "label": "Tramo 2 · Llegada · Hora",
+            "value": "11:25"
+          },
+          {
+            "label": "Tramo 2 · Parada técnica",
+            "value": "Sin elementos informados"
+          },
+          {
+            "label": "Tramo 2 · Estado informado",
+            "value": "NN"
+          },
+          {
+            "label": "Tramo 2 · Equipaje despachado",
+            "value": "0PC"
+          },
+          {
+            "label": "Tramo 2 · Duración informada (min)",
+            "value": "0"
+          },
+          {
+            "label": "Tramo 2 · Base tarifaria",
+            "value": "TZAB1BR9"
+          },
+          {
+            "label": "Tramo 2 · Características",
+            "value": "No informado"
+          },
+          {
+            "label": "Tramo 2 · Familia tarifaria",
+            "value": "LIGHT"
+          },
+          {
+            "label": "Tramo 2 · Disponibilidad informada",
+            "value": "9"
+          },
+          {
+            "label": "Tramo 2 · Aeronave",
+            "value": "320"
+          },
+          {
+            "label": "Tramo 2 · Equipaje de mano",
+            "value": "No informado"
+          },
+          {
+            "label": "Tramo 2 · Operado por",
+            "value": "AVIANCA"
+          }
+        ]
+      },
+      {
+        "title": "Regreso · itinerario de la tarjeta",
+        "fields": [
+          {
+            "label": "Duración total (min)",
+            "value": "605"
+          },
+          {
+            "label": "Tramo 1 · Tramo",
+            "value": "1"
+          },
+          {
+            "label": "Tramo 1 · Aerolínea comercial",
+            "value": "AV"
+          },
+          {
+            "label": "Tramo 1 · Aerolínea operadora",
+            "value": "AV"
+          },
+          {
+            "label": "Tramo 1 · Número de vuelo",
+            "value": "137"
+          },
+          {
+            "label": "Tramo 1 · Clase de reserva",
+            "value": "T"
+          },
+          {
+            "label": "Tramo 1 · Cabina",
+            "value": "Y"
+          },
+          {
+            "label": "Tramo 1 · Salida · Aeropuerto",
+            "value": "PUJ"
+          },
+          {
+            "label": "Tramo 1 · Salida · Fecha",
+            "value": "2026-10-17"
+          },
+          {
+            "label": "Tramo 1 · Salida · Hora",
+            "value": "18:35"
+          },
+          {
+            "label": "Tramo 1 · Llegada · Aeropuerto",
+            "value": "BOG"
+          },
+          {
+            "label": "Tramo 1 · Llegada · Fecha",
+            "value": "2026-10-17"
+          },
+          {
+            "label": "Tramo 1 · Llegada · Hora",
+            "value": "20:15"
+          },
+          {
+            "label": "Tramo 1 · Parada técnica",
+            "value": "Sin elementos informados"
+          },
+          {
+            "label": "Tramo 1 · Estado informado",
+            "value": "NN"
+          },
+          {
+            "label": "Tramo 1 · Equipaje despachado",
+            "value": "0PC"
+          },
+          {
+            "label": "Tramo 1 · Duración informada (min)",
+            "value": "0"
+          },
+          {
+            "label": "Tramo 1 · Base tarifaria",
+            "value": "TZAB1BR9"
+          },
+          {
+            "label": "Tramo 1 · Características",
+            "value": "No informado"
+          },
+          {
+            "label": "Tramo 1 · Familia tarifaria",
+            "value": "LIGHT"
+          },
+          {
+            "label": "Tramo 1 · Disponibilidad informada",
+            "value": "6"
+          },
+          {
+            "label": "Tramo 1 · Aeronave",
+            "value": "320"
+          },
+          {
+            "label": "Tramo 1 · Equipaje de mano",
+            "value": "No informado"
+          },
+          {
+            "label": "Tramo 1 · Operado por",
+            "value": "AVIANCA"
+          },
+          {
+            "label": "Tramo 2 · Tramo",
+            "value": "2"
+          },
+          {
+            "label": "Tramo 2 · Aerolínea comercial",
+            "value": "AV"
+          },
+          {
+            "label": "Tramo 2 · Aerolínea operadora",
+            "value": "AV"
+          },
+          {
+            "label": "Tramo 2 · Número de vuelo",
+            "value": "87"
+          },
+          {
+            "label": "Tramo 2 · Clase de reserva",
+            "value": "T"
+          },
+          {
+            "label": "Tramo 2 · Cabina",
+            "value": "Y"
+          },
+          {
+            "label": "Tramo 2 · Salida · Aeropuerto",
+            "value": "BOG"
+          },
+          {
+            "label": "Tramo 2 · Salida · Fecha",
+            "value": "2026-10-17"
+          },
+          {
+            "label": "Tramo 2 · Salida · Hora",
+            "value": "21:30"
+          },
+          {
+            "label": "Tramo 2 · Llegada · Aeropuerto",
+            "value": "EZE"
+          },
+          {
+            "label": "Tramo 2 · Llegada · Fecha",
+            "value": "2026-10-18"
+          },
+          {
+            "label": "Tramo 2 · Llegada · Hora",
+            "value": "05:40"
+          },
+          {
+            "label": "Tramo 2 · Parada técnica",
+            "value": "Sin elementos informados"
+          },
+          {
+            "label": "Tramo 2 · Estado informado",
+            "value": "NN"
+          },
+          {
+            "label": "Tramo 2 · Equipaje despachado",
+            "value": "0PC"
+          },
+          {
+            "label": "Tramo 2 · Duración informada (min)",
+            "value": "0"
+          },
+          {
+            "label": "Tramo 2 · Base tarifaria",
+            "value": "TZAB1BR9"
+          },
+          {
+            "label": "Tramo 2 · Características",
+            "value": "No informado"
+          },
+          {
+            "label": "Tramo 2 · Familia tarifaria",
+            "value": "LIGHT"
+          },
+          {
+            "label": "Tramo 2 · Disponibilidad informada",
+            "value": "6"
+          },
+          {
+            "label": "Tramo 2 · Aeronave",
+            "value": "788"
+          },
+          {
+            "label": "Tramo 2 · Equipaje de mano",
+            "value": "No informado"
+          },
+          {
+            "label": "Tramo 2 · Operado por",
+            "value": "AVIANCA"
+          }
+        ]
+      },
+      {
+        "title": "Regreso · horario alternativo 2",
+        "fields": [
+          {
+            "label": "Duración total (min)",
+            "value": "640"
+          },
+          {
+            "label": "Tramo 1 · Tramo",
+            "value": "1"
+          },
+          {
+            "label": "Tramo 1 · Aerolínea comercial",
+            "value": "AV"
+          },
+          {
+            "label": "Tramo 1 · Aerolínea operadora",
+            "value": "AV"
+          },
+          {
+            "label": "Tramo 1 · Número de vuelo",
+            "value": "253"
+          },
+          {
+            "label": "Tramo 1 · Clase de reserva",
+            "value": "T"
+          },
+          {
+            "label": "Tramo 1 · Cabina",
+            "value": "Y"
+          },
+          {
+            "label": "Tramo 1 · Salida · Aeropuerto",
+            "value": "PUJ"
+          },
+          {
+            "label": "Tramo 1 · Salida · Fecha",
+            "value": "2026-10-17"
+          },
+          {
+            "label": "Tramo 1 · Salida · Hora",
+            "value": "18:00"
+          },
+          {
+            "label": "Tramo 1 · Llegada · Aeropuerto",
+            "value": "BOG"
+          },
+          {
+            "label": "Tramo 1 · Llegada · Fecha",
+            "value": "2026-10-17"
+          },
+          {
+            "label": "Tramo 1 · Llegada · Hora",
+            "value": "19:45"
+          },
+          {
+            "label": "Tramo 1 · Parada técnica",
+            "value": "Sin elementos informados"
+          },
+          {
+            "label": "Tramo 1 · Estado informado",
+            "value": "NN"
+          },
+          {
+            "label": "Tramo 1 · Equipaje despachado",
+            "value": "0PC"
+          },
+          {
+            "label": "Tramo 1 · Duración informada (min)",
+            "value": "0"
+          },
+          {
+            "label": "Tramo 1 · Base tarifaria",
+            "value": "TZAB1BR9"
+          },
+          {
+            "label": "Tramo 1 · Características",
+            "value": "No informado"
+          },
+          {
+            "label": "Tramo 1 · Familia tarifaria",
+            "value": "LIGHT"
+          },
+          {
+            "label": "Tramo 1 · Disponibilidad informada",
+            "value": "6"
+          },
+          {
+            "label": "Tramo 1 · Aeronave",
+            "value": "32N"
+          },
+          {
+            "label": "Tramo 1 · Equipaje de mano",
+            "value": "No informado"
+          },
+          {
+            "label": "Tramo 1 · Operado por",
+            "value": "AVIANCA"
+          },
+          {
+            "label": "Tramo 2 · Tramo",
+            "value": "2"
+          },
+          {
+            "label": "Tramo 2 · Aerolínea comercial",
+            "value": "AV"
+          },
+          {
+            "label": "Tramo 2 · Aerolínea operadora",
+            "value": "AV"
+          },
+          {
+            "label": "Tramo 2 · Número de vuelo",
+            "value": "87"
+          },
+          {
+            "label": "Tramo 2 · Clase de reserva",
+            "value": "T"
+          },
+          {
+            "label": "Tramo 2 · Cabina",
+            "value": "Y"
+          },
+          {
+            "label": "Tramo 2 · Salida · Aeropuerto",
+            "value": "BOG"
+          },
+          {
+            "label": "Tramo 2 · Salida · Fecha",
+            "value": "2026-10-17"
+          },
+          {
+            "label": "Tramo 2 · Salida · Hora",
+            "value": "21:30"
+          },
+          {
+            "label": "Tramo 2 · Llegada · Aeropuerto",
+            "value": "EZE"
+          },
+          {
+            "label": "Tramo 2 · Llegada · Fecha",
+            "value": "2026-10-18"
+          },
+          {
+            "label": "Tramo 2 · Llegada · Hora",
+            "value": "05:40"
+          },
+          {
+            "label": "Tramo 2 · Parada técnica",
+            "value": "Sin elementos informados"
+          },
+          {
+            "label": "Tramo 2 · Estado informado",
+            "value": "NN"
+          },
+          {
+            "label": "Tramo 2 · Equipaje despachado",
+            "value": "0PC"
+          },
+          {
+            "label": "Tramo 2 · Duración informada (min)",
+            "value": "0"
+          },
+          {
+            "label": "Tramo 2 · Base tarifaria",
+            "value": "TZAB1BR9"
+          },
+          {
+            "label": "Tramo 2 · Características",
+            "value": "No informado"
+          },
+          {
+            "label": "Tramo 2 · Familia tarifaria",
+            "value": "LIGHT"
+          },
+          {
+            "label": "Tramo 2 · Disponibilidad informada",
+            "value": "6"
+          },
+          {
+            "label": "Tramo 2 · Aeronave",
+            "value": "788"
+          },
+          {
+            "label": "Tramo 2 · Equipaje de mano",
+            "value": "No informado"
+          },
+          {
+            "label": "Tramo 2 · Operado por",
+            "value": "AVIANCA"
+          }
+        ]
+      }
+    ],
+    "id": "real-flight-0",
+    "provider": "STARLING",
+    "airline": {
+      "code": "AV",
+      "name": "AVIANCA"
+    },
+    "price": {
+      "amount": 1396.08,
+      "currency": "USD",
+      "basis": "COMMISSIONABLE_GROSS"
+    },
+    "cabin": "Y",
+    "refundable": null,
+    "baggage": {
+      "carry_on": null,
+      "checked": null
+    },
+    "legs": [
+      {
+        "origin": "EZE",
+        "destination": "PUJ",
+        "departure_at": "2026-10-10T07:10",
+        "arrival_at": "2026-10-10T16:45",
+        "duration_minutes": 635,
+        "stops": 1,
+        "segments": [
+          {
+            "marketing_airline": "AV",
+            "operating_airline": "AV",
+            "flight_number": "88",
+            "departure": {
+              "airport_code": "EZE",
+              "city": null,
+              "date": "2026-10-10",
+              "time": "07:10"
+            },
+            "arrival": {
+              "airport_code": "BOG",
+              "city": null,
+              "date": "2026-10-10",
+              "time": "11:30"
+            },
+            "duration_minutes": 0,
+            "cabin": "Y",
+            "baggage": {
+              "checked": {
+                "included": false,
+                "pieces": 0
+              },
+              "carry_on": {
+                "included": null
+              },
+              "personal_item": {
+                "included": null
+              }
+            }
+          },
+          {
+            "marketing_airline": "AV",
+            "operating_airline": "AV",
+            "flight_number": "252",
+            "departure": {
+              "airport_code": "BOG",
+              "city": null,
+              "date": "2026-10-10",
+              "time": "13:00"
+            },
+            "arrival": {
+              "airport_code": "PUJ",
+              "city": null,
+              "date": "2026-10-10",
+              "time": "16:45"
+            },
+            "duration_minutes": 0,
+            "cabin": "Y",
+            "baggage": {
+              "checked": {
+                "included": false,
+                "pieces": 0
+              },
+              "carry_on": {
+                "included": null
+              },
+              "personal_item": {
+                "included": null
+              }
+            }
+          }
+        ]
+      },
+      {
+        "origin": "PUJ",
+        "destination": "EZE",
+        "departure_at": "2026-10-17T18:35",
+        "arrival_at": "2026-10-18T05:40",
+        "duration_minutes": 605,
+        "stops": 1,
+        "segments": [
+          {
+            "marketing_airline": "AV",
+            "operating_airline": "AV",
+            "flight_number": "137",
+            "departure": {
+              "airport_code": "PUJ",
+              "city": null,
+              "date": "2026-10-17",
+              "time": "18:35"
+            },
+            "arrival": {
+              "airport_code": "BOG",
+              "city": null,
+              "date": "2026-10-17",
+              "time": "20:15"
+            },
+            "duration_minutes": 0,
+            "cabin": "Y",
+            "baggage": {
+              "checked": {
+                "included": false,
+                "pieces": 0
+              },
+              "carry_on": {
+                "included": null
+              },
+              "personal_item": {
+                "included": null
+              }
+            }
+          },
+          {
+            "marketing_airline": "AV",
+            "operating_airline": "AV",
+            "flight_number": "87",
+            "departure": {
+              "airport_code": "BOG",
+              "city": null,
+              "date": "2026-10-17",
+              "time": "21:30"
+            },
+            "arrival": {
+              "airport_code": "EZE",
+              "city": null,
+              "date": "2026-10-18",
+              "time": "05:40"
+            },
+            "duration_minutes": 0,
+            "cabin": "Y",
+            "baggage": {
+              "checked": {
+                "included": false,
+                "pieces": 0
+              },
+              "carry_on": {
+                "included": null
+              },
+              "personal_item": {
+                "included": null
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "schema_version": "emilia.flight-offer.v1",
+    "provider_details": [
+      {
+        "title": "Tarifa y condiciones del proveedor",
+        "fields": [
+          {
+            "label": "Fuente",
+            "value": "lleego"
+          },
+          {
+            "label": "Tipo de viaje",
+            "value": "ROUND_TRIP"
+          },
+          {
+            "label": "Dos viajes de ida",
+            "value": "No"
+          },
+          {
+            "label": "Aerolínea validadora",
+            "value": "HR"
+          },
+          {
+            "label": "Tarifa privada",
+            "value": "No"
+          },
+          {
+            "label": "Tipo de tarifa",
+            "value": "PUBLIC"
+          },
+          {
+            "label": "Vigencia para recotizar",
+            "value": "2026-09-13T15:56:26.051Z"
+          }
+        ]
+      },
+      {
+        "title": "Precio",
+        "fields": [
+          {
+            "label": "Total · Importe",
+            "value": "1369.78"
+          },
+          {
+            "label": "Total · Moneda",
+            "value": "USD"
+          },
+          {
+            "label": "Pasajero 1 · Tipo de pasajero",
+            "value": "ADT"
+          },
+          {
+            "label": "Pasajero 1 · Cantidad",
+            "value": "2"
+          },
+          {
+            "label": "Pasajero 1 · Precio unitario · Importe",
+            "value": "684.89"
+          },
+          {
+            "label": "Pasajero 1 · Precio unitario · Moneda",
+            "value": "USD"
+          },
+          {
+            "label": "Componentes · Base · Importe",
+            "value": "278.50"
+          },
+          {
+            "label": "Componentes · Base · Moneda",
+            "value": "USD"
+          },
+          {
+            "label": "Componentes · Impuestos · Importe",
+            "value": "1091.28"
+          },
+          {
+            "label": "Componentes · Impuestos · Moneda",
+            "value": "USD"
+          },
+          {
+            "label": "Componentes · Cargo de servicio · Importe",
+            "value": "0.00"
+          },
+          {
+            "label": "Componentes · Cargo de servicio · Moneda",
+            "value": "USD"
+          },
+          {
+            "label": "Componentes · Cargo de emisión · Importe",
+            "value": "0.00"
+          },
+          {
+            "label": "Componentes · Cargo de emisión · Moneda",
+            "value": "USD"
+          },
+          {
+            "label": "Componentes · Tipo de base",
+            "value": "SALE_BASE"
+          },
+          {
+            "label": "Componentes · Importe sin desglosar · Importe",
+            "value": "0.00"
+          },
+          {
+            "label": "Componentes · Importe sin desglosar · Moneda",
+            "value": "USD"
+          },
+          {
+            "label": "Componentes · Conciliación",
+            "value": "BALANCED"
+          }
+        ]
+      },
+      {
+        "title": "Emisión",
+        "fields": [
+          {
+            "label": "Fecha límite",
+            "value": "2026-09-13T21:59:00.000Z"
+          },
+          {
+            "label": "Indicador",
+            "value": "TL MAÑANA"
+          },
+          {
+            "label": "Condición",
+            "value": "Emitir mañana"
+          },
+          {
+            "label": "Emisión inmediata",
+            "value": "No"
+          }
+        ]
+      },
+      {
+        "title": "Ida · detalle del proveedor",
+        "fields": [
+          {
+            "label": "Origen",
+            "value": "EZE"
+          },
+          {
+            "label": "Destino",
+            "value": "PUJ"
+          },
+          {
+            "label": "Salida",
+            "value": "2026-10-10T07:45:00"
+          },
+          {
+            "label": "Llegada",
+            "value": "2026-10-10T15:00:00"
+          },
+          {
+            "label": "Conexiones",
+            "value": "0"
+          },
+          {
+            "label": "Duración (min)",
+            "value": "495"
+          },
+          {
+            "label": "Aerolínea validadora",
+            "value": "HR"
+          },
+          {
+            "label": "Tramo 1 · Aerolínea comercial",
+            "value": "X1"
+          },
+          {
+            "label": "Tramo 1 · Aerolínea operadora",
+            "value": "DM"
+          },
+          {
+            "label": "Tramo 1 · Número de vuelo",
+            "value": "1712"
+          },
+          {
+            "label": "Tramo 1 · Origen",
+            "value": "EZE"
+          },
+          {
+            "label": "Tramo 1 · Destino",
+            "value": "PUJ"
+          },
+          {
+            "label": "Tramo 1 · Salida",
+            "value": "2026-10-10T07:45:00"
+          },
+          {
+            "label": "Tramo 1 · Llegada",
+            "value": "2026-10-10T15:00:00"
+          },
+          {
+            "label": "Tramo 1 · Parada técnica",
+            "value": "Sin elementos informados"
+          },
+          {
+            "label": "Tramo 1 · Tipo de tarifa",
+            "value": "PUBLIC"
+          },
+          {
+            "label": "Tramo 1 · Equipaje · Despachado · Incluido",
+            "value": "Sí"
+          },
+          {
+            "label": "Tramo 1 · Equipaje · Despachado · Piezas",
+            "value": "1"
+          },
+          {
+            "label": "Tramo 1 · Equipaje · De mano · Incluido",
+            "value": "No informado"
+          },
+          {
+            "label": "Tramo 1 · Equipaje · Artículo personal · Incluido",
+            "value": "No informado"
+          }
+        ]
+      },
+      {
+        "title": "Regreso · detalle del proveedor",
+        "fields": [
+          {
+            "label": "Origen",
+            "value": "PUJ"
+          },
+          {
+            "label": "Destino",
+            "value": "EZE"
+          },
+          {
+            "label": "Salida",
+            "value": "2026-10-17T10:31:00"
+          },
+          {
+            "label": "Llegada",
+            "value": "2026-10-17T19:40:00"
+          },
+          {
+            "label": "Conexiones",
+            "value": "0"
+          },
+          {
+            "label": "Duración (min)",
+            "value": "489"
+          },
+          {
+            "label": "Aerolínea validadora",
+            "value": "HR"
+          },
+          {
+            "label": "Tramo 1 · Aerolínea comercial",
+            "value": "X1"
+          },
+          {
+            "label": "Tramo 1 · Aerolínea operadora",
+            "value": "DM"
+          },
+          {
+            "label": "Tramo 1 · Número de vuelo",
+            "value": "1716"
+          },
+          {
+            "label": "Tramo 1 · Origen",
+            "value": "PUJ"
+          },
+          {
+            "label": "Tramo 1 · Destino",
+            "value": "EZE"
+          },
+          {
+            "label": "Tramo 1 · Salida",
+            "value": "2026-10-17T10:31:00"
+          },
+          {
+            "label": "Tramo 1 · Llegada",
+            "value": "2026-10-17T19:40:00"
+          },
+          {
+            "label": "Tramo 1 · Parada técnica",
+            "value": "Sin elementos informados"
+          },
+          {
+            "label": "Tramo 1 · Tipo de tarifa",
+            "value": "PUBLIC"
+          },
+          {
+            "label": "Tramo 1 · Equipaje · Despachado · Incluido",
+            "value": "Sí"
+          },
+          {
+            "label": "Tramo 1 · Equipaje · Despachado · Piezas",
+            "value": "1"
+          },
+          {
+            "label": "Tramo 1 · Equipaje · De mano · Incluido",
+            "value": "No informado"
+          },
+          {
+            "label": "Tramo 1 · Equipaje · Artículo personal · Incluido",
+            "value": "No informado"
+          }
+        ]
+      }
+    ],
+    "id": "real-flight-1",
+    "provider": "DELFOS",
+    "airline": {
+      "code": "X1",
+      "name": "DM"
+    },
+    "price": {
+      "amount": 1369.78,
+      "currency": "USD",
+      "basis": "PROVIDER_TOTAL"
+    },
+    "cabin": null,
+    "refundable": null,
+    "baggage": {
+      "carry_on": null,
+      "checked": true
+    },
+    "legs": [
+      {
+        "origin": "EZE",
+        "destination": "PUJ",
+        "departure_at": "2026-10-10T07:45",
+        "arrival_at": "2026-10-10T15:00",
+        "duration_minutes": 495,
+        "stops": 0,
+        "segments": [
+          {
+            "marketing_airline": "X1",
+            "operating_airline": "DM",
+            "flight_number": "1712",
+            "departure": {
+              "airport_code": "EZE",
+              "city": null,
+              "date": "2026-10-10",
+              "time": "07:45"
+            },
+            "arrival": {
+              "airport_code": "PUJ",
+              "city": null,
+              "date": "2026-10-10",
+              "time": "15:00"
+            },
+            "duration_minutes": 0,
+            "cabin": null,
+            "baggage": {
+              "checked": {
+                "included": true,
+                "pieces": 1
+              },
+              "carry_on": {
+                "included": null
+              },
+              "personal_item": {
+                "included": null
+              }
+            }
+          }
+        ]
+      },
+      {
+        "origin": "PUJ",
+        "destination": "EZE",
+        "departure_at": "2026-10-17T10:31",
+        "arrival_at": "2026-10-17T19:40",
+        "duration_minutes": 489,
+        "stops": 0,
+        "segments": [
+          {
+            "marketing_airline": "X1",
+            "operating_airline": "DM",
+            "flight_number": "1716",
+            "departure": {
+              "airport_code": "PUJ",
+              "city": null,
+              "date": "2026-10-17",
+              "time": "10:31"
+            },
+            "arrival": {
+              "airport_code": "EZE",
+              "city": null,
+              "date": "2026-10-17",
+              "time": "19:40"
+            },
+            "duration_minutes": 0,
+            "cabin": null,
+            "baggage": {
+              "checked": {
+                "included": true,
+                "pieces": 1
+              },
+              "carry_on": {
+                "included": null
+              },
+              "personal_item": {
+                "included": null
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+]

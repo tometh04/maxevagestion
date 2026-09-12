@@ -1,6 +1,8 @@
 "use client"
 
 import { useState, useRef, useEffect, useCallback } from "react"
+import { FlightDetailSidebar } from "./flight-detail-sidebar"
+import type { FlightData } from "./flight-result-card"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -19,7 +21,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
-import { FlightResultCard } from "./flight-result-card"
+import { FlightResults } from "./flight-results"
 import { HotelResultCard } from "./hotel-result-card"
 import { generateClientId } from "@/lib/emilia/utils"
 import { waitForEmiliaJob } from "@/lib/emilia/async-turn"
@@ -163,6 +165,17 @@ const WELCOME_SUGGESTIONS = [
 ]
 
 export function EmiliaChat({ conversationId, userId, userName, onConversationUpdated }: EmiliaChatProps) {
+    const [detailFlight, setDetailFlight] = useState<FlightData | null>(null)
+    const detailTrigger = useRef<HTMLElement | null>(null)
+    useEffect(() => { setDetailFlight(null) }, [conversationId])
+    const openFlightDetails = (flight: FlightData) => {
+        detailTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+        setDetailFlight(flight)
+    }
+    const closeFlightDetails = () => {
+        setDetailFlight(null)
+        requestAnimationFrame(() => detailTrigger.current?.focus({ preventScroll: true }))
+    }
     const [messages, setMessages] = useState<Message[]>([])
     const [input, setInput] = useState("")
     const [isLoading, setIsLoading] = useState(false)
@@ -493,9 +506,9 @@ export function EmiliaChat({ conversationId, userId, userName, onConversationUpd
     const firstName = userName.split(" ")[0]
 
     return (
-        <div className="flex flex-col h-[calc(100vh-12rem)] max-h-[800px]">
+        <div className="flex min-w-0 overflow-hidden h-[calc(100vh-12rem)] max-h-[800px]">
             {/* Chat Container */}
-            <Card className="flex-1 flex flex-col overflow-hidden border-2 border-border/50 bg-gradient-to-b from-background to-muted/20">
+            <Card className={cn("flex-1 min-w-0 flex flex-col overflow-hidden border-2 border-border/50 bg-gradient-to-b from-background to-muted/20", detailFlight && "max-md:hidden")}>
                 {/* Messages Area */}
                 <ScrollArea ref={scrollAreaRef} className="flex-1 p-4">
                     {isLoadingMessages ? (
@@ -517,6 +530,7 @@ export function EmiliaChat({ conversationId, userId, userName, onConversationUpd
                                 <MessageBubble
                                     key={message.id}
                                     message={message}
+                                    onViewFlightDetails={openFlightDetails}
                                     onFollowupClick={handleSuggestionClick}
                                 />
                             ))}
@@ -566,6 +580,7 @@ export function EmiliaChat({ conversationId, userId, userName, onConversationUpd
                     </div>
                 </CardContent>
             </Card>
+            {detailFlight && <FlightDetailSidebar flight={detailFlight} onClose={closeFlightDetails} />}
         </div>
     )
 }
@@ -619,11 +634,12 @@ function WelcomeScreen({ userName, onSuggestionClick }: WelcomeScreenProps) {
 }
 
 interface MessageBubbleProps {
+    onViewFlightDetails: (flight: FlightData) => void
     message: Message
     onFollowupClick: (followup: string) => void
 }
 
-function MessageBubble({ message, onFollowupClick }: MessageBubbleProps) {
+function MessageBubble({ message, onFollowupClick, onViewFlightDetails }: MessageBubbleProps) {
     const isUser = message.role === "user"
     const content = message.content
 
@@ -663,6 +679,7 @@ function MessageBubble({ message, onFollowupClick }: MessageBubbleProps) {
                 {/* Search Results */}
                 {content.cards && (
                     <SearchResultsDisplay
+                        onViewFlightDetails={onViewFlightDetails}
                         flights={content.cards.flights}
                         hotels={content.cards.hotels}
                         requestType={content.cards.requestType}
@@ -682,12 +699,13 @@ function MessageBubble({ message, onFollowupClick }: MessageBubbleProps) {
 }
 
 interface SearchResultsDisplayProps {
+    onViewFlightDetails: (flight: FlightData) => void
     flights?: SearchResultsFlights
     hotels?: SearchResultsHotels
     requestType?: 'combined' | 'flights-only' | 'hotels-only'
 }
 
-function SearchResultsDisplay({ flights, hotels, requestType }: SearchResultsDisplayProps) {
+function SearchResultsDisplay({ flights, hotels, requestType, onViewFlightDetails }: SearchResultsDisplayProps) {
     const [selectedFlights, setSelectedFlights] = useState<Set<string>>(new Set())
     const [selectedHotels, setSelectedHotels] = useState<Set<string>>(new Set())
 
@@ -760,14 +778,12 @@ function SearchResultsDisplay({ flights, hotels, requestType }: SearchResultsDis
 
                     <TabsContent value="flights" className="space-y-2 mt-0">
                         {hasFlights ? (
-                            flights.items.slice(0, 10).map((flight) => (
-                                <FlightResultCard
-                                    key={flight.id}
-                                    flight={flight}
-                                    selected={selectedFlights.has(flight.id)}
-                                    onSelectionChange={handleFlightSelection}
-                                />
-                            ))
+                            <FlightResults
+                                onViewDetails={onViewFlightDetails}
+                                flights={flights.items.slice(0, 10)}
+                                selectedFlightIds={Array.from(selectedFlights)}
+                                onSelectionChange={handleFlightSelection}
+                            />
                         ) : (
                             <FlightsEmptyState />
                         )}
@@ -834,14 +850,12 @@ function SearchResultsDisplay({ flights, hotels, requestType }: SearchResultsDis
             {effectiveRequestType === 'flights-only' && (
                 <div className="space-y-2">
                     {hasFlights ? (
-                        flights.items.slice(0, 10).map((flight) => (
-                            <FlightResultCard
-                                key={flight.id}
-                                flight={flight}
-                                selected={selectedFlights.has(flight.id)}
-                                onSelectionChange={handleFlightSelection}
-                            />
-                        ))
+                        <FlightResults
+                            onViewDetails={onViewFlightDetails}
+                            flights={flights.items.slice(0, 10)}
+                            selectedFlightIds={Array.from(selectedFlights)}
+                            onSelectionChange={handleFlightSelection}
+                        />
                     ) : (
                         <FlightsEmptyState />
                     )}
