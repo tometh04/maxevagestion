@@ -123,6 +123,7 @@ it("keeps hotels visible during a worker retry without allowing unconfirmed quot
   expect(screen.getByText("Hotel seleccionado")).toBeInTheDocument()
   await act(async () => complete({ status: "completed", job_id: "job-1", results: { hotels: { count: 0, items: [] } } }))
   expect(screen.queryByText("Hotel seleccionado")).not.toBeInTheDocument()
+  expect(screen.getByRole("button", { name: /Generar cotización/ })).toBeDisabled()
 })
 
 it("resumes the persisted job on reopen without dispatching another search", async () => {

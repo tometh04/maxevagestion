@@ -894,7 +894,9 @@ export function LeadEmiliaChat({
     return `Generar cotización · ${opts} ${opts > 1 ? "opciones" : "opción"} (${fc} vuelo${fc !== 1 ? "s" : ""} + ${hc} hotel${hc !== 1 ? "es" : ""})`
   }, [selectedFlightIds, selectedHotels, lastResults])
 
-  const canGenerate = (selectedFlightIds.length > 0 || selectedHotels.size > 0)
+  const canGenerate = messages.some((message, index) =>
+    message.cards?.flights?.items.some(f => selectedFlightIds.includes(resultSelectionKey(index, f.id)))
+    || message.cards?.hotels?.items.some(h => selectedHotels.has(resultSelectionKey(index, h.id))))
     && !generating
     && !sending
     && (!lastResults?.jobStatus || lastResults.jobStatus === "completed")
