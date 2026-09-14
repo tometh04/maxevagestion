@@ -29,6 +29,7 @@ jest.mock("@/lib/emilia/access", () => ({
 }))
 
 import { GET, POST } from "../route"
+import { GET as GET_PROMPT } from "../suggested-prompt/route"
 
 const { getCurrentUser } = require("@/lib/auth")
 const { createServerClient } = require("@/lib/supabase/server")
@@ -153,7 +154,7 @@ describe("/api/leads/[id]/emilia", () => {
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.conversation_id).toBe("conv-new")
-    expect(body.suggested_prompt).toMatch(/Cancún/)
+    expect(body.suggested_prompt).toBe("Cotizar viaje a Cancún. Necesito fechas y cantidad de pasajeros.")
     expect(insertSpy).toHaveBeenCalledWith(expect.objectContaining({
       org_id: USER_ORG,
       user_id: "u1",
@@ -198,5 +199,40 @@ describe("/api/leads/[id]/emilia", () => {
     expect(res.status).toBe(200)
     await expect(res.json()).resolves.toMatchObject({ conversation_id: "conv-existing" })
     expect(insertSpy).not.toHaveBeenCalled()
+  })
+})
+
+
+describe("prompt sugerido sin metadatos comerciales", () => {
+  const originalFetch = global.fetch
+  const originalKey = process.env.OPENAI_API_KEY
+  const expected = "Cotizar viaje a Punta Cana. Saliendo desde Buenos Aires, Argentina para la primera semana de diciembre con hotel incluido all inclusive."
+  beforeEach(() => {
+    jest.clearAllMocks()
+    getCurrentUser.mockResolvedValue({ user: { id: "u1", org_id: USER_ORG } })
+    resolveLeadEmiliaAccess.mockResolvedValue({ allowed: true, agencyIds: ["a1"], ownSellerId: "u1" })
+    createServerClient.mockResolvedValue(mockSupabase({ leads: queryResult({ data: leadData({
+      destination: "Punta Cana, CARIBE", notes: "Fuente: Instagram\nPrimera semana de diciembre, hotel all inclusive, salida desde Buenos Aires, Argentina.",
+    }) }) }))
+  })
+  afterEach(() => { global.fetch = originalFetch; process.env.OPENAI_API_KEY = originalKey })
+  it("limpia la respuesta del modelo y no le envía la región ni la procedencia del lead", async () => {
+    process.env.OPENAI_API_KEY = "test-key"
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ choices: [{ message: { content: expected.replace("Punta Cana.", "Punta Cana, CARIBE.") + " Lead proveniente de Instagram." } }] }) })
+    const response = await GET_PROMPT(REQ_STUB, { params: Promise.resolve({ id: LEAD_ID }) })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ prompt: expected })
+    const request = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body)
+    const lead = JSON.parse(request.messages[1].content)
+    expect(lead.destination).toBe("Punta Cana")
+    expect(lead).not.toHaveProperty("region")
+    expect(lead.notes).not.toContain("Instagram")
+    expect(lead.notes).toContain("Buenos Aires, Argentina")
+  })
+  it.each(["missing-key", "provider-error", "empty-response"])("mantiene limpio el fallback: %s", async mode => {
+    process.env.OPENAI_API_KEY = mode === "missing-key" ? "" : "test-key"
+    global.fetch = jest.fn().mockResolvedValue({ ok: mode !== "provider-error", status: 503, json: async () => ({ choices: [] }) })
+    const response = await GET_PROMPT(REQ_STUB, { params: Promise.resolve({ id: LEAD_ID }) })
+    expect(await response.json()).toEqual({ prompt: "Cotizar viaje a Punta Cana. Necesito fechas y cantidad de pasajeros." })
   })
 })

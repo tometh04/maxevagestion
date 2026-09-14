@@ -204,3 +204,22 @@ it("cotiza la tarjeta histórica elegida aunque un turno posterior repita su ID"
   const call = jest.mocked(global.fetch).mock.calls.find(([url]) => url === "/api/quotations")!
   expect(JSON.parse(call[1]!.body as string).options[0].total_amount).toBe(100)
 })
+
+it("envía el prompt sugerido limpio sin reinsertar la región del lead", async () => {
+  const { buildFallbackPrompt } = await import("@/lib/emilia/lead-context")
+  const prompt = buildFallbackPrompt({ contact_name: "Cliente", destination: "Punta Cana, CARIBE", region: "CARIBE", notes: null,
+    list_prompt: "Fuente: Instagram\nSaliendo desde Buenos Aires, Argentina, primera semana de diciembre, hotel all inclusive." })
+  const defaultFetch = global.fetch
+  global.fetch = jest.fn(async (url, init) => String(url).includes("suggested-prompt")
+    ? { ok: true, json: async () => ({ prompt }) } : defaultFetch(url, init)) as jest.Mock
+  chat()
+  const input = await screen.findByLabelText("Pedido para Emilia")
+  await waitFor(() => expect(input).toHaveValue(prompt))
+  fireEvent.click(screen.getByLabelText("Enviar pedido a Emilia"))
+  await waitFor(() => expect(waitForEmiliaJob).toHaveBeenCalled())
+  const request = jest.mocked(global.fetch).mock.calls.find(([url]) => url === "/api/emilia/chat")!
+  expect(JSON.parse(request[1]!.body as string).message).toBe(prompt)
+  expect(prompt).not.toMatch(/CARIBE|Instagram|Cliente/)
+  expect(prompt).toContain("Buenos Aires, Argentina")
+  await act(async () => complete({ status: "completed", job_id: "job-1", assistant_message: { content: { text: "Listo" } } }))
+})

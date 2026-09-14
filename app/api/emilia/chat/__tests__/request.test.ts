@@ -41,6 +41,19 @@ describe("primer mensaje de un lead a Emilia", () => {
 
   afterEach(() => { global.fetch = originalFetch })
 
+  it("conserva el prompt limpio del lead hasta el payload de Emilia", async () => {
+    const { buildFallbackPrompt } = await import("@/lib/emilia/lead-context")
+    const clean = buildFallbackPrompt({ contact_name: "Cliente", destination: "Punta Cana, CARIBE", region: "CARIBE", notes: null,
+      list_prompt: "Fuente: Instagram\nSaliendo desde Buenos Aires, Argentina, primera semana de diciembre, hotel all inclusive." })
+    const response = await POST(new Request("http://localhost/api/emilia/chat", { method: "POST", body: JSON.stringify({
+      message: clean, conversationId, clientId, defaultOrigin: { city: "Rosario", country: "Argentina" },
+    }) }))
+    expect(response.status).toBe(202)
+    const payload = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body)
+    expect(payload.message).toBe(clean)
+    expect(payload.message).not.toMatch(/CARIBE|Instagram|Cliente|Rosario/)
+  })
+
   it.each([503, 504, "network", "timeout"])("recupera el despacho transitorio %s sin duplicar la búsqueda", async (failure) => {
     const fetchMock = global.fetch as jest.Mock
     if (typeof failure === "number") {
