@@ -1,6 +1,14 @@
 import { hasExplicitOrigin, withDefaultOrigin } from "../origin-context"
 
 describe("Emilia origin context", () => {
+  it.each([
+    "Cotiza + hotel de Buenos aires a salvador de bahia del 5 de diciembre al 13 de diciembre para 2 adultos con carry on, hotel Vila Gale , Iberostar , ala terra",
+    "Vuelo de Bs as a Salvador de Bahía",
+    "Vuelo de EZE a SSA",
+  ])("respeta el origen de la ruta de X a Y: %s", (message) => {
+    expect(withDefaultOrigin(message, { city: "Rosario", country: "Argentina" })).toBe(message)
+  })
+
   it.each([" vuelo directo", ""])("respeta Buenos Aires en el primer pedido%s", (restriction) => {
     const message = `Cotiza un vuelo + hotel a rio de jeneiro desde buenos aires saliendo el 26 de noviembre y regresando el 30 de novimebre para 2 adultos${restriction}, hotel en Buzios con desayuno habitación doble hotel don quijote`
     expect(hasExplicitOrigin(message)).toBe(true)
@@ -21,6 +29,9 @@ describe("Emilia origin context", () => {
     "Cotizar a Río desde mañana",
     "Cotizar a Río desde las 10:00",
     "Cotizar a Río desde USD 500",
+    "Cotizar hotel en Salvador de noviembre a diciembre",
+    "Vuelo a Salvador de lunes a viernes",
+    "Vuelos de 500 a 900 dólares",
   ])("no confunde fechas, horarios o precios con origen: %s", (message) => {
     expect(hasExplicitOrigin(message)).toBe(false)
     expect(withDefaultOrigin(message, { city: "Rosario" })).toBe(`${message} Saliendo desde Rosario.`)

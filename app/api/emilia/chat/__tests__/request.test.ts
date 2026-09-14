@@ -41,6 +41,18 @@ describe("primer mensaje de un lead a Emilia", () => {
 
   afterEach(() => { global.fetch = originalFetch })
 
+  it("preserves the Buenos Aires to Salvador route from the reported request", async () => {
+    const message = "Cotiza + hotel de Buenos aires a salvador de bahía del 5 de diciembre al 13 de diciembre para 2 adultos con carry on, hotel Vila Gale , Iberostar , ala terra"
+    const response = await POST(new Request("http://localhost/api/emilia/chat", {
+      method: "POST",
+      body: JSON.stringify({ message, conversationId, clientId, defaultOrigin: { city: "Rosario", country: "Argentina" } }),
+    }))
+    expect(response.status).toBe(202)
+    const payload = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body)
+    expect(payload.message).toBe(message)
+    expect(query.eq).toHaveBeenCalledWith("org_id", "org-1")
+  })
+
   it("conserva el prompt limpio del lead hasta el payload de Emilia", async () => {
     const { buildFallbackPrompt } = await import("@/lib/emilia/lead-context")
     const clean = buildFallbackPrompt({ contact_name: "Cliente", destination: "Punta Cana, CARIBE", region: "CARIBE", notes: null,
