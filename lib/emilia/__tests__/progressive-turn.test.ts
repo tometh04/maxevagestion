@@ -21,13 +21,15 @@ describe("progressive response identity", () => {
     expect(applyEmiliaTurnUpdate(messages, "job-1", partial as any)).toBe(messages)
   })
 
-  it("rejects duplicate/older snapshots and clears old offers on a new attempt", () => {
+  it("rejects duplicate/older snapshots and keeps previews until the new attempt returns results", () => {
     const messages = applyEmiliaTurnUpdate([], "job-1", partial as any)
     expect(applyEmiliaTurnUpdate(messages, "job-1", partial as any)).toBe(messages)
     const retry = applyEmiliaTurnUpdate(messages, "job-1", { status: "processing", attempt: 2 })
-    expect(retry[0].cards).toBeUndefined()
+    expect(retry[0].cards).toBe(messages[0].cards)
     expect(retry[0].progress).toBeUndefined()
     expect(applyEmiliaTurnUpdate(retry, "job-1", partial as any)).toBe(retry)
+    const final = applyEmiliaTurnUpdate(retry, "job-1", { status: "completed", results: { flights: { count: 0, items: [] } } })
+    expect(final[0].cards?.flights?.items).toEqual([])
   })
 
   it("retains visible flights on failure or a lost connection", () => {

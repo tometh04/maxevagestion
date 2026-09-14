@@ -98,8 +98,15 @@ export function applyEmiliaTurnUpdate(
     text: pending
       ? pendingTurnText(update.status, stage, jobId, progress)
       : update.assistant_message?.content?.text || update.message || "Acá tenés los resultados:",
-    cards: pending && !freshProgress ? previous?.cards : update.results ? { ...update.results, requestType: update.requestType }
-      : pending && !newAttempt ? previous?.cards : undefined,
+    // Keep the last preview while a replacement worker has not returned this
+    // product yet. Only terminal results may authorize quoting these offers.
+    cards: pending
+      ? freshProgress && update.results
+        ? { ...previous?.cards,
+          ...Object.fromEntries(Object.entries(update.results).filter(([, value]) => value !== undefined)),
+          requestType: update.requestType ?? previous?.cards?.requestType }
+        : previous?.cards
+      : update.results ? { ...update.results, requestType: update.requestType } : undefined,
     meta: {
       ...(!newAttempt ? previous?.meta : {}),
       ...update.assistant_message?.meta,

@@ -110,6 +110,21 @@ it("keeps flights visible after connection loss and blocks generating an unfinis
   expect(screen.getByRole("button", { name: /Generar cotización/ })).toBeDisabled()
 })
 
+it("keeps hotels visible during a worker retry without allowing unconfirmed quotes", async () => {
+  chat()
+  await send()
+  act(() => onProgress({ ...partial, progress: { version: 103, attempt: 1, products: { hotels: "available" } }, results: hotelResults }))
+  fireEvent.click(screen.getByText("Hotel disponible"))
+  act(() => onProgress({ status: "processing", job_id: "job-1", attempt: 2 }))
+  expect(screen.getByText("Hotel seleccionado")).toBeInTheDocument()
+  expect(screen.getByRole("button", { name: /Generar cotización/ })).toBeDisabled()
+  act(() => onProgress({ status: "processing", job_id: "job-1", attempt: 2,
+    progress: { version: 201, attempt: 2, products: { hotels: "searching" } }, results: {} }))
+  expect(screen.getByText("Hotel seleccionado")).toBeInTheDocument()
+  await act(async () => complete({ status: "completed", job_id: "job-1", results: { hotels: { count: 0, items: [] } } }))
+  expect(screen.queryByText("Hotel seleccionado")).not.toBeInTheDocument()
+})
+
 it("resumes the persisted job on reopen without dispatching another search", async () => {
   history = [{ id: "user-1", role: "user", content: { text: "Vuelos y hoteles", metadata: {
     emilia_job: { job_id: "job-1", status: "processing" },

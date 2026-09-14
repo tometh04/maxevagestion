@@ -62,16 +62,16 @@ export async function waitForEmiliaJob({
 }): Promise<any> {
   const startedAt = Date.now()
   let delayMs = Math.min(Math.max(pollAfterMs, 500), 5000)
-  let consecutiveTransientFailures = 0
   let firstPoll = true
   let lastProgressVersion = 0
   let lastAttempt = 0
   let lastStage: string | undefined
 
   while (Date.now() - startedAt < maxWaitMs) {
-    if (!firstPoll || !immediate) await wait(delayMs, signal)
+    if (!firstPoll || !immediate) await wait(Math.min(delayMs, Math.max(0, maxWaitMs - (Date.now() - startedAt))), signal)
     firstPoll = false
     if (signal?.aborted) throw abortError()
+    if (Date.now() - startedAt >= maxWaitMs) break
     let response: Response
     try {
       response = await fetch(
@@ -80,37 +80,27 @@ export async function waitForEmiliaJob({
       )
     } catch (error: any) {
       if (error?.name === "AbortError") throw error
-      consecutiveTransientFailures += 1
-      if (consecutiveTransientFailures <= 3) {
-        delayMs = Math.min(delayMs * 2, 5000)
-        continue
-      }
-      throw new EmiliaJobError("Se perdió la conexión mientras Emilia terminaba. Volvé a intentar.", "transport")
+      delayMs = Math.min(delayMs * 2, 10_000)
+      continue
     }
 
     let data: any
     try {
       data = await response.json()
     } catch {
-      consecutiveTransientFailures += 1
-      if (consecutiveTransientFailures <= 3) {
-        delayMs = Math.min(delayMs * 2, 5000)
-        continue
-      }
-      throw new EmiliaJobError("La respuesta de Emilia llegó incompleta. Volvé a intentar.", "transport")
+      delayMs = Math.min(delayMs * 2, 10_000)
+      continue
     }
     if (!response.ok) {
       const message = data?.error?.message || data?.error || "No se pudo consultar el estado de Emilia"
       if (response.status === 429 || response.status >= 500) {
-        consecutiveTransientFailures += 1
-        if (consecutiveTransientFailures <= 3) {
-          delayMs = Math.min(delayMs * 2, 5000)
-          continue
-        }
+        // A polling outage does not mean the durable search failed. Resume the
+        // same job within the overall budget, without dispatching another turn.
+        delayMs = Math.min(delayMs * 2, 10_000)
+        continue
       }
       throw new EmiliaJobError(message, "http", response.status)
     }
-    consecutiveTransientFailures = 0
     if (signal?.aborted) throw abortError()
     if (data.status === "queued" || data.status === "processing") {
       const version = Number(data.progress?.version) || 0

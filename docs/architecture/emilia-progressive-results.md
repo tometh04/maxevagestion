@@ -60,6 +60,21 @@ el estado sin foto; no se buscan coincidencias por nombre ni se inventan imágen
 
 ## Selección después de continuar una búsqueda
 
+### Recuperación de interrupciones transitorias
+
+El polling mantiene el mismo job ante errores de transporte, respuestas incompletas,
+429 o 5xx, con espera exponencial de hasta 10 segundos y el presupuesto total de
+seis minutos. Un error al consultar no implica que el trabajo haya fallado. Los
+401/403 y los estados terminales fallidos siguen deteniendo la consulta.
+
+Si el worker cambia de intento, el chat conserva los previews mientras llegan
+sus reemplazos. Los snapshots viejos siguen siendo rechazados. Los resultados
+finales reemplazan completamente los previews, incluso cuando no hay ofertas;
+no se permite cotizar un turno pendiente, interrumpido o fallido.
+
+Esto mejora la recuperación del CRM, pero no elimina los timeouts de PostgreSQL:
+la disponibilidad del backend debe verificarse por separado.
+
 Las tarjetas anteriores siguen disponibles para seleccionar y cotizar. La selección
 y los filtros se conservan entre turnos y se reinician al cambiar de lead. Cada
 selección identifica el mensaje y el ID de la oferta; el payload usa la oferta

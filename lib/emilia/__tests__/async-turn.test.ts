@@ -1,6 +1,42 @@
 import { waitForEmiliaJob } from "../async-turn"
+import { applyEmiliaTurnUpdate, type EmiliaChatMessage } from "../progressive-turn"
 
 describe("waitForEmiliaJob", () => {
+  it("keeps hotel previews across a worker retry and recovers after four auth outages", async () => {
+    const hotels = { count: 1, items: [{ id: "hotel-preview" }] }
+    const reply = (data: unknown, status = 200) => ({ ok: status === 200, status, json: async () => data }) as Response
+    const mock = jest.mocked(global.fetch)
+      .mockResolvedValueOnce(reply({ status: "processing", job_id: "job", attempt: 1,
+        progress: { version: 102, attempt: 1, products: { hotels: "available" } }, results: { hotels } }))
+      .mockResolvedValueOnce(reply({ status: "processing", job_id: "job", attempt: 2 }))
+    for (let i = 0; i < 4; i++) mock.mockResolvedValueOnce(reply({ error: "Authentication service is temporarily unavailable" }, 503))
+    mock.mockResolvedValueOnce(reply({ status: "completed", results: { hotels } }))
+    let messages: EmiliaChatMessage[] = []
+    const result = waitForEmiliaJob({ jobId: "job", conversationId: "conversation", immediate: true, pollAfterMs: 500,
+      onProgress: update => { messages = applyEmiliaTurnUpdate(messages, "job", update) } })
+    const outcome = result.then(value => ({ value }), error => ({ error }))
+    await jest.advanceTimersByTimeAsync(500)
+    expect(messages[0].cards?.hotels).toEqual(hotels)
+    await jest.advanceTimersByTimeAsync(60_000)
+    expect(await outcome).toMatchObject({ value: { status: "completed" } })
+    expect(mock.mock.calls.every(([url]) => String(url).includes("/jobs/job?conversationId=conversation"))).toBe(true)
+  })
+
+  it("bounds repeated outages by the overall wait budget", async () => {
+    jest.mocked(global.fetch).mockResolvedValue({ ok: false, status: 503,
+      json: async () => ({ error: "Authentication service is temporarily unavailable" }) } as Response)
+    const result = waitForEmiliaJob({ jobId: "job", conversationId: "conversation", immediate: true,
+      pollAfterMs: 500, maxWaitMs: 20_000 })
+    const assertion = expect(result).rejects.toMatchObject({ kind: "timeout" })
+    await jest.advanceTimersByTimeAsync(30_000)
+    await assertion
+  })
+
+  it("does not retry a rejected credential", async () => {
+    jest.mocked(global.fetch).mockResolvedValue({ ok: false, status: 401, json: async () => ({ error: "No autorizado" }) } as Response)
+    await expect(waitForEmiliaJob({ jobId: "job", conversationId: "conversation", immediate: true })).rejects.toMatchObject({ kind: "http", status: 401 })
+    expect(global.fetch).toHaveBeenCalledTimes(1)
+  })
   beforeEach(() => {
     jest.useFakeTimers()
     global.fetch = jest.fn()
